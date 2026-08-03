@@ -60,11 +60,16 @@ import {
   SlockOhosFeedbackDraftAttachmentBackend,
 } from '../main/ets/kuikly/SlockOhosHandsFeedbackDraftAttachments';
 import {
+  cleanupSlockOhosPrivateAttachmentOpenAliases,
   cleanupSlockOhosPrivateAttachmentOrphanParts,
   copySlockOhosPrivateAttachmentToProviderUri,
   isSlockOhosPrivateAttachmentOwnerKey,
+  materializeSlockOhosPrivateAttachmentOpenAlias,
   slockOhosPrivateAttachmentDirectory,
   slockOhosPrivateAttachmentFileName,
+  slockOhosPrivateAttachmentOpenAliasDirectoryName,
+  slockOhosPrivateAttachmentOpenAliasFileName,
+  SlockOhosPrivateAttachmentOpenAliasBackend,
   SlockOhosPrivateAttachmentCopyBackend,
   SlockOhosPrivateAttachmentCleanupBackend,
   SlockOhosPrivateAttachmentStat,
@@ -72,21 +77,18 @@ import {
 import {
   buildSlockOhosAttachmentOpenWants,
   slockOhosAttachmentOpenDiagnostic,
+  slockOhosAttachmentOpenPreflightDecision,
   slockOhosAttachmentOpenPreflightDiagnostic,
   slockOhosAttachmentOpenFailureKind,
-  SLOCK_OHOS_ACTION_SELECT,
   SLOCK_OHOS_ACTION_VIEW_DATA,
   SLOCK_OHOS_DEFAULT_ATTACHMENT_MIME_TYPE,
-  SLOCK_OHOS_SELECT_INTENT_PARAMETER,
-  SLOCK_OHOS_PICKER_FILE_NAMES_PARAMETER,
-  SLOCK_OHOS_PICKER_FILE_SIZES_PARAMETER,
-  SLOCK_OHOS_PICKER_TYPE_PARAMETER,
   SlockOhosAttachmentOpenDiagnosticTerminal,
   SlockOhosAttachmentOpenFailureKind,
+  SlockOhosAttachmentOpenPreflightDecision,
   SlockOhosAttachmentOpenPreflightTrace,
   SlockOhosAttachmentOpenPreflightStage,
 } from '../main/ets/kuikly/SlockOhosAttachmentOpenWant';
-import { Want, wantConstant } from '@kit.AbilityKit';
+import { wantConstant } from '@kit.AbilityKit';
 
 interface FakeHandsFeedbackAttachmentInput {
   fileRef: string;
@@ -160,6 +162,51 @@ class FakePrivateAttachmentCleanupBackend implements SlockOhosPrivateAttachmentC
   }
 }
 
+class FakePrivateAttachmentOpenAliasBackend implements SlockOhosPrivateAttachmentOpenAliasBackend {
+  readonly stats: Map<string, SlockOhosPrivateAttachmentStat> = new Map();
+  readonly contents: Map<string, string> = new Map();
+  readonly directoryEntries: Map<string, Array<string>> = new Map();
+  readonly removedPaths: Array<string> = [];
+  readonly removedDirectories: Array<string> = [];
+  copyCount: number = 0;
+  unlinkCount: number = 0;
+  copyFailure: Error | null = null;
+  copiedSizeOverride: number | null = null;
+
+  list(directory: string): Array<string> {
+    return this.directoryEntries.get(directory) ?? [];
+  }
+
+  stat(path: string): SlockOhosPrivateAttachmentStat | null {
+    return this.stats.get(path) ?? null;
+  }
+
+  async copy(sourcePath: string, targetPath: string): Promise<void> {
+    const source = this.stats.get(sourcePath);
+    if (source === undefined) throw new Error('source missing');
+    this.copyCount += 1;
+    if (this.copyFailure !== null) throw this.copyFailure;
+    this.stats.set(targetPath, {
+      isFile: source.isFile,
+      sizeBytes: this.copiedSizeOverride ?? source.sizeBytes,
+      mtime: source.mtime,
+    });
+    this.contents.set(targetPath, this.contents.get(sourcePath) ?? '');
+  }
+
+  unlink(path: string): void {
+    this.unlinkCount += 1;
+    this.removedPaths.push(path);
+    this.stats.delete(path);
+    this.contents.delete(path);
+  }
+
+  removeDirectory(path: string): void {
+    this.removedDirectories.push(path);
+    this.directoryEntries.delete(path);
+  }
+}
+
 class FakePlatformFileHandle {
   readonly fileRef: string;
 
@@ -170,6 +217,24 @@ class FakePlatformFileHandle {
 
 class FakeNonErrorReason {
   readonly reason: string = 'offline';
+}
+
+class FakeRealtimeSharedIngress implements SlockOhosRealtimeSharedIngress {
+  readonly payloads: Array<string>;
+  readonly accepted: boolean;
+  readonly shouldThrow: boolean;
+
+  constructor(payloads: Array<string>, accepted: boolean, shouldThrow: boolean = false) {
+    this.payloads = payloads;
+    this.accepted = accepted;
+    this.shouldThrow = shouldThrow;
+  }
+
+  publishEvent(eventDataJson: string): boolean {
+    this.payloads.push(eventDataJson);
+    if (this.shouldThrow) throw new Error('expected test failure');
+    return this.accepted;
+  }
 }
 
 class FakePickedAttachmentCacheBackend implements SlockOhosPickedAttachmentCacheBackend {
@@ -407,9 +472,9 @@ function diagnosticWork(
 
 export default function localUnitTest() {
   describe('localUnitTest',() => {
-    it('attachmentOpenBuildsReadAuthorizedChooserForPrivateUri', 0, () => {
+    it('attachmentOpenBuildsReadAuthorizedViewWantForPrivateUri', 0, () => {
       const uri = 'file://build.raft.mobile/data/storage/el2/base/files/slock-attachments/archive.zip';
-      const wants = buildSlockOhosAttachmentOpenWants(uri, 'application/zip', 'archive.zip', 4096);
+      const wants = buildSlockOhosAttachmentOpenWants(uri, 'application/zip');
 
       expect(wants.view.action).assertEqual(SLOCK_OHOS_ACTION_VIEW_DATA);
       expect(wants.view.uri).assertEqual(uri);
@@ -418,22 +483,10 @@ export default function localUnitTest() {
       expect((wants.view.parameters?.[wantConstant.Params.PARAMS_STREAM] as Array<string>).length).assertEqual(1);
       expect((wants.view.parameters?.[wantConstant.Params.PARAMS_STREAM] as Array<string>)[0]).assertEqual(uri);
 
-      expect(wants.chooser.action).assertEqual(SLOCK_OHOS_ACTION_SELECT);
-      expect(wants.chooser.uri).assertEqual(uri);
-      expect(wants.chooser.type).assertEqual('application/zip');
-      expect(wants.chooser.flags).assertEqual(wantConstant.Flags.FLAG_AUTH_READ_URI_PERMISSION);
-      const child = wants.chooser.parameters?.[SLOCK_OHOS_SELECT_INTENT_PARAMETER] as Want;
-      expect(child.action).assertEqual(SLOCK_OHOS_ACTION_VIEW_DATA);
-      expect(child.uri).assertEqual(uri);
-      expect((wants.chooser.parameters?.[wantConstant.Params.PARAMS_STREAM] as Array<string>)[0]).assertEqual(uri);
-      expect(wants.chooser.parameters?.[SLOCK_OHOS_PICKER_TYPE_PARAMETER] as string).assertEqual('application/zip');
-      expect((wants.chooser.parameters?.[SLOCK_OHOS_PICKER_FILE_NAMES_PARAMETER] as Array<string>)[0]).assertEqual('archive.zip');
-      expect((wants.chooser.parameters?.[SLOCK_OHOS_PICKER_FILE_SIZES_PARAMETER] as Array<number>)[0]).assertEqual(4096);
     });
     it('attachmentOpenUsesBinaryFallbackAndRejectsBlankUri', 0, () => {
       const wants = buildSlockOhosAttachmentOpenWants('file://build.raft.mobile/private/file', '  ');
       expect(wants.view.type).assertEqual(SLOCK_OHOS_DEFAULT_ATTACHMENT_MIME_TYPE);
-      expect(wants.chooser.type).assertEqual(SLOCK_OHOS_DEFAULT_ATTACHMENT_MIME_TYPE);
 
       let rejected = false;
       try {
@@ -453,18 +506,18 @@ export default function localUnitTest() {
       const privatePath = 'file://build.raft.mobile/data/storage/el2/base/files/private-secret/archive-secret.zip';
       const privateFileName = 'customer-private-secret.zip';
       const privateMimeType = 'application/x-private-secret;name=customer-private-secret.zip';
-      const wants = buildSlockOhosAttachmentOpenWants(privatePath, privateMimeType, privateFileName, 4096);
+      const wants = buildSlockOhosAttachmentOpenWants(privatePath, privateMimeType);
 
       const requested = slockOhosAttachmentOpenDiagnostic(
         wants,
         SlockOhosAttachmentOpenDiagnosticTerminal.REQUESTED
       );
-      expect(requested.includes('outer=select')).assertTrue();
-      expect(requested.includes('child=view_data')).assertTrue();
+      expect(requested.includes('outer=view_data')).assertTrue();
+      expect(requested.includes('child=none')).assertTrue();
       expect(requested.includes('mime=other')).assertTrue();
       expect(requested.includes('uriScheme=file')).assertTrue();
-      expect(requested.includes('outerRead=true childRead=true')).assertTrue();
-      expect(requested.includes('outerStream=true childStream=true')).assertTrue();
+      expect(requested.includes('outerRead=true childRead=false')).assertTrue();
+      expect(requested.includes('outerStream=true childStream=false')).assertTrue();
       expect(requested.endsWith('terminal=requested code=none')).assertTrue();
       expect(requested.includes('private-secret')).assertFalse();
       expect(requested.includes(privateFileName)).assertFalse();
@@ -473,9 +526,7 @@ export default function localUnitTest() {
 
       const unknownSchemeWants = buildSlockOhosAttachmentOpenWants(
         'customer-private-secret://private-host/private-file.zip',
-        'application/zip',
-        privateFileName,
-        4096
+        'application/zip'
       );
       const unknownScheme = slockOhosAttachmentOpenDiagnostic(
         unknownSchemeWants,
@@ -555,7 +606,7 @@ export default function localUnitTest() {
         false,
         false,
         true,
-        (message: string): void => events.push(message)
+        (message: string): void => { events.push(message); }
       );
 
       trace.requested();
@@ -572,6 +623,20 @@ export default function localUnitTest() {
       );
       expect(events.join('|').includes('customer-private-secret')).assertFalse();
     });
+    it('attachmentOpenPreflightDecisionAllowsCommittedOfflineOpenWithoutUrl', 0, () => {
+      expect(slockOhosAttachmentOpenPreflightDecision(true, true, false))
+        .assertEqual(SlockOhosAttachmentOpenPreflightDecision.PROCEED);
+      expect(slockOhosAttachmentOpenPreflightDecision(false, true, false))
+        .assertEqual(SlockOhosAttachmentOpenPreflightDecision.PROCEED);
+      expect(slockOhosAttachmentOpenPreflightDecision(true, false, false))
+        .assertEqual(SlockOhosAttachmentOpenPreflightDecision.PUBLIC_DOWNLOAD_MISSING);
+      expect(slockOhosAttachmentOpenPreflightDecision(true, false, true))
+        .assertEqual(SlockOhosAttachmentOpenPreflightDecision.PUBLIC_DOWNLOAD_MISSING);
+      expect(slockOhosAttachmentOpenPreflightDecision(false, false, false))
+        .assertEqual(SlockOhosAttachmentOpenPreflightDecision.URL_MISSING);
+      expect(slockOhosAttachmentOpenPreflightDecision(false, false, true))
+        .assertEqual(SlockOhosAttachmentOpenPreflightDecision.PROCEED);
+    });
     it('attachmentOpenPreflightTraceExecutesPublicMissingInExactOrder', 0, () => {
       const events: Array<string> = [];
       const trace = new SlockOhosAttachmentOpenPreflightTrace(
@@ -579,7 +644,7 @@ export default function localUnitTest() {
         true,
         true,
         false,
-        (message: string): void => events.push(message)
+        (message: string): void => { events.push(message); }
       );
 
       trace.requested();
@@ -602,7 +667,7 @@ export default function localUnitTest() {
         true,
         false,
         true,
-        (message: string): void => events.push(message)
+        (message: string): void => { events.push(message); }
       );
 
       trace.requested();
@@ -630,7 +695,7 @@ export default function localUnitTest() {
         true,
         false,
         true,
-        (message: string): void => events.push(message)
+        (message: string): void => { events.push(message); }
       );
 
       trace.requested();
@@ -668,7 +733,7 @@ export default function localUnitTest() {
         true,
         false,
         true,
-        (message: string): void => events.push(message)
+        (message: string): void => { events.push(message); }
       );
 
       trace.requested();
@@ -708,6 +773,137 @@ export default function localUnitTest() {
         .assertEqual(`${owner}-_attachment-id`);
       expect(slockOhosPrivateAttachmentFileName(owner, '../attachment-id', 'renamed.png', '.png'))
         .assertEqual(`${owner}-_attachment-id`);
+      expect(slockOhosPrivateAttachmentOpenAliasDirectoryName(owner, '../attachment-id'))
+        .assertEqual(`open-${owner}-_attachment-id`);
+      expect(
+        slockOhosPrivateAttachmentOpenAliasDirectoryName(owner, 'other-attachment') !==
+          slockOhosPrivateAttachmentOpenAliasDirectoryName(owner, '../attachment-id')
+      ).assertTrue();
+      expect(slockOhosPrivateAttachmentOpenAliasFileName('../项目资料 终版.zip', '.ZIP'))
+        .assertEqual('项目资料 终版.zip');
+      expect(slockOhosPrivateAttachmentOpenAliasFileName('..\\danger:\u0000name?', '.zip'))
+        .assertEqual('danger__name_.zip');
+      expect(slockOhosPrivateAttachmentOpenAliasFileName('../..', '.zip'))
+        .assertEqual('attachment.zip');
+      expect(slockOhosPrivateAttachmentOpenAliasFileName('原始报告.docx', ''))
+        .assertEqual('原始报告.docx');
+      expect(slockOhosPrivateAttachmentOpenAliasFileName('', ''))
+        .assertEqual('attachment.bin');
+    });
+
+    it('privateAttachmentOpenAliasCopiesOnceAndReusesOnlyFreshExactSize', 0, async () => {
+      const backend = new FakePrivateAttachmentOpenAliasBackend();
+      backend.stats.set('/private/source', { isFile: true, sizeBytes: 128, mtime: 20 });
+      backend.contents.set('/private/source', 'PK\u0003\u0004exact-zip-bytes');
+      backend.directoryEntries.set('/cache', []);
+
+      expect(await materializeSlockOhosPrivateAttachmentOpenAlias('/private/source', '/cache/open.zip', backend))
+        .assertEqual('/cache/open.zip');
+      expect(backend.copyCount).assertEqual(1);
+      expect(backend.contents.get('/cache/open.zip')).assertEqual('PK\u0003\u0004exact-zip-bytes');
+      expect(await materializeSlockOhosPrivateAttachmentOpenAlias('/private/source', '/cache/open.zip', backend))
+        .assertEqual('/cache/open.zip');
+      expect(backend.copyCount).assertEqual(1);
+
+      backend.stats.set('/private/source', { isFile: true, sizeBytes: 256, mtime: 40 });
+      await materializeSlockOhosPrivateAttachmentOpenAlias('/private/source', '/cache/open.zip', backend);
+      expect(backend.copyCount).assertEqual(2);
+      expect(backend.unlinkCount).assertEqual(1);
+    });
+
+    it('privateAttachmentOpenAliasRenameKeepsOnlyCurrentLeafAndCanonicalSource', 0, async () => {
+      const backend = new FakePrivateAttachmentOpenAliasBackend();
+      backend.stats.set('/private/source', { isFile: true, sizeBytes: 128, mtime: 20 });
+      backend.contents.set('/private/source', 'PK\u0003\u0004canonical');
+      backend.stats.set('/cache/old.zip', { isFile: true, sizeBytes: 128, mtime: 20 });
+      backend.contents.set('/cache/old.zip', 'PK\u0003\u0004canonical');
+      backend.directoryEntries.set('/cache', ['old.zip']);
+
+      await materializeSlockOhosPrivateAttachmentOpenAlias('/private/source', '/cache/新名字.zip', backend);
+
+      expect(backend.removedPaths.join(',')).assertEqual('/cache/old.zip');
+      expect(backend.contents.get('/cache/新名字.zip')).assertEqual('PK\u0003\u0004canonical');
+      expect(backend.contents.get('/private/source')).assertEqual('PK\u0003\u0004canonical');
+      expect(backend.stats.get('/private/source')?.sizeBytes).assertEqual(128);
+    });
+
+    it('privateAttachmentOpenAliasCopyThrowAndWrongSizeRemovePartialOnly', 0, async () => {
+      const throwing = new FakePrivateAttachmentOpenAliasBackend();
+      throwing.stats.set('/private/source', { isFile: true, sizeBytes: 128, mtime: 20 });
+      throwing.contents.set('/private/source', 'canonical');
+      throwing.directoryEntries.set('/cache', []);
+      throwing.copyFailure = new Error('copy failed');
+      let copyFailed = false;
+      try {
+        await materializeSlockOhosPrivateAttachmentOpenAlias('/private/source', '/cache/open.zip', throwing);
+      } catch (_) {
+        copyFailed = true;
+      }
+      expect(copyFailed).assertTrue();
+      expect(throwing.removedPaths.join(',')).assertEqual('/cache/open.zip');
+      expect(throwing.contents.get('/private/source')).assertEqual('canonical');
+
+      const truncated = new FakePrivateAttachmentOpenAliasBackend();
+      truncated.stats.set('/private/source', { isFile: true, sizeBytes: 128, mtime: 20 });
+      truncated.contents.set('/private/source', 'canonical');
+      truncated.directoryEntries.set('/cache', []);
+      truncated.copiedSizeOverride = 64;
+      let sizeFailed = false;
+      try {
+        await materializeSlockOhosPrivateAttachmentOpenAlias('/private/source', '/cache/open.zip', truncated);
+      } catch (_) {
+        sizeFailed = true;
+      }
+      expect(sizeFailed).assertTrue();
+      expect(truncated.removedPaths.join(',')).assertEqual('/cache/open.zip');
+      expect(truncated.stats.get('/private/source')?.sizeBytes).assertEqual(128);
+    });
+
+    it('privateAttachmentOpenAliasCleanupExpiresOldAndEvictsEightyFirstDirectory', 0, () => {
+      const backend = new FakePrivateAttachmentOpenAliasBackend();
+      const cacheEntries: Array<string> = [];
+      for (let index = 0; index < 81; index += 1) {
+        const directoryName = `open-${index}`;
+        const directory = `/cache/${directoryName}`;
+        cacheEntries.push(directoryName);
+        backend.directoryEntries.set(directory, ['alias.zip']);
+        backend.stats.set(`${directory}/alias.zip`, { isFile: true, sizeBytes: 10, mtime: 1000 + index });
+      }
+      cacheEntries.push('unrelated');
+      backend.directoryEntries.set('/cache', cacheEntries);
+      backend.stats.set('/private/source', { isFile: true, sizeBytes: 128, mtime: 1 });
+
+      const evicted = cleanupSlockOhosPrivateAttachmentOpenAliases(
+        '/cache',
+        24 * 60 * 60 * 1000,
+        80,
+        1080 * 1000,
+        '/cache/open-0',
+        backend
+      );
+      expect(evicted).assertEqual(1);
+      expect(backend.removedDirectories.join(',')).assertEqual('/cache/open-1');
+      expect(backend.removedPaths.join(',')).assertEqual('/cache/open-1/alias.zip');
+      expect(backend.stats.get('/cache/open-0/alias.zip')?.sizeBytes).assertEqual(10);
+      expect(backend.stats.get('/private/source')?.sizeBytes).assertEqual(128);
+
+      const expiryBackend = new FakePrivateAttachmentOpenAliasBackend();
+      expiryBackend.directoryEntries.set('/cache', ['open-expired', 'unrelated']);
+      expiryBackend.directoryEntries.set('/cache/open-expired', ['alias.zip']);
+      expiryBackend.stats.set('/cache/open-expired/alias.zip', { isFile: true, sizeBytes: 10, mtime: 1000 });
+      expiryBackend.stats.set('/private/source', { isFile: true, sizeBytes: 128, mtime: 1 });
+      const expired = cleanupSlockOhosPrivateAttachmentOpenAliases(
+        '/cache',
+        24 * 60 * 60 * 1000,
+        80,
+        (1000 + 86401) * 1000,
+        '',
+        expiryBackend
+      );
+      expect(expired).assertEqual(1);
+      expect(expiryBackend.removedDirectories.join(',')).assertEqual('/cache/open-expired');
+      expect(expiryBackend.removedPaths.join(',')).assertEqual('/cache/open-expired/alias.zip');
+      expect(expiryBackend.stats.get('/private/source')?.sizeBytes).assertEqual(128);
     });
 
     it('privateAttachmentProviderCopyStreamsExactBytesAndClosesBothFds', 0, () => {
@@ -1253,24 +1449,9 @@ export default function localUnitTest() {
       const acceptedPayloads: Array<string> = [];
       const rejectingPayloads: Array<string> = [];
       const throwingPayloads: Array<string> = [];
-      const acceptedIngress: SlockOhosRealtimeSharedIngress = {
-        publishEvent: (eventDataJson: string): boolean => {
-          acceptedPayloads.push(eventDataJson);
-          return true;
-        },
-      };
-      const rejectingIngress: SlockOhosRealtimeSharedIngress = {
-        publishEvent: (eventDataJson: string): boolean => {
-          rejectingPayloads.push(eventDataJson);
-          return false;
-        },
-      };
-      const throwingIngress: SlockOhosRealtimeSharedIngress = {
-        publishEvent: (eventDataJson: string): boolean => {
-          throwingPayloads.push(eventDataJson);
-          throw new Error('expected test failure');
-        },
-      };
+      const acceptedIngress = new FakeRealtimeSharedIngress(acceptedPayloads, true);
+      const rejectingIngress = new FakeRealtimeSharedIngress(rejectingPayloads, false);
+      const throwingIngress = new FakeRealtimeSharedIngress(throwingPayloads, false, true);
 
       new SlockOhosRealtimeHostContext(acceptedIngress).onPageShow();
       new SlockOhosRealtimeHostContext(rejectingIngress).onPageShow();

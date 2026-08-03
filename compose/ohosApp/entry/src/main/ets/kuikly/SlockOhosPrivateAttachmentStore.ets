@@ -24,6 +24,19 @@ export interface SlockOhosPrivateAttachmentCleanupBackend {
   unlink(path: string): void;
 }
 
+export interface SlockOhosPrivateAttachmentOpenAliasBackend {
+  list(directory: string): Array<string>;
+  stat(path: string): SlockOhosPrivateAttachmentStat | null;
+  copy(sourcePath: string, targetPath: string): Promise<void>;
+  unlink(path: string): void;
+  removeDirectory(path: string): void;
+}
+
+interface SlockOhosPrivateAttachmentOpenAliasEntry {
+  path: string;
+  mtime: number;
+}
+
 class FsSlockOhosPrivateAttachmentCopyBackend implements SlockOhosPrivateAttachmentCopyBackend {
   stat(path: string): SlockOhosPrivateAttachmentStat | null {
     try {
@@ -65,6 +78,41 @@ class FsSlockOhosPrivateAttachmentCleanupBackend implements SlockOhosPrivateAtta
   }
 }
 
+class FsSlockOhosPrivateAttachmentOpenAliasBackend implements SlockOhosPrivateAttachmentOpenAliasBackend {
+  list(directory: string): Array<string> {
+    return fs.listFileSync(directory);
+  }
+
+  stat(path: string): SlockOhosPrivateAttachmentStat | null {
+    try {
+      const stat = fs.statSync(path);
+      return { isFile: stat.isFile(), sizeBytes: stat.size, mtime: stat.mtime };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async copy(sourcePath: string, targetPath: string): Promise<void> {
+    await fs.copyFile(sourcePath, targetPath);
+  }
+
+  unlink(path: string): void {
+    try {
+      fs.unlinkSync(path);
+    } catch (_) {
+      // Missing or partially-created aliases are already clean.
+    }
+  }
+
+  removeDirectory(path: string): void {
+    try {
+      fs.rmdirSync(path);
+    } catch (_) {
+      // A concurrently removed or non-empty disposable alias directory needs no retry here.
+    }
+  }
+}
+
 export function isSlockOhosPrivateAttachmentOwnerKey(value: string): boolean {
   if (value.length !== 64) return false;
   for (let index = 0; index < value.length; index += 1) {
@@ -101,6 +149,173 @@ export function slockOhosPrivateAttachmentFileName(
   // persistent-file authority. The same attachment must resolve to the same private
   // copy after a rename or metadata correction.
   return `${ownerKey}-${safeAttachmentId}`;
+}
+
+/**
+ * The persistent owner/attachment identity deliberately has no presentation suffix. External
+ * file consumers, however, use the URI suffix in addition to the Want MIME type. Give only the
+ * disposable open alias a trusted MIME-derived suffix; never rename the authoritative copy.
+ */
+export function slockOhosPrivateAttachmentOpenAliasDirectoryName(
+  ownerKey: string,
+  attachmentId: string
+): string {
+  const persistentName = slockOhosPrivateAttachmentFileName(ownerKey, attachmentId, '', '');
+  return `open-${persistentName}`;
+}
+
+export function slockOhosPrivateAttachmentOpenAliasFileName(
+  requestedFileName: string,
+  extension: string
+): string {
+  const withoutQuery = requestedFileName.includes('://')
+    ? requestedFileName.split('?')[0].split('#')[0]
+    : requestedFileName;
+  const pathSegments = withoutQuery.replaceAll('\\', '/').split('/');
+  const leaf = pathSegments[pathSegments.length - 1] ?? '';
+  const requestedExtension = extension.trim().toLowerCase();
+  const leafExtensionMatch = leaf.toLowerCase().match(/\.[a-z0-9]{1,10}$/);
+  const normalizedExtension = /^\.[a-z0-9]{1,10}$/.test(requestedExtension)
+    ? requestedExtension
+    : leafExtensionMatch?.[0] ?? '.bin';
+  let sanitized = '';
+  for (let index = 0; index < leaf.length; index += 1) {
+    const character = leaf.charAt(index);
+    const code = leaf.charCodeAt(index);
+    const reserved = character === ':' || character === '*' || character === '?' || character === '"' ||
+      character === '<' || character === '>' || character === '|';
+    sanitized += code <= 31 || code === 127 || reserved ? '_' : character;
+  }
+  sanitized = sanitized.trim().replace(/^\.+|\.+$/g, '');
+  if (sanitized.length === 0 || sanitized === '.' || sanitized === '..') sanitized = 'attachment';
+  if (!sanitized.toLowerCase().endsWith(normalizedExtension)) sanitized += normalizedExtension;
+  const maximumBaseLength = 120 - normalizedExtension.length;
+  const base = sanitized.slice(0, Math.max(1, maximumBaseLength));
+  return base.toLowerCase().endsWith(normalizedExtension) ? base : `${base}${normalizedExtension}`;
+}
+
+/**
+ * Materializes a disposable, suffix-bearing alias for external consumers. Reuse is allowed only
+ * while it is byte-sized like the immutable source and no older than that source.
+ */
+export async function materializeSlockOhosPrivateAttachmentOpenAlias(
+  sourcePath: string,
+  targetPath: string,
+  backend: SlockOhosPrivateAttachmentOpenAliasBackend = new FsSlockOhosPrivateAttachmentOpenAliasBackend()
+): Promise<string> {
+  if (!sourcePath.startsWith('/') || !targetPath.startsWith('/') || sourcePath === targetPath) {
+    throw new Error('Attachment open alias path is unavailable');
+  }
+  const targetSeparator = targetPath.lastIndexOf('/');
+  if (targetSeparator <= 0 || targetSeparator === targetPath.length - 1) {
+    throw new Error('Attachment open alias path is unavailable');
+  }
+  const targetDirectory = targetPath.substring(0, targetSeparator);
+  const sourceStat = backend.stat(sourcePath);
+  if (sourceStat === null || !sourceStat.isFile || sourceStat.sizeBytes <= 0) {
+    throw new Error('Downloaded attachment is unavailable');
+  }
+  const existingStat = backend.stat(targetPath);
+  if (
+    existingStat !== null &&
+    existingStat.isFile &&
+    existingStat.sizeBytes === sourceStat.sizeBytes &&
+    existingStat.mtime >= sourceStat.mtime
+  ) {
+    removeOtherSlockOhosPrivateAttachmentOpenAliases(targetDirectory, targetPath, backend);
+    return targetPath;
+  }
+  removeOtherSlockOhosPrivateAttachmentOpenAliases(targetDirectory, targetPath, backend);
+  if (existingStat !== null) backend.unlink(targetPath);
+  try {
+    await backend.copy(sourcePath, targetPath);
+    const copiedStat = backend.stat(targetPath);
+    if (copiedStat === null || !copiedStat.isFile || copiedStat.sizeBytes !== sourceStat.sizeBytes) {
+      throw new Error('Attachment open alias copy is incomplete');
+    }
+    return targetPath;
+  } catch (error) {
+    backend.unlink(targetPath);
+    throw new Error(error instanceof Error ? error.message : 'Attachment open alias copy failed');
+  }
+}
+
+function removeOtherSlockOhosPrivateAttachmentOpenAliases(
+  directory: string,
+  retainedPath: string,
+  backend: SlockOhosPrivateAttachmentOpenAliasBackend
+): void {
+  backend.list(directory).forEach((name: string): void => {
+    const path = `${directory}/${name}`;
+    if (path !== retainedPath) backend.unlink(path);
+  });
+}
+
+function removeSlockOhosPrivateAttachmentOpenAliasDirectory(
+  directory: string,
+  backend: SlockOhosPrivateAttachmentOpenAliasBackend
+): void {
+  try {
+    backend.list(directory).forEach((name: string): void => {
+      backend.unlink(`${directory}/${name}`);
+    });
+  } catch (_) {
+    // The disposable directory may already have disappeared.
+  }
+  backend.removeDirectory(directory);
+}
+
+/**
+ * Removes expired alias directories and keeps at most maxDirectories newest attachment aliases.
+ * Capacity is directory-based because materialization guarantees one leaf per owner+attachment.
+ */
+export function cleanupSlockOhosPrivateAttachmentOpenAliases(
+  cacheDirectory: string,
+  maximumAgeMs: number,
+  maximumDirectories: number,
+  nowMs: number = Date.now(),
+  retainedDirectory: string = '',
+  backend: SlockOhosPrivateAttachmentOpenAliasBackend = new FsSlockOhosPrivateAttachmentOpenAliasBackend()
+): number {
+  if (!cacheDirectory.startsWith('/') || maximumAgeMs < 0 || maximumDirectories < 0) {
+    throw new Error('Invalid attachment open alias cleanup request');
+  }
+  const aliases: Array<SlockOhosPrivateAttachmentOpenAliasEntry> = [];
+  let cacheEntries: Array<string> = [];
+  try {
+    cacheEntries = backend.list(cacheDirectory);
+  } catch (_) {
+    return 0;
+  }
+  cacheEntries.forEach((name: string): void => {
+    if (!name.startsWith('open-')) return;
+    const directory = `${cacheDirectory}/${name}`;
+    let newestMtime = 0;
+    try {
+      backend.list(directory).forEach((child: string): void => {
+        const stat = backend.stat(`${directory}/${child}`);
+        if (stat !== null && stat.isFile) newestMtime = Math.max(newestMtime, stat.mtime);
+      });
+    } catch (_) {
+      newestMtime = 0;
+    }
+    aliases.push({ path: directory, mtime: newestMtime });
+  });
+  aliases.sort((left: SlockOhosPrivateAttachmentOpenAliasEntry, right: SlockOhosPrivateAttachmentOpenAliasEntry): number => {
+    if (left.path === retainedDirectory && right.path !== retainedDirectory) return -1;
+    if (right.path === retainedDirectory && left.path !== retainedDirectory) return 1;
+    return right.mtime - left.mtime;
+  });
+  let removed = 0;
+  aliases.forEach((entry: SlockOhosPrivateAttachmentOpenAliasEntry, index: number): void => {
+    const expired = entry.path !== retainedDirectory &&
+      (entry.mtime <= 0 || nowMs - entry.mtime * 1000 > maximumAgeMs);
+    if (expired || index >= maximumDirectories) {
+      removeSlockOhosPrivateAttachmentOpenAliasDirectory(entry.path, backend);
+      removed += 1;
+    }
+  });
+  return removed;
 }
 
 export function cleanupSlockOhosPrivateAttachmentOrphanParts(

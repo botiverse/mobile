@@ -35,16 +35,22 @@ import {
   buildSlockOhosAttachmentOpenWants,
   slockOhosAttachmentOpenDiagnostic,
   slockOhosAttachmentOpenFailureKind,
+  slockOhosAttachmentOpenPreflightDecision,
   SlockOhosAttachmentOpenDiagnosticTerminal,
   SlockOhosAttachmentOpenFailureKind,
+  SlockOhosAttachmentOpenPreflightDecision,
   SlockOhosAttachmentOpenPreflightTrace,
   SlockOhosAttachmentOpenWants,
 } from '../SlockOhosAttachmentOpenWant';
 import {
+  cleanupSlockOhosPrivateAttachmentOpenAliases,
   cleanupSlockOhosPrivateAttachmentOrphanParts,
   copySlockOhosPrivateAttachmentToProviderUri,
   ensureSlockOhosPrivateAttachmentDirectory,
   isSlockOhosPrivateAttachmentOwnerKey,
+  materializeSlockOhosPrivateAttachmentOpenAlias,
+  slockOhosPrivateAttachmentOpenAliasDirectoryName,
+  slockOhosPrivateAttachmentOpenAliasFileName,
   slockOhosPrivateAttachmentFileName,
 } from '../SlockOhosPrivateAttachmentStore';
 import { SLOCK_OHOS_BUILD_TIME, SLOCK_OHOS_GIT_COMMIT } from '../generated/SlockOhosBuildMetadata';
@@ -337,11 +343,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       (message: string): void => SlockOhosDiagnostics.record("SlockAttachmentOpenPreflight", message)
     );
     preflightTrace.requested();
-    if (url === undefined || url.length === 0) {
-      preflightTrace.requestRejected();
-      callback({ "status": "failed", "message": "Unable to download attachment" });
-      return;
-    }
     const context = getContext(this) as common.UIAbilityContext;
     try {
       const privateDirectory = ensureSlockOhosPrivateAttachmentDirectory(context.filesDir);
@@ -349,9 +350,19 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         ? this.privateAttachmentPath(privateDirectory, ownerKey, attachmentId, fileName, mimeType)
         : "";
       const privateCommitted = privatePath.length > 0 && this.isUsablePersistentAttachmentFile(privatePath);
-      if (requireCommittedDownload && !privateCommitted) {
+      const preflightDecision = slockOhosAttachmentOpenPreflightDecision(
+        requireCommittedDownload,
+        privateCommitted,
+        url !== undefined && url.length > 0
+      );
+      if (preflightDecision === SlockOhosAttachmentOpenPreflightDecision.PUBLIC_DOWNLOAD_MISSING) {
         preflightTrace.publicDownloadMissing(privateCommitted);
         callback({ "status": "missing", "message": "Downloaded attachment is unavailable" });
+        return;
+      }
+      if (preflightDecision === SlockOhosAttachmentOpenPreflightDecision.URL_MISSING) {
+        preflightTrace.requestRejected();
+        callback({ "status": "failed", "message": "Unable to download attachment" });
         return;
       }
       const cacheDir = `${context.cacheDir}/slock-attachments`;
@@ -365,7 +376,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       if (!cached) {
         preflightTrace.downloadStarted(privateCommitted);
         const downloadResult = await slockOhosAttachmentDownloadSink.download(
-          url,
+          url ?? "",
           path,
           downloadId,
           path,
@@ -377,17 +388,37 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           return;
         }
       }
-      const uri = fileUri.getUriFromPath(path);
+      let openPath = path;
+      let retainedOpenDirectory = '';
+      if (privateCommitted) {
+        const openDirectory = `${cacheDir}/${slockOhosPrivateAttachmentOpenAliasDirectoryName(ownerKey, attachmentId)}`;
+        retainedOpenDirectory = openDirectory;
+        ensureSlockOhosAttachmentCacheDirectory(openDirectory);
+        openPath = await materializeSlockOhosPrivateAttachmentOpenAlias(
+          path,
+          `${openDirectory}/${slockOhosPrivateAttachmentOpenAliasFileName(
+            fileName,
+            this.extensionForMimeType(mimeType)
+          )}`
+        );
+      }
+      cleanupSlockOhosPrivateAttachmentOpenAliases(
+        cacheDir,
+        KRBridgeModule.ATTACHMENT_CACHE_MAX_AGE_MS,
+        KRBridgeModule.ATTACHMENT_CACHE_MAX_FILES,
+        Date.now(),
+        retainedOpenDirectory
+      );
+      const uri = fileUri.getUriFromPath(openPath);
       let openWants: SlockOhosAttachmentOpenWants | undefined = undefined;
       try {
-        const sizeBytes = fs.statSync(path).size;
         preflightTrace.wantHandoff(privateCommitted, !cached);
-        openWants = buildSlockOhosAttachmentOpenWants(uri, mimeType, fileName, sizeBytes);
+        openWants = buildSlockOhosAttachmentOpenWants(uri, mimeType);
         SlockOhosDiagnostics.record(
           "SlockAttachmentOpen",
           slockOhosAttachmentOpenDiagnostic(openWants, SlockOhosAttachmentOpenDiagnosticTerminal.REQUESTED)
         );
-        await context.startAbility(openWants.chooser);
+        await context.startAbility(openWants.view);
         SlockOhosDiagnostics.record(
           "SlockAttachmentOpen",
           slockOhosAttachmentOpenDiagnostic(openWants, SlockOhosAttachmentOpenDiagnosticTerminal.LAUNCH_SUCCEEDED)
