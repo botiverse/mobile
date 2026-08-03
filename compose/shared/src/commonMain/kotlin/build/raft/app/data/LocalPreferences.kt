@@ -263,6 +263,7 @@ data class ChatLayoutPreferenceSnapshot(
     val composerSendKeyEnabled: Boolean = false,
     val multiShellHostEnabled: Boolean = false,
     val serverDrawerEnabled: Boolean = false,
+    val newDesignSettingsEnabled: Boolean = false,
     val homeServerAvatarEnabled: Boolean = false,
     val translationMode: TranslationModePreference = TranslationModePreference.Default,
     val translationTargetLanguage: String = TranslationTargetLanguages.Browser,
@@ -314,6 +315,9 @@ interface ChatLayoutPreferenceStore {
     fun readServerDrawerEnabledSync(): Boolean
     suspend fun readServerDrawerEnabled(): Boolean
     suspend fun saveServerDrawerEnabled(enabled: Boolean)
+    fun readNewDesignSettingsEnabledSync(): Boolean
+    suspend fun readNewDesignSettingsEnabled(): Boolean
+    suspend fun saveNewDesignSettingsEnabled(enabled: Boolean)
     fun readHomeServerAvatarEnabledSync(): Boolean
     suspend fun readHomeServerAvatarEnabled(): Boolean
     suspend fun saveHomeServerAvatarEnabled(enabled: Boolean)
@@ -465,6 +469,16 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_SERVER_DRAWER_ENABLED, enabled)
     }
 
+    override fun readNewDesignSettingsEnabledSync(): Boolean =
+        store.getBoolean(KEY_NEW_DESIGN_SETTINGS_ENABLED, false)
+
+    override suspend fun readNewDesignSettingsEnabled(): Boolean =
+        readNewDesignSettingsEnabledSync()
+
+    override suspend fun saveNewDesignSettingsEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_NEW_DESIGN_SETTINGS_ENABLED, enabled)
+    }
+
     override fun readHomeServerAvatarEnabledSync(): Boolean =
         store.getBoolean(KEY_HOME_SERVER_AVATAR_ENABLED, false)
 
@@ -537,6 +551,7 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_COMPOSER_SEND_KEY_ENABLED = "chatLayout:composer_send_key_enabled"
         const val KEY_MULTI_SHELL_HOST_ENABLED = "mobile:multi_shell_host_enabled"
         const val KEY_SERVER_DRAWER_ENABLED = "mobile:server_drawer_enabled"
+        const val KEY_NEW_DESIGN_SETTINGS_ENABLED = "mobile:new_design_settings_enabled"
         const val KEY_HOME_SERVER_AVATAR_ENABLED = "mobile:home_server_avatar_enabled"
         const val KEY_TRANSLATION_MODE = "settings.translationMode"
         const val KEY_TRANSLATION_TARGET_LANGUAGE = "settings.translationTargetLanguage"
@@ -563,6 +578,7 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setMultiShellHostEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setServerDrawerEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
+    suspend fun setNewDesignSettingsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setHomeServerAvatarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot
     suspend fun setTranslationTargetLanguage(language: String): ChatLayoutPreferenceSnapshot
@@ -590,6 +606,7 @@ class PersistentChatLayoutPreferenceRepository(
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
+            newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
@@ -614,6 +631,7 @@ class PersistentChatLayoutPreferenceRepository(
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
+            newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
@@ -639,6 +657,7 @@ class PersistentChatLayoutPreferenceRepository(
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
+            newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
@@ -662,6 +681,7 @@ class PersistentChatLayoutPreferenceRepository(
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
+            newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
@@ -700,6 +720,7 @@ class PersistentChatLayoutPreferenceRepository(
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
+            newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
@@ -723,6 +744,7 @@ class PersistentChatLayoutPreferenceRepository(
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
+            newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
@@ -746,6 +768,7 @@ class PersistentChatLayoutPreferenceRepository(
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
+            newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
@@ -773,6 +796,11 @@ class PersistentChatLayoutPreferenceRepository(
         return getChatLayoutPreference()
     }
 
+    override suspend fun setNewDesignSettingsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+        store.saveNewDesignSettingsEnabled(enabled)
+        return getChatLayoutPreference()
+    }
+
     override suspend fun setHomeServerAvatarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
         store.saveHomeServerAvatarEnabled(enabled)
         return getChatLayoutPreference()
@@ -794,6 +822,7 @@ class PersistentChatLayoutPreferenceRepository(
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
+            newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = mode,
             translationTargetLanguage = store.readTranslationTargetLanguage(),
@@ -832,6 +861,7 @@ class PersistentChatLayoutPreferenceRepository(
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
+            newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),

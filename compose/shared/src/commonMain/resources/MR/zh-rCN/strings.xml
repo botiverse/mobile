@@ -465,6 +465,21 @@
     <string name="thread_settings_channel_name">频道名称</string>
     <string name="thread_settings_channel_name_mismatch">频道名称不匹配。</string>
     <string name="thread_settings_delete_warning">确定要删除“%1$s”吗？\n所有消息都将丢失。</string>
+    <string name="channel_settings_title">频道设置</string>
+    <string name="channel_settings_status_public">公开</string>
+    <string name="channel_settings_status_private">私密</string>
+    <string name="channel_settings_status_archived">已归档</string>
+    <string name="channel_settings_description_empty">添加频道描述</string>
+    <string name="channel_settings_members">成员</string>
+    <string name="channel_settings_preferences">我的频道偏好</string>
+    <string name="channel_settings_mute">消息免打扰</string>
+    <string name="channel_settings_mute_detail">不再接收这个频道的新消息提醒</string>
+    <string name="channel_settings_pin">置顶频道</string>
+    <string name="channel_settings_pin_detail">在首页置顶区域优先显示</string>
+    <string name="channel_settings_management">频道管理</string>
+    <string name="channel_settings_unavailable">频道设置不可用</string>
+    <string name="channel_settings_unavailable_detail">频道可能已被删除，或暂时无法加载设置。</string>
+    <string name="channel_settings_invalid_route">页面缺少有效的服务器或频道标识。</string>
     <string name="thread_action_card_create_channel">创建频道</string>
     <string name="thread_action_card_create_agent">创建 Agent</string>
     <string name="thread_action_card_add_members">添加成员</string>
@@ -1964,5 +1979,7 @@
     <string name="settings_notifications_show_previews_title">显示消息预览</string>
     <string name="settings_notifications_show_previews_detail">在 iOS 推送通知中显示消息详情。关闭后将使用隐私提醒。</string>
     <string name="settings_app_language_japanese">日本語</string>
+    <string name="settings_mobile_new_design_settings">新版设置设计</string>
+    <string name="settings_mobile_new_design_settings_detail">打开新版独立频道设置页。关闭时继续使用现有 Thread 设置弹窗。</string>
     <string name="home_adaptive_select_conversation">选择一个会话</string>
 </resources>

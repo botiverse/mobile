@@ -14,6 +14,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 internal enum class AuthenticatedProductRoute(val pageName: String) {
     Thread(THREAD_PAGE),
     ThreadMembers(THREAD_MEMBERS_PAGE),
+    ChannelSettings(CHANNEL_SETTINGS_PAGE),
     ThreadForwardBundle(THREAD_FORWARD_BUNDLE_PAGE),
     HomeSearch(HOME_SEARCH_PAGE),
     HomeSaved(HOME_SAVED_PAGE),
