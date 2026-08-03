@@ -14,8 +14,9 @@ import kotlinx.coroutines.flow.asStateFlow
  * Clearing or replacing [SlockAuthSessionStore] must not clear these capabilities.
  *
  * [SharedAuthRuntimeCapabilities.localAppleSignInOverride] is a signed-out diagnostics toggle:
- * it only changes which provider buttons the login surface renders locally. Backend provider
- * availability (the `platform=mobile` rollout gate) still decides whether a start call succeeds.
+ * it only changes which provider buttons the iOS login surface renders locally. Platform host
+ * capability remains the outer gate, and backend provider availability (the `platform=mobile`
+ * rollout gate) still decides whether a start call succeeds.
  */
 data class SharedAuthRuntimeCapabilities(
     val socialProviderIds: Set<String> = emptySet(),
