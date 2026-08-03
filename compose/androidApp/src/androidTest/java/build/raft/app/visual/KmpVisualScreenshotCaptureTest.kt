@@ -39,7 +39,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Assume.assumeTrue
 import org.junit.BeforeClass
-import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -1003,8 +1002,8 @@ class KmpVisualScreenshotCaptureTest {
                         label = "components.thread.message-body-long-press",
                         before = before,
                         longPress = { longPressDisplayDp(x = 300f, y = 70f) },
-                        rendered = { b, shot ->
-                            b.fullBitmapChangedPixelRatio(shot) >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
+                        rendered = { _, _, changedRatio ->
+                            changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
                         },
                     )
                     val yellowAfter = after.countThreadOpenProbeYellowSamplesInTopBand()
@@ -1090,13 +1089,13 @@ class KmpVisualScreenshotCaptureTest {
                             label = caseId,
                             before = before,
                             longPress = { longPressDisplayDp(x = 300f, y = targetYDp) },
-                            rendered = { b, shot ->
+                            rendered = { b, shot, changedRatio ->
                                 // Full render: the blue selection AND the black
                                 // compact-toolbar chrome, which paints slightly
                                 // after the first pixel change — a changedRatio-
                                 // only gate returned before the toolbar and the
                                 // addedNearBlack assert flaked (shard0 2026-07-31).
-                                b.fullBitmapChangedPixelRatio(shot) >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
+                                changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
                                     shot.countThreadInlineSelectionBlueSamples() >=
                                     selectionBlueBefore + THREAD_INLINE_SELECTION_MIN_ADDED_BLUE_SAMPLES &&
                                     shot.countNewNearBlackSamplesComparedWith(b) >=
@@ -1234,19 +1233,18 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // TEMPORARY QUARANTINE (nightly baseline unblock): this case fails
-    // deterministically as the cold FIRST case in its shard — the long-press
-    // renders no legacy menu (changedRatio~5.66e-4, not timing/focus/ANR: it
-    // passed as a non-first case in the targeted proof run 30670789815). Most
-    // likely a cold-app gesture-registration race (long-press fires before the
-    // target row is interactive). Ignored to restore the baseline for the other
-    // cases; re-enable once the readiness fix lands, after a targeted cold-first
-    // rerun rules out product behavior. Tracked in botiverse/mobile#1837.
-    @Ignore("Quarantined (botiverse/mobile#1837): cold-first-case long-press renders no menu (changedRatio~0); re-enable after readiness fix + cold-first rerun")
+    // Regression for botiverse/mobile#1837. The compact inline-selection visual
+    // intentionally has a no-op onShowActions callback, so the old targeted
+    // "pass" only captured a transient press ripple. Route the same eligible
+    // message through the real single-message menu path and require both exact
+    // detector/menu signals plus visible menu chrome before accepting the frame.
     @Test
     fun captureThreadInlineSelectionPreferenceOffFallback() {
         val backingStore = slockSharedPreferenceStore()
         val previous = backingStore.getString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY)
+        val launchTokenSuffix = "${visualAttempt()}_${SystemClock.elapsedRealtimeNanos()}"
+        val longPressReadyToken = "thread_message_long_press_ready_$launchTokenSuffix"
+        val longPressMenuVisibleToken = "thread_message_menu_visible_$launchTokenSuffix"
         try {
             backingStore.putString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY, null)
             assertFalse(
@@ -1259,7 +1257,10 @@ class KmpVisualScreenshotCaptureTest {
                 pageData =
                     JSONObject()
                         .put("instanceId", "visual-thread-inline-selection-preference-off")
-                        .put("visualFixture", "inline_selection_demo"),
+                        .put("visualFixture", "inline_selection_demo")
+                        .put("visualSingleMessage", true)
+                        .put("longPressReadyToken", longPressReadyToken)
+                        .put("longPressMenuVisibleToken", longPressMenuVisibleToken),
                 crop = FULL_VIEWPORT_CROP,
                 beforeScreenshot = {
                     dismissCompatibilityDialog()
@@ -1268,23 +1269,48 @@ class KmpVisualScreenshotCaptureTest {
                     var after: Bitmap? = null
                     try {
                         before = captureActivityScreenshot("components.thread.inline-selection-preference-off.before")
-                        val selectionBlueBefore = before.countThreadInlineSelectionBlueSamples()
+                        val selectionBlueBefore =
+                            before.countThreadInlineSelectionBlueSamplesAroundDisplayDp(70f)
                         after = captureAfterLongPressRendered(
                             label = "components.thread.inline-selection-preference-off",
                             before = before,
-                            longPress = { longPressDisplayDp(x = 300f, y = 70f) },
-                            // Preference-off renders the legacy actions menu (and
-                            // must NOT create an in-place selection), so the menu
-                            // pixel change is its complete render signal.
-                            rendered = { b, shot ->
-                                b.fullBitmapChangedPixelRatio(shot) >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
+                            longPress = {
+                                longPressDisplayDp(
+                                    x = 300f,
+                                    y = 70f,
+                                    inputReadyCaseId =
+                                        "components.thread.inline-selection-preference-off",
+                                    inputReadyToken = longPressReadyToken,
+                                )
+                            },
+                            rendered = { b, shot, changedRatio ->
+                                // A changed-ratio-only gate accepts the press
+                                // ripple. Require the real menu state transition
+                                // and substantial newly painted menu chrome too.
+                                changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
+                                    logcatContainsToken(longPressMenuVisibleToken) &&
+                                    shot.countNewNearBlackSamplesComparedWith(b) >=
+                                    THREAD_LEGACY_MENU_MIN_ADDED_BLACK_SAMPLES
                             },
                         )
-                        val selectionBlueAfter = after.countThreadInlineSelectionBlueSamples()
+                        val selectionBlueAfter =
+                            after.countThreadInlineSelectionBlueSamplesAroundDisplayDp(70f)
+                        val menuVisibleTokenObserved = logcatContainsToken(longPressMenuVisibleToken)
+                        val addedMenuBlack = after.countNewNearBlackSamplesComparedWith(before)
                         val changedRatio = before.fullBitmapChangedPixelRatio(after)
+                        assertTrue(
+                            "Default-off long press must compose the real legacy actions menu; " +
+                                "menuVisibleTokenObserved=$menuVisibleTokenObserved",
+                            menuVisibleTokenObserved
+                        )
                         assertTrue(
                             "Default-off long press must retain the legacy actions menu; changedRatio=$changedRatio",
                             changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
+                        )
+                        assertTrue(
+                            "Default-off long press must paint the legacy menu frame/action rows; " +
+                                "addedNearBlack=$addedMenuBlack",
+                            addedMenuBlack >= THREAD_LEGACY_MENU_MIN_ADDED_BLACK_SAMPLES
                         )
                         assertTrue(
                             "Default-off long press must not create an in-place selection; before=$selectionBlueBefore after=$selectionBlueAfter",
@@ -1620,10 +1646,28 @@ class KmpVisualScreenshotCaptureTest {
         return samples
     }
 
-    private fun Bitmap.countThreadInlineSelectionBlueSamples(): Int {
+    private fun Bitmap.countThreadInlineSelectionBlueSamples(): Int =
+        countThreadInlineSelectionBlueSamples(startYInclusive = 0, endYExclusive = height)
+
+    private fun Bitmap.countThreadInlineSelectionBlueSamplesAroundDisplayDp(centerYDp: Float): Int {
+        val density =
+            InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        val halfHeightPx = THREAD_INLINE_SELECTION_BLUE_PROBE_HALF_HEIGHT_DP * density
+        return countThreadInlineSelectionBlueSamples(
+            startYInclusive = (centerYDp * density - halfHeightPx).roundToInt(),
+            endYExclusive = (centerYDp * density + halfHeightPx).roundToInt(),
+        )
+    }
+
+    private fun Bitmap.countThreadInlineSelectionBlueSamples(
+        startYInclusive: Int,
+        endYExclusive: Int,
+    ): Int {
+        val boundedStartY = startYInclusive.coerceIn(0, height)
+        val boundedEndY = endYExclusive.coerceIn(boundedStartY, height)
         var samples = 0
-        var y = 0
-        while (y < height) {
+        var y = boundedStartY
+        while (y < boundedEndY) {
             var x = 0
             while (x < width) {
                 val pixel = getPixel(x, y)
@@ -2434,8 +2478,8 @@ class KmpVisualScreenshotCaptureTest {
                         label = "$caseId.open",
                         before = before,
                         longPress = { longPressDisplayDp(x = 180f, y = 220f) },
-                        rendered = { b, shot ->
-                            b.fullBitmapChangedPixelRatio(shot) >= SEARCH_PIN_MENU_MIN_CHANGED_RATIO
+                        rendered = { _, _, changedRatio ->
+                            changedRatio >= SEARCH_PIN_MENU_MIN_CHANGED_RATIO
                         },
                     )
                     val yellowMenuOpen = menuOpen.countThreadOpenProbeYellowSamplesInTopBand()
@@ -3600,8 +3644,13 @@ class KmpVisualScreenshotCaptureTest {
     private fun longPressDisplayDp(
         x: Float,
         y: Float,
-        durationMs: Long = 700L
+        durationMs: Long = 700L,
+        inputReadyCaseId: String? = null,
+        inputReadyToken: String? = null,
     ) {
+        require((inputReadyCaseId == null) == (inputReadyToken == null)) {
+            "Long-press input readiness case/token must be provided together"
+        }
         awaitFixtureIsActiveInputWindow("Long-press target fixture")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val density = instrumentation.targetContext.resources.displayMetrics.density
@@ -3612,11 +3661,49 @@ class KmpVisualScreenshotCaptureTest {
             MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, xPx, yPx, 0),
             true,
         )
-        Thread.sleep(durationMs)
-        instrumentation.uiAutomation.injectInputEvent(
-            MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, xPx, yPx, 0),
-            true,
-        )
+        var released = false
+        try {
+            // Kuikly/Compose starts this pointer-input coroutine lazily on the
+            // first ACTION_DOWN. Keep that exact gesture held while the
+            // launch-unique signal proves the target row's detector started;
+            // only then let it cross the long-press threshold and release.
+            if (inputReadyCaseId != null && inputReadyToken != null) {
+                awaitThreadLongPressInputReady(
+                    caseId = inputReadyCaseId,
+                    token = inputReadyToken,
+                )
+            }
+            val remainingHoldMs = durationMs - (SystemClock.uptimeMillis() - downTime)
+            if (remainingHoldMs > 0L) {
+                Thread.sleep(remainingHoldMs)
+            }
+            instrumentation.uiAutomation.injectInputEvent(
+                MotionEvent.obtain(
+                    downTime,
+                    SystemClock.uptimeMillis(),
+                    MotionEvent.ACTION_UP,
+                    xPx,
+                    yPx,
+                    0,
+                ),
+                true,
+            )
+            released = true
+        } finally {
+            if (!released) {
+                instrumentation.uiAutomation.injectInputEvent(
+                    MotionEvent.obtain(
+                        downTime,
+                        SystemClock.uptimeMillis(),
+                        MotionEvent.ACTION_CANCEL,
+                        xPx,
+                        yPx,
+                        0,
+                    ),
+                    true,
+                )
+            }
+        }
     }
 
     /**
@@ -3642,7 +3729,7 @@ class KmpVisualScreenshotCaptureTest {
         label: String,
         before: Bitmap,
         longPress: () -> Unit,
-        rendered: (before: Bitmap, shot: Bitmap) -> Boolean,
+        rendered: (before: Bitmap, shot: Bitmap, changedRatio: Float) -> Boolean,
         timeoutMs: Long = LONG_PRESS_RENDER_TIMEOUT_MS,
         pollMs: Long = LONG_PRESS_RENDER_POLL_MS,
         retryAtMs: Long = LONG_PRESS_RENDER_RETRY_AT_MS,
@@ -3650,22 +3737,49 @@ class KmpVisualScreenshotCaptureTest {
         longPress()
         val start = SystemClock.uptimeMillis()
         var retried = false
+        var poll = 0
         var latest: Bitmap? = null
         while (true) {
             Thread.sleep(pollMs)
             waitForIdleBounded()
             latest?.recycle()
             latest = captureActivityScreenshot("$label.render-poll")
-            val ok = rendered(before, latest!!)
+            poll += 1
+            val changedRatio = before.fullBitmapChangedPixelRatio(latest!!)
+            val ok = rendered(before, latest!!, changedRatio)
             val elapsed = SystemClock.uptimeMillis() - start
+            Log.i(
+                VISUAL_LOG_TAG,
+                "$label long-press render poll=$poll elapsedMs=$elapsed " +
+                    "changedRatio=$changedRatio rendered=$ok retried=$retried"
+            )
             if (ok || elapsed >= timeoutMs) {
                 return latest!!
             }
             if (!retried && elapsed >= retryAtMs) {
+                Log.i(
+                    VISUAL_LOG_TAG,
+                    "$label long-press retry poll=$poll elapsedMs=$elapsed"
+                )
                 longPress()
                 retried = true
             }
         }
+    }
+
+    private fun awaitThreadLongPressInputReady(
+        caseId: String,
+        token: String,
+    ) {
+        awaitVisualReadyToken(caseId, token)
+        // The pointer coroutine starts lazily on ACTION_DOWN; that same gesture
+        // remains held here. Give detectTapGestures one short bounded hand-off
+        // after logcat observes the launch-unique token, then finish the hold.
+        Thread.sleep(LONG_PRESS_INPUT_READY_SETTLE_MS)
+        Log.i(
+            VISUAL_LOG_TAG,
+            "$caseId long-press input detector ready; settled ${LONG_PRESS_INPUT_READY_SETTLE_MS}ms"
+        )
     }
 
     /**
@@ -5494,6 +5608,9 @@ class KmpVisualScreenshotCaptureTest {
         private const val LONG_PRESS_RENDER_TIMEOUT_MS = 4_000L
         private const val LONG_PRESS_RENDER_POLL_MS = 200L
         private const val LONG_PRESS_RENDER_RETRY_AT_MS = 2_000L
+        private const val LONG_PRESS_INPUT_READY_SETTLE_MS = 100L
+        private const val THREAD_LEGACY_MENU_MIN_ADDED_BLACK_SAMPLES = 300
+        private const val THREAD_INLINE_SELECTION_BLUE_PROBE_HALF_HEIGHT_DP = 32f
         private const val THREAD_INLINE_SELECTION_MIN_ADDED_BLUE_SAMPLES = 100
         private const val THREAD_INLINE_SELECTION_MIN_ADDED_BLACK_SAMPLES = 40
         private const val THREAD_INLINE_SELECTION_MIN_FINAL_BLUE_SAMPLES = 80
