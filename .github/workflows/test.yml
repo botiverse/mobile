@@ -41,12 +41,13 @@ env:
 
 jobs:
   plan:
-    name: CI plan + contract
+    name: CI path plan + contract
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      run_basic: ${{ steps.plan.outputs.run_basic }}
-      run_full: ${{ steps.plan.outputs.run_full }}
+      run_android: ${{ steps.plan.outputs.run_android }}
+      run_ios: ${{ steps.plan.outputs.run_ios }}
+      run_ohos: ${{ steps.plan.outputs.run_ohos }}
       run_emulators: ${{ steps.plan.outputs.run_emulators }}
       reason: ${{ steps.plan.outputs.reason }}
     steps:
@@ -68,17 +69,51 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_HEAD_SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
           FULL_CI: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
         run: |
           set -euo pipefail
           changed="$RUNNER_TEMP/test-changed-paths.txt"
           : > "$changed"
-          if test "$EVENT_NAME" = pull_request; then
-            git cat-file -e "$BASE_SHA^{commit}"
-            git cat-file -e "$HEAD_SHA^{commit}"
-            git diff --name-only "$BASE_SHA" "$HEAD_SHA" > "$changed"
-          fi
-          scripts/ci/plan_test_tier.sh "$EVENT_NAME" "$changed" "$FULL_CI" \
+          write_changed_paths() {
+            local base="$1"
+            local head="$2"
+            local comparison="$3"
+            if test -n "$base" && test -n "$head" && \
+                ! [[ "$base" =~ ^0+$ ]] && \
+                git cat-file -e "$base^{commit}" 2>/dev/null && \
+                git cat-file -e "$head^{commit}" 2>/dev/null; then
+              # Disable rename collapsing so both the removed and added path
+              # participate in classification. Moving a source file into an
+              # irrelevant directory must still select its former platform.
+              if test "$comparison" = merge-base; then
+                range="$base...$head"
+              else
+                range="$base..$head"
+              fi
+              if ! git diff --name-only --no-renames "$range" > "$changed"; then
+                printf '%s\n' '__CI_CHANGED_PATHS_UNKNOWN__' > "$changed"
+              fi
+            else
+              # The planner treats this impossible repository path as a
+              # fail-closed request for every platform.
+              printf '%s\n' '__CI_CHANGED_PATHS_UNKNOWN__' > "$changed"
+            fi
+          }
+          case "$EVENT_NAME" in
+            pull_request)
+              # Match GitHub's PR changed-file semantics. A base branch that
+              # advanced after the topic fork must not inject unrelated main
+              # changes into this PR's platform plan.
+              write_changed_paths "$BASE_SHA" "$HEAD_SHA" merge-base
+              ;;
+            push)
+              write_changed_paths "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" direct
+              ;;
+          esac
+          scripts/ci/plan_test_tier.sh "$EVENT_NAME" "$changed" "$FULL_CI" "$REF_NAME" \
             | tee -a "$GITHUB_OUTPUT"
 
   # Single upstream build of every fork artifact the platform jobs consume.
@@ -90,7 +125,7 @@ jobs:
   kuikly-artifacts:
     name: Kuikly fork artifacts (prebuild)
     needs: [plan]
-    if: ${{ needs.plan.outputs.run_basic == 'true' }}
+    if: ${{ needs.plan.outputs.run_android == 'true' || needs.plan.outputs.run_ohos == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     # Keep the Harmony SDK/LLVM and Android SDK in the immutable image layer.
     # Pin the verified linux/amd64 manifest so the release tag cannot drift;
@@ -196,14 +231,14 @@ jobs:
 
       - name: Restore kuikly fork cache (ohos flavor)
         id: kuikly-ohos-cache
-        if: ${{ needs.plan.outputs.run_full == 'true' }}
+        if: ${{ needs.plan.outputs.run_ohos == 'true' }}
         uses: actions/cache/restore@v5
         with:
           path: .ci-cache/maven/kuikly-ohos
           key: kuikly-fork-mavenlocal-ohos-${{ env.HARMONY_CACHE_EPOCH }}-${{ steps.pins.outputs.kuikly }}
 
       - name: Build kuikly fork (ohos flavor)
-        if: ${{ needs.plan.outputs.run_full == 'true' && steps.kuikly-ohos-cache.outputs.cache-hit != 'true' }}
+        if: ${{ needs.plan.outputs.run_ohos == 'true' && steps.kuikly-ohos-cache.outputs.cache-hit != 'true' }}
         shell: bash
         run: |
           userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
@@ -214,7 +249,7 @@ jobs:
           scripts/build_kuikly_fork.sh --ohos-only
 
       - name: Stage kuikly fork cache (ohos flavor)
-        if: ${{ needs.plan.outputs.run_full == 'true' && steps.kuikly-ohos-cache.outputs.cache-hit != 'true' }}
+        if: ${{ needs.plan.outputs.run_ohos == 'true' && steps.kuikly-ohos-cache.outputs.cache-hit != 'true' }}
         shell: bash
         run: |
           userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
@@ -228,7 +263,7 @@ jobs:
           cp -a "$src/." "$dst/"
 
       - name: Verify staged kuikly fork cache (ohos flavor)
-        if: ${{ needs.plan.outputs.run_full == 'true' }}
+        if: ${{ needs.plan.outputs.run_ohos == 'true' }}
         shell: bash
         run: |
           stage="$GITHUB_WORKSPACE/.ci-cache/maven/kuikly-ohos"
@@ -236,7 +271,7 @@ jobs:
           test -d "$stage/compose-ohosarm64"
 
       - name: Save kuikly fork cache (ohos flavor)
-        if: ${{ needs.plan.outputs.run_full == 'true' && steps.kuikly-ohos-cache.outputs.cache-hit != 'true' }}
+        if: ${{ needs.plan.outputs.run_ohos == 'true' && steps.kuikly-ohos-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
         with:
           path: .ci-cache/maven/kuikly-ohos
@@ -264,7 +299,7 @@ jobs:
   fork-deps:
     name: Shared fork dependencies (prebuild)
     needs: [plan]
-    if: ${{ needs.plan.outputs.run_full == 'true' }}
+    if: ${{ needs.plan.outputs.run_ohos == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     container:
       image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1@sha256:333681267bdf66eaba96d311d34eada49cfd86621f33c21cdf9a19fed343f5e5
@@ -473,7 +508,7 @@ jobs:
     name: Android compile & tests
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [plan, kuikly-artifacts]
-    if: ${{ needs.plan.outputs.run_basic == 'true' }}
+    if: ${{ needs.plan.outputs.run_android == 'true' }}
     timeout-minutes: 40
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
@@ -1102,11 +1137,11 @@ jobs:
 
   ios:
     name: iOS compile
-    # The macOS compile does not run on ordinary PR pushes. It runs once in the
-    # merge queue's deterministic full tier, on an explicit full-ci PR, and on
-    # main/release/nightly/manual full readbacks.
+    # Path scoping runs this for iOS/shared inputs and skips Android/OHOS-only
+    # changes. Merge queue, full-ci, release, nightly and manual plans still
+    # select every platform.
     needs: [plan]
-    if: ${{ needs.plan.outputs.run_full == 'true' }}
+    if: ${{ needs.plan.outputs.run_ios == 'true' }}
     runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 75
     env:
@@ -1217,7 +1252,7 @@ jobs:
   ohos-receipt-selftest:
     name: OHOS resource receipt self-test
     needs: [plan]
-    if: ${{ needs.plan.outputs.run_basic == 'true' }}
+    if: ${{ needs.plan.outputs.run_ohos == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -1248,7 +1283,7 @@ jobs:
     container:
       image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1@sha256:333681267bdf66eaba96d311d34eada49cfd86621f33c21cdf9a19fed343f5e5
     needs: [plan, kuikly-artifacts, fork-deps]
-    if: ${{ needs.plan.outputs.run_full == 'true' }}
+    if: ${{ needs.plan.outputs.run_ohos == 'true' }}
     timeout-minutes: 90
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
@@ -1482,7 +1517,7 @@ jobs:
     name: OHOS host (hvigor/ArkTS) compile
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [plan, kuikly-artifacts, fork-deps]
-    if: ${{ needs.plan.outputs.run_full == 'true' }}
+    if: ${{ needs.plan.outputs.run_ohos == 'true' }}
     timeout-minutes: 90
     container:
       image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1@sha256:333681267bdf66eaba96d311d34eada49cfd86621f33c21cdf9a19fed343f5e5
