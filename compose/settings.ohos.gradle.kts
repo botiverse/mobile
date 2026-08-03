@@ -39,7 +39,7 @@ pluginManagement {
     fun org.gradle.api.artifacts.dsl.RepositoryHandler.githubPackagesKuiklyBase() {
         maven {
             name = "GitHubPackagesKuiklyBase"
-            url = uri("https://maven.pkg.github.com/bytemain/KuiklyBase-components")
+            url = uri("https://maven.pkg.github.com/botiverse/KuiklyBase-components")
             content {
                 includeModule(
                     "com.tencent.kuiklybase.resource.generator",
@@ -224,7 +224,7 @@ dependencyResolutionManagement {
     fun org.gradle.api.artifacts.dsl.RepositoryHandler.githubPackagesKuiklyBase() {
         maven {
             name = "GitHubPackagesKuiklyBase"
-            url = uri("https://maven.pkg.github.com/bytemain/KuiklyBase-components")
+            url = uri("https://maven.pkg.github.com/botiverse/KuiklyBase-components")
             content {
                 includeModule("com.tencent.kuiklybase", "resource-core")
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
