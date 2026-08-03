@@ -71,6 +71,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
 import com.tencent.kuikly.compose.ui.text.input.KeyboardType
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
@@ -253,6 +254,8 @@ private fun LoginScreen() {
         )
     val reducer = remember { LoginFormReducer() }
     var state by remember { mutableStateOf(LoginFormState()) }
+    var emailFieldValue by remember { mutableStateOf(TextFieldValue(state.email)) }
+    var passwordFieldValue by remember { mutableStateOf(TextFieldValue(state.password)) }
     var errorPresentation by remember { mutableStateOf<AuthErrorPresentation?>(null) }
     var pendingLogin by remember { mutableStateOf<PendingLogin?>(null) }
     var pendingSocialAuth by remember { mutableStateOf<PendingSocialAuth?>(null) }
@@ -374,21 +377,33 @@ private fun LoginScreen() {
     }
 
     LoginContent(
-        email = state.email,
-        password = state.password,
+        email = emailFieldValue,
+        password = passwordFieldValue,
         submitting = state.submitting,
         errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage ?: routeMessage,
         emailError = state.emailFormatError.localizedMessage(),
         passwordError = state.passwordError.localizedMessage(),
         socialProviders = socialProviders,
         socialSubmittingProvider = socialSubmittingProvider,
-        onEmailChange = {
-            errorPresentation = null
-            state = reducer.reduce(state, LoginFormEvent.EmailChanged(it)).state
+        onEmailChange = { nextValue ->
+            applyAuthTextFieldValue(
+                nextValue = nextValue,
+                updateOwner = { emailFieldValue = it },
+                projectText = {
+                    errorPresentation = null
+                    state = reducer.reduce(state, LoginFormEvent.EmailChanged(it)).state
+                },
+            )
         },
-        onPasswordChange = {
-            errorPresentation = null
-            state = reducer.reduce(state, LoginFormEvent.PasswordChanged(it)).state
+        onPasswordChange = { nextValue ->
+            applyAuthTextFieldValue(
+                nextValue = nextValue,
+                updateOwner = { passwordFieldValue = it },
+                projectText = {
+                    errorPresentation = null
+                    state = reducer.reduce(state, LoginFormEvent.PasswordChanged(it)).state
+                },
+            )
         },
         onSubmit = { submitLogin() },
         onSubmitValues = { emailValue, passwordValue -> submitLogin(emailValue, passwordValue) },
@@ -437,6 +452,20 @@ private data class PendingForgotPassword(
     val nonce: Int,
     val email: String
 )
+
+/**
+ * Applies the native editing snapshot to the synchronous UI owner before projecting plain text to
+ * auth reducers or request state. The projection is intentionally one-way while this editor
+ * instance is mounted: reducer recomposition must never rebuild selection or IME composition.
+ */
+internal fun applyAuthTextFieldValue(
+    nextValue: TextFieldValue,
+    updateOwner: (TextFieldValue) -> Unit,
+    projectText: (String) -> Unit,
+) {
+    updateOwner(nextValue)
+    projectText(nextValue.text)
+}
 
 private data class PendingMobileOAuthLegalAcceptance(
     val nonce: Int,
@@ -582,6 +611,8 @@ private fun RegisterScreen() {
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val reducer = remember { CreateAccountFormReducer() }
     var state by remember { mutableStateOf(CreateAccountFormState()) }
+    var emailFieldValue by remember { mutableStateOf(TextFieldValue(state.email)) }
+    var passwordFieldValue by remember { mutableStateOf(TextFieldValue(state.password)) }
     var errorPresentation by remember { mutableStateOf<AuthErrorPresentation?>(null) }
     var pendingRegister by remember { mutableStateOf<PendingRegister?>(null) }
 
@@ -637,19 +668,31 @@ private fun RegisterScreen() {
     }
 
     RegisterContent(
-        email = state.email,
-        password = state.password,
+        email = emailFieldValue,
+        password = passwordFieldValue,
         submitting = state.submitting,
         errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage,
         emailError = state.emailFormatError.localizedMessage(),
         passwordError = state.passwordError.localizedMessage(),
-        onEmailChange = {
-            errorPresentation = null
-            state = reducer.reduce(state, CreateAccountFormEvent.EmailChanged(it)).state
+        onEmailChange = { nextValue ->
+            applyAuthTextFieldValue(
+                nextValue = nextValue,
+                updateOwner = { emailFieldValue = it },
+                projectText = {
+                    errorPresentation = null
+                    state = reducer.reduce(state, CreateAccountFormEvent.EmailChanged(it)).state
+                },
+            )
         },
-        onPasswordChange = {
-            errorPresentation = null
-            state = reducer.reduce(state, CreateAccountFormEvent.PasswordChanged(it)).state
+        onPasswordChange = { nextValue ->
+            applyAuthTextFieldValue(
+                nextValue = nextValue,
+                updateOwner = { passwordFieldValue = it },
+                projectText = {
+                    errorPresentation = null
+                    state = reducer.reduce(state, CreateAccountFormEvent.PasswordChanged(it)).state
+                },
+            )
         },
         onSubmit = {
             errorPresentation = null
@@ -680,6 +723,8 @@ private fun AuthProfileSetupScreen() {
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val reducer = remember { IdentitySetupFormReducer() }
     var state by remember { mutableStateOf(IdentitySetupFormState()) }
+    var handleFieldValue by remember { mutableStateOf(TextFieldValue(state.handle)) }
+    var displayNameFieldValue by remember { mutableStateOf(TextFieldValue(state.displayName)) }
     var loaded by remember { mutableStateOf(false) }
     var errorPresentation by remember { mutableStateOf<AuthErrorPresentation?>(null) }
     var pendingProfileSetup by remember { mutableStateOf<PendingProfileSetup?>(null) }
@@ -692,10 +737,11 @@ private fun AuthProfileSetupScreen() {
                     pager.openPostAuthRoute(current.data)
                     return@LaunchedEffect
                 }
-                state = state.copy(
-                    handle = current.data.user.profileSetupSuggestedHandle.orEmpty(),
-                    displayName = current.data.user.displayName.orEmpty()
-                )
+                val handle = current.data.user.profileSetupSuggestedHandle.orEmpty()
+                val displayName = current.data.user.displayName.orEmpty()
+                state = state.copy(handle = handle, displayName = displayName)
+                handleFieldValue = TextFieldValue(handle)
+                displayNameFieldValue = TextFieldValue(displayName)
                 loaded = true
             }
             SharedAuthResult.Unauthenticated -> pager.openAuthPage(LOGIN_PAGE)
@@ -734,19 +780,31 @@ private fun AuthProfileSetupScreen() {
     }
 
     AuthProfileSetupContent(
-        handle = state.handle,
-        displayName = state.displayName,
+        handle = handleFieldValue,
+        displayName = displayNameFieldValue,
         submitting = state.submitting,
         errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage,
         handleError = state.handleError.localizedMessage(),
         displayNameError = state.displayNameError.localizedMessage(),
-        onHandleChange = {
-            errorPresentation = null
-            state = reducer.reduce(state, IdentitySetupFormEvent.HandleChanged(it)).state
+        onHandleChange = { nextValue ->
+            applyAuthTextFieldValue(
+                nextValue = nextValue,
+                updateOwner = { handleFieldValue = it },
+                projectText = {
+                    errorPresentation = null
+                    state = reducer.reduce(state, IdentitySetupFormEvent.HandleChanged(it)).state
+                },
+            )
         },
-        onDisplayNameChange = {
-            errorPresentation = null
-            state = reducer.reduce(state, IdentitySetupFormEvent.DisplayNameChanged(it)).state
+        onDisplayNameChange = { nextValue ->
+            applyAuthTextFieldValue(
+                nextValue = nextValue,
+                updateOwner = { displayNameFieldValue = it },
+                projectText = {
+                    errorPresentation = null
+                    state = reducer.reduce(state, IdentitySetupFormEvent.DisplayNameChanged(it)).state
+                },
+            )
         },
         onSubmit = {
             errorPresentation = null
@@ -775,6 +833,7 @@ private fun ForgotPasswordScreen() {
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val reducer = remember { ForgotPasswordFormReducer() }
     var state by remember { mutableStateOf(ForgotPasswordFormState()) }
+    var emailFieldValue by remember { mutableStateOf(TextFieldValue(state.email)) }
     var errorPresentation by remember { mutableStateOf<AuthErrorPresentation?>(null) }
     var pendingForgotPassword by remember { mutableStateOf<PendingForgotPassword?>(null) }
 
@@ -809,14 +868,20 @@ private fun ForgotPasswordScreen() {
     }
 
     ForgotPasswordContent(
-        email = state.email,
+        email = emailFieldValue,
         sending = state.submitting,
         sent = state.sent,
         errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage,
         emailError = state.emailFormatError.localizedMessage(),
-        onEmailChange = {
-            errorPresentation = null
-            state = reducer.reduce(state, ForgotPasswordFormEvent.EmailChanged(it)).state
+        onEmailChange = { nextValue ->
+            applyAuthTextFieldValue(
+                nextValue = nextValue,
+                updateOwner = { emailFieldValue = it },
+                projectText = {
+                    errorPresentation = null
+                    state = reducer.reduce(state, ForgotPasswordFormEvent.EmailChanged(it)).state
+                },
+            )
         },
         onSubmit = {
             errorPresentation = null
@@ -1213,8 +1278,8 @@ internal fun AuthLoginInputsVisualScreen() {
             null
         }
     LoginContent(
-        email = email,
-        password = if (signing) AUTH_LOGIN_VISUAL_SIGNING_PASSWORD else "password",
+        email = TextFieldValue(email),
+        password = TextFieldValue(if (signing) AUTH_LOGIN_VISUAL_SIGNING_PASSWORD else "password"),
         submitting = signing,
         errorMessage = null,
         emailError = emailError,
@@ -1232,8 +1297,8 @@ internal fun AuthRegisterInputsVisualScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
     RegisterContent(
-        email = params.optString(AUTH_REGISTER_VISUAL_EMAIL_KEY).ifBlank { AUTH_REGISTER_VISUAL_DEFAULT_EMAIL },
-        password = params.optString(AUTH_REGISTER_VISUAL_PASSWORD_KEY).ifBlank { AUTH_REGISTER_VISUAL_DEFAULT_PASSWORD },
+        email = TextFieldValue(params.optString(AUTH_REGISTER_VISUAL_EMAIL_KEY).ifBlank { AUTH_REGISTER_VISUAL_DEFAULT_EMAIL }),
+        password = TextFieldValue(params.optString(AUTH_REGISTER_VISUAL_PASSWORD_KEY).ifBlank { AUTH_REGISTER_VISUAL_DEFAULT_PASSWORD }),
         submitting = false,
         errorMessage = null,
         onEmailChange = {},
@@ -1248,10 +1313,14 @@ internal fun AuthProfileSetupVisualScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
     AuthProfileSetupContent(
-        handle = params.optString(AUTH_PROFILE_SETUP_VISUAL_HANDLE_KEY)
-            .ifBlank { AUTH_PROFILE_SETUP_VISUAL_DEFAULT_HANDLE },
-        displayName = params.optString(AUTH_PROFILE_SETUP_VISUAL_DISPLAY_NAME_KEY)
-            .ifBlank { AUTH_PROFILE_SETUP_VISUAL_DEFAULT_DISPLAY_NAME },
+        handle = TextFieldValue(
+            params.optString(AUTH_PROFILE_SETUP_VISUAL_HANDLE_KEY)
+                .ifBlank { AUTH_PROFILE_SETUP_VISUAL_DEFAULT_HANDLE }
+        ),
+        displayName = TextFieldValue(
+            params.optString(AUTH_PROFILE_SETUP_VISUAL_DISPLAY_NAME_KEY)
+                .ifBlank { AUTH_PROFILE_SETUP_VISUAL_DEFAULT_DISPLAY_NAME }
+        ),
         submitting = false,
         errorMessage = null,
         onHandleChange = {},
@@ -1263,7 +1332,7 @@ internal fun AuthProfileSetupVisualScreen() {
 @Composable
 internal fun AuthForgotPasswordSentVisualScreen() {
     ForgotPasswordContent(
-        email = "visual.reset@raft.build",
+        email = TextFieldValue("visual.reset@raft.build"),
         sending = false,
         sent = true,
         errorMessage = null,
@@ -1275,16 +1344,16 @@ internal fun AuthForgotPasswordSentVisualScreen() {
 
 @Composable
 internal fun LoginContent(
-    email: String,
-    password: String,
+    email: TextFieldValue,
+    password: TextFieldValue,
     submitting: Boolean,
     errorMessage: String?,
     emailError: String? = null,
     passwordError: String? = null,
     socialProviders: Set<AuthProvider> = emptySet(),
     socialSubmittingProvider: AuthProvider? = null,
-    onEmailChange: (String) -> Unit,
-    onPasswordChange: (String) -> Unit,
+    onEmailChange: (TextFieldValue) -> Unit,
+    onPasswordChange: (TextFieldValue) -> Unit,
     onSubmit: () -> Unit,
     onSubmitValues: (String, String) -> Unit = { _, _ -> onSubmit() },
     onSocialSignIn: (AuthProvider) -> Unit = {},
@@ -1294,25 +1363,13 @@ internal fun LoginContent(
     onOpenPrivacy: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {}
 ) {
-    var emailDraft by remember { mutableStateOf(email) }
-    var passwordDraft by remember { mutableStateOf(password) }
     val emailFocusRequester = remember { FocusRequester() }
     val passwordFocusRequester = remember { FocusRequester() }
     val visibleSocialProviders = remember(socialProviders) { socialProviders.visibleMobileSocialAuthProviders() }
-    LaunchedEffect(email) {
-        if (email != emailDraft) {
-            emailDraft = email
-        }
-    }
-    LaunchedEffect(password) {
-        if (password != passwordDraft) {
-            passwordDraft = password
-        }
-    }
     val formBusy = submitting || socialSubmittingProvider != null
-    val canSubmit = canSubmitLoginForm(emailDraft, passwordDraft, formBusy, emailError)
+    val canSubmit = canSubmitLoginForm(email.text, password.text, formBusy, emailError)
     val submitCurrentDraft = {
-        when (val decision = resolveLoginDraftSubmit(emailDraft, passwordDraft, formBusy)) {
+        when (val decision = resolveLoginDraftSubmit(email.text, password.text, formBusy)) {
             is LoginDraftSubmitDecision.Forward ->
                 onSubmitValues(decision.email, decision.password)
             LoginDraftSubmitDecision.IgnoreBusy -> Unit
@@ -1337,11 +1394,8 @@ internal fun LoginContent(
             // stays impossible: the button disables itself and
             // resolveLoginDraftSubmit ignores submits while formBusy.
             AuthTextField(
-                value = emailDraft,
-                onValueChange = {
-                    emailDraft = it
-                    onEmailChange(it)
-                },
+                value = email,
+                onValueChange = onEmailChange,
                 // React parity: LoginPage.tsx labels are plain "Email"/"Password"
                 // (no pink required asterisk).
                 label = stringResource(MR.strings.auth_label_email),
@@ -1361,11 +1415,8 @@ internal fun LoginContent(
                 keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() })
             )
             AuthTextField(
-                value = passwordDraft,
-                onValueChange = {
-                    passwordDraft = it
-                    onPasswordChange(it)
-                },
+                value = password,
+                onValueChange = onPasswordChange,
                 label = stringResource(MR.strings.auth_label_password),
                 modifier =
                     Modifier.onPreviewKeyEvent { event ->
@@ -1492,14 +1543,14 @@ internal fun LoginContent(
 
 @Composable
 internal fun RegisterContent(
-    email: String,
-    password: String,
+    email: TextFieldValue,
+    password: TextFieldValue,
     submitting: Boolean,
     errorMessage: String?,
     emailError: String? = null,
     passwordError: String? = null,
-    onEmailChange: (String) -> Unit,
-    onPasswordChange: (String) -> Unit,
+    onEmailChange: (TextFieldValue) -> Unit,
+    onPasswordChange: (TextFieldValue) -> Unit,
     onSubmit: () -> Unit,
     onBackToSignIn: () -> Unit,
     onOpenDiagnostics: () -> Unit = {}
@@ -1509,8 +1560,8 @@ internal fun RegisterContent(
     val passwordFocusRequester = remember { FocusRequester() }
     val canSubmit =
         canSubmitRegisterForm(
-            email = email,
-            password = password,
+            email = email.text,
+            password = password.text,
             termsAccepted = termsAccepted,
             formBusy = submitting,
             emailFormatError = emailError,
@@ -1586,21 +1637,21 @@ internal fun RegisterContent(
 
 @Composable
 internal fun AuthProfileSetupContent(
-    handle: String,
-    displayName: String,
+    handle: TextFieldValue,
+    displayName: TextFieldValue,
     submitting: Boolean,
     errorMessage: String?,
     handleError: String? = null,
     displayNameError: String? = null,
-    onHandleChange: (String) -> Unit,
-    onDisplayNameChange: (String) -> Unit,
+    onHandleChange: (TextFieldValue) -> Unit,
+    onDisplayNameChange: (TextFieldValue) -> Unit,
     onSubmit: () -> Unit,
     onOpenDiagnostics: () -> Unit = {}
 ) {
     val displayNameFocusRequester = remember { FocusRequester() }
     val canSubmit =
-        identityHandleValidationError(handle) == null &&
-            identityDisplayNameValidationError(displayName) == null &&
+        identityHandleValidationError(handle.text) == null &&
+            identityDisplayNameValidationError(displayName.text) == null &&
             handleError == null &&
             displayNameError == null &&
             !submitting
@@ -1673,12 +1724,12 @@ internal fun AuthProfileSetupContent(
 
 @Composable
 internal fun ForgotPasswordContent(
-    email: String,
+    email: TextFieldValue,
     sending: Boolean,
     sent: Boolean,
     errorMessage: String?,
     emailError: String? = null,
-    onEmailChange: (String) -> Unit,
+    onEmailChange: (TextFieldValue) -> Unit,
     onSubmit: () -> Unit,
     onBackToSignIn: () -> Unit,
     onOpenDiagnostics: () -> Unit = {}
@@ -1719,7 +1770,7 @@ internal fun ForgotPasswordContent(
             )
             AuthError(errorMessage)
             if (sent) {
-                val resetEmail = email.ifBlank { stringResource(MR.strings.auth_fallback_your_email) }
+                val resetEmail = email.text.ifBlank { stringResource(MR.strings.auth_fallback_your_email) }
                 AuthSuccessNotice(
                     title = stringResource(MR.strings.auth_check_email_title),
                     detail =
@@ -1738,7 +1789,7 @@ internal fun ForgotPasswordContent(
                     },
                 onClick = onSubmit,
                 tone = AuthButtonTone.Pink,
-                enabled = email.isNotBlank() && emailError == null && !sent,
+                enabled = email.text.isNotBlank() && emailError == null && !sent,
                 loading = sending,
                 preserveDisabledVisual = true
             )
@@ -1907,8 +1958,8 @@ private val AuthTermsLinkStyle = SlockType.Body.withSlockFontWeight(FontWeight.B
 @Composable
 private fun LoginContentPreview() {
     LoginContent(
-        email = "artin@raft.build",
-        password = "password",
+        email = TextFieldValue("artin@raft.build"),
+        password = TextFieldValue("password"),
         submitting = false,
         errorMessage = null,
         onEmailChange = {},
@@ -1922,8 +1973,8 @@ private fun LoginContentPreview() {
 @Composable
 private fun RegisterStatesPreview() {
     RegisterContent(
-        email = "new@raft.build",
-        password = "password",
+        email = TextFieldValue("new@raft.build"),
+        password = TextFieldValue("password"),
         submitting = false,
         errorMessage = null,
         onEmailChange = {},
@@ -1936,7 +1987,7 @@ private fun RegisterStatesPreview() {
 @Composable
 private fun ForgotPasswordSuccessPreview() {
     ForgotPasswordContent(
-        email = "very.long.email.address+team@raft.build",
+        email = TextFieldValue("very.long.email.address+team@raft.build"),
         sending = false,
         sent = true,
         errorMessage = null,

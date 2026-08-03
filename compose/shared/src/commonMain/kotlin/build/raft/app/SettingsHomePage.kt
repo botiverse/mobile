@@ -15998,8 +15998,8 @@ private fun AppShellServerGateContent(
 ) {
     var latestSession by remember(session) { mutableStateOf(session) }
     var mode by remember(session.servers) { mutableStateOf(if (session.servers.isEmpty()) "empty" else "choose") }
-    var createName by remember { mutableStateOf("") }
-    var createSlug by remember { mutableStateOf("") }
+    var createName by remember { mutableStateOf(TextFieldValue("")) }
+    var createSlug by remember { mutableStateOf(TextFieldValue("")) }
     var createSlugTouched by remember { mutableStateOf(false) }
     var pendingServerId by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
@@ -16129,12 +16129,13 @@ private fun AppShellServerGateContent(
                 )
                 AuthTextField(
                     value = createName,
-                    onValueChange = {
-                        createName = it
+                    onValueChange = { nextValue ->
+                        createName = nextValue
                         // Web parity (ServerSelector.tsx): the slug mirrors the
                         // name until the user edits the slug directly.
                         if (!createSlugTouched) {
-                            createSlug = authCreateServerSlugFromName(it)
+                            val slug = authCreateServerSlugFromName(nextValue.text)
+                            createSlug = TextFieldValue(slug, selection = TextRange(slug.length))
                         }
                     },
                     label = stringResource(MR.strings.auth_label_server_name),
@@ -16143,9 +16144,9 @@ private fun AppShellServerGateContent(
                 )
                 AuthTextField(
                     value = createSlug,
-                    onValueChange = {
+                    onValueChange = { nextValue ->
                         createSlugTouched = true
-                        createSlug = authCreateServerSlugFromName(it)
+                        createSlug = authCreateServerSlugFieldValue(nextValue)
                     },
                     label = stringResource(MR.strings.auth_label_server_slug),
                     placeholder = "my-team",
@@ -16164,7 +16165,7 @@ private fun AppShellServerGateContent(
                         pendingServerId = "__create__"
                     },
                     tone = AuthButtonTone.Pink,
-                    enabled = createName.isNotBlank() && !loading,
+                    enabled = createName.text.isNotBlank() && !loading,
                     loading = loading
                 )
                 AuthActionButton(
@@ -16241,7 +16242,7 @@ private fun AppShellServerGateContent(
         }
         val result =
             if (target == "__create__") {
-                authDataSource.createServer(createName, slug = createSlug)
+                authDataSource.createServer(createName.text, slug = createSlug.text)
             } else {
                 authDataSource.selectServer(target)
             }
@@ -16325,6 +16326,29 @@ private val AuthCreateServerSlugDisallowed = Regex("[^a-z0-9-]")
 
 internal fun authCreateServerSlugFromName(value: String): String =
     value.lowercase().replace(AuthCreateServerSlugDisallowed, "-")
+
+/**
+ * Normalizes committed slug input without interrupting an active IME composition.
+ *
+ * Direct slug edits intentionally keep the web `toSlug` behavior, but rebuilding a value while
+ * the native input service owns [TextFieldValue.composition] would commit marked text early. Once
+ * composition finishes, selection offsets are mapped through the same prefix transformation.
+ */
+internal fun authCreateServerSlugFieldValue(value: TextFieldValue): TextFieldValue {
+    if (value.composition != null) return value
+    val normalizedText = authCreateServerSlugFromName(value.text)
+    if (normalizedText == value.text) return value
+    fun mappedOffset(offset: Int): Int =
+        authCreateServerSlugFromName(value.text.substring(0, offset.coerceIn(0, value.text.length))).length
+
+    return TextFieldValue(
+        text = normalizedText,
+        selection = TextRange(
+            mappedOffset(value.selection.start),
+            mappedOffset(value.selection.end),
+        ),
+    )
+}
 
 internal fun serverGateUnauthenticatedMessage(): AuthGateMessage =
     AuthGateMessage.Static(
