@@ -901,6 +901,7 @@ internal fun SharedCreateAgentDialog(
             },
         dismissEnabled = !submitting,
         onDismiss = onDismiss,
+        keyboardAvoidanceEnabled = true,
         hostRoute = SharedCreateAgentDialogHostRoute
     ) {
         // #55 visual parity fix: the dialog body used to be capped at

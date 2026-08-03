@@ -8557,6 +8557,7 @@ private fun MembersAgentRuntimeConfigDialog(
     SlockUnifiedDialog(
         title = stringResource(MR.strings.member_dialog_edit_runtime_config).uppercase(),
         dismissEnabled = !saving,
+        keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
     ) {
         Column(

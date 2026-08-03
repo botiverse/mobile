@@ -1258,6 +1258,16 @@ internal fun slockTextFieldResolvedTextStyle(textStyle: TextStyle): TextStyle =
 
 internal fun slockTextFieldSingleLine(maxLines: Int): Boolean = maxLines == 1
 
+/**
+ * Receives native keyboard-height events from text editors hosted by a keyboard-aware dialog.
+ *
+ * Kuikly does not expose Compose's `WindowInsets.ime` / `imePadding`; its supported cross-platform
+ * contract is the editor-level `keyboardHeightChange` event. The default is deliberately a no-op
+ * so ordinary page editors retain their existing layout behavior.
+ */
+internal val LocalSlockDialogKeyboardHeightChange =
+    compositionLocalOf<(KeyboardParams) -> Unit> { {} }
+
 @Composable
 internal fun TextField(
     modifier: Modifier = Modifier,
@@ -1297,6 +1307,7 @@ internal fun TextField(
     val currentOnBlur by rememberUpdatedState(onBlur)
     val currentOnFocus by rememberUpdatedState(onFocus)
     val currentKeyboardHeightChange by rememberUpdatedState(keyboardHeightChange)
+    val dialogKeyboardHeightChange = LocalSlockDialogKeyboardHeightChange.current
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val currentOnTextLayout by rememberUpdatedState(onTextLayout)
     DisposableEffect(focusOwnerRegistry, focusOwner, participatesInGlobalFocusDismiss) {
@@ -1310,7 +1321,10 @@ internal fun TextField(
     val updatedModifier = modifier
         .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
         .let { if (systemNewlineAction) it.setProp(SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP, maxLines) else it }
-        .keyboardHeightChange(currentKeyboardHeightChange)
+        .keyboardHeightChange { params ->
+            currentKeyboardHeightChange(params)
+            dialogKeyboardHeightChange(params)
+        }
         .focusRequester(focusRequester)
         .onGloballyPositioned(focusOwnerAnchor::update)
         .onFocusChanged {
@@ -1402,6 +1416,7 @@ internal fun TextField(
     val currentOnBlur by rememberUpdatedState(onBlur)
     val currentOnFocus by rememberUpdatedState(onFocus)
     val currentKeyboardHeightChange by rememberUpdatedState(keyboardHeightChange)
+    val dialogKeyboardHeightChange = LocalSlockDialogKeyboardHeightChange.current
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val currentOnTextLayout by rememberUpdatedState(onTextLayout)
     DisposableEffect(focusOwnerRegistry, focusOwner, participatesInGlobalFocusDismiss) {
@@ -1415,7 +1430,10 @@ internal fun TextField(
     val updatedModifier = modifier
         .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
         .let { if (systemNewlineAction) it.setProp(SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP, maxLines) else it }
-        .keyboardHeightChange(currentKeyboardHeightChange)
+        .keyboardHeightChange { params ->
+            currentKeyboardHeightChange(params)
+            dialogKeyboardHeightChange(params)
+        }
         .focusRequester(focusRequester)
         .onGloballyPositioned(focusOwnerAnchor::update)
         .onFocusChanged {

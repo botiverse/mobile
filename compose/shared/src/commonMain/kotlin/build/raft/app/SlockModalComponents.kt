@@ -51,6 +51,7 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.ui.zIndex
+import com.tencent.kuikly.core.views.KeyboardParams
 
 private val SlockUnifiedDialogShadowOffset = 4.dp
 
@@ -148,6 +149,16 @@ internal fun slockUnifiedDialogOuterClearance(
         bottom = outerPadding + bottomInset
     )
 
+internal fun slockUnifiedDialogEffectiveBottomInset(
+    hostBottomInset: Dp,
+    keyboardHeightDp: Float,
+    keyboardAvoidanceEnabled: Boolean
+): Dp {
+    if (!keyboardAvoidanceEnabled) return hostBottomInset
+    val keyboardInset = keyboardHeightDp.coerceAtLeast(0f).dp
+    return if (keyboardInset > hostBottomInset) keyboardInset else hostBottomInset
+}
+
 @Composable
 internal fun rememberSlockUnifiedDialogHostState(): SlockUnifiedDialogHostState =
     remember { SlockUnifiedDialogHostState() }
@@ -227,6 +238,7 @@ internal fun SlockUnifiedDialog(
     titleLineHeight: Int = 26,
     titleMaxLines: Int = 1,
     contentSpacing: Dp = 16.dp,
+    keyboardAvoidanceEnabled: Boolean = false,
     hostRoute: String = SlockUnifiedDialogGenericHostRoute,
     content: @Composable () -> Unit
 ) {
@@ -252,6 +264,7 @@ internal fun SlockUnifiedDialog(
                 titleLineHeight = titleLineHeight,
                 titleMaxLines = titleMaxLines,
                 contentSpacing = contentSpacing,
+                keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
                 topInset = topInset,
                 hostBottomInset = 0.dp,
                 handleBack = false,
@@ -284,6 +297,7 @@ internal fun SlockUnifiedDialog(
                     titleLineHeight = titleLineHeight,
                     titleMaxLines = titleMaxLines,
                     contentSpacing = contentSpacing,
+                    keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
                     topInset = topInset,
                     hostBottomInset = LocalSlockUnifiedDialogHostBottomInset.current,
                     handleBack = false,
@@ -318,6 +332,7 @@ private fun SlockUnifiedDialogSurface(
     titleLineHeight: Int,
     titleMaxLines: Int,
     contentSpacing: Dp,
+    keyboardAvoidanceEnabled: Boolean,
     topInset: Dp,
     hostBottomInset: Dp,
     handleBack: Boolean,
@@ -326,11 +341,18 @@ private fun SlockUnifiedDialogSurface(
     if (handleBack) {
         SlockBackHandler(enabled = dismissEnabled, label = "unified_dialog", onBack = onDismiss)
     }
+    var keyboardHeightDp by remember { mutableStateOf(0f) }
+    val effectiveBottomInset =
+        slockUnifiedDialogEffectiveBottomInset(
+            hostBottomInset = hostBottomInset,
+            keyboardHeightDp = keyboardHeightDp,
+            keyboardAvoidanceEnabled = keyboardAvoidanceEnabled
+        )
     val outerClearance =
         slockUnifiedDialogOuterClearance(
             outerPadding = outerPadding,
             topInset = topInset,
-            bottomInset = hostBottomInset
+            bottomInset = effectiveBottomInset
         )
     Box(
         modifier =
@@ -409,7 +431,14 @@ private fun SlockUnifiedDialogSurface(
                         shadowOffset = 3.dp
                     )
                 }
-                content()
+                CompositionLocalProvider(
+                    LocalSlockDialogKeyboardHeightChange provides { params: KeyboardParams ->
+                        if (keyboardAvoidanceEnabled) {
+                            keyboardHeightDp = params.height.coerceAtLeast(0f)
+                        }
+                    },
+                    content = content
+                )
             }
         }
     }
