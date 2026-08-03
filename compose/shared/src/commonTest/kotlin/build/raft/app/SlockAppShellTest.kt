@@ -49,6 +49,23 @@ import kotlin.test.assertTrue
 
 class SlockAppShellTest {
     @Test
+    fun handsFeedbackPageDataKeepsOnlyRouteIdentityAndShellScope() {
+        val pageData =
+            settingsHandsFeedbackPageData(
+                SlockShellStoreScope.create(
+                    shellInstanceId = "shell-settings",
+                    initialServerId = "server-settings"
+                )
+            )
+
+        assertEquals(SETTINGS_HANDS_FEEDBACK_PAGE, pageData.optString("pageName"))
+        assertEquals("shell-settings", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
+        assertEquals("server-settings", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertFalse(pageData.has("accountId"))
+        assertFalse(pageData.has("draft"))
+    }
+
+    @Test
     fun appShellRendererUpdatesStayIsolatedToTheSelectedChildSlot() {
         val initialHomeRenderer: AppShellChildTabRenderer = { _, _ -> }
         val entry =

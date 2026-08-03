@@ -23,6 +23,7 @@ internal enum class AuthenticatedProductRoute(val pageName: String) {
     MemberDetail(MEMBER_DETAIL_PAGE),
     FilePreview(SLOCK_FILE_PREVIEW_PAGE),
     SettingsAccount(SETTINGS_ACCOUNT_PAGE),
+    SettingsHandsFeedback(SETTINGS_HANDS_FEEDBACK_PAGE),
     SettingsWebView(SETTINGS_WEB_VIEW_PAGE),
     SettingsStorage(SETTINGS_STORAGE_PAGE),
     ReleaseNotes(RELEASE_NOTES_PAGE),
