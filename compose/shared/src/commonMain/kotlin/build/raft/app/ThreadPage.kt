@@ -26678,6 +26678,20 @@ private enum class ThreadSettingsDangerAction(
     Delete("delete", "DELETE CHANNEL", SlockLucideIconName.Trash, "Delete Channel", SlockColor.AccentRed)
 }
 
+internal enum class ThreadSettingsDangerConfirmationMode {
+    Explanation,
+    SingleConfirm,
+    Unsupported
+}
+
+internal fun threadSettingsDangerConfirmationMode(actionId: String): ThreadSettingsDangerConfirmationMode =
+    when (actionId) {
+        "visibility" -> ThreadSettingsDangerConfirmationMode.Explanation
+        "archive",
+        "delete" -> ThreadSettingsDangerConfirmationMode.SingleConfirm
+        else -> ThreadSettingsDangerConfirmationMode.Unsupported
+    }
+
 internal fun defaultThreadSettingsChannelActionCapabilities(): List<KuiklyThreadSettingsAction> =
     listOf(
         KuiklyThreadSettingsAction(id = "visibility"),
@@ -26835,7 +26849,6 @@ internal fun ThreadSettingsModal(
             }
         )
     }
-    var confirmationName by remember(dangerAction) { mutableStateOf("") }
     val effectiveActions = actions.normalizedThreadSettingsChannelActions().map { it.localizedThreadSettingsAction() }
     val dangerActions = effectiveActions.mapNotNull { action ->
         when (action.id) {
@@ -26848,7 +26861,6 @@ internal fun ThreadSettingsModal(
         }?.let { it to action }
     }
     val activeDanger = dangerAction
-    val archiveConfirmationMatches = confirmationName.trim() == channelName.trim()
     val trimmedName = name.trim()
     val trimmedDescription = description.text.trim()
     val profileChanged = trimmedName != channelName.trim() || trimmedDescription != subtitle.orEmpty().trim()
@@ -26959,65 +26971,28 @@ internal fun ThreadSettingsModal(
                         )
                     }
                     ThreadSettingsDangerAction.Archive,
-                    ThreadSettingsDangerAction.Delete -> {
-                        if (activeDanger == ThreadSettingsDangerAction.Delete) {
-                            ThreadDeleteChannelWarning(channelName)
-                        } else {
-                            Text(
-                                text = stringResource(MR.strings.thread_settings_archive_question, channelName),
-                                style = SlockType.Body,
-                                color = SlockColor.TextBlack
-                            )
-                            Text(
-                                text = stringResource(MR.strings.thread_settings_type_to_confirm, channelName),
-                                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                                color = SlockColor.TextMutedGray
-                            )
-                            SlockBrutalTextField(
-                                label = stringResource(MR.strings.thread_settings_channel_name),
-                                value = confirmationName,
-                                placeholder = channelName,
-                                onValueChange = { confirmationName = it },
-                                required = true,
-                                fieldMinHeight = 42.dp
-                            )
-                            if (confirmationName.isNotBlank() && !archiveConfirmationMatches) {
-                                Text(
-                                    text = stringResource(MR.strings.thread_settings_channel_name_mismatch),
-                                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                                    color = SlockColor.AccentRed
-                                )
-                            }
-                        }
-                    }
+                    ThreadSettingsDangerAction.Delete -> ThreadChannelActionWarning(activeDanger, channelName)
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val isDelete = activeDanger == ThreadSettingsDangerAction.Delete
+                    val isSingleConfirm =
+                        threadSettingsDangerConfirmationMode(activeDanger.id) ==
+                            ThreadSettingsDangerConfirmationMode.SingleConfirm
                     SlockModalActionButton(
                         label =
-                            if (isDelete) {
+                            if (isSingleConfirm) {
                                 stringResource(MR.strings.common_cancel)
                             } else {
                                 stringResource(MR.strings.common_back)
                             },
-                        icon = if (isDelete) SlockLucideIconName.X else SlockLucideIconName.ArrowLeft,
+                        icon = if (isSingleConfirm) SlockLucideIconName.X else SlockLucideIconName.ArrowLeft,
                         onClick = { dangerAction = null }
                     )
                     Spacer(modifier = Modifier.weight(1f))
-                    val enabled =
-                        activeDanger == ThreadSettingsDangerAction.Visibility ||
-                            activeDanger == ThreadSettingsDangerAction.Delete ||
-                            archiveConfirmationMatches
                     SlockModalActionButton(
                         label = activeDanger.localizedButtonLabel(),
                         icon = activeDanger.icon,
-                        color = if (enabled) activeDanger.color else SlockColor.SurfaceCream,
-                        enabled = enabled,
-                        onClick = {
-                            if (enabled) {
-                                onOpenAction(activeDanger.id)
-                            }
-                        }
+                        color = activeDanger.color,
+                        onClick = { onOpenAction(activeDanger.id) }
                     )
                 }
             }
@@ -27026,13 +27001,22 @@ internal fun ThreadSettingsModal(
 }
 
 @Composable
-private fun ThreadDeleteChannelWarning(channelName: String) {
+private fun ThreadChannelActionWarning(
+    action: ThreadSettingsDangerAction,
+    channelName: String
+) {
+    val warningText =
+        when (action) {
+            ThreadSettingsDangerAction.Archive -> stringResource(MR.strings.thread_settings_archive_question, channelName)
+            ThreadSettingsDangerAction.Delete -> stringResource(MR.strings.thread_settings_delete_warning, channelName)
+            ThreadSettingsDangerAction.Visibility -> return
+        }
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
-                .background(SlockColor.AccentRed.copy(alpha = 0.22f))
+                .background(action.color.copy(alpha = 0.22f))
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -27044,7 +27028,7 @@ private fun ThreadDeleteChannelWarning(channelName: String) {
             color = "#FF000000"
         )
         Text(
-            text = stringResource(MR.strings.thread_settings_delete_warning, channelName),
+            text = warningText,
             style = SlockType.Body,
             color = SlockColor.TextBlack,
             modifier = Modifier.weight(1f)

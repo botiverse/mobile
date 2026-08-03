@@ -77,4 +77,24 @@ class ChannelSettingsPageTest {
             channelSettingsManagementActions(showMakePrivate = false).map { it.id }
         )
     }
+
+    @Test
+    fun archiveAndDeleteUseTheSameSingleConfirmationContract() {
+        assertEquals(
+            ThreadSettingsDangerConfirmationMode.SingleConfirm,
+            threadSettingsDangerConfirmationMode("archive")
+        )
+        assertEquals(
+            ThreadSettingsDangerConfirmationMode.SingleConfirm,
+            threadSettingsDangerConfirmationMode("delete")
+        )
+        assertEquals(
+            ThreadSettingsDangerConfirmationMode.Explanation,
+            threadSettingsDangerConfirmationMode("visibility")
+        )
+        assertEquals(
+            ThreadSettingsDangerConfirmationMode.Unsupported,
+            threadSettingsDangerConfirmationMode("unknown")
+        )
+    }
 }
