@@ -20,6 +20,7 @@ import build.raft.app.slockCaptureLiveRootAnchor
 import build.raft.app.slockSquareCorners
 import build.raft.app.slockThemedCorners
 import build.raft.app.LocalSlockTheme
+import build.raft.app.SlockThemeFamily
 import build.raft.app.withSlockFontWeight
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
@@ -62,6 +63,8 @@ import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.RectangleShape
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
+import com.tencent.kuikly.compose.ui.draw.shadow
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -1111,18 +1114,57 @@ internal fun SlockBrutalActionButton(
     textStyle: TextStyle = SlockBrutalActionButtonDefaultTextStyle,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
-    // Phase 1 theme pilot: the enabled register (border, corner radius, structural
-    // shadow, ink) is read from LocalSlockTheme. brutalTheme reproduces every value
-    // this button hard-coded (line=BorderBlack@2dp, corner=0, shadow=ShadowBlack@4dp,
-    // ink=TextBlack), so the default path renders byte-identically; a SlockThemeProvider
-    // (elegantTheme) subtree flips it to a thin gray hairline, 8dp rounding, and near-
-    // black ink. The soft ambient blur (elegant shadow.blur) is not yet applied here —
-    // this offset-Box shadow has no blur; wiring a blur-capable shadow primitive is a
-    // documented follow-up, tracked separately from this switch proof.
+    // The enabled register (border, corner radius, shadow, ink) is read from
+    // LocalSlockTheme. brutalTheme reproduces every value this button hard-coded, so the
+    // default path renders byte-identically (hard structural offset-box shadow + square).
+    // elegantTheme renders the *ambient* register: rounded corners + a soft elevation
+    // shadow via Kuikly Modifier.shadow (which draws a blurred shadow AND clips to the
+    // rounded shape — the reliable rounding path, since the borderRadius-prop
+    // slockThemedCorners did not actually round at runtime) + a thin gray hairline +
+    // near-black ink. Verified against the real capture, not just source (#5916 audit).
     val theme = LocalSlockTheme.current
+    val borderColor = if (enabled) theme.line else disabledBorderColor
+    val surfaceBackground = if (enabled) backgroundColor else disabledBackgroundColor
+    if (theme.family == SlockThemeFamily.Elegant) {
+        // Ambient register: no offset-box and no reserved offset padding. The rounded
+        // shape is enforced by Modifier.shadow(clip = true) so it holds even if Kuikly
+        // ignores the background/border Shape; the elevation is the soft ambient shadow.
+        // Disabled keeps the same rounded chrome (faded via the disabled fill/border),
+        // never the brutal opaque hard-shadow constants.
+        val shape = RoundedCornerShape(theme.cornerRadius)
+        val elevation = if (enabled) theme.shadow.blur else 2.dp
+        SlockAnchorButton(
+            onClick = onClick,
+            enabled = enabled,
+            pressFeedback = enabled,
+            modifier =
+                modifier
+                    .widthIn(min = minWidth)
+                    .heightIn(min = minHeight)
+                    .shadow(elevation = elevation, shape = shape, clip = true)
+                    .background(surfaceBackground, shape)
+                    .border(theme.lineWidth, borderColor, shape)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            SlockBrutalActionButtonInnerContent(
+                label = label,
+                leadingIcon = leadingIcon,
+                leadingIconSpinning = leadingIconSpinning,
+                leadingIconSize = leadingIconSize,
+                contentSpacing = contentSpacing,
+                textStyle = textStyle,
+                enabled = enabled,
+                disabledContentColor = disabledContentColor,
+                disabledIconColor = disabledIconColor,
+                trailingContent = trailingContent
+            )
+        }
+        return
+    }
+    // Brutal register (unchanged, byte-identical): a hard structural offset-box shadow
+    // behind a square surface.
     val resolvedShadowOffset = shadowOffset ?: theme.shadow.offset
     val shadowColor = if (enabled) theme.shadow.color else disabledShadowColor
-    val borderColor = if (enabled) theme.line else disabledBorderColor
     Box(
         modifier =
             modifier
@@ -1145,7 +1187,7 @@ internal fun SlockBrutalActionButton(
                 Modifier
                     .widthIn(min = minWidth)
                     .heightIn(min = minHeight)
-                    .background(if (enabled) backgroundColor else disabledBackgroundColor, RectangleShape)
+                    .background(surfaceBackground, RectangleShape)
                     .border(theme.lineWidth, borderColor, RectangleShape)
                     .slockThemedCorners(theme.cornerRadius)
                     // react buttons use 12px/6px padding: with 6dp vertical padding a
