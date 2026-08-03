@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
 class SharedConversationForwardHistoryTest {
     @Test
     fun backThenForwardReopensTheMostRecentCanonicalConversationExactlyOnce() {
-        val history = SharedConversationForwardHistory()
+        val history = enabledHistory()
         history.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
 
         assertTrue(history.recordHomeVisible())
@@ -31,7 +31,7 @@ class SharedConversationForwardHistoryTest {
 
     @Test
     fun backAfterForwardRestoresTheInverseOneStepHistory() {
-        val history = SharedConversationForwardHistory()
+        val history = enabledHistory()
         val target = entry("server-a", "dm-a", ConversationKind.DirectMessage)
         history.recordNewOpen(target)
         history.recordHomeVisible()
@@ -55,7 +55,7 @@ class SharedConversationForwardHistoryTest {
 
     @Test
     fun freshOpenAfterBackInvalidatesTheObsoleteForwardBranch() {
-        val history = SharedConversationForwardHistory()
+        val history = enabledHistory()
         history.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
         history.recordHomeVisible()
         assertTrue(history.canForward)
@@ -74,7 +74,7 @@ class SharedConversationForwardHistoryTest {
 
     @Test
     fun freshDrawerOpenOnAnotherServerReplacesTheOldServerBranch() {
-        val history = SharedConversationForwardHistory()
+        val history = enabledHistory()
         history.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
         history.recordHomeVisible()
         assertTrue(history.canForward)
@@ -114,7 +114,7 @@ class SharedConversationForwardHistoryTest {
 
     @Test
     fun serverRemovalServerChangeAndReadRevocationDropClosed() {
-        val removed = SharedConversationForwardHistory()
+        val removed = enabledHistory()
         removed.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
         removed.recordHomeVisible()
         assertEquals(
@@ -131,7 +131,7 @@ class SharedConversationForwardHistoryTest {
         )
         assertFalse(removed.canForward)
 
-        val changed = SharedConversationForwardHistory()
+        val changed = enabledHistory()
         changed.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
         changed.recordHomeVisible()
         assertEquals(
@@ -147,7 +147,7 @@ class SharedConversationForwardHistoryTest {
             ).reason
         )
 
-        val revoked = SharedConversationForwardHistory()
+        val revoked = enabledHistory()
         revoked.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
         revoked.recordHomeVisible()
         assertEquals(
@@ -163,7 +163,7 @@ class SharedConversationForwardHistoryTest {
         )
         assertFalse(revoked.canForward)
 
-        val archived = SharedConversationForwardHistory()
+        val archived = enabledHistory()
         archived.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
         archived.recordHomeVisible()
         assertEquals(
@@ -178,7 +178,7 @@ class SharedConversationForwardHistoryTest {
             ).reason
         )
 
-        val cannotRead = SharedConversationForwardHistory()
+        val cannotRead = enabledHistory()
         cannotRead.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
         cannotRead.recordHomeVisible()
         assertEquals(
@@ -196,7 +196,7 @@ class SharedConversationForwardHistoryTest {
 
     @Test
     fun canonicalAliasOrKindDriftCannotRewriteTheRememberedIdentity() {
-        val history = SharedConversationForwardHistory()
+        val history = enabledHistory()
         history.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
         history.recordHomeVisible()
         val aliasDirectory =
@@ -223,8 +223,8 @@ class SharedConversationForwardHistoryTest {
         val cache = SlockShellScopedStoreCache<SharedConversationForwardHistory>()
         val scopeA = SlockShellStoreScope.create("window-a", "server-a")
         val scopeB = SlockShellStoreScope.create("window-b", "server-b")
-        val historyA = cache.getOrPut(scopeA) { SharedConversationForwardHistory() }
-        val historyB = cache.getOrPut(scopeB) { SharedConversationForwardHistory() }
+        val historyA = cache.getOrPut(scopeA) { enabledHistory() }
+        val historyB = cache.getOrPut(scopeB) { enabledHistory() }
         historyA.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
         historyB.recordNewOpen(entry("server-b", "dm-b", ConversationKind.DirectMessage))
         historyA.recordHomeVisible()
@@ -240,7 +240,7 @@ class SharedConversationForwardHistoryTest {
 
     @Test
     fun clearDropsBothAnExposedBranchAndAnUnpoppedActiveEntry() {
-        val history = SharedConversationForwardHistory()
+        val history = enabledHistory()
         history.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
         history.recordHomeVisible()
         assertTrue(history.canForward)
@@ -267,6 +267,38 @@ class SharedConversationForwardHistoryTest {
         assertEquals("dm-a", dm.sourceIdentity.channelId)
         assertEquals(ConversationKind.DirectMessage, dm.sourceIdentity.conversationKind)
     }
+
+    @Test
+    fun defaultOffAndPreferenceTransitionsNeverResurrectHistory() {
+        val history = SharedConversationForwardHistory()
+        val first = entry("server-a", "channel-a", ConversationKind.Channel)
+
+        assertFalse(history.enabledForTest())
+        history.recordNewOpen(first)
+        assertFalse(history.recordHomeVisible())
+        assertFalse(history.canForward)
+        assertNull(history.requestForward(ready("server-a", projection("server-a", "channel-a"))))
+
+        history.setEnabled(true)
+        assertTrue(history.enabledForTest())
+        assertFalse(history.canForward)
+        history.recordNewOpen(first)
+        assertTrue(history.recordHomeVisible())
+        assertTrue(history.canForward)
+
+        history.setEnabled(false)
+        assertFalse(history.enabledForTest())
+        assertFalse(history.canForward)
+        assertNull(history.forwardEntryForTest())
+
+        history.setEnabled(true)
+        assertTrue(history.enabledForTest())
+        assertFalse(history.canForward)
+        assertNull(history.requestForward(ready("server-a", projection("server-a", "channel-a"))))
+    }
+
+    private fun enabledHistory(): SharedConversationForwardHistory =
+        SharedConversationForwardHistory().also { it.setEnabled(true) }
 
     private fun entry(
         serverId: String,

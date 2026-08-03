@@ -780,6 +780,7 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetLongMessageCollapseEnabled(true))
         store.accept(SharedSettingsIntent.SetSingleTapOpensThreadEnabled(true))
         store.accept(SharedSettingsIntent.SetInlineSelectionToolbarEnabled(true))
+        store.accept(SharedSettingsIntent.SetConversationForwardGestureEnabled(true))
         store.accept(SharedSettingsIntent.SetImageAnnotationEnabled(true))
         store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
         store.accept(SharedSettingsIntent.SetActivityTaskStatusBadges(true))
@@ -799,6 +800,7 @@ class SharedSettingsStoreTest {
         assertEquals(true, chatLayoutRepository.longMessageCollapseEnabled)
         assertEquals(true, chatLayoutRepository.singleTapOpensThreadEnabled)
         assertEquals(true, chatLayoutRepository.inlineSelectionToolbarEnabled)
+        assertEquals(true, chatLayoutRepository.conversationForwardGestureEnabled)
         assertEquals(true, chatLayoutRepository.imageAnnotationEnabled)
         assertEquals(true, chatLayoutRepository.foregroundMessageBannersEnabled)
         assertEquals(true, chatLayoutRepository.activityTaskStatusBadgesEnabled)
@@ -826,6 +828,8 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.singleTapOpensThread.statusLabel)
         assertEquals(true, mobile.inlineSelectionToolbar.enabled)
         assertEquals("Enabled", mobile.inlineSelectionToolbar.statusLabel)
+        assertEquals(true, mobile.conversationForwardGesture.enabled)
+        assertEquals("Enabled", mobile.conversationForwardGesture.statusLabel)
         assertEquals(true, mobile.imageAnnotation.enabled)
         assertEquals("Enabled", mobile.imageAnnotation.statusLabel)
         assertEquals(true, mobile.foregroundMessageBanners.enabled)
@@ -3812,6 +3816,7 @@ class SharedSettingsStoreTest {
         var longMessageCollapseEnabled: Boolean = false,
         var singleTapOpensThreadEnabled: Boolean = false,
         var inlineSelectionToolbarEnabled: Boolean = false,
+        var conversationForwardGestureEnabled: Boolean = false,
         var imageAnnotationEnabled: Boolean = false,
         var foregroundMessageBannersEnabled: Boolean = false,
         var activityTaskStatusBadgesEnabled: Boolean = false,
@@ -3833,6 +3838,7 @@ class SharedSettingsStoreTest {
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                 inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
+                conversationForwardGestureEnabled = conversationForwardGestureEnabled,
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
@@ -3904,6 +3910,11 @@ class SharedSettingsStoreTest {
 
         override suspend fun setInlineSelectionToolbarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
             inlineSelectionToolbarEnabled = enabled
+            return getChatLayoutPreference()
+        }
+
+        override suspend fun setConversationForwardGestureEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+            conversationForwardGestureEnabled = enabled
             return getChatLayoutPreference()
         }
 

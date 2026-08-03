@@ -132,6 +132,7 @@ class LocalPreferencesTest {
         assertEquals(false, snapshot.longMessageCollapseEnabled)
         assertEquals(true, snapshot.singleTapOpensThreadEnabled)
         assertEquals(false, snapshot.inlineSelectionToolbarEnabled)
+        assertEquals(false, snapshot.conversationForwardGestureEnabled)
         assertEquals(true, snapshot.imageAnnotationEnabled)
         assertEquals(false, snapshot.foregroundMessageBannersEnabled)
         assertEquals(false, snapshot.activityTaskStatusBadgesEnabled)
@@ -226,6 +227,32 @@ class LocalPreferencesTest {
     }
 
     @Test
+    fun conversationForwardGestureDefaultsOffFailsClosedAndPersistsIndependently() = runBlocking {
+        val key = "mobile:conversation_forward_gesture_enabled"
+        val store = InMemorySlockKeyValueStore()
+        val preferenceStore = KeyValueChatLayoutPreferenceStore(store)
+        val repository = PersistentChatLayoutPreferenceRepository(preferenceStore)
+
+        assertEquals(false, preferenceStore.readConversationForwardGestureEnabledSync())
+        assertEquals(false, repository.getChatLayoutPreference().conversationForwardGestureEnabled)
+
+        store.putString(key, "unsupported")
+        assertEquals(false, preferenceStore.readConversationForwardGestureEnabled())
+
+        val enabled = repository.setConversationForwardGestureEnabled(true)
+        assertEquals(true, enabled.conversationForwardGestureEnabled)
+        assertEquals(true, preferenceStore.readConversationForwardGestureEnabledSync())
+
+        repository.setInlineSelectionToolbarEnabled(true)
+        val restored =
+            PersistentChatLayoutPreferenceRepository(
+                KeyValueChatLayoutPreferenceStore(store)
+            ).getChatLayoutPreference()
+        assertEquals(true, restored.conversationForwardGestureEnabled)
+        assertEquals(true, restored.inlineSelectionToolbarEnabled)
+    }
+
+    @Test
     fun chatLayoutPersistsSelectedValues() = runBlocking {
         val store = InMemorySlockKeyValueStore()
         val repository = PersistentChatLayoutPreferenceRepository(
@@ -239,6 +266,7 @@ class LocalPreferencesTest {
         val longMessageCollapse = repository.setLongMessageCollapseEnabled(true)
         val singleTapOpensThread = repository.setSingleTapOpensThreadEnabled(true)
         val inlineSelectionToolbar = repository.setInlineSelectionToolbarEnabled(true)
+        val conversationForwardGesture = repository.setConversationForwardGestureEnabled(true)
         val imageAnnotation = repository.setImageAnnotationEnabled(true)
         val foregroundMessageBanners = repository.setForegroundMessageBannersEnabled(true)
         val activityTaskStatusBadges = repository.setActivityTaskStatusBadgesEnabled(true)
@@ -266,6 +294,7 @@ class LocalPreferencesTest {
         assertEquals(true, longMessageCollapse.longMessageCollapseEnabled)
         assertEquals(true, singleTapOpensThread.singleTapOpensThreadEnabled)
         assertEquals(true, inlineSelectionToolbar.inlineSelectionToolbarEnabled)
+        assertEquals(true, conversationForwardGesture.conversationForwardGestureEnabled)
         assertEquals(true, imageAnnotation.imageAnnotationEnabled)
         assertEquals(true, foregroundMessageBanners.foregroundMessageBannersEnabled)
         assertEquals(true, activityTaskStatusBadges.activityTaskStatusBadgesEnabled)
@@ -283,6 +312,7 @@ class LocalPreferencesTest {
         assertEquals(true, restored.longMessageCollapseEnabled)
         assertEquals(true, restored.singleTapOpensThreadEnabled)
         assertEquals(true, restored.inlineSelectionToolbarEnabled)
+        assertEquals(true, restored.conversationForwardGestureEnabled)
         assertEquals(true, restored.imageAnnotationEnabled)
         assertEquals(true, restored.foregroundMessageBannersEnabled)
         assertEquals(true, restored.activityTaskStatusBadgesEnabled)

@@ -258,11 +258,12 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
         self.interactivePopGestureRecognizer.enabled = NO;
     }
 
-    if (![self.view.gestureRecognizers containsObject:self.fd_conversationForwardGestureRecognizer]) {
-        self.fd_conversationForwardGestureRecognizer.delegate = self.fd_conversationForwardGestureRecognizerDelegate;
-        [self.fd_conversationForwardGestureRecognizer addTarget:self action:@selector(fd_handleConversationForwardGesture:)];
-        [self.view addGestureRecognizer:self.fd_conversationForwardGestureRecognizer];
-    }
+    KuiklyRenderViewController *renderViewController =
+        [viewController isKindOfClass:KuiklyRenderViewController.class]
+            ? (KuiklyRenderViewController *)viewController
+            : nil;
+    [self fd_setConversationForwardGestureEnabled:
+        renderViewController.slockConversationForwardGestureEnabled && renderViewController.slockIsAppShellPage];
 
     // Handle perferred navigation bar appearance.
     [self fd_setupViewControllerBasedNavigationBarAppearanceIfNeeded:viewController];
@@ -290,6 +291,28 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
             ? (KuiklyRenderViewController *)self.topViewController
             : nil;
     [topViewController slockRequestConversationForward];
+}
+
+- (void)fd_setConversationForwardGestureEnabled:(BOOL)enabled
+{
+    UIScreenEdgePanGestureRecognizer *gestureRecognizer =
+        objc_getAssociatedObject(self, @selector(fd_conversationForwardGestureRecognizer));
+    if (!enabled) {
+        gestureRecognizer.enabled = NO;
+        if (gestureRecognizer.view != nil) {
+            [gestureRecognizer.view removeGestureRecognizer:gestureRecognizer];
+        }
+        return;
+    }
+
+    gestureRecognizer = self.fd_conversationForwardGestureRecognizer;
+    if (gestureRecognizer.view != self.view) {
+        if (gestureRecognizer.view != nil) {
+            [gestureRecognizer.view removeGestureRecognizer:gestureRecognizer];
+        }
+        [self.view addGestureRecognizer:gestureRecognizer];
+    }
+    gestureRecognizer.enabled = YES;
 }
 
 - (void)fd_setupViewControllerBasedNavigationBarAppearanceIfNeeded:(UIViewController *)appearingViewController
@@ -361,6 +384,8 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
         gestureRecognizer.edges = UIRectEdgeRight;
         gestureRecognizer.maximumNumberOfTouches = 1;
         gestureRecognizer.cancelsTouchesInView = NO;
+        gestureRecognizer.delegate = self.fd_conversationForwardGestureRecognizerDelegate;
+        [gestureRecognizer addTarget:self action:@selector(fd_handleConversationForwardGesture:)];
         objc_setAssociatedObject(self, _cmd, gestureRecognizer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     return gestureRecognizer;

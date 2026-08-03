@@ -50,6 +50,7 @@ import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
 import build.raft.app.data.MOBILE_ACTION_LONG_MESSAGE_COLLAPSE
 import build.raft.app.data.MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD
 import build.raft.app.data.MOBILE_ACTION_INLINE_SELECTION_TOOLBAR
+import build.raft.app.data.MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE
 import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_IMAGE_ANNOTATION
@@ -487,6 +488,7 @@ import com.tencent.kuikly.compose.ui.semantics.invisibleToUser
 import com.tencent.kuikly.compose.ui.ExperimentalComposeUiApi
 import com.tencent.kuikly.compose.ui.semantics.contentDescription
 import com.tencent.kuikly.compose.ui.semantics.semantics
+import com.tencent.kuikly.compose.ui.semantics.stateDescription
 import com.tencent.kuikly.compose.ui.semantics.traversalIndex
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.SpanStyle
@@ -3181,6 +3183,7 @@ internal fun SlockAppShellContent(
     var activitySenderAvatarsEnabled by remember { mutableStateOf(false) }
     var serverDrawerEnabled by remember { mutableStateOf(false) }
     var homeServerAvatarEnabled by remember { mutableStateOf(false) }
+    var conversationForwardGestureEnabled by remember { mutableStateOf(false) }
     var serverDrawerProgrammaticCloseFence by remember { mutableStateOf<((String) -> Unit)?>(null) }
     var threadRowAffordances by remember { mutableStateOf(ThreadRowAffordancePreference.Default) }
     var createChannelDialogOpen by remember { mutableStateOf(false) }
@@ -3911,7 +3914,26 @@ internal fun SlockAppShellContent(
         activitySenderAvatarsEnabled = chatLayout.activitySenderAvatarsEnabled
         serverDrawerEnabled = chatLayout.serverDrawerEnabled
         homeServerAvatarEnabled = chatLayout.homeServerAvatarEnabled
+        conversationForwardGestureEnabled = chatLayout.conversationForwardGestureEnabled
         threadRowAffordances = chatLayout.threadRowAffordances
+    }
+    LaunchedEffect(settingsState.mobile) {
+        val persistedEnabled =
+            (settingsState.mobile as? ScreenLoadState.Content<SettingsMobileSnapshot>)
+                ?.data
+                ?.conversationForwardGesture
+                ?.enabled
+                ?: return@LaunchedEffect
+        conversationForwardGestureEnabled = persistedEnabled
+    }
+    LaunchedEffect(conversationForwardGestureEnabled) {
+        conversationForwardHistory.setEnabled(conversationForwardGestureEnabled)
+        bridge.setConversationForwardGestureEnabled(
+            conversationForwardGestureEnabled &&
+                homeSurfaceVisible &&
+                homeState.content is SharedHomeContentState.Content &&
+                conversationForwardHistory.canForward
+        )
     }
     val latestForegroundMessageBannersEnabled by rememberUpdatedState(foregroundMessageBannersEnabled)
     DisposableEffect(notificationPreferenceEvents) {
@@ -4195,7 +4217,8 @@ internal fun SlockAppShellContent(
             )
         }
         bridge.setConversationForwardGestureEnabled(
-            homeSurfaceVisible &&
+            conversationForwardGestureEnabled &&
+                homeSurfaceVisible &&
                 homeState.content is SharedHomeContentState.Content &&
                 conversationForwardHistory.canForward
         )
@@ -4209,7 +4232,8 @@ internal fun SlockAppShellContent(
     ) {
         if (conversationForwardRequestTick <= handledConversationForwardRequestTick) {
             bridge.setConversationForwardGestureEnabled(
-                homeSurfaceVisible &&
+                conversationForwardGestureEnabled &&
+                    homeSurfaceVisible &&
                     homeState.content is SharedHomeContentState.Content &&
                     conversationForwardHistory.canForward
             )
@@ -4251,7 +4275,8 @@ internal fun SlockAppShellContent(
             null -> {
                 bridge.log("conversation_forward_defer reason=home_or_directory_not_ready")
                 bridge.setConversationForwardGestureEnabled(
-                    homeState.content is SharedHomeContentState.Content &&
+                    conversationForwardGestureEnabled &&
+                        homeState.content is SharedHomeContentState.Content &&
                         conversationForwardHistory.canForward
                 )
             }
@@ -5793,6 +5818,14 @@ internal fun SlockAppShellContent(
                                 prewarmAdmissionGate.invalidate("settings_activity_badges")
                                 activityTaskStatusBadgesEnabled = it
                             },
+                            onConversationForwardGestureSelected = { enabled ->
+                                prewarmAdmissionGate.invalidate("settings_conversation_forward_gesture")
+                                if (!enabled) {
+                                    conversationForwardGestureEnabled = false
+                                    conversationForwardHistory.setEnabled(false)
+                                    bridge.setConversationForwardGestureEnabled(false)
+                                }
+                            },
                             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                             onActivitySenderAvatarsSelected = { enabled ->
                                 prewarmAdmissionGate.invalidate("settings_activity_sender_avatars")
@@ -6375,6 +6408,7 @@ private fun SettingsAppShellContent(
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
     onForegroundMessageBannersSelected: (Boolean) -> Unit,
     onActivityTaskStatusBadgesSelected: (Boolean) -> Unit,
+    onConversationForwardGestureSelected: (Boolean) -> Unit,
     activitySenderAvatarsEnabled: Boolean,
     onActivitySenderAvatarsSelected: (Boolean) -> Unit,
     onServerDrawerSelected: (Boolean) -> Unit,
@@ -7179,6 +7213,10 @@ private fun SettingsAppShellContent(
                     },
                     onInlineSelectionToolbarChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetInlineSelectionToolbarEnabled(enabled))
+                    },
+                    onConversationForwardGestureChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetConversationForwardGestureEnabled(enabled))
+                        onConversationForwardGestureSelected(enabled)
                     },
                     onImageAnnotationChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetImageAnnotationEnabled(enabled))
@@ -8350,6 +8388,7 @@ private fun SettingsMobileContent(
     onLongMessageCollapseChange: (Boolean) -> Unit,
     onSingleTapOpensThreadChange: (Boolean) -> Unit,
     onInlineSelectionToolbarChange: (Boolean) -> Unit,
+    onConversationForwardGestureChange: (Boolean) -> Unit,
     onImageAnnotationChange: (Boolean) -> Unit,
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
     onComposerSendKeyChange: (Boolean) -> Unit,
@@ -8409,6 +8448,13 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onInlineSelectionToolbarChange = onInlineSelectionToolbarChange
+                )
+            }
+            item {
+                SettingsConversationForwardGestureCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onConversationForwardGestureChange = onConversationForwardGestureChange
                 )
             }
             item {
@@ -8958,6 +9004,73 @@ private fun SettingsInlineSelectionToolbarCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_INLINE_SELECTION_TOOLBAR && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState)
+        }
+    }
+}
+
+@Composable
+private fun SettingsConversationForwardGestureCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onConversationForwardGestureChange: (Boolean) -> Unit
+) {
+    val busy =
+        actionState?.action == MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE && actionState.inProgress
+    val preference = snapshot.conversationForwardGesture
+    val accessibilityDescription =
+        stringResource(MR.strings.settings_mobile_conversation_forward_gesture_accessibility)
+    val localizedStateDescription = preference.localizedToggleStatus()
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.Redo2,
+        title = stringResource(MR.strings.settings_mobile_conversation_forward_gesture)
+    ) {
+        SettingsFormDetailText(
+            stringResource(MR.strings.settings_mobile_conversation_forward_gesture_detail)
+        )
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .semantics {
+                        contentDescription = accessibilityDescription
+                        stateDescription = localizedStateDescription
+                    }
+                    .clickable(enabled = preference.available && !busy) {
+                        onConversationForwardGestureChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SettingsConnectedAppsBadge(
+                        stringResource(MR.strings.settings_badge_beta),
+                        SlockColor.BrandYellow
+                    )
+                    Text(
+                        localizedStateDescription,
+                        style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                        color = SlockColor.TextBlack
+                    )
+                }
+            }
+            SlockSwitchButton(
+                checked = preference.enabled,
+                enabled = preference.available && !busy
+            )
+        }
+        if (
+            actionState?.action == MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE &&
+            actionState.errorCode != null
+        ) {
             SettingsFormErrorText(actionState)
         }
     }
@@ -14316,6 +14429,23 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                 fallbackStatus = "Off",
                                 actionState = actionState,
                                 errorStrings = errorStrings
+                            ),
+                            mobile.inlineSelectionToolbar.toMobileToggleRow(
+                                key = MOBILE_ACTION_INLINE_SELECTION_TOOLBAR,
+                                iconName = SlockLucideIconName.FileScan,
+                                title = "Inline message selection toolbar",
+                                fallbackStatus = "Off",
+                                actionState = actionState,
+                                errorStrings = errorStrings
+                            ),
+                            mobile.conversationForwardGesture.toMobileToggleRow(
+                                key = MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE,
+                                iconName = SlockLucideIconName.Redo2,
+                                title = "Conversation forward gesture",
+                                fallbackStatus = "Off",
+                                actionState = actionState,
+                                errorStrings = errorStrings,
+                                badgeLabel = "Beta"
                             ),
                             mobile.foregroundMessageBanners.toMobileToggleRow(
                                 key = MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS,
@@ -23984,6 +24114,7 @@ private fun SettingsRouteVisualScreen() {
         onCompactConsecutiveMessagesSelected = {},
         onForegroundMessageBannersSelected = {},
         onActivityTaskStatusBadgesSelected = {},
+        onConversationForwardGestureSelected = {},
         activitySenderAvatarsEnabled = false,
         onActivitySenderAvatarsSelected = {},
         onServerDrawerSelected = {},

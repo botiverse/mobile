@@ -107,17 +107,31 @@ internal class SharedConversationForwardHistory {
     private val lock = SynchronizedObject()
     private var activeEntry: ConversationForwardEntry? = null
     private var forwardEntry: ConversationForwardEntry? = null
+    private var enabled = false
     private var released = false
 
     val canForward: Boolean
-        get() = synchronized(lock) { !released && forwardEntry != null }
+        get() = synchronized(lock) { enabled && !released && forwardEntry != null }
+
+    internal fun enabledForTest(): Boolean = synchronized(lock) { enabled }
 
     internal fun forwardEntryForTest(): ConversationForwardEntry? =
         synchronized(lock) { forwardEntry }
 
+    /**
+     * Applies the app-scoped Beta preference to this window-owned history. Disabling is terminal
+     * for every entry recorded in the current enabled epoch; a later enable always starts empty.
+     */
+    fun setEnabled(nextEnabled: Boolean) = synchronized(lock) {
+        if (released || enabled == nextEnabled) return@synchronized
+        enabled = nextEnabled
+        activeEntry = null
+        forwardEntry = null
+    }
+
     /** Records a newly opened route and drops any abandoned Forward branch. */
     fun recordNewOpen(entry: ConversationForwardEntry) = synchronized(lock) {
-        if (released) return@synchronized
+        if (released || !enabled) return@synchronized
         activeEntry = entry
         forwardEntry = null
     }
@@ -127,7 +141,7 @@ internal class SharedConversationForwardHistory {
      * appearance signals are idempotent because the active entry is cleared on the first return.
      */
     fun recordHomeVisible(): Boolean = synchronized(lock) {
-        if (released) return@synchronized false
+        if (released || !enabled) return@synchronized false
         activeEntry?.let { entry ->
             forwardEntry = entry
             activeEntry = null
@@ -142,7 +156,7 @@ internal class SharedConversationForwardHistory {
      */
     fun requestForward(readiness: WindowNavigationReadiness): ConversationForwardAction? =
         synchronized(lock) {
-            if (released) return@synchronized null
+            if (released || !enabled) return@synchronized null
             val entry = forwardEntry ?: return@synchronized null
 
             if (readiness.knownServerIds.isNotEmpty() && entry.serverId !in readiness.knownServerIds) {
@@ -216,6 +230,7 @@ internal class SharedConversationForwardHistory {
 
     fun release() = synchronized(lock) {
         released = true
+        enabled = false
         activeEntry = null
         forwardEntry = null
     }

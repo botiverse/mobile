@@ -37,6 +37,10 @@
 /// Right-edge, leftward intent recognizer. Shared owns and validates Forward history.
 @property (nonatomic, strong, readonly) UIScreenEdgePanGestureRecognizer *fd_conversationForwardGestureRecognizer;
 
+/// Installs the right-edge recognizer only while shared has admitted Forward.
+/// Disabling removes it from the navigation view, so OFF cannot receive a gesture.
+- (void)fd_setConversationForwardGestureEnabled:(BOOL)enabled;
+
 /// A view controller is able to control navigation bar's appearance by itself,
 /// rather than a global way, checking "fd_prefersNavigationBarHidden" property.
 /// Default to YES, disable it if you don't want so.

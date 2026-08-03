@@ -256,6 +256,7 @@ data class ChatLayoutPreferenceSnapshot(
     val longMessageCollapseEnabled: Boolean = false,
     val singleTapOpensThreadEnabled: Boolean = true,
     val inlineSelectionToolbarEnabled: Boolean = false,
+    val conversationForwardGestureEnabled: Boolean = false,
     val imageAnnotationEnabled: Boolean = true,
     val foregroundMessageBannersEnabled: Boolean = false,
     val activityTaskStatusBadgesEnabled: Boolean = false,
@@ -294,6 +295,9 @@ interface ChatLayoutPreferenceStore {
     fun readInlineSelectionToolbarEnabledSync(): Boolean
     suspend fun readInlineSelectionToolbarEnabled(): Boolean
     suspend fun saveInlineSelectionToolbarEnabled(enabled: Boolean)
+    fun readConversationForwardGestureEnabledSync(): Boolean
+    suspend fun readConversationForwardGestureEnabled(): Boolean
+    suspend fun saveConversationForwardGestureEnabled(enabled: Boolean)
     fun readImageAnnotationEnabledSync(): Boolean
     suspend fun readImageAnnotationEnabled(): Boolean
     suspend fun saveImageAnnotationEnabled(enabled: Boolean)
@@ -397,6 +401,16 @@ class KeyValueChatLayoutPreferenceStore(
 
     override suspend fun saveInlineSelectionToolbarEnabled(enabled: Boolean) {
         store.putBoolean(KEY_INLINE_SELECTION_TOOLBAR_ENABLED, enabled)
+    }
+
+    override fun readConversationForwardGestureEnabledSync(): Boolean =
+        store.getBoolean(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, false)
+
+    override suspend fun readConversationForwardGestureEnabled(): Boolean =
+        readConversationForwardGestureEnabledSync()
+
+    override suspend fun saveConversationForwardGestureEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, enabled)
     }
 
     override fun readImageAnnotationEnabledSync(): Boolean =
@@ -544,6 +558,7 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_LONG_MESSAGE_COLLAPSE_ENABLED = "chatLayout:long_message_collapse_enabled"
         const val KEY_SINGLE_TAP_OPENS_THREAD_ENABLED = "chatLayout:single_tap_opens_thread_enabled"
         const val KEY_INLINE_SELECTION_TOOLBAR_ENABLED = "mobile:inline_selection_toolbar_enabled"
+        const val KEY_CONVERSATION_FORWARD_GESTURE_ENABLED = "mobile:conversation_forward_gesture_enabled"
         const val KEY_IMAGE_ANNOTATION_ENABLED = "chatLayout:image_annotation_enabled"
         const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "chatLayout:foreground_message_banners_enabled"
         const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "chatLayout:activity_task_status_badges_enabled"
@@ -571,6 +586,7 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setLongMessageCollapseEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setSingleTapOpensThreadEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setInlineSelectionToolbarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
+    suspend fun setConversationForwardGestureEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
@@ -599,6 +615,7 @@ class PersistentChatLayoutPreferenceRepository(
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
+            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -624,6 +641,7 @@ class PersistentChatLayoutPreferenceRepository(
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
+            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -650,6 +668,7 @@ class PersistentChatLayoutPreferenceRepository(
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
+            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -674,6 +693,7 @@ class PersistentChatLayoutPreferenceRepository(
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
+            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -704,6 +724,11 @@ class PersistentChatLayoutPreferenceRepository(
         return getChatLayoutPreference()
     }
 
+    override suspend fun setConversationForwardGestureEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+        store.saveConversationForwardGestureEnabled(enabled)
+        return getChatLayoutPreference()
+    }
+
     override suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
         store.saveImageAnnotationEnabled(enabled)
         return ChatLayoutPreferenceSnapshot(
@@ -713,6 +738,7 @@ class PersistentChatLayoutPreferenceRepository(
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
+            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = enabled,
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -737,6 +763,7 @@ class PersistentChatLayoutPreferenceRepository(
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
+            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = enabled,
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -761,6 +788,7 @@ class PersistentChatLayoutPreferenceRepository(
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
+            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = enabled,
@@ -815,6 +843,7 @@ class PersistentChatLayoutPreferenceRepository(
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
+            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -854,6 +883,7 @@ class PersistentChatLayoutPreferenceRepository(
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
+            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
