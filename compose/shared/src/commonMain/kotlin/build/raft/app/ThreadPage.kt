@@ -26738,6 +26738,32 @@ private fun ThreadSettingsActionUi.localizedThreadSettingsAction(): ThreadSettin
     }
 
 @Composable
+internal fun ThreadSettingsChannelActionButtons(
+    actions: List<KuiklyThreadSettingsAction>,
+    onOpenAction: (String) -> Unit
+) {
+    val effectiveActions =
+        actions
+            .normalizedThreadSettingsChannelActions(useDefaultWhenEmpty = false)
+            .map { it.localizedThreadSettingsAction() }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        effectiveActions.forEach { action ->
+            SlockModalFullWidthActionButton(
+                label = action.title,
+                icon = action.icon,
+                color =
+                    if (action.id == ThreadSettingsDangerAction.Delete.id) {
+                        SlockColor.AccentRed
+                    } else {
+                        SlockColor.AccentOrange
+                    },
+                onClick = { onOpenAction(action.id) }
+            )
+        }
+    }
+}
+
+@Composable
 private fun ThreadSettingsDangerAction.localizedTitle(): String =
     when (this) {
         ThreadSettingsDangerAction.Visibility -> stringResource(MR.strings.thread_settings_make_private_title)
@@ -26893,14 +26919,15 @@ internal fun ThreadSettingsModal(
                                 onClick = { onTogglePin?.invoke() }
                             )
                         }
-                        dangerActions.forEach { (danger, action) ->
-                            SlockModalFullWidthActionButton(
-                                label = action.title,
-                                icon = action.icon,
-                                color = danger.color,
-                                onClick = { dangerAction = danger }
-                            )
-                        }
+                        ThreadSettingsChannelActionButtons(
+                            actions =
+                                dangerActions.map { (_, action) ->
+                                    KuiklyThreadSettingsAction(id = action.id)
+                                },
+                            onOpenAction = { actionId ->
+                                dangerAction = dangerActions.firstOrNull { (_, action) -> action.id == actionId }?.first
+                            }
+                        )
                     }
                 }
             }

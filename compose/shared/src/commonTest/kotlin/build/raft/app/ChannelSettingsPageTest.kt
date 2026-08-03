@@ -65,4 +65,16 @@ class ChannelSettingsPageTest {
         assertFalse(channelSettingsUsesStandalonePage(newDesignSettingsEnabled = false))
         assertTrue(channelSettingsUsesStandalonePage(newDesignSettingsEnabled = true))
     }
+
+    @Test
+    fun managementKeepsOriginalThreadSettingsActionOrder() {
+        assertEquals(
+            listOf("visibility", "archive", "delete"),
+            channelSettingsManagementActions(showMakePrivate = true).map { it.id }
+        )
+        assertEquals(
+            listOf("archive", "delete"),
+            channelSettingsManagementActions(showMakePrivate = false).map { it.id }
+        )
+    }
 }
