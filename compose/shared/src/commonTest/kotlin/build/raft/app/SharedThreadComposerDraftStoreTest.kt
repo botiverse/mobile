@@ -38,7 +38,8 @@ class SharedThreadComposerDraftStoreTest {
         store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
 
         assertEquals(ThreadComposerEditorCommandKind.Clear, store.state.value.editorCommand?.kind)
-        assertEquals(null, store.state.value.editorCommand?.expectedText)
+        assertEquals("ni", store.state.value.editorCommand?.expectedText)
+        assertEquals(false, store.state.value.editorCommand?.expectedAsTask)
 
         store.dispatch(
             SharedThreadComposerDraftIntent.RestoreAfterFailure(
@@ -147,6 +148,7 @@ class SharedThreadComposerDraftStoreTest {
         )
         val owner = ThreadComposerControlledEditorOwner(seedText = "", seedAsTask = false)
         owner.acceptEditorValue(
+            owner.editorSessionId,
             com.tencent.kuikly.compose.ui.text.input.TextFieldValue(
                 text = "ni",
                 selection = com.tencent.kuikly.compose.ui.text.TextRange(2),

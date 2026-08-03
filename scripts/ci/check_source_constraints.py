@@ -30,6 +30,10 @@ VENDOR_PARAGRAPH = (
 )
 BRIDGE_AUTH = "compose/shared/src/commonMain/kotlin/build/raft/app/data/BridgeAuth.kt"
 ANDROID_ACTIVITY = "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"
+COMPOSER_IME_CONNECTED_TEST = (
+    "compose/androidApp/src/androidTest/java/build/raft/app/shared/"
+    "SlockThreadImePaintConnectedTest.kt"
+)
 IOS_MOBILE_OAUTH_HOST = "compose/iosApp/iosApp/SlockIosMobileOAuthHost.swift"
 IOS_MOBILE_OAUTH_SHARED = (
     "compose/shared/src/commonMain/kotlin/build/raft/app/data/IosMobileOAuth.kt"
@@ -257,6 +261,44 @@ def check_thread_ime_tail_pixel_probe_scope(thread_page: str) -> None:
             )
 
 
+def check_composer_retirement_uses_bounded_waits(connected_test: str) -> None:
+    """Incident: task #76 (post-send focus/IME never reached its deadline).
+
+    ``waitForIdleSync`` has no timeout. A live focus/IME/recomposition stream can
+    therefore block the decisive retirement case before its bounded replacement
+    wait runs. Other tests in the same class intentionally use idle waits, so pin
+    only this product-contract method.
+    """
+    match = re.search(
+        r"fun sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition\(\) \{"
+        r"(?P<body>.*?)\n\s*\}\n\n\s*@Test",
+        connected_test,
+        flags=re.DOTALL,
+    )
+    if match is None:
+        raise Violation(
+            "task #76 anchor missing: the composer session-retirement connected "
+            "test must remain independently auditable"
+        )
+    body = match.group("body")
+    required = (
+        'waitUntil(RenderTimeoutMs, "initial editor")',
+        'waitUntil(SendTimeoutMs, "first attached replacement editor")',
+        'waitUntil(ImeTransitionTimeoutMs, "sent row and same-text first composition")',
+        "SLOCK_COMPOSER_SESSION_RETIREMENT_PASS",
+    )
+    for token in required:
+        if token not in body:
+            raise Violation(
+                f"task #76 bounded-wait anchor missing from retirement test: {token}"
+            )
+    if "waitForIdleSync(" in body:
+        raise Violation(
+            "task #76 regression: the decisive retirement test contains unbounded "
+            "waitForIdleSync; use its existing timeout-bounded state polling"
+        )
+
+
 def check_native_apple_authentication_services(
     host: str,
     shared: str,
@@ -392,6 +434,7 @@ def run(root: Path) -> None:
     check_forward_row_identity(thread_page)
     check_system_selectable_text_dialog(thread_page)
     check_thread_ime_tail_pixel_probe_scope(thread_page)
+    check_composer_retirement_uses_bounded_waits(read(COMPOSER_IME_CONNECTED_TEST))
     check_no_layout_direction_flip(
         {
             THREAD_PAGE: thread_page,
@@ -505,6 +548,30 @@ private fun ThreadMessageMenuChrome() = Unit
             pass
         else:
             raise SystemExit("self-test: task #924 checker accepted a violation")
+
+    good_retirement_test = '''
+fun sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition() {
+    waitUntil(RenderTimeoutMs, "initial editor") { true }
+    waitUntil(SendTimeoutMs, "first attached replacement editor") { true }
+    waitUntil(ImeTransitionTimeoutMs, "sent row and same-text first composition") { true }
+    println("SLOCK_COMPOSER_SESSION_RETIREMENT_PASS")
+}
+
+@Test
+fun anotherCase() = Unit
+'''
+    check_composer_retirement_uses_bounded_waits(good_retirement_test)
+    try:
+        check_composer_retirement_uses_bounded_waits(
+            good_retirement_test.replace(
+                'waitUntil(SendTimeoutMs, "first attached replacement editor") { true }',
+                'waitForIdleSync()\n    waitUntil(SendTimeoutMs, "first attached replacement editor") { true }',
+            )
+        )
+    except Violation:
+        pass
+    else:
+        raise SystemExit("self-test: task #76 bounded-wait checker accepted a violation")
 
     check_no_layout_direction_flip({"f": "Arrangement.spacedBy(12.dp, Alignment.End)"})
     try:
@@ -682,7 +749,7 @@ def main(argv: list[str]) -> int:
     except Violation as violation:
         print(f"source-constraint violation: {violation}", file=sys.stderr)
         return 1
-    print("source constraints hold (tasks #800/#803/#361/#161/#924/#82/#183 structural faces)")
+    print("source constraints hold (tasks #800/#803/#361/#161/#924/#82/#183/#76 structural faces)")
     return 0
 
 

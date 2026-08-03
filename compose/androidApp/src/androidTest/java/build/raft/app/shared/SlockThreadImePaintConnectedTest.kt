@@ -8,7 +8,15 @@ import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowInsets
+import android.view.WindowInsetsAnimation
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.inputmethod.BaseInputConnection
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -16,13 +24,163 @@ import build.raft.app.threadNewerAutoMessageLabel
 import build.raft.app.ThreadNewerAutoPaginationVisualFixtureProbe
 import java.util.ArrayDeque
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONObject
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SlockThreadImePaintConnectedTest {
+    @Test
+    fun sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val nonce = UUID.randomUUID().toString().replace("-", "")
+        val intent =
+            Intent(instrumentation.targetContext, SlockKuiklyActivity::class.java)
+                .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, PageName)
+                .putExtra(
+                    SlockKuiklyActivity.KEY_PAGE_DATA,
+                    JSONObject()
+                        .put("runNonce", nonce)
+                        .put("showComposer", true)
+                        .toString(),
+                )
+
+        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+            dismissAndroidCompatibilityDialog()
+            waitUntil(RenderTimeoutMs, "initial editor") {
+                scenario.currentComposerEditText() != null
+            }
+
+            lateinit var retiredEditor: EditText
+            scenario.onActivity { activity ->
+                retiredEditor = requireNotNull(activity.window.decorView.findAttachedComposerEditText())
+                assertTrue("retired editor should accept focus", retiredEditor.requestFocus())
+                val inputMethodManager =
+                    activity.getSystemService(InputMethodManager::class.java)
+                inputMethodManager.showSoftInput(retiredEditor, InputMethodManager.SHOW_IMPLICIT)
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    activity.window.insetsController?.show(WindowInsets.Type.ime())
+                }
+                val connection = requireNotNull(retiredEditor.onCreateInputConnection(EditorInfo()))
+                assertTrue("initial IME commit should succeed", connection.commitText("sent", 1))
+            }
+            waitUntil(ImeTransitionTimeoutMs, "focused editor with visible IME and sent text") {
+                scenario.currentComposerEditText()?.let { editor ->
+                    editor === retiredEditor && editor.hasFocus() && editor.text.toString() == "sent" &&
+                        scenario.isImeVisible()
+                } == true
+            }
+
+            val imeHiddenDuringReplacement = AtomicBoolean(false)
+            scenario.onActivity { activity ->
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    val decorView = activity.window.decorView
+                    decorView.viewTreeObserver.addOnGlobalLayoutListener {
+                        if (decorView.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == false) {
+                            imeHiddenDuringReplacement.set(true)
+                        }
+                    }
+                    decorView.setWindowInsetsAnimationCallback(
+                        object : WindowInsetsAnimation.Callback(
+                            WindowInsetsAnimation.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE
+                        ) {
+                            override fun onProgress(
+                                insets: WindowInsets,
+                                runningAnimations: MutableList<WindowInsetsAnimation>,
+                            ): WindowInsets {
+                                if (!insets.isVisible(WindowInsets.Type.ime())) {
+                                    imeHiddenDuringReplacement.set(true)
+                                }
+                                return insets
+                            }
+                        }
+                    )
+                }
+            }
+
+            try {
+                tapEnabledSendActionUntilRequested(nonce)
+            } catch (failure: AssertionError) {
+                throw AssertionError(
+                    "${failure.message}; " +
+                        scenario.composerRetirementDiagnostics(nonce, retiredEditor),
+                    failure,
+                )
+            }
+            val firstCompositionAccepted = AtomicBoolean(false)
+            val retiredDetachedAtReplacement = AtomicBoolean(false)
+            val imeVisibleAtReplacement = AtomicBoolean(false)
+            lateinit var replacementEditor: EditText
+            try {
+                waitUntil(SendTimeoutMs, "first attached replacement editor") {
+                    var captured = false
+                    scenario.onActivity { activity ->
+                        val candidate = activity.window.decorView.findAttachedComposerEditText()
+                        if (candidate != null && candidate !== retiredEditor) {
+                            replacementEditor = candidate
+                            retiredDetachedAtReplacement.set(!retiredEditor.isAttachedToWindow)
+                            assertTrue("replacement editor must start empty", candidate.text.isEmpty())
+                            imeVisibleAtReplacement.set(
+                                activity.window.decorView.rootWindowInsets
+                                    ?.isVisible(WindowInsets.Type.ime()) == true
+                            )
+
+                            // Force the already-retired view's queued callback at the earliest point
+                            // where its replacement is reachable. It must neither refill the new
+                            // editor nor consume the replacement's first real IME state.
+                            retiredEditor.setText("sent")
+                            assertTrue("retired editor callback must not refill replacement draft", candidate.text.isEmpty())
+                            val connection = requireNotNull(candidate.onCreateInputConnection(EditorInfo()))
+                            firstCompositionAccepted.set(connection.setComposingText("sent", 1))
+                            captured = true
+                        }
+                    }
+                    captured
+                }
+            } catch (failure: AssertionError) {
+                throw AssertionError(
+                    "${failure.message}; " +
+                        scenario.composerRetirementDiagnostics(nonce, retiredEditor),
+                    failure,
+                )
+            }
+            assertTrue("first replacement composition must be accepted at attach", firstCompositionAccepted.get())
+            waitUntil(ImeTransitionTimeoutMs, "sent row and same-text first composition") {
+                ThreadNewerAutoPaginationVisualFixtureProbe.sentRequestCount(nonce) >= 1 &&
+                scenario.currentComposerEditText()?.let { editor ->
+                    editor === replacementEditor && editor.isAttachedToWindow &&
+                    editor.text.toString() == "sent" &&
+                        BaseInputConnection.getComposingSpanStart(editor.text) == 0 &&
+                        BaseInputConnection.getComposingSpanEnd(editor.text) == 4 &&
+                        editor.selectionStart == 4 && editor.selectionEnd == 4 &&
+                        editor.hasFocus() && scenario.isImeVisible()
+                } == true
+            }
+            val sentRequestCount = ThreadNewerAutoPaginationVisualFixtureProbe.sentRequestCount(nonce)
+            assertEquals("session retirement send must issue exactly one request", 1, sentRequestCount)
+            val firstSelectionPreserved =
+                replacementEditor.selectionStart == 4 && replacementEditor.selectionEnd == 4
+            val receipt =
+                "SLOCK_COMPOSER_SESSION_RETIREMENT_PASS " +
+                    "replacementFocused=${replacementEditor.hasFocus()} " +
+                    "firstComposition=${firstCompositionAccepted.get()} " +
+                    "firstSelection=$firstSelectionPreserved " +
+                    "requestCount=$sentRequestCount " +
+                    "retiredDetachedAtSample=${retiredDetachedAtReplacement.get()} " +
+                    "retiredDetachedFinal=${!retiredEditor.isAttachedToWindow} " +
+                    "imeVisibleAtAttachSample=${imeVisibleAtReplacement.get()} " +
+                    "imeNeverHiddenDuringSample=${!imeHiddenDuringReplacement.get()}"
+            instrumentation.sendStatus(
+                0,
+                Bundle().apply { putString("composerSessionRetirement", receipt) },
+            )
+            println(receipt)
+        }
+    }
+
     @Test
     fun repeatedImeResizeAndSendKeepVisibleThreadRowsPainted() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -137,6 +295,49 @@ class SlockThreadImePaintConnectedTest {
         return null
     }
 
+    private fun tapEnabledSendActionUntilRequested(nonce: String) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        waitUntil(SendTimeoutMs, "fresh enabled composer send bounds and admitted request") {
+            if (ThreadNewerAutoPaginationVisualFixtureProbe.sentRequestCount(nonce) >= 1) {
+                true
+            } else {
+                val node = sendActionNode()
+                val bounds = node?.let { Rect().also(it::getBoundsInScreen) }
+                if (
+                    node != null &&
+                    bounds != null &&
+                    node.isEnabled &&
+                    node.isClickable &&
+                    bounds.width() > 0 &&
+                    bounds.height() > 0
+                ) {
+                    ParcelFileDescriptor.AutoCloseInputStream(
+                        instrumentation.uiAutomation.executeShellCommand(
+                            "input touchscreen tap ${bounds.centerX()} ${bounds.centerY()}",
+                        ),
+                    ).bufferedReader().use { it.readText() }
+                    ThreadNewerAutoPaginationVisualFixtureProbe.sentRequestCount(nonce) >= 1
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    private fun sendActionNode(): AccessibilityNodeInfo? {
+        val root =
+            InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                ?: return null
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        while (queue.isNotEmpty()) {
+            val node = queue.removeFirst()
+            if (node.contentDescription?.toString() == SendActionDescription) return node
+            repeat(node.childCount) { index -> node.getChild(index)?.let(queue::addLast) }
+        }
+        return null
+    }
+
     private fun tapSendButton(
         scenario: ActivityScenario<SlockKuiklyActivity>,
         editor: AccessibilityNodeInfo,
@@ -225,14 +426,90 @@ class SlockThreadImePaintConnectedTest {
         throw AssertionError("Timed out waiting for $description")
     }
 
+    private fun ActivityScenario<SlockKuiklyActivity>.currentComposerEditText(): EditText? {
+        var editor: EditText? = null
+        onActivity { activity -> editor = activity.window.decorView.findAttachedComposerEditText() }
+        return editor
+    }
+
+    private fun ActivityScenario<SlockKuiklyActivity>.isImeVisible(): Boolean {
+        var visible = false
+        onActivity { activity ->
+            visible =
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    activity.window.decorView.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == true
+                } else {
+                    activity.getSystemService(InputMethodManager::class.java).isAcceptingText
+                }
+        }
+        return visible
+    }
+
+    private fun ActivityScenario<SlockKuiklyActivity>.composerRetirementDiagnostics(
+        nonce: String,
+        retiredEditor: EditText,
+    ): String {
+        var attachedCurrentSummary = "none"
+        var treeCurrentSummary = "none"
+        var imeVisible = false
+        onActivity { activity ->
+            val decorView = activity.window.decorView
+            attachedCurrentSummary =
+                decorView.findAttachedComposerEditText()
+                    ?.composerEditorDiagnostics(retiredEditor)
+                    ?: "none"
+            treeCurrentSummary =
+                decorView.findComposerEditText()
+                    ?.composerEditorDiagnostics(retiredEditor)
+                    ?: "none"
+            imeVisible =
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    decorView.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == true
+                } else {
+                    activity.getSystemService(InputMethodManager::class.java).isAcceptingText
+                }
+        }
+        val sendActionSummary =
+            sendActionNode()?.let { node ->
+                "enabled=${node.isEnabled} clickable=${node.isClickable} " +
+                    "description=${node.contentDescription}"
+            } ?: "none"
+        return "requestCount=${ThreadNewerAutoPaginationVisualFixtureProbe.sentRequestCount(nonce)} " +
+            "retiredIdentity=${System.identityHashCode(retiredEditor)} " +
+            "retiredAttached=${retiredEditor.isAttachedToWindow} " +
+            "retiredFocused=${retiredEditor.hasFocus()} retiredText=${retiredEditor.text} " +
+            "attachedCurrent=[$attachedCurrentSummary] treeCurrent=[$treeCurrentSummary] " +
+            "imeVisible=$imeVisible sendAction=[$sendActionSummary]"
+    }
+
+    private fun EditText.composerEditorDiagnostics(retiredEditor: EditText): String =
+        "identity=${System.identityHashCode(this)} " +
+            "sameAsRetired=${this === retiredEditor} " +
+            "attached=$isAttachedToWindow focused=${hasFocus()} text=$text"
+
+    private fun View.findAttachedComposerEditText(): EditText? =
+        findComposerEditText(requireAttached = true)
+
+    private fun View.findComposerEditText(requireAttached: Boolean = false): EditText? {
+        if (this is EditText && (!requireAttached || isAttachedToWindow)) return this
+        if (this is ViewGroup) {
+            repeat(childCount) { index ->
+                getChildAt(index).findComposerEditText(requireAttached)?.let { return it }
+            }
+        }
+        return null
+    }
+
     private data class VisibleNode(val bounds: Rect)
 
     private companion object {
         const val PageName = "compose_thread_newer_auto_pagination_visual"
+        const val SendActionDescription = "Send"
         const val ImeCycles = 20
         const val SendCycles = 6
         const val ImeSettleMs = 250L
         const val InputSettleMs = 150L
+        const val ImeTransitionTimeoutMs = 5_000L
         const val RenderTimeoutMs = 20_000L
         const val SendTimeoutMs = 8_000L
         const val SendSettleMs = 500L

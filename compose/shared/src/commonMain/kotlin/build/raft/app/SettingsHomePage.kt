@@ -12902,10 +12902,15 @@ private fun SharedHandsFeedbackContent(
                         suggestionsEnabled = false,
                         pendingAttachments = attachments.toFeedbackComposerAttachmentItems(copy)
                     ),
+                editorSessionId = 1L,
                 editorValue = messageFieldValue,
-                onEditorValueChange = { next -> messageFieldValue = next },
+                onEditorValueChange = { _, next ->
+                    messageFieldValue = next
+                    true
+                },
+                isEditorSessionActive = { true },
                 editorAsTask = false,
-                onEditorAsTaskChange = {},
+                onEditorAsTaskChange = { _, _ -> true },
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 dismissKeyboardOnBlur = true,
                 onEvent = { action, value, _, attachmentId ->

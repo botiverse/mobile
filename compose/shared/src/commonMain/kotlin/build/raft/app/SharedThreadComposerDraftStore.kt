@@ -968,6 +968,8 @@ internal class SharedThreadComposerDraftStore(
                         ThreadComposerEditorCommand(
                             id = current.editorCommandNonce + 1,
                             kind = ThreadComposerEditorCommandKind.Clear,
+                            expectedText = current.seedText,
+                            expectedAsTask = current.seedAsTask,
                         ),
                     // Sending clears the current value, but it remains an active composer
                     // interaction. Reassert focus at the same synchronous boundary so a send
