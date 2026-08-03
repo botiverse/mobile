@@ -35,8 +35,10 @@ import {
   buildSlockOhosAttachmentOpenWants,
   slockOhosAttachmentOpenDiagnostic,
   slockOhosAttachmentOpenFailureKind,
+  slockOhosAttachmentOpenPreflightDecision,
   SlockOhosAttachmentOpenDiagnosticTerminal,
   SlockOhosAttachmentOpenFailureKind,
+  SlockOhosAttachmentOpenPreflightDecision,
   SlockOhosAttachmentOpenPreflightTrace,
   SlockOhosAttachmentOpenWants,
 } from '../SlockOhosAttachmentOpenWant';
@@ -323,11 +325,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       (message: string): void => SlockOhosDiagnostics.record("SlockAttachmentOpenPreflight", message)
     );
     preflightTrace.requested();
-    if (url === undefined || url.length === 0) {
-      preflightTrace.requestRejected();
-      callback({ "status": "failed", "message": "Unable to download attachment" });
-      return;
-    }
     const context = getContext(this) as common.UIAbilityContext;
     try {
       const privateDirectory = ensureSlockOhosPrivateAttachmentDirectory(context.filesDir);
@@ -335,9 +332,19 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         ? this.privateAttachmentPath(privateDirectory, ownerKey, attachmentId, fileName, mimeType)
         : "";
       const privateCommitted = privatePath.length > 0 && this.isUsablePersistentAttachmentFile(privatePath);
-      if (requireCommittedDownload && !privateCommitted) {
+      const preflightDecision = slockOhosAttachmentOpenPreflightDecision(
+        requireCommittedDownload,
+        privateCommitted,
+        url !== undefined && url.length > 0
+      );
+      if (preflightDecision === SlockOhosAttachmentOpenPreflightDecision.PUBLIC_DOWNLOAD_MISSING) {
         preflightTrace.publicDownloadMissing(privateCommitted);
         callback({ "status": "missing", "message": "Downloaded attachment is unavailable" });
+        return;
+      }
+      if (preflightDecision === SlockOhosAttachmentOpenPreflightDecision.URL_MISSING) {
+        preflightTrace.requestRejected();
+        callback({ "status": "failed", "message": "Unable to download attachment" });
         return;
       }
       const cacheDir = `${context.cacheDir}/slock-attachments`;
@@ -351,7 +358,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       if (!cached) {
         preflightTrace.downloadStarted(privateCommitted);
         const downloadResult = await slockOhosAttachmentDownloadSink.download(
-          url,
+          url ?? "",
           path,
           downloadId,
           path,

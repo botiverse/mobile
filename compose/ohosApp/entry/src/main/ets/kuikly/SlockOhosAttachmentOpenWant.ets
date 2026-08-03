@@ -30,6 +30,30 @@ export enum SlockOhosAttachmentOpenPreflightStage {
   WANT_HANDOFF = 'want_handoff',
 }
 
+export enum SlockOhosAttachmentOpenPreflightDecision {
+  PROCEED = 'proceed',
+  PUBLIC_DOWNLOAD_MISSING = 'public_download_missing',
+  URL_MISSING = 'url_missing',
+}
+
+/**
+ * A committed private attachment is opened from its owner journal/path and does not require the
+ * original remote URL. The URL is authoritative only when the host still needs to download bytes.
+ */
+export function slockOhosAttachmentOpenPreflightDecision(
+  requireCommittedDownload: boolean,
+  privateCommitted: boolean,
+  urlPresent: boolean
+): SlockOhosAttachmentOpenPreflightDecision {
+  if (requireCommittedDownload && !privateCommitted) {
+    return SlockOhosAttachmentOpenPreflightDecision.PUBLIC_DOWNLOAD_MISSING;
+  }
+  if (!privateCommitted && !urlPresent) {
+    return SlockOhosAttachmentOpenPreflightDecision.URL_MISSING;
+  }
+  return SlockOhosAttachmentOpenPreflightDecision.PROCEED;
+}
+
 export interface SlockOhosAttachmentOpenWants {
   readonly view: Want;
   readonly chooser: Want;

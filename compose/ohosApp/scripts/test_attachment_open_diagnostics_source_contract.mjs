@@ -72,8 +72,9 @@ const hostMarkers = [
   'const preflightTrace = new SlockOhosAttachmentOpenPreflightTrace(',
   'SlockOhosDiagnostics.record("SlockAttachmentOpenPreflight", message)',
   'preflightTrace.requested();',
-  'preflightTrace.requestRejected();',
+  'const preflightDecision = slockOhosAttachmentOpenPreflightDecision(',
   'preflightTrace.publicDownloadMissing(privateCommitted);',
+  'preflightTrace.requestRejected();',
   'preflightTrace.cacheChecked(privateCommitted, cached);',
   'preflightTrace.downloadStarted(privateCommitted);',
   'slockOhosAttachmentDownloadSink.download(',
@@ -128,17 +129,18 @@ function validateHost(source) {
   assertOrdered(body, hostMarkers, 'OHOS final request/cache/download/Want wiring');
 
   assertOrdered(body, [
-    'if (url === undefined || url.length === 0) {',
-    'preflightTrace.requestRejected();',
-    'callback({ "status": "failed", "message": "Unable to download attachment" });',
-    'return;',
-  ], 'URL-missing terminal');
-  assertOrdered(body, [
-    'if (requireCommittedDownload && !privateCommitted) {',
+    'const preflightDecision = slockOhosAttachmentOpenPreflightDecision(',
+    'if (preflightDecision === SlockOhosAttachmentOpenPreflightDecision.PUBLIC_DOWNLOAD_MISSING) {',
     'preflightTrace.publicDownloadMissing(privateCommitted);',
     'callback({ "status": "missing", "message": "Downloaded attachment is unavailable" });',
     'return;',
   ], 'public-download-missing terminal');
+  assertOrdered(body, [
+    'if (preflightDecision === SlockOhosAttachmentOpenPreflightDecision.URL_MISSING) {',
+    'preflightTrace.requestRejected();',
+    'callback({ "status": "failed", "message": "Unable to download attachment" });',
+    'return;',
+  ], 'URL-missing terminal');
 }
 
 function expectMutationFailure(name, sharedSource, hostSource) {
@@ -179,6 +181,11 @@ for (const marker of [
 for (const marker of hostMarkers.filter((item) => item.includes('preflightTrace.'))) {
   expectMutationFailure(`delete host ${marker}`, shared, removeFirst(host, marker));
 }
+expectMutationFailure(
+  'delete host committed-file/URL decision',
+  shared,
+  removeFirst(host, 'const preflightDecision = slockOhosAttachmentOpenPreflightDecision(')
+);
 expectMutationFailure(
   'swap shared host call/status projection',
   swapFirst(

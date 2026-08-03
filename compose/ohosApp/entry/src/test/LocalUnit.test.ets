@@ -72,6 +72,7 @@ import {
 import {
   buildSlockOhosAttachmentOpenWants,
   slockOhosAttachmentOpenDiagnostic,
+  slockOhosAttachmentOpenPreflightDecision,
   slockOhosAttachmentOpenPreflightDiagnostic,
   slockOhosAttachmentOpenFailureKind,
   SLOCK_OHOS_ACTION_SELECT,
@@ -83,6 +84,7 @@ import {
   SLOCK_OHOS_PICKER_TYPE_PARAMETER,
   SlockOhosAttachmentOpenDiagnosticTerminal,
   SlockOhosAttachmentOpenFailureKind,
+  SlockOhosAttachmentOpenPreflightDecision,
   SlockOhosAttachmentOpenPreflightTrace,
   SlockOhosAttachmentOpenPreflightStage,
 } from '../main/ets/kuikly/SlockOhosAttachmentOpenWant';
@@ -571,6 +573,20 @@ export default function localUnitTest() {
           'privateCommitted=unknown cacheUsable=unknown downloadStatus=failed'
       );
       expect(events.join('|').includes('customer-private-secret')).assertFalse();
+    });
+    it('attachmentOpenPreflightDecisionAllowsCommittedOfflineOpenWithoutUrl', 0, () => {
+      expect(slockOhosAttachmentOpenPreflightDecision(true, true, false))
+        .assertEqual(SlockOhosAttachmentOpenPreflightDecision.PROCEED);
+      expect(slockOhosAttachmentOpenPreflightDecision(false, true, false))
+        .assertEqual(SlockOhosAttachmentOpenPreflightDecision.PROCEED);
+      expect(slockOhosAttachmentOpenPreflightDecision(true, false, false))
+        .assertEqual(SlockOhosAttachmentOpenPreflightDecision.PUBLIC_DOWNLOAD_MISSING);
+      expect(slockOhosAttachmentOpenPreflightDecision(true, false, true))
+        .assertEqual(SlockOhosAttachmentOpenPreflightDecision.PUBLIC_DOWNLOAD_MISSING);
+      expect(slockOhosAttachmentOpenPreflightDecision(false, false, false))
+        .assertEqual(SlockOhosAttachmentOpenPreflightDecision.URL_MISSING);
+      expect(slockOhosAttachmentOpenPreflightDecision(false, false, true))
+        .assertEqual(SlockOhosAttachmentOpenPreflightDecision.PROCEED);
     });
     it('attachmentOpenPreflightTraceExecutesPublicMissingInExactOrder', 0, () => {
       const events: Array<string> = [];
