@@ -4,6 +4,10 @@ import build.raft.app.SlockColor
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.referentialEqualityPolicy
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -18,6 +22,7 @@ import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -25,6 +30,34 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
 private val SharedHomeSearchInputShadowOffset = 2.dp
+
+/**
+ * Owns the complete editing state synchronously for one mounted search field.
+ *
+ * Search results and their asynchronous store refreshes intentionally have no entry point into
+ * this owner. The store receives a text projection after the local value has advanced, while the
+ * editor keeps selection and composition in the exact native callback value.
+ */
+internal class SharedHomeSearchEditorOwner(initialText: String) {
+    var value by mutableStateOf(
+        TextFieldValue(initialText, selection = TextRange(initialText.length)),
+        referentialEqualityPolicy()
+    )
+        private set
+
+    fun acceptEditorValue(next: TextFieldValue, onTextChange: (String) -> Unit) {
+        val textChanged = value.text != next.text
+        value = next
+        if (textChanged) onTextChange(next.text)
+    }
+
+    fun clear(onClear: () -> Unit): Boolean {
+        if (value.text.isEmpty()) return false
+        value = TextFieldValue("")
+        onClear()
+        return true
+    }
+}
 
 private fun submitSharedHomeSearchInput(
     query: String,
