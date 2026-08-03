@@ -2390,6 +2390,16 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
     });
 }
 
+- (void)probeThreadViewportPixels:(NSDictionary *)args {
+    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    if (callback) {
+        callback(@{
+            @"status": @"unsupported",
+            @"generation": args[@"generation"] ?: @0
+        });
+    }
+}
+
 - (void)saveThreadShareImage:(NSDictionary *)args {
     KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
     if (!callback) {

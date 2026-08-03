@@ -333,6 +333,43 @@ internal class BridgeModule : Module() {
             }
         }
 
+    suspend fun probeThreadViewportPixels(
+        x: Float,
+        y: Float,
+        width: Float,
+        height: Float,
+        generation: Long
+    ): JSONObject? =
+        suspendCancellableCoroutine { continuation ->
+            val methodArgs = JSONObject()
+            methodArgs.put("x", x)
+            methodArgs.put("y", y)
+            methodArgs.put("width", width)
+            methodArgs.put("height", height)
+            methodArgs.put("generation", generation)
+            var callbackRef: CallbackRef? = null
+            var completed = false
+            val result =
+                toNative(
+                    keepCallbackAlive = false,
+                    methodName = "probeThreadViewportPixels",
+                    param = methodArgs.toString(),
+                    callback = { payload ->
+                        if (!continuation.isActive || completed) {
+                            return@toNative
+                        }
+                        completed = true
+                        callbackRef?.let { removeCallback(it) }
+                        continuation.resume(payload)
+                    },
+                    syncCall = false
+                )
+            callbackRef = result.callbackRef
+            continuation.invokeOnCancellation {
+                callbackRef?.let { removeCallback(it) }
+            }
+        }
+
     suspend fun saveThreadShareImage(path: String): JSONObject? =
         suspendCoroutine { continuation ->
             val methodArgs = JSONObject()
