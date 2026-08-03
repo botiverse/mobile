@@ -125,6 +125,7 @@ internal class RealtimeAuthorityRegistry(
     private var nextLeaseId = 0L
     private var nextFamilyId = 0L
     private var nextEpochId = 0L
+    private val terminalServerIds = mutableSetOf<String>()
 
     val snapshot: StateFlow<RealtimeRegistrySnapshot> = mutableSnapshot.asStateFlow()
 
@@ -304,10 +305,36 @@ internal class RealtimeAuthorityRegistry(
             true
         }
 
+    /**
+     * Permanently closes one membership epoch before running its terminal mutation. All scope grants for the
+     * server are revoked under the registry mutex, so a concurrent reconnect cannot mint a successor grant.
+     * The tombstone is lifted only after durable auth first observes the server absent and then explicitly
+     * present again; token rotation or a same-membership reconnect never revives it.
+     */
+    suspend fun terminalizeIfCurrentGrant(
+        grant: RealtimeGrantRecord,
+        block: suspend () -> Unit,
+    ): Boolean =
+        mutex.withLock {
+            val current = mutableSnapshot.value
+            if (current.currentGrantBySlot[grant.slotKey] != grant) return@withLock false
+            terminalServerIds += grant.serverId
+            mutableSnapshot.value =
+                current.copy(
+                    currentGrantBySlot =
+                        current.currentGrantBySlot.filterValues { candidate ->
+                            candidate.serverId != grant.serverId
+                        },
+                )
+            block()
+            true
+        }
+
     private fun rebuildForAuth(
         current: RealtimeRegistrySnapshot,
         revision: RealtimeAuthRevision,
     ): RealtimeRegistrySnapshot {
+        reconcileTerminalMemberships(current.authRevision.session, revision.session)
         val session = revision.session
             ?: return current.copy(
                 authRevision = revision,
@@ -334,7 +361,7 @@ internal class RealtimeAuthorityRegistry(
         revision: RealtimeAuthRevision,
     ): List<RealtimeGrantRecord> {
         val session = revision.session ?: return emptyList()
-        return session.serverIds.map { serverId ->
+        return session.serverIds.filterNot(terminalServerIds::contains).map { serverId ->
             RealtimeGrantRecord(
                 slotKey = RealtimeSlotKey(scopeLeaseId = scopeLeaseId, serverId = serverId),
                 principalId = session.principalId,
@@ -342,6 +369,22 @@ internal class RealtimeAuthorityRegistry(
                 connectionFamilyId = familyId,
                 connectionEpochId = nextOpaqueId("epoch", ++nextEpochId),
             )
+        }
+    }
+
+    private fun reconcileTerminalMemberships(
+        previous: RealtimeAuthoritySession?,
+        next: RealtimeAuthoritySession?,
+    ) {
+        if (terminalServerIds.isEmpty()) return
+        if (previous?.principalId != next?.principalId) {
+            terminalServerIds.clear()
+            return
+        }
+        val previousServerIds = previous?.serverIds.orEmpty().toSet()
+        val nextServerIds = next?.serverIds.orEmpty().toSet()
+        terminalServerIds.removeAll { serverId ->
+            serverId !in previousServerIds && serverId in nextServerIds
         }
     }
 

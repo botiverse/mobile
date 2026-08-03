@@ -18,6 +18,7 @@ import build.raft.app.data.realtime.MessageSeqRecoveryState
 import build.raft.app.data.realtime.MessageSeqRepairBatch
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
+import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.refreshPixelAvatarsFromWeb
 import build.raft.app.slockLogError
 import build.raft.app.slockLogInfo
@@ -339,6 +340,7 @@ internal fun CoroutineScope.observeProcessReadReceiptAuthLifecycle(
 }
 
 internal class SlockSharedStoreProvider private constructor(
+    private val bridge: BridgeModule,
     private val sqlDatabase: SlockSqlDatabase,
     private val authKeyValueStore: SlockKeyValueStore,
     private val sharedPreferenceStore: SlockKeyValueStore,
@@ -525,6 +527,17 @@ internal class SlockSharedStoreProvider private constructor(
             buildCanonicalMessageV2OwnerGateway(authStore, networkClient),
         )
         realtimeAuthorityProvider.start(threadSendScope)
+        ProcessRealtimeIngressCoordinator(
+            events = KuiklyRealtimeEvents(eventBus),
+            authorityProvider = realtimeAuthorityProvider,
+            authorityFlow = processRealtimeAuthorityFlow,
+            domainOwner = realtimeDomainEventOwner,
+            authStore = authStore,
+            environmentStore = apiEnvironmentStore,
+            mapper = RealtimeEventMapper(messageShadowObserver = messageShadowObserver),
+            nativeHost = BridgeProcessRealtimeNativeHost(bridge),
+            scope = threadSendScope,
+        ).start()
         threadSendScope.launch {
             realtimeAuthorityProvider.registerScope(
                 scopeKey = ProcessRealtimeAuthorityScopeKey,
@@ -1709,6 +1722,7 @@ internal class SlockSharedStoreProvider private constructor(
                     diagnosticsLogger = sharedInfoLogger("SlockForegroundReconcile", "shared_foreground_reconcile")
                 )
             provider = SlockSharedStoreProvider(
+                bridge = bridge,
                 sqlDatabase = database,
                 authKeyValueStore = authKeyValueStore,
                 sharedPreferenceStore = sharedPreferenceStore,
@@ -2153,6 +2167,18 @@ internal class SharedRealtimeDomainEventOwner(
             // canonical commit still runs first, including with zero mounted
             // sinks, before process-global cursor/tasks/presence mutate once.
             acceptGuarded(serverId, acceptedEvent, acceptedSource, grant.presenceAdmission())
+        }
+
+    suspend fun acceptTerminalProcessMutation(
+        grant: RealtimeGrantRecord,
+        event: RealtimeEvent,
+        source: String = "unknown",
+        runTerminalIfCurrentGrant: suspend (RealtimeGrantRecord, suspend () -> Unit) -> Boolean,
+        terminalMutation: suspend () -> Unit,
+    ): Boolean =
+        runTerminalIfCurrentGrant(grant) {
+            acceptGuarded(grant.serverId, event, source, grant.presenceAdmission())
+            terminalMutation()
         }
 
     /**

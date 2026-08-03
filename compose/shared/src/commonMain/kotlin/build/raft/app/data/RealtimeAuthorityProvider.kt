@@ -267,6 +267,26 @@ internal class RealtimeAuthorityProvider(
         return registry.runIfCurrentGrant(grant, block)
     }
 
+    suspend fun runTerminalIfCurrentGrant(
+        grant: RealtimeGrantRecord,
+        block: suspend () -> Unit,
+    ): Boolean =
+        lifecycleMutex.withLock {
+            if (pendingAuthReconciliation.value) return@withLock false
+            val grantsBeforeMutation = currentGrantSet()
+            var terminalized = false
+            try {
+                registry.terminalizeIfCurrentGrant(grant) {
+                    terminalized = true
+                    block()
+                }
+            } finally {
+                if (terminalized) {
+                    publishAndInvalidateIfGrantSetChangedLocked(grantsBeforeMutation)
+                }
+            }
+        }
+
     /**
      * Reuses the registry's current-grant linearization for the provider-central message shadow lane.
      * Provider-owned guarded canonical New/Updated frames enter that lane before acceptedKeys, recovery, and
