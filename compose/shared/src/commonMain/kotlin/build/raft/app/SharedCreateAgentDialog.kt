@@ -306,7 +306,7 @@ internal data class CreateAgentDropdownItem(
     val enabled: Boolean = true
 )
 
-private const val DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH = 3000
+internal const val CREATE_AGENT_DESCRIPTION_MAX_LENGTH = 3000
 internal const val CREATE_AGENT_NO_MACHINE_RUNTIMES_ERROR =
     "Selected computer has no runtime data. Refresh computers or choose another computer."
 
@@ -598,7 +598,7 @@ internal fun SharedCreateAgentDialog(
 ) {
     val focusManager = LocalFocusManager.current
     var name by remember(initialName) { mutableStateOf(initialName) }
-    var description by remember(initialDescription) { mutableStateOf(initialDescription) }
+    var description by remember(initialDescription) { mutableStateOf(textFieldValueAtEnd(initialDescription)) }
     var runtime by remember(initialRuntime) { mutableStateOf(initialRuntime.ifBlank { RUNTIMES.first().id }) }
     var model by remember(runtime, initialModel) { mutableStateOf(initialModel ?: getDefaultModel(runtime)) }
     var customModelMode by remember { mutableStateOf(false) }
@@ -829,7 +829,7 @@ internal fun SharedCreateAgentDialog(
     val trimmedName = name.trim()
     val inlineNameError = if (trimmedName.isNotEmpty()) validateAgentName(trimmedName) else null
     val localizedInlineNameError = inlineNameError?.let { localizedCreateAgentNameError(trimmedName, it) }
-    val descriptionTooLong = description.length > DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH
+    val descriptionTooLong = description.text.length > CREATE_AGENT_DESCRIPTION_MAX_LENGTH
     val atLimit = !external && maxAgents >= 0 && currentAgentCount >= maxAgents
     val customModelMissing = !external && customModelMode && customModelName.trim().isBlank()
     val selectedMachine = machines.firstOrNull { it.id == selectedMachineId }
@@ -1035,11 +1035,7 @@ internal fun SharedCreateAgentDialog(
                             label = stringResource(MR.strings.agent_create_label_description),
                             optional = true,
                             value = description,
-                            onValueChange = {
-                                if (it.length <= DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH) {
-                                    description = it
-                                }
-                            },
+                            onValueChange = { description = it.coerceTextLength(CREATE_AGENT_DESCRIPTION_MAX_LENGTH) },
                             placeholder = stringResource(MR.strings.agent_create_placeholder_description),
                             enabled = !submitting,
                             maxLines = 3,
@@ -1049,7 +1045,7 @@ internal fun SharedCreateAgentDialog(
                             Text(
                                 text =
                                     MR.strings.agent_create_error_description_length
-                                        .format(listOf(DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH))
+                                        .format(listOf(CREATE_AGENT_DESCRIPTION_MAX_LENGTH))
                                         .localized(),
                                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                                 color = SlockColor.AccentRed
@@ -1058,7 +1054,7 @@ internal fun SharedCreateAgentDialog(
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 Spacer(Modifier.weight(1f))
                                 Text(
-                                    text = "${description.length}/$DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH",
+                                    text = "${description.text.length}/$CREATE_AGENT_DESCRIPTION_MAX_LENGTH",
                                     style = SlockType.Caption,
                                     color = SlockColor.TextMutedGray
                                 )
@@ -1192,7 +1188,7 @@ internal fun SharedCreateAgentDialog(
                         onSubmit(
                             buildSharedCreateAgentDialogSubmit(
                                 name = trimmedName,
-                                description = description,
+                                description = description.text,
                                 selectedMachineId = selectedMachineId,
                                 requiredComputer = requiredComputer,
                                 external = external,
