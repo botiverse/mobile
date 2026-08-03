@@ -37,4 +37,36 @@ class ThreadInlineImageFallbackTest {
         assertFalse(shouldRequest)
         assertEquals(ThreadInlineImageFallbackState(), state)
     }
+
+    @Test
+    fun missingThumbnailRequestsAuthenticatedInlineFallback() {
+        assertTrue(
+            shouldRequestThreadInlineImageFallbackForMissingThumbnail(
+                thumbnailUrl = null,
+                fallbackUrl = null
+            )
+        )
+        assertTrue(
+            shouldRequestThreadInlineImageFallbackForMissingThumbnail(
+                thumbnailUrl = "   ",
+                fallbackUrl = ""
+            )
+        )
+    }
+
+    @Test
+    fun availableThumbnailOrResolvedFallbackSkipsMissingThumbnailRequest() {
+        assertFalse(
+            shouldRequestThreadInlineImageFallbackForMissingThumbnail(
+                thumbnailUrl = "https://cdn.example/thumb.png",
+                fallbackUrl = null
+            )
+        )
+        assertFalse(
+            shouldRequestThreadInlineImageFallbackForMissingThumbnail(
+                thumbnailUrl = null,
+                fallbackUrl = "https://api.example/inline"
+            )
+        )
+    }
 }
