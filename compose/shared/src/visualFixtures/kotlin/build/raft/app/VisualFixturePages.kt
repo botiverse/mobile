@@ -790,6 +790,25 @@ internal class ComposeUiButtonElegantVisualPage : BasePager() {
     }
 }
 
+@Page("compose_ui_card_visual", supportInLocal = true)
+internal class ComposeUiCardVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiCardVisualContent() }
+    }
+}
+
+// Elegant-register capture of the SAME card content, wrapped in
+// SlockThemeProvider(elegantTheme). Paired against the React elegant render as
+// components.ui.card.states.elegant (react-elegant <-> android-elegant parity).
+@Page("compose_ui_card_elegant_visual", supportInLocal = true)
+internal class ComposeUiCardElegantVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { SlockThemeProvider(theme = elegantTheme) { UiCardVisualContent() } }
+    }
+}
+
 @Page("compose_ui_form_field_visual", supportInLocal = true)
 internal class ComposeUiFormFieldVisualPage : BasePager() {
     override fun willInit() {

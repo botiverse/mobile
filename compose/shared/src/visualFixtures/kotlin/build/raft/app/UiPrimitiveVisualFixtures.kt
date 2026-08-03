@@ -4,6 +4,7 @@ import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.SlockAvatarListRow
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockBrutalBadge
 import build.raft.app.components.SlockBrutalBadgeButton
 import build.raft.app.components.SlockBrutalInputField
@@ -144,6 +145,49 @@ internal fun UiButtonThemeVisualContent() {
                     SlockBrutalActionButton(label = "Save", onClick = {}, backgroundColor = SlockColor.BrandYellow, minHeight = 32.dp, minWidth = 0.dp)
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun UiCardVisualContent() {
+    val theme = LocalSlockTheme.current
+    // Core-bbox normalization across registers (XiShi contract): the brutal card reserves a
+    // 4dp shadow gutter (visible core = outer - 4dp), the elegant card reserves none (core =
+    // outer). React's box-shadow doesn't occupy layout, so the visible card core must be the
+    // same across registers — a theme-aware outer width keeps the visible core at 310dp both.
+    val cardWidth = if (theme.family == SlockThemeFamily.Elegant) 310.dp else 314.dp
+    // Fixed 342x190 backdrop with only start/top padding (no end/bottom) so the outer
+    // width isn't constrained to 310 — brutal outer 314 (core 314-4=310) and elegant outer
+    // 310 (core 310) both fit and the visible card core equals 310dp from x=16 to x=326.
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(190.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(start = 16.dp, top = 16.dp)
+    ) {
+        SlockBrutalCard(modifier = Modifier.width(cardWidth)) {
+            Text(
+                text = "Channel settings",
+                style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
+                color = theme.ink,
+                maxLines = 1
+            )
+            Text(
+                text = "Control who can post and how the channel appears to members.",
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = theme.inkMuted
+            )
+            SlockBrutalActionButton(
+                label = "Save changes",
+                onClick = {},
+                backgroundColor = SlockColor.BrandYellow,
+                minHeight = 28.dp,
+                minWidth = 0.dp,
+                textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
+            )
         }
     }
 }
