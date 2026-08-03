@@ -4,14 +4,12 @@ import build.raft.app.SharedCreateAgentMachineOption
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -19,7 +17,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class SharedComputersStoreTest {
     @Test
     fun ensureComputerPickerLoadsMachinesOncePerServer() = runBlocking {
@@ -104,10 +101,10 @@ class SharedComputersStoreTest {
     }
 
     @Test
-    fun startupPrewarmUsesBackgroundPriority() = runTest {
+    fun startupPrewarmUsesBackgroundPriority() = runBlocking {
         val api = ControlledComputersApi()
         api.enqueue(HomeNetworkResponse(code = 200, bodyText = machinesBody))
-        val store = controlledStore(api, backgroundScope)
+        val store = controlledStore(api, this@runBlocking)
 
         store.ensureComputerPickerForServer(
             serverId = "server-1",
@@ -119,28 +116,27 @@ class SharedComputersStoreTest {
     }
 
     @Test
-    fun repeatedMembersAndDialogIntentsJoinOneInFlightRequest() = runTest {
+    fun repeatedMembersAndDialogIntentsJoinOneInFlightRequest() = runBlocking {
         val api = ControlledComputersApi()
         val response = api.enqueuePending()
-        val store = controlledStore(api, backgroundScope)
+        val store = controlledStore(api, this@runBlocking)
 
-        val membersLoad = async {
+        val membersLoad = async(start = CoroutineStart.UNDISPATCHED) {
             store.ensureComputerPickerForServer("server-1", force = true, priority = DataRequestPriority.Visible)
         }
-        runCurrent()
-        val dialogEnsure = async {
+        yield()
+        val dialogEnsure = async(start = CoroutineStart.UNDISPATCHED) {
             store.ensureComputerPickerForServer("server-1", force = false, priority = DataRequestPriority.Visible)
         }
-        val retryWhileLoading = async {
+        val retryWhileLoading = async(start = CoroutineStart.UNDISPATCHED) {
             store.ensureComputerPickerForServer("server-1", force = true, priority = DataRequestPriority.Visible)
         }
-        runCurrent()
+        yield()
 
         assertEquals(1, api.priorities.size)
         assertTrue(store.state.value.selectComputerPickerSlice("server-1").initialLoadInFlight)
 
         response.complete(HomeNetworkResponse(code = 200, bodyText = machinesBody))
-        advanceUntilIdle()
         membersLoad.await()
         dialogEnsure.await()
         retryWhileLoading.await()
@@ -148,22 +144,20 @@ class SharedComputersStoreTest {
     }
 
     @Test
-    fun overlappingServerLoadsStayIsolatedWhenResponsesCompleteOutOfOrder() = runTest {
+    fun overlappingServerLoadsStayIsolatedWhenResponsesCompleteOutOfOrder() = runBlocking {
         val api = ControlledComputersApi()
         val responseA = api.enqueuePending()
         val responseB = api.enqueuePending()
-        val store = controlledStore(api, backgroundScope)
+        val store = controlledStore(api, this@runBlocking)
 
-        val loadA = async { store.ensureComputerPickerForServer("server-a") }
-        runCurrent()
-        val loadB = async { store.ensureComputerPickerForServer("server-b") }
-        runCurrent()
+        val loadA = async(start = CoroutineStart.UNDISPATCHED) { store.ensureComputerPickerForServer("server-a") }
+        yield()
+        val loadB = async(start = CoroutineStart.UNDISPATCHED) { store.ensureComputerPickerForServer("server-b") }
+        yield()
 
         responseB.complete(HomeNetworkResponse(code = 200, bodyText = machinesBodyFor("machine-b", "B Computer")))
-        runCurrent()
         loadB.await()
         responseA.complete(HomeNetworkResponse(code = 200, bodyText = machinesBodyFor("machine-a", "A Computer")))
-        advanceUntilIdle()
         loadA.await()
 
         assertEquals(listOf("server-a", "server-b"), api.serverIds)
@@ -178,17 +172,17 @@ class SharedComputersStoreTest {
     }
 
     @Test
-    fun cachedSnapshotStaysVisibleWhileRefreshRunsAndFails() = runTest {
+    fun cachedSnapshotStaysVisibleWhileRefreshRunsAndFails() = runBlocking {
         val api = ControlledComputersApi()
         api.enqueue(HomeNetworkResponse(code = 200, bodyText = machinesBody))
         val refresh = api.enqueuePending()
-        val store = controlledStore(api, backgroundScope)
+        val store = controlledStore(api, this@runBlocking)
         store.ensureComputerPickerForServer("server-1")
 
-        val refreshing = async {
+        val refreshing = async(start = CoroutineStart.UNDISPATCHED) {
             store.ensureComputerPickerForServer("server-1", force = true)
         }
-        runCurrent()
+        yield()
 
         val warm = store.state.value.selectComputerPickerSlice("server-1")
         assertTrue(warm.hasSnapshot)
@@ -197,7 +191,6 @@ class SharedComputersStoreTest {
         assertEquals("machine-1", warm.machines.single().id)
 
         refresh.complete(HomeNetworkResponse(code = 503, bodyText = """{"error":"temporarily unavailable"}"""))
-        advanceUntilIdle()
         refreshing.await()
 
         val failedRefresh = store.state.value.selectComputerPickerSlice("server-1")
@@ -209,14 +202,15 @@ class SharedComputersStoreTest {
         assertIs<DataResult.Content<SettingsComputersSnapshot>>(
             store.loadSettingsComputersForServer("server-1")
         )
+        Unit
     }
 
     @Test
-    fun emptyCacheFailureExposesRetryableErrorAndRetryRecovers() = runTest {
+    fun emptyCacheFailureExposesRetryableErrorAndRetryRecovers() = runBlocking {
         val api = ControlledComputersApi()
         api.enqueue(HomeNetworkResponse(code = 500, bodyText = """{"error":"boom"}"""))
         api.enqueue(HomeNetworkResponse(code = 200, bodyText = machinesBody))
-        val store = controlledStore(api, backgroundScope)
+        val store = controlledStore(api, this@runBlocking)
 
         store.ensureComputerPickerForServer("server-1")
         val failed = store.state.value.selectComputerPickerSlice("server-1")
@@ -234,7 +228,7 @@ class SharedComputersStoreTest {
     }
 
     @Test
-    fun accountSwitchClearsSnapshotsAndRejectsOldCompletion() = runTest {
+    fun accountSwitchClearsSnapshotsAndRejectsOldCompletion() = runBlocking {
         val ownerA = SharedComputersOwner("environment", "account-a", "session-a")
         val ownerB = SharedComputersOwner("environment", "account-b", "session-b")
         var owner = ownerA
@@ -244,25 +238,27 @@ class SharedComputersStoreTest {
         val store =
             SharedComputersStore(
                 computersApiClient = SlockComputersApiClient(api),
-                scope = backgroundScope,
+                scope = this@runBlocking,
                 ownerProvider = { owner }
             )
 
-        val loadA = async { store.ensureComputerPickerForServer("shared-server") }
-        runCurrent()
+        val loadA = async(start = CoroutineStart.UNDISPATCHED) {
+            store.ensureComputerPickerForServer("shared-server")
+        }
+        yield()
         owner = ownerB
         store.reconcileOwner()
         assertEquals(ownerB, store.state.value.owner)
         assertFalse(store.state.value.selectComputerPickerSlice("shared-server").hasSnapshot)
 
-        val loadB = async { store.ensureComputerPickerForServer("shared-server") }
-        runCurrent()
+        val loadB = async(start = CoroutineStart.UNDISPATCHED) {
+            store.ensureComputerPickerForServer("shared-server")
+        }
+        yield()
         responseB.complete(HomeNetworkResponse(code = 200, bodyText = machinesBodyFor("machine-b", "B Computer")))
-        runCurrent()
         loadB.await()
 
         responseA.complete(HomeNetworkResponse(code = 200, bodyText = machinesBodyFor("machine-a", "A Computer")))
-        advanceUntilIdle()
         loadA.await()
 
         val slice = store.state.value.selectComputerPickerSlice("shared-server")
@@ -271,7 +267,7 @@ class SharedComputersStoreTest {
     }
 
     @Test
-    fun ownerChangeAtPublicationRejectsResponseEvenBeforeExplicitReconcile() = runTest {
+    fun ownerChangeAtPublicationRejectsResponseEvenBeforeExplicitReconcile() = runBlocking {
         val ownerA = SharedComputersOwner("environment", "account-a", "session-a")
         val ownerB = SharedComputersOwner("environment", "account-b", "session-b")
         var owner = ownerA
@@ -280,15 +276,16 @@ class SharedComputersStoreTest {
         val store =
             SharedComputersStore(
                 computersApiClient = SlockComputersApiClient(api),
-                scope = backgroundScope,
+                scope = this@runBlocking,
                 ownerProvider = { owner }
             )
 
-        val loadA = async { store.ensureComputerPickerForServer("shared-server") }
-        runCurrent()
+        val loadA = async(start = CoroutineStart.UNDISPATCHED) {
+            store.ensureComputerPickerForServer("shared-server")
+        }
+        yield()
         owner = ownerB
         responseA.complete(HomeNetworkResponse(code = 200, bodyText = machinesBodyFor("machine-a", "A Computer")))
-        advanceUntilIdle()
         loadA.await()
 
         assertEquals(ownerB, store.state.value.owner)

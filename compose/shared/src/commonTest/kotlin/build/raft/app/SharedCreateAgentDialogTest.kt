@@ -9,7 +9,7 @@ import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.model.supportsRuntimeCustomModelName
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -383,7 +383,7 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
-    fun builtInFormRefreshExecutesOnlyForMachineInCurrentSnapshot() = runTest {
+    fun builtInFormRefreshExecutesOnlyForMachineInCurrentSnapshot() = runBlocking {
         val available = listOf(SharedCreateAgentMachineOption("machine-1", "Available", "online"))
         val starts = mutableListOf<String>()
         val requests = mutableListOf<Pair<String, String>>()
