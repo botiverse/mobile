@@ -186,7 +186,27 @@ internal fun UiCardVisualContent() {
                 // React places <Button size="sm"> in a flex-col so it stretches to the card
                 // content width (~280dp); Kuikly Column keeps it content-sized without this,
                 // so fill the card width to match (XiShi actual-capture audit, both registers).
-                modifier = Modifier.fillMaxWidth(),
+                //
+                // Shadow-ink contract (brutal): SlockBrutalActionButton uses shadowOffset as BOTH
+                // the offset-box shadow displacement AND its end/bottom layout reserve. React's
+                // size="sm" button shadow is 2px, so shadowOffset = 2.dp gives a matching 2dp
+                // shadow ink (the standalone button fixture already sets 2.dp per size; the card
+                // fixture previously omitted it and fell to brutalTheme.shadow.offset = 4dp). To
+                // keep the already-parity brutal footprint (Card border 128dp, nested Button core
+                // 278dp), a brutal-only external end/bottom = 2.dp reserve restores the original
+                // 4dp footprint (2dp external + 2dp internal). Elegant renders via Modifier.shadow
+                // (no offset-box), so it ignores shadowOffset and takes NO external reserve — its
+                // geometry (the accepted waiver capture) is unchanged.
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (theme.family == SlockThemeFamily.Brutal) {
+                            Modifier.padding(end = 2.dp, bottom = 2.dp)
+                        } else {
+                            Modifier
+                        }
+                    ),
+                shadowOffset = 2.dp,
                 backgroundColor = SlockColor.BrandYellow,
                 minHeight = 28.dp,
                 minWidth = 0.dp,
