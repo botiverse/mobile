@@ -132,6 +132,23 @@ class TasksDataSourceTest {
     }
 
     @Test
+    fun taskPermissionMappersRetainExactErrorFieldOn401And403() {
+        listOf(401, 403).forEach { status ->
+            val exactReason = "  task-$status raw reason  "
+            val result =
+                HomeNetworkResponse(
+                    code = status,
+                    bodyText = null,
+                    errorBodyText = """{"error":"$exactReason"}"""
+                ).toTasksResult()
+
+            val blocker = assertIs<DataResult.NoPermission>(result).blocker
+            assertEquals("tasks_$status", blocker.code)
+            assertEquals(exactReason, blocker.serverMessage)
+        }
+    }
+
+    @Test
     fun statusUpdateMapsMatchingAlreadyAppliedConflict() = runBlocking {
         val client =
             SlockTasksApiClient(

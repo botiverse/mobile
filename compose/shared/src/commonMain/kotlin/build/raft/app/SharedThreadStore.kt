@@ -62,6 +62,7 @@ import build.raft.app.data.ThreadRouteId
 import build.raft.app.data.ThreadReplySummariesSnapshot
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.ThreadApiResult
+import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.data.ThreadAttachmentOpenTarget
 import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
@@ -4155,28 +4156,39 @@ internal class SharedThreadDataSource(
 }
 
 private fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): DataResult<Nothing> =
-    when (code) {
-        // Permission loss must surface as NoPermission, not a transient error:
-        // downstream treats NoPermission as unrecoverable (e.g. task #562 drops
-        // the first-frame cache candidate) while plain errors keep warm state.
-        401 ->
-            DataResult.NoPermission(
-                PermissionBlocker(code = "auth_required", requiredCapability = "auth_session")
-            )
-        403 ->
-            DataResult.NoPermission(
-                PermissionBlocker(
-                    code = contractCode ?: "thread_forbidden",
-                    requiredCapability = "thread_access"
+    toThreadAttachmentCommentsFailureProjection().let { projection ->
+        when (code) {
+            // Permission loss must surface as NoPermission, not a transient error:
+            // downstream treats NoPermission as unrecoverable (e.g. task #562 drops
+            // the first-frame cache candidate) while plain errors keep warm state.
+            401 ->
+                DataResult.NoPermission(
+                    PermissionBlocker(
+                        code = "auth_required",
+                        requiredCapability = "auth_session",
+                        serverMessage = projection.serverMessage
+                    )
                 )
-            )
-        else ->
-            DataResult.Error(
-                ScreenError(
-                    code = contractCode ?: errorBodyText?.takeIf { it.isNotBlank() } ?: fallbackCode,
-                    retryable = contractCode == null
+            403 ->
+                DataResult.NoPermission(
+                    PermissionBlocker(
+                        code = contractCode ?: "thread_forbidden",
+                        requiredCapability = "thread_access",
+                        serverMessage = projection.serverMessage
+                    )
                 )
-            )
+            else ->
+                DataResult.Error(
+                    ScreenError(
+                        code =
+                            contractCode
+                                ?: projection.errorCode.takeUnless { it == "http_$code" }
+                                ?: fallbackCode,
+                        retryable = contractCode == null,
+                        serverMessage = projection.serverMessage
+                    )
+                )
+        }
     }
 
 private fun ThreadApiResult<Unit>.toUnitDataResult(fallbackCode: String): DataResult<Unit> =

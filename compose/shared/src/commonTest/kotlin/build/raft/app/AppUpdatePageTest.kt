@@ -12,6 +12,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AppUpdatePageTest {
+    private val errorStrings = englishErrorPresentationStringsForTest()
+
     @Test
     fun appUpdateErrorsUseHonestStateMessagesInsteadOfBareCodes() {
         assertEquals(
@@ -21,22 +23,22 @@ class AppUpdatePageTest {
                     code = "update_backend_restarting",
                     serverMessage = "Update service maintenance is in progress"
                 )
-            ).appUpdateErrorMessage("Updates are unavailable")
+            ).appUpdateErrorMessage("Updates are unavailable", errorStrings)
         )
         assertEquals(
             "Something went wrong. Please try again.",
             DataResult.Error(ScreenError(code = "update_unknown"))
-                .appUpdateErrorMessage("Updates are unavailable")
+                .appUpdateErrorMessage("Updates are unavailable", errorStrings)
         )
         assertEquals(
             "You do not have permission to view this page.",
             DataResult.NoPermission(PermissionBlocker(code = "forbidden"))
-                .appUpdateErrorMessage("Updates are unavailable")
+                .appUpdateErrorMessage("Updates are unavailable", errorStrings)
         )
         assertEquals(
             "Updates are unavailable",
             DataResult.Empty(EmptyReason.NoSettingsAvailable)
-                .appUpdateErrorMessage("Updates are unavailable")
+                .appUpdateErrorMessage("Updates are unavailable", errorStrings)
         )
     }
 
@@ -52,7 +54,7 @@ class AppUpdatePageTest {
 
         assertEquals(
             "The update package could not be downloaded",
-            result.appUpdateErrorMessage("Updates are unavailable")
+            result.appUpdateErrorMessage("Updates are unavailable", errorStrings)
         )
     }
 
@@ -70,7 +72,7 @@ class AppUpdatePageTest {
                     code = "update_backend_restarting",
                     serverMessage = "Update service maintenance is in progress"
                 )
-            ).toAppUpdateResultProjection(previous, "Updates are unavailable")
+            ).toAppUpdateResultProjection(previous, "Updates are unavailable", errorStrings)
 
         assertEquals(previous, projection.snapshot)
         assertEquals("Update service maintenance is in progress", projection.errorMessage)
@@ -95,7 +97,7 @@ class AppUpdatePageTest {
 
         val projection =
             DataResult.Content(current)
-                .toAppUpdateResultProjection(previous, "Updates are unavailable")
+                .toAppUpdateResultProjection(previous, "Updates are unavailable", errorStrings)
 
         assertEquals("This update download failed", projection.errorMessage)
         assertEquals("This update download failed", projection.snapshot?.detail)

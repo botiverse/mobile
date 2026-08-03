@@ -234,7 +234,11 @@ private fun SettingsAccountScreen() {
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     SettingsAccountContent(
-        settingsState.account.toAccountPayload(session = null, actionState = settingsState.actionState),
+        settingsState.account.toAccountPayload(
+            session = null,
+            actionState = settingsState.actionState,
+            errorStrings = localizedErrorPresentationStrings()
+        ),
         onPasswordChange = { currentPassword, newPassword ->
             settingsViewModel.dispatch(
                 SharedSettingsIntent.ChangeAccountPassword(

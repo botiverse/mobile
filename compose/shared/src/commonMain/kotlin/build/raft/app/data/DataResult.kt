@@ -31,7 +31,53 @@ data class ScreenError(
 
 data class PermissionBlocker(
     val code: String,
-    val requiredCapability: String? = null
+    val requiredCapability: String? = null,
+    /**
+     * The route-specific adapter's decoded human-readable server reason.
+     *
+     * Classification as [DataResult.NoPermission] must not discard this wire
+     * fact. Presentation still decides whether localized copy or this raw
+     * reason wins (401 always uses localized session copy; a non-blank 403
+     * reason wins over the generic localized permission sentence).
+     */
+    val serverMessage: String? = null
+)
+
+/** Stable, locale-independent keys emitted by the data/domain layer. */
+enum class ErrorPresentationKey {
+    SessionExpired,
+    ServerUnreachable,
+    RequestTimedOut,
+    NetworkConnectionFailed,
+    ServerUnavailable,
+    ItemNotFound,
+    PermissionDenied,
+    AttachmentTooLarge,
+    TooManyAttempts,
+    ResponseUnreadable,
+    Generic,
+    EmptyNoChannels,
+    EmptyNoMessages,
+    EmptyNoTasks,
+    EmptyNoMembers,
+    EmptyNoInboxItems,
+    EmptyNoSettingsAvailable,
+    EmptyNoSearchResults
+}
+
+enum class RawServerMessagePriority {
+    LocalizedCopyFirst,
+    ServerMessageFirst
+}
+
+/**
+ * Locale-free presentation facts. UI resolves [key] through MR resources.
+ * [rawServerMessage] is deliberately retained verbatim and never translated.
+ */
+data class ErrorPresentation(
+    val key: ErrorPresentationKey,
+    val rawServerMessage: String? = null,
+    val rawServerMessagePriority: RawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst
 )
 
 fun PermissionBlocker.isAuthSessionBlocker(): Boolean =
@@ -43,72 +89,96 @@ fun ScreenError.isAuthSessionError(): Boolean =
 fun String?.isAuthSessionErrorCode(): Boolean =
     this == "auth_required" || this == "auth_session" || this == "unauthenticated"
 
-internal fun ScreenError.userFacingMessage(): String =
-    // task #193 honest-states contract: known categories keep their humane
-    // copy (overlay); anything unrecognized falls back to the server's raw
-    // error text; only when neither exists do we show the generic sentence.
-    // A bare code is never the user-facing message.
-    code.userFacingErrorCodeMessageOrNull(
-        authMessage = "Your session expired. Sign in again to continue."
+internal fun ScreenError.errorPresentation(): ErrorPresentation {
+    val key = code.errorPresentationKeyOrNull()
+    return ErrorPresentation(
+        key = key ?: ErrorPresentationKey.Generic,
+        rawServerMessage = serverMessage,
+        rawServerMessagePriority =
+            if (key == null) {
+                RawServerMessagePriority.ServerMessageFirst
+            } else {
+                RawServerMessagePriority.LocalizedCopyFirst
+            }
     )
-        ?: serverMessage?.takeIf { it.isNotBlank() }
-        ?: "Something went wrong. Please try again."
+}
 
-internal fun PermissionBlocker.userFacingMessage(): String =
-    code.userFacingErrorCodeMessage(
-        authMessage = "Your session expired. Sign in again to continue.",
-        permissionMessage = "You do not have permission to view this page."
-    )
-
-internal fun EmptyReason.userFacingMessage(): String =
-    when (this) {
-        EmptyReason.NoChannels -> "No channels are available yet."
-        EmptyReason.NoMessages -> "No messages are available yet."
-        EmptyReason.NoTasks -> "No tasks are available yet."
-        EmptyReason.NoMembers -> "No members are available yet."
-        EmptyReason.NoInboxItems -> "No activity is available yet."
-        EmptyReason.NoSettingsAvailable -> "These settings are not available right now."
-        EmptyReason.NoSearchResults -> "No results matched your search."
+internal fun PermissionBlocker.errorPresentation(): ErrorPresentation =
+    if (isAuthSessionBlocker() || code.isHttpStatusPresentationCode(401)) {
+        ErrorPresentation(
+            key = ErrorPresentationKey.SessionExpired,
+            rawServerMessage = serverMessage,
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst
+        )
+    } else {
+        ErrorPresentation(
+            key = ErrorPresentationKey.PermissionDenied,
+            rawServerMessage = serverMessage,
+            // Route-specific typed adapters only populate serverMessage from
+            // the endpoint's confirmed human-readable field. A non-blank
+            // value is therefore the deterministic "specific reason" signal;
+            // do not guess actionability from English keywords.
+            rawServerMessagePriority = RawServerMessagePriority.ServerMessageFirst
+        )
     }
 
-internal fun String?.userFacingErrorCodeMessage(
-    authMessage: String = "Please sign in again to continue.",
-    permissionMessage: String = "You do not have permission to perform this action."
-): String =
-    userFacingErrorCodeMessageOrNull(authMessage = authMessage, permissionMessage = permissionMessage)
-        ?: "Something went wrong. Please try again."
+internal fun EmptyReason.errorPresentation(): ErrorPresentation =
+    ErrorPresentation(
+        key =
+            when (this) {
+                EmptyReason.NoChannels -> ErrorPresentationKey.EmptyNoChannels
+                EmptyReason.NoMessages -> ErrorPresentationKey.EmptyNoMessages
+                EmptyReason.NoTasks -> ErrorPresentationKey.EmptyNoTasks
+                EmptyReason.NoMembers -> ErrorPresentationKey.EmptyNoMembers
+                EmptyReason.NoInboxItems -> ErrorPresentationKey.EmptyNoInboxItems
+                EmptyReason.NoSettingsAvailable -> ErrorPresentationKey.EmptyNoSettingsAvailable
+                EmptyReason.NoSearchResults -> ErrorPresentationKey.EmptyNoSearchResults
+            }
+    )
 
-internal fun String?.userFacingErrorCodeMessageOrNull(
-    authMessage: String = "Please sign in again to continue.",
-    permissionMessage: String = "You do not have permission to perform this action."
-): String? {
+internal fun String?.errorPresentation(): ErrorPresentation =
+    ErrorPresentation(key = errorPresentationKeyOrNull() ?: ErrorPresentationKey.Generic)
+
+internal fun DataResult<*>.errorPresentationOrNull(): ErrorPresentation? =
+    when (this) {
+        is DataResult.Content -> null
+        is DataResult.Empty -> reason.errorPresentation()
+        is DataResult.Error -> error.errorPresentation()
+        is DataResult.NoPermission -> blocker.errorPresentation()
+    }
+
+internal fun String?.errorPresentationKeyOrNull(): ErrorPresentationKey? {
     val normalized = this?.trim().orEmpty()
     if (normalized.isBlank()) return null
     if (!normalized.looksLikeErrorCode()) return null
     val lower = normalized.lowercase()
     return when {
-        lower.isAuthSessionErrorCode() || "auth" in lower || "unauthenticated" in lower -> authMessage
+        lower.isAuthSessionErrorCode() || lower.isHttpStatusPresentationCode(401) ||
+            "auth" in lower || "unauthenticated" in lower -> ErrorPresentationKey.SessionExpired
         "dns" in lower || "host" in lower || "unreachable" in lower ->
-            "The server could not be reached. Check your connection and try again."
+            ErrorPresentationKey.ServerUnreachable
         "timeout" in lower || "timed_out" in lower ->
-            "The server did not respond in time. Please try again."
+            ErrorPresentationKey.RequestTimedOut
         "network" in lower || "socket" in lower || lower == "code_0" || lower == "0" ->
-            "The network connection failed. Check your connection and try again."
+            ErrorPresentationKey.NetworkConnectionFailed
         "server_unavailable" in lower || "http_5" in lower || lower.endsWith("_503") ->
-            "The server is unavailable right now. Please try again shortly."
+            ErrorPresentationKey.ServerUnavailable
         "not_found" in lower || "http_404" in lower ->
-            "This item could not be found. It may have been moved or deleted."
-        "permission" in lower || "forbidden" in lower || "admin_required" in lower || "no_permission" in lower ->
-            permissionMessage
+            ErrorPresentationKey.ItemNotFound
+        lower.isHttpStatusPresentationCode(403) || "permission" in lower || "forbidden" in lower ||
+            "admin_required" in lower || "no_permission" in lower -> ErrorPresentationKey.PermissionDenied
         "too_large" in lower || "attachment_size" in lower ->
-            "The attachment is too large. Choose a smaller file and try again."
+            ErrorPresentationKey.AttachmentTooLarge
         "rate" in lower || "too_many" in lower ->
-            "Too many attempts. Please wait a moment and try again."
+            ErrorPresentationKey.TooManyAttempts
         "contract" in lower || "parse" in lower || "mismatch" in lower ->
-            "The response could not be read. Please try again."
+            ErrorPresentationKey.ResponseUnreadable
         else -> null
     }
 }
+
+private fun String.isHttpStatusPresentationCode(status: Int): Boolean =
+    this == status.toString() || this == "http_$status" || endsWith("_$status")
 
 private fun String.looksLikeErrorCode(): Boolean =
     matches(Regex("[a-z0-9_]+")) ||
@@ -117,7 +187,16 @@ private fun String.looksLikeErrorCode(): Boolean =
         matches(Regex("\\d+"))
 
 fun authSessionRequiredResult(): DataResult.NoPermission =
-    DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+    authSessionRequiredResult(serverMessage = null)
+
+fun authSessionRequiredResult(serverMessage: String?): DataResult.NoPermission =
+    DataResult.NoPermission(
+        PermissionBlocker(
+            code = "auth_required",
+            requiredCapability = "auth_session",
+            serverMessage = serverMessage
+        )
+    )
 
 inline fun <T, R> DataResult<T>.map(transform: (T) -> R): DataResult<R> =
     when (this) {

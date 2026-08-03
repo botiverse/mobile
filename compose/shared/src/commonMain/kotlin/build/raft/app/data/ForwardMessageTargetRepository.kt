@@ -919,20 +919,38 @@ private fun ForwardMessageTarget.toForwardDestination(channelId: ChannelId): For
 private fun StoredAuthSession.canAccessForwardServer(serverId: ServerId): Boolean =
     servers.any { it.id == serverId.value }
 
-private fun <T> HomeNetworkResponse.toForwardTargetDataError(): DataResult<T> =
-    when (code) {
-        401 -> forwardAuthRequired()
+private fun <T> HomeNetworkResponse.toForwardTargetDataError(): DataResult<T> {
+    val serverMessage = forwardTargetServerErrorTextOrNull()
+    return when (code) {
+        401 -> forwardAuthRequired(serverMessage)
         403 ->
             DataResult.NoPermission(
                 PermissionBlocker(
                     code = forwardTargetErrorCode("server_forbidden"),
-                    requiredCapability = "server_access"
+                    requiredCapability = "server_access",
+                    serverMessage = serverMessage
                 )
             )
-        404 -> DataResult.Error(ScreenError(code = forwardTargetErrorCode("forward_endpoint_unavailable"), retryable = false))
-        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
-        else -> DataResult.Error(ScreenError(code = forwardTargetErrorCode("http_$code"), retryable = false))
+        404 ->
+            DataResult.Error(
+                ScreenError(
+                    code = forwardTargetErrorCode("forward_endpoint_unavailable"),
+                    retryable = false,
+                    serverMessage = serverMessage
+                )
+            )
+        in 500..599 ->
+            DataResult.Error(ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage))
+        else ->
+            DataResult.Error(
+                ScreenError(
+                    code = forwardTargetErrorCode("http_$code"),
+                    retryable = false,
+                    serverMessage = serverMessage
+                )
+            )
     }
+}
 
 private fun HomeNetworkResponse.forwardTargetErrorCode(fallback: String): String {
     val payload = bodyText ?: errorBodyText ?: return fallback
@@ -946,8 +964,23 @@ private fun HomeNetworkResponse.forwardTargetErrorCode(fallback: String): String
 
 @Serializable
 private data class ForwardTargetErrorBody(
-    val code: String? = null
+    val code: String? = null,
+    val error: String? = null
 )
 
-private fun <T> forwardAuthRequired(): DataResult<T> =
+private fun HomeNetworkResponse.forwardTargetServerErrorTextOrNull(): String? {
+    val payload = bodyText?.takeIf { it.isNotBlank() }
+        ?: errorBodyText?.takeIf { it.isNotBlank() }
+        ?: return null
+    return runCatching {
+        forwardTargetJson.decodeFromString(ForwardTargetErrorBody.serializer(), payload)
+            .error
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+}
+
+private fun forwardAuthRequired(): DataResult.NoPermission =
     authSessionRequiredResult()
+
+private fun forwardAuthRequired(serverMessage: String?): DataResult.NoPermission =
+    authSessionRequiredResult(serverMessage)

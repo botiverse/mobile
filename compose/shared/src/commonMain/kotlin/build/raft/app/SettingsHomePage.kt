@@ -223,8 +223,6 @@ import build.raft.app.data.isRefreshing
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.serverConfirmationItemId
-import build.raft.app.data.userFacingMessage
-import build.raft.app.data.userFacingErrorMessage
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
@@ -2242,7 +2240,10 @@ private fun sharedHomeErrorDisplay(code: String): SlockHomeInlineError =
         actionLabel = "Retry"
     )
 
-internal fun sharedHomeSearchErrorDisplay(code: String): SlockHomeInlineError =
+internal fun sharedHomeSearchErrorDisplay(
+    code: String,
+    errorStrings: ErrorPresentationStrings
+): SlockHomeInlineError =
     SlockHomeInlineError(
         title =
             when {
@@ -2263,7 +2264,7 @@ internal fun sharedHomeSearchErrorDisplay(code: String): SlockHomeInlineError =
                 code.contains("network", ignoreCase = true) ->
                     "The current server could not be reached. Retry search after it reconnects."
                 else ->
-                    settingsUserFacingErrorCodeMessage(code)
+                    code.userFacingErrorCodeMessage(errorStrings)
             },
         code = code.ifBlank { "unknown_error" },
         actionLabel = "Retry"
@@ -2311,7 +2312,7 @@ private fun localizedSharedHomeSearchErrorDisplay(code: String): SlockHomeInline
                 code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.search_error_timeout_detail)
                 code.contains("offline", ignoreCase = true) -> stringResource(MR.strings.search_error_offline_detail)
                 code.contains("network", ignoreCase = true) -> stringResource(MR.strings.search_error_network_detail)
-                else -> settingsUserFacingErrorCodeMessage(code)
+                else -> code.userFacingErrorCodeMessage(localizedErrorPresentationStrings())
             },
         code = code.ifBlank { "unknown_error" },
         actionLabel = stringResource(MR.strings.common_retry)
@@ -2408,6 +2409,7 @@ internal fun SlockAppShellContent(
     // in the app shell lifecycle, so shared `StringDesc` lookups resolve
     // against the user's last selection rather than the OS default.
     RememberKmmResourceLocaleSeedFromLocalActivity(pageVisibleTick)
+    val errorStrings = localizedErrorPresentationStrings()
     val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
     val notificationServerUnavailableMessage = stringResource(MR.strings.home_error_notification_server_unavailable)
     val notificationSignInMessage = stringResource(MR.strings.home_error_notification_sign_in)
@@ -4359,7 +4361,9 @@ internal fun SlockAppShellContent(
                     bridge.toast(diagnosticsDraftReadyToast)
                 }
                 is DataResult.Error -> {
-                    val reason = threadFailureReasonLabel(uploadResult.error.code) ?: uploadResult.error.settingsUserFacingMessage()
+                    val reason =
+                        threadFailureReasonLabel(uploadResult.error.code)
+                            ?: uploadResult.error.userFacingMessage(errorStrings)
                     bridge.toast("$diagnosticsUploadFailedPrefix $reason")
                     bridge.log("diagnostics_feedback_attachment_upload_failed code=${uploadResult.error.code}")
                 }
@@ -6609,7 +6613,11 @@ private fun SettingsAppShellContent(
         } else when (selectedDestination) {
             SettingsDestinationAccount ->
                 SettingsAccountContent(
-                    settingsState.account.toAccountPayload(session, settingsState.actionState),
+                    settingsState.account.toAccountPayload(
+                        session,
+                        settingsState.actionState,
+                        localizedErrorPresentationStrings()
+                    ),
                     applyTopSafeArea = false,
                     bottomContentPadding = bottomContentPadding,
                     onPasswordChange = { currentPassword, newPassword ->
@@ -7493,7 +7501,7 @@ private fun SettingsConnectedAppsContent(
             is ScreenLoadState.Error ->
                 item {
                     SettingsFormSectionCard(iconName = SlockLucideIconName.TriangleAlert, title = stringResource(MR.strings.settings_connected_apps_error)) {
-                        SettingsFormErrorText(state.error.settingsUserFacingMessage())
+                        SettingsFormErrorText(state.error.localizedUserFacingMessage())
                         SlockBrutalActionButton(
                             label = stringResource(MR.strings.common_retry),
                             onClick = onRefresh,
@@ -7774,7 +7782,7 @@ private fun SettingsLanguageRegionContent(
                     SettingsLoadStateCard(
                         SlockLucideIconName.Languages,
                         stringResource(MR.strings.settings_state_unavailable),
-                        state.reason.settingsUserFacingMessage(),
+                        state.reason.localizedUserFacingMessage(),
                         stringResource(MR.strings.common_retry),
                         onRetry
                     )
@@ -7784,7 +7792,7 @@ private fun SettingsLanguageRegionContent(
                     SettingsLoadStateCard(
                         SlockLucideIconName.TriangleAlert,
                         stringResource(MR.strings.settings_error_language),
-                        state.error.settingsUserFacingMessage(),
+                        state.error.localizedUserFacingMessage(),
                         stringResource(MR.strings.common_retry),
                         onRetry
                     )
@@ -7794,7 +7802,7 @@ private fun SettingsLanguageRegionContent(
                     SettingsLoadStateCard(
                         SlockLucideIconName.Lock,
                         stringResource(MR.strings.settings_state_permission_required),
-                        state.blocker.settingsUserFacingMessage(),
+                        state.blocker.localizedUserFacingMessage(),
                         null,
                         onRetry
                     )
@@ -8080,7 +8088,7 @@ private fun SettingsAppearanceContent(
                     SettingsLoadStateCard(
                         SlockLucideIconName.Type,
                         stringResource(MR.strings.settings_state_unavailable),
-                        state.reason.settingsUserFacingMessage(),
+                        state.reason.localizedUserFacingMessage(),
                         stringResource(MR.strings.common_retry),
                         onRetry
                     )
@@ -8090,7 +8098,7 @@ private fun SettingsAppearanceContent(
                     SettingsLoadStateCard(
                         SlockLucideIconName.TriangleAlert,
                         stringResource(MR.strings.settings_error_appearance),
-                        state.error.settingsUserFacingMessage(),
+                        state.error.localizedUserFacingMessage(),
                         stringResource(MR.strings.common_retry),
                         onRetry
                     )
@@ -8100,7 +8108,7 @@ private fun SettingsAppearanceContent(
                     SettingsLoadStateCard(
                         SlockLucideIconName.Lock,
                         stringResource(MR.strings.settings_state_permission_required),
-                        state.blocker.settingsUserFacingMessage(),
+                        state.blocker.localizedUserFacingMessage(),
                         null,
                         onRetry
                     )
@@ -9071,7 +9079,7 @@ private fun SettingsNotificationsContent(
                     SettingsLoadStateCard(
                         SlockLucideIconName.Bell,
                         stringResource(MR.strings.settings_state_unavailable),
-                        state.reason.settingsUserFacingMessage(),
+                        state.reason.localizedUserFacingMessage(),
                         stringResource(MR.strings.common_retry),
                         onRetry
                     )
@@ -9081,7 +9089,7 @@ private fun SettingsNotificationsContent(
                     SettingsLoadStateCard(
                         SlockLucideIconName.TriangleAlert,
                         stringResource(MR.strings.settings_error_notification),
-                        state.error.settingsUserFacingMessage(),
+                        state.error.localizedUserFacingMessage(),
                         stringResource(MR.strings.common_retry),
                         onRetry
                     )
@@ -9091,7 +9099,7 @@ private fun SettingsNotificationsContent(
                     SettingsLoadStateCard(
                         SlockLucideIconName.Lock,
                         stringResource(MR.strings.settings_state_permission_required),
-                        state.blocker.settingsUserFacingMessage(),
+                        state.blocker.localizedUserFacingMessage(),
                         null,
                         onRetry
                     )
@@ -9492,18 +9500,6 @@ private fun SettingsLoadStateCard(
         }
     }
 }
-
-private fun ScreenError.settingsUserFacingMessage(): String =
-    userFacingMessage()
-
-private fun PermissionBlocker.settingsUserFacingMessage(): String =
-    userFacingMessage()
-
-private fun EmptyReason.settingsUserFacingMessage(): String =
-    userFacingMessage()
-
-private fun settingsUserFacingErrorCodeMessage(code: String): String =
-    ScreenError(code).settingsUserFacingMessage()
 
 private fun SettingsMobileSelectionSnapshot.toSelectOptions(): List<SlockBrutalSelectOption> =
     options.map { SlockBrutalSelectOption(it.key, it.label) }
@@ -10444,7 +10440,7 @@ private fun SettingsServerDangerZoneCard(
             errorMessage =
                 actionState
                     ?.takeIf { it.action == SERVER_ACTION_DELETE }
-                    ?.userFacingErrorMessage(),
+                    ?.userFacingErrorMessage(localizedErrorPresentationStrings()),
             onDismiss = {
                 if (!deleteBusy) {
                     showDeleteModal = false
@@ -10806,7 +10802,7 @@ private fun SettingsServerAdminsCard(
         }
     }
     SettingsFormSectionCard(iconName = SlockLucideIconName.Shield, title = stringResource(MR.strings.settings_server_section_owners_admins)) {
-        section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+        section.localizedDetail()?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         if (candidates.isNotEmpty()) {
             Text(
                 stringResource(MR.strings.settings_server_action_add_admin),
@@ -10928,7 +10924,7 @@ private fun SettingsServerInvitesCard(
     onAction: (String, String?) -> Unit
 ) {
     SettingsFormSectionCard(iconName = SlockLucideIconName.MailPlus, title = stringResource(MR.strings.settings_section_pending_invites_title)) {
-        section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+        section.localizedDetail()?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         if (invites.isEmpty()) {
             SettingsFormEmptyText(stringResource(MR.strings.settings_admin_no_pending_invites))
         } else {
@@ -10973,7 +10969,7 @@ private fun SettingsServerJoinLinksCard(
     val createBusy = actionState?.action == SERVER_ACTION_JOIN_LINK_CREATE && actionState.inProgress
     val createEnabled = !createBusy && !maxUsesInvalid
     SettingsFormSectionCard(iconName = SlockLucideIconName.Link2, title = stringResource(MR.strings.settings_section_join_links_title)) {
-        section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+        section.localizedDetail()?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SlockBrutalTextField(
             label = stringResource(MR.strings.settings_server_label_max_uses),
             labelSize = SlockFormFieldSize.Compact,
@@ -11058,7 +11054,7 @@ private fun SettingsServerAgreementCard(
             (enabled != agreement.enabled || title.trim() != agreement.title || bodyMarkdown != agreement.bodyMarkdown)
     val saveEnabled = canSave && dirty && !busy && !bodyTooLong && !titleTooLong
     SettingsFormSectionCard(iconName = SlockLucideIconName.FileCheck, title = stringResource(MR.strings.settings_section_pre_join_agreement_title)) {
-        section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+        section.localizedDetail()?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SettingsSegmentedControlField(
             selectedValue = if (enabled) "enabled" else "disabled",
             options = listOf(
@@ -11151,7 +11147,7 @@ private fun SettingsServerOnboardingCard(
     val dirty = onboarding != null && (selectedAgentId != currentAgentId || greetingEnabled != currentGreeting)
     val agents = onboarding?.agents.orEmpty()
     SettingsFormSectionCard(iconName = SlockLucideIconName.Bot, title = stringResource(MR.strings.settings_section_onboarding_title)) {
-        section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+        section.localizedDetail()?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         Text(
             stringResource(MR.strings.settings_server_label_onboarding_agent),
             style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
@@ -11220,7 +11216,7 @@ private fun SettingsServerMemberPermissionsCard(
     val busy = actionState?.action == SERVER_ACTION_MEMBER_PERMISSIONS_SAVE && actionState.inProgress
     val dirty = profile != null && hideHumansFromMembers != profile.hideHumansFromMembers
     SettingsFormSectionCard(iconName = SlockLucideIconName.UsersRound, title = stringResource(MR.strings.settings_section_member_permissions_title)) {
-        section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+        section.localizedDetail()?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SettingsSegmentedControlField(
             selectedValue = if (hideHumansFromMembers) "hidden" else "visible",
             options = listOf(
@@ -11312,7 +11308,9 @@ private fun SettingsFormErrorText(text: String) {
 
 @Composable
 private fun SettingsFormErrorText(actionState: SharedSettingsActionState) {
-    actionState.userFacingErrorMessage()?.let { SettingsFormErrorText(it) }
+    actionState
+        .userFacingErrorMessage(localizedErrorPresentationStrings())
+        ?.let { SettingsFormErrorText(it) }
 }
 
 @Composable
@@ -11443,7 +11441,14 @@ internal fun SharedSettingsAboutContent(
             is ScreenLoadState.Content -> state.data
             else -> fallback
         }
-    val aboutPayload = snapshot.toAboutPayload(webUrl, updateCheck, actionState, settingsAboutPayloadCopy(sharedSettingsResolvedWebBaseUrl(webUrl)))
+    val aboutPayload =
+        snapshot.toAboutPayload(
+            webUrl = webUrl,
+            errorStrings = localizedErrorPresentationStrings(),
+            updateCheck = updateCheck,
+            actionState = actionState,
+            copy = settingsAboutPayloadCopy(sharedSettingsResolvedWebBaseUrl(webUrl))
+        )
     val developer = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
     val environmentStatus =
         when (developerState) {
@@ -11549,7 +11554,11 @@ private fun SharedSettingsOpenSourceLicensesContent(
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onOpenUrl: (String) -> Unit
 ) {
-    val payload = state.toOpenSourceLicensesPayload(settingsOpenSourceLicensesPayloadCopy())
+    val payload =
+        state.toOpenSourceLicensesPayload(
+            errorStrings = localizedErrorPresentationStrings(),
+            copy = settingsOpenSourceLicensesPayloadCopy()
+        )
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             "openLicenseUrl", "openSourceUrl" ->
@@ -11569,7 +11578,13 @@ internal fun SharedSettingsDeveloperContent(
     onOpenRouter: () -> Unit
 ) {
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
-    val payload = snapshot.toDeveloperPayload(state, actionState, settingsDeveloperPayloadCopy())
+    val payload =
+        snapshot.toDeveloperPayload(
+            state = state,
+            actionState = actionState,
+            errorStrings = localizedErrorPresentationStrings(),
+            copy = settingsDeveloperPayloadCopy()
+        )
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
         when (action) {
             DEVELOPER_ACTION_API_ENVIRONMENT -> onOpenApiEnvironment()
@@ -11794,6 +11809,7 @@ internal fun SharedSettingsDiagnosticsContent(
             state = state,
             actionState = actionState,
             copy = settingsDiagnosticsPayloadCopy(),
+            errorStrings = localizedErrorPresentationStrings(),
             includeLocalFeatureOverrides = onOpenLocalFeatureOverrides != null,
             appleSignInLocalOverride =
                 if (onSetAppleSignInLocalOverride != null && snapshot?.appleSignInLocalOverrideAvailable == true) {
@@ -13151,14 +13167,16 @@ private fun appShellSettingsHomePayload(
 
 internal fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
     session: StoredAuthSession?,
-    actionState: build.raft.app.data.SharedSettingsActionState? = null
+    actionState: build.raft.app.data.SharedSettingsActionState? = null,
+    errorStrings: ErrorPresentationStrings
 ): KuiklySettingsAccountPayload {
     val account = (this as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
     val providerActionId =
         actionState
             ?.itemId
             ?.takeIf { actionState.action == ACCOUNT_ACTION_PROVIDER_CONNECT }
-    val actionErrorMessage = actionState?.userFacingErrorMessage()
+    val actionErrorMessage =
+        actionState?.userFacingErrorMessage(errorStrings)
     return (account?.toAccountPayload() ?: appShellAccountPayload(session))
         .copy(
             saveInProgress = actionState?.action == ACCOUNT_ACTION_PROFILE_SAVE && actionState.inProgress,
@@ -13251,9 +13269,14 @@ internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
         when (this) {
             ScreenLoadState.Loading -> if (refreshing) stringResource(MR.strings.settings_storage_refreshing) else stringResource(MR.strings.settings_storage_loading)
             is ScreenLoadState.Empty -> stringResource(MR.strings.settings_storage_unavailable)
-            is ScreenLoadState.Error -> MR.strings.settings_storage_unavailable_detail.format(listOf(this.error.settingsUserFacingMessage())).localized()
-            is ScreenLoadState.NoPermission -> MR.strings.settings_storage_unavailable_detail.format(listOf(this.blocker.settingsUserFacingMessage())).localized()
-            is ScreenLoadState.Content -> storage?.feedback.orEmpty()
+            is ScreenLoadState.Error -> MR.strings.settings_storage_unavailable_detail.format(listOf(this.error.localizedUserFacingMessage())).localized()
+            is ScreenLoadState.NoPermission -> MR.strings.settings_storage_unavailable_detail.format(listOf(this.blocker.localizedUserFacingMessage())).localized()
+            is ScreenLoadState.Content ->
+                storage?.feedback.orEmpty().ifBlank {
+                    storage?.feedbackError
+                        ?.resolve(localizedErrorPresentationStrings())
+                        .orEmpty()
+                }
         }
     return KuiklySettingsStoragePayload(
         instanceId = "shared-shell-settings-storage",
@@ -13354,6 +13377,7 @@ private fun storageTargetIconName(target: String): SlockLucideIconName =
 internal fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
     session: StoredAuthSession?,
     timeContext: SlockTimeContext?,
+    errorStrings: ErrorPresentationStrings,
     actionState: build.raft.app.data.SharedSettingsActionState? = null
 ): KuiklySettingsBillingPayload {
     val billing = (this as? ScreenLoadState.Content<SettingsBillingSnapshot>)?.data
@@ -13403,7 +13427,7 @@ internal fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
             }.orEmpty(),
         actions =
             billing?.actions?.map { action ->
-                action.toBillingActionPayload(actionState)
+                action.toBillingActionPayload(actionState, errorStrings)
             }.orEmpty(),
         comparePlansUrl = billing?.comparePlansUrl.orEmpty().ifBlank { "https://raft.build/#pricing" },
         plans =
@@ -13423,6 +13447,7 @@ internal fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
     )
 }
 
+@Composable
 private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
     session: StoredAuthSession?,
     refreshing: Boolean,
@@ -13435,9 +13460,9 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
     val detail =
         when (this) {
             ScreenLoadState.Loading -> if (refreshing) "Refreshing workspace settings..." else "Loading workspace settings..."
-            is ScreenLoadState.Error -> "Workspace settings failed to load: ${error.settingsUserFacingMessage()}"
-            is ScreenLoadState.NoPermission -> "Workspace settings unavailable: ${blocker.settingsUserFacingMessage()}"
-            is ScreenLoadState.Empty -> "Workspace settings unavailable: ${reason.settingsUserFacingMessage()}"
+            is ScreenLoadState.Error -> "Workspace settings failed to load: ${error.localizedUserFacingMessage()}"
+            is ScreenLoadState.NoPermission -> "Workspace settings unavailable: ${blocker.localizedUserFacingMessage()}"
+            is ScreenLoadState.Empty -> "Workspace settings unavailable: ${reason.localizedUserFacingMessage()}"
             is ScreenLoadState.Content -> "Manage this workspace's profile. Admin actions live under Administration."
         }
     return KuiklySharedSettingsPayload(
@@ -13484,14 +13509,15 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
     actionState: build.raft.app.data.SharedSettingsActionState?,
     timeContext: SlockTimeContext?
 ): KuiklySharedSettingsPayload {
+    val errorStrings = localizedErrorPresentationStrings()
     val server = session?.currentServerSummary()
     val snapshot = (this as? ScreenLoadState.Content<SettingsServerSnapshot>)?.data
     val detail =
         when (this) {
             ScreenLoadState.Loading -> if (refreshing) "Refreshing administration..." else "Loading administration..."
-            is ScreenLoadState.Error -> "Administration failed to load: ${error.settingsUserFacingMessage()}"
-            is ScreenLoadState.NoPermission -> "Administration unavailable: ${blocker.settingsUserFacingMessage()}"
-            is ScreenLoadState.Empty -> "Administration unavailable: ${reason.settingsUserFacingMessage()}"
+            is ScreenLoadState.Error -> "Administration failed to load: ${error.localizedUserFacingMessage()}"
+            is ScreenLoadState.NoPermission -> "Administration unavailable: ${blocker.localizedUserFacingMessage()}"
+            is ScreenLoadState.Empty -> "Administration unavailable: ${reason.localizedUserFacingMessage()}"
             is ScreenLoadState.Content -> "Manage admins, invites, join links, and pre-join agreements."
         }
     val sectionsByKey = snapshot?.sections.orEmpty().associateBy { it.key }
@@ -13515,13 +13541,14 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
                                     section = section,
                                     sectionTitle = sectionTitle,
                                     actorRole = server?.role,
-                                    actionState = actionState
+                                    actionState = actionState,
+                                    errorStrings = errorStrings
                                 )
                         )
                     "system_channels" ->
                         KuiklySharedSettingsSection(
                             title = sectionTitle,
-                            rows = snapshot?.systemChannels.toSystemChannelRows(section, sectionTitle, actionState)
+                            rows = snapshot?.systemChannels.toSystemChannelRows(section, sectionTitle, actionState, errorStrings)
                         )
                     "pending_invites" ->
                         KuiklySharedSettingsSection(
@@ -13536,27 +13563,27 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
                     "pre_join_agreement" ->
                         KuiklySharedSettingsSection(
                             title = sectionTitle,
-                            rows = snapshot?.agreement.toAgreementRows(section, sectionTitle, actionState)
+                            rows = snapshot?.agreement.toAgreementRows(section, sectionTitle, actionState, errorStrings)
                         )
                     "onboarding_agent" ->
                         KuiklySharedSettingsSection(
                             title = sectionTitle,
-                            rows = snapshot?.onboarding.toOnboardingRows(section, sectionTitle, actionState)
+                            rows = snapshot?.onboarding.toOnboardingRows(section, sectionTitle, actionState, errorStrings)
                         )
                     "translation" ->
                         KuiklySharedSettingsSection(
                             title = sectionTitle,
-                            rows = snapshot?.translation.toTranslationRows(section, sectionTitle, actionState)
+                            rows = snapshot?.translation.toTranslationRows(section, sectionTitle, actionState, errorStrings)
                         )
                     "member_permissions" ->
                         KuiklySharedSettingsSection(
                             title = sectionTitle,
-                            rows = snapshot?.profile.toMemberPermissionsRows(section, sectionTitle, actionState)
+                            rows = snapshot?.profile.toMemberPermissionsRows(section, sectionTitle, actionState, errorStrings)
                         )
                     "sidebar_order" ->
                         KuiklySharedSettingsSection(
                             title = sectionTitle,
-                            rows = snapshot?.sidebarOrder.toSidebarOrderRows(section, sectionTitle, actionState)
+                            rows = snapshot?.sidebarOrder.toSidebarOrderRows(section, sectionTitle, actionState, errorStrings)
                         )
                     else -> error("Unknown administration section: ${spec.key}")
                 }
@@ -13587,15 +13614,23 @@ internal fun settingsAdministrationAdminRows(
     section: SettingsServerSectionSnapshot?,
     sectionTitle: String,
     actorRole: String?,
-    actionState: build.raft.app.data.SharedSettingsActionState?
+    actionState: build.raft.app.data.SharedSettingsActionState?,
+    errorStrings: ErrorPresentationStrings
 ): List<KuiklySharedSettingsRow> =
-    members.toAdminRows(section = section, sectionTitle = sectionTitle, actorRole = actorRole, actionState = actionState)
+    members.toAdminRows(
+        section = section,
+        sectionTitle = sectionTitle,
+        actorRole = actorRole,
+        actionState = actionState,
+        errorStrings = errorStrings
+    )
 
 private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
     section: SettingsServerSectionSnapshot?,
     sectionTitle: String,
     actorRole: String?,
-    actionState: build.raft.app.data.SharedSettingsActionState?
+    actionState: build.raft.app.data.SharedSettingsActionState?,
+    errorStrings: ErrorPresentationStrings
 ): List<KuiklySharedSettingsRow> {
     val members = this.orEmpty()
     val admins =
@@ -13603,7 +13638,15 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
             .filter { it.isPrivilegedServerMember() }
             .sortedWith(compareBy<SettingsServerAdminSnapshot> { if (it.normalizedRole() == "owner") 0 else 1 }.thenBy { it.name })
     if (admins.isEmpty()) {
-        return listOf(section.toPlaceholderRow("admins", SlockLucideIconName.Shield, sectionTitle, "No owners or admins are available."))
+        return listOf(
+            section.toPlaceholderRow(
+                "admins",
+                SlockLucideIconName.Shield,
+                sectionTitle,
+                "No owners or admins are available.",
+                errorStrings
+            )
+        )
     }
     val normalizedActorRole = actorRole.normalizedServerRole()
     val ownerCount = admins.count { it.normalizedRole() == "owner" }
@@ -13730,7 +13773,8 @@ private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
 private fun SettingsServerAgreementSnapshot?.toAgreementRows(
     section: SettingsServerSectionSnapshot?,
     sectionTitle: String,
-    actionState: build.raft.app.data.SharedSettingsActionState?
+    actionState: build.raft.app.data.SharedSettingsActionState?,
+    errorStrings: ErrorPresentationStrings
 ): List<KuiklySharedSettingsRow> =
     listOf(
         this?.let { agreement ->
@@ -13743,13 +13787,20 @@ private fun SettingsServerAgreementSnapshot?.toAgreementRows(
                 status = actionState.serverStatusFor(SERVER_ACTION_AGREEMENT_SAVE, agreement.statusLabel),
                 enabled = agreement.canSave && actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("preJoinAgreement", SlockLucideIconName.FileCheck, sectionTitle, "No pre-join agreement settings are available.")
+        } ?: section.toPlaceholderRow(
+            "preJoinAgreement",
+            SlockLucideIconName.FileCheck,
+            sectionTitle,
+            "No pre-join agreement settings are available.",
+            errorStrings
+        )
     )
 
 private fun SettingsServerOnboardingSnapshot?.toOnboardingRows(
     section: SettingsServerSectionSnapshot?,
     sectionTitle: String,
-    actionState: build.raft.app.data.SharedSettingsActionState?
+    actionState: build.raft.app.data.SharedSettingsActionState?,
+    errorStrings: ErrorPresentationStrings
 ): List<KuiklySharedSettingsRow> =
     listOf(
         this?.let { onboarding ->
@@ -13762,13 +13813,20 @@ private fun SettingsServerOnboardingSnapshot?.toOnboardingRows(
                 status = actionState.serverStatusFor(SERVER_ACTION_ONBOARDING_SAVE, onboarding.statusLabel),
                 enabled = onboarding.canSave && actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("onboarding", SlockLucideIconName.Bot, sectionTitle, "No onboarding settings are available.")
+        } ?: section.toPlaceholderRow(
+            "onboarding",
+            SlockLucideIconName.Bot,
+            sectionTitle,
+            "No onboarding settings are available.",
+            errorStrings
+        )
     )
 
 private fun build.raft.app.data.SettingsServerProfileSnapshot?.toMemberPermissionsRows(
     section: SettingsServerSectionSnapshot?,
     sectionTitle: String,
-    actionState: build.raft.app.data.SharedSettingsActionState?
+    actionState: build.raft.app.data.SharedSettingsActionState?,
+    errorStrings: ErrorPresentationStrings
 ): List<KuiklySharedSettingsRow> =
     listOf(
         this?.let { profile ->
@@ -13784,13 +13842,20 @@ private fun build.raft.app.data.SettingsServerProfileSnapshot?.toMemberPermissio
                 ),
                 enabled = profile.canSave && actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("memberPermissions", SlockLucideIconName.UsersRound, sectionTitle, "No member permission settings are available.")
+        } ?: section.toPlaceholderRow(
+            "memberPermissions",
+            SlockLucideIconName.UsersRound,
+            sectionTitle,
+            "No member permission settings are available.",
+            errorStrings
+        )
     )
 
 private fun SettingsServerTranslationSnapshot?.toTranslationRows(
     section: SettingsServerSectionSnapshot?,
     sectionTitle: String,
-    actionState: build.raft.app.data.SharedSettingsActionState?
+    actionState: build.raft.app.data.SharedSettingsActionState?,
+    errorStrings: ErrorPresentationStrings
 ): List<KuiklySharedSettingsRow> =
     listOf(
         this?.let { translation ->
@@ -13803,20 +13868,43 @@ private fun SettingsServerTranslationSnapshot?.toTranslationRows(
                 status = actionState.serverStatusFor(SERVER_ACTION_TRANSLATION_TOGGLE, translation.statusLabel),
                 enabled = translation.translationAvailable && translation.canManageTranslation && actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("translation", SlockLucideIconName.Languages, sectionTitle, "No translation settings are available.")
+        } ?: section.toPlaceholderRow(
+            "translation",
+            SlockLucideIconName.Languages,
+            sectionTitle,
+            "No translation settings are available.",
+            errorStrings
+        )
     )
 
 private fun SettingsServerSystemChannelSnapshot?.toSystemChannelRows(
     section: SettingsServerSectionSnapshot?,
     sectionTitle: String,
-    actionState: build.raft.app.data.SharedSettingsActionState?
+    actionState: build.raft.app.data.SharedSettingsActionState?,
+    errorStrings: ErrorPresentationStrings
 ): List<KuiklySharedSettingsRow> {
     val system = this
     if (system == null) {
-        return listOf(section.toPlaceholderRow("system_channels", SlockLucideIconName.Eye, sectionTitle, "System channel controls are unavailable."))
+        return listOf(
+            section.toPlaceholderRow(
+                "system_channels",
+                SlockLucideIconName.Eye,
+                sectionTitle,
+                "System channel controls are unavailable.",
+                errorStrings
+            )
+        )
     }
     if (system.allChannelId.isBlank()) {
-        return listOf(section.toPlaceholderRow("system_channels", SlockLucideIconName.Eye, sectionTitle, "No #all channel was found for this workspace."))
+        return listOf(
+            section.toPlaceholderRow(
+                "system_channels",
+                SlockLucideIconName.Eye,
+                sectionTitle,
+                "No #all channel was found for this workspace.",
+                errorStrings
+            )
+        )
     }
     return listOf(
         KuiklySharedSettingsRow(
@@ -13834,7 +13922,8 @@ private fun SettingsServerSystemChannelSnapshot?.toSystemChannelRows(
 private fun SettingsServerSidebarOrderSnapshot?.toSidebarOrderRows(
     section: SettingsServerSectionSnapshot?,
     sectionTitle: String,
-    actionState: build.raft.app.data.SharedSettingsActionState?
+    actionState: build.raft.app.data.SharedSettingsActionState?,
+    errorStrings: ErrorPresentationStrings
 ): List<KuiklySharedSettingsRow> =
     listOf(
         this?.let { order ->
@@ -13848,9 +13937,16 @@ private fun SettingsServerSidebarOrderSnapshot?.toSidebarOrderRows(
                 status = actionState.serverStatusFor(SERVER_ACTION_SIDEBAR_ORDER, order.channelSortMode.ifBlank { "manual" }),
                 enabled = actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("sidebarOrder", SlockLucideIconName.ListTree, sectionTitle, "No sidebar order settings are available.")
+        } ?: section.toPlaceholderRow(
+            "sidebarOrder",
+            SlockLucideIconName.ListTree,
+            sectionTitle,
+            "No sidebar order settings are available.",
+            errorStrings
+        )
     )
 
+@Composable
 private fun SettingsServerSnapshot?.toPlanRows(
     billingSection: SettingsServerSectionSnapshot?,
     fallbackPlan: String
@@ -13860,12 +13956,13 @@ private fun SettingsServerSnapshot?.toPlanRows(
             key = "billingSummary",
             iconName = SlockLucideIconName.ShieldCheck,
             title = "Plan",
-            detail = billingSection?.detail ?: "Current workspace billing and usage summary.",
+            detail = billingSection.localizedDetail() ?: "Current workspace billing and usage summary.",
             status = this?.usageRows?.firstOrNull()?.value ?: fallbackPlan,
             enabled = false
         )
     )
 
+@Composable
 private fun SettingsServerSectionSnapshot?.toPlaceholderRow(
     key: String,
     iconName: SlockLucideIconName,
@@ -13876,10 +13973,35 @@ private fun SettingsServerSectionSnapshot?.toPlaceholderRow(
         key = key,
         iconName = iconName,
         title = sectionTitle,
-        detail = this?.detail ?: fallbackDetail,
+        detail = localizedDetail() ?: fallbackDetail,
         status = this?.state?.name ?: "Unavailable",
         enabled = false
     )
+
+private fun SettingsServerSectionSnapshot?.toPlaceholderRow(
+    key: String,
+    iconName: SlockLucideIconName,
+    sectionTitle: String,
+    fallbackDetail: String,
+    errorStrings: ErrorPresentationStrings
+): KuiklySharedSettingsRow =
+    KuiklySharedSettingsRow(
+        key = key,
+        iconName = iconName,
+        title = sectionTitle,
+        detail = localizedDetail(errorStrings) ?: fallbackDetail,
+        status = this?.state?.name ?: "Unavailable",
+        enabled = false
+    )
+
+@Composable
+private fun SettingsServerSectionSnapshot?.localizedDetail(): String? =
+    this?.errorPresentation?.resolve(localizedErrorPresentationStrings())
+        ?: this?.detail
+
+private fun SettingsServerSectionSnapshot?.localizedDetail(errorStrings: ErrorPresentationStrings): String? =
+    this?.errorPresentation?.resolve(errorStrings)
+        ?: this?.detail
 
 private fun MemberProfile.isWorkspaceAdmin(): Boolean {
     val role = roleDescription.orEmpty().lowercase()
@@ -13893,11 +14015,12 @@ private fun MemberProfile.isWorkspaceAdmin(): Boolean {
 
 internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
     actionState: build.raft.app.data.SharedSettingsActionState?,
-    refreshing: Boolean
+    refreshing: Boolean,
+    errorStrings: ErrorPresentationStrings
 ): KuiklySharedSettingsPayload {
     val mobile =
         (this as? ScreenLoadState.Content<SettingsMobileSnapshot>)?.data
-            ?: return appShellMobilePlaceholderPayload(this, refreshing)
+            ?: return appShellMobilePlaceholderPayload(this, refreshing, errorStrings)
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-mobile",
         title = "Mobile",
@@ -13934,28 +14057,32 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                 iconName = SlockLucideIconName.MessageSquare,
                                 title = "Compact consecutive messages",
                                 fallbackStatus = "Unsupported",
-                                actionState = actionState
+                                actionState = actionState,
+                                errorStrings = errorStrings
                             ),
                             mobile.longMessageCollapse.toMobileToggleRow(
                                 key = MOBILE_ACTION_LONG_MESSAGE_COLLAPSE,
                                 iconName = SlockLucideIconName.ClipboardList,
                                 title = "Collapse long messages",
                                 fallbackStatus = "Off",
-                                actionState = actionState
+                                actionState = actionState,
+                                errorStrings = errorStrings
                             ),
                             mobile.singleTapOpensThread.toMobileToggleRow(
                                 key = MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD,
                                 iconName = SlockLucideIconName.MessageSquare,
                                 title = "Single tap opens Thread",
                                 fallbackStatus = "Off",
-                                actionState = actionState
+                                actionState = actionState,
+                                errorStrings = errorStrings
                             ),
                             mobile.foregroundMessageBanners.toMobileToggleRow(
                                 key = MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS,
                                 iconName = SlockLucideIconName.MessageCircle,
                                 title = "Foreground message banners",
                                 fallbackStatus = "Off",
-                                actionState = actionState
+                                actionState = actionState,
+                                errorStrings = errorStrings
                             ),
                             mobile.serverDrawer.toMobileToggleRow(
                                 key = MOBILE_ACTION_SERVER_DRAWER,
@@ -13963,6 +14090,7 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                 title = "Multi-server Home drawer",
                                 fallbackStatus = "Off",
                                 actionState = actionState,
+                                errorStrings = errorStrings,
                                 badgeLabel = "Beta"
                             ),
                             mobile.homeServerAvatar.toMobileToggleRow(
@@ -13970,7 +14098,8 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                 iconName = SlockLucideIconName.Image,
                                 title = "Show workspace avatar in Home header",
                                 fallbackStatus = "Off",
-                                actionState = actionState
+                                actionState = actionState,
+                                errorStrings = errorStrings
                             )
                         )
                 )
@@ -13987,6 +14116,7 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                         title = "Multiple app windows",
                                         fallbackStatus = "Off",
                                         actionState = actionState,
+                                        errorStrings = errorStrings,
                                         badgeLabel = "Beta"
                                     )
                                 )
@@ -14000,11 +14130,12 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
 
 private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayload(
     actionState: build.raft.app.data.SharedSettingsActionState?,
-    refreshing: Boolean
+    refreshing: Boolean,
+    errorStrings: ErrorPresentationStrings
 ): KuiklySharedSettingsPayload {
     val languageRegion =
         (this as? ScreenLoadState.Content<SettingsLanguageRegionSnapshot>)?.data
-            ?: return appShellLanguageRegionPlaceholderPayload(this, refreshing)
+            ?: return appShellLanguageRegionPlaceholderPayload(this, refreshing, errorStrings)
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-language-region",
         title = "Language & Region",
@@ -14026,7 +14157,9 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
                                 key = LANGUAGE_REGION_ACTION_SERVER_TRANSLATION,
                                 iconName = SlockLucideIconName.Languages,
                                 title = "Enable message translation for this server",
-                                detail = languageRegion.serverTranslation.detail,
+                                detail =
+                                    languageRegion.serverTranslation.errorPresentation?.resolve(errorStrings)
+                                        ?: languageRegion.serverTranslation.detail,
                                 value = (!languageRegion.serverTranslation.enabled).toString(),
                                 status =
                                     actionState.statusFor(
@@ -14039,7 +14172,9 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
                                 key = LANGUAGE_REGION_ACTION_AUTO_TRANSLATION,
                                 iconName = SlockLucideIconName.Wand,
                                 title = "Auto-translate messages",
-                                detail = languageRegion.autoTranslation.detail,
+                                detail =
+                                    languageRegion.autoTranslation.errorPresentation?.resolve(errorStrings)
+                                        ?: languageRegion.autoTranslation.detail,
                                 value = (!languageRegion.autoTranslation.enabled).toString(),
                                 status =
                                     actionState.statusFor(
@@ -14083,7 +14218,8 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
 
 private fun appShellLanguageRegionPlaceholderPayload(
     state: ScreenLoadState<SettingsLanguageRegionSnapshot>,
-    refreshing: Boolean
+    refreshing: Boolean,
+    errorStrings: ErrorPresentationStrings
 ): KuiklySharedSettingsPayload {
     val status =
         when (state) {
@@ -14095,9 +14231,9 @@ private fun appShellLanguageRegionPlaceholderPayload(
         }
     val detail =
         when (state) {
-            is ScreenLoadState.Error -> state.error.settingsUserFacingMessage()
-            is ScreenLoadState.NoPermission -> state.blocker.settingsUserFacingMessage()
-            is ScreenLoadState.Empty -> state.reason.settingsUserFacingMessage()
+            is ScreenLoadState.Error -> state.error.userFacingMessage(errorStrings)
+            is ScreenLoadState.NoPermission -> state.blocker.userFacingMessage(errorStrings)
+            is ScreenLoadState.Empty -> state.reason.userFacingMessage(errorStrings)
             else -> "Loading language and region settings."
         }
     return KuiklySharedSettingsPayload(
@@ -14128,7 +14264,8 @@ private fun appShellLanguageRegionPlaceholderPayload(
 
 private fun appShellMobilePlaceholderPayload(
     state: ScreenLoadState<SettingsMobileSnapshot>,
-    refreshing: Boolean
+    refreshing: Boolean,
+    errorStrings: ErrorPresentationStrings
 ): KuiklySharedSettingsPayload {
     val status =
         when (state) {
@@ -14140,9 +14277,9 @@ private fun appShellMobilePlaceholderPayload(
         }
     val detail =
         when (state) {
-            is ScreenLoadState.Error -> state.error.settingsUserFacingMessage()
-            is ScreenLoadState.NoPermission -> state.blocker.settingsUserFacingMessage()
-            is ScreenLoadState.Empty -> state.reason.settingsUserFacingMessage()
+            is ScreenLoadState.Error -> state.error.userFacingMessage(errorStrings)
+            is ScreenLoadState.NoPermission -> state.blocker.userFacingMessage(errorStrings)
+            is ScreenLoadState.Empty -> state.reason.userFacingMessage(errorStrings)
             else -> "Loading mobile settings."
         }
     return KuiklySharedSettingsPayload(
@@ -14203,13 +14340,14 @@ private fun SettingsMobileToggleSnapshot.toMobileToggleRow(
     title: String,
     fallbackStatus: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
+    errorStrings: ErrorPresentationStrings,
     badgeLabel: String = ""
 ): KuiklySharedSettingsRow =
     KuiklySharedSettingsRow(
         key = key,
         iconName = iconName,
         title = title,
-        detail = detail,
+        detail = errorPresentation?.resolve(errorStrings) ?: detail,
         value = (!enabled).toString(),
         status = actionState.statusFor(key, statusLabel.ifBlank { fallbackStatus }),
         enabled = available && actionState?.inProgress != true,
@@ -14265,7 +14403,7 @@ private fun build.raft.app.data.SharedSettingsActionState?.serverStatusFor(
         this == null || this.action != action -> fallback
         itemId != null && this.itemId != itemId -> fallback
         inProgress -> "Loading"
-        userFacingErrorMessage() != null -> "Error"
+        hasUserFacingError() -> "Error"
         else -> "Saved"
     }
 
@@ -14280,7 +14418,7 @@ private fun build.raft.app.data.SharedSettingsActionState?.serverLocalizedStatus
         this == null || this.action != action -> fallback
         itemId != null && this.itemId != itemId -> fallback
         inProgress -> stringResource(MR.strings.settings_state_loading)
-        userFacingErrorMessage() != null -> stringResource(MR.strings.settings_state_error)
+        hasUserFacingError() -> stringResource(MR.strings.settings_state_error)
         else -> stringResource(MR.strings.settings_state_saved)
     }
 
@@ -14293,7 +14431,7 @@ private fun build.raft.app.data.SharedSettingsActionState?.connectedAppsStatusFo
         this == null || this.action != action -> fallback
         itemId != null && this.itemId != itemId -> fallback
         inProgress -> "Loading"
-        userFacingErrorMessage() != null -> "Error"
+        hasUserFacingError() -> "Error"
         else -> "Saved"
     }
 
@@ -14307,7 +14445,7 @@ private fun build.raft.app.data.SharedSettingsActionState?.connectedAppsLocalize
         this == null || this.action != action -> fallback
         itemId != null && this.itemId != itemId -> fallback
         inProgress -> stringResource(MR.strings.settings_state_loading)
-        userFacingErrorMessage() != null -> stringResource(MR.strings.settings_state_error)
+        hasUserFacingError() -> stringResource(MR.strings.settings_state_error)
         else -> stringResource(MR.strings.settings_state_saved)
     }
 
@@ -14319,15 +14457,18 @@ private fun build.raft.app.data.SharedSettingsActionState?.connectedAppsBusyFor(
         (itemId == null || this.itemId == itemId) &&
         this.inProgress
 
+@Composable
 private fun build.raft.app.data.SharedSettingsActionState?.connectedAppsErrorFor(
     action: String,
     itemId: String? = null
-): String? =
-    this?.takeIf {
+): String? {
+    val errorStrings = localizedErrorPresentationStrings()
+    return this?.takeIf {
         it.action == action &&
             (itemId == null || it.itemId == itemId) &&
-            it.userFacingErrorMessage() != null
-    }?.userFacingErrorMessage()
+            it.hasUserFacingError()
+    }?.userFacingErrorMessage(errorStrings)
+}
 
 private fun List<SettingsConnectedAppMarketplaceSnapshot>.settingsConnectedAppCategoryOptions(
     allCategoriesLabel: String,
@@ -14364,11 +14505,12 @@ private fun String.settingsConnectedAppCategoryLabel(otherCategoryLabel: String)
         .filter { it.isNotBlank() }
         .joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
 
+@Composable
 private fun settingsConnectedAppsPermissionCopy(blocker: PermissionBlocker, adminRequiredCopy: String): String =
     if (blocker.code == "server_admin_required" || blocker.requiredCapability == "manage_integrations") {
         adminRequiredCopy
     } else {
-        blocker.settingsUserFacingMessage()
+        blocker.localizedUserFacingMessage()
     }
 
 private fun build.raft.app.data.SharedSettingsActionState?.isServerConfirmation(
@@ -14630,6 +14772,7 @@ private fun appShellAboutFallback(session: StoredAuthSession?): SharedSettingsAb
 
 internal fun SharedSettingsAboutSnapshot.toAboutPayload(
     webUrl: String,
+    errorStrings: ErrorPresentationStrings,
     updateCheck: SharedSettingsUpdateCheckSnapshot? = null,
     actionState: SharedSettingsActionState? = null,
     copy: SettingsAboutPayloadCopy = SettingsAboutPayloadCopy()
@@ -14667,7 +14810,11 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                         key = DEVELOPER_ACTION_HANDS_UPDATE_CHECK,
                                         iconName = SlockLucideIconName.Download,
                                         title = copy.checkUpdate,
-                                        detail = updateCheck.detail.ifBlank { copy.checkUpdateDetail },
+                                        detail =
+                                            updateCheck.detail.ifBlank {
+                                                updateCheck.screenError?.userFacingMessage(errorStrings)
+                                                    ?: copy.checkUpdateDetail
+                                            },
                                         status =
                                             when {
                                                 updateCheckBusy -> copy.checking
@@ -14708,13 +14855,14 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
 internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
     state: ScreenLoadState<SharedSettingsDeveloperSnapshot>,
     actionState: SharedSettingsActionState?,
+    errorStrings: ErrorPresentationStrings,
     copy: SettingsDeveloperPayloadCopy = SettingsDeveloperPayloadCopy()
 ): KuiklySharedSettingsPayload {
     val environmentDetail =
         when (state) {
-            is ScreenLoadState.Error -> state.error.settingsUserFacingMessage()
-            is ScreenLoadState.Empty -> state.reason.settingsUserFacingMessage()
-            is ScreenLoadState.NoPermission -> state.blocker.settingsUserFacingMessage()
+            is ScreenLoadState.Error -> state.error.userFacingMessage(errorStrings)
+            is ScreenLoadState.Empty -> state.reason.userFacingMessage(errorStrings)
+            is ScreenLoadState.NoPermission -> state.blocker.userFacingMessage(errorStrings)
             ScreenLoadState.Loading -> copy.environmentLoading
             is ScreenLoadState.Content -> copy.environmentDetail
         }
@@ -14833,6 +14981,7 @@ private fun settingsOpenSourceLicensesPayloadCopy(): SettingsOpenSourceLicensesP
 }
 
 internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSourceLicensesPayload(
+    errorStrings: ErrorPresentationStrings,
     copy: SettingsOpenSourceLicensesPayloadCopy = SettingsOpenSourceLicensesPayloadCopy()
 ): KuiklySharedSettingsPayload {
     val snapshot = (this as? ScreenLoadState.Content<SharedSettingsOpenSourceLicensesSnapshot>)?.data
@@ -14843,9 +14992,9 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
                     snapshot?.items.orEmpty().size,
                     snapshot?.sourceConfiguration.orEmpty().ifBlank { copy.defaultSource }
                 )
-            is ScreenLoadState.Error -> error.settingsUserFacingMessage()
-            is ScreenLoadState.Empty -> reason.settingsUserFacingMessage()
-            is ScreenLoadState.NoPermission -> blocker.settingsUserFacingMessage()
+            is ScreenLoadState.Error -> error.userFacingMessage(errorStrings)
+            is ScreenLoadState.Empty -> reason.userFacingMessage(errorStrings)
+            is ScreenLoadState.NoPermission -> blocker.userFacingMessage(errorStrings)
             ScreenLoadState.Loading -> copy.loadingDetail
         }
     val sections =
@@ -14944,6 +15093,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
     state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     copy: SettingsDiagnosticsPayloadCopy = SettingsDiagnosticsPayloadCopy(),
+    errorStrings: ErrorPresentationStrings? = null,
     includeLocalFeatureOverrides: Boolean = true,
     appleSignInLocalOverride: Boolean? = null,
 ): KuiklySharedSettingsPayload {
@@ -14955,8 +15105,17 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
     val profilerBusy = actionState?.action in profilerActionKeys && actionState?.inProgress == true
     val environmentRows =
         snapshot?.about?.toDiagnosticsEnvironmentRows(copy).orEmpty()
+    val structuredLoadErrorMessage =
+        snapshot?.loadErrors
+            ?.takeIf { it.isNotEmpty() }
+            ?.joinToString("; ") { loadError ->
+                val strings = requireNotNull(errorStrings) {
+                    "ErrorPresentationStrings are required for structured diagnostics load errors"
+                }
+                "${loadError.label}: ${loadError.presentation.resolve(strings)}"
+            }
     val loadStatusRows =
-        snapshot?.loadErrorMessage
+        (structuredLoadErrorMessage ?: snapshot?.loadErrorMessage)
             ?.takeIf { it.isNotBlank() }
             ?.let { errorMessage ->
                 listOf(
@@ -16372,6 +16531,7 @@ private fun SharedMembersScreen(
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     onForegroundActivity: (String) -> Unit = {}
 ) {
+    val errorStrings = localizedErrorPresentationStrings()
     val membersTitle = stringResource(MR.strings.tab_members)
     val membersLoadFailedMessage = stringResource(MR.strings.thread_composer_load_members_failed)
     val invitePermissionMessage = stringResource(MR.strings.member_error_manage_invites_forbidden)
@@ -16575,7 +16735,7 @@ private fun SharedMembersScreen(
                         is DataResult.NoPermission ->
                             bridge.toast(invitePermissionMessage)
                         is DataResult.Error ->
-                            bridge.toast(joinLinkLoadFailedPrefix + result.error.settingsUserFacingMessage())
+                            bridge.toast(joinLinkLoadFailedPrefix + result.error.userFacingMessage(errorStrings))
                         is DataResult.Empty -> Unit
                     }
                 }
@@ -21733,7 +21893,11 @@ private fun PageErrorBody(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
             Text(text = message, style = SlockType.ButtonBold, color = SlockColor.TextBlack)
-            Text(text = settingsUserFacingErrorCodeMessage(code), style = SlockType.Caption, color = SlockColor.AccentRed)
+            Text(
+                text = code.userFacingErrorCodeMessage(localizedErrorPresentationStrings()),
+                style = SlockType.Caption,
+                color = SlockColor.AccentRed
+            )
             if (retryLabel != null && onRetry != null) {
                 SlockBrutalActionButton(
                     label = retryLabel,
@@ -22188,7 +22352,12 @@ private fun SettingsVisualBillingContent() {
     val state: ScreenLoadState<SettingsBillingSnapshot> =
         ScreenLoadState.Content(settingsVisualBillingSnapshot())
     SettingsBillingContent(
-        payload = state.toBillingPayload(homeSearchVisualSession, timeContext = null),
+        payload =
+            state.toBillingPayload(
+                session = homeSearchVisualSession,
+                timeContext = null,
+                errorStrings = localizedErrorPresentationStrings()
+            ),
         bottomContentPadding = SlockSpacing.Lg,
         onEvent = { _, _ -> }
     )

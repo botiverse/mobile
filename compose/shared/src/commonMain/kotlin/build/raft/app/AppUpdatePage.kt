@@ -19,7 +19,6 @@ import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.slockSharedPreferenceStore
-import build.raft.app.data.userFacingMessage
 import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -80,6 +79,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
     val scope = rememberCoroutineScope()
     val refreshGate = remember { AppUpdateRefreshGate() }
     val unavailableMessage = stringResource(MR.strings.app_update_unavailable)
+    val errorStrings = localizedErrorPresentationStrings()
     var snapshot by remember { mutableStateOf<SharedSettingsUpdateCheckSnapshot?>(null) }
     var loading by remember { mutableStateOf(true) }
     var actionRunning by remember { mutableStateOf(false) }
@@ -92,7 +92,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
                 loading = true
                 do {
                     val result = environment.settingsCapabilities.checkHandsUpdateStatus()
-                    val projection = result.toAppUpdateResultProjection(snapshot, unavailableMessage)
+                    val projection = result.toAppUpdateResultProjection(snapshot, unavailableMessage, errorStrings)
                     snapshot = projection.snapshot
                     errorMessage = projection.errorMessage
                 } while (refreshGate.completeAndShouldContinue())
@@ -143,7 +143,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
                     errorMessage = null
                     try {
                         val result = environment.settingsCapabilities.installHandsUpdate()
-                        val projection = result.toAppUpdateResultProjection(snapshot, unavailableMessage)
+                        val projection = result.toAppUpdateResultProjection(snapshot, unavailableMessage, errorStrings)
                         snapshot = projection.snapshot
                         errorMessage = projection.errorMessage
                     } finally {
@@ -238,7 +238,8 @@ internal fun SharedSettingsUpdateCheckSnapshot.withAppUpdateDisplayFallback(
 }
 
 internal fun DataResult<SharedSettingsUpdateCheckSnapshot>.appUpdateErrorMessage(
-    unavailableMessage: String
+    unavailableMessage: String,
+    errorStrings: ErrorPresentationStrings
 ): String? =
     when (this) {
         is DataResult.Content ->
@@ -246,11 +247,12 @@ internal fun DataResult<SharedSettingsUpdateCheckSnapshot>.appUpdateErrorMessage
                 .takeIf { it.isNotBlank() }
                 ?.let { code ->
                     data.detail.takeIf { it.isNotBlank() }
-                        ?: ScreenError(code).userFacingMessage()
+                        ?: data.screenError?.userFacingMessage(errorStrings)
+                        ?: ScreenError(code).userFacingMessage(errorStrings)
                 }
         is DataResult.Empty -> unavailableMessage
-        is DataResult.Error -> error.userFacingMessage()
-        is DataResult.NoPermission -> blocker.userFacingMessage()
+        is DataResult.Error -> error.userFacingMessage(errorStrings)
+        is DataResult.NoPermission -> blocker.userFacingMessage(errorStrings)
     }
 
 internal data class AppUpdateResultProjection(
@@ -260,11 +262,12 @@ internal data class AppUpdateResultProjection(
 
 internal fun DataResult<SharedSettingsUpdateCheckSnapshot>.toAppUpdateResultProjection(
     previousSnapshot: SharedSettingsUpdateCheckSnapshot?,
-    unavailableMessage: String
+    unavailableMessage: String,
+    errorStrings: ErrorPresentationStrings
 ): AppUpdateResultProjection =
     when (this) {
         is DataResult.Content -> {
-            val currentErrorMessage = appUpdateErrorMessage(unavailableMessage)
+            val currentErrorMessage = appUpdateErrorMessage(unavailableMessage, errorStrings)
             val resolvedSnapshot = data.withAppUpdateDisplayFallback(previousSnapshot)
             AppUpdateResultProjection(
                 snapshot = resolvedSnapshot,
@@ -274,7 +277,7 @@ internal fun DataResult<SharedSettingsUpdateCheckSnapshot>.toAppUpdateResultProj
         else ->
             AppUpdateResultProjection(
                 snapshot = previousSnapshot,
-                errorMessage = appUpdateErrorMessage(unavailableMessage)
+                errorMessage = appUpdateErrorMessage(unavailableMessage, errorStrings)
             )
     }
 

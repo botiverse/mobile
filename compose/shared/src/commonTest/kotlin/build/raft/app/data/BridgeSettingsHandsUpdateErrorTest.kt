@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.appUpdateErrorMessage
+import build.raft.app.englishErrorPresentationStringsForTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -63,7 +64,7 @@ class BridgeSettingsHandsUpdateErrorTest {
 
         assertEquals(
             "Hands update service is restarting",
-            result.appUpdateErrorMessage("Updates are unavailable")
+            result.appUpdateErrorMessage("Updates are unavailable", englishErrorPresentationStringsForTest())
         )
     }
 }

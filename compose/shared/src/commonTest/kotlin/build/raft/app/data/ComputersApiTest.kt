@@ -140,7 +140,9 @@ class ComputersApiTest {
         assertEquals("computer_bad_request", assertIs<DataResult.Error>(client.updateMachineDescription(serverId, "m", "d")).error.code)
         assertEquals("computer_has_agents", assertIs<DataResult.Error>(client.deleteMachine(serverId, "m")).error.code)
         assertEquals(false, assertIs<DataResult.Error>(client.deleteMachine(serverId, "m")).error.retryable)
-        assertEquals("server_forbidden", assertIs<DataResult.NoPermission>(client.machines(serverId)).blocker.code)
+        val forbidden = assertIs<DataResult.NoPermission>(client.machines(serverId)).blocker
+        assertEquals("server_forbidden", forbidden.code)
+        assertEquals("x", forbidden.serverMessage)
     }
 
     @Test

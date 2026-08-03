@@ -1,6 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.englishErrorPresentationStringsForTest
 import build.raft.app.network.MultipartFile
+import build.raft.app.resolve
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -489,6 +491,7 @@ class SettingsRepositoryDataSourceTest {
         assertEquals("auth_required", noSession.blocker.code)
         assertTrue(forbidden is DataResult.NoPermission)
         assertEquals("server_forbidden", forbidden.blocker.code)
+        assertEquals("failed", forbidden.blocker.serverMessage)
         assertTrue(unavailable is DataResult.Error)
         assertEquals("server_unavailable", unavailable.error.code)
         assertTrue(parse is DataResult.Error)
@@ -869,7 +872,11 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(server is DataResult.Content)
         val billing = server.data.sections.first { it.key == "billing" }
         assertFalse(billing.detail.contains("settings_billing_subscription_contract_mismatch"))
-        assertTrue(billing.detail.contains("The response could not be read. Please try again."))
+        assertEquals("", billing.detail)
+        assertEquals(
+            "The response could not be read. Please try again.",
+            billing.errorPresentation?.resolve(englishErrorPresentationStringsForTest())
+        )
     }
 
     @Test

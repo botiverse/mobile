@@ -321,13 +321,41 @@ data class ReadSeqRequestBody(val seq: Long)
 fun buildSharedReadSeqBody(seq: Long): String =
     readReceiptRepositoryJson.encodeToString(ReadSeqRequestBody(seq))
 
-private fun <T> authRequired(): DataResult<T> =
-    DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+private fun authRequired(): DataResult.NoPermission =
+    authSessionRequiredResult()
 
-private fun <T> HomeNetworkResponse.toReadReceiptDataError(): DataResult<T> =
-    when (code) {
-        401 -> authRequired()
-        403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
-        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
-        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
+private fun authRequired(serverMessage: String?): DataResult.NoPermission =
+    authSessionRequiredResult(serverMessage)
+
+private fun <T> HomeNetworkResponse.toReadReceiptDataError(): DataResult<T> {
+    val serverMessage = readReceiptRouteErrorTextOrNull()
+    return when (code) {
+        401 -> authRequired(serverMessage)
+        403 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "server_forbidden",
+                    requiredCapability = "server_access",
+                    serverMessage = serverMessage
+                )
+            )
+        in 500..599 ->
+            DataResult.Error(ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage))
+        else ->
+            DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404, serverMessage = serverMessage))
     }
+}
+
+@Serializable
+private data class ReadReceiptRouteErrorDto(val error: String? = null)
+
+private fun HomeNetworkResponse.readReceiptRouteErrorTextOrNull(): String? {
+    val payload = bodyText?.takeIf { it.isNotBlank() }
+        ?: errorBodyText?.takeIf { it.isNotBlank() }
+        ?: return null
+    return runCatching {
+        readReceiptRepositoryJson.decodeFromString(ReadReceiptRouteErrorDto.serializer(), payload)
+            .error
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+}

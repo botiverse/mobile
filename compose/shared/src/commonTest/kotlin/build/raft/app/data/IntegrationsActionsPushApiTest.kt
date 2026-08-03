@@ -210,6 +210,7 @@ class IntegrationsActionsPushApiTest {
 
         assertEquals("server_admin_required", blocker.code)
         assertEquals("manage_integrations", blocker.requiredCapability)
+        assertEquals("Only server admins can view integrations", blocker.serverMessage)
     }
 
     private class RecordingIntegrationsActionsPushApi(

@@ -444,23 +444,39 @@ private suspend inline fun <Wire, T> HomeNetworkResponse.mapAgentsBody(
 
 private class AgentsContractMismatchException : IllegalStateException()
 
-private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> =
-    when (code) {
-        401 -> DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
-        403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
+private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> {
+    val serverMessage = serverErrorTextOrNull()
+    return when (code) {
+        401 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "auth_required",
+                    requiredCapability = "auth_session",
+                    serverMessage = serverMessage
+                )
+            )
+        403 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "server_forbidden",
+                    requiredCapability = "server_access",
+                    serverMessage = serverMessage
+                )
+            )
         in 500..599 ->
             DataResult.Error(
-                ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverErrorTextOrNull())
+                ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage)
             )
         else ->
             DataResult.Error(
                 ScreenError(
                     code = runtimeFormIssueCodeOrNull() ?: agentNameConflictCodeOrNull() ?: "http_$code",
                     retryable = code != 404,
-                    serverMessage = serverErrorTextOrNull()
+                    serverMessage = serverMessage
                 )
             )
     }
+}
 
 private fun HomeNetworkResponse.runtimeFormIssueCodeOrNull(): String? {
     if (code != 409) return null
@@ -484,7 +500,7 @@ private fun HomeNetworkResponse.serverErrorTextOrNull(): String? {
     val body = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
     return runCatching {
         agentsApiJson.decodeFromString(AgentErrorTextEnvelopeDto.serializer(), body).error
-    }.getOrNull()?.trim()?.takeIf { it.isNotBlank() }
+    }.getOrNull()?.takeIf { it.isNotBlank() }
 }
 
 private fun HomeNetworkResponse.agentNameConflictCodeOrNull(): String? {

@@ -2022,7 +2022,7 @@ internal fun ThreadAttachmentCommentsDialogState.withAttachmentCommentsError(
 ): ThreadAttachmentCommentsDialogState =
     copy(
         errorCode = errorCode?.trim()?.takeIf { it.isNotBlank() },
-        errorServerMessage = serverMessage?.trim()?.takeIf { it.isNotBlank() }
+        errorServerMessage = serverMessage?.takeIf { it.isNotBlank() }
     )
 
 internal fun attachmentCommentsVisibleErrorMessage(
@@ -2034,7 +2034,7 @@ internal fun attachmentCommentsVisibleErrorMessage(
     threadUserFacingErrorCodeReason(errorCode)
         ?.takeUnless { it == ThreadUserFacingErrorReason.Generic }
         ?.let(labels::forReason)
-        ?: serverMessage?.trim()?.takeIf { it.isNotBlank() }
+        ?: serverMessage?.takeIf { it.isNotBlank() }
         ?: genericMessage
 
 internal data class ThreadCreateAgentActionDialogState(

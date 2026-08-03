@@ -474,11 +474,12 @@ internal fun HomeNetworkResponse.toTasksResult(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): DataResult<TaskSnapshot> {
     unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
+    val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
     if (code == 401 || code == 403) {
-        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code"))
+        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
     }
     if (!isSuccessful) {
-        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true))
+        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true, serverMessage = serverMessage))
     }
     val body = bodyText
         ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
@@ -538,14 +539,15 @@ internal fun HomeNetworkResponse.toTaskActionResult(
     requestedStatus: TaskStatus? = null,
 ): DataResult<TaskActionResult> {
     unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
+    val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
     if (code == 401 || code == 403) {
-        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code"))
+        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
     }
     if (!isSuccessful) {
         taskStatusAlreadyAppliedErrorCode(requestedStatus)?.let { errorCode ->
             return DataResult.Error(ScreenError(code = errorCode, retryable = false))
         }
-        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true))
+        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true, serverMessage = serverMessage))
     }
     val body = bodyText
         ?: return requestedStatus.taskStatusAppliedWithoutProjectionResult(source)
@@ -601,11 +603,12 @@ internal fun HomeNetworkResponse.toTaskConvertResult(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): DataResult<TaskConvertResult> {
     unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
+    val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
     if (code == 401 || code == 403) {
-        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code"))
+        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
     }
     if (!isSuccessful) {
-        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true))
+        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true, serverMessage = serverMessage))
     }
     val body = bodyText?.trim().orEmpty()
     if (body.isEmpty()) {
@@ -621,11 +624,12 @@ internal fun HomeNetworkResponse.toTaskConvertResult(
 
 internal fun HomeNetworkResponse.toTaskDeleteResult(): DataResult<Unit> {
     unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
+    val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
     if (code == 401 || code == 403) {
-        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code"))
+        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
     }
     if (!isSuccessful) {
-        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true))
+        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true, serverMessage = serverMessage))
     }
     val body = bodyText
         ?: return DataResult.Error(ScreenError(code = "tasks_delete_contract_mismatch", retryable = false))
@@ -643,7 +647,8 @@ private fun HomeNetworkResponse.unsupportedChannelTasksBlocker(): PermissionBloc
     if (body?.contains("joint_channel_tasks_unsupported", ignoreCase = true) != true) return null
     return PermissionBlocker(
         code = "joint_channel_tasks_unsupported",
-        requiredCapability = "channel_tasks"
+        requiredCapability = "channel_tasks",
+        serverMessage = tasksServerErrorTextOrNull()
     )
 }
 
@@ -700,6 +705,17 @@ private data class TaskActionErrorEnvelope(
     val error: String? = null,
     val code: String? = null,
 )
+
+private fun HomeNetworkResponse.tasksServerErrorTextOrNull(): String? {
+    val payload = bodyText?.takeIf { it.isNotBlank() }
+        ?: errorBodyText?.takeIf { it.isNotBlank() }
+        ?: return null
+    return runCatching {
+        tasksJson.decodeFromString(TaskActionErrorEnvelope.serializer(), payload)
+            .error
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+}
 
 /** Mirror of React `TaskInfo` (packages/shared/src/index.ts). */
 @Serializable

@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.SlockFilePreviewPayload
+import build.raft.app.englishErrorPresentationStringsForTest
 import build.raft.app.withAgentWorkspaceLoadError
 import build.raft.app.model.MemberId
 import build.raft.app.model.RuntimeConfig
@@ -242,6 +243,34 @@ class MemberRepositoryDataSourceTest {
     }
 
     @Test
+    fun workspacePermissionErrorsPreserveExactServerErrorTextOn401And403() = runBlocking {
+        listOf(401, 403).forEach { status ->
+            val exactReason = "  member-route-$status 理由  "
+            val network =
+                FakeMemberNetworkClient().apply {
+                    workspaceFileResponse =
+                        HomeNetworkResponse(
+                            code = status,
+                            bodyText = null,
+                            errorBodyText = """{"error":"$exactReason"}"""
+                        )
+                }
+            val repository = RealMemberRepository(sampleStore(), network)
+
+            val blocker =
+                assertIs<DataResult.NoPermission>(
+                    repository.readAgentWorkspaceFile(
+                        DataRequestPriority.Visible,
+                        MemberId("agent-1"),
+                        "/repo/README.md"
+                    )
+                ).blocker
+
+            assertEquals(exactReason, blocker.serverMessage)
+        }
+    }
+
+    @Test
     fun workspaceStructuredServerErrorReachesFilePreviewVisibleCopy() = runBlocking {
         val network =
             FakeMemberNetworkClient().apply {
@@ -262,7 +291,11 @@ class MemberRepositoryDataSourceTest {
                     "/repo/README.md"
                 )
             ).error
-        val payload = SlockFilePreviewPayload().withAgentWorkspaceLoadError(error)
+        val payload =
+            SlockFilePreviewPayload().withAgentWorkspaceLoadError(
+                error,
+                englishErrorPresentationStringsForTest()
+            )
 
         assertEquals("path query parameter is required", payload.message)
         assertEquals("http_400", payload.error)

@@ -12,7 +12,6 @@ import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsStore
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.authSessionFixture
-import build.raft.app.data.userFacingErrorMessage
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -24,6 +23,7 @@ import kotlin.test.assertNull
 class SettingsHonestStateTest {
     @Test
     fun accountErrorEnvelopeSurvivesAdapterStoreAndVisiblePayload() = runBlocking {
+        val errorStrings = englishErrorPresentationStringsForTest()
         val cases =
             listOf(
                 AccountErrorCase(
@@ -71,9 +71,9 @@ class SettingsHonestStateTest {
             val actionState = assertNotNull(store.state.value.actionState, case.name)
             assertEquals("http_409", actionState.errorCode, case.name)
             assertEquals(case.expectedServerMessage, actionState.screenError?.serverMessage, case.name)
-            assertEquals(case.expectedVisibleMessage, actionState.userFacingErrorMessage(), case.name)
+            assertEquals(case.expectedVisibleMessage, actionState.userFacingErrorMessage(errorStrings), case.name)
 
-            val payload = store.state.value.account.toAccountPayload(session, actionState)
+            val payload = store.state.value.account.toAccountPayload(session, actionState, errorStrings)
             assertEquals(case.expectedVisibleMessage, payload.saveErrorCode, case.name)
             assertFalse(payload.saveErrorCode.orEmpty().contains("http_409"), case.name)
             assertFalse(payload.saveErrorCode.orEmpty().contains("must not be guessed"), case.name)
@@ -82,6 +82,7 @@ class SettingsHonestStateTest {
 
     @Test
     fun addComputerDialogUsesTypedFailureBeforeLocalHumanCopy() {
+        val errorStrings = englishErrorPresentationStringsForTest()
         val typed =
             AddComputerDialogState(
                 errorMessage = "stale local text",
@@ -94,9 +95,9 @@ class SettingsHonestStateTest {
             )
         val local = AddComputerDialogState(errorMessage = "Choose a computer name")
 
-        assertEquals("A computer with this name already exists", typed.userFacingErrorMessage())
-        assertEquals("Choose a computer name", local.userFacingErrorMessage())
-        assertNull(AddComputerDialogState().userFacingErrorMessage())
+        assertEquals("A computer with this name already exists", typed.userFacingErrorMessage(errorStrings))
+        assertEquals("Choose a computer name", local.userFacingErrorMessage(errorStrings))
+        assertNull(AddComputerDialogState().userFacingErrorMessage(errorStrings))
     }
 }
 

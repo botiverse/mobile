@@ -47,6 +47,7 @@ class SettingsBillingPayloadTest {
             ScreenLoadState.Content(snapshot).toBillingPayload(
                 session = null,
                 timeContext = null,
+                errorStrings = englishErrorPresentationStringsForTest(),
                 actionState = SharedSettingsActionState("manageBilling", inProgress = true)
             )
         val loadingAction = loadingPayload.actions.single()
@@ -59,6 +60,7 @@ class SettingsBillingPayloadTest {
             ScreenLoadState.Content(snapshot).toBillingPayload(
                 session = null,
                 timeContext = null,
+                errorStrings = englishErrorPresentationStringsForTest(),
                 actionState =
                     SharedSettingsActionState(
                         "manageBilling",

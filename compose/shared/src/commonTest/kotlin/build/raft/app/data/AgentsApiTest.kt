@@ -134,6 +134,38 @@ class AgentsApiTest {
     }
 
     @Test
+    fun agentsPermissionFailuresRetainOnlyExactErrorFieldOn401And403() = runPortableCoroutineTest {
+        listOf(401, 403).forEach { status ->
+            val exactReason = "  route-$status human reason / 理由  "
+            val exact =
+                SlockAgentsApiClient(
+                    RecordingAgentsApi(
+                        createAgentCode = status,
+                        createAgentErrorBody = """{"error":"$exactReason"}"""
+                    )
+                ).createAgent("{}")
+            assertEquals(
+                exactReason,
+                assertIs<DataResult.NoPermission>(exact).blocker.serverMessage,
+                "HTTP $status must retain the exact route-specific error value"
+            )
+
+            val aliasOnly =
+                SlockAgentsApiClient(
+                    RecordingAgentsApi(
+                        createAgentCode = status,
+                        createAgentErrorBody = """{"message":"must not be guessed"}"""
+                    )
+                ).createAgent("{}")
+            assertEquals(
+                null,
+                assertIs<DataResult.NoPermission>(aliasOnly).blocker.serverMessage,
+                "HTTP $status must not guess an unconfirmed alias"
+            )
+        }
+    }
+
+    @Test
     fun nameConflictStaysOutsideFormRecoveryAllowlist() {
         assertTrue(AGENT_CREATE_NAME_TAKEN !in CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES)
     }

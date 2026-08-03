@@ -32,6 +32,7 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -521,7 +522,8 @@ internal class SlockHomeApiClient(
                 requestHomeSection(
                     category = "channels",
                     contractCode = "home_channels_contract_mismatch",
-                    serializer = ListSerializer(HomeChannelWireDto.serializer())
+                    serializer = ListSerializer(HomeChannelWireDto.serializer()),
+                    errorTextDecoder = HomeNetworkResponse::homeChannelsRouteErrorTextOrNull
                 ) {
                     transport.channels(serverId, priority)
                 }
@@ -531,7 +533,8 @@ internal class SlockHomeApiClient(
                 requestHomeSection(
                     category = "direct_messages",
                     contractCode = "home_direct_messages_contract_mismatch",
-                    serializer = ListSerializer(HomeDirectMessageWireDto.serializer())
+                    serializer = ListSerializer(HomeDirectMessageWireDto.serializer()),
+                    errorTextDecoder = HomeNetworkResponse::homeDirectMessagesRouteErrorTextOrNull
                 ) {
                     transport.directMessages(serverId, priority)
                 }
@@ -541,7 +544,8 @@ internal class SlockHomeApiClient(
                 requestHomeSection(
                     category = "channel_unread_counts",
                     contractCode = "home_unread_counts_contract_mismatch",
-                    serializer = MapSerializer(String.serializer(), Int.serializer())
+                    serializer = MapSerializer(String.serializer(), Int.serializer()),
+                    errorTextDecoder = HomeNetworkResponse::homeUnreadCountsRouteErrorTextOrNull
                 ) {
                     transport.channelUnreadCounts(serverId, priority)
                 }
@@ -551,7 +555,8 @@ internal class SlockHomeApiClient(
                 requestHomeSection(
                     category = "server_unread_summary",
                     contractCode = "home_server_unread_summary_contract_mismatch",
-                    serializer = ListSerializer(ServerUnreadSummaryDto.serializer())
+                    serializer = ListSerializer(ServerUnreadSummaryDto.serializer()),
+                    errorTextDecoder = HomeNetworkResponse::homeServerUnreadSummaryRouteErrorTextOrNull
                 ) {
                     transport.serverUnreadSummary(serverId, priority)
                 }
@@ -637,6 +642,7 @@ internal class SlockHomeApiClient(
         category: String,
         contractCode: String,
         serializer: KSerializer<T>,
+        errorTextDecoder: (HomeNetworkResponse) -> String?,
         request: suspend () -> HomeNetworkResponse
     ): DataResult<T> {
         val response =
@@ -664,7 +670,8 @@ internal class SlockHomeApiClient(
             withContext(SlockJsonParseDispatcher) {
                 response.decodeHomeBody(
                     contractCode = contractCode,
-                    serializer = serializer
+                    serializer = serializer,
+                    serverMessage = if (response.isSuccessful) null else errorTextDecoder(response)
                 )
             }
         diagnosticsLogger(
@@ -681,9 +688,10 @@ internal class SlockHomeApiClient(
 
 private fun <T> HomeNetworkResponse.decodeHomeBody(
     contractCode: String,
-    serializer: KSerializer<T>
+    serializer: KSerializer<T>,
+    serverMessage: String?
 ): DataResult<T> {
-    if (!isSuccessful) return toHomeApiFailure()
+    if (!isSuccessful) return toHomeApiFailure(serverMessage)
     val body = bodyText?.trim().orEmpty()
     if (body.isBlank()) return DataResult.Error(ScreenError(code = contractCode, retryable = false))
     return try {
@@ -695,12 +703,49 @@ private fun <T> HomeNetworkResponse.decodeHomeBody(
     }
 }
 
-private fun <T> HomeNetworkResponse.toHomeApiFailure(): DataResult<T> =
+private fun <T> HomeNetworkResponse.toHomeApiFailure(serverMessage: String?): DataResult<T> =
     if (code == 401 || code == 403) {
-        DataResult.NoPermission(PermissionBlocker(code = "home_http_$code"))
+        DataResult.NoPermission(PermissionBlocker(code = "home_http_$code", serverMessage = serverMessage))
     } else {
-        DataResult.Error(ScreenError(code = "home_http_$code", retryable = true))
+        DataResult.Error(ScreenError(code = "home_http_$code", retryable = true, serverMessage = serverMessage))
     }
+
+@Serializable
+private data class HomeChannelsRouteErrorDto(val error: String? = null)
+
+@Serializable
+private data class HomeDirectMessagesRouteErrorDto(val error: String? = null)
+
+@Serializable
+private data class HomeUnreadCountsRouteErrorDto(val error: String? = null)
+
+@Serializable
+private data class HomeServerUnreadSummaryRouteErrorDto(val error: String? = null)
+
+private fun HomeNetworkResponse.homeChannelsRouteErrorTextOrNull(): String? =
+    homeRouteErrorTextOrNull(HomeChannelsRouteErrorDto.serializer()) { it.error }
+
+private fun HomeNetworkResponse.homeDirectMessagesRouteErrorTextOrNull(): String? =
+    homeRouteErrorTextOrNull(HomeDirectMessagesRouteErrorDto.serializer()) { it.error }
+
+private fun HomeNetworkResponse.homeUnreadCountsRouteErrorTextOrNull(): String? =
+    homeRouteErrorTextOrNull(HomeUnreadCountsRouteErrorDto.serializer()) { it.error }
+
+private fun HomeNetworkResponse.homeServerUnreadSummaryRouteErrorTextOrNull(): String? =
+    homeRouteErrorTextOrNull(HomeServerUnreadSummaryRouteErrorDto.serializer()) { it.error }
+
+private fun <T> HomeNetworkResponse.homeRouteErrorTextOrNull(
+    serializer: KSerializer<T>,
+    text: (T) -> String?
+): String? {
+    val payload = bodyText?.takeIf { it.isNotBlank() }
+        ?: errorBodyText?.takeIf { it.isNotBlank() }
+        ?: return null
+    return runCatching {
+        text(homeApiJson.decodeFromString(serializer, payload))
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+}
 
 private fun DataResult<*>.homeDiagnosticsSummary(): String =
     when (this) {

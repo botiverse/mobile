@@ -19,7 +19,12 @@ class SettingsMobilePayloadTest {
                 multiShellHost = toggle(enabled = false)
             )
 
-        val payload = ScreenLoadState.Content(snapshot).toMobilePayload(actionState = null, refreshing = false)
+        val payload =
+            ScreenLoadState.Content(snapshot).toMobilePayload(
+                actionState = null,
+                refreshing = false,
+                errorStrings = englishErrorPresentationStringsForTest()
+            )
         val row =
             payload.sections
                 .flatMap { it.rows }

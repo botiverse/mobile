@@ -23,7 +23,6 @@ import build.raft.app.data.SlockThreadApiClient
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
-import build.raft.app.data.userFacingMessage
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.model.MemberId
 import build.raft.app.model.SlockWorkspaceFilePreview
@@ -513,6 +512,7 @@ private fun SlockFilePreviewStandalonePageContent() {
             )
         }
     val coroutineScope = rememberCoroutineScope()
+    val errorStrings = localizedErrorPresentationStrings()
     val launchPayloadTrace =
         remember(pager.pageData.params.toString()) {
             val source = pager.pageData.params.optString("payload")
@@ -962,7 +962,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                         truncatedPreviewHint = truncatedPreviewHint
                     )
                 SlockFilePreviewSourceAgentWorkspace ->
-                    payload.loadAgentWorkspacePreview(memberRepository)
+                    payload.loadAgentWorkspacePreview(memberRepository, errorStrings)
                 else -> null
         }
         if (nextPayload != null) {
@@ -3771,7 +3771,8 @@ private suspend fun SlockFilePreviewPayload.threadAttachmentExternalUrl(
 }
 
 private suspend fun SlockFilePreviewPayload.loadAgentWorkspacePreview(
-    memberRepository: RealMemberRepository
+    memberRepository: RealMemberRepository,
+    errorStrings: ErrorPresentationStrings
 ): SlockFilePreviewPayload? {
     if (source != SlockFilePreviewSourceAgentWorkspace || agentId.isBlank() || path.isBlank() || kind != "loading") return null
     return when (val result = memberRepository.readAgentWorkspaceFile(DataRequestPriority.Visible, MemberId(agentId), path)) {
@@ -3784,27 +3785,31 @@ private suspend fun SlockFilePreviewPayload.loadAgentWorkspacePreview(
                 messageDesc = MR.strings.file_preview_file_unavailable.desc(),
                 error = "empty_preview"
             )
-        is DataResult.Error -> withAgentWorkspaceLoadError(result.error)
-        is DataResult.NoPermission -> withAgentWorkspacePermissionError(result.blocker)
+        is DataResult.Error -> withAgentWorkspaceLoadError(result.error, errorStrings)
+        is DataResult.NoPermission -> withAgentWorkspacePermissionError(result.blocker, errorStrings)
     }
 }
 
-internal fun SlockFilePreviewPayload.withAgentWorkspaceLoadError(error: ScreenError): SlockFilePreviewPayload =
+internal fun SlockFilePreviewPayload.withAgentWorkspaceLoadError(
+    error: ScreenError,
+    errorStrings: ErrorPresentationStrings
+): SlockFilePreviewPayload =
     copy(
         kind = "error",
         titleDesc = MR.strings.file_preview_unavailable.desc(),
-        message = error.userFacingMessage(),
+        message = error.userFacingMessage(errorStrings),
         messageDesc = null,
         error = error.code
     )
 
 internal fun SlockFilePreviewPayload.withAgentWorkspacePermissionError(
-    blocker: PermissionBlocker
+    blocker: PermissionBlocker,
+    errorStrings: ErrorPresentationStrings
 ): SlockFilePreviewPayload =
     copy(
         kind = "error",
         titleDesc = MR.strings.file_preview_hidden.desc(),
-        message = blocker.userFacingMessage(),
+        message = blocker.userFacingMessage(errorStrings),
         messageDesc = null,
         error = blocker.code
     )

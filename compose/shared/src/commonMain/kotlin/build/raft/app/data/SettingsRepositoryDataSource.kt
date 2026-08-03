@@ -864,37 +864,43 @@ class RealSettingsRepository(
                 key = "admins",
                 title = MR.strings.settings_section_admins_title.desc(),
                 detail = adminsSectionDetail(members, adminCount),
-                state = members.sectionState(admins.isEmpty())
+                state = members.sectionState(admins.isEmpty()),
+                errorPresentation = members.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "billing",
                 title = MR.strings.settings_section_billing_title.desc(),
                 detail = billingSectionDetail(server.plan, billing, usageRows.size),
-                state = combineSectionState(billing, usage, usageRows.isEmpty())
+                state = combineSectionState(billing, usage, usageRows.isEmpty()),
+                errorPresentation = billing.errorPresentationOrNull() ?: usage.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "pending_invites",
                 title = MR.strings.settings_section_pending_invites_title.desc(),
                 detail = invitesSectionDetail(invites, pendingInvites.size),
-                state = invites.sectionState(pendingInvites.isEmpty())
+                state = invites.sectionState(pendingInvites.isEmpty()),
+                errorPresentation = invites.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "join_links",
                 title = MR.strings.settings_section_join_links_title.desc(),
                 detail = joinLinksSectionDetail(joinLinks, joinLinkRows.size),
-                state = joinLinks.sectionState(joinLinkRows.isEmpty())
+                state = joinLinks.sectionState(joinLinkRows.isEmpty()),
+                errorPresentation = joinLinks.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "pre_join_agreement",
                 title = MR.strings.settings_section_pre_join_agreement_title.desc(),
                 detail = agreementSectionDetail(agreement, agreementSnapshot),
-                state = agreement.sectionState(agreementSnapshot == null)
+                state = agreement.sectionState(agreementSnapshot == null),
+                errorPresentation = agreement.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "onboarding_agent",
                 title = MR.strings.settings_section_onboarding_title.desc(),
                 detail = onboardingSectionDetail(onboarding, onboardingSnapshot),
-                state = onboarding.sectionState(onboardingSnapshot == null)
+                state = onboarding.sectionState(onboardingSnapshot == null),
+                errorPresentation = onboarding.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "member_permissions",
@@ -910,13 +916,15 @@ class RealSettingsRepository(
                 key = "translation",
                 title = MR.strings.settings_section_translation_title.desc(),
                 detail = translationSectionDetail(translation, translationSnapshot),
-                state = translation.sectionState(translationSnapshot == null)
+                state = translation.sectionState(translationSnapshot == null),
+                errorPresentation = translation.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "sidebar_order",
                 title = MR.strings.settings_section_sidebar_order_title.desc(),
                 detail = sidebarOrderSectionDetail(sidebarOrder, sidebarOrderSnapshot),
-                state = sidebarOrder.sectionState(sidebarOrderSnapshot == null)
+                state = sidebarOrder.sectionState(sidebarOrderSnapshot == null),
+                errorPresentation = sidebarOrder.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "danger",
@@ -1285,11 +1293,11 @@ class RealSettingsRepository(
                     detail =
                         when (serverNotificationPreferences) {
                             is DataResult.Content -> "Stops push notifications from the currently selected workspace."
-                            is DataResult.NoPermission -> "You do not have permission to read workspace notification settings."
-                            is DataResult.Error ->
-                                "Workspace notification settings failed to load: ${serverNotificationPreferences.error.userFacingMessage()}"
+                            is DataResult.NoPermission,
+                            is DataResult.Error -> ""
                             is DataResult.Empty -> "Workspace notification settings are unavailable."
-                        }
+                        },
+                    errorPresentation = serverNotificationPreferences.errorPresentationOrNull()
                 ),
                 serverNotificationMode =
                     serverNotificationMode.toSettingsMobileSelectionSnapshot(
@@ -2365,8 +2373,15 @@ private fun DataResult<*>.settingsDiagnosticsResult(): String =
 
 private fun <T> HomeNetworkResponse.toSettingsDataError(serverMessage: String? = null): DataResult<T> =
     when (code) {
-        401 -> authRequired()
-        403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
+        401 -> authRequired(serverMessage)
+        403 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "server_forbidden",
+                    requiredCapability = "server_access",
+                    serverMessage = serverMessage
+                )
+            )
         in 500..599 ->
             DataResult.Error(
                 ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage)
@@ -2434,13 +2449,15 @@ private fun <T> HomeNetworkResponse.settingsErrorTextOrNull(
         ?: return null
     return runCatching {
         text(settingsRepositoryJson.decodeFromString(serializer, payload))
-            ?.trim()
             ?.takeIf { it.isNotBlank() }
     }.getOrNull()
 }
 
-private fun <T> authRequired(): DataResult<T> =
-    DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+private fun authRequired(): DataResult.NoPermission =
+    authSessionRequiredResult()
+
+private fun authRequired(serverMessage: String?): DataResult.NoPermission =
+    authSessionRequiredResult(serverMessage)
 
 private fun <T> serverRequired(): DataResult<T> =
     DataResult.NoPermission(PermissionBlocker(code = "server_required", requiredCapability = "selected_server"))
@@ -2888,7 +2905,7 @@ private fun adminsSectionDetail(result: DataResult<List<SettingsServerAdminSnaps
         is DataResult.Content -> if (count == 0) "No owners or admins yet." else "$count owner/admin member${if (count == 1) "" else "s"}"
         is DataResult.Empty -> "No admins yet."
         is DataResult.NoPermission -> "You do not have permission to view server members."
-        is DataResult.Error -> "Admin list failed to load: ${result.error.userFacingMessage()}"
+        is DataResult.Error -> ""
     }
 
 private fun SettingsServerAdminSnapshot.isPrivilegedServerRole(): Boolean {
@@ -2912,7 +2929,7 @@ private fun billingSectionDetail(
             "Current plan: $plan.$detail$usage"
         }
         is DataResult.NoPermission -> "Billing requires owner permission."
-        is DataResult.Error -> "Current plan: $plan. Billing subscription failed: ${billing.error.userFacingMessage()}$usage"
+        is DataResult.Error -> ""
         is DataResult.Empty -> "Current plan: $plan.$usage"
     }
 }
@@ -2925,7 +2942,7 @@ private fun onboardingSectionDetail(
         is DataResult.Content -> onboarding?.detail ?: "Onboarding preference loaded."
         is DataResult.Empty -> "No onboarding preference was returned."
         is DataResult.NoPermission -> "Only server owners and admins can update onboarding settings."
-        is DataResult.Error -> "Onboarding settings failed to load: ${result.error.userFacingMessage()}"
+        is DataResult.Error -> ""
     }
 
 private fun agreementSectionDetail(
@@ -2936,7 +2953,7 @@ private fun agreementSectionDetail(
         is DataResult.Content -> agreement?.detail ?: "Pre-join agreement loaded."
         is DataResult.Empty -> "No pre-join agreement was returned."
         is DataResult.NoPermission -> "Only server owners and admins can manage the pre-join agreement."
-        is DataResult.Error -> "Pre-join agreement failed to load: ${result.error.userFacingMessage()}"
+        is DataResult.Error -> ""
     }
 
 private fun translationSectionDetail(
@@ -2947,7 +2964,7 @@ private fun translationSectionDetail(
         is DataResult.Content -> translation?.detail ?: "Translation settings loaded."
         is DataResult.Empty -> "No translation settings were returned."
         is DataResult.NoPermission -> "Only server owners and admins can update translation settings."
-        is DataResult.Error -> "Translation settings failed to load: ${result.error.userFacingMessage()}"
+        is DataResult.Error -> ""
     }
 
 private fun sidebarOrderSectionDetail(
@@ -2962,7 +2979,7 @@ private fun sidebarOrderSectionDetail(
         }
         is DataResult.Empty -> "No sidebar order settings were returned."
         is DataResult.NoPermission -> "Only server owners and admins can update sidebar order."
-        is DataResult.Error -> "Sidebar order failed to load: ${result.error.userFacingMessage()}"
+        is DataResult.Error -> ""
     }
 
 private fun invitesSectionDetail(result: DataResult<List<SettingsServerInviteSnapshot>>, count: Int): String =
@@ -2970,7 +2987,7 @@ private fun invitesSectionDetail(result: DataResult<List<SettingsServerInviteSna
         is DataResult.Content -> if (count == 0) "No pending invites." else "$count pending invite${if (count == 1) "" else "s"}"
         is DataResult.Empty -> "No pending invites."
         is DataResult.NoPermission -> "Only server owners and admins can view invites."
-        is DataResult.Error -> "Pending invites failed to load: ${result.error.userFacingMessage()}"
+        is DataResult.Error -> ""
     }
 
 private fun joinLinksSectionDetail(result: DataResult<List<SettingsServerJoinLinkSnapshot>>, count: Int): String =
@@ -2978,7 +2995,7 @@ private fun joinLinksSectionDetail(result: DataResult<List<SettingsServerJoinLin
         is DataResult.Content -> if (count == 0) "No active join links." else "$count join link${if (count == 1) "" else "s"}"
         is DataResult.Empty -> "No active join links."
         is DataResult.NoPermission -> "Only server owners and admins can view join links."
-        is DataResult.Error -> "Join links failed to load: ${result.error.userFacingMessage()}"
+        is DataResult.Error -> ""
     }
 
 private fun <T> DataResult<T>.sectionState(empty: Boolean): SettingsSectionAvailability =
@@ -3355,8 +3372,7 @@ private fun SettingsLanguageRegionAccountPreferences.toLanguageRegionSnapshot(
         translation?.detail
             ?: when (translationResult) {
                 is DataResult.Empty -> "Server translation settings are unavailable."
-                is DataResult.Error ->
-                    "Server translation settings failed to load: ${translationResult.error.userFacingMessage()}"
+                is DataResult.Error -> ""
                 is DataResult.NoPermission -> "You do not have permission to manage server translation settings."
                 is DataResult.Content -> "Server message translation setting loaded."
             }
@@ -3380,7 +3396,8 @@ private fun SettingsLanguageRegionAccountPreferences.toLanguageRegionSnapshot(
                 enabled = translationEnabled,
                 available = canManageTranslation && translationResult !is DataResult.NoPermission,
                 statusLabel = translationStatus,
-                detail = translationDetail
+                detail = translationDetail,
+                errorPresentation = translationResult.errorPresentationOrNull()
             ),
         autoTranslation =
             SettingsMobileToggleSnapshot(

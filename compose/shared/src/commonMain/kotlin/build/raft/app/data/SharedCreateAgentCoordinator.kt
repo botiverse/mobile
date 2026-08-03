@@ -167,11 +167,11 @@ internal const val AGENT_CREATE_NAME_TAKEN = "agent_create_name_taken"
 /**
  * task #193 honest-states fallback: an unmapped create error must always show
  * a real, non-empty reason. Preference order: the server's raw error text,
- * then the localized generic prefix with the code appended — never a bare
- * code on its own.
+ * then the localized generic sentence. Machine codes stay in diagnostics and
+ * never leak into visible fallback copy.
  */
 internal fun createAgentFallbackErrorText(error: ScreenError, genericPrefix: String): String =
-    error.serverMessage?.takeIf { it.isNotBlank() } ?: "$genericPrefix: ${error.code}"
+    error.serverMessage?.takeIf { it.isNotBlank() } ?: genericPrefix
 internal const val AGENT_CREATE_FORM_REFRESH_REQUIRED = "agent_create_form_refresh_required"
 internal const val AGENT_CREATE_FORM_REFRESH_FAILED = "agent_create_form_refresh_failed"
 

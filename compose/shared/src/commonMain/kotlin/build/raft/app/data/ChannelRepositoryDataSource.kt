@@ -513,16 +513,21 @@ private fun StoredAuthSession.toChannelServerContext(serverId: ServerId): Shared
     return SharedChannelServerContext(session = this, server = server)
 }
 
-private fun <T> authRequired(): DataResult<T> =
-    DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+private fun authRequired(): DataResult.NoPermission =
+    authSessionRequiredResult()
 
-private fun <T> HomeNetworkResponse.toChannelDataError(): DataResult<T> =
-    when (code) {
-        401 -> authRequired()
+private fun authRequired(serverMessage: String?): DataResult.NoPermission =
+    authSessionRequiredResult(serverMessage)
+
+private fun <T> HomeNetworkResponse.toChannelDataError(): DataResult<T> {
+    val serverMessage = channelServerErrorTextOrNull()
+    return when (code) {
+        401 -> authRequired(serverMessage)
         403 -> DataResult.NoPermission(
             PermissionBlocker(
                 code = channelErrorCode("server_forbidden"),
-                requiredCapability = "server_access"
+                requiredCapability = "server_access",
+                serverMessage = serverMessage
             )
         )
         in 500..599 ->
@@ -530,7 +535,7 @@ private fun <T> HomeNetworkResponse.toChannelDataError(): DataResult<T> =
                 ScreenError(
                     code = "server_unavailable",
                     retryable = true,
-                    serverMessage = channelServerErrorTextOrNull()
+                    serverMessage = serverMessage
                 )
             )
         else ->
@@ -538,10 +543,11 @@ private fun <T> HomeNetworkResponse.toChannelDataError(): DataResult<T> =
                 ScreenError(
                     code = channelErrorCode("http_$code"),
                     retryable = false,
-                    serverMessage = channelServerErrorTextOrNull()
+                    serverMessage = serverMessage
                 )
             )
     }
+}
 
 private fun HomeNetworkResponse.channelErrorCode(fallback: String): String {
     val payload = bodyText ?: errorBodyText ?: return fallback
@@ -559,7 +565,6 @@ private fun HomeNetworkResponse.channelServerErrorTextOrNull(): String? {
     return runCatching {
         channelRepositoryJson.decodeFromString(ChannelErrorBody.serializer(), payload)
             .error
-            ?.trim()
             ?.takeIf { it.isNotBlank() }
     }.getOrNull()
 }

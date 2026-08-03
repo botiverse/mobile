@@ -7,6 +7,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class SlockFilePreviewHonestStateTest {
+    private val errorStrings = englishErrorPresentationStringsForTest()
+
     @Test
     fun agentWorkspaceLoadErrorShowsRawServerReasonAndKeepsCodeForDiagnostics() {
         val payload =
@@ -15,7 +17,8 @@ class SlockFilePreviewHonestStateTest {
                     ScreenError(
                         code = "workspace_backend_restarting",
                         serverMessage = "Workspace storage is restarting"
-                    )
+                    ),
+                    errorStrings
                 )
 
         assertEquals("error", payload.kind)
@@ -28,7 +31,10 @@ class SlockFilePreviewHonestStateTest {
     fun agentWorkspaceLoadErrorWithoutServerReasonUsesGenericSentence() {
         val payload =
             SlockFilePreviewPayload()
-                .withAgentWorkspaceLoadError(ScreenError(code = "workspace_preview_unknown"))
+                .withAgentWorkspaceLoadError(
+                    ScreenError(code = "workspace_preview_unknown"),
+                    errorStrings
+                )
 
         assertEquals("Something went wrong. Please try again.", payload.message)
         assertEquals("workspace_preview_unknown", payload.error)
@@ -38,7 +44,10 @@ class SlockFilePreviewHonestStateTest {
     fun agentWorkspacePermissionErrorUsesPermissionCopyInsteadOfCode() {
         val payload =
             SlockFilePreviewPayload()
-                .withAgentWorkspacePermissionError(PermissionBlocker(code = "forbidden"))
+                .withAgentWorkspacePermissionError(
+                    PermissionBlocker(code = "forbidden"),
+                    errorStrings
+                )
 
         assertEquals("You do not have permission to view this page.", payload.message)
         assertEquals("forbidden", payload.error)
