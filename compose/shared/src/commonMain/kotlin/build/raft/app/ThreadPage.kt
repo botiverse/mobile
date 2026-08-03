@@ -3745,13 +3745,29 @@ internal class ComposeThreadMessageRowVisualPage : build.raft.app.base.BasePager
 
 @Composable
 internal fun ThreadMessageVisualScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val visualFixture = pager.pageData.params.optString("visualFixture")
     ThreadReactionAtlasProvider {
-        ThreadMessageVisualScreenContent()
+        if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_MD_LONG_TABLE_OVERLAP) {
+            // Production renders message cards as bounded LazyColumn items.
+            // Keep that nested-lazy constraint for the task #526 regression;
+            // the ordinary visual route intentionally measures unbounded.
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+                verticalArrangement = Arrangement.Top
+            ) {
+                item {
+                    ThreadMessageVisualScreenContent(useBoundedLazyHost = true)
+                }
+            }
+        } else {
+            ThreadMessageVisualScreenContent()
+        }
     }
 }
 
 @Composable
-private fun ThreadMessageVisualScreenContent() {
+private fun ThreadMessageVisualScreenContent(useBoundedLazyHost: Boolean = false) {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
     val visualFixture = params.optString("visualFixture")
@@ -3759,10 +3775,6 @@ private fun ThreadMessageVisualScreenContent() {
     val interactionProbe = params.optString("interactionProbe")
     val instanceId = params.optString("instanceId")
     val visualSingleMessage = params.optBoolean("visualSingleMessage", false)
-    // Capture-only viewport slicing happens after layout, so it exposes a
-    // lower section of tall production content without changing measurement.
-    val visualViewportSliceTopDp =
-        params.optInt("visualViewportSliceTopDp", 0).coerceAtLeast(0)
     val longPressReadyToken = params.optString("longPressReadyToken")
     val longPressMenuVisibleToken = params.optString("longPressMenuVisibleToken")
     val singleTapOpensThreadEnabled = params.optBoolean("singleTapOpensThreadEnabled", false)
@@ -4070,9 +4082,17 @@ private fun ThreadMessageVisualScreenContent() {
                         // measured text height to constraints.maxHeight, but the native
                         // view still draws the full layout — so a body taller than the
                         // window overlapped the siblings placed at the clamped height.
-                        // Measure unbounded like production.
-                        .wrapContentHeight(align = Alignment.Top, unbounded = true)
-                        .offset(y = -visualViewportSliceTopDp.dp)
+                        // Most isolated cases measure unbounded to mirror
+                        // ordinary production rows. Task #526 instead keeps
+                        // the actual bounded LazyColumn-item host because the
+                        // nested LazyRow constraint is the regression trigger.
+                        .then(
+                            if (useBoundedLazyHost) {
+                                Modifier
+                            } else {
+                                Modifier.wrapContentHeight(align = Alignment.Top, unbounded = true)
+                            }
+                        )
                         .background(SlockColor.SurfaceWhite)
                         .padding(SlockSpacing.Md)
             ) {
@@ -10566,8 +10586,8 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE = "md_latest_
 
 /**
  * Task #526 regression specimen derived from the reported hotel-comparison
- * screenshot. A lower viewport slice preserves all 14 rows while exposing the
- * uniquely labelled detail table after the first table's final rule.
+ * screenshot. The visual route mounts this body as a bounded LazyColumn item,
+ * matching the production nested-lazy constraint that triggers the defect.
  * If MarkdownTable under-reports the tall table's height, the detail table is
  * placed early and paints over the still-visible hotel rows.
  */
