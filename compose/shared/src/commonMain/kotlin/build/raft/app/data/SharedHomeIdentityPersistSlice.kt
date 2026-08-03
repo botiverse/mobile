@@ -118,6 +118,10 @@ private fun HomeChannelRow.pruneForHomeIdentityPersist(): HomeChannelRow =
         activityNotificationPreference = ChannelActivityNotificationPreference.Unsupported
     )
 
+/**
+ * [HomeConversationRow.presenceMemberId] is the DM peer's canonical identity, not a volatile presence value.
+ * Typed human/agent pins use it to resolve the persisted DM row before the network refresh completes.
+ */
 private fun HomeDirectMessageRow.pruneForHomeIdentityPersist(): HomeDirectMessageRow =
     copy(
         unreadCount = 0,
@@ -129,7 +133,6 @@ private fun HomeDirectMessageRow.pruneForHomeIdentityPersist(): HomeDirectMessag
         lastMessagePreview = null,
         lastMessageAt = null,
         lastMessageSenderName = null,
-        presenceMemberId = null,
         hasDraft = false,
         hasDraftKnown = false,
         activityNotificationPreference = ChannelActivityNotificationPreference.Unsupported
