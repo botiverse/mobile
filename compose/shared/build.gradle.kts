@@ -101,7 +101,13 @@ kotlin {
         podfile = project.file("../iosApp/Podfile")
         framework {
             baseName = "shared"
-            freeCompilerArgs = freeCompilerArgs + getCommonCompilerArgs()
+            // Kotlin 2.1.21 builds an unbounded full-program call graph for this
+            // optimization and exhausts the release runner heap. Keeping the
+            // initializer calls is semantically conservative and bounds linking.
+            freeCompilerArgs =
+                freeCompilerArgs +
+                    getCommonCompilerArgs() +
+                    "-Xdisable-phases=RemoveRedundantCallsToStaticInitializersPhase"
             isStatic = true
             license = "MIT"
         }

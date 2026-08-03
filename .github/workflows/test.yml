@@ -58,6 +58,9 @@ jobs:
       - name: Validate checked-in CI tiering contract
         run: scripts/ci/test_ci_tiering_contract.sh
 
+      - name: Validate iOS Kotlin/Native optimizer contract
+        run: scripts/ci/test_ios_native_optimizer_contract.sh
+
       - name: Validate OHOS attachment-open diagnostic production wiring
         run: node compose/ohosApp/scripts/test_attachment_open_diagnostics_source_contract.mjs
 
