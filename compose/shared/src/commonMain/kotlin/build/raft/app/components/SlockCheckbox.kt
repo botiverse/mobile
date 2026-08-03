@@ -1,15 +1,18 @@
 package build.raft.app.components
 
+import build.raft.app.LocalSlockTheme
 import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockStroke
+import build.raft.app.SlockThemeFamily
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -54,6 +57,34 @@ internal fun SlockCheckbox(
         modifier.clickable { onCheckedChange(!checked) }
     } else {
         modifier
+    }
+    // Elegant register: a softly-rounded control — real 4dp rounded corners + 1px #CACACE hairline
+    // (unchecked) and a #0A0A0A elegant-ink fill (checked) with the white Check icon, vs the brutal
+    // square black-border / black-fill below. Disabled fades via the shared disabledAlpha. The
+    // borderRadius-prop path does not round at runtime, so the rounded shape is applied straight to
+    // background/border, mirroring the elegant button/card/input. The brutal branch is unchanged.
+    val theme = LocalSlockTheme.current
+    if (theme.family == SlockThemeFamily.Elegant) {
+        val shape = RoundedCornerShape(4.dp)
+        val elegantCheckedFill = theme.ink.copy(alpha = disabledAlpha)
+        val elegantBorderColor = if (checked) elegantCheckedFill else theme.line.copy(alpha = disabledAlpha)
+        Box(
+            modifier = clickableModifier
+                .size(size)
+                .background(if (checked) elegantCheckedFill else theme.surface, shape)
+                .border(theme.lineWidth, elegantBorderColor, shape),
+            contentAlignment = Alignment.Center
+        ) {
+            if (checked) {
+                SlockLucideIcon(
+                    SlockLucideIconName.Check,
+                    modifier = Modifier.size((size.value * 0.7f).dp),
+                    color = "#FFFFFFFF",
+                    strokeWidth = 4f
+                )
+            }
+        }
+        return
     }
     Box(
         modifier = clickableModifier
