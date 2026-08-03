@@ -629,12 +629,14 @@ export class SlockOhosRealtimeHostContext {
   }
 
   private sendRealtimeNotify(data: KRRecord): void {
-    emitter.emit(GeneratedRealtimeContract.Notify.EventName, {
-      data: {
-        eventName: GeneratedRealtimeContract.Notify.EventName,
-        stringify: JSON.stringify(data),
-      },
-    });
+    try {
+      const published = slockOhosRealtimeKnoiBridge.publishEvent(JSON.stringify(data));
+      if (!published) {
+        console.warn('[SlockOhosRealtime] shared_ingress_failed reason=rejected');
+      }
+    } catch (error) {
+      console.warn(`[SlockOhosRealtime] shared_ingress_failed reason=bridge_error message=${JSON.stringify(error)}`);
+    }
   }
 
   private sameIdentity(left: RealtimeProcessIdentity, right: RealtimeProcessIdentity): boolean {

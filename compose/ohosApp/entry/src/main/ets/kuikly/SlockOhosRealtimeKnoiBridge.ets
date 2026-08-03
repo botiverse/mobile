@@ -95,6 +95,10 @@ class SlockOhosRealtimeKnoiBridge {
     );
   }
 
+  publishEvent(eventDataJson: string): boolean {
+    return this.invokeValue<boolean>('slockRealtimeKnoiPublishEvent', eventDataJson);
+  }
+
   advanceAppliedSeq(
     runtimeId: string,
     currentServerId: string,

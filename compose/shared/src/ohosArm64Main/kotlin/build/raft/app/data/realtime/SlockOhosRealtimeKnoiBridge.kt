@@ -1,6 +1,7 @@
 package build.raft.app.data.realtime
 
 import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.postSlockInProcessJsonEvent
 import build.raft.app.data.updateSlockHostVisibility
 import com.tencent.tmm.knoi.annotation.KNExport
 
@@ -71,6 +72,22 @@ fun slockRealtimeKnoiRawDecision(
             .onRawEventForConnection(connectionServerId, eventName, rawPayload)
     return decision.toKnoiMap()
 }
+
+/**
+ * OHOS native -> shared ingress.
+ *
+ * The platform event bus dispatches shared-originated events to ArkTS. Native
+ * Socket.IO events travel in the opposite direction and must enter the shared
+ * in-process bus directly; routing them back through the platform dispatcher
+ * would only echo them to ArkTS again.
+ */
+@KNExport
+fun slockRealtimeKnoiPublishEvent(eventDataJson: String): Boolean =
+    postSlockInProcessJsonEvent(
+        eventName = SlockRealtimeNotifyContract.EventName,
+        eventDataJson = eventDataJson,
+        source = "ohos_realtime",
+    )
 
 @KNExport
 fun slockRealtimeKnoiAdvanceAppliedSeq(

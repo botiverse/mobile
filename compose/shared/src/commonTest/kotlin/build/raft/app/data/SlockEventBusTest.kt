@@ -42,6 +42,34 @@ class SlockEventBusTest {
     }
 
     @Test
+    fun nativeJsonIngressDeliversValidPayloadExactlyOnceAndRejectsMalformedInput() {
+        val eventName = "test.nativeJsonIngress"
+        val received = mutableListOf<String>()
+        val subscription =
+            SlockEventBuses.inProcess().observe(eventName) { data ->
+                received += data?.optString("value").orEmpty()
+            }
+
+        assertTrue(
+            postSlockInProcessJsonEvent(
+                eventName = eventName,
+                eventDataJson = """{"value":"native"}""",
+                source = "native-test",
+            )
+        )
+        assertFalse(
+            postSlockInProcessJsonEvent(
+                eventName = eventName,
+                eventDataJson = "not-json",
+                source = "native-test",
+            )
+        )
+        subscription.close()
+
+        assertEquals(listOf("native"), received)
+    }
+
+    @Test
     fun listenerCanUnsubscribeDuringDeliveryWithoutSkippingSnapshotPeers() {
         val eventBus = SlockEventBuses.inProcess()
         val eventName = "test.listenerCanUnsubscribeDuringDeliveryWithoutSkippingSnapshotPeers"
