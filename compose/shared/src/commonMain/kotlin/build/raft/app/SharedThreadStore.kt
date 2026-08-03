@@ -5582,7 +5582,10 @@ internal class SharedThreadStore(
                     return@reducePayloadPatch currentPayload
                 }
                 val commitPatch = patch.withAcceptedThreadRepliesProjection(accepted, currentPayload)
-                currentPayload.withThreadContentProjectionFrom(commitPatch)
+                currentPayload.withSecondaryTimelineProjectionFrom(
+                    patch = commitPatch,
+                    previous = latest,
+                )
             }
         }
         val replyIdentities =
@@ -8000,6 +8003,68 @@ private fun KuiklyThreadScreenPayload.withAcceptedThreadRepliesProjection(
         this
     } else {
         copy(messages = projectedMessages, originMessage = projectedOrigin)
+    }
+}
+
+/**
+ * Applies the Saved/reply-summary result produced by [refreshSecondaryTimelineData] without
+ * replacing canonical timeline state that committed while the auxiliary projection was in
+ * flight. [previous] is the live payload observed immediately before the projection callback was
+ * requested, so each auxiliary field can use a three-way merge: apply [patch] only while the live
+ * field still equals that baseline; otherwise retain the newer live value.
+ */
+private fun KuiklyThreadScreenPayload.withSecondaryTimelineProjectionFrom(
+    patch: KuiklyThreadScreenPayload,
+    previous: KuiklyThreadScreenPayload,
+): KuiklyThreadScreenPayload {
+    val patchById =
+        (patch.messages + listOfNotNull(patch.originMessage))
+            .filter { message -> message.id.isNotBlank() }
+            .associateBy { message -> message.id }
+    val previousById =
+        (previous.messages + listOfNotNull(previous.originMessage))
+            .filter { message -> message.id.isNotBlank() }
+            .associateBy { message -> message.id }
+    fun <T> projectField(live: T, baseline: T, candidate: T): T =
+        if (live == baseline) candidate else live
+
+    fun KuiklyThreadMessageItem.project(): KuiklyThreadMessageItem {
+        val candidate = patchById[id] ?: return this
+        val baseline = previousById[id] ?: return this
+        return copy(
+            threadChannelId = projectField(threadChannelId, baseline.threadChannelId, candidate.threadChannelId),
+            replyCount = projectField(replyCount, baseline.replyCount, candidate.replyCount),
+            unreadReplyCount =
+                projectField(unreadReplyCount, baseline.unreadReplyCount, candidate.unreadReplyCount),
+            firstUnreadReplyMessageId =
+                projectField(
+                    firstUnreadReplyMessageId,
+                    baseline.firstUnreadReplyMessageId,
+                    candidate.firstUnreadReplyMessageId,
+                ),
+            isThreadFollowed =
+                projectField(isThreadFollowed, baseline.isThreadFollowed, candidate.isThreadFollowed),
+            inlineReplies = projectField(inlineReplies, baseline.inlineReplies, candidate.inlineReplies),
+            isSaved = projectField(isSaved, baseline.isSaved, candidate.isSaved),
+        )
+    }
+
+    val projectedMessages = messages.map { message -> message.project() }
+    val projectedOrigin = originMessage?.project()
+    val projectedAuthority =
+        projectField(replySummariesAuthority, previous.replySummariesAuthority, patch.replySummariesAuthority)
+    return if (
+        projectedMessages == messages &&
+        projectedOrigin == originMessage &&
+        projectedAuthority == replySummariesAuthority
+    ) {
+        this
+    } else {
+        copy(
+            messages = projectedMessages,
+            originMessage = projectedOrigin,
+            replySummariesAuthority = projectedAuthority,
+        ).withOriginReplyCountAtLeastLoadedReplies()
     }
 }
 
