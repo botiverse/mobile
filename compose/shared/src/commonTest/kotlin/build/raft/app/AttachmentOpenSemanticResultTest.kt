@@ -7,6 +7,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.test.runTest
 
 class AttachmentOpenSemanticResultTest {
     private val localizedTerms =
@@ -62,6 +63,87 @@ class AttachmentOpenSemanticResultTest {
         assertEquals("owner_missing", reason(hasOwner = false))
         assertEquals("state_checking", reason(hasPolicy = false))
         assertNull(reason())
+    }
+
+    @Test
+    fun productionAdmissionTraceEmitsExactlyOneTerminalDecision() {
+        val rejected = mutableListOf<String>()
+        assertFalse(
+            traceSlockFilePreviewExternalOpenAdmission(
+                rejectionReason = "operation_busy",
+                policy = null,
+                trace = rejected::add
+            )
+        )
+        assertEquals(
+            listOf("file_preview_open stage=rejected reason=operation_busy"),
+            rejected
+        )
+
+        val admitted = mutableListOf<String>()
+        assertTrue(
+            traceSlockFilePreviewExternalOpenAdmission(
+                rejectionReason = null,
+                policy = SlockFilePreviewExternalOpenPolicy(requirePublicDownload = false, trackProgress = true),
+                trace = admitted::add
+            )
+        )
+        assertEquals(
+            listOf(
+                "file_preview_open stage=admitted committedRequired=false trackProgress=true"
+            ),
+            admitted
+        )
+    }
+
+    @Test
+    fun productionExternalOpenTraceCoversMissingAndHostTerminalInOrder() = runTest {
+        val policy = SlockFilePreviewExternalOpenPolicy(requirePublicDownload = false, trackProgress = true)
+        val missingTrace = mutableListOf<String>()
+        val missing =
+            runSlockFilePreviewExternalOpenTraceFlow(
+                policy = policy,
+                resolveUrl = { null },
+                onUrlResolved = { error("must not resolve") },
+                openHost = { error("must not open") },
+                statusOf = { null },
+                trace = missingTrace::add
+            )
+        assertEquals(SlockFilePreviewExternalOpenTraceResult.UrlResolutionFailed, missing)
+        assertEquals(
+            listOf(
+                "file_preview_open stage=url_resolution_failed committedRequired=false trackProgress=true"
+            ),
+            missingTrace
+        )
+
+        val events = mutableListOf<String>()
+        val completed =
+            runSlockFilePreviewExternalOpenTraceFlow(
+                policy = policy,
+                resolveUrl = {
+                    events += "resolve"
+                    "https://example.invalid/attachment"
+                },
+                onUrlResolved = { events += "resolved" },
+                openHost = {
+                    events += "host"
+                    "failed"
+                },
+                statusOf = { it },
+                trace = { events += it }
+            )
+        assertEquals(SlockFilePreviewExternalOpenTraceResult.HostTerminal("failed"), completed)
+        assertEquals(
+            listOf(
+                "resolve",
+                "resolved",
+                "file_preview_open stage=host_handoff committedRequired=false trackProgress=true",
+                "host",
+                "file_preview_open stage=host_terminal status=failed"
+            ),
+            events
+        )
     }
 
     @Test

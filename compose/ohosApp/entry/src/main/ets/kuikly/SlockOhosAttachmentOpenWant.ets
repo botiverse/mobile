@@ -149,6 +149,82 @@ export function slockOhosAttachmentOpenPreflightDiagnostic(
   ].join(' ');
 }
 
+/** Executable owner for the pre-Want trace. The host injects its persistent diagnostic sink. */
+export class SlockOhosAttachmentOpenPreflightTrace {
+  private readonly mimeType: string | undefined;
+  private readonly urlPresent: boolean;
+  private readonly requireCommittedDownload: boolean;
+  private readonly ownerPrivate: boolean;
+  private readonly sink: (message: string) => void;
+
+  constructor(
+    mimeType: string | undefined,
+    urlPresent: boolean,
+    requireCommittedDownload: boolean,
+    ownerPrivate: boolean,
+    sink: (message: string) => void
+  ) {
+    this.mimeType = mimeType;
+    this.urlPresent = urlPresent;
+    this.requireCommittedDownload = requireCommittedDownload;
+    this.ownerPrivate = ownerPrivate;
+    this.sink = sink;
+  }
+
+  requested(): void {
+    this.emit(SlockOhosAttachmentOpenPreflightStage.REQUESTED);
+  }
+
+  requestRejected(): void {
+    this.emit(SlockOhosAttachmentOpenPreflightStage.REQUEST_REJECTED, undefined, undefined, 'failed');
+  }
+
+  publicDownloadMissing(privateCommitted: boolean): void {
+    this.emit(SlockOhosAttachmentOpenPreflightStage.PUBLIC_DOWNLOAD_MISSING, privateCommitted, false, 'missing');
+  }
+
+  cacheChecked(privateCommitted: boolean, cacheUsable: boolean): void {
+    this.emit(SlockOhosAttachmentOpenPreflightStage.CACHE_CHECKED, privateCommitted, cacheUsable);
+  }
+
+  downloadStarted(privateCommitted: boolean): void {
+    this.emit(SlockOhosAttachmentOpenPreflightStage.DOWNLOAD_STARTED, privateCommitted, false);
+  }
+
+  downloadTerminal(privateCommitted: boolean, status: string | undefined): void {
+    this.emit(SlockOhosAttachmentOpenPreflightStage.DOWNLOAD_TERMINAL, privateCommitted, false, status);
+  }
+
+  wantHandoff(privateCommitted: boolean, downloaded: boolean): void {
+    this.emit(
+      SlockOhosAttachmentOpenPreflightStage.WANT_HANDOFF,
+      privateCommitted,
+      true,
+      downloaded ? 'complete' : undefined
+    );
+  }
+
+  private emit(
+    stage: SlockOhosAttachmentOpenPreflightStage,
+    privateCommitted: boolean | undefined = undefined,
+    cacheUsable: boolean | undefined = undefined,
+    downloadStatus: string | undefined = undefined
+  ): void {
+    this.sink(
+      slockOhosAttachmentOpenPreflightDiagnostic(
+        stage,
+        this.mimeType,
+        this.urlPresent,
+        this.requireCommittedDownload,
+        this.ownerPrivate,
+        privateCommitted,
+        cacheUsable,
+        downloadStatus
+      )
+    );
+  }
+}
+
 function slockOhosAttachmentOpenDiagnosticUriScheme(uri: string | undefined): string {
   const separator = uri?.indexOf(':') ?? -1;
   const normalized = separator > 0 ? uri?.substring(0, separator).trim().toLowerCase() ?? '' : '';

@@ -83,6 +83,7 @@ import {
   SLOCK_OHOS_PICKER_TYPE_PARAMETER,
   SlockOhosAttachmentOpenDiagnosticTerminal,
   SlockOhosAttachmentOpenFailureKind,
+  SlockOhosAttachmentOpenPreflightTrace,
   SlockOhosAttachmentOpenPreflightStage,
 } from '../main/ets/kuikly/SlockOhosAttachmentOpenWant';
 import { Want, wantConstant } from '@kit.AbilityKit';
@@ -546,6 +547,154 @@ export default function localUnitTest() {
         'stage=public_download_missing mime=none urlPresent=true committedRequired=true ownerPrivate=false ' +
           'privateCommitted=false cacheUsable=false downloadStatus=missing'
       );
+    });
+    it('attachmentOpenPreflightTraceExecutesRejectedRequestInExactOrder', 0, () => {
+      const events: Array<string> = [];
+      const trace = new SlockOhosAttachmentOpenPreflightTrace(
+        'application/x-private-secret;name=customer-private-secret.zip',
+        false,
+        false,
+        true,
+        (message: string): void => events.push(message)
+      );
+
+      trace.requested();
+      trace.requestRejected();
+
+      expect(events.length).assertEqual(2);
+      expect(events[0]).assertEqual(
+        'stage=requested mime=other urlPresent=false committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=unknown cacheUsable=unknown downloadStatus=none'
+      );
+      expect(events[1]).assertEqual(
+        'stage=request_rejected mime=other urlPresent=false committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=unknown cacheUsable=unknown downloadStatus=failed'
+      );
+      expect(events.join('|').includes('customer-private-secret')).assertFalse();
+    });
+    it('attachmentOpenPreflightTraceExecutesPublicMissingInExactOrder', 0, () => {
+      const events: Array<string> = [];
+      const trace = new SlockOhosAttachmentOpenPreflightTrace(
+        undefined,
+        true,
+        true,
+        false,
+        (message: string): void => events.push(message)
+      );
+
+      trace.requested();
+      trace.publicDownloadMissing(false);
+
+      expect(events.length).assertEqual(2);
+      expect(events[0]).assertEqual(
+        'stage=requested mime=none urlPresent=true committedRequired=true ownerPrivate=false ' +
+          'privateCommitted=unknown cacheUsable=unknown downloadStatus=none'
+      );
+      expect(events[1]).assertEqual(
+        'stage=public_download_missing mime=none urlPresent=true committedRequired=true ownerPrivate=false ' +
+          'privateCommitted=false cacheUsable=false downloadStatus=missing'
+      );
+    });
+    it('attachmentOpenPreflightTraceExecutesCacheHitInExactOrder', 0, () => {
+      const events: Array<string> = [];
+      const trace = new SlockOhosAttachmentOpenPreflightTrace(
+        'application/zip',
+        true,
+        false,
+        true,
+        (message: string): void => events.push(message)
+      );
+
+      trace.requested();
+      trace.cacheChecked(true, true);
+      trace.wantHandoff(true, false);
+
+      expect(events.length).assertEqual(3);
+      expect(events[0]).assertEqual(
+        'stage=requested mime=application/zip urlPresent=true committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=unknown cacheUsable=unknown downloadStatus=none'
+      );
+      expect(events[1]).assertEqual(
+        'stage=cache_checked mime=application/zip urlPresent=true committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=true cacheUsable=true downloadStatus=none'
+      );
+      expect(events[2]).assertEqual(
+        'stage=want_handoff mime=application/zip urlPresent=true committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=true cacheUsable=true downloadStatus=none'
+      );
+    });
+    it('attachmentOpenPreflightTraceExecutesDownloadCompleteInExactOrder', 0, () => {
+      const events: Array<string> = [];
+      const trace = new SlockOhosAttachmentOpenPreflightTrace(
+        'application/zip',
+        true,
+        false,
+        true,
+        (message: string): void => events.push(message)
+      );
+
+      trace.requested();
+      trace.cacheChecked(false, false);
+      trace.downloadStarted(false);
+      trace.downloadTerminal(false, 'complete');
+      trace.wantHandoff(false, true);
+
+      expect(events.length).assertEqual(5);
+      expect(events[0]).assertEqual(
+        'stage=requested mime=application/zip urlPresent=true committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=unknown cacheUsable=unknown downloadStatus=none'
+      );
+      expect(events[1]).assertEqual(
+        'stage=cache_checked mime=application/zip urlPresent=true committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=false cacheUsable=false downloadStatus=none'
+      );
+      expect(events[2]).assertEqual(
+        'stage=download_started mime=application/zip urlPresent=true committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=false cacheUsable=false downloadStatus=none'
+      );
+      expect(events[3]).assertEqual(
+        'stage=download_terminal mime=application/zip urlPresent=true committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=false cacheUsable=false downloadStatus=complete'
+      );
+      expect(events[4]).assertEqual(
+        'stage=want_handoff mime=application/zip urlPresent=true committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=false cacheUsable=true downloadStatus=complete'
+      );
+    });
+    it('attachmentOpenPreflightTraceStopsAfterSanitizedDownloadFailure', 0, () => {
+      const events: Array<string> = [];
+      const trace = new SlockOhosAttachmentOpenPreflightTrace(
+        'application/zip',
+        true,
+        false,
+        true,
+        (message: string): void => events.push(message)
+      );
+
+      trace.requested();
+      trace.cacheChecked(false, false);
+      trace.downloadStarted(false);
+      trace.downloadTerminal(false, 'private-upstream-error');
+
+      expect(events.length).assertEqual(4);
+      expect(events[0]).assertEqual(
+        'stage=requested mime=application/zip urlPresent=true committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=unknown cacheUsable=unknown downloadStatus=none'
+      );
+      expect(events[1]).assertEqual(
+        'stage=cache_checked mime=application/zip urlPresent=true committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=false cacheUsable=false downloadStatus=none'
+      );
+      expect(events[2]).assertEqual(
+        'stage=download_started mime=application/zip urlPresent=true committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=false cacheUsable=false downloadStatus=none'
+      );
+      expect(events[3]).assertEqual(
+        'stage=download_terminal mime=application/zip urlPresent=true committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=false cacheUsable=false downloadStatus=other'
+      );
+      expect(events.join('|').includes('private-upstream-error')).assertFalse();
+      expect(events.join('|').includes('stage=want_handoff')).assertFalse();
     });
     it('privateAttachmentPathBindsOwnerAndAttachmentWithoutDisplayNameAuthority', 0, () => {
       const owner = 'a'.repeat(64);
