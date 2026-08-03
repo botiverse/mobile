@@ -786,7 +786,7 @@ internal class ComposeUiButtonThemeVisualPage : BasePager() {
 internal class ComposeUiButtonElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = elegantTheme) { UiButtonVisualContent() } }
+        setContent { SlockThemeProvider(theme = elegantTheme) { UiButtonVisualContent(rowSpacing = 12.dp) } }
     }
 }
 

@@ -49,6 +49,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -80,7 +81,7 @@ internal fun UiSegmentedControlVisualContent() {
 }
 
 @Composable
-internal fun UiButtonVisualContent() {
+internal fun UiButtonVisualContent(rowSpacing: Dp = 10.dp) {
     Box(
         modifier =
             Modifier
@@ -89,19 +90,24 @@ internal fun UiButtonVisualContent() {
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
-        // react spaces these buttons 12px apart (box edge to box edge); the Kuikly
-        // button reserves its 2dp shadow as trailing/bottom layout space, so 10dp
-        // spacing puts the visible boxes 12dp apart like react (task #370).
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        // react spaces these buttons 12px apart (box edge to box edge). Brutal keeps the
+        // default 10dp spacing because the button reserves its 2dp shadow as trailing/
+        // bottom layout space (10 + 2 = 12 visible, task #370). The elegant register draws
+        // an ambient shadow with no reserved layout space, so its page passes rowSpacing
+        // = 12.dp to reach the same visible 12dp gap (measured 30px vs react 36px otherwise).
+        Column(verticalArrangement = Arrangement.spacedBy(rowSpacing)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(rowSpacing), verticalAlignment = Alignment.CenterVertically) {
                 SlockBrutalActionButton(label = "Save", onClick = {}, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
                 SlockBrutalActionButton(label = "Sync", onClick = {}, backgroundColor = SlockColor.BrandYellow, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
                 SlockBrutalActionButton(label = "Delete", onClick = {}, backgroundColor = SlockColor.AccentPink, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(rowSpacing), verticalAlignment = Alignment.CenterVertically) {
                 SlockBrutalActionButton(label = "Add", onClick = {}, backgroundColor = SlockColor.AccentCyan, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
                 SlockBrutalActionButton(label = "Continue", onClick = {}, backgroundColor = SlockColor.AccentLime, minHeight = 32.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 16.sp))
-                SlockBrutalActionButton(label = "Disabled", onClick = {}, backgroundColor = SlockColor.SurfaceCream, enabled = false, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
+                // tone="stone" (#C0B9B1) to match react's disabled button. Brutal disabled
+                // ignores this (uses the fixed disabledBackgroundColor), so the brutal PNG is
+                // unchanged; elegant disabled fades this tone via alpha(0.4) → #E5E2DF like react.
+                SlockBrutalActionButton(label = "Disabled", onClick = {}, backgroundColor = SlockColor.AccentStone, enabled = false, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
             }
         }
     }
