@@ -441,6 +441,12 @@ internal fun createAgentInitialMachineSelection(
     return online(suggestedComputer) ?: machines.firstOrNull { it.status == "online" }?.id
 }
 
+internal fun createAgentAvailableMachineId(
+    machines: List<SharedCreateAgentMachineOption>,
+    selectedMachineId: String?
+): String? =
+    selectedMachineId?.takeIf { selectedId -> machines.any { machine -> machine.id == selectedId } }
+
 internal fun createAgentModelDropdownItems(
     runtime: String,
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList(),
@@ -583,6 +589,7 @@ internal fun SharedCreateAgentDialog(
     machines: List<SharedCreateAgentMachineOption> = emptyList(),
     machinesLoading: Boolean = false,
     machinesErrorMessage: String? = null,
+    onMachinesRetry: () -> Unit = {},
     runtimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     runtimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     onRuntimeModelsRequest: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
@@ -637,11 +644,12 @@ internal fun SharedCreateAgentDialog(
             )
         )
     }
+    val availableSelectedMachineId = createAgentAvailableMachineId(machines, selectedMachineId)
     var machineRuntimeInitialized by remember(initialRuntime) { mutableStateOf(initialRuntime.isNotBlank()) }
     val supportedRuntimeIds = remember {
         RUNTIMES.filter { it.supported && !it.deprecated }.map { it.id }.toSet()
     }
-    val runtimeModelKey = selectedMachineId?.let { it to runtime }
+    val runtimeModelKey = availableSelectedMachineId?.let { it to runtime }
     val runtimeModelsCatalog = runtimeModelKey?.let { runtimeModelsByMachineAndRuntime[it] }
     val runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
     val runtimeModelsLoading = runtimeModelKey?.let { it in runtimeModelLoadsInFlight } ?: false
@@ -650,7 +658,7 @@ internal fun SharedCreateAgentDialog(
         createAgentFormStore?.state ?: emptyFormStoreState
     }.collectAsState()
     val cleanCreateAgentServerId = createAgentServerId?.trim().orEmpty()
-    val createAgentMachineKey = selectedMachineId?.let { machineId ->
+    val createAgentMachineKey = availableSelectedMachineId?.let { machineId ->
         SharedCreateAgentMachineFormKey(cleanCreateAgentServerId, machineId)
     }
     val builtInCatalog = createAgentMachineKey?.let(createAgentFormState.runtimeCatalogs::get)
@@ -660,19 +668,19 @@ internal fun SharedCreateAgentDialog(
         ?.takeIf { it.isSupportedBuiltInPi }
         ?: builtInFormOverride?.definition?.ref
     val builtInExactKey = builtInRef?.let { ref ->
-        selectedMachineId?.let { machineId -> SharedCreateAgentExactFormKey(cleanCreateAgentServerId, machineId, ref) }
+        availableSelectedMachineId?.let { machineId -> SharedCreateAgentExactFormKey(cleanCreateAgentServerId, machineId, ref) }
     }
     val builtInForm = builtInFormOverride ?: builtInExactKey?.let(createAgentFormState.resolvedForms::get)
     val shouldRefreshDialogBuiltInForm =
         createAgentFormStore != null &&
             cleanCreateAgentServerId.isNotBlank() &&
-            selectedMachineId != null &&
+            availableSelectedMachineId != null &&
             !external &&
             builtInFormOverride == null
     var dialogBuiltInFormRefreshState by remember(
         createAgentFormStore,
         cleanCreateAgentServerId,
-        selectedMachineId,
+        availableSelectedMachineId,
         external,
         builtInFormOverride
     ) {
@@ -686,7 +694,7 @@ internal fun SharedCreateAgentDialog(
     var dialogBuiltInFormRefreshAttempt by remember(
         createAgentFormStore,
         cleanCreateAgentServerId,
-        selectedMachineId,
+        availableSelectedMachineId,
         external,
         builtInFormOverride
     ) {
@@ -708,7 +716,7 @@ internal fun SharedCreateAgentDialog(
         accountId = builtInOwner?.accountId.orEmpty(),
         sessionGeneration = builtInOwner?.sessionGeneration.orEmpty(),
         serverId = cleanCreateAgentServerId,
-        machineId = selectedMachineId.orEmpty(),
+        machineId = availableSelectedMachineId.orEmpty(),
         runtimeId = runtime,
         ref = builtInRef,
         providerId = builtInProviderId,
@@ -761,8 +769,8 @@ internal fun SharedCreateAgentDialog(
         }
     }
 
-    LaunchedEffect(selectedMachineId, runtime, external) {
-        val machineId = selectedMachineId ?: return@LaunchedEffect
+    LaunchedEffect(availableSelectedMachineId, runtime, external) {
+        val machineId = availableSelectedMachineId ?: return@LaunchedEffect
         if (!external && runtime.isNotBlank()) {
             onRuntimeModelsRequest(machineId, runtime, false)
         }
@@ -771,12 +779,12 @@ internal fun SharedCreateAgentDialog(
     LaunchedEffect(
         createAgentFormStore,
         cleanCreateAgentServerId,
-        selectedMachineId,
+        availableSelectedMachineId,
         external,
         builtInFormOverride,
         dialogBuiltInFormRefreshAttempt
     ) {
-        val machineId = selectedMachineId ?: return@LaunchedEffect
+        val machineId = availableSelectedMachineId ?: return@LaunchedEffect
         if (!external && builtInFormOverride == null && cleanCreateAgentServerId.isNotBlank()) {
             createAgentFormStore?.let { formStore ->
                 dialogBuiltInFormRefreshState = createAgentDialogFormRefreshStarted()
@@ -803,7 +811,7 @@ internal fun SharedCreateAgentDialog(
         builtInSecretIdentity = null
     }
 
-    LaunchedEffect(builtInOwner, cleanCreateAgentServerId, selectedMachineId, runtime, builtInRef, builtInProviderId, builtInBaseUrl) {
+    LaunchedEffect(builtInOwner, cleanCreateAgentServerId, availableSelectedMachineId, runtime, builtInRef, builtInProviderId, builtInBaseUrl) {
         val previousIdentity = builtInSecretIdentity
         if (shouldClearBuiltInWriteOnlySecret(previousIdentity, builtInWriteOnlyIdentity)) {
             builtInApiKey = TextFieldValue("")
@@ -996,6 +1004,7 @@ internal fun SharedCreateAgentDialog(
                             machines = machines,
                             machinesLoading = machinesLoading,
                             machinesErrorMessage = machinesErrorMessage,
+                            onRetry = onMachinesRetry,
                             selectedMachineId = selectedMachineId,
                             requiredComputer = requiredComputer,
                             suggestedComputer = suggestedComputer,
@@ -1128,7 +1137,7 @@ internal fun SharedCreateAgentDialog(
                             runtimeModelsOverride = runtimeModelsOverride,
                             runtimeModelsLoading = runtimeModelsLoading,
                             onRuntimeModelsRefresh = {
-                                selectedMachineId?.let { machineId ->
+                                availableSelectedMachineId?.let { machineId ->
                                     onRuntimeModelsRequest(machineId, runtime, true)
                                 }
                             },
@@ -1289,6 +1298,7 @@ private fun MachinePicker(
     machines: List<SharedCreateAgentMachineOption>,
     machinesLoading: Boolean,
     machinesErrorMessage: String?,
+    onRetry: () -> Unit,
     selectedMachineId: String?,
     requiredComputer: String?,
     suggestedComputer: String?,
@@ -1303,20 +1313,32 @@ private fun MachinePicker(
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray
             )
-            !machinesErrorMessage.isNullOrBlank() -> Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    // deliberate softened error border over flat cream (no shadow compositing risk); triaged token-audit #1063
-                    .border(SlockStroke.Thin, SlockColor.AccentRed.copy(alpha = 0.5f))
-                    .background(SlockColor.SurfaceCream)
-                    .padding(SlockSpacing.Sm)
-            ) {
-                Text(
-                    text = machinesErrorMessage,
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.AccentRed
-                )
-            }
+            !machinesErrorMessage.isNullOrBlank() ->
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            // deliberate softened error border over flat cream (no shadow compositing risk); triaged token-audit #1063
+                            .border(SlockStroke.Thin, SlockColor.AccentRed.copy(alpha = 0.5f))
+                            .background(SlockColor.SurfaceCream)
+                            .padding(SlockSpacing.Sm),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                ) {
+                    Text(
+                        text = machinesErrorMessage,
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.AccentRed
+                    )
+                    SlockBrutalActionButton(
+                        label = stringResource(MR.strings.common_retry),
+                        onClick = onRetry,
+                        enabled = enabled,
+                        leadingIcon = SlockLucideIconName.RefreshCw,
+                        minWidth = 72.dp,
+                        minHeight = 32.dp,
+                        shadowOffset = SlockShadow.BrutalSmall
+                    )
+                }
             machines.isEmpty() -> Box(
                 modifier = Modifier
                     .fillMaxWidth()

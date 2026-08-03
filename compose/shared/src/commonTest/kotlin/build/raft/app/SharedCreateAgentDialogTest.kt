@@ -313,6 +313,16 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
+    fun runtimeRequestsRequireSelectedMachineInAvailableSnapshot() {
+        val available =
+            listOf(SharedCreateAgentMachineOption("machine-1", "Available", "online"))
+
+        assertEquals(null, createAgentAvailableMachineId(emptyList(), "machine-1"))
+        assertEquals(null, createAgentAvailableMachineId(available, "machine-missing"))
+        assertEquals("machine-1", createAgentAvailableMachineId(available, "machine-1"))
+    }
+
+    @Test
     fun modelDropdownKeepsCustomAsLastOption() {
         val items = createAgentModelDropdownItems("claude")
 

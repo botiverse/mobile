@@ -138,9 +138,9 @@ import build.raft.app.data.SharedAuthGateViewModel
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SlockAuthSessionTerminalSource
 import build.raft.app.data.SharedComputersIntent
-import build.raft.app.data.SharedComputersLoadStatus
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
+import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.SharedTasksViewModel
@@ -3097,7 +3097,16 @@ internal fun SlockAppShellContent(
             SharedComputersStore(
                 computersApiClient = computersApiClient,
                 scope = appShellCoroutineScope,
-                logger = slockLogger("SlockComputers", "app_shell")
+                logger = slockLogger("SlockComputers", "app_shell"),
+                ownerProvider = {
+                    shellAuthStore.readSession()?.let { session ->
+                        SharedComputersOwner(
+                            environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
+                            accountId = session.user.id.trim(),
+                            sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
+                        )
+                    }
+                }
             )
         }
     val settingsRepository =
@@ -5003,6 +5012,12 @@ internal fun SlockAppShellContent(
     val appShellBottomContentInset = shellScope.contentBottomInset(showAppShellBottomTabs)
     val homeReadyForChildPagePrewarm =
         readyServerId != null && homeState.content is SharedHomeContentState.Content
+    val computersPrewarmServerId =
+        appShellComputersPrewarmServerId(
+            readyServerId = readyServerId,
+            sessionReady = readySession != null,
+            homeContentReady = homeState.content is SharedHomeContentState.Content
+        )
     LaunchedEffect(
         selectedTab,
         pageVisibleTick,
@@ -5049,6 +5064,39 @@ internal fun SlockAppShellContent(
                         "waitMs=${waitStart.elapsedNow().inWholeMilliseconds} selectedTab=$selectedTab " +
                         "retained=$retainedAppShellTabs prewarmed=$prewarmedAppShellTabs"
                 )
+            }
+        }
+    }
+    LaunchedEffect(
+        computersPrewarmServerId,
+        readySession?.user?.id,
+        readySession?.accessToken,
+        appShellComputersStore
+    ) {
+        appShellComputersStore.reconcileOwner()
+        val serverId = computersPrewarmServerId ?: return@LaunchedEffect
+        while (true) {
+            val stableGeneration = awaitStablePrewarmGeneration(prewarmAdmissionGate)
+            var admitted = false
+            withKuiklyIdleContext(pager.pagerId) {
+                val lease = prewarmAdmissionGate.tryAcquire(stableGeneration)
+                    ?: return@withKuiklyIdleContext
+                try {
+                    admitted = lease.commit {
+                        appShellComputersStore.dispatch(
+                            SharedComputersIntent.EnsureComputerPicker(
+                                serverId = serverId,
+                                priority = DataRequestPriority.Background
+                            )
+                        )
+                    }
+                } finally {
+                    lease.release()
+                }
+            }
+            if (admitted) {
+                bridge.log("app_shell_computers_idle_prewarm serverId=$serverId priority=Background")
+                return@LaunchedEffect
             }
         }
     }
@@ -5521,7 +5569,7 @@ internal fun SlockAppShellContent(
                             homeListPane(active)
                         }
                     }
-                    val membersTabContent: @Composable (active: Boolean) -> Unit = {
+                    val membersTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         SharedMembersScreen(
                             bridge = bridge,
                             storeScope = navigationStoreScope,
@@ -5534,6 +5582,7 @@ internal fun SlockAppShellContent(
                             agentDetailStore = appShellAgentDetailStore,
                             agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore,
                             serverMembersStore = appShellServerMembersStore,
+                            active = active,
                             membersRefreshKey = membersListRefreshKey,
                             initialContent =
                                 sharedMembersCachedContentForServer(membersListCachedContent, readyServerId),
@@ -16210,6 +16259,7 @@ private fun SharedMembersScreen(
     agentDetailStore: SharedAgentDetailStore,
     agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
     serverMembersStore: SharedServerMembersStore,
+    active: Boolean,
     membersRefreshKey: Int,
     initialContent: SharedMembersUiState.Content?,
     onContentLoaded: (SharedMembersUiState.Content) -> Unit,
@@ -16275,6 +16325,17 @@ private fun SharedMembersScreen(
                 logger = slockLogger("SlockAgentPanelTabOrder")
             )
         }
+    }
+
+    LaunchedEffect(computersStore, currentServerId, active, membersRefreshKey) {
+        computersStore.reconcileOwner()
+        val serverId = currentServerId?.takeIf { active && it.isNotBlank() }
+            ?: return@LaunchedEffect
+        computersStore.ensureComputerPickerForServer(
+            serverId = serverId,
+            force = true,
+            priority = DataRequestPriority.Visible
+        )
     }
 
     LaunchedEffect(membersRefreshKey, currentServerId) {
@@ -16358,7 +16419,23 @@ private fun SharedMembersScreen(
             val loadMachines: () -> Unit = {
                 onForegroundActivity("load_machines")
                 if (serverId.isNotBlank()) {
-                    computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
+                    computersStore.dispatch(
+                        SharedComputersIntent.EnsureComputerPicker(
+                            serverId = serverId,
+                            priority = DataRequestPriority.Visible
+                        )
+                    )
+                }
+            }
+            val retryMachines: () -> Unit = {
+                onForegroundActivity("retry_machines")
+                if (serverId.isNotBlank()) {
+                    computersStore.dispatch(
+                        SharedComputersIntent.RefreshComputerPicker(
+                            serverId = serverId,
+                            priority = DataRequestPriority.Visible
+                        )
+                    )
                 }
             }
             val createAgentRuntimeModelScope = rememberCoroutineScope()
@@ -16565,9 +16642,11 @@ private fun SharedMembersScreen(
                 canCreateAgents = membersPayload.canCreateAgents,
                 createAgentSubmit = createAgentSubmit,
                 createAgentMachines = computersSlice.machines,
-                createAgentMachinesLoading = computersSlice.status == SharedComputersLoadStatus.InFlight,
+                createAgentMachinesLoading = computersSlice.initialLoadInFlight,
+                createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
                 createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
                 createAgentLoadMachines = loadMachines,
+                createAgentRetryMachines = retryMachines,
                 createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
                 createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
                 createAgentLoadRuntimeModels = loadRuntimeModels,

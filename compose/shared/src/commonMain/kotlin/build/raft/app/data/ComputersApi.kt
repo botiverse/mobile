@@ -35,6 +35,10 @@ private val runtimeFormApiJson = Json {
  */
 interface SlockComputersApi {
     suspend fun machines(serverId: ServerId): HomeNetworkResponse
+    suspend fun machines(
+        serverId: ServerId,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse = machines(serverId)
     suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse
     suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse
     suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse
@@ -61,8 +65,14 @@ internal class SlockComputersNetworkApi(
     private val networkClient: SlockNetworkClient
 ) : SlockComputersApi {
     override suspend fun machines(serverId: ServerId): HomeNetworkResponse =
+        machines(serverId, DataRequestPriority.Visible)
+
+    override suspend fun machines(
+        serverId: ServerId,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse =
         networkClient.request(
-            priority = DataRequestPriority.Visible,
+            priority = priority,
             path = "servers/${serverId.value}/machines",
             serverIdOverride = serverId
         )
@@ -161,8 +171,11 @@ internal class SlockComputersNetworkApi(
 internal class SlockComputersApiClient(
     private val transport: SlockComputersApi
 ) {
-    suspend fun machines(serverId: ServerId): DataResult<ComputerListSummary> =
-        transport.machines(serverId).mapComputersBody(
+    suspend fun machines(
+        serverId: ServerId,
+        priority: DataRequestPriority = DataRequestPriority.Visible
+    ): DataResult<ComputerListSummary> =
+        transport.machines(serverId, priority).mapComputersBody(
             "computers_list_contract_mismatch",
             ComputersListResponseDto.serializer()
         ) { wire ->
