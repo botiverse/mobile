@@ -3759,6 +3759,10 @@ private fun ThreadMessageVisualScreenContent() {
     val interactionProbe = params.optString("interactionProbe")
     val instanceId = params.optString("instanceId")
     val visualSingleMessage = params.optBoolean("visualSingleMessage", false)
+    // Capture-only viewport slicing happens after layout, so it exposes a
+    // lower section of tall production content without changing measurement.
+    val visualViewportSliceTopDp =
+        params.optInt("visualViewportSliceTopDp", 0).coerceAtLeast(0)
     val longPressReadyToken = params.optString("longPressReadyToken")
     val longPressMenuVisibleToken = params.optString("longPressMenuVisibleToken")
     val singleTapOpensThreadEnabled = params.optBoolean("singleTapOpensThreadEnabled", false)
@@ -4068,6 +4072,7 @@ private fun ThreadMessageVisualScreenContent() {
                         // window overlapped the siblings placed at the clamped height.
                         // Measure unbounded like production.
                         .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                        .offset(y = -visualViewportSliceTopDp.dp)
                         .background(SlockColor.SurfaceWhite)
                         .padding(SlockSpacing.Md)
             ) {
@@ -10561,8 +10566,8 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE = "md_latest_
 
 /**
  * Task #526 regression specimen derived from the reported hotel-comparison
- * screenshot. The first table nearly fills one visual viewport; the uniquely
- * labelled detail table starts at the bottom edge only after its final rule.
+ * screenshot. A lower viewport slice preserves all 14 rows while exposing the
+ * uniquely labelled detail table after the first table's final rule.
  * If MarkdownTable under-reports the tall table's height, the detail table is
  * placed early and paints over the still-visible hotel rows.
  */

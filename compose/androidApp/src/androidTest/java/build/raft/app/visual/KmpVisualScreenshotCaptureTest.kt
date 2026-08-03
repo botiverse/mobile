@@ -2050,10 +2050,13 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-long-table-overlap")
-                    .put("visualFixture", "md_long_table_overlap"),
-            // The first table nearly fills one viewport. A broken height
-            // report pulls the following detail table upward and paints it
-            // over hotel rows instead of after the final rule (task #526).
+                    .put("visualFixture", "md_long_table_overlap")
+                    // Preserve the over-threshold 14-row body while exposing
+                    // its lower section. The route applies this as a placement
+                    // offset after layout, so table measurement is untouched.
+                    .put("visualViewportSliceTopDp", 360),
+            // A broken height report pulls the following detail table upward
+            // and paints it over hotel rows instead of after the final rule.
             crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
         )
     }
