@@ -78,6 +78,43 @@ class SlockLucideNativeCanvasConnectedTest {
         }
     }
 
+    @Test
+    fun nativeSpinStartsForEveryChildWhenAnInvisibleLazyLikeParentBecomesVisible() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val intent =
+            Intent(context, SlockKuiklyActivity::class.java)
+                .putExtra("pageName", "compose_lucide_state_atlas_visual")
+                .putExtra("pageData", JSONObject().put("instanceId", "lucide-native-multi-spin-test").toString())
+                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+
+        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+            lateinit var parent: FrameLayout
+            lateinit var firstCanvas: View
+            lateinit var secondCanvas: View
+            scenario.onActivity { activity ->
+                parent = FrameLayout(activity).apply { visibility = View.INVISIBLE }
+                listOf(0, 1).forEach { index ->
+                    val host = SlockLucideIconRenderView(activity)
+                    parent.addView(host, FrameLayout.LayoutParams(96, 96).apply { topMargin = index * 108 })
+                    host.setProp("name", "loader-circle")
+                    host.setProp("spinning", true)
+                    if (index == 0) firstCanvas = host.getChildAt(0) else secondCanvas = host.getChildAt(0)
+                }
+                activity.addContentView(parent, FrameLayout.LayoutParams(96, 216))
+            }
+
+            val hiddenFirst = firstCanvas.rotationAfterDelay(80L)
+            val hiddenSecond = secondCanvas.rotationAfterDelay(80L)
+            assertEquals(hiddenFirst, firstCanvas.rotationAfterDelay(120L), 0.01f)
+            assertEquals(hiddenSecond, secondCanvas.rotationAfterDelay(120L), 0.01f)
+
+            scenario.onActivity { parent.visibility = View.VISIBLE }
+            firstCanvas.assertRotationEventuallyAdvances("First aggregated-visible native spin")
+            secondCanvas.assertRotationEventuallyAdvances("Second aggregated-visible native spin")
+        }
+    }
+
     private fun View.rotationAfterDelay(delayMs: Long): Float {
         SystemClock.sleep(delayMs)
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()

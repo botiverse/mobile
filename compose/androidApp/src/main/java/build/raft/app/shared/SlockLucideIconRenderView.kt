@@ -222,6 +222,15 @@ private class SlockLucideCanvasView(context: Context) : View(context) {
         syncRotationAnimation()
     }
 
+    override fun onVisibilityAggregated(isVisible: Boolean) {
+        super.onVisibilityAggregated(isVisible)
+        // Lazy rows can attach while an ancestor is not yet aggregated-visible. In that case
+        // `spinning = true` and `onAttachedToWindow()` both observe `isShown == false`; the
+        // animator otherwise stays stopped after the row becomes visible. Aggregated visibility
+        // is the missing lifecycle edge and is delivered independently for every optimistic row.
+        syncRotationAnimation()
+    }
+
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(visibility)
         syncRotationAnimation()
