@@ -1,0 +1,238 @@
+# task #26 periodic no-cache baseline (route A backstop).
+#
+# The file-hash build-output cache (#1824) skips the Android compile step on a
+# hit. This workflow is the backstop proving the UNCACHED compile still compiles
+# green, so the file-hash cache can never silently mask a real compile regression.
+#
+# Deliberately narrow: Android compile + unit tests only (the surface #1824's
+# file-hash build-output cache bypasses). It does NOT run emulator/iOS/OHOS.
+#
+# Cold path by construction:
+#   - NO file-hash build-output cache restore/save (this workflow never touches it)
+#   - BOTH gradle invocations (compile + unit test) pass --no-build-cache, so the
+#     Gradle build cache (build-cache-1) is also bypassed; dependency/wrapper/
+#     Kotlin-DSL caches stay.
+#   - Kuikly fork mavenLocal is still restored/hydrated by the current gitlink SHA
+#     and FAILS CLOSED on cache miss (builds the fork on the spot) — it must never
+#     silently resolve to public upstream, or "green" would not prove the current
+#     source compiles.
+#
+# Triggers: weekly schedule + workflow_dispatch (ad-hoc), plus a pull_request
+# trigger scoped to THIS workflow file only, so the cold path gets one auditable
+# exact Hosted run before this file lands on the default branch.
+name: Android no-cache baseline
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly Monday 06:00 UTC — cold full Android compile+unit, no caches.
+    - cron: "0 6 * * 1"
+  pull_request:
+    paths:
+      - ".github/workflows/android-nocache-baseline.yml"
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  HARMONY_CACHE_EPOCH: hci-v6.1.1.280-333681267bdf-r2
+
+jobs:
+  kuikly-artifacts:
+    name: Kuikly fork artifacts (prebuild)
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    container:
+      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1@sha256:333681267bdf66eaba96d311d34eada49cfd86621f33c21cdf9a19fed343f5e5
+    timeout-minutes: 60
+    env:
+      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
+      OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
+      DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
+    outputs:
+      kuikly-sha: ${{ steps.pins.outputs.kuikly }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Mark workspace safe for git
+        shell: bash
+        run: git config --global --add safe.directory '*'
+
+      - name: Set up JDK 8 for Ktor toolchain
+        uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: "8"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Write GitHub Packages credentials
+        shell: bash
+        run: |
+          {
+            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
+            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
+          } > compose/github-packages.properties
+
+      - name: Resolve fork pins
+        id: pins
+        shell: bash
+        run: |
+          kuikly="$(git rev-parse HEAD:third_party/kuikly-ui)"
+          test -n "$kuikly"
+          echo "kuikly=$kuikly" >> "$GITHUB_OUTPUT"
+
+      - name: Restore kuikly fork cache (android flavor)
+        id: kuikly-android-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .ci-cache/maven/kuikly-android
+          key: kuikly-fork-mavenlocal-android-${{ env.HARMONY_CACHE_EPOCH }}-${{ steps.pins.outputs.kuikly }}
+
+      - name: Build kuikly fork (android flavor)
+        if: steps.kuikly-android-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+          scripts/build_kuikly_fork.sh --android-only
+
+      - name: Stage kuikly fork cache (android flavor)
+        if: steps.kuikly-android-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
+          test -n "$userhome"
+          src="$userhome/.m2/repository/com/tencent/kuikly-open"
+          dst="$GITHUB_WORKSPACE/.ci-cache/maven/kuikly-android"
+          test -d "$src/core"
+          test -d "$src/compose"
+          rm -rf "$dst"
+          mkdir -p "$dst"
+          cp -a "$src/." "$dst/"
+
+      - name: Verify staged kuikly fork cache (android flavor)
+        shell: bash
+        run: |
+          stage="$GITHUB_WORKSPACE/.ci-cache/maven/kuikly-android"
+          test -d "$stage/core"
+          test -d "$stage/compose"
+
+      - name: Save kuikly fork cache (android flavor)
+        if: steps.kuikly-android-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: .ci-cache/maven/kuikly-android
+          key: kuikly-fork-mavenlocal-android-${{ env.HARMONY_CACHE_EPOCH }}-${{ steps.pins.outputs.kuikly }}
+
+  android-nocache:
+    name: Android no-cache compile & unit tests
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: [kuikly-artifacts]
+    timeout-minutes: 40
+    env:
+      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
+      GRADLE_USER_HOME: /tmp/android-nocache-gradle-home
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
+      - name: Start from a clean Gradle home (fail-closed)
+        shell: bash
+        run: rm -rf "$GRADLE_USER_HOME"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+          gradle-home-cache-excludes: |
+            caches/jars-*
+            caches/transforms-*
+            caches/*/transforms
+
+      - name: Write GitHub Packages credentials
+        shell: bash
+        run: |
+          {
+            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
+            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
+          } > compose/github-packages.properties
+
+      - name: Restore kuikly fork mavenLocal artifacts
+        uses: actions/cache/restore@v5
+        with:
+          path: .ci-cache/maven/kuikly-android
+          key: kuikly-fork-mavenlocal-android-${{ env.HARMONY_CACHE_EPOCH }}-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
+          fail-on-cache-miss: true
+
+      - name: Hydrate kuikly fork mavenLocal artifacts
+        shell: bash
+        run: |
+          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
+          test -n "$userhome"
+          stage="$GITHUB_WORKSPACE/.ci-cache/maven/kuikly-android"
+          dst="$userhome/.m2/repository/com/tencent/kuikly-open"
+          test -d "$stage/core"
+          test -d "$stage/compose"
+          rm -rf "$dst"
+          mkdir -p "$dst"
+          cp -a "$stage/." "$dst/"
+          test -d "$dst/core"
+          test -d "$dst/compose"
+
+      # No file-hash build-output cache here BY DESIGN: this is the uncached
+      # backstop. --no-build-cache on BOTH invocations also bypasses the Gradle
+      # build cache; dependency/wrapper/Kotlin-DSL caches remain.
+      - name: Compile shared + Android host and unit tests (no cache)
+        working-directory: compose
+        run: |
+          ./gradlew \
+            :shared:compileDebugKotlinAndroid \
+            :shared:compileDebugUnitTestKotlinAndroid \
+            :androidApp:compileDebugKotlin \
+            --no-build-cache \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
+
+      - name: Run shared + Android app unit tests (no cache)
+        working-directory: compose
+        run: ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --continue --no-build-cache --no-daemon --console=plain --stacktrace
+
+      - name: Upload unit test reports
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-nocache-unit-test-reports
+          path: |
+            compose/shared/build/reports/tests/testDebugUnitTest/
+            compose/shared/build/test-results/testDebugUnitTest/
+            compose/androidApp/build/reports/tests/testDebugUnitTest/
+            compose/androidApp/build/test-results/testDebugUnitTest/
+          retention-days: 7
+
+      - name: Gradle failure diagnostics
+        if: failure()
+        uses: ./.github/actions/gradle-failure-diagnostics
