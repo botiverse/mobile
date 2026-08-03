@@ -22,6 +22,8 @@ internal actual fun slockPlatformSupportsMultiShellHost(): Boolean = false
 
 internal actual fun slockPlatformSupportsConversationForwardGesture(): Boolean = true
 
+internal actual fun slockPlatformSupportsAppleSignIn(): Boolean = true
+
 // Auth/server route rebuilds do not retain the Swift root's pageData. Keep the
 // runtime gate in the platform default as well as ContentView so those rebuilt
 // app-shell routes preserve Liquid Glass on iOS 26+ while older iOS versions

@@ -260,7 +260,11 @@ private fun LoginScreen() {
     var pendingLogin by remember { mutableStateOf<PendingLogin?>(null) }
     var pendingSocialAuth by remember { mutableStateOf<PendingSocialAuth?>(null) }
     var socialSubmittingProvider by remember { mutableStateOf<AuthProvider?>(null) }
-    val socialProviders = remember(authRuntimeCapabilities) { authRuntimeCapabilities.socialAuthProviders() }
+    val socialProviders = remember(authRuntimeCapabilities) {
+        authRuntimeCapabilities.socialAuthProviders(
+            applePlatformSupported = slockPlatformSupportsAppleSignIn()
+        )
+    }
     val routeMessage = remember(paramsSignature) {
         pager.pageData.params.optString(AUTH_MESSAGE_KEY).takeIf { it.isNotBlank() }
     }
@@ -2132,7 +2136,9 @@ private fun Pager.closeAuthSubPage() {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
 }
 
-internal fun SharedAuthRuntimeCapabilities.socialAuthProviders(): Set<AuthProvider> {
+internal fun SharedAuthRuntimeCapabilities.socialAuthProviders(
+    applePlatformSupported: Boolean
+): Set<AuthProvider> {
     val hostProviders = socialProviderIds
         .mapNotNull { raw ->
             when (raw.trim().lowercase()) {
@@ -2143,11 +2149,14 @@ internal fun SharedAuthRuntimeCapabilities.socialAuthProviders(): Set<AuthProvid
             }
         }
         .toSet()
-    // Apple renders only when the backend platform gate says available, or the
-    // signed-out diagnostics override forces it locally. Other providers stay
-    // host-advertised because the backend does not flag-gate them.
-    val appleAllowed = localAppleSignInOverride ||
-        backendEnabledSocialProviderIds?.contains(AuthProvider.Apple.providerId()) == true
+    // Apple is an iOS-only host capability. The backend mobile rollout gate or
+    // signed-out diagnostics override may narrow/enable it on iOS, but neither
+    // can make the provider render on Android or OHOS.
+    val appleHostAdvertised = AuthProvider.Apple in hostProviders
+    val appleAllowed = applePlatformSupported &&
+        (localAppleSignInOverride ||
+            (appleHostAdvertised &&
+                backendEnabledSocialProviderIds?.contains(AuthProvider.Apple.providerId()) == true))
     return if (appleAllowed) hostProviders + AuthProvider.Apple else hostProviders - AuthProvider.Apple
 }
 
