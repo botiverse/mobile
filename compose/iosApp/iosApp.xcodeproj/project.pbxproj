@@ -16,6 +16,10 @@
 		A12900010000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */; };
 		A12900010000000000000002 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */; };
 		A12900010000000000000003 /* SlockIosNetworkRequestLifetimeAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */; };
+		A13000010000000000000001 /* SlockIosAdaptivePanePublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000001 /* SlockIosAdaptivePanePublisher.swift */; };
+		A13000010000000000000002 /* SlockIosAdaptivePanePublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000001 /* SlockIosAdaptivePanePublisher.swift */; };
+		A13000010000000000000003 /* SlockIosAdaptivePanePublisherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */; };
+		A13000010000000000000004 /* SlockAdaptivePaneRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000003 /* SlockAdaptivePaneRuntimeTests.swift */; };
 		3FDCFB96518F86B53D4E5ADD /* Pods_iosApp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */; };
 		7555FF83242A565900829871 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF82242A565900829871 /* ContentView.swift */; };
 		B84B15A29AB40BD06D3F34C8 /* IosUseInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C465599FD991429AC545C211 /* IosUseInteractionTests.swift */; };
@@ -64,6 +68,9 @@
 		A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosNetworkRequestLifetimeAdapter.swift; sourceTree = "<group>"; };
 		A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosNetworkRequestLifetimeAdapterTests.swift; sourceTree = "<group>"; };
 		A12900020000000000000003 /* iosAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A13000020000000000000001 /* SlockIosAdaptivePanePublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAdaptivePanePublisher.swift; sourceTree = "<group>"; };
+		A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAdaptivePanePublisherTests.swift; sourceTree = "<group>"; };
+		A13000020000000000000003 /* SlockAdaptivePaneRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockAdaptivePaneRuntimeTests.swift; sourceTree = "<group>"; };
 		2152FB032600AC8F00CF470E /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
 		28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_iosApp.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		312F0DBEF95A91A72E5FCBFA /* Pods-iosApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.debug.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.debug.xcconfig"; sourceTree = "<group>"; };
@@ -215,6 +222,7 @@
 				7555FF8C242A565B00829871 /* Info.plist */,
 				2152FB032600AC8F00CF470E /* iOSApp.swift */,
 				A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */,
+				A13000020000000000000001 /* SlockIosAdaptivePanePublisher.swift */,
 				058557D7273AAEEB004C7B11 /* Preview Content */,
 			);
 			path = iosApp;
@@ -225,6 +233,7 @@
 			children = (
 				C465599FD991429AC545C211 /* IosUseInteractionTests.swift */,
 				C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */,
+				A13000020000000000000003 /* SlockAdaptivePaneRuntimeTests.swift */,
 			);
 			path = iosAppUITests;
 			sourceTree = "<group>";
@@ -233,6 +242,7 @@
 			isa = PBXGroup;
 			children = (
 				A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */,
+				A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */,
 			);
 			path = iosAppTests;
 			sourceTree = "<group>";
@@ -567,6 +577,7 @@
 				0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */,
 				2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */,
 				A12900010000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */,
+				A13000010000000000000001 /* SlockIosAdaptivePanePublisher.swift in Sources */,
 				D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */,
 				D41350062E140100100C0DE03 /* SlockIosAppScopeMMKV.swift in Sources */,
 				D46363012E17000100C0DE09 /* SlockIosMobileOAuthHost.swift in Sources */,
@@ -590,6 +601,7 @@
 			files = (
 				B84B15A29AB40BD06D3F34C8 /* IosUseInteractionTests.swift in Sources */,
 				B84B15A39AB40BD06D3F34C9 /* QaAcceptanceLoopTests.swift in Sources */,
+				A13000010000000000000004 /* SlockAdaptivePaneRuntimeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -599,6 +611,8 @@
 			files = (
 				A12900010000000000000002 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */,
 				A12900010000000000000003 /* SlockIosNetworkRequestLifetimeAdapterTests.swift in Sources */,
+				A13000010000000000000002 /* SlockIosAdaptivePanePublisher.swift in Sources */,
+				A13000010000000000000003 /* SlockIosAdaptivePanePublisherTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
