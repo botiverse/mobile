@@ -235,3 +235,20 @@ internal object SlockEventBuses {
 
     fun inProcess(): SlockEventBus = SlockEnhancedNotifyCenter
 }
+
+/** Native hosts use this boundary to publish already-serialized events into shared exactly once. */
+internal fun postSlockInProcessJsonEvent(
+    eventName: String,
+    eventDataJson: String,
+    source: String,
+): Boolean =
+    runCatching {
+        require(eventName.isNotBlank())
+        require(eventDataJson.isNotBlank())
+        SlockEventBuses.inProcess().post(
+            eventName = eventName,
+            eventData = JSONObject(eventDataJson),
+            crossProcess = true,
+            source = source,
+        )
+    }.isSuccess

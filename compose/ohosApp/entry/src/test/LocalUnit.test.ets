@@ -12,7 +12,11 @@ import {
   SlockOhosPreparedDiagnosticEntry,
   SlockOhosRawAsyncDiagnosticEntry,
 } from '../main/ets/kuikly/SlockOhosDiagnosticsQueue';
-import { nextSlockOhosForegroundEpoch } from '../main/ets/kuikly/SlockOhosRealtimeHostContext';
+import {
+  nextSlockOhosForegroundEpoch,
+  SlockOhosRealtimeHostContext,
+  SlockOhosRealtimeSharedIngress,
+} from '../main/ets/kuikly/SlockOhosRealtimeHostContext';
 import {
   compareOhosDiagnosticsPath,
   collectOhosDiagnosticsSourceFiles,
@@ -992,6 +996,40 @@ export default function localUnitTest() {
       expect(hidden).assertEqual(1);
       expect(duplicateHidden).assertEqual(1);
       expect(second).assertEqual(2);
+    });
+    it('realtimeHostPublishesNativeFanOutToSharedIngressExactlyOnceWithoutRetry', 0, () => {
+      const acceptedPayloads: Array<string> = [];
+      const rejectingPayloads: Array<string> = [];
+      const throwingPayloads: Array<string> = [];
+      const acceptedIngress: SlockOhosRealtimeSharedIngress = {
+        publishEvent: (eventDataJson: string): boolean => {
+          acceptedPayloads.push(eventDataJson);
+          return true;
+        },
+      };
+      const rejectingIngress: SlockOhosRealtimeSharedIngress = {
+        publishEvent: (eventDataJson: string): boolean => {
+          rejectingPayloads.push(eventDataJson);
+          return false;
+        },
+      };
+      const throwingIngress: SlockOhosRealtimeSharedIngress = {
+        publishEvent: (eventDataJson: string): boolean => {
+          throwingPayloads.push(eventDataJson);
+          throw new Error('expected test failure');
+        },
+      };
+
+      new SlockOhosRealtimeHostContext(acceptedIngress).onPageShow();
+      new SlockOhosRealtimeHostContext(rejectingIngress).onPageShow();
+      new SlockOhosRealtimeHostContext(throwingIngress).onPageShow();
+
+      expect(acceptedPayloads.length).assertEqual(1);
+      expect(rejectingPayloads.length).assertEqual(1);
+      expect(throwingPayloads.length).assertEqual(1);
+      const accepted = JSON.parse(acceptedPayloads[0]) as Record<string, Object>;
+      expect(accepted['action']).assertEqual('appLifecycle');
+      expect(accepted['event']).assertEqual('show');
     });
     it('processNetworkLifecycleRegistersOnceAndPublishesOnlyApplicationEdges', 0, () => {
       const transitions: Array<boolean> = [];
