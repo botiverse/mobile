@@ -1,0 +1,17 @@
+name: Git safe workspace
+description: >
+  Persists Git safe.directory for a container checkout and immediately verifies
+  that the mounted workspace is discoverable as a repository.
+inputs:
+  scope:
+    description: Trust only the workspace, or all paths when a job operates on submodules.
+    required: false
+    default: workspace
+runs:
+  using: composite
+  steps:
+    - name: Establish Git repository context
+      shell: bash
+      env:
+        GIT_SAFE_WORKSPACE_SCOPE: ${{ inputs.scope }}
+      run: bash "${GITHUB_ACTION_PATH}/configure.sh"

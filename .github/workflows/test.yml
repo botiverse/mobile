@@ -76,6 +76,11 @@ jobs:
           python3 scripts/ci/check_commontest_crossplatform_deps.py --self-test
           python3 scripts/ci/check_commontest_crossplatform_deps.py
 
+      - name: Validate fail-closed git diff consumers
+        run: |
+          .github/actions/git-safe-workspace/test_configure.sh
+          scripts/ci/test_git_diff_path_state.sh
+
       - name: Resolve exact execution tier
         id: plan
         shell: bash
@@ -188,9 +193,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Mark workspace safe for git
-        shell: bash
-        run: git config --global --add safe.directory '*'
+      - name: Establish Git repository context
+        uses: ./.github/actions/git-safe-workspace
+        with:
+          scope: all
 
       - name: Set up JDK 8 for Ktor toolchain
         uses: actions/setup-java@v5
@@ -359,9 +365,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Mark workspace safe for git
-        shell: bash
-        run: git config --global --add safe.directory '*'
+      - name: Establish Git repository context
+        uses: ./.github/actions/git-safe-workspace
+        with:
+          scope: all
 
       - name: Set up JDK 8 for Ktor toolchain
         uses: actions/setup-java@v5
@@ -854,11 +861,22 @@ jobs:
           set -euo pipefail
           run_gate=true
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            run_gate=false
             git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"
-            if git diff --name-only "$PR_BASE_SHA" HEAD | grep -Eq '^(compose/shared/src/commonMain/kotlin/build/raft/app/(ThreadPage|LazyViewportController|ThreadNewerPagination)\.kt|compose/androidApp/src/androidTest/java/build/raft/app/shared/SlockThreadNewerAutoPaginationConnectedTest\.kt)$'; then
-              run_gate=true
-            fi
+            diff_rc=0
+            scripts/ci/git-diff-path-state.sh "$PR_BASE_SHA" HEAD -- \
+              compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt \
+              compose/shared/src/commonMain/kotlin/build/raft/app/LazyViewportController.kt \
+              compose/shared/src/commonMain/kotlin/build/raft/app/ThreadNewerPagination.kt \
+              compose/androidApp/src/androidTest/java/build/raft/app/shared/SlockThreadNewerAutoPaginationConnectedTest.kt \
+              || diff_rc=$?
+            case "$diff_rc" in
+              0) run_gate=false ;;
+              1) run_gate=true ;;
+              *)
+                echo "::warning::git diff failed with exit $diff_rc; running Thread newer-pagination gate"
+                run_gate=true
+                ;;
+            esac
           fi
           echo "THREAD_NEWER_PAGINATION_GATE_REQUIRED=$run_gate" >> "$GITHUB_ENV"
           echo "Thread newer-pagination gate required: $run_gate"
@@ -1343,6 +1361,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      # actions/checkout writes safe.directory through a temporary HOME. Later
+      # container steps restore their normal HOME, so persist and verify it.
+      - name: Establish Git repository context
+        uses: ./.github/actions/git-safe-workspace
+
       - name: Set up JDK
         uses: actions/setup-java@v5
         with:
@@ -1401,22 +1424,34 @@ jobs:
         id: ohos_native
         shell: bash
         run: |
+          set -euo pipefail
+          required=true
           if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
-            echo "required=true" >> "$GITHUB_OUTPUT"
-          elif git diff --quiet "${{ github.event.pull_request.base.sha }}" HEAD -- \
-            .github/workflows/test.yml \
-            compose/build.ohos.gradle.kts \
-            compose/ohosBridge \
-            compose/ohosApp/hvigor \
-            compose/ohosApp/entry/src/main/cpp \
-            compose/ohosApp/entry/src/main/ets/entryability \
-            compose/ohosApp/scripts \
-            compose/shared/src/commonMain/kotlin/build/raft/app/network/SlockNetworkRequestLifetime.kt \
-            compose/shared/src/commonTest/kotlin/build/raft/app/network/SlockNetworkRequestLifetimeCoordinatorTest.kt; then
-            echo "required=false" >> "$GITHUB_OUTPUT"
+            required=true
           else
-            echo "required=true" >> "$GITHUB_OUTPUT"
+            diff_rc=0
+            scripts/ci/git-diff-path-state.sh "${{ github.event.pull_request.base.sha }}" HEAD -- \
+              .github/workflows/test.yml \
+              compose/build.ohos.gradle.kts \
+              compose/ohosBridge \
+              compose/ohosApp/hvigor \
+              compose/ohosApp/entry/src/main/cpp \
+              compose/ohosApp/entry/src/main/ets/entryability \
+              compose/ohosApp/scripts \
+              compose/shared/src/commonMain/kotlin/build/raft/app/network/SlockNetworkRequestLifetime.kt \
+              compose/shared/src/commonTest/kotlin/build/raft/app/network/SlockNetworkRequestLifetimeCoordinatorTest.kt \
+              || diff_rc=$?
+            echo "OHOS native-bridge path diff rc: $diff_rc"
+            case "$diff_rc" in
+              0) required=false ;;
+              1) required=true ;;
+              *)
+                echo "::warning::git diff failed with exit $diff_rc; running OHOS native-bridge gate"
+                required=true
+                ;;
+            esac
           fi
+          echo "required=$required" >> "$GITHUB_OUTPUT"
 
       - name: Set up Node.js for OHOS native contract checks
         if: steps.ohos_native.outputs.required == 'true'
@@ -1578,9 +1613,10 @@ jobs:
       # The workspace is provisioned by the host runner user while steps run
       # as the container user, so git refuses it as "dubious ownership" ('*'
       # also covers the submodule checkouts below).
-      - name: Mark workspace safe for git
-        shell: bash
-        run: git config --global --add safe.directory '*'
+      - name: Establish Git repository context
+        uses: ./.github/actions/git-safe-workspace
+        with:
+          scope: all
 
       # zstd (actions/cache compression fingerprint) and curl (the SQLite
       # amalgamation download in prepare_ohos_sqlite_provider.sh) are now baked
