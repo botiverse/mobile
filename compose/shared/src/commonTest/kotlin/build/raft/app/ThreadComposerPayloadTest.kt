@@ -222,20 +222,23 @@ class ThreadComposerPayloadTest {
                 composition = TextRange(0, 2),
             )
 
-        owner.acceptEditorValue(composing)
+        owner.acceptEditorValue(owner.editorSessionId, composing)
 
         assertSame(composing, owner.value)
         assertEquals(TextRange(0, 2), owner.value.composition)
 
         val equalButNewNativeValue = composing.copy()
-        owner.acceptEditorValue(equalButNewNativeValue)
+        owner.acceptEditorValue(owner.editorSessionId, equalButNewNativeValue)
         assertSame(equalButNewNativeValue, owner.value)
     }
 
     @Test
     fun controlledEditorOwnerRejectsDelayedReplaceAfterTextOrTaskAdvances() {
         val owner = ThreadComposerControlledEditorOwner(seedText = "n", seedAsTask = false)
-        owner.acceptEditorValue(TextFieldValue("ni", selection = TextRange(2), composition = TextRange(0, 2)))
+        owner.acceptEditorValue(
+            owner.editorSessionId,
+            TextFieldValue("ni", selection = TextRange(2), composition = TextRange(0, 2)),
+        )
         val delayed =
             ThreadComposerEditorCommand(
                 id = 1,
@@ -250,7 +253,7 @@ class ThreadComposerPayloadTest {
         assertEquals(ThreadComposerEditorCommandOutcome.AlreadyHandled, owner.apply(delayed))
 
         val taskOwner = ThreadComposerControlledEditorOwner(seedText = "n", seedAsTask = false)
-        taskOwner.acceptAsTask(true)
+        taskOwner.acceptAsTask(taskOwner.editorSessionId, true)
         assertEquals(ThreadComposerEditorCommandOutcome.Stale, taskOwner.apply(delayed))
         assertEquals("n", taskOwner.value.text)
         assertTrue(taskOwner.asTask)
@@ -270,6 +273,150 @@ class ThreadComposerPayloadTest {
         val nextInstance = ThreadComposerControlledEditorOwner(seedText = "fresh", seedAsTask = false)
         assertEquals("fresh", nextInstance.value.text)
         assertEquals(0, nextInstance.handledCommandId)
+    }
+
+    @Test
+    fun clearRetiresNativeSessionWithoutDroppingSameTextFromNewSession() {
+        val owner = ThreadComposerControlledEditorOwner(seedText = "sent", seedAsTask = true)
+        val retiredSession = owner.editorSessionId
+        val delayedPreClearState =
+            TextFieldValue(
+                text = "sent",
+                selection = TextRange(4),
+                composition = TextRange(0, 4),
+            )
+        val clear =
+            ThreadComposerEditorCommand(
+                id = 1,
+                kind = ThreadComposerEditorCommandKind.Clear,
+                expectedText = "sent",
+                expectedAsTask = true,
+            )
+
+        assertEquals(ThreadComposerEditorCommandOutcome.Applied, owner.apply(clear))
+        val activeSession = owner.editorSessionId
+        assertTrue(activeSession > retiredSession)
+        assertFalse(owner.acceptEditorValue(retiredSession, delayedPreClearState))
+        assertEquals("", owner.value.text)
+        assertEquals(null, owner.value.composition)
+
+        val sameTextRetyped = delayedPreClearState.copy()
+        assertTrue(owner.acceptEditorValue(activeSession, sameTextRetyped))
+        assertSame(sameTextRetyped, owner.value)
+        assertEquals(TextRange(0, 4), owner.value.composition)
+    }
+
+    @Test
+    fun retiredSessionCannotBlurHideImeWriteInsetOrToggleTask() {
+        val owner = ThreadComposerControlledEditorOwner(seedText = "sent", seedAsTask = true)
+        val retiredSession = owner.editorSessionId
+        assertEquals(
+            ThreadComposerEditorCommandOutcome.Applied,
+            owner.apply(
+                ThreadComposerEditorCommand(
+                    id = 1,
+                    kind = ThreadComposerEditorCommandKind.Clear,
+                    expectedText = "sent",
+                    expectedAsTask = true,
+                )
+            ),
+        )
+        val activeSession = owner.editorSessionId
+        var focused = true
+        var imeVisible = true
+        var keyboardInset = 280f
+
+        assertFalse(
+            acceptThreadComposerEditorSessionUiEvent(retiredSession, owner::isActiveSession) {
+                focused = false
+                imeVisible = false
+                keyboardInset = 0f
+            }
+        )
+        assertFalse(owner.acceptAsTask(retiredSession, true))
+        assertTrue(focused)
+        assertTrue(imeVisible)
+        assertEquals(280f, keyboardInset)
+        assertFalse(owner.asTask)
+
+        assertTrue(
+            acceptThreadComposerEditorSessionUiEvent(activeSession, owner::isActiveSession) {
+                keyboardInset = 320f
+            }
+        )
+        assertEquals(320f, keyboardInset)
+        assertTrue(owner.acceptAsTask(activeSession, true))
+        assertTrue(owner.asTask)
+    }
+
+    @Test
+    fun staleClearDoesNotRetireSessionOrOverwriteFullEditingState() {
+        val owner = ThreadComposerControlledEditorOwner(seedText = "sent", seedAsTask = false)
+        val session = owner.editorSessionId
+        val newer =
+            TextFieldValue(
+                text = "sent now",
+                selection = TextRange(8),
+                composition = TextRange(5, 8),
+            )
+        owner.acceptEditorValue(session, newer)
+
+        assertEquals(
+            ThreadComposerEditorCommandOutcome.Stale,
+            owner.apply(
+                ThreadComposerEditorCommand(
+                    id = 1,
+                    kind = ThreadComposerEditorCommandKind.Clear,
+                    expectedText = "sent",
+                    expectedAsTask = false,
+                )
+            ),
+        )
+        assertEquals(session, owner.editorSessionId)
+        assertSame(newer, owner.value)
+        assertEquals(TextRange(5, 8), owner.value.composition)
+    }
+
+    @Test
+    fun failureRestoreTargetsCurrentSessionAndRetiredSessionStaysRejected() {
+        val owner = ThreadComposerControlledEditorOwner(seedText = "sent", seedAsTask = true)
+        val retiredSession = owner.editorSessionId
+        assertEquals(
+            ThreadComposerEditorCommandOutcome.Applied,
+            owner.apply(
+                ThreadComposerEditorCommand(
+                    id = 1,
+                    kind = ThreadComposerEditorCommandKind.Clear,
+                    expectedText = "sent",
+                    expectedAsTask = true,
+                )
+            ),
+        )
+        val activeSession = owner.editorSessionId
+        assertEquals(
+            ThreadComposerEditorCommandOutcome.Applied,
+            owner.apply(
+                ThreadComposerEditorCommand(
+                    id = 2,
+                    kind = ThreadComposerEditorCommandKind.Replace,
+                    text = "sent",
+                    asTask = true,
+                    expectedText = "",
+                    expectedAsTask = false,
+                )
+            ),
+        )
+
+        assertEquals(activeSession, owner.editorSessionId)
+        assertEquals("sent", owner.value.text)
+        assertTrue(owner.asTask)
+        assertFalse(
+            owner.acceptEditorValue(
+                retiredSession,
+                TextFieldValue("old echo", selection = TextRange(8)),
+            )
+        )
+        assertEquals("sent", owner.value.text)
     }
 
     @Test

@@ -21,6 +21,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.remember
@@ -379,6 +380,16 @@ internal enum class ThreadComposerEditorCommandOutcome {
     AlreadyHandled,
 }
 
+internal fun acceptThreadComposerEditorSessionUiEvent(
+    sourceSessionId: Long,
+    isActiveSession: (Long) -> Boolean,
+    onAccepted: () -> Unit,
+): Boolean {
+    if (!isActiveSession(sourceSessionId)) return false
+    onAccepted()
+    return true
+}
+
 internal class ThreadComposerControlledEditorOwner(
     seedText: String,
     seedAsTask: Boolean,
@@ -392,13 +403,22 @@ internal class ThreadComposerControlledEditorOwner(
         private set
     var handledCommandId by mutableStateOf(0)
         private set
+    var editorSessionId by mutableStateOf(1L)
+        private set
 
-    fun acceptEditorValue(next: TextFieldValue) {
+    fun isActiveSession(sourceSessionId: Long): Boolean =
+        sourceSessionId == editorSessionId
+
+    fun acceptEditorValue(sourceSessionId: Long, next: TextFieldValue): Boolean {
+        if (!isActiveSession(sourceSessionId)) return false
         value = next
+        return true
     }
 
-    fun acceptAsTask(next: Boolean) {
+    fun acceptAsTask(sourceSessionId: Long, next: Boolean): Boolean {
+        if (!isActiveSession(sourceSessionId)) return false
         asTask = next
+        return true
     }
 
     fun apply(command: ThreadComposerEditorCommand): ThreadComposerEditorCommandOutcome {
@@ -408,6 +428,9 @@ internal class ThreadComposerControlledEditorOwner(
             return ThreadComposerEditorCommandOutcome.Stale
         }
         val nextText = if (command.kind == ThreadComposerEditorCommandKind.Clear) "" else command.text
+        if (command.kind == ThreadComposerEditorCommandKind.Clear) {
+            editorSessionId += 1
+        }
         value = TextFieldValue(nextText, selection = TextRange(nextText.length))
         asTask = if (command.kind == ThreadComposerEditorCommandKind.Clear) false else command.asTask
         handledCommandId = command.id
@@ -1518,8 +1541,10 @@ internal fun ThreadComposerContent(
     ThreadComposerContentLeaf(
         surface = surface,
         state = state,
+        editorSessionId = editorOwner.editorSessionId,
         editorValue = editorOwner.value,
         onEditorValueChange = editorOwner::acceptEditorValue,
+        isEditorSessionActive = editorOwner::isActiveSession,
         editorAsTask = editorOwner.asTask,
         onEditorAsTaskChange = editorOwner::acceptAsTask,
         onEvent = onEvent,
@@ -1543,10 +1568,12 @@ internal fun ThreadComposerContent(
 internal fun ThreadComposerContentLeaf(
     surface: ThreadComposerSurface,
     state: ThreadComposerUiState,
+    editorSessionId: Long,
     editorValue: TextFieldValue,
-    onEditorValueChange: (TextFieldValue) -> Unit,
+    onEditorValueChange: (Long, TextFieldValue) -> Boolean,
+    isEditorSessionActive: (Long) -> Boolean,
     editorAsTask: Boolean,
-    onEditorAsTaskChange: (Boolean) -> Unit,
+    onEditorAsTaskChange: (Long, Boolean) -> Boolean,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit = {},
     contentPaddingTop: Dp = ThreadComposerStandaloneTopPadding,
@@ -1570,9 +1597,17 @@ internal fun ThreadComposerContentLeaf(
     val text = fieldValue.text
     val asTask = editorAsTask
     var focused by remember(state.instanceId) { mutableStateOf(state.suggestionsOpen) }
-    var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
+    var handledFocusRequestNonce by remember(state.instanceId, editorSessionId) {
+        mutableStateOf(
+            if (editorSessionId == 1L) {
+                state.focusRequestNonce
+            } else {
+                state.focusRequestNonce - 1
+            }
+        )
+    }
     var keyboardInsetDp by remember(state.instanceId) { mutableStateOf(0f) }
-    val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
+    val composerFocusRequester = remember(state.instanceId, editorSessionId) { FocusRequester() }
     val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
     val focusManager = LocalFocusManager.current
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
@@ -1601,7 +1636,7 @@ internal fun ThreadComposerContentLeaf(
         }
     var composerCardSize by remember(state.instanceId) { mutableStateOf(IntSize.Zero) }
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
-    LaunchedEffect(state.instanceId, state.focusRequestNonce) {
+    LaunchedEffect(state.instanceId, editorSessionId, state.focusRequestNonce) {
         if (state.focusRequestNonce > handledFocusRequestNonce) {
             focused = true
             composerFocusRequester.requestFocus()
@@ -1830,12 +1865,12 @@ internal fun ThreadComposerContentLeaf(
             handle = handle
         ) ?: return false
         val nextFieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
+        if (!onEditorValueChange(editorSessionId, nextFieldValue)) return false
         suggestionSelectionDispatcher.updateDraft(
             text = nextFieldValue.text,
             selectionStart = nextFieldValue.selection.start,
             selectionEnd = nextFieldValue.selection.end
         )
-        onEditorValueChange(nextFieldValue)
         focused = true
         emitChange(nextText = edit.text)
         return true
@@ -1887,12 +1922,12 @@ internal fun ThreadComposerContentLeaf(
             triggerStart = triggerStart
         )?.let { edit ->
             val nextFieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
+            if (!onEditorValueChange(editorSessionId, nextFieldValue)) return@let
             suggestionSelectionDispatcher.updateDraft(
                 text = nextFieldValue.text,
                 selectionStart = nextFieldValue.selection.start,
                 selectionEnd = nextFieldValue.selection.end
             )
-            onEditorValueChange(nextFieldValue)
             focused = false
             emitChange(nextText = edit.text)
         }
@@ -2019,14 +2054,14 @@ internal fun ThreadComposerContentLeaf(
             suggestionsEnabled = state.suggestionsEnabled,
             memberSuggestions = filteredMemberSuggestions,
             channelSuggestions = filteredChannelSuggestions,
-            onCommit = { edit ->
+            onCommit = onCommit@ { edit ->
                 val nextFieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
+                if (!onEditorValueChange(editorSessionId, nextFieldValue)) return@onCommit
                 suggestionSelectionDispatcher.updateDraft(
                     text = nextFieldValue.text,
                     selectionStart = nextFieldValue.selection.start,
                     selectionEnd = nextFieldValue.selection.end
                 )
-                onEditorValueChange(nextFieldValue)
                 onEvent("change", edit.text, asTask, null)
             }
         )
@@ -2126,63 +2161,81 @@ internal fun ThreadComposerContentLeaf(
                         .padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    TextField(
-                        value = fieldValue,
-                        placeholder = localizedThreadComposerPlaceholder(state.placeholder),
-                        autoFocus = shouldAutoFocus,
-                        onValueChange = { next ->
-                            val textChanged = next.text != fieldValue.text
-                            suggestionSelectionDispatcher.updateDraft(
-                                text = next.text,
-                                selectionStart = next.selection.start,
-                                selectionEnd = next.selection.end
-                            )
-                            onEditorValueChange(next)
-                            focused = true
-                            if (textChanged) {
-                                emitChange(nextText = next.text)
-                            }
-                        },
-                        onFocus = {
-                            focused = true
-                            if (shouldAutoFocus) {
-                                handledFocusRequestNonce = state.focusRequestNonce
-                            }
-                        },
-                        onBlur = {
-                            focused = false
-                            if (dismissKeyboardOnBlur) {
-                                softwareKeyboardController?.hide()
-                            }
-                            onEvent("blur", null, null, null)
-                        },
-                        maxLines = 4,
-                        keyboardOptions = composerKeyboardOptions,
-                        keyboardActions = composerKeyboardActions,
-                        textStyle = SlockType.Input.copy(
-                            color = if (composerEnabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                            fontSize = 16.sp,
-                            lineHeight = 20.sp
-                        ),
-                        keyboardHeightChange = { params ->
-                            val nextInset = params.height.coerceAtLeast(0f)
-                            if (nextInset != keyboardInsetDp) {
-                                keyboardInsetDp = nextInset
-                            }
-                            onKeyboardHeightChange(nextInset)
-                        },
-                        placeholderColor = SlockColor.TextMutedGray,
-                        cursorBrush = SolidColor(SlockColor.TextBlack),
-                        systemNewlineAction = true,
-                        // React mobile uses a one-line textarea; keep the toolbar as the touch target.
-                        focusRequester = composerFocusRequester,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(
-                                min = ThreadComposerTextFieldMinHeight,
-                                max = ThreadComposerTextFieldMaxHeight
-                            )
-                    )
+                    key(editorSessionId) {
+                        val sourceSessionId = editorSessionId
+                        TextField(
+                            value = fieldValue,
+                            placeholder = localizedThreadComposerPlaceholder(state.placeholder),
+                            autoFocus = shouldAutoFocus,
+                            onValueChange = onValueChange@ { next ->
+                                if (!onEditorValueChange(sourceSessionId, next)) return@onValueChange
+                                val textChanged = next.text != fieldValue.text
+                                suggestionSelectionDispatcher.updateDraft(
+                                    text = next.text,
+                                    selectionStart = next.selection.start,
+                                    selectionEnd = next.selection.end
+                                )
+                                focused = true
+                                if (textChanged) {
+                                    emitChange(nextText = next.text)
+                                }
+                            },
+                            onFocus = onFocus@ {
+                                acceptThreadComposerEditorSessionUiEvent(
+                                    sourceSessionId = sourceSessionId,
+                                    isActiveSession = isEditorSessionActive,
+                                ) {
+                                    focused = true
+                                    if (shouldAutoFocus) {
+                                        handledFocusRequestNonce = state.focusRequestNonce
+                                    }
+                                }
+                            },
+                            onBlur = onBlur@ {
+                                acceptThreadComposerEditorSessionUiEvent(
+                                    sourceSessionId = sourceSessionId,
+                                    isActiveSession = isEditorSessionActive,
+                                ) {
+                                    focused = false
+                                    if (dismissKeyboardOnBlur) {
+                                        softwareKeyboardController?.hide()
+                                    }
+                                    onEvent("blur", null, null, null)
+                                }
+                            },
+                            maxLines = 4,
+                            keyboardOptions = composerKeyboardOptions,
+                            keyboardActions = composerKeyboardActions,
+                            textStyle = SlockType.Input.copy(
+                                color = if (composerEnabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                                fontSize = 16.sp,
+                                lineHeight = 20.sp
+                            ),
+                            keyboardHeightChange = keyboardHeightChange@ { params ->
+                                acceptThreadComposerEditorSessionUiEvent(
+                                    sourceSessionId = sourceSessionId,
+                                    isActiveSession = isEditorSessionActive,
+                                ) {
+                                    val nextInset = params.height.coerceAtLeast(0f)
+                                    if (nextInset != keyboardInsetDp) {
+                                        keyboardInsetDp = nextInset
+                                    }
+                                    onKeyboardHeightChange(nextInset)
+                                }
+                            },
+                            placeholderColor = SlockColor.TextMutedGray,
+                            cursorBrush = SolidColor(SlockColor.TextBlack),
+                            systemNewlineAction = true,
+                            // React mobile uses a one-line textarea; keep the toolbar as the touch target.
+                            focusRequester = composerFocusRequester,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(
+                                    min = ThreadComposerTextFieldMinHeight,
+                                    max = ThreadComposerTextFieldMaxHeight
+                                )
+                        )
+                    }
                     if (state.hookLabels.isNotEmpty()) {
                         Text(
                             text = state.hookLabels.joinToString(" / "),
@@ -2220,8 +2273,9 @@ internal fun ThreadComposerContentLeaf(
                                     modifier = Modifier
                                         .clickable(enabled = composerEnabled) {
                                             val newValue = !asTask
-                                            onEditorAsTaskChange(newValue)
-                                            onEvent("toggleAsTask", null, newValue, null)
+                                            if (onEditorAsTaskChange(editorSessionId, newValue)) {
+                                                onEvent("toggleAsTask", null, newValue, null)
+                                            }
                                         }
                                         .heightIn(min = 18.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -2230,8 +2284,9 @@ internal fun ThreadComposerContentLeaf(
                                     SlockCheckbox(
                                         checked = asTask,
                                         onCheckedChange = { checked ->
-                                            onEditorAsTaskChange(checked)
-                                            onEvent("toggleAsTask", null, checked, null)
+                                            if (onEditorAsTaskChange(editorSessionId, checked)) {
+                                                onEvent("toggleAsTask", null, checked, null)
+                                            }
                                         },
                                         enabled = composerEnabled,
                                         size = 14.dp
@@ -3658,6 +3713,7 @@ private fun ComposerIconButton(
     icon: SlockLucideIconName,
     enabled: Boolean,
     modifier: Modifier = Modifier,
+    contentDescription: String? = null,
     backgroundColor: Color = SlockColor.SurfaceWhite,
     disabledBackgroundColor: Color = SlockColor.EmptyStateGray,
     disabledAlpha: Float = 1f,
@@ -3668,6 +3724,7 @@ private fun ComposerIconButton(
     SlockBrutalIconButton(
         iconName = icon,
         onClick = onClick,
+        contentDescription = contentDescription,
         modifier = modifier,
         enabled = enabled,
         backgroundColor = backgroundColor,
@@ -3690,10 +3747,12 @@ private fun ComposerSendButton(
     onClick: () -> Unit
 ) {
     val icon = if (sending) SlockLucideIconName.RefreshCw else SlockLucideIconName.Send
+    val contentDescription = stringResource(MR.strings.common_send)
     if (sending) {
         ComposerIconButton(
             icon = icon,
             enabled = enabled,
+            contentDescription = contentDescription,
             backgroundColor = SlockColor.AccentPink,
             disabledBackgroundColor = SlockColor.AccentPink,
             disabledAlpha = 1f,
@@ -3706,6 +3765,7 @@ private fun ComposerSendButton(
     SlockBrutalIconButton(
         iconName = icon,
         onClick = onClick,
+        contentDescription = contentDescription,
         enabled = enabled,
         backgroundColor = SlockColor.AccentPink,
         disabledBackgroundColor = ThreadComposerDisabledSendBackground,
