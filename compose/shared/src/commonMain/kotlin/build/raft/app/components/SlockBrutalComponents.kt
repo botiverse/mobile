@@ -65,6 +65,7 @@ import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.RectangleShape
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.ui.draw.shadow
+import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -1126,13 +1127,17 @@ internal fun SlockBrutalActionButton(
     val borderColor = if (enabled) theme.line else disabledBorderColor
     val surfaceBackground = if (enabled) backgroundColor else disabledBackgroundColor
     if (theme.family == SlockThemeFamily.Elegant) {
-        // Ambient register: no offset-box and no reserved offset padding. The rounded
-        // shape is enforced by Modifier.shadow(clip = true) so it holds even if Kuikly
-        // ignores the background/border Shape; the elevation is the soft ambient shadow.
-        // Disabled keeps the same rounded chrome (faded via the disabled fill/border),
-        // never the brutal opaque hard-shadow constants.
+        // Ambient register: no offset-box, no reserved offset padding. Rounding is
+        // enforced by Modifier.shadow(clip = true) so it holds even if Kuikly ignores the
+        // background/border Shape. Shadow is TUNED to React's subtle 0 1px 8px rgba(0,0,0,
+        // .15): Kuikly couples elevation -> Y offset (~e/2) + blur (~e), so a low 3dp
+        // elevation keeps the halo short, and ambient/spot = theme.shadow.color pins the
+        // 15% darkness (vs Kuikly's ~19% default) — the #5916/#1894 captures measured the
+        // 8dp default as 2.62x too dark and 40px vs 26px too tall.
+        // Disabled mirrors React's `.btn:disabled { opacity: .4 }`: the SAME elegant chrome
+        // (theme.line hairline, tone fill, soft shadow, 8dp round) faded by alpha(0.4) — not
+        // the brutal opaque #999/#E6E3E0/2dp disabled constants (which measured too dark).
         val shape = RoundedCornerShape(theme.cornerRadius)
-        val elevation = if (enabled) theme.shadow.blur else 2.dp
         SlockAnchorButton(
             onClick = onClick,
             enabled = enabled,
@@ -1141,9 +1146,16 @@ internal fun SlockBrutalActionButton(
                 modifier
                     .widthIn(min = minWidth)
                     .heightIn(min = minHeight)
-                    .shadow(elevation = elevation, shape = shape, clip = true)
-                    .background(surfaceBackground, shape)
-                    .border(theme.lineWidth, borderColor, shape)
+                    .then(if (!enabled) Modifier.alpha(0.4f) else Modifier)
+                    .shadow(
+                        elevation = 3.dp,
+                        shape = shape,
+                        clip = true,
+                        ambientColor = theme.shadow.color,
+                        spotColor = theme.shadow.color,
+                    )
+                    .background(backgroundColor, shape)
+                    .border(theme.lineWidth, theme.line, shape)
                     .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
             SlockBrutalActionButtonInnerContent(
@@ -1153,7 +1165,10 @@ internal fun SlockBrutalActionButton(
                 leadingIconSize = leadingIconSize,
                 contentSpacing = contentSpacing,
                 textStyle = textStyle,
-                enabled = enabled,
+                // Elegant disabled fades the whole button via alpha(0.4) above, so the
+                // content keeps the enabled near-black ink (faded), matching React's
+                // opacity approach rather than switching to the #999 disabled ink.
+                enabled = true,
                 disabledContentColor = disabledContentColor,
                 disabledIconColor = disabledIconColor,
                 trailingContent = trailingContent
