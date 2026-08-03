@@ -3749,15 +3749,15 @@ internal fun ThreadMessageVisualScreen() {
     val visualFixture = pager.pageData.params.optString("visualFixture")
     ThreadReactionAtlasProvider {
         if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_MD_LONG_TABLE_OVERLAP) {
-            // Production renders message cards as bounded LazyColumn items.
-            // Keep that nested-lazy constraint for the task #526 regression;
-            // the ordinary visual route intentionally measures unbounded.
+            // Production renders message cards as LazyColumn items. Preserve
+            // that host for the task #526 diagnostic; the ordinary isolated
+            // visual route intentionally measures unbounded.
             LazyColumn(
                 modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
                 verticalArrangement = Arrangement.Top
             ) {
                 item {
-                    ThreadMessageVisualScreenContent(useBoundedLazyHost = true)
+                    ThreadMessageVisualScreenContent(useLazyColumnHost = true)
                 }
             }
         } else {
@@ -3767,7 +3767,7 @@ internal fun ThreadMessageVisualScreen() {
 }
 
 @Composable
-private fun ThreadMessageVisualScreenContent(useBoundedLazyHost: Boolean = false) {
+private fun ThreadMessageVisualScreenContent(useLazyColumnHost: Boolean = false) {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
     val visualFixture = params.optString("visualFixture")
@@ -4084,10 +4084,11 @@ private fun ThreadMessageVisualScreenContent(useBoundedLazyHost: Boolean = false
                         // window overlapped the siblings placed at the clamped height.
                         // Most isolated cases measure unbounded to mirror
                         // ordinary production rows. Task #526 instead keeps
-                        // the actual bounded LazyColumn-item host because the
-                        // nested LazyRow constraint is the regression trigger.
+                        // the actual LazyColumn-item host so RED admission can
+                        // determine whether list nesting contributes; the host
+                        // alone is not treated as proof of the renderer defect.
                         .then(
-                            if (useBoundedLazyHost) {
+                            if (useLazyColumnHost) {
                                 Modifier
                             } else {
                                 Modifier.wrapContentHeight(align = Alignment.Top, unbounded = true)
@@ -10586,8 +10587,8 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE = "md_latest_
 
 /**
  * Task #526 regression specimen derived from the reported hotel-comparison
- * screenshot. The visual route mounts this body as a bounded LazyColumn item,
- * matching the production nested-lazy constraint that triggers the defect.
+ * screenshot. The visual route mounts this body as a LazyColumn item, matching
+ * the reported production nesting without assuming that nesting is the trigger.
  * If MarkdownTable under-reports the tall table's height, the detail table is
  * placed early and paints over the still-visible hotel rows.
  */
