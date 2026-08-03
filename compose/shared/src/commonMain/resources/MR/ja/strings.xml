@@ -196,6 +196,7 @@
     <string name="settings_diagnostics_feedback_channel_subtitle">最近使ったチャンネルが先頭に表示されます</string>
     <string name="settings_profile_title">プロフィール</string>
     <string name="settings_foreground_banners_title">フォアグラウンドのメッセージバナー</string>
+    <string name="settings_foreground_banners_detail">Raft を開いている間、新しいメッセージをアプリ内バナーで表示します。オフにすると、フォアグラウンドのメッセージは静かに受信されます。</string>
     <string name="settings_message_alignment_title">自分のメッセージの配置</string>
     <string name="settings_message_alignment_left">左</string>
     <string name="settings_message_alignment_right">右</string>
@@ -1563,9 +1564,18 @@
     <string name="settings_notifications_background_realtime_title">バックグラウンドのリアルタイム接続</string>
     <string name="settings_notifications_background_realtime_detail">バックグラウンドでもリアルタイム接続を維持します。Android が長時間のセッションを一時停止する場合があります。</string>
     <string name="settings_notifications_test_title">テスト通知を送信</string>
+    <string name="settings_notifications_test_detail">このデバイスを確認するため、ローカルのテスト通知を送信します。</string>
+    <string name="settings_notifications_test_sent_detail">テスト通知を送信しました。</string>
+    <string name="settings_notifications_test_requested_detail">テスト通知のリクエストを処理しています。</string>
+    <string name="settings_notifications_test_unavailable_detail">現在のプラットフォームまたは権限の状態では、テスト通知を利用できません。</string>
+    <string name="settings_notifications_test_error_detail">テスト通知を送信できませんでした。もう一度お試しください。</string>
+    <string name="settings_notifications_test_status_sent">送信済み</string>
+    <string name="settings_notifications_test_status_requested">リクエスト済み</string>
     <string name="settings_notifications_permission_allowed">通知は許可されています</string>
+    <string name="settings_notifications_permission_allowed_detail">Raft はこのデバイスに通知を送信できます。</string>
     <string name="settings_notifications_permission_needed">通知へのアクセスが必要です</string>
     <string name="settings_notifications_permission_open_settings">Android の設定を開いて、通知へのアクセスを確認してください。</string>
+    <string name="settings_notifications_permission_unavailable_detail">このプラットフォームでは通知権限の操作を利用できません。</string>
     <string name="settings_notifications_request_permission">権限をリクエスト</string>
     <string name="settings_notifications_workspace">ワークスペース</string>
     <string name="settings_notifications_mute_workspace">このワークスペースをミュート</string>

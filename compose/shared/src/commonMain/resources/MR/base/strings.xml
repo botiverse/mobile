@@ -196,6 +196,7 @@
     <string name="settings_diagnostics_feedback_channel_subtitle">Recently used channels appear first</string>
     <string name="settings_profile_title">Profile</string>
     <string name="settings_foreground_banners_title">Foreground message banners</string>
+    <string name="settings_foreground_banners_detail">Show an in-app banner for new messages while Raft is open. When off, foreground messages stay quiet.</string>
     <string name="settings_message_alignment_title">My message alignment</string>
     <string name="settings_message_alignment_left">Left</string>
     <string name="settings_message_alignment_right">Right</string>
@@ -1563,9 +1564,18 @@
     <string name="settings_notifications_background_realtime_title">Background realtime</string>
     <string name="settings_notifications_background_realtime_detail">Keep realtime connected in the background. Android may still pause long-running sessions.</string>
     <string name="settings_notifications_test_title">Send a test notification</string>
+    <string name="settings_notifications_test_detail">Post a local test notification to verify this device.</string>
+    <string name="settings_notifications_test_sent_detail">A test notification was posted.</string>
+    <string name="settings_notifications_test_requested_detail">The test notification request is being processed.</string>
+    <string name="settings_notifications_test_unavailable_detail">Test notifications are unavailable on this platform or in the current permission state.</string>
+    <string name="settings_notifications_test_error_detail">The test notification could not be posted. Try again.</string>
+    <string name="settings_notifications_test_status_sent">Sent</string>
+    <string name="settings_notifications_test_status_requested">Requested</string>
     <string name="settings_notifications_permission_allowed">Notifications allowed</string>
+    <string name="settings_notifications_permission_allowed_detail">Raft can post notifications on this device.</string>
     <string name="settings_notifications_permission_needed">Notification access needed</string>
     <string name="settings_notifications_permission_open_settings">Open Android settings to review notification access.</string>
+    <string name="settings_notifications_permission_unavailable_detail">Notification permission controls are unavailable on this platform.</string>
     <string name="settings_notifications_request_permission">Request permission</string>
     <string name="settings_notifications_workspace">Workspace</string>
     <string name="settings_notifications_mute_workspace">Mute this workspace</string>

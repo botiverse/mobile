@@ -24,6 +24,32 @@ class SettingsNotificationsUiContractTest {
     }
 
     @Test
+    fun permissionCopyUsesSemanticStateInsteadOfRawPlatformDetail() {
+        assertEquals(
+            SettingsNotificationPermissionCopy.Allowed,
+            settingsNotificationPermissionCopy(permissionGranted = true, permissionAvailable = true)
+        )
+        assertEquals(
+            SettingsNotificationPermissionCopy.Needed,
+            settingsNotificationPermissionCopy(permissionGranted = false, permissionAvailable = true)
+        )
+        assertEquals(
+            SettingsNotificationPermissionCopy.Unavailable,
+            settingsNotificationPermissionCopy(permissionGranted = false, permissionAvailable = false)
+        )
+    }
+
+    @Test
+    fun testNotificationCopyNormalizesEveryUserVisibleTerminal() {
+        assertEquals(SettingsTestNotificationCopy.Ready, settingsTestNotificationCopy("Ready", available = true))
+        assertEquals(SettingsTestNotificationCopy.Sent, settingsTestNotificationCopy("Sent", available = true))
+        assertEquals(SettingsTestNotificationCopy.Requested, settingsTestNotificationCopy("Requested", available = true))
+        assertEquals(SettingsTestNotificationCopy.Unavailable, settingsTestNotificationCopy("Unsupported", available = false))
+        assertEquals(SettingsTestNotificationCopy.Unavailable, settingsTestNotificationCopy("", available = false))
+        assertEquals(SettingsTestNotificationCopy.Error, settingsTestNotificationCopy("Error", available = true))
+    }
+
+    @Test
     fun previewToggleMapsToCanonicalServerModes() {
         assertEquals(PushPreviewMode.Full, pushPreviewModeForEnabled(true))
         assertEquals(PushPreviewMode.Private, pushPreviewModeForEnabled(false))
