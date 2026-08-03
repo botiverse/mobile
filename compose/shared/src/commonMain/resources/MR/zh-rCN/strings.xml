@@ -196,6 +196,7 @@
     <string name="settings_diagnostics_feedback_channel_subtitle">最近使用的频道优先显示</string>
     <string name="settings_profile_title">资料</string>
     <string name="settings_foreground_banners_title">前台消息横幅</string>
+    <string name="settings_foreground_banners_detail">Raft 打开时，为新消息显示应用内横幅。关闭后，前台消息不会弹出横幅。</string>
     <string name="settings_message_alignment_title">我的消息对齐</string>
     <string name="settings_message_alignment_left">左侧</string>
     <string name="settings_message_alignment_right">右侧</string>
@@ -1563,9 +1564,18 @@
     <string name="settings_notifications_background_realtime_title">后台实时连接</string>
     <string name="settings_notifications_background_realtime_detail">在后台保持实时连接。Android 仍可能暂停长时间运行的会话。</string>
     <string name="settings_notifications_test_title">发送测试通知</string>
+    <string name="settings_notifications_test_detail">发送一条本地测试通知，验证此设备的通知能力。</string>
+    <string name="settings_notifications_test_sent_detail">测试通知已发送。</string>
+    <string name="settings_notifications_test_requested_detail">正在处理测试通知请求。</string>
+    <string name="settings_notifications_test_unavailable_detail">当前平台或权限状态下无法发送测试通知。</string>
+    <string name="settings_notifications_test_error_detail">无法发送测试通知，请重试。</string>
+    <string name="settings_notifications_test_status_sent">已发送</string>
+    <string name="settings_notifications_test_status_requested">已请求</string>
     <string name="settings_notifications_permission_allowed">通知已允许</string>
+    <string name="settings_notifications_permission_allowed_detail">Raft 可以在此设备上发送通知。</string>
     <string name="settings_notifications_permission_needed">需要通知访问权限</string>
     <string name="settings_notifications_permission_open_settings">打开 Android 设置以查看通知权限。</string>
+    <string name="settings_notifications_permission_unavailable_detail">当前平台不支持通知权限控制。</string>
     <string name="settings_notifications_request_permission">请求权限</string>
     <string name="settings_notifications_workspace">工作区</string>
     <string name="settings_notifications_mute_workspace">静音此工作区</string>

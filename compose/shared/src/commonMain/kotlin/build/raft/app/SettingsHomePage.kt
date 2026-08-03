@@ -9019,10 +9019,10 @@ private fun SettingsThreadRowAffordancesCard(
 
 @Composable
 private fun SettingsMobileToggleSnapshot.localizedToggleStatus(): String =
-    if (enabled) {
-        stringResource(MR.strings.settings_mobile_status_enabled)
-    } else {
-        stringResource(MR.strings.settings_state_off)
+    when {
+        !available -> stringResource(MR.strings.settings_state_unavailable)
+        enabled -> stringResource(MR.strings.settings_mobile_status_enabled)
+        else -> stringResource(MR.strings.settings_state_off)
     }
 
 @Composable
@@ -9234,8 +9234,10 @@ private fun SettingsPushStatusCard(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SettingsNotificationSectionLabel(stringResource(MR.strings.settings_notifications_system))
         SettingsNotificationPermissionBanner(
-            status = snapshot.notificationPermission.statusLabel,
-            detail = snapshot.notificationPermission.detail,
+            detail = settingsNotificationPermissionDetail(
+                permissionGranted = permissionGranted,
+                permissionAvailable = snapshot.notificationPermission.available
+            ),
             permissionGranted = permissionGranted,
             permissionAvailable = snapshot.notificationPermission.available,
             settingsAvailable = snapshot.notificationSettings.available,
@@ -9267,7 +9269,7 @@ private fun SettingsPushStatusCard(
             SettingsNotificationDivider()
             SettingsNotificationToggleRow(
                 title = stringResource(MR.strings.settings_foreground_banners_title),
-                detail = snapshot.foregroundMessageBanners.detail,
+                detail = stringResource(MR.strings.settings_foreground_banners_detail),
                 checked = snapshot.foregroundMessageBanners.enabled,
                 enabled = snapshot.foregroundMessageBanners.available && !foregroundMessageBannersBusy,
                 onCheckedChange = onForegroundMessageBannersChange
@@ -9275,8 +9277,8 @@ private fun SettingsPushStatusCard(
             SettingsNotificationDivider()
             SettingsNotificationActionRow(
                 title = stringResource(MR.strings.settings_notifications_test_title),
-                detail = snapshot.testNotification.detail,
-                status = snapshot.testNotification.statusLabel.ifBlank { stringResource(MR.strings.settings_state_ready) },
+                detail = snapshot.testNotification.localizedTestNotificationDetail(),
+                status = snapshot.testNotification.localizedTestNotificationStatus(),
                 enabled = snapshot.testNotification.available && snapshot.sendTestEnabled && !anyActionBusy,
                 onClick = onTest
             )
@@ -9302,6 +9304,77 @@ private fun SettingsPushStatusCard(
 internal fun settingsNotificationPermissionGranted(status: String): Boolean =
     status.trim().lowercase() in setOf("allowed", "granted", "enabled", "on")
 
+internal enum class SettingsNotificationPermissionCopy {
+    Allowed,
+    Needed,
+    Unavailable
+}
+
+internal fun settingsNotificationPermissionCopy(
+    permissionGranted: Boolean,
+    permissionAvailable: Boolean
+): SettingsNotificationPermissionCopy =
+    when {
+        permissionGranted -> SettingsNotificationPermissionCopy.Allowed
+        permissionAvailable -> SettingsNotificationPermissionCopy.Needed
+        else -> SettingsNotificationPermissionCopy.Unavailable
+    }
+
+@Composable
+private fun settingsNotificationPermissionDetail(
+    permissionGranted: Boolean,
+    permissionAvailable: Boolean
+): String =
+    when (settingsNotificationPermissionCopy(permissionGranted, permissionAvailable)) {
+        SettingsNotificationPermissionCopy.Allowed ->
+            stringResource(MR.strings.settings_notifications_permission_allowed_detail)
+        SettingsNotificationPermissionCopy.Needed ->
+            stringResource(MR.strings.settings_notifications_permission_open_settings)
+        SettingsNotificationPermissionCopy.Unavailable ->
+            stringResource(MR.strings.settings_notifications_permission_unavailable_detail)
+    }
+
+internal enum class SettingsTestNotificationCopy {
+    Ready,
+    Sent,
+    Requested,
+    Unavailable,
+    Error
+}
+
+internal fun settingsTestNotificationCopy(
+    statusLabel: String,
+    available: Boolean
+): SettingsTestNotificationCopy =
+    when (statusLabel.trim().lowercase()) {
+        "sent", "done", "opened" -> SettingsTestNotificationCopy.Sent
+        "requested" -> SettingsTestNotificationCopy.Requested
+        "unsupported", "unavailable", "disabled", "blocked", "denied" ->
+            SettingsTestNotificationCopy.Unavailable
+        "error", "failed", "failure" -> SettingsTestNotificationCopy.Error
+        else -> if (available) SettingsTestNotificationCopy.Ready else SettingsTestNotificationCopy.Unavailable
+    }
+
+@Composable
+private fun build.raft.app.data.SettingsMobileActionSnapshot.localizedTestNotificationStatus(): String =
+    when (settingsTestNotificationCopy(statusLabel, available)) {
+        SettingsTestNotificationCopy.Ready -> stringResource(MR.strings.settings_state_ready)
+        SettingsTestNotificationCopy.Sent -> stringResource(MR.strings.settings_notifications_test_status_sent)
+        SettingsTestNotificationCopy.Requested -> stringResource(MR.strings.settings_notifications_test_status_requested)
+        SettingsTestNotificationCopy.Unavailable -> stringResource(MR.strings.settings_state_unavailable)
+        SettingsTestNotificationCopy.Error -> stringResource(MR.strings.settings_state_error)
+    }
+
+@Composable
+private fun build.raft.app.data.SettingsMobileActionSnapshot.localizedTestNotificationDetail(): String =
+    when (settingsTestNotificationCopy(statusLabel, available)) {
+        SettingsTestNotificationCopy.Ready -> stringResource(MR.strings.settings_notifications_test_detail)
+        SettingsTestNotificationCopy.Sent -> stringResource(MR.strings.settings_notifications_test_sent_detail)
+        SettingsTestNotificationCopy.Requested -> stringResource(MR.strings.settings_notifications_test_requested_detail)
+        SettingsTestNotificationCopy.Unavailable -> stringResource(MR.strings.settings_notifications_test_unavailable_detail)
+        SettingsTestNotificationCopy.Error -> stringResource(MR.strings.settings_notifications_test_error_detail)
+    }
+
 @Composable
 private fun SettingsNotificationSectionLabel(label: String) {
     Text(
@@ -9314,7 +9387,6 @@ private fun SettingsNotificationSectionLabel(label: String) {
 
 @Composable
 private fun SettingsNotificationPermissionBanner(
-    status: String,
     detail: String,
     permissionGranted: Boolean,
     permissionAvailable: Boolean,
@@ -9358,12 +9430,7 @@ private fun SettingsNotificationPermissionBanner(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text =
-                        detail.ifBlank {
-                            status.ifBlank {
-                                stringResource(MR.strings.settings_notifications_permission_open_settings)
-                            }
-                        },
+                    text = detail,
                     style = SlockType.Caption.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 2,
