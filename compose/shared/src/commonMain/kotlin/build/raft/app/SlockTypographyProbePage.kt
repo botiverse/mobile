@@ -60,7 +60,7 @@ private fun SlockTypographyProbeScreen() {
             }
         }
         item { TypographyProbeSection("Latin Text", LatinWeightRows) }
-        item { TypographyProbeSection("CJK Text", CjkWeightRows) }
+        item { TypographyProbeSection("Mixed CJK Fallback", CjkWeightRows) }
         item { TypographyTightLineHeightProbeSection() }
         item { TypographyMarkdownProbeSection() }
     }
@@ -204,8 +204,8 @@ private val LatinWeightRows =
 
 private val CjkWeightRows =
     listOf(
-        TypographyProbeRow("400", "中文正文对话流字体粗细测试", MessageBodyProbeStyle.withSlockFontWeight(FontWeight.Normal)),
-        TypographyProbeRow("500", "中文正文对话流字体粗细测试", MessageBodyProbeStyle.withSlockFontWeight(FontWeight.Medium)),
-        TypographyProbeRow("600", "中文正文对话流字体粗细测试", MessageBodyProbeStyle.withSlockFontWeight(FontWeight.SemiBold)),
-        TypographyProbeRow("700", "中文正文对话流字体粗细测试", MessageBodyProbeStyle.withSlockFontWeight(FontWeight.Bold))
+        TypographyProbeRow("400", "中文 ABC 123", MessageBodyProbeStyle.withSlockFontWeight(FontWeight.Normal)),
+        TypographyProbeRow("500", "中文 ABC 123", MessageBodyProbeStyle.withSlockFontWeight(FontWeight.Medium)),
+        TypographyProbeRow("600", "中文 ABC 123", MessageBodyProbeStyle.withSlockFontWeight(FontWeight.SemiBold)),
+        TypographyProbeRow("700", "中文 ABC 123", MessageBodyProbeStyle.withSlockFontWeight(FontWeight.Bold))
     )

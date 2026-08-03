@@ -47,6 +47,8 @@ internal actual fun slockPlatformSupportsPublicAttachmentDownloadReadback(): Boo
 
 internal actual fun slockPlatformSupportsPrivateAttachmentExport(): Boolean = false
 
+internal actual fun slockPlatformPreservesEncodedFontWeightForFallback(): Boolean = false
+
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ios"
 
 // The current semantic metadata deliberately avoids Kuikly's legacy inline-code

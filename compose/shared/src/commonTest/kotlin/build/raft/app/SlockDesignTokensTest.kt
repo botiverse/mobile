@@ -12,6 +12,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
 class SlockDesignTokensTest {
+    private fun expectedRenderedWeight(weight: FontWeight): FontWeight =
+        if (slockPlatformPreservesEncodedFontWeightForFallback()) weight else FontWeight.Normal
+
     @Test
     fun slockWeightsResolveToFontFilesWithoutSyntheticWeight() {
         val bold = SlockType.Body.withSlockFontWeight(FontWeight.Bold)
@@ -19,9 +22,9 @@ class SlockDesignTokensTest {
         val medium = SlockType.Body.withSlockFontWeight(FontWeight.Medium)
 
         assertEquals(SlockType.ButtonBold.fontFamily, bold.fontFamily)
-        assertEquals(FontWeight.Normal, bold.fontWeight)
-        assertEquals(FontWeight.Normal, semiBold.fontWeight)
-        assertEquals(FontWeight.Normal, medium.fontWeight)
+        assertEquals(expectedRenderedWeight(FontWeight.Bold), bold.fontWeight)
+        assertEquals(expectedRenderedWeight(FontWeight.SemiBold), semiBold.fontWeight)
+        assertEquals(expectedRenderedWeight(FontWeight.Medium), medium.fontWeight)
         assertNotEquals(SlockType.Body.fontFamily, bold.fontFamily)
     }
 
@@ -30,7 +33,7 @@ class SlockDesignTokensTest {
         val resolved = SlockType.Body.copy(fontWeight = FontWeight.Bold).withResolvedSlockFontFamily()
 
         assertEquals(SlockType.ButtonBold.fontFamily, resolved.fontFamily)
-        assertEquals(FontWeight.Normal, resolved.fontWeight)
+        assertEquals(expectedRenderedWeight(FontWeight.Bold), resolved.fontWeight)
     }
 
     @Test
@@ -38,7 +41,7 @@ class SlockDesignTokensTest {
         val resolved = SlockType.ButtonBold.withResolvedSlockFontFamily()
 
         assertEquals(SlockType.ButtonBold.fontFamily, resolved.fontFamily)
-        assertEquals(FontWeight.Normal, resolved.fontWeight)
+        assertEquals(expectedRenderedWeight(FontWeight.Bold), resolved.fontWeight)
     }
 
     @Test
@@ -46,7 +49,7 @@ class SlockDesignTokensTest {
         val bold = slockSpanStyleForWeight(FontWeight.Bold)
 
         assertEquals(SlockType.ButtonBold.fontFamily, bold.fontFamily)
-        assertEquals(FontWeight.Normal, bold.fontWeight)
+        assertEquals(expectedRenderedWeight(FontWeight.Bold), bold.fontWeight)
     }
 
     @Test
@@ -76,7 +79,7 @@ class SlockDesignTokensTest {
     @Test
     fun brutalActionButtonDefaultStyleIsBold() {
         assertEquals(SlockType.ButtonBold.fontFamily, SlockBrutalActionButtonDefaultTextStyle.fontFamily)
-        assertEquals(FontWeight.Normal, SlockBrutalActionButtonDefaultTextStyle.fontWeight)
+        assertEquals(expectedRenderedWeight(FontWeight.Bold), SlockBrutalActionButtonDefaultTextStyle.fontWeight)
     }
 
     @Test
@@ -86,8 +89,8 @@ class SlockDesignTokensTest {
 
         assertEquals(SlockType.ButtonBold.fontFamily, largeStyle.fontFamily)
         assertEquals(SlockType.ButtonBold.fontFamily, defaultStyle.fontFamily)
-        assertEquals(FontWeight.Normal, largeStyle.fontWeight)
-        assertEquals(FontWeight.Normal, defaultStyle.fontWeight)
+        assertEquals(expectedRenderedWeight(FontWeight.Bold), largeStyle.fontWeight)
+        assertEquals(expectedRenderedWeight(FontWeight.Bold), defaultStyle.fontWeight)
     }
 
     @Test

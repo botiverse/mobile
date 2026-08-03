@@ -34,6 +34,8 @@ internal actual fun slockPlatformSupportsPublicAttachmentDownloadReadback(): Boo
 
 internal actual fun slockPlatformSupportsPrivateAttachmentExport(): Boolean = true
 
+internal actual fun slockPlatformPreservesEncodedFontWeightForFallback(): Boolean = true
+
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ohos"
 
 // task #401 A-bridge: core-render-ohos has no slockInlineCode chip yet, so
