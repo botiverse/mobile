@@ -12,6 +12,7 @@ const composeRoot = path.resolve(ohosAppRoot, '..');
 
 const sharedPath = 'shared/src/commonMain/kotlin/build/raft/app/SlockFilePreview.kt';
 const hostPath = 'ohosApp/entry/src/main/ets/kuikly/modules/KRBridgeModule.ets';
+const privateStorePath = 'ohosApp/entry/src/main/ets/kuikly/SlockOhosPrivateAttachmentStore.ets';
 
 function read(relativePath) {
   return fs.readFileSync(path.resolve(composeRoot, relativePath), 'utf8').replaceAll('\r\n', '\n');
@@ -171,11 +172,62 @@ function validateHost(source) {
   ], 'URL-missing terminal');
 }
 
-function expectMutationFailure(name, sharedSource, hostSource) {
+function validatePrivateStore(source) {
+  const materializeBody = section(
+    source,
+    'export async function materializeSlockOhosPrivateAttachmentOpenAlias(',
+    'function removeOtherSlockOhosPrivateAttachmentOpenAliases(',
+    'private alias materialization'
+  );
+  const removeOtherBody = section(
+    source,
+    'function removeOtherSlockOhosPrivateAttachmentOpenAliases(',
+    'function removeSlockOhosPrivateAttachmentOpenAliasDirectory(',
+    'private alias rename cleanup'
+  );
+  const cleanupBody = section(
+    source,
+    'export function cleanupSlockOhosPrivateAttachmentOpenAliases(',
+    'export function cleanupSlockOhosPrivateAttachmentOrphanParts(',
+    'private alias TTL/capacity cleanup'
+  );
+
+  assertContract(
+    !source.includes('backend.unlink(sourcePath)'),
+    'private alias cleanup must never unlink the canonical source'
+  );
+  assertOrdered(materializeBody, [
+    'const sourceStat = backend.stat(sourcePath);',
+    'const existingStat = backend.stat(targetPath);',
+    'removeOtherSlockOhosPrivateAttachmentOpenAliases(targetDirectory, targetPath, backend);',
+    'await backend.copy(sourcePath, targetPath);',
+    'const copiedStat = backend.stat(targetPath);',
+    "throw new Error('Attachment open alias copy is incomplete');",
+    '} catch (error) {',
+    'backend.unlink(targetPath);',
+    "throw new Error(error instanceof Error ? error.message : 'Attachment open alias copy failed');",
+  ], 'private alias exact-copy and failure cleanup');
+  assertExactlyOnce(
+    removeOtherBody,
+    'if (path !== retainedPath) backend.unlink(path);',
+    'renamed alias old-leaf cleanup'
+  );
+  assertOrdered(cleanupBody, [
+    'if (left.path === retainedDirectory && right.path !== retainedDirectory) return -1;',
+    'if (right.path === retainedDirectory && left.path !== retainedDirectory) return 1;',
+    'const expired = entry.path !== retainedDirectory &&',
+    '(entry.mtime <= 0 || nowMs - entry.mtime * 1000 > maximumAgeMs);',
+    'if (expired || index >= maximumDirectories) {',
+    'removeSlockOhosPrivateAttachmentOpenAliasDirectory(entry.path, backend);',
+  ], 'private alias retained-current TTL/capacity cleanup');
+}
+
+function expectMutationFailure(name, sharedSource, hostSource, privateStoreSource = privateStore) {
   let rejected = false;
   try {
     validateShared(sharedSource);
     validateHost(hostSource);
+    validatePrivateStore(privateStoreSource);
   } catch (_error) {
     rejected = true;
   }
@@ -197,8 +249,10 @@ function swapFirst(source, first, second) {
 
 const shared = read(sharedPath);
 const host = read(hostPath);
+const privateStore = read(privateStorePath);
 validateShared(shared);
 validateHost(host);
+validatePrivateStore(privateStore);
 
 for (const marker of [
   'traceSlockFilePreviewExternalOpenAdmission(rejectionReason, policy, bridge::log)',
@@ -252,6 +306,48 @@ expectMutationFailure(
   'delete private open alias TTL cleanup',
   shared,
   removeFirst(host, 'cleanupSlockOhosPrivateAttachmentOpenAliases(')
+);
+expectMutationFailure(
+  'disable renamed-alias old-leaf unlink',
+  shared,
+  host,
+  removeFirst(privateStore, 'if (path !== retainedPath) backend.unlink(path);')
+);
+expectMutationFailure(
+  'disable copy-failure partial cleanup',
+  shared,
+  host,
+  privateStore.replace(
+    "} catch (error) {\n    backend.unlink(targetPath);\n    throw new Error(error instanceof Error ? error.message : 'Attachment open alias copy failed');",
+    "} catch (error) {\n    throw new Error(error instanceof Error ? error.message : 'Attachment open alias copy failed');"
+  )
+);
+expectMutationFailure(
+  'disable alias TTL expiry',
+  shared,
+  host,
+  privateStore.replace(
+    'const expired = entry.path !== retainedDirectory &&',
+    'const expired = false &&'
+  )
+);
+expectMutationFailure(
+  'disable alias capacity eviction',
+  shared,
+  host,
+  privateStore.replace(
+    'if (expired || index >= maximumDirectories) {',
+    'if (expired) {'
+  )
+);
+expectMutationFailure(
+  'allow canonical source deletion',
+  shared,
+  host,
+  privateStore.replace(
+    'const sourceStat = backend.stat(sourcePath);',
+    'backend.unlink(sourcePath);\n  const sourceStat = backend.stat(sourcePath);'
+  )
 );
 
 console.log('OHOS attachment-open diagnostic production contract + mutation self-test: PASS');
