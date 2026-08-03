@@ -218,13 +218,16 @@ internal fun UiCardVisualContent() {
 
 @Composable
 internal fun UiFormFieldVisualContent() {
-    // Content-sized on purpose: a fixed 226.dp height exhausted the constraint and
-    // collapsed the error-state input box (react hit the same clip and content-sized
-    // its fixture in task #351).
+    // Fixed 342x296 frame (capture-contract, XiShi run 30837350660): the old 226dp crop
+    // truncated the 3rd field's error input + "Name is required" (KMP content bottom is
+    // y=831/831@3x ≈ 277dp brutal, 795 ≈ 265dp elegant), while React renders 296dp. 296dp is
+    // tall enough to contain all three states + bottom padding in both registers (the earlier
+    // 226dp that "collapsed the error box" was simply too short); UI_FORM_FIELD_CROP matches.
     Box(
         modifier =
             Modifier
                 .width(342.dp)
+                .height(296.dp)
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {

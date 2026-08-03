@@ -5160,11 +5160,14 @@ class KmpVisualScreenshotCaptureTest {
                 heightDp = 190
             )
         private val UI_FORM_FIELD_CROP =
+            // 296dp matches the React form-field frame and contains all three states + bottom
+            // padding in both registers (XiShi capture-contract, run 30837350660); the prior
+            // 226dp truncated the 3rd field's error input + "Name is required".
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 342,
-                heightDp = 226
+                heightDp = 296
             )
         private val UI_TEXTAREA_CROP =
             VisualCrop(
