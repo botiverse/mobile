@@ -27,6 +27,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -35,6 +36,8 @@ import org.junit.runner.RunWith
 class SlockThreadImePaintConnectedTest {
     @Test
     fun sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition() {
+        val imeSetupFailureDiagnosticsVerified = assertImeSetupFailureDiagnosticsContract()
+
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val nonce = UUID.randomUUID().toString().replace("-", "")
         val intent =
@@ -67,12 +70,7 @@ class SlockThreadImePaintConnectedTest {
                 val connection = requireNotNull(retiredEditor.onCreateInputConnection(EditorInfo()))
                 assertTrue("initial IME commit should succeed", connection.commitText("sent", 1))
             }
-            waitUntil(ImeTransitionTimeoutMs, "focused editor with visible IME and sent text") {
-                scenario.currentComposerEditText()?.let { editor ->
-                    editor === retiredEditor && editor.hasFocus() && editor.text.toString() == "sent" &&
-                        scenario.isImeVisible()
-                } == true
-            }
+            scenario.waitForRetiredEditorImeSetup(retiredEditor)
 
             val imeHiddenDuringReplacement = AtomicBoolean(false)
             scenario.onActivity { activity ->
@@ -169,6 +167,7 @@ class SlockThreadImePaintConnectedTest {
                     "firstComposition=${firstCompositionAccepted.get()} " +
                     "firstSelection=$firstSelectionPreserved " +
                     "requestCount=$sentRequestCount " +
+                    "imeSetupFailureDiagnostics=$imeSetupFailureDiagnosticsVerified " +
                     "retiredDetachedAtSample=${retiredDetachedAtReplacement.get()} " +
                     "retiredDetachedFinal=${!retiredEditor.isAttachedToWindow} " +
                     "imeVisibleAtAttachSample=${imeVisibleAtReplacement.get()} " +
@@ -426,6 +425,121 @@ class SlockThreadImePaintConnectedTest {
         throw AssertionError("Timed out waiting for $description")
     }
 
+    private fun ActivityScenario<SlockKuiklyActivity>.waitForRetiredEditorImeSetup(
+        retiredEditor: EditText,
+    ) {
+        waitForComposerImeSetup(ImeTransitionTimeoutMs) {
+            composerImeSetupSnapshot(retiredEditor)
+        }
+    }
+
+    private fun assertImeSetupFailureDiagnosticsContract(): Boolean {
+        val blockedSnapshot =
+            ComposerImeSetupSnapshot(
+                currentIdentity = 101,
+                sameInstance = false,
+                focused = true,
+                text = "sent",
+                imeVisible = true,
+                treeIdentity = 202,
+                treeSameAsRetired = true,
+                treeAttached = true,
+            )
+
+        val failure =
+            assertThrows(AssertionError::class.java) {
+                waitForComposerImeSetup(timeoutMs = 0L) { blockedSnapshot }
+            }
+        assertEquals(
+            "Timed out waiting for focused editor with visible IME and sent text; " +
+                "currentIdentity=101 sameInstance=false focused=true text=\"sent\" " +
+                "imeVisible=true treeIdentity=202 treeSameAsRetired=true treeAttached=true",
+            failure.message,
+        )
+
+        val missingEditorFailure =
+            assertThrows(AssertionError::class.java) {
+                waitForComposerImeSetup(timeoutMs = 0L) {
+                    ComposerImeSetupSnapshot.missingEditor()
+                }
+            }
+        assertEquals(
+            "Timed out waiting for focused editor with visible IME and sent text; " +
+                "currentIdentity=none sameInstance=false focused=false " +
+                "text=<no-current-editor> imeVisible=false treeIdentity=none " +
+                "treeSameAsRetired=false treeAttached=false",
+            missingEditorFailure.message,
+        )
+
+        val readySnapshot =
+            ComposerImeSetupSnapshot(
+                currentIdentity = 303,
+                sameInstance = true,
+                focused = true,
+                text = "sent",
+                imeVisible = true,
+                treeIdentity = null,
+                treeSameAsRetired = false,
+                treeAttached = false,
+            )
+        assertEquals(
+            readySnapshot,
+            waitForComposerImeSetup(timeoutMs = 0L) { readySnapshot },
+        )
+        return true
+    }
+
+    private fun waitForComposerImeSetup(
+        timeoutMs: Long,
+        snapshotProvider: () -> ComposerImeSetupSnapshot,
+    ): ComposerImeSetupSnapshot {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        var latest = snapshotProvider()
+        while (!latest.isReady && SystemClock.uptimeMillis() < deadline) {
+            SystemClock.sleep(PollMs)
+            if (SystemClock.uptimeMillis() < deadline) {
+                latest = snapshotProvider()
+            }
+        }
+        if (latest.isReady) return latest
+        throw AssertionError(
+            "Timed out waiting for focused editor with visible IME and sent text; $latest",
+        )
+    }
+
+    private fun ActivityScenario<SlockKuiklyActivity>.composerImeSetupSnapshot(
+        retiredEditor: EditText,
+    ): ComposerImeSetupSnapshot {
+        var snapshot = ComposerImeSetupSnapshot.missingEditor()
+        onActivity { activity ->
+            val decorView = activity.window.decorView
+            val attachedEditor = decorView.findAttachedComposerEditText()
+            val treeEditor = decorView.findComposerEditText()
+            val sameInstance = attachedEditor === retiredEditor
+            val focused = attachedEditor?.hasFocus() == true
+            val text = attachedEditor?.text?.toString()
+            val imeVisible =
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    decorView.rootWindowInsets
+                        ?.isVisible(WindowInsets.Type.ime()) == true
+                } else {
+                    activity.getSystemService(InputMethodManager::class.java).isAcceptingText
+                }
+            snapshot =
+                ComposerImeSetupSnapshot(
+                    currentIdentity = attachedEditor?.let { System.identityHashCode(it) },
+                    sameInstance = sameInstance,
+                    focused = focused,
+                    text = text,
+                    imeVisible = imeVisible,
+                    treeIdentity = treeEditor?.let { System.identityHashCode(it) },
+                    treeSameAsRetired = treeEditor === retiredEditor,
+                    treeAttached = treeEditor?.isAttachedToWindow == true,
+                )
+        }
+        return snapshot
+    }
+
     private fun ActivityScenario<SlockKuiklyActivity>.currentComposerEditText(): EditText? {
         var editor: EditText? = null
         onActivity { activity -> editor = activity.window.decorView.findAttachedComposerEditText() }
@@ -501,6 +615,42 @@ class SlockThreadImePaintConnectedTest {
     }
 
     private data class VisibleNode(val bounds: Rect)
+
+    private data class ComposerImeSetupSnapshot(
+        val currentIdentity: Int?,
+        val sameInstance: Boolean,
+        val focused: Boolean,
+        val text: String?,
+        val imeVisible: Boolean,
+        val treeIdentity: Int?,
+        val treeSameAsRetired: Boolean,
+        val treeAttached: Boolean,
+    ) {
+        val isReady: Boolean
+            get() = sameInstance && focused && text == "sent" && imeVisible
+
+        override fun toString(): String =
+            "currentIdentity=${currentIdentity ?: "none"} " +
+                "sameInstance=$sameInstance focused=$focused " +
+                "text=${text?.let { JSONObject.quote(it) } ?: "<no-current-editor>"} " +
+                "imeVisible=$imeVisible " +
+                "treeIdentity=${treeIdentity ?: "none"} " +
+                "treeSameAsRetired=$treeSameAsRetired treeAttached=$treeAttached"
+
+        companion object {
+            fun missingEditor(): ComposerImeSetupSnapshot =
+                ComposerImeSetupSnapshot(
+                    currentIdentity = null,
+                    sameInstance = false,
+                    focused = false,
+                    text = null,
+                    imeVisible = false,
+                    treeIdentity = null,
+                    treeSameAsRetired = false,
+                    treeAttached = false,
+                )
+        }
+    }
 
     private companion object {
         const val PageName = "compose_thread_newer_auto_pagination_visual"
