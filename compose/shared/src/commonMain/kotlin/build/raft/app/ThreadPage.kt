@@ -3605,6 +3605,9 @@ private fun ThreadMessageVisualScreenContent() {
     val menuVariant = params.optString("menuVariant")
     val interactionProbe = params.optString("interactionProbe")
     val instanceId = params.optString("instanceId")
+    val visualSingleMessage = params.optBoolean("visualSingleMessage", false)
+    val longPressReadyToken = params.optString("longPressReadyToken")
+    val longPressMenuVisibleToken = params.optString("longPressMenuVisibleToken")
     val singleTapOpensThreadEnabled = params.optBoolean("singleTapOpensThreadEnabled", false)
     val inlineSelectionToolbarEnabled =
         remember(visualFixture) {
@@ -3750,7 +3753,10 @@ private fun ThreadMessageVisualScreenContent() {
         }
         return
     }
-    if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO) {
+    if (
+        visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO &&
+        !visualSingleMessage
+    ) {
         ThreadInlineSelectionCompactGroupVisual(
             messages = payload.toThreadTimelineSlice().messages,
             inlineSelectionEnabled = inlineSelectionToolbarEnabled,
@@ -3822,6 +3828,27 @@ private fun ThreadMessageVisualScreenContent() {
                     onCancel = {},
                     onDelete = {}
                 )
+            }
+        }
+    LaunchedEffect(longPressMenuVisibleToken, message?.id, menuActions.size) {
+        if (
+            longPressMenuVisibleToken.isNotBlank() &&
+            message != null &&
+            menuActions.isNotEmpty()
+        ) {
+            Utils.logToNative(
+                "$longPressMenuVisibleToken messageId=${message.id} actions=${menuActions.size}"
+            )
+        }
+    }
+    val onLongPressInputReady: ((String) -> Unit)? =
+        remember(longPressReadyToken) {
+            if (longPressReadyToken.isBlank()) {
+                null
+            } else {
+                { messageId: String ->
+                    Utils.logToNative("$longPressReadyToken messageId=$messageId")
+                }
             }
         }
     val visualMessagePermalinkLabelResolver =
@@ -4002,6 +4029,7 @@ private fun ThreadMessageVisualScreenContent() {
                     onInlineSelectionTranslate = {},
                     onInlineSelectionSelect = {},
                     onInlineSelectionMore = { _ -> },
+                    onLongPressInputReady = onLongPressInputReady,
                     outerPadding = 0.dp
                 )
                 if (menuActions.isNotEmpty()) {
@@ -19387,6 +19415,7 @@ private fun ThreadMessageCard(
     onInlineSelectionTranslate: () -> Unit = {},
     onInlineSelectionSelect: () -> Unit = {},
     onInlineSelectionMore: (SlockPopoverAnchor) -> Unit = {},
+    onLongPressInputReady: ((String) -> Unit)? = null,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val localizedAuthorName =
@@ -19626,6 +19655,7 @@ private fun ThreadMessageCard(
                                     null
                                 },
                             onShowActions = onShowActions,
+                            onInputReady = onLongPressInputReady,
                             onPressChanged = { isPressed, position ->
                                 pressed = isPressed
                                 if (position != null) {
@@ -21537,12 +21567,14 @@ private fun Modifier.threadMessageLongPressActions(
     onTapRejected: (ThreadMessageTapMovementDecision) -> Unit = {},
     onSelectAllText: ((SlockPopoverAnchor?) -> Unit)? = null,
     onShowActions: (SlockPopoverAnchor) -> Unit,
+    onInputReady: ((String) -> Unit)? = null,
     onPressChanged: (Boolean, Offset?) -> Unit = { _, _ -> }
 ): Modifier {
     val currentOnShowActions by rememberUpdatedState(onShowActions)
     val currentOnTap by rememberUpdatedState(onTap)
     val currentOnTapRejected by rememberUpdatedState(onTapRejected)
     val currentOnSelectAllText by rememberUpdatedState(onSelectAllText)
+    val currentOnInputReady by rememberUpdatedState(onInputReady)
     val currentOnPressChanged by rememberUpdatedState(onPressChanged)
     val currentIsScrollInProgress by rememberUpdatedState(isScrollInProgress)
     val currentDiagnosticsLogger by rememberUpdatedState(diagnosticsLogger)
@@ -21568,6 +21600,11 @@ private fun Modifier.threadMessageLongPressActions(
             }
         }
         .pointerInput(messageId, pointerSessionKey) {
+            // The visual harness uses this optional seam to prove that the
+            // exact target row's lazily-started detector coroutine received the
+            // real ACTION_DOWN before the long-press threshold. Production
+            // callers leave it null, so there is no behavior or logging change.
+            currentOnInputReady?.invoke(messageId)
             detectTapGestures(
                 onPress = { downPosition ->
                     var indicated = false
