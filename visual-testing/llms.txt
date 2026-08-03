@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-03 22:21:14 UTC
+Generated: 2026-08-03 22:25:39 UTC
 Latest run: a44e9411-20260803221729
 Latest commit: a44e9411-20260803221729
 Commit subject: fix(android): stabilize pending send feedback and IME dismissal (#1915)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 84, same 0, pass 0, basic-pass 0, different 83, missing 1
-AI analysis: ready 68 / total 84, pending 16
+AI analysis: ready 83 / total 84, pending 1
 Visual coverage matrix: active 93 / total 112, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

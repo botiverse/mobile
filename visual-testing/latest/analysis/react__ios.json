@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-03T22:21:04.710Z",
+  "generatedAt": "2026-08-03T22:25:33.902Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 84,
-    "ready": 64,
-    "pending": 20
+    "ready": 78,
+    "pending": 6
   },
   "cases": [
     {
@@ -78,41 +78,100 @@
     },
     {
       "id": "components.ui.button.states.elegant",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0f801f00007c00fe007c00fe001c003e003c007e7ffcfffe0000fffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
-      "generatedAt": "2026-08-03T22:21:02.360Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-03T22:23:36.125Z",
+      "severity": "low",
+      "summary": [
+        "Button label typography is bolder/heavier on iOS than on React (e.g., 'Sync', 'Delete', 'Continue' appear with thicker strokes).",
+        "iOS rendering shows slightly larger button padding and corner radius, giving the pill buttons a more rounded, fuller appearance.",
+        "Inter-button horizontal spacing on iOS is a touch wider than on the React baseline.",
+        "Button colors (white Save, yellow Sync, pink Delete, blue Add, green Continue, gray Disabled) match closely; no missing or extra states.",
+        "Header text and badge ('REACT' vs 'iOS') are positioned consistently; overall layout alignment is preserved."
+      ],
+      "likelyCauses": [
+        "iOS uses SF Pro / system UIFont which renders heavier at similar point sizes than the React web font (likely Inter/system-ui).",
+        "Missing or differing font-weight token in the iOS theme (defaulting to semibold/bold instead of medium/regular).",
+        "Button corner radius and padding tokens not normalized to a shared design-token value across platforms."
+      ],
+      "suggestedOwner": "Design Systems / iOS UI engineer",
+      "suggestedFixes": [
+        "Map the iOS button label font-weight to match the web baseline (e.g., set to medium/600 or 500 depending on token) and consider specifying the same typeface family.",
+        "Normalize button padding and corner-radius tokens across web and iOS to identical design-token values.",
+        "Re-run the visual test with the same logical button size so scale differences don't amplify font-weight perception.",
+        "Verify SF Pro vs custom font fallback on iOS; force the intended family if the system is substituting a bolder face."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.035431941237628495
     },
     {
       "id": "components.ui.card.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ff83ffc0000000200f901d201f803f20001000200010002800100027ffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-08-03T22:21:02.238Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-03T22:23:36.141Z",
+      "severity": "low",
+      "summary": [
+        "iOS render has a much taller viewport (1170×2532) vs React baseline (342×190), leaving large empty space below the card",
+        "Card content, typography, colors, button, and shadow appear visually consistent between the two renders",
+        "Pixel-perfect similarity is high (98.10%) with only ~1.9% mismatch, primarily from viewport size and empty area below the card",
+        "Save changes button, heading 'Channel settings', and description text are aligned and styled identically across both platforms"
+      ],
+      "likelyCauses": [
+        "iOS test snapshot captured at full device resolution rather than element/crop-bounded region like React baseline",
+        "Missing crop configuration for the iOS side (current.crop is null) causing the empty whitespace to be included in the diff",
+        "React baseline uses element-bounded crop (component-bounds) while iOS uses full canvas"
+      ],
+      "suggestedOwner": "iOS / mobile platform engineer or visual-testing pipeline owner",
+      "suggestedFixes": [
+        "Apply the same element-bounds crop to the iOS snapshot so only the card region is compared (mirroring baseline.crop)",
+        "Normalize snapshot viewport size or use a device-relative crop rectangle (e.g., SafeArea-contained card bounds)",
+        "Re-run comparison after cropping to confirm the 1.9% mismatch drops near zero",
+        "If platform-specific size differences are intentional, add a documented tolerance or exclude the empty region from diffing"
+      ],
+      "intentional": [
+        "Viewport size discrepancy is likely an artifact of the iOS screenshot capture, not a UI design difference",
+        "Card layout, typography weight/size, button color, spacing, and shadow match the React baseline"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.01903701003227065
     },
     {
       "id": "components.ui.card.states.elegant",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:000000000ffc3ffe00fc01f6000c001e00000006000000067ffcfff60000fffe0000fffefffefffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
-      "generatedAt": "2026-08-03T22:21:02.335Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-03T22:23:36.209Z",
+      "severity": "low",
+      "summary": [
+        "Card horizontal padding is notably larger on iOS, shifting content rightward and increasing white space inside the card",
+        "'Save changes' button on iOS extends further to the right (closer to the card's right edge) compared to React",
+        "Title 'Channel settings' and description text appear horizontally shifted/indented further from the left edge on iOS",
+        "Card itself and its internal layout remain otherwise consistent (typography weight, color, shadow, and button fill are visually identical)",
+        "Overall dimensions and component structure match; differences are limited to internal horizontal spacing/scale relative to the larger iOS canvas"
+      ],
+      "likelyCauses": [
+        "iOS render uses device scaling or default horizontal insets that differ from React's fixed 342px baseline frame",
+        "Button width may be using a flexible/fill behavior on iOS that expands relative to container padding rather than matching a fixed inset",
+        "Card content insets on iOS likely derive from a platform-default container padding token not aligned with the React token"
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Match iOS card inner padding to the React baseline (e.g., use consistent horizontal inset token such as 16pt/20pt instead of platform default)",
+        "Constrain 'Save changes' button to the same fixed horizontal margins used in the React variant, or harmonize fill behavior",
+        "Compare and unify design tokens for card padding and button side margins across React and iOS",
+        "Add a visual regression snapshot at the iOS canvas size (1170×2532) with the component centered using identical insets",
+        "Document any intentional platform-specific spacing deltas in the design system if the difference is deliberate"
+      ],
+      "intentional": [
+        "Platform default safe-area or container padding intentionally larger on iOS"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.04459465845721766
     },
     {
@@ -182,15 +241,36 @@
     },
     {
       "id": "components.ui.form-field.states.elegant",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:000000001ffc3ffe01fc07fe01fc07fe00fc01fe00fc03fe00fc01fe00fc01fe07fc0ff67ffc07f603fc0ffe0000fffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
-      "generatedAt": "2026-08-03T22:21:02.567Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-03T22:23:36.239Z",
+      "severity": "low",
+      "summary": [
+        "iOS renders the form at a larger overall scale (1170×2532) versus React (342×296) but the inner form layout, field structure, and content are equivalent.",
+        "Asterisk after \"Email\" appears in a softer/lighter red-pink on iOS versus a brighter pink on React.",
+        "\"Name is required\" error text appears in a softer/lighter coral on iOS versus a more saturated red-orange on React.",
+        "Error-state input border on iOS uses a lighter/salmon red versus a more saturated orange-red on React.",
+        "Help text \"Shown in channel discovery.\" is rendered in a slightly darker gray on iOS versus a lighter gray on React."
+      ],
+      "likelyCauses": [
+        "iOS implementation is using a softer/coral-toned error color palette than the React baseline.",
+        "iOS typography may be rendering labels and helper text with slightly different opacity/gray values than React.",
+        "Scale differences are intrinsic to the larger iOS canvas; no actual layout divergence at the form-field level."
+      ],
+      "suggestedOwner": "ios-form-field",
+      "suggestedFixes": [
+        "Update iOS error color tokens to match React baseline (more saturated red-orange) for the \"Name is required\" text and error border.",
+        "Align iOS required-field asterisk color to the brighter pink used in React.",
+        "Verify iOS helper-text gray token matches React's lighter gray for the \"Shown in channel discovery.\" line.",
+        "Confirm the iOS crop rect for this fixture is set to component bounds so the comparison isolates the form field and excludes the large empty canvas below.",
+        "If the iOS canvas size is intentional, consider adding a tolerance/offset so canvas-area whitespace does not inflate the pixel mismatch ratio."
+      ],
+      "intentional": [
+        "Larger overall canvas size on iOS is expected for native device rendering and not a visual defect in the form field itself."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.02899839321640274
     },
     {
@@ -764,28 +844,63 @@
     },
     {
       "id": "components.thread.composer.empty",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:000000000001000201b903b20781080200010002f000fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
-      "generatedAt": "2026-08-03T22:21:03.141Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-03T22:23:37.059Z",
+      "severity": "low",
+      "summary": [
+        "Text input area height is noticeably shorter on iOS (React) compared to the iOS render, reducing the visible empty composer padding.",
+        "Bottom border line of the composer container appears absent or clipped on iOS, while React shows a clear bottom border.",
+        "Attachment icons (image-plus and paperclip) appear slightly larger and more spaced from the 'As Task' checkbox on iOS.",
+        "'As Task' label and checkbox appear bolder / heavier weight on iOS compared to React.",
+        "Send icon button (pink) appears slightly smaller and shifted closer to the right edge on iOS."
+      ],
+      "likelyCauses": [
+        "iOS composer is using a fixed/minimum height rather than mirroring React's larger empty-state height.",
+        "Bottom border of the input container may be conditionally rendered or clipped by parent view bounds on iOS.",
+        "SF Pro/system font on iOS renders 'As Task' at a heavier visual weight than the React web font, and checkbox size tokens differ between platforms.",
+        "Icon button sizing and right-padding tokens differ between React and iOS implementations."
+      ],
+      "suggestedOwner": "iOS engineer (component: ThreadComposer)",
+      "suggestedFixes": [
+        "Increase iOS composer empty-state height to match React baseline (roughly 1.5–2× current visible height).",
+        "Ensure the composer's bottom border (1px line) is rendered and not clipped by the keyboard layout or safe-area insets.",
+        "Standardize icon button size and right inset with the React token (e.g., 44pt or platform-equivalent) so the send button aligns with the container edge.",
+        "Re-check 'As Task' typography token (font weight/size) against design spec; current iOS render looks heavier than React.",
+        "Reduce horizontal spacing between attachment icons and the 'As Task' control to match React gaps."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.02319574404882463
     },
     {
       "id": "components.thread.composer.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000000010002000100020f81080200010002f00ffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-08-03T22:21:03.222Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-03T22:23:37.099Z",
+      "severity": "low",
+      "summary": [
+        "Both panels render the same thread composer header content with matching title, attachment icons, 'As Task' toggle, and pink send button",
+        "Element proportions, spacing, and alignment are visually consistent between the React (left) and iOS (right) crops",
+        "Typography weight and size for the title, label, and badge appear identical across both platforms",
+        "No missing, clipped, or cropped elements detected within the composer bounds"
+      ],
+      "likelyCauses": [
+        "Pixel mismatch (~2.38%) is likely attributable to minor anti-aliasing differences and the large empty canvas on the iOS side rather than real UI divergence",
+        "the iOS snapshot includes a full 1170×2532 canvas while the baseline is cropped to 342×100, amplifying incidental noise in similarity scoring"
+      ],
+      "suggestedOwner": "design-systems",
+      "suggestedFixes": [
+        "No code changes required; visual parity is within tolerance for this component",
+        "Re-crop the iOS snapshot to the component bounds (similar to the React baseline) to reduce false-positive mismatch from empty canvas area",
+        "Confirm the composer header is implemented using shared design tokens for spacing, color, and icon size across platforms"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.02384554623891122
     },
     {
@@ -820,54 +935,126 @@
     },
     {
       "id": "components.thread.composer.as-task-selected",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000000010002000100020f01080200010002f00ffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-08-03T22:21:03.213Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-03T22:23:41.520Z",
+      "severity": "low",
+      "summary": [
+        "iOS checkbox appears filled with a heavier black background vs React's lighter/unfilled check icon, creating a darker selected state indicator",
+        "iOS 'As Task' label text appears slightly heavier/bolder in weight than React's version",
+        "Both implementations show identical layout, icon placement, pink send button, and component structure",
+        "Pixel mismatch is only 2.43% with 97.57% pixel-perfect similarity, indicating near-identical rendering"
+      ],
+      "likelyCauses": [
+        "iOS UIKit checkbox rendering uses a filled black background by default for selected state while React uses a lighter check glyph",
+        "iOS system font (SF Pro) may render text at a slightly heavier weight than the web font used in React",
+        "Default iOS UISwitch/UICheckbox styling differs from custom React implementation"
+      ],
+      "suggestedOwner": "iOS",
+      "suggestedFixes": [
+        "Adjust iOS checkbox selected state to match React's lighter check mark styling for visual consistency",
+        "Verify font weight token mapping between iOS and React to ensure 'As Task' label matches in weight",
+        "If differences are intentional platform conventions, document them in the design system as platform-specific exceptions",
+        "Re-run visual test with element-crop on iOS side to isolate the composer component for more precise comparison",
+        "Review design tokens for checkbox/selected state to align across platforms"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.024343109058748924
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03f807fc0001fffe000100020001000280090002000900023ff9000217f93ffa00010003100900020fb10fb2000100020001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
-      "generatedAt": "2026-08-03T22:21:03.374Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-03T22:23:41.541Z",
+      "severity": "high",
+      "summary": [
+        "In React, the first item under 'IN THIS CHANNEL' is 'artin' (highlighted/selected) with a generic avatar placeholder; in iOS the first item is 'Cindy' with a pixelated avatar. The selection state targets a different row.",
+        "iOS shows a subtitle/description text ('Keeps visual testing releas…', 'Turns…', 'I…') next to member names; React shows only member names with a small status circle for Cindy. Layout/typography for member rows diverges.",
+        "iOS has only one row under 'NOT IN THIS CHANNEL' (Android Dev…) while React shows two rows (artin + Product UX De…); content missing in iOS.",
+        "iOS list rows truncate leading avatars and collapse icon areas, evidence of clipping/cropping (e.g., '@Product-UX-Desi…'); React shows the full handle within bounds.",
+        "iOS component bounds are wider and the member-suggestion panel is positioned higher; the toolbar below ('@' input with image/attach/As Task/send) is identical in structure but not aligned to the same vertical anchor as React."
+      ],
+      "likelyCauses": [
+        "iOS implementation is rendering a different mock data set (different first item, extra subtitle column, fewer 'Not in this channel' entries) than the React baseline.",
+        "iOS member row layout applies a multi-line subtitle cell that crowds the handle and avatars, causing truncation.",
+        "Selected/active row index differs between iOS and React (iOS highlights 'Cindy' rather than 'artin').",
+        "iOS component crop is not element-bounded (current crop is null) so the comparison canvas is the full 1170×2532 image, magnifying layout shift compared to baseline's 342×320 element crop."
+      ],
+      "suggestedOwner": "iOS Thread Composer / Member Suggestions component owner",
+      "suggestedFixes": [
+        "Align iOS mock data with the React baseline: ensure 'artin' is the first 'IN THIS CHANNEL' row and appears in 'NOT IN THIS CHANNEL', and include 'Product UX Designer' in 'NOT IN THIS CHANNEL'.",
+        "Match iOS row layout to React: single-line title with optional status dot; remove the secondary description text that forces handle truncation, or widen the avatar/name column.",
+        "Sync the highlighted/selected row between platforms so the same suggestion is highlighted in both.",
+        "Apply the same element-bound crop to iOS as used for React (component-bounds) so the comparison frame is consistent.",
+        "Increase row height / handle text container width on iOS to prevent '@Product-UX-Desi…' and 'Android Dev…' truncation."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1135857603867082
     },
     {
       "id": "components.thread.composer.channel-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03f807fcfffdfffefffdfffefffdfffe0001fffe0001000207f9000200092ffa00010003300900020fb10fb2000100020001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-08-03T22:21:03.318Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-03T22:23:41.987Z",
+      "severity": "low",
+      "summary": [
+        "Channel suggestion list items appear vertically closer together on iOS with reduced inter-row spacing compared to React.",
+        "Composer/textarea area on iOS is shorter in height, reducing available writing space before the action row."
+      ],
+      "likelyCauses": [
+        "iOS is using a tighter line-height/margin for the suggestion rows than React's spec.",
+        "iOS composer container is using a smaller min-height or different padding than the React implementation."
+      ],
+      "suggestedOwner": "iOS",
+      "suggestedFixes": [
+        "Match the iOS suggestion row vertical spacing to the React baseline (add ~4–6pt top/bottom padding per row).",
+        "Increase iOS composer textarea height to match React baselines baselines dimensions.",
+        "Verify SF Pro vs Inter font metrics are not causing the perceived row compression."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.09604717732679813
     },
     {
       "id": "components.thread.composer.image-preview",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:00000000000100020ffd4ffe0ff10ff20001000207810f02000100020001fffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-08-03T22:21:03.411Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-03T22:23:42.447Z",
+      "severity": "medium",
+      "summary": [
+        "Image preview thumbnail is empty/placeholder on iOS (no image content rendered) versus a yellow photo placeholder with sun/mountain icon on React",
+        "iOS preview thumbnail has a dark circular close (×) button overlay at top-right; React preview has no remove control",
+        "Send button on iOS uses a paper-plane/send glyph inside the pink square, while React shows a cursor/arrow pointer glyph",
+        "Header label text appears slightly heavier/larger on iOS ('Thread Composer Image Preview') versus React baseline"
+      ],
+      "likelyCauses": [
+        "iOS preview component failed to load/render the attachment thumbnail (missing image source binding)",
+        "iOS implements an inline dismiss/close affordance on the thumbnail that React does not",
+        "Send action icon mapping differs between platforms (paper-plane vs. arrow cursor glyph)",
+        "Type scale or font weight token for the header label differs between iOS and React design systems"
+      ],
+      "suggestedOwner": "iOS",
+      "suggestedFixes": [
+        "Bind the iOS composer image-preview thumbnail to the same attachment image source used by React so the picture renders",
+        "Remove or restyle the close (×) overlay on iOS to match React's lack of a per-thumbnail remove control, or add the equivalent control to React",
+        "Align the send/attach button icon across platforms (use a consistent paper-plane or arrow glyph)",
+        "Unify header label typography (weight and size) via shared design tokens across web and iOS"
+      ],
+      "intentional": [
+        "iOS thumbnail frame outline and 'Uploading the design crop for review.' text positioning are consistent with React",
+        "'As Task' checkbox, attachment and paperclip icon buttons, and the pink send button background color match across platforms"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.042398833394094004
     },
     {
@@ -1082,41 +1269,106 @@
     },
     {
       "id": "components.thread.message-share.selection",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc07fcfffe7ffe801e0146c0024002f0fe7002f1fe7f7e83fe01fe80024002f8fe7002fffe4006fffe0000fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe7ffe7ffe00007ffe00000000fffe1fff",
-      "generatedAt": "2026-08-03T22:21:03.568Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-03T22:23:44.568Z",
+      "severity": "high",
+      "summary": [
+        "Selection action bar (yellow bar) is missing on the iOS side",
+        "iOS action bar position differs: React places bar pinned to bottom, iOS renders it inline below message list",
+        "iOS action bar shows 5 actions (X, All, Forward, Copy, Download) while React shows 4 (Cancel, Send, Copy, More)",
+        "React includes reaction chip (👍 2 +) under the first message; iOS omits reactions entirely",
+        "iOS shows truncated preview text (\"Keeps visua…\") in message metadata line; React shows full last name \"K\""
+      ],
+      "likelyCauses": [
+        "iOS view does not render the selection toolbar at the expected portal/footer position",
+        "iOS message item omits the reactions row in selection mode",
+        "iOS metadata layout uses a truncation policy React does not, causing cropped author preview text",
+        "iOS action bar uses platform-native context menu items (Copy, Download) not present in React web spec"
+      ],
+      "suggestedOwner": "ios-engineering",
+      "suggestedFixes": [
+        "Render the yellow selection action bar pinned to the bottom on iOS to match React's bottom-anchored toolbar",
+        "Add the reaction chip row (count + add-reaction button) to iOS message rows when in selection mode",
+        "Disable or widen the truncation on the author metadata line so names like \"Keeps visua…\" display in full",
+        "Align the action set to the React spec: Cancel, Forward, Copy, More — drop iOS-only All/Download unless intended",
+        "Verify the action bar background color and yellow fill match exactly between platforms (current iOS tint appears slightly different)"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1692827534059762
     },
     {
       "id": "components.thread.forward-modal",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:bffeffff0000ffff000097ff0000bfff0000fffd2ff8dfff3ffcffff29fc97ff0ffcdfff07fc9fff07fc9fff07fcffff00fc9eff3ffcdfff3ffcffff3ffc9fff3ffcffff3ffc9fff3ffc9fff3ffcffff3ffcffff3ffcffff2004ffff3ffcffff3ffcffff0000ffff3ff0ffff0000ffff0000ffff0000ffff0000ffffffffffff",
-      "generatedAt": "2026-08-03T22:21:03.600Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-03T22:23:46.962Z",
+      "severity": "low",
+      "summary": [
+        "iOS uses a two-step Forward flow (search → destination list with chevrons) while React shows a single combined modal with inline destination list AND a message preview/composer block.",
+        "iOS header has a back arrow + '2 messages selected' subtitle; React header has an 'X' close button + '2 selected from #design' subtitle.",
+        "iOS destination rows include a chevron and a secondary descriptor line (e.g., 'Product and UI decisions', 'Direct message', 'Public channel', 'Joint channel', 'Keeps visual testing release notes aligned'); React rows lack chevrons and descriptors.",
+        "React contains an additional 'FORWARDED 2 messages / from #design' preview card with two quoted messages plus an 'Optional message' input and a disabled paper-plane send button; iOS omits the preview/compose entirely.",
+        "React footer has a right-aligned 'Cancel' button; iOS has no footer button."
+      ],
+      "likelyCauses": [
+        "Different forward-flow information architecture per platform (single modal vs two-step), as documented in the intentional divergences.",
+        "Different navigation patterns: web uses a dismissible modal with close (X) and Cancel; iOS uses a pushed screen with back chevron.",
+        "Different data model in destination list rows: iOS includes type/status subtitle and disclosure indicator, React rows are name-only."
+      ],
+      "suggestedOwner": "design-systems",
+      "suggestedFixes": [
+        "Confirm both flows are accepted per the platform-difference divergence and tag the test as expected-different to avoid future noise.",
+        "If a unified spec is desired, align row anatomy (avatar + name + optional descriptor + trailing chevron) and decide whether preview/composer belongs on the first step.",
+        "Standardize header affordance labels (close vs back) and footer actions across platforms.",
+        "Decide modal vs full-screen presentation and document the rule in the component contract."
+      ],
+      "intentional": [
+        "iOS renders a two-step forward flow (search targets → separate destinations list), while React renders a single combined forward modal with inline destination list and a message preview/composer. This is the documented platform-difference divergence and is correct for each platform."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3993633626335048
     },
     {
       "id": "components.thread.comment-anchor",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:17fe07fe001e01fe0000001e807f0f1e807f0fffffff0d86fffffffffffffffffffffffffffffffffffffffffffffffffffffffeffff0000ffff07f8ffff001cffff00bcffff03feffff0000ffff001cffff0004ffff01fcffff00fcffff0000ffff0002fffe001e000007fc000e3ffc7ffc00007ff8000400000000ffff7fff",
-      "generatedAt": "2026-08-03T22:21:03.662Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-03T22:23:47.597Z",
+      "severity": "high",
+      "summary": [
+        "iOS shows a full review surface with File Preview header, Review content, and a COMMENTS panel with All/Unresolved tabs, Quote/Resolve actions, and Send Comment; React shows only the inline anchor chip and comment input.",
+        "React tag inset reads 'agent-tabs-full-page-review.mp4' (video) while iOS reads 'agent-tabs-full-page-review.md' (markdown) — different file extensions and different inset content.",
+        "React places the anchor pill at the top header and again inside the comment input as a dismissible chip; iOS uses a single anchored label ('Anchor: agent-tabs-full-page-review.md') inside each comment.",
+        "Timestamp formats differ: React '06/25 10:32 AM' vs iOS '18:32'.",
+        "React send affordance is a small pink paper-plane icon button at the right of the input; iOS uses a full-width 'SEND COMMENT' button below the input."
+      ],
+      "likelyCauses": [
+        "iOS implementation renders the comments thread as a standalone preview/composer surface, while React renders only the anchor tag and composer inline.",
+        "Underlying test data differs: React fixture references an .mp4 file, iOS fixture references an .md file.",
+        "Send/quote/resolve action bar was added in iOS but not ported to React.",
+        "Different locale/time formatting between platforms (date+time vs 24h time only).",
+        "Reactive component intentionally scopes to the anchor + input subset; iOS renders the full file preview + comments panel."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Align React rendering with iOS: include the FILES / REVIEW header, COMMENTS panel header with close button, and Quote/Resolve action buttons on each comment.",
+        "Normalize the anchor file reference so both surfaces display the same filename and extension.",
+        "Make the send affordance consistent — either both full-width 'SEND COMMENT' buttons or both inline icon buttons.",
+        "Standardize timestamp rendering format across platforms.",
+        "Decide whether React should render the standalone comments panel or only the anchor; update contract accordingly so visual diff is intentional."
+      ],
+      "intentional": [
+        "iOS uses a back arrow next to 'FILE PREVIEW' consistent with native iOS navigation.",
+        "iOS send-comment button spans full width, a common iOS pattern for primary actions.",
+        "React input uses an inline icon button for send, a common web/React pattern."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.246906941575188
     },
     {
@@ -1507,7 +1759,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-03T22:21:03.826Z",
+      "generatedAt": "2026-08-03T22:25:33.162Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1800,15 +2052,38 @@
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe9fff1fff81ff01fe9cfe1ffe80ff8ff3807c000080600000806087fbbffc81ffbffc81f1bffcff19a01c81ff807c81f1807cffff81fc807be274ffd1fff0cfffbfe080fe800001fdffff7fffffffdfffffff0000ffff0000ffff0000ffff0000ffff3ffeffff0000ffff0000ffff3ffeffff0000fffe0000ffffffff",
-      "generatedAt": "2026-08-03T22:21:04.367Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-03T22:23:48.712Z",
+      "severity": "high",
+      "summary": [
+        "Completely different page structure and content between React (left) and iOS (right) implementations",
+        "React shows a single 'PUSH NOTIFICATIONS' card with DMs/mentions/threads info, 'UNAVAILABLE' badge, 'Enable Push Notifications' button, and 'Mute this server' with Save",
+        "iOS shows 'SYSTEM' permission card with green success indicator, 'ON THIS DEVICE' section with three toggles (Message notifications, Background realtime, Foreground message banners), and 'WORKSPACE' section with radio-button options (All messages, Only mentions, Nothing)",
+        "Different typography: React uses medium-weight heading, iOS uses heavier/bolder heading in 'Notifications allowed' card",
+        "Color differences: React shows pink/red 'UNAVAILABLE' and 'Enable Push Notifications' buttons; iOS shows green success banner and yellow selected radio card"
+      ],
+      "likelyCauses": [
+        "iOS implementation rebuilt the notifications settings page with platform-native UX patterns (system permission card, native toggles, radio-button workspace selector) instead of mirroring the React web design",
+        "Different information architecture: web groups by capability (push availability + mute), iOS groups by scope (system permission + device toggles + workspace selection)",
+        "Platform-specific component choices: iOS uses iOS-style toggles, radios, and system permission banner that have no direct React counterpart",
+        "No shared design spec or cross-platform parity effort for this screen"
+      ],
+      "suggestedOwner": "mobile-platform",
+      "suggestedFixes": [
+        "Decide whether parity is required: if yes, align section structure (PUSH NOTIFICATIONS / SYSTEM / ON THIS DEVICE / WORKSPACE) and add missing controls to both platforms",
+        "Add 'Mute this server' with Save button to iOS, and add 'Message notifications', 'Background realtime', 'Foreground message banners' toggles plus workspace radio selector to React",
+        "Match typography weights and sizes for the page title ('Notifications') across both implementations",
+        "Standardize back-arrow icon stroke weight and size",
+        "Unify header/section label styling (uppercase tracking, weight, color)"
+      ],
+      "intentional": [
+        "The 'SYSTEM' permission card with green success state may be intentional iOS UX surfacing OS-level notification authorization",
+        "Native toggle controls and workspace radio selector may reflect deliberate platform-native patterns on iOS"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2725672081122318
     },
     {
@@ -1881,7 +2156,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-03T22:21:04.174Z",
+      "generatedAt": "2026-08-03T22:25:33.480Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1894,7 +2169,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-03T22:21:04.174Z",
+      "generatedAt": "2026-08-03T22:25:33.480Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1907,7 +2182,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-03T22:21:04.174Z",
+      "generatedAt": "2026-08-03T22:25:33.480Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1920,7 +2195,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-03T22:21:04.174Z",
+      "generatedAt": "2026-08-03T22:25:33.480Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1933,7 +2208,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-03T22:21:04.174Z",
+      "generatedAt": "2026-08-03T22:25:33.480Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

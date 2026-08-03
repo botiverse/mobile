@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-03T22:21:14.632Z",
+  "generatedAt": "2026-08-03T22:25:39.188Z",
   "latestRunId": "a44e9411-20260803221729",
   "latest": {
     "runId": "a44e9411-20260803221729",
     "commit": "a44e9411-20260803221729",
     "commitSubject": "fix(android): stabilize pending send feedback and IME dismissal (#1915)",
-    "generatedAt": "2026-08-03T22:21:14.632Z",
+    "generatedAt": "2026-08-03T22:25:39.188Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 84,
-      "ready": 68,
-      "pending": 16
+      "ready": 83,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "a44e9411-20260803221729",
       "commit": "a44e9411-20260803221729",
       "commitSubject": "fix(android): stabilize pending send feedback and IME dismissal (#1915)",
-      "generatedAt": "2026-08-03T22:21:14.632Z",
+      "generatedAt": "2026-08-03T22:25:39.188Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 84,
-        "ready": 68,
-        "pending": 16
+        "ready": 83,
+        "pending": 1
       },
       "comparisons": [
         "react__android",
