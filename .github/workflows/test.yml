@@ -836,6 +836,7 @@ jobs:
             adb install -r "$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
             adb install -r "$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
             scripts/ci/run-instrumentation-with-retry.sh first-character-baseline-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockComposerFirstCharacterBaselineTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
+            scripts/ci/run-instrumentation-with-retry.sh multiline-text-field-value-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockMultilineTextFieldValueConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
             scripts/ci/run-instrumentation-with-retry.sh kuikly-profiler-runtime-smoke-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.KuiklyProfilerRuntimeSmokeTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
             adb logcat -c
             scripts/ci/run-instrumentation-with-retry.sh attachment-private-file-provider-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.AndroidAttachmentPrivateFileProviderConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; RC=$?; adb logcat -d -v threadtime 'AndroidRuntime:E' 'ActivityTaskManager:I' 'TestRunner:E' '*:S' > attachment-private-file-provider-logcat.txt; exit $RC
@@ -887,6 +888,7 @@ jobs:
           name: first-character-baseline-instrumentation
           path: |
             first-character-baseline-instrumentation.txt
+            multiline-text-field-value-instrumentation.txt
             kuikly-profiler-runtime-smoke-instrumentation.txt
             attachment-private-file-provider-instrumentation.txt
             attachment-private-file-provider-logcat.txt

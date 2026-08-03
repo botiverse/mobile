@@ -90,6 +90,7 @@ import com.tencent.kuikly.compose.ui.semantics.contentDescription
 import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.IntOffset
@@ -790,16 +791,15 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     fun sendAttachmentComment() {
         val current = attachmentCommentsState ?: return
-        val body = current.draft.trim()
+        val body = current.draft.text.trim()
         if (body.isBlank() || current.sending) return
         attachmentCommentsState = current.copy(sending = true).clearAttachmentCommentsError()
         coroutineScope.launch {
             when (val result = threadApi.sendAttachmentComment(current.attachment.id, body)) {
                 is ThreadApiResult.Success -> {
                     val loading =
-                        current.copy(
+                        current.withAttachmentCommentDraftProjection("").copy(
                             status = "loading",
-                            draft = "",
                             sending = false,
                             pendingQuoteLabel = null
                         ).clearAttachmentCommentsError()
@@ -1756,8 +1756,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                     attachmentCommentsState =
                         attachmentCommentsState
                             ?.takeIf { it.attachment.id == state.attachment.id }
-                            ?.copy(draft = draft)
-                            ?.clearAttachmentCommentsError()
+                            ?.withAttachmentCommentEditorValue(draft)
                 },
                 onRetry = ::reloadAttachmentComments,
                 onSend = ::sendAttachmentComment,
@@ -1766,13 +1765,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                     attachmentCommentsState =
                         attachmentCommentsState
                             ?.takeIf { it.attachment.id == state.attachment.id }
-                            ?.let { current ->
-                                current.copy(
-                                    draft = appendThreadQuoteToComposer(current.draft, formatThreadMessageQuote(comment.content)),
-                                    pendingQuoteLabel = comment.senderName,
-                                    pendingAnchorLabel = comment.anchorLabel ?: current.attachment.name
-                                ).clearAttachmentCommentsError()
-                            }
+                            ?.withQuotedAttachmentComment(comment)
                 }
             )
         }
@@ -1784,7 +1777,7 @@ internal fun SlockFilePreviewAttachmentCommentsPanel(
     state: ThreadAttachmentCommentsDialogState,
     onClose: () -> Unit,
     onFilterChange: (String) -> Unit,
-    onDraftChange: (String) -> Unit,
+    onDraftChange: (TextFieldValue) -> Unit,
     onRetry: () -> Unit,
     onSend: () -> Unit,
     onResolve: (ThreadAttachmentCommentItem) -> Unit,
