@@ -843,7 +843,7 @@ jobs:
             adb install -r "$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
             scripts/ci/run-instrumentation-with-retry.sh first-character-baseline-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockComposerFirstCharacterBaselineTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
             scripts/ci/run-instrumentation-with-retry.sh composer-session-retirement-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockThreadImePaintConnectedTest#sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
-            grep -Fq 'SLOCK_COMPOSER_SESSION_RETIREMENT_PASS replacementFocused=true firstComposition=true firstSelection=true requestCount=1' composer-session-retirement-instrumentation.txt
+            grep -Fq 'SLOCK_COMPOSER_SESSION_RETIREMENT_PASS replacementFocused=true firstComposition=true firstSelection=true requestCount=1 imeSetupFailureDiagnostics=true' composer-session-retirement-instrumentation.txt
             scripts/ci/run-instrumentation-with-retry.sh multiline-text-field-value-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockMultilineTextFieldValueConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
             scripts/ci/run-instrumentation-with-retry.sh kuikly-profiler-runtime-smoke-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.KuiklyProfilerRuntimeSmokeTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
             adb logcat -c
