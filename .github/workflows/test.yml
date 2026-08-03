@@ -29,7 +29,10 @@ permissions:
 
 concurrency:
   group: test-${{ github.ref }}
-  cancel-in-progress: true
+  # Preserve the running post-merge record on protected branches. GitHub still
+  # coalesces multiple pending runs in the same group to the newest commit.
+  # PR and merge-queue refs keep superseding stale work for that exact ref.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/release-') }}
 
 env:
   # Cache-path format + immutable Harmony image epoch. Bump whenever either
