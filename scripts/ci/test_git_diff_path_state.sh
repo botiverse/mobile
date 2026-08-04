@@ -160,11 +160,13 @@ assert_poisoned_env_rc poisoned-env-unchanged 0 "$base" "$unrelated" "${THREAD_P
 assert_poisoned_env_rc poisoned-env-changed 1 "$unrelated" "$thread_changed" "${THREAD_PATHS[@]}"
 
 HELPER="$HELPER" \
+  ROOT="$ROOT" \
   WORKFLOW="$WORKFLOW" \
   SAFE_WORKSPACE_ACTION="$SAFE_WORKSPACE_ACTION" \
   SAFE_WORKSPACE_SCRIPT="$SAFE_WORKSPACE_SCRIPT" \
-  ruby -ryaml <<'RUBY'
+  ruby -ropen3 -rtmpdir -ryaml <<'RUBY'
 helper_path = ENV.fetch("HELPER")
+root = ENV.fetch("ROOT")
 workflow_path = ENV.fetch("WORKFLOW")
 safe_workspace_action_path = ENV.fetch("SAFE_WORKSPACE_ACTION")
 safe_workspace_script_path = ENV.fetch("SAFE_WORKSPACE_SCRIPT")
@@ -253,6 +255,41 @@ def validate_consumer(script, variable, paths)
   end
 end
 
+def validate_thread_non_pr(script)
+  explicit_branch = <<~'SH'.strip
+    if [ "$EVENT_NAME" != "pull_request" ]; then
+      run_gate=true
+    else
+  SH
+  fail_contract("Thread gate lacks an explicit non-PR run branch") unless
+    script.include?(explicit_branch)
+  prefix = script[0...script.index(explicit_branch)]
+  fail_contract("Thread gate still relies on a case-external default") if
+    prefix.lines.any? { |line| line.match?(/^\s*run_gate=/) }
+end
+
+def assert_thread_event_runs(script, root, event_name)
+  Dir.mktmpdir("thread-gate-event") do |dir|
+    github_env = File.join(dir, "github-env")
+    stdout, stderr, status = Open3.capture3(
+      {
+        "EVENT_NAME" => event_name,
+        "GITHUB_ENV" => github_env,
+        "PR_BASE_SHA" => "unused-for-non-pr",
+      },
+      "bash",
+      "-s",
+      stdin_data: script,
+      chdir: root,
+    )
+    fail_contract("Thread gate failed for #{event_name}: #{stderr}") unless status.success?
+    output = File.read(github_env)
+    fail_contract("Thread gate skipped for #{event_name}: #{output.inspect}") unless
+      output.lines.include?("THREAD_NEWER_PAGINATION_GATE_REQUIRED=true\n")
+    puts "ok thread-event-#{event_name}"
+  end
+end
+
 def replace_once(text, from, to)
   fail_contract("mutation source missing: #{from}") unless text.include?(from)
   text.sub(from, to)
@@ -323,6 +360,9 @@ validate_git_safe_action_wiring(workflow, "fork-deps", "all")
 validate_git_safe_action_wiring(workflow, "ohos", "workspace")
 validate_git_safe_action_wiring(workflow, "ohos-host", "all")
 validate_consumer(thread, "run_gate", thread_paths)
+validate_thread_non_pr(thread)
+assert_thread_event_runs(thread, root, "push")
+assert_thread_event_runs(thread, root, "workflow_dispatch")
 validate_consumer(ohos, "required", ohos_paths)
 fail_contract("OHOS diff status is no longer observable in Hosted logs") unless
   ohos.include?('echo "OHOS native-bridge path diff rc: $diff_rc"')
@@ -357,6 +397,31 @@ expect_failure("ohos-git-safe-scope-widened") do
   end
   action_step["with"] = { "scope" => "all" }
   validate_git_safe_action_wiring(mutated, "ohos", "workspace")
+end
+
+non_pr_branch = <<~'SH'.strip
+  if [ "$EVENT_NAME" != "pull_request" ]; then
+    run_gate=true
+  else
+SH
+expect_failure("thread-non-pr-branch-removed") do
+  old_default = <<~'SH'.strip
+    run_gate=true
+    if [ "$EVENT_NAME" = "pull_request" ]; then
+  SH
+  validate_thread_non_pr(replace_once(thread, non_pr_branch, old_default))
+end
+expect_failure("thread-non-pr-condition-flipped") do
+  mutated = replace_once(
+    thread,
+    'if [ "$EVENT_NAME" != "pull_request" ]; then',
+    'if [ "$EVENT_NAME" = "pull_request" ]; then',
+  )
+  validate_thread_non_pr(mutated)
+end
+expect_failure("thread-non-pr-default-flipped") do
+  flipped = non_pr_branch.sub("run_gate=true", "run_gate=false")
+  validate_thread_non_pr(replace_once(thread, non_pr_branch, flipped))
 end
 
 expect_failure("thread-unchanged-runs") do

@@ -866,8 +866,9 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          run_gate=true
-          if [ "$EVENT_NAME" = "pull_request" ]; then
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            run_gate=true
+          else
             git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"
             diff_rc=0
             scripts/ci/git-diff-path-state.sh "$PR_BASE_SHA" HEAD -- \
