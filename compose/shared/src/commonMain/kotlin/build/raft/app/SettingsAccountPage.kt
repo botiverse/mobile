@@ -935,10 +935,23 @@ private fun SettingsAccountEmptyMessage(title: String, detail: String) {
 // providers (enabledProviders = google/github). The email+password identity
 // is already represented by the Email field and the Change password row, so
 // a "password" provider row must never render here.
-internal fun List<KuiklySettingsConnectedAccount>.visibleSettingsConnectedAccounts(): List<KuiklySettingsConnectedAccount> =
+internal fun List<KuiklySettingsConnectedAccount>.visibleSettingsConnectedAccounts(
+    appleSignInSupported: Boolean = slockPlatformSupportsAppleSignIn()
+): List<KuiklySettingsConnectedAccount> =
     filterNot { account ->
         val resolvedId = account.providerId.ifBlank { account.provider }.lowercase()
-        resolvedId.startsWith("password") || resolvedId.startsWith("email")
+        val identityRow = resolvedId.startsWith("password") || resolvedId.startsWith("email")
+        // Sign in with Apple is an iOS-host capability. The sign-in page already gates its
+        // button on `slockPlatformSupportsAppleSignIn()`, but this list had no equivalent
+        // gate and renders whatever the server advertises, so enabling Apple for mobile
+        // surfaced a Connect entry on Android that can never complete.
+        //
+        // Only the *offer* is suppressed. An Apple identity already linked from an iOS host
+        // keeps its row, because hiding an existing connection reads to the user as "this
+        // account was unlinked" rather than "you cannot link it from this device".
+        val unusableAppleOffer =
+            !appleSignInSupported && resolvedId.contains("apple") && account.canConnect
+        identityRow || unusableAppleOffer
     }
 
 @Composable
