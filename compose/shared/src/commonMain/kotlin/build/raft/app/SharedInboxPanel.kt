@@ -7,6 +7,7 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalBadge
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalTone
+import build.raft.app.data.ActivityNextUnreadFocus
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.ActivityUnreadSummaryProjection
@@ -68,6 +69,8 @@ import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
+import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -106,6 +109,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
@@ -340,6 +344,7 @@ internal fun SharedHomeActivityScreen(
         activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
         draftProjection = draftProjection,
         onTitleClick = onTitleClick,
+        onTitleDoubleClick = { activityStore.dispatch(SharedActivityIntent.FocusNextUnread) },
         stableOrderEnabled = stableOrderEnabledAtRouteEntry,
         stableOrderDecisionRevision = diagnosticOverrideRevision,
         presentationStore = activityStore.presentationStore,
@@ -446,6 +451,7 @@ internal fun SharedHomeActivityScreen(
     activitySenderAvatarsEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onTitleClick: (() -> Unit)? = null,
+    onTitleDoubleClick: (() -> Unit)? = null,
     stableOrderEnabled: Boolean = true,
     stableOrderDecisionRevision: Long = 0L,
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
@@ -464,6 +470,7 @@ internal fun SharedHomeActivityScreen(
         activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
         draftProjection = draftProjection,
         onTitleClick = onTitleClick,
+        onTitleDoubleClick = onTitleDoubleClick,
         stableOrderEnabled = stableOrderEnabled,
         stableOrderDecisionRevision = stableOrderDecisionRevision,
         presentationStore = presentationStore,
@@ -487,6 +494,7 @@ internal fun SharedHomeActivityPanel(
     activitySenderAvatarsEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onTitleClick: (() -> Unit)? = null,
+    onTitleDoubleClick: (() -> Unit)? = null,
     stableOrderEnabled: Boolean = true,
     stableOrderDecisionRevision: Long = 0L,
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
@@ -516,6 +524,7 @@ internal fun SharedHomeActivityPanel(
             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
             draftProjection = draftProjection,
             onTitleClick = onTitleClick,
+            onTitleDoubleClick = onTitleDoubleClick,
             stableOrderEnabled = stableOrderEnabled,
             stableOrderDecisionRevision = stableOrderDecisionRevision,
             presentationStore = presentationStore,
@@ -538,6 +547,7 @@ private fun SharedActivityPanelContent(
     activitySenderAvatarsEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection,
     onTitleClick: (() -> Unit)?,
+    onTitleDoubleClick: (() -> Unit)?,
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
     presentationStore: SharedActivityPresentationStore,
@@ -553,7 +563,8 @@ private fun SharedActivityPanelContent(
             onClose = onClose,
             topSafeAreaPadding = topSafeAreaPadding,
             refreshing = refreshPresentation.headerRefreshing,
-            onTitleClick = onTitleClick
+            onTitleClick = onTitleClick,
+            onTitleDoubleClick = onTitleDoubleClick,
         )
         SlockAppShellBodyTopBanner()
         SharedActivityFilterBar(
@@ -669,7 +680,8 @@ private fun SharedActivityBodyContent(
                     presentationAccountId = presentationAccountId,
                     stableOrderEnabled = stableOrderEnabled,
                     stableOrderDecisionRevision = stableOrderDecisionRevision,
-                    presentationStore = presentationStore
+                    presentationStore = presentationStore,
+                    nextUnreadFocus = state.nextUnreadFocus,
                 )
         }
     }
@@ -682,7 +694,8 @@ private fun SharedActivityHeader(
     onClose: (() -> Unit)?,
     topSafeAreaPadding: Dp,
     refreshing: Boolean,
-    onTitleClick: (() -> Unit)? = null
+    onTitleClick: (() -> Unit)? = null,
+    onTitleDoubleClick: (() -> Unit)? = null,
 ) {
     SlockTopPageHeader(
         title = stringResource(MR.strings.home_nav_activity),
@@ -702,6 +715,7 @@ private fun SharedActivityHeader(
                 }
             },
         onTitleClick = onTitleClick,
+        onTitleDoubleClick = onTitleDoubleClick,
         showBodyTopBanner = false,
     )
 }
@@ -769,7 +783,8 @@ private fun SharedActivityList(
     presentationAccountId: String,
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
-    presentationStore: SharedActivityPresentationStore
+    presentationStore: SharedActivityPresentationStore,
+    nextUnreadFocus: ActivityNextUnreadFocus?,
 ) {
     val presentationServerId = snapshot.server.id.value
     val restoredPresentation =
@@ -831,6 +846,7 @@ private fun SharedActivityList(
     val latestOnIntent by rememberUpdatedState(onIntent)
     val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
     val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
+    val showPullToRefreshItem = slockPlatformSupportsKuiklyPullToRefreshItem()
     LaunchedEffect(presentedItems) {
         val visibleItemKeys =
             listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
@@ -943,6 +959,34 @@ private fun SharedActivityList(
         updateTracking = nextTracking
         savePresentation()
     }
+    LaunchedEffect(nextUnreadFocus?.requestId, snapshot.items, presentedItems) {
+        val focus = nextUnreadFocus ?: return@LaunchedEffect
+        if (snapshot.items.none { item -> item.key == focus.itemKey }) return@LaunchedEffect
+        if (presentedItems.none { item -> item.key == focus.itemKey }) {
+            val nextPresentedItems = snapshot.items
+            presentationGeneration =
+                activityNextPresentationGeneration(
+                    currentGeneration = presentationGeneration,
+                    presentedItems = presentedItems,
+                    nextPresentedItems = nextPresentedItems,
+                )
+            presentedItems = nextPresentedItems
+            updateTracking =
+                ActivityUpdateTrackingState(selectedFilter)
+                    .recordSnapshot(selectedFilter, snapshot.items)
+            savePresentation()
+            return@LaunchedEffect
+        }
+        val targetIndex = presentedItems.indexOfFirst { item -> item.key == focus.itemKey }
+        if (targetIndex >= 0) {
+            listState.animateScrollToItem(targetIndex + if (showPullToRefreshItem) 1 else 0)
+        }
+    }
+    LaunchedEffect(nextUnreadFocus?.requestId) {
+        val focus = nextUnreadFocus ?: return@LaunchedEffect
+        delay(3_000L)
+        latestOnIntent(SharedActivityIntent.RetireNextUnreadFocus(focus.requestId))
+    }
     LaunchedEffect(selectedFilter, revealRequest) {
         if (revealRequest > 0) {
             listState.animateScrollToTopExpressive()
@@ -974,7 +1018,6 @@ private fun SharedActivityList(
             latestOnIntent(SharedActivityIntent.DetachPrewarmViewport)
         }
     }
-    val showPullToRefreshItem = slockPlatformSupportsKuiklyPullToRefreshItem()
     val showLoadMoreFooter = snapshot.hasMore || loadingMore || loadMoreErrorCode != null
     val presentationOwnerIdentity =
         activityPresentationOwnerIdentity(
@@ -996,7 +1039,16 @@ private fun SharedActivityList(
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().padding(top = 16.dp),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            latestOnIntent(SharedActivityIntent.RetireNextUnreadFocus())
+                        }
+                    }
+                    .padding(top = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (showPullToRefreshItem) {
@@ -1010,7 +1062,7 @@ private fun SharedActivityList(
                 SharedActivityRow(
                     item = item,
                     senderProfiles = senderProfiles,
-                    selected = selectedItemKey == item.key,
+                    selected = selectedItemKey == item.key || nextUnreadFocus?.itemKey == item.key,
                     modifier = Modifier.padding(horizontal = 16.dp),
                     timeContext = timeContext,
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,

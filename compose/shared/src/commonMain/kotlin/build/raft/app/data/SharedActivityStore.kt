@@ -106,6 +106,8 @@ class SharedActivityStore internal constructor(
 
     private var loadJob: Job? = null
     private var loadGeneration: Long = 0L
+    private var nextUnreadFocusJob: Job? = null
+    private var nextUnreadFocusGeneration: Long = 0L
     private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
     private var onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = onSummaryFact
     private var onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = onSummaryInvalidated
@@ -192,7 +194,12 @@ class SharedActivityStore internal constructor(
             SharedActivityIntent.Refresh -> load(refresh = true, pullRefresh = false, intent = intent)
             SharedActivityIntent.PullRefresh -> load(refresh = true, pullRefresh = true, intent = intent)
             SharedActivityIntent.LoadMore -> load(refresh = false, intent = intent)
-            SharedActivityIntent.MarkAllRead -> markAllRead()
+            SharedActivityIntent.FocusNextUnread -> focusNextUnread()
+            is SharedActivityIntent.RetireNextUnreadFocus -> retireNextUnreadFocus(intent.requestId)
+            SharedActivityIntent.MarkAllRead -> {
+                retireNextUnreadFocus()
+                markAllRead()
+            }
             is SharedActivityIntent.SetFilter -> setFilter(intent.filter)
             is SharedActivityIntent.MarkDone -> markDone(intent.item)
             is SharedActivityIntent.MarkRead -> markRead(intent.item)
@@ -228,17 +235,21 @@ class SharedActivityStore internal constructor(
     }
 
     fun clear() {
-        val ownerServerId = synchronized(realtimeOwnerLock) {
+        val (ownerServerId, focusJob) = synchronized(realtimeOwnerLock) {
             val owner = _state.value.ownerServerId
             loadGeneration += 1L
             loadJob?.cancel()
             loadJob = null
+            nextUnreadFocusGeneration += 1L
+            val retiringFocusJob = nextUnreadFocusJob
+            nextUnreadFocusJob = null
             realtimeBackgroundReconcileJob?.cancel()
             realtimeBackgroundReconcileJob = null
             realtimeBackgroundReconcileDirty = false
             realtimeHighWater.clear()
-            owner
+            owner to retiringFocusJob
         }
+        focusJob?.cancel()
         ownerServerId?.let(replyThreadFreshnessLedger::invalidateServer)
         clearReplyPrewarmState()
     }
@@ -581,6 +592,9 @@ class SharedActivityStore internal constructor(
     }
 
     private fun setFilter(filter: InboxFilter) {
+        if (synchronized(realtimeOwnerLock) { _state.value.selectedFilter != filter }) {
+            retireNextUnreadFocus()
+        }
         val changed =
             synchronized(realtimeOwnerLock) {
                 if (_state.value.selectedFilter == filter) return@synchronized false
@@ -597,11 +611,174 @@ class SharedActivityStore internal constructor(
     }
 
     private fun clearSummary() {
+        retireNextUnreadFocus()
         synchronized(realtimeOwnerLock) {
             realtimeHighWater.clear()
             _state.value =
                 SharedActivityState(
                     selectedFilter = _state.value.selectedFilter
+                )
+        }
+    }
+
+    private fun focusNextUnread() {
+        val request =
+            synchronized(realtimeOwnerLock) {
+                val current = _state.value
+                val requestId = ++nextUnreadFocusGeneration
+                val previousJob = nextUnreadFocusJob
+                nextUnreadFocusJob = null
+                _state.value = current.copy(nextUnreadFocus = null)
+                ActivityNextUnreadRequest(
+                    requestId = requestId,
+                    anchorItemKey = current.nextUnreadFocus?.itemKey,
+                    ownerServerId = current.ownerServerId,
+                    ownerUserId = current.ownerUserId,
+                    filter = current.selectedFilter,
+                    previousJob = previousJob,
+                )
+            }
+        request.previousJob?.cancel()
+        val job =
+            scope.launch(start = CoroutineStart.LAZY) {
+                val seenOffsets = mutableSetOf<Int>()
+                var consecutiveNoProgressPages = 0
+                var attemptedInitialLoad = false
+                var activeRequest = request
+                try {
+                    awaitCurrentLoadIdle()
+                    while (isNextUnreadRequestCurrent(activeRequest)) {
+                        val current = synchronized(realtimeOwnerLock) { _state.value }
+                        if (current.snapshot == null) {
+                            if (attemptedInitialLoad || current.errorCode != null) return@launch
+                            attemptedInitialLoad = true
+                            load(refresh = true, intent = SharedActivityIntent.LoadInitial)
+                            awaitCurrentLoadIdle()
+                            continue
+                        }
+                        if (activeRequest.ownerServerId == null || activeRequest.ownerUserId == null) {
+                            activeRequest =
+                                activeRequest.copy(
+                                    ownerServerId = activeRequest.ownerServerId ?: current.ownerServerId,
+                                    ownerUserId = activeRequest.ownerUserId ?: current.ownerUserId,
+                                )
+                            if (!isNextUnreadRequestCurrent(activeRequest)) return@launch
+                        }
+                        when (
+                            val decision =
+                                activityNextUnreadDecision(
+                                    items = current.items,
+                                    anchorItemKey = activeRequest.anchorItemKey,
+                                    hasMore = current.hasMore,
+                                )
+                        ) {
+                            is ActivityNextUnreadDecision.Target -> {
+                                publishNextUnreadFocus(activeRequest, decision.itemKey)
+                                return@launch
+                            }
+                            ActivityNextUnreadDecision.LoadMore -> {
+                                if (current.loadMoreErrorCode != null) return@launch
+                                val offset = current.nextOffset ?: current.items.size
+                                if (!seenOffsets.add(offset)) return@launch
+                                val previousItemCount = current.items.size
+                                load(refresh = false, intent = SharedActivityIntent.LoadMore)
+                                awaitCurrentLoadIdle()
+                                if (!isNextUnreadRequestCurrent(activeRequest)) return@launch
+                                val loaded = synchronized(realtimeOwnerLock) { _state.value }
+                                if (loaded.loadMoreErrorCode != null) return@launch
+                                consecutiveNoProgressPages =
+                                    if (loaded.items.size <= previousItemCount) {
+                                        consecutiveNoProgressPages + 1
+                                    } else {
+                                        0
+                                    }
+                                if (consecutiveNoProgressPages > SharedActivityRefreshMaxNoProgressPages) {
+                                    return@launch
+                                }
+                            }
+                            ActivityNextUnreadDecision.None -> return@launch
+                        }
+                    }
+                } finally {
+                    synchronized(realtimeOwnerLock) {
+                        if (nextUnreadFocusGeneration == request.requestId) {
+                            nextUnreadFocusJob = null
+                        }
+                    }
+                }
+            }
+        synchronized(realtimeOwnerLock) {
+            if (nextUnreadFocusGeneration == request.requestId) {
+                nextUnreadFocusJob = job
+            } else {
+                job.cancel()
+            }
+        }
+        job.start()
+    }
+
+    private fun retireNextUnreadFocus(requestId: Long? = null) {
+        val job =
+            synchronized(realtimeOwnerLock) {
+                val current = _state.value
+                if (requestId != null && current.nextUnreadFocus?.requestId != requestId) {
+                    return@synchronized null
+                }
+                nextUnreadFocusGeneration += 1L
+                val retiringJob = nextUnreadFocusJob
+                nextUnreadFocusJob = null
+                if (current.nextUnreadFocus != null) {
+                    _state.value = current.copy(nextUnreadFocus = null)
+                }
+                retiringJob
+            }
+        job?.cancel()
+    }
+
+    private fun isNextUnreadRequestCurrent(request: ActivityNextUnreadRequest): Boolean =
+        synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            activityNextUnreadRequestMatches(
+                requestId = request.requestId,
+                currentGeneration = nextUnreadFocusGeneration,
+                requestOwnerServerId = request.ownerServerId,
+                currentOwnerServerId = current.ownerServerId,
+                requestOwnerUserId = request.ownerUserId,
+                currentOwnerUserId = current.ownerUserId,
+                requestFilter = request.filter,
+                currentFilter = current.selectedFilter,
+            )
+        }
+
+    private fun publishNextUnreadFocus(request: ActivityNextUnreadRequest, itemKey: String) {
+        synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            if (
+                !activityNextUnreadRequestMatches(
+                    requestId = request.requestId,
+                    currentGeneration = nextUnreadFocusGeneration,
+                    requestOwnerServerId = request.ownerServerId,
+                    currentOwnerServerId = current.ownerServerId,
+                    requestOwnerUserId = request.ownerUserId,
+                    currentOwnerUserId = current.ownerUserId,
+                    requestFilter = request.filter,
+                    currentFilter = current.selectedFilter,
+                ) ||
+                current.items.none { item ->
+                    item.key == itemKey &&
+                        item.unreadCount > 0 &&
+                        !item.hasUnopenableInternalJointParentSource()
+                }
+            ) {
+                return@synchronized
+            }
+            _state.value =
+                current.copy(
+                    nextUnreadFocus =
+                        ActivityNextUnreadFocus(
+                            requestId = request.requestId,
+                            itemKey = itemKey,
+                        )
                 )
         }
     }
@@ -2111,6 +2288,67 @@ internal fun List<InboxItem>.dedupeActivityItems(): List<InboxItem> =
         distinctBy { it.key }
     }
 
+private data class ActivityNextUnreadRequest(
+    val requestId: Long,
+    val anchorItemKey: String?,
+    val ownerServerId: String?,
+    val ownerUserId: String?,
+    val filter: InboxFilter,
+    val previousJob: Job?,
+)
+
+data class ActivityNextUnreadFocus(
+    val requestId: Long,
+    val itemKey: String,
+)
+
+internal sealed interface ActivityNextUnreadDecision {
+    data class Target(val itemKey: String) : ActivityNextUnreadDecision
+    data object LoadMore : ActivityNextUnreadDecision
+    data object None : ActivityNextUnreadDecision
+}
+
+internal fun activityNextUnreadRequestMatches(
+    requestId: Long,
+    currentGeneration: Long,
+    requestOwnerServerId: String?,
+    currentOwnerServerId: String?,
+    requestOwnerUserId: String?,
+    currentOwnerUserId: String?,
+    requestFilter: InboxFilter,
+    currentFilter: InboxFilter,
+): Boolean =
+    requestId == currentGeneration &&
+        (requestOwnerServerId == null || currentOwnerServerId == requestOwnerServerId) &&
+        (requestOwnerUserId == null || currentOwnerUserId == requestOwnerUserId) &&
+        currentFilter == requestFilter
+
+internal fun activityNextUnreadDecision(
+    items: List<InboxItem>,
+    anchorItemKey: String?,
+    hasMore: Boolean,
+): ActivityNextUnreadDecision {
+    val unreadItems =
+        items.withIndex().filter { (_, item) ->
+            item.unreadCount > 0 && !item.hasUnopenableInternalJointParentSource()
+        }
+    if (unreadItems.isEmpty()) {
+        return if (hasMore) ActivityNextUnreadDecision.LoadMore else ActivityNextUnreadDecision.None
+    }
+    val anchorUnreadIndex =
+        anchorItemKey?.let { key ->
+            unreadItems.indexOfFirst { indexed -> indexed.value.key == key }
+        } ?: -1
+    if (anchorUnreadIndex < 0) {
+        return ActivityNextUnreadDecision.Target(unreadItems.first().value.key)
+    }
+    unreadItems.getOrNull(anchorUnreadIndex + 1)?.let { next ->
+        return ActivityNextUnreadDecision.Target(next.value.key)
+    }
+    if (hasMore) return ActivityNextUnreadDecision.LoadMore
+    return ActivityNextUnreadDecision.Target(unreadItems.first().value.key)
+}
+
 data class SharedActivityState(
     val selectedFilter: InboxFilter = InboxFilter.All,
     val snapshot: InboxSnapshot? = null,
@@ -2123,7 +2361,8 @@ data class SharedActivityState(
     val pullRefreshing: Boolean = false,
     val loadingMore: Boolean = false,
     val errorCode: String? = null,
-    val loadMoreErrorCode: String? = null
+    val loadMoreErrorCode: String? = null,
+    val nextUnreadFocus: ActivityNextUnreadFocus? = null,
 ) {
     val items: List<InboxItem>
         get() = snapshot?.items.orEmpty()
@@ -2146,6 +2385,8 @@ sealed interface SharedActivityIntent {
     data object Refresh : SharedActivityIntent
     data object PullRefresh : SharedActivityIntent
     data object LoadMore : SharedActivityIntent
+    data object FocusNextUnread : SharedActivityIntent
+    data class RetireNextUnreadFocus(val requestId: Long? = null) : SharedActivityIntent
     data object MarkAllRead : SharedActivityIntent
     data class SetFilter(val filter: InboxFilter) : SharedActivityIntent
     data class MarkDone(val item: InboxItem) : SharedActivityIntent
@@ -2177,6 +2418,8 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         SharedActivityIntent.Refresh -> "refresh"
         SharedActivityIntent.PullRefresh -> "pull_refresh"
         SharedActivityIntent.LoadMore -> "load_more"
+        SharedActivityIntent.FocusNextUnread -> "focus_next_unread"
+        is SharedActivityIntent.RetireNextUnreadFocus -> "retire_next_unread_focus"
         SharedActivityIntent.MarkAllRead -> "mark_all_read"
         is SharedActivityIntent.SetFilter -> "set_filter:${filter.wireValue}"
         is SharedActivityIntent.MarkDone -> "mark_done"
@@ -2206,6 +2449,8 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         SharedActivityIntent.Refresh,
         SharedActivityIntent.PullRefresh,
         SharedActivityIntent.LoadMore,
+        SharedActivityIntent.FocusNextUnread,
+        is SharedActivityIntent.RetireNextUnreadFocus,
         is SharedActivityIntent.SetFilter,
         is SharedActivityIntent.PrewarmVisibleReplyThreads,
         is SharedActivityIntent.PrewarmActivityTail,

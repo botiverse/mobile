@@ -3,7 +3,9 @@ package build.raft.app
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import com.tencent.kuikly.compose.foundation.ExperimentalFoundationApi
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.combinedClickable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -86,6 +88,7 @@ internal fun slockTopPageHeaderFrameMetrics(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 internal fun SlockTopPageHeader(
     title: String,
     subtitle: String? = null,
@@ -105,6 +108,7 @@ internal fun SlockTopPageHeader(
     titleContent: (@Composable RowScope.() -> Unit)? = null,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null,
     onTitleClick: (() -> Unit)? = null,
+    onTitleDoubleClick: (() -> Unit)? = null,
     showBodyTopBanner: Boolean = true,
 ) {
     val topSafeArea =
@@ -147,8 +151,21 @@ internal fun SlockTopPageHeader(
             if (titleContent != null) {
                 titleContent.invoke(this)
             } else {
+                val titleModifier =
+                    if (onTitleDoubleClick != null) {
+                        Modifier
+                            .weight(1f)
+                            .combinedClickable(
+                                onDoubleClick = onTitleDoubleClick,
+                                onClick = { onTitleClick?.invoke() },
+                            )
+                    } else {
+                        Modifier
+                            .weight(1f)
+                            .clickable(enabled = onTitleClick != null) { onTitleClick?.invoke() }
+                    }
                 Column(
-                    modifier = Modifier.weight(1f).clickable(enabled = onTitleClick != null) { onTitleClick?.invoke() },
+                    modifier = titleModifier,
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Text(

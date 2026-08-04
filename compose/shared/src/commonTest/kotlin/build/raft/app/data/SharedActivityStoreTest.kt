@@ -706,6 +706,150 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun focusNextUnreadCyclesInCanonicalOrderLoadsAcrossPagesAndNeverWritesReadState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val readReceipts = FakeReadReceiptRepository()
+        val firstUnread = activityItem("channel-1", unreadCount = 1)
+        val secondUnread = activityItem("channel-4", unreadCount = 1)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(
+                            listOf(firstUnread, activityItem("channel-2")),
+                            hasMore = true,
+                            nextOffset = 2,
+                            totalCount = 4,
+                            totalUnreadCount = 2,
+                        )
+                    ),
+                moreSnapshots =
+                    listOf(
+                        snapshot(
+                            listOf(activityItem("channel-3")),
+                            hasMore = true,
+                            nextOffset = 3,
+                            totalCount = 4,
+                            totalUnreadCount = 2,
+                        ),
+                        snapshot(
+                            listOf(secondUnread),
+                            hasMore = false,
+                            nextOffset = 4,
+                            totalCount = 4,
+                            totalUnreadCount = 2,
+                        ),
+                    ),
+            )
+        val store = activityStore(scope, inbox, readReceipts)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.FocusNextUnread)
+        withTimeout(5_000L) {
+            while (store.state.value.nextUnreadFocus?.itemKey != firstUnread.key) delay(1L)
+        }
+        assertEquals(firstUnread.key, store.state.value.nextUnreadFocus?.itemKey)
+
+        store.dispatch(SharedActivityIntent.FocusNextUnread)
+        withTimeout(5_000L) {
+            while (store.state.value.nextUnreadFocus?.itemKey != secondUnread.key) delay(1L)
+        }
+        assertEquals(secondUnread.key, store.state.value.nextUnreadFocus?.itemKey)
+        assertEquals(listOf(2, 3), inbox.loadMoreOffsets)
+
+        store.dispatch(SharedActivityIntent.FocusNextUnread)
+        withTimeout(5_000L) {
+            while (store.state.value.nextUnreadFocus?.itemKey != firstUnread.key) delay(1L)
+        }
+        assertEquals(firstUnread.key, store.state.value.nextUnreadFocus?.itemKey)
+        assertEquals(emptyList(), readReceipts.readAllChannelIds)
+        assertEquals(emptyList(), readReceipts.unreadChannelIds)
+        assertEquals(emptyList(), readReceipts.inboxReadAllServerIds)
+        scope.cancel()
+    }
+
+    @Test
+    fun focusNextUnreadLoadsToCanonicalEndBeforeReportingNoTarget() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(
+                            listOf(activityItem("channel-1")),
+                            hasMore = true,
+                            nextOffset = 1,
+                            totalCount = 2,
+                            totalUnreadCount = 0,
+                        )
+                    ),
+                moreSnapshots =
+                    listOf(
+                        snapshot(
+                            listOf(activityItem("channel-2")),
+                            hasMore = false,
+                            nextOffset = 2,
+                            totalCount = 2,
+                            totalUnreadCount = 0,
+                        )
+                    ),
+            )
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.FocusNextUnread)
+
+        assertEquals(1, inbox.initialLoadCount)
+        assertEquals(listOf(1), inbox.loadMoreOffsets)
+        assertEquals(null, store.state.value.nextUnreadFocus)
+        assertEquals(false, store.state.value.hasMore)
+        scope.cancel()
+    }
+
+    @Test
+    fun nextUnreadFreshnessFenceRejectsDelayedTargetAfterNewerUserIntent() {
+        assertFalse(
+            activityNextUnreadRequestMatches(
+                requestId = 7L,
+                currentGeneration = 8L,
+                requestOwnerServerId = "server-1",
+                currentOwnerServerId = "server-1",
+                requestOwnerUserId = "user-1",
+                currentOwnerUserId = "user-1",
+                requestFilter = InboxFilter.All,
+                currentFilter = InboxFilter.All,
+            )
+        )
+        assertTrue(
+            activityNextUnreadRequestMatches(
+                requestId = 8L,
+                currentGeneration = 8L,
+                requestOwnerServerId = "server-1",
+                currentOwnerServerId = "server-1",
+                requestOwnerUserId = "user-1",
+                currentOwnerUserId = "user-1",
+                requestFilter = InboxFilter.All,
+                currentFilter = InboxFilter.All,
+            )
+        )
+    }
+
+    @Test
+    fun nextUnreadRestartsAtFirstWhenFocusedItemIsNoLongerUnread() {
+        val firstUnread = activityItem("channel-1", unreadCount = 1)
+        val focusedNowRead = activityItem("channel-2", unreadCount = 0)
+        val laterUnread = activityItem("channel-3", unreadCount = 1)
+
+        assertEquals(
+            ActivityNextUnreadDecision.Target(firstUnread.key),
+            activityNextUnreadDecision(
+                items = listOf(firstUnread, focusedNowRead, laterUnread),
+                anchorItemKey = focusedNowRead.key,
+                hasMore = false,
+            ),
+        )
+    }
+
+    @Test
     fun canonicalRefreshRequestsLoadedDepthAndPreservesLoadedTailOrder() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val head = (1..30).map { index -> activityItem("channel-$index") }
