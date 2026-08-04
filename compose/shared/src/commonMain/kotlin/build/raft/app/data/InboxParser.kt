@@ -417,6 +417,11 @@ private data class WireSavedEntry(
 private data class WireSavedResponse(
     val saved: List<WireSavedEntry> = emptyList(),
     val hasMore: Boolean = false,
+    // GET /channels/saved reports the true saved count as `total` (page-filtered)
+    // and `globalTotal` (unfiltered); `totalCount` never existed on this route and
+    // is kept only as a legacy fallback.
+    val total: Int? = null,
+    val globalTotal: Int? = null,
     val totalCount: Int? = null,
 )
 
@@ -435,7 +440,7 @@ fun parseSharedSavedItems(
     SharedSavedItems(
         items = items,
         hasMore = decoded.hasMore,
-        totalCount = decoded.totalCount ?: items.size,
+        totalCount = decoded.globalTotal ?: decoded.total ?: decoded.totalCount ?: items.size,
     )
 }.getOrNull()
 

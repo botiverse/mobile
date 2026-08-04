@@ -477,6 +477,19 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
+    fun savedTotalComesFromServerTotalNotLoadedPageLength() {
+        val parsed =
+            assertNotNull(
+                parseSharedSavedItems(
+                    """{"saved":[{"messageId":"message-1","channelId":"channel-1","channelName":"android-dev","channelType":"channel","content":"Saved note","senderType":"user","senderId":"user-1","senderName":"Artin","createdAt":"2026-05-01T00:00:00Z","savedAt":"2026-05-02T00:00:00Z"}],"hasMore":true,"total":60,"globalTotal":60}""",
+                ),
+            )
+
+        assertEquals(60, parsed.totalCount)
+        assertTrue(parsed.hasMore)
+    }
+
+    @Test
     fun savedRepositoryKeepsMultipleMessagesFromSameChannel() = runBlocking {
         val network =
             FakeInboxNetworkClient(

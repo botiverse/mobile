@@ -44,6 +44,9 @@ jobs:
     name: CI plan + contract
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
     outputs:
       run_basic: ${{ steps.plan.outputs.run_basic }}
       run_full: ${{ steps.plan.outputs.run_full }}
@@ -64,6 +67,15 @@ jobs:
       - name: Validate OHOS attachment-open diagnostic production wiring
         run: node compose/ohosApp/scripts/test_attachment_open_diagnostics_source_contract.mjs
 
+      # Incident-born gate (task #976): PR #1920 imported kotlinx.coroutines.test
+      # into commonTest; the OHOS test targets have no such KLIB, so only the
+      # post-merge OHOS shared compile went red. This contract runs on every PR.
+      # Denylist form: seals the listed dependencies, not the general class.
+      - name: Validate commonTest cross-platform test dependency contract
+        run: |
+          python3 scripts/ci/check_commontest_crossplatform_deps.py --self-test
+          python3 scripts/ci/check_commontest_crossplatform_deps.py
+
       - name: Resolve exact execution tier
         id: plan
         shell: bash
@@ -83,6 +95,70 @@ jobs:
           fi
           scripts/ci/plan_test_tier.sh "$EVENT_NAME" "$changed" "$FULL_CI" \
             | tee -a "$GITHUB_OUTPUT"
+
+      - name: Self-test gitlink carry-in gate
+        run: python3 scripts/ci/test_gitlink_carry_in_gate.py
+
+      - name: Audit changed gitlink carry-in
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 scripts/ci/gitlink_carry_in_gate.py \
+            --base "$BASE_SHA" \
+            --head "$HEAD_SHA" \
+            --manifest "$RUNNER_TEMP/gitlink-carry-in.json" \
+            --markdown "$RUNNER_TEMP/gitlink-carry-in.md"
+
+      - name: Publish gitlink carry-in audit to PR
+        if: ${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/gitlink-carry-in.md"
+          manifest="$RUNNER_TEMP/gitlink-carry-in.json"
+          test -s "$report" || exit 0
+          test -s "$manifest"
+
+          marker='<!-- gitlink-carry-in-gate -->'
+          existing="$(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+              --jq ".[] | select(.body | startswith(\"$marker\")) | .id" \
+              | sed -n '1p'
+          )"
+          status="$(jq -r '.status' "$manifest")"
+          if test "$status" = no_changes && test -z "$existing"; then
+            exit 0
+          fi
+
+          payload="$RUNNER_TEMP/gitlink-carry-in-comment.json"
+          jq -n --rawfile body "$report" '{body: $body}' > "$payload"
+          if test -n "$existing"; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" --input "$payload" >/dev/null
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --input "$payload" >/dev/null
+          fi
+
+      - name: Summarize gitlink carry-in audit
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        run: |
+          report="$RUNNER_TEMP/gitlink-carry-in.md"
+          test -s "$report" || exit 0
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload gitlink carry-in audit
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: gitlink-carry-in-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/gitlink-carry-in.json
+            ${{ runner.temp }}/gitlink-carry-in.md
+          if-no-files-found: warn
+          retention-days: 30
 
   # Single upstream build of every fork artifact the platform jobs consume.
   # Kuikly android/foundation + OHOS klibs and the stately/sqliter/sqldelight/

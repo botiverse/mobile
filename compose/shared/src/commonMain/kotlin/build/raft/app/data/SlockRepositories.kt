@@ -581,7 +581,8 @@ data class AccountProviderLinkStartRequest(
 
 data class AccountProviderLinkStartResult(
     val providerId: String,
-    val url: String
+    /** Null means the platform-owned mobile OAuth flow started successfully. */
+    val url: String?
 )
 
 data class SettingsConnectedAppRegisterRequest(

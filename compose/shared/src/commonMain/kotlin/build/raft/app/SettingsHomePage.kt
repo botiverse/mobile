@@ -24,6 +24,7 @@ import build.raft.app.components.SlockDisabledActionShadow
 import build.raft.app.components.SlockRaftUiSelectField
 import build.raft.app.components.SlockRaftUiSelectionOption
 import build.raft.app.components.SlockSlugInput
+import build.raft.app.components.SharedHomeSearchEditorOwner
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockLinkButton
 import build.raft.app.components.SlockSwitchButton
@@ -12782,7 +12783,7 @@ private fun SettingsHandsFeedbackConversationRow(
 internal fun SettingsDetailShell(
     title: String,
     subtitle: String,
-    iconName: SlockLucideIconName,
+    iconName: SlockLucideIconName? = null,
     applyTopSafeArea: Boolean = true,
     headerHeight: Dp = SlockSize.PageHeaderHeight,
     onBack: () -> Unit,
@@ -18299,6 +18300,9 @@ private fun SharedHomeSearchToolbar(
     topSafeAreaPadding: Dp = 0.dp,
     placeholder: String
 ) {
+    // This mounted editor is the only query authority. Search results may update the result list,
+    // but the store has no external query-replacement path while this toolbar remains mounted.
+    val editor = remember { SharedHomeSearchEditorOwner(query) }
     SharedHomeSearchControlsRow(topSafeAreaPadding = topSafeAreaPadding) {
         if (onClose != null) {
             SharedHomeSearchIconButton(
@@ -18310,14 +18314,14 @@ private fun SharedHomeSearchToolbar(
             )
         }
         SharedHomeSearchInput(
-            query = query,
+            query = editor.value,
             loading = loading,
             interactive = interactive,
             placeholder = placeholder,
             autoFocus = autoFocus,
-            onQueryChange = onQueryChange,
+            onQueryChange = { next -> editor.acceptEditorValue(next, onQueryChange) },
             onSubmit = onSubmit,
-            onClear = onClear,
+            onClear = { editor.clear(onClear) },
             modifier = Modifier.weight(1f)
         )
     }
