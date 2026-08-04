@@ -1429,6 +1429,30 @@ internal fun SlockStructuralHomeShell(
             mode = pinnedSortModeState
         )
     }
+    LaunchedEffect(currentServerId, pinnedItems, displayedPinned) {
+        val resolvedKeys = displayedPinned.mapTo(mutableSetOf()) { it.key }
+        val unresolvedTypedCount =
+            pinnedItems.count { item ->
+                "${item.kind.trim().lowercase()}:${item.id.trim()}" !in resolvedKeys
+            }
+        val sample =
+            displayedPinned
+                .take(6)
+                .joinToString(separator = ";") { row ->
+                    when (val target = row.clickTarget()) {
+                        is SlockHomePinnedClickTarget.Conversation -> "${row.key}->conversation:${target.conversationId}"
+                        is SlockHomePinnedClickTarget.Member -> "${row.key}->member:${target.identity.memberId.value}"
+                        null -> "${row.key}->none"
+                    }
+                }
+        diagnosticsLogger(
+            "shared_home_pinned_resolution serverId=$currentServerId " +
+                "typed=${pinnedItems.size} rows=${displayedPinned.size} " +
+                "conversation=${displayedPinned.count { it.conversation != null }} " +
+                "memberFallback=${displayedPinned.count { it.member != null }} " +
+                "unresolved=$unresolvedTypedCount sample=$sample"
+        )
+    }
     val pinnedItemsForSort = remember(displayedPinned) { displayedPinned.mapNotNull { it.toSidebarSortItem() } }
     val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.conversation?.homeConversationBadgeProjection()?.hasUnread == true } }
     val channelSectionHasUnread = remember(displayedChannels) { displayedChannels.any { it.homeConversationBadgeProjection().hasUnread } }
@@ -1864,11 +1888,26 @@ internal fun SlockStructuralHomeShell(
                                                 onClick =
                                                     if (sidebarInteractionsEnabled) {
                                                         {
-                                                            if (pinned != null) {
-                                                                onChannelClickWithDismiss(pinned.id)
-                                                            } else if (pinnedMember != null) {
-                                                                dismissNotificationCenterForFocusLoss()
-                                                                onPinnedMemberClick(pinnedMember.identity)
+                                                            when (val target = pinnedRow.clickTarget()) {
+                                                                is SlockHomePinnedClickTarget.Conversation -> {
+                                                                    diagnosticsLogger(
+                                                                        "shared_home_pinned_click serverId=$currentServerId " +
+                                                                            "key=${pinnedRow.key} target=conversation " +
+                                                                            "conversationId=${target.conversationId}"
+                                                                    )
+                                                                    onChannelClickWithDismiss(target.conversationId)
+                                                                }
+                                                                is SlockHomePinnedClickTarget.Member -> {
+                                                                    diagnosticsLogger(
+                                                                        "shared_home_pinned_click serverId=$currentServerId " +
+                                                                            "key=${pinnedRow.key} target=member " +
+                                                                            "memberId=${target.identity.memberId.value} " +
+                                                                            "memberKind=${target.identity.kind.memberKindWireValue()}"
+                                                                    )
+                                                                    dismissNotificationCenterForFocusLoss()
+                                                                    onPinnedMemberClick(target.identity)
+                                                                }
+                                                                null -> Unit
                                                             }
                                                         }
                                                     } else {
@@ -3123,6 +3162,16 @@ internal data class SlockHomePinnedRow(
     val sortTimestamp: String? = conversation?.lastMessageAt ?: conversation?.createdAt
 }
 
+internal sealed interface SlockHomePinnedClickTarget {
+    data class Conversation(val conversationId: String) : SlockHomePinnedClickTarget
+
+    data class Member(val identity: MemberDetailIdentity) : SlockHomePinnedClickTarget
+}
+
+internal fun SlockHomePinnedRow.clickTarget(): SlockHomePinnedClickTarget? =
+    conversation?.let { SlockHomePinnedClickTarget.Conversation(it.id) }
+        ?: member?.let { SlockHomePinnedClickTarget.Member(it.identity) }
+
 internal fun SlockHomePinnedRow.supportsLongPress(): Boolean = conversation != null || member != null
 
 internal fun SlockHomePinnedRow.toSidebarSortItem(): SlockHomeConversationItem? =
@@ -3170,7 +3219,7 @@ internal fun pinnedRowsForSidebar(
         channels.forEach { put(it.id, it) }
         directMessages.forEach { put(it.id, it) }
         directMessages.forEach { dm ->
-            if (dm.peerType.equals("agent", ignoreCase = true) || dm.peerType.equals("human", ignoreCase = true)) {
+            if (dm.peerType.homeDmPeerMemberKindOrNull() != null) {
                 dm.presenceMemberId?.takeIf { it.isNotBlank() }?.let { put(it, dm) }
             }
         }
@@ -3183,15 +3232,22 @@ internal fun pinnedRowsForSidebar(
                 "channel" ->
                     byId[id]?.let { SlockHomePinnedRow(key = "channel:$id", conversation = it) }
                 "agent", "human" -> {
+                    val pinnedMemberKind = kind.projectedMemberKindOrNull()
                     val conversation =
                         directMessages.firstOrNull { dm ->
-                            dm.presenceMemberId == id && dm.peerType.equals(kind, ignoreCase = true)
-                        } ?: byId[id]?.takeIf { it.isDirectMessageConversation() }
+                            dm.presenceMemberId == id &&
+                                pinnedMemberKind != null &&
+                                dm.peerType.homeDmPeerMemberKindOrNull() == pinnedMemberKind
+                        } ?: byId[id]?.takeIf { dm ->
+                            dm.isDirectMessageConversation() &&
+                                pinnedMemberKind != null &&
+                                dm.peerType.homeDmPeerMemberKindOrNull() == pinnedMemberKind
+                        }
                     if (conversation != null) {
                         SlockHomePinnedRow(key = "$kind:$id", conversation = conversation)
                     } else {
                         pinnedMemberProfileResolver(id)
-                            ?.takeIf { it.identity.kind.memberKindWireValue() == kind }
+                            ?.takeIf { it.identity.kind == pinnedMemberKind }
                             ?.let { member -> SlockHomePinnedRow(key = "$kind:$id", member = member) }
                     }
                 }
@@ -3230,6 +3286,10 @@ internal fun pinnedRowsForSidebar(
             ).map { SlockHomePinnedRow(key = it.id, conversation = it) }
     }
 }
+
+private fun String?.homeDmPeerMemberKindOrNull(): MemberKind? =
+    parsedMemberKindOrNull(MemberKindWireContract.InternalActor)
+        ?: projectedMemberKindOrNull()?.takeIf { it != MemberKind.System }
 
 private fun List<SlockHomePinnedRow>.sortedPinnedRows(mode: SlockSidebarSortMode): List<SlockHomePinnedRow> =
     when (mode) {
