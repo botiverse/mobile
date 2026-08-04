@@ -161,7 +161,40 @@ class SettingsStandaloneLaunchPayloadTest {
 
         assertEquals(
             listOf("google", "github", "saml"),
-            accounts.visibleSettingsConnectedAccounts().map { it.providerId }
+            accounts.visibleSettingsConnectedAccounts(appleSignInSupported = true).map { it.providerId }
+        )
+    }
+
+    // Sign in with Apple is iOS-only. The sign-in page gates its button on
+    // `slockPlatformSupportsAppleSignIn()`; this list had no such gate, so turning Apple on
+    // server-side put a Connect entry on Android that can never complete (artin, task #981).
+    @Test
+    fun unsupportedHostHidesTheAppleConnectOfferButKeepsAnExistingAppleLink() {
+        val offered =
+            KuiklySettingsConnectedAccount(providerId = "apple", provider = "Apple", identifier = "Not connected", status = "notConnected")
+        val linked =
+            KuiklySettingsConnectedAccount(providerId = "apple", provider = "Apple", identifier = "artin@example.com", status = "connected")
+        val google =
+            KuiklySettingsConnectedAccount(providerId = "google", provider = "Google", identifier = "artin@example.com", status = "connected")
+
+        // Android: the offer disappears, everything else is untouched.
+        assertEquals(
+            listOf("google"),
+            listOf(offered, google).visibleSettingsConnectedAccounts(appleSignInSupported = false).map { it.providerId }
+        )
+
+        // Android: an Apple identity linked from an iOS host must still render. Hiding it
+        // would read as "this account was unlinked", which is a different and worse lie
+        // than "you cannot link it here".
+        assertEquals(
+            listOf("apple", "google"),
+            listOf(linked, google).visibleSettingsConnectedAccounts(appleSignInSupported = false).map { it.providerId }
+        )
+
+        // iOS: the offer is legitimate and must survive.
+        assertEquals(
+            listOf("apple", "google"),
+            listOf(offered, google).visibleSettingsConnectedAccounts(appleSignInSupported = true).map { it.providerId }
         )
     }
 
