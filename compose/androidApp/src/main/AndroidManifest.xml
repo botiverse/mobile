@@ -137,7 +137,7 @@
                 <data
                     android:host="oauth"
                     android:path="/callback"
-                    android:scheme="raft-dev" />
+                    android:scheme="${oauthCallbackScheme}" />
             </intent-filter>
         </activity>
 

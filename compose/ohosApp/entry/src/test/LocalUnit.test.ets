@@ -89,6 +89,11 @@ import {
   SlockOhosAttachmentOpenPreflightStage,
 } from '../main/ets/kuikly/SlockOhosAttachmentOpenWant';
 import { wantConstant } from '@kit.AbilityKit';
+import {
+  parseSlockOhosMobileOAuthCallback,
+  prepareSlockOhosMobileOAuth,
+  SLOCK_OHOS_MOBILE_OAUTH_SCHEME,
+} from '../main/ets/kuikly/SlockOhosMobileOAuth';
 
 interface FakeHandsFeedbackAttachmentInput {
   fileRef: string;
@@ -472,6 +477,34 @@ function diagnosticWork(
 
 export default function localUnitTest() {
   describe('localUnitTest',() => {
+    it('mobileOAuthPreparationCreatesPkceS256Material', 0, () => {
+      const preparation = prepareSlockOhosMobileOAuth('google', 'link');
+      expect(preparation.generation.length > 0).assertTrue();
+      expect(preparation.codeVerifier.length >= 43).assertTrue();
+      expect(preparation.codeChallenge.length >= 43).assertTrue();
+      expect(preparation.codeVerifier === preparation.codeChallenge).assertFalse();
+      expect(preparation.returnUri).assertEqual(`${SLOCK_OHOS_MOBILE_OAUTH_SCHEME}://oauth/callback`);
+    });
+    it('mobileOAuthCallbackAdmitsOnlyCanonicalRaftRoute', 0, () => {
+      const callback = parseSlockOhosMobileOAuthCallback(
+        `${SLOCK_OHOS_MOBILE_OAUTH_SCHEME}://oauth/callback?provider=github&mode=link&code=handoff%2Dcode`
+      );
+      expect(callback?.provider).assertEqual('github');
+      expect(callback?.mode).assertEqual('link');
+      expect(callback?.code).assertEqual('handoff-code');
+      expect(callback?.error).assertEqual('');
+      expect(parseSlockOhosMobileOAuthCallback('raft-dev://oauth/callback?code=x') === undefined).assertTrue();
+      const wrongVariantScheme = SLOCK_OHOS_MOBILE_OAUTH_SCHEME === 'raft' ? 'raft-debug' : 'raft';
+      expect(parseSlockOhosMobileOAuthCallback(`${wrongVariantScheme}://oauth/callback?code=x`) === undefined).assertTrue();
+      expect(parseSlockOhosMobileOAuthCallback('raft://oauth/wrong?code=x') === undefined).assertTrue();
+      expect(parseSlockOhosMobileOAuthCallback('raft://oauth/callback') === undefined).assertTrue();
+    });
+    it('mobileOAuthCallbackRejectsDuplicateOrUnknownQueries', 0, () => {
+      const prefix = `${SLOCK_OHOS_MOBILE_OAUTH_SCHEME}://oauth/callback`;
+      expect(parseSlockOhosMobileOAuthCallback(`${prefix}?code=one&code=two`) === undefined).assertTrue();
+      expect(parseSlockOhosMobileOAuthCallback(`${prefix}?code=one&state=forged`) === undefined).assertTrue();
+      expect(parseSlockOhosMobileOAuthCallback(`${prefix}?error=x&error_description=y`) === undefined).assertTrue();
+    });
     it('attachmentOpenBuildsReadAuthorizedViewWantForPrivateUri', 0, () => {
       const uri = 'file://build.raft.mobile/data/storage/el2/base/files/slock-attachments/archive.zip';
       const wants = buildSlockOhosAttachmentOpenWants(uri, 'application/zip');

@@ -49,10 +49,10 @@ class MainActivityLaunchTest {
 
     @Test
     fun mobileOAuthAdmissionRequiresTheExactHierarchicalCallbackRoute() {
-        assertTrue(AndroidMobileOAuth.isCallbackRoute("raft-dev", "oauth", "/callback"))
+        assertTrue(AndroidMobileOAuth.isCallbackRoute(BuildConfig.OAUTH_CALLBACK_SCHEME, "oauth", "/callback"))
         assertTrue(
             AndroidMobileOAuth.isCallbackUri(
-                scheme = "raft-dev",
+                scheme = BuildConfig.OAUTH_CALLBACK_SCHEME,
                 host = "oauth",
                 path = "/callback",
                 code = "handoff-code",
@@ -70,7 +70,7 @@ class MainActivityLaunchTest {
         )
         assertFalse(
             AndroidMobileOAuth.isCallbackUri(
-                scheme = "raft-dev",
+                scheme = BuildConfig.OAUTH_CALLBACK_SCHEME,
                 host = "oauth",
                 path = "/wrong",
                 code = "handoff-code",
@@ -79,13 +79,14 @@ class MainActivityLaunchTest {
         )
         assertFalse(
             AndroidMobileOAuth.isCallbackUri(
-                scheme = "raft-dev",
+                scheme = BuildConfig.OAUTH_CALLBACK_SCHEME,
                 host = "oauth",
                 path = "/callback",
                 code = null,
                 error = null,
             )
         )
+        assertFalse(AndroidMobileOAuth.isCallbackRoute("raft-dev", "oauth", "/callback"))
     }
 
     @Test

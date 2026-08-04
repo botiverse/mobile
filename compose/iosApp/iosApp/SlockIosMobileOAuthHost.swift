@@ -212,6 +212,11 @@ final class SlockIosMobileOAuthHost: NSObject,
                 completion(self.startError(code: "ios_mobile_oauth_pkce_failed", message: "Mobile sign-in could not be prepared."))
                 return
             }
+            guard let callbackScheme = self.configuredCallbackScheme() else {
+                completion(self.startError(code: "ios_mobile_oauth_scheme_unavailable", message: "Mobile sign-in could not be prepared."))
+                return
+            }
+            let callbackReturnUri = "\(callbackScheme)://oauth/callback"
 
             self.supersedeActiveSession()
             let generation = UUID().uuidString.lowercased()
@@ -274,8 +279,8 @@ final class SlockIosMobileOAuthHost: NSObject,
                         let authorizationUrlText = result.authorizationUrl,
                         let authorizationUrl = URL(string: authorizationUrlText),
                         authorizationUrl.scheme?.lowercased() == "https",
-                        let callbackScheme = result.callbackScheme,
-                        ["raft", "raft-dev"].contains(callbackScheme)
+                        let resultCallbackScheme = result.callbackScheme,
+                        resultCallbackScheme == callbackScheme
                     else {
                         completion(self.startError(
                             code: result.errorCode ?? "ios_mobile_oauth_start_failed",
@@ -294,7 +299,7 @@ final class SlockIosMobileOAuthHost: NSObject,
 
                     let authSession = ASWebAuthenticationSession(
                         url: authorizationUrl,
-                        callbackURLScheme: callbackScheme
+                        callbackURLScheme: resultCallbackScheme
                     ) { [weak self] callbackUrl, error in
                         self?.runOnMain {
                             guard let self else { return }
@@ -356,6 +361,7 @@ final class SlockIosMobileOAuthHost: NSObject,
                 SlockIosMobileOAuthBridge.shared.startNativeApple(
                     mode: normalizedMode,
                     generation: generation,
+                    returnUri: callbackReturnUri,
                     codeVerifier: pkce.verifier,
                     codeChallenge: pkce.challenge
                 ) { result in
@@ -366,6 +372,7 @@ final class SlockIosMobileOAuthHost: NSObject,
                     provider: normalizedProvider,
                     mode: normalizedMode,
                     generation: generation,
+                    returnUri: callbackReturnUri,
                     codeVerifier: pkce.verifier,
                     codeChallenge: pkce.challenge
                 ) { result in
@@ -724,7 +731,7 @@ final class SlockIosMobileOAuthHost: NSObject,
         guard
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
             let scheme = components.scheme?.lowercased(),
-            ["raft", "raft-dev"].contains(scheme),
+            scheme == configuredCallbackScheme(),
             components.host?.lowercased() == "oauth",
             components.path == "/callback"
         else {
@@ -746,6 +753,14 @@ final class SlockIosMobileOAuthHost: NSObject,
             code: values["code"],
             error: values["error"] ?? values["error_description"]
         )
+    }
+
+    private func configuredCallbackScheme() -> String? {
+        guard let raw = Bundle.main.object(forInfoDictionaryKey: "SlockOAuthCallbackScheme") as? String else {
+            return nil
+        }
+        let scheme = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return ["raft", "raft-alpha", "raft-beta", "raft-debug"].contains(scheme) ? scheme : nil
     }
 
     private func startError(code: String, message: String) -> NSDictionary {

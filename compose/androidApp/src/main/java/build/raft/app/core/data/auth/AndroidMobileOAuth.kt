@@ -1,5 +1,6 @@
 package build.raft.app.core.data.auth
 
+import build.raft.app.BuildConfig
 import build.raft.app.data.SlockKeyValueStore
 import android.content.Context
 import android.util.Base64
@@ -21,7 +22,8 @@ data class AndroidMobileOAuthPendingRequest(
 
 object AndroidMobileOAuth {
     const val AppEnv = "dev"
-    const val ReturnUri = "raft-dev://oauth/callback"
+    val ReturnUri: String
+        get() = "${BuildConfig.OAUTH_CALLBACK_SCHEME}://oauth/callback"
     const val ModeLogin = "login"
     const val ModeLink = "link"
     private const val VerifierByteCount = 32
@@ -40,7 +42,7 @@ object AndroidMobileOAuth {
     }
 
     fun isCallbackRoute(scheme: String?, host: String?, path: String?): Boolean =
-        scheme.equals("raft-dev", ignoreCase = true) &&
+        scheme.equals(BuildConfig.OAUTH_CALLBACK_SCHEME, ignoreCase = true) &&
             host.equals("oauth", ignoreCase = true) &&
             path == "/callback"
 

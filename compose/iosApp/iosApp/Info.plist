@@ -29,11 +29,12 @@
                 <string>build.raft.app.oauth</string>
                 <key>CFBundleURLSchemes</key>
                 <array>
-                    <string>raft</string>
-                    <string>raft-dev</string>
+                    <string>$(SLOCK_OAUTH_CALLBACK_SCHEME)</string>
                 </array>
             </dict>
         </array>
+        <key>SlockOAuthCallbackScheme</key>
+        <string>$(SLOCK_OAUTH_CALLBACK_SCHEME)</string>
         <key>HandsBuildCommit</key>
         <string></string>
         <key>SlockAPNSEnvironment</key>

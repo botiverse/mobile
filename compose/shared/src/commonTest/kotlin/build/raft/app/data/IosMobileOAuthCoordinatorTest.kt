@@ -52,7 +52,7 @@ class IosMobileOAuthCoordinatorTest {
     }
 
     @Test
-    fun nonProductionEnvironmentsUseDevelopmentCallbackWithoutLiteralCloneCases() = runBlocking {
+    fun nonProductionEnvironmentsUseTheDebugCallbackByDefault() = runBlocking {
         listOf("staging", "custom").forEach { environmentKey ->
             val runtime = FakeRuntime(environmentKey = environmentKey)
             val fixture = fixture(runtime)
@@ -66,10 +66,50 @@ class IosMobileOAuthCoordinatorTest {
             )
 
             assertEquals("started", result.status, environmentKey)
-            assertEquals("raft-dev", result.callbackScheme, environmentKey)
-            assertEquals("raft-dev://oauth/callback", runtime.startedLogin?.returnUri, environmentKey)
+            assertEquals("raft-debug", result.callbackScheme, environmentKey)
+            assertEquals("raft-debug://oauth/callback", runtime.startedLogin?.returnUri, environmentKey)
             assertEquals(environmentKey, runtime.startedLogin?.appEnv, environmentKey)
         }
+    }
+
+    @Test
+    fun buildBoundCallbackOverrideWinsOverTheRuntimeEnvironment() = runBlocking {
+        val runtime = FakeRuntime(environmentKey = "production")
+        val fixture = fixture(runtime)
+
+        val result = fixture.coordinator.startBrowser(
+            provider = "google",
+            mode = "link",
+            generation = "debug-build-generation",
+            codeVerifier = Verifier,
+            codeChallenge = Challenge,
+            returnUriOverride = "raft-debug://oauth/callback",
+        )
+
+        assertEquals("started", result.status)
+        assertEquals("raft-debug", result.callbackScheme)
+        assertEquals("raft-debug://oauth/callback", runtime.startedBrowserLinkReturnUri)
+        assertEquals("production", fixture.pendingStore.read()?.environmentKey)
+    }
+
+    @Test
+    fun unregisteredCallbackOverrideFailsBeforeNetworkOrPendingState() = runBlocking {
+        val runtime = FakeRuntime(environmentKey = "production")
+        val fixture = fixture(runtime)
+
+        val result = fixture.coordinator.startBrowser(
+            provider = "google",
+            mode = "link",
+            generation = "unregistered-generation",
+            codeVerifier = Verifier,
+            codeChallenge = Challenge,
+            returnUriOverride = "raft-connectedtest://oauth/callback",
+        )
+
+        assertEquals("error", result.status)
+        assertEquals("ios_mobile_oauth_invalid_return_uri", result.errorCode)
+        assertNull(runtime.startedBrowserLinkReturnUri)
+        assertNull(fixture.pendingStore.read())
     }
 
     @Test
@@ -561,6 +601,7 @@ class IosMobileOAuthCoordinatorTest {
         )
 
         var startedLogin: LoginStart? = null
+        var startedBrowserLinkReturnUri: String? = null
         var startedNativeApple: NativeAppleStart? = null
         var authorizedNativeApple: NativeAppleAuthorize? = null
         var completedLogin: LoginComplete? = null
@@ -585,8 +626,10 @@ class IosMobileOAuthCoordinatorTest {
             provider: String,
             returnUri: String,
             codeChallenge: String,
-        ): IosMobileOAuthStartOutcome =
-            IosMobileOAuthStartOutcome.Success(startResponse(returnUri))
+        ): IosMobileOAuthStartOutcome {
+            startedBrowserLinkReturnUri = returnUri
+            return IosMobileOAuthStartOutcome.Success(startResponse(returnUri))
+        }
 
         override suspend fun startNativeApple(
             mode: String,

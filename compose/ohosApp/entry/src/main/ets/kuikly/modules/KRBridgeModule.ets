@@ -54,6 +54,7 @@ import {
   slockOhosPrivateAttachmentFileName,
 } from '../SlockOhosPrivateAttachmentStore';
 import { SLOCK_OHOS_BUILD_TIME, SLOCK_OHOS_GIT_COMMIT } from '../generated/SlockOhosBuildMetadata';
+import { prepareSlockOhosMobileOAuth } from '../SlockOhosMobileOAuth';
 
 interface OhosPickedThreadAttachment {
   fileName: string;
@@ -1100,8 +1101,37 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const action = records["action"] as string;
       switch (action) {
         case "mobileOAuthLink": {
-          // OHOS has no native account-link host; preserve the existing Web flow.
-          callback({ "status": "unsupported" });
+          try {
+            const provider = (records["providerId"] as string | undefined) ?? '';
+            const preparation = prepareSlockOhosMobileOAuth(provider, 'link');
+            callback({
+              "status": "prepared",
+              "generation": preparation.generation,
+              "codeVerifier": preparation.codeVerifier,
+              "codeChallenge": preparation.codeChallenge,
+              "returnUri": preparation.returnUri,
+            });
+          } catch (_error) {
+            callback({ "status": "error", "code": "settings_mobile_oauth_pkce_failed" });
+          }
+          return;
+        }
+        case "mobileOAuthOpen": {
+          const authorizationUrl = ((records["authorizationUrl"] as string | undefined) ?? '').trim();
+          if (!authorizationUrl.startsWith('https://')) {
+            callback({ "status": "error", "code": "settings_mobile_oauth_url_invalid" });
+            return;
+          }
+          try {
+            const context = getContext(this) as common.UIAbilityContext;
+            await context.startAbility({
+              action: 'ohos.want.action.viewData',
+              uri: authorizationUrl,
+            });
+            callback({ "status": "started" });
+          } catch (_error) {
+            callback({ "status": "error", "code": "settings_mobile_oauth_browser_failed" });
+          }
           return;
         }
         case "loadStorage": {

@@ -677,16 +677,16 @@ class AuthDataSourceTest {
             source.startMobileOAuthLogin(
                 provider = " GitHub ",
                 appEnv = "dev",
-                returnUri = "raft-dev://oauth/callback",
+                returnUri = "raft://oauth/callback",
                 codeChallenge = "challenge-1"
             )
 
         assertTrue(result is SharedAuthResult.Success)
         assertEquals("https://accounts.example/oauth", result.data.authorizationUrl)
         assertEquals("request-1", result.data.requestId)
-        assertEquals("raft-dev://oauth/callback", result.data.returnUri)
+        assertEquals("raft://oauth/callback", result.data.returnUri)
         assertEquals(
-            """{"provider":"github","mode":"login","platform":"android","appEnv":"dev","returnUri":"raft-dev://oauth/callback","codeChallenge":"challenge-1","codeChallengeMethod":"S256"}""",
+            """{"provider":"github","mode":"login","platform":"android","appEnv":"dev","returnUri":"raft://oauth/callback","codeChallenge":"challenge-1","codeChallengeMethod":"S256"}""",
             api.mobileOAuthStartBody
         )
     }
@@ -786,13 +786,13 @@ class AuthDataSourceTest {
         val start =
             source.startNativeAppleMobileOAuthLink(
                 appEnv = "staging",
-                returnUri = "raft-dev://oauth/callback",
+                returnUri = "raft://oauth/callback",
                 codeChallenge = "challenge-apple-link"
             )
         assertTrue(start is SharedAuthResult.Success)
         assertEquals("Bearer current-access", api.nativeAppleStartAuthorization)
         assertEquals(
-            """{"mode":"link","platform":"ios","appEnv":"staging","returnUri":"raft-dev://oauth/callback","codeChallenge":"challenge-apple-link","codeChallengeMethod":"S256"}""",
+            """{"mode":"link","platform":"ios","appEnv":"staging","returnUri":"raft://oauth/callback","codeChallenge":"challenge-apple-link","codeChallengeMethod":"S256"}""",
             api.nativeAppleStartBody
         )
 
@@ -841,7 +841,7 @@ class AuthDataSourceTest {
         val result =
             source.startMobileOAuthLink(
                 provider = " Google ",
-                returnUri = "raft-dev://oauth/callback",
+                returnUri = "raft://oauth/callback",
                 codeChallenge = "challenge-1"
             )
 
@@ -849,7 +849,7 @@ class AuthDataSourceTest {
         assertEquals("google", api.mobileOAuthLinkStartProvider)
         assertEquals("Bearer current-access", api.mobileOAuthLinkStartAuthorization)
         assertEquals(
-            """{"returnUri":"raft-dev://oauth/callback","codeChallenge":"challenge-1","codeChallengeMethod":"S256"}""",
+            """{"returnUri":"raft://oauth/callback","codeChallenge":"challenge-1","codeChallengeMethod":"S256"}""",
             api.mobileOAuthLinkStartBody
         )
     }
@@ -1993,7 +1993,7 @@ class AuthDataSourceTest {
         private val mobileOAuthStartResponse: AuthNetworkResponse =
             AuthNetworkResponse(
                 200,
-                """{"authorizationUrl":"https://accounts.example/oauth","requestId":"request-1","returnUri":"raft-dev://oauth/callback","expiresAt":"2026-06-29T00:00:00Z"}"""
+                """{"authorizationUrl":"https://accounts.example/oauth","requestId":"request-1","returnUri":"raft://oauth/callback","expiresAt":"2026-06-29T00:00:00Z"}"""
             ),
         private val mobileOAuthCompleteResponse: AuthNetworkResponse =
             AuthNetworkResponse(
@@ -2013,12 +2013,12 @@ class AuthDataSourceTest {
         private val mobileOAuthLinkStartResponse: AuthNetworkResponse =
             AuthNetworkResponse(
                 200,
-                """{"authorizationUrl":"https://accounts.example/link","requestId":"link-request-1","returnUri":"raft-dev://oauth/callback","expiresAt":"2026-06-29T00:00:00Z"}"""
+                """{"authorizationUrl":"https://accounts.example/link","requestId":"link-request-1","returnUri":"raft://oauth/callback","expiresAt":"2026-06-29T00:00:00Z"}"""
             ),
         private val mobileOAuthLinkCompleteResponse: AuthNetworkResponse =
             AuthNetworkResponse(
                 200,
-                """{"provider":"github","mode":"link","returnUri":"raft-dev://oauth/callback","identities":[{"provider":"github","providerEmail":"user@example.com"}]}"""
+                """{"provider":"github","mode":"link","returnUri":"raft://oauth/callback","identities":[{"provider":"github","providerEmail":"user@example.com"}]}"""
             ),
         private val serversResponse: AuthNetworkResponse =
             AuthNetworkResponse(

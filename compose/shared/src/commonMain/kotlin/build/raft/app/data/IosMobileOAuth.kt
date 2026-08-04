@@ -11,12 +11,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 const val SLOCK_IOS_MOBILE_OAUTH_MMKV_NAMESPACE = "slockIosMobileOAuth"
+internal const val SLOCK_MOBILE_OAUTH_COMPLETION_EVENT = "slockMobileOAuthCompletion"
 
 private const val IOS_MOBILE_OAUTH_LOG_TAG = "SlockIosOAuth"
 private const val IOS_MOBILE_OAUTH_LOGIN_MODE = "login"
 private const val IOS_MOBILE_OAUTH_LINK_MODE = "link"
-private const val IOS_MOBILE_OAUTH_PRODUCTION_RETURN_URI = "raft://oauth/callback"
-private const val IOS_MOBILE_OAUTH_DEVELOPMENT_RETURN_URI = "raft-dev://oauth/callback"
+private const val IOS_MOBILE_OAUTH_RELEASE_RETURN_URI = "raft://oauth/callback"
+private const val IOS_MOBILE_OAUTH_DEBUG_RETURN_URI = "raft-debug://oauth/callback"
 private const val IOS_MOBILE_OAUTH_CALLBACK_HOST = "oauth"
 private const val IOS_MOBILE_OAUTH_CALLBACK_PATH = "/callback"
 private const val IOS_MOBILE_OAUTH_PENDING_TTL_MILLIS = 10L * 60L * 1000L
@@ -100,7 +101,7 @@ internal class IosMobileOAuthPendingStore(
             !IosMobileOAuthPkceValue.matches(codeVerifier) ||
             (provider == "apple") != (requestToken != null) ||
             mode !in IosMobileOAuthModes ||
-            callbackScheme !in setOf("raft", "raft-dev") ||
+            callbackScheme !in setOf("raft", "raft-alpha", "raft-beta", "raft-debug") ||
             environmentKey.isBlank()
         ) {
             return null
@@ -442,6 +443,7 @@ internal class IosMobileOAuthCoordinator(
         generation: String,
         codeVerifier: String,
         codeChallenge: String,
+        returnUriOverride: String? = null,
     ): SlockIosMobileOAuthStartResult =
         mutex.withLock {
             pendingStore.clear()
@@ -465,7 +467,14 @@ internal class IosMobileOAuthCoordinator(
                     message = "Raft is still starting. Try again.",
                 )
             val environmentKey = runtime.environmentKey.trim().ifBlank { "production" }
-            val returnUri = iosMobileOAuthReturnUri(environmentKey)
+            val returnUri = when {
+                returnUriOverride == null -> iosMobileOAuthReturnUri(environmentKey)
+                isApprovedMobileOAuthReturnUri(returnUriOverride) -> returnUriOverride
+                else -> return@withLock startError(
+                    code = "ios_mobile_oauth_invalid_return_uri",
+                    message = "Mobile sign-in could not be prepared.",
+                )
+            }
             val outcome =
                 runCatchingPreservingCancellation {
                     if (normalizedMode == IOS_MOBILE_OAUTH_LOGIN_MODE) {
@@ -542,6 +551,7 @@ internal class IosMobileOAuthCoordinator(
         generation: String,
         codeVerifier: String,
         codeChallenge: String,
+        returnUriOverride: String? = null,
     ): SlockIosMobileOAuthStartResult =
         mutex.withLock {
             pendingStore.clear()
@@ -563,7 +573,14 @@ internal class IosMobileOAuthCoordinator(
                     message = "Raft is still starting. Try again.",
                 )
             val environmentKey = runtime.environmentKey.trim().ifBlank { "production" }
-            val returnUri = iosMobileOAuthReturnUri(environmentKey)
+            val returnUri = when {
+                returnUriOverride == null -> iosMobileOAuthReturnUri(environmentKey)
+                isApprovedMobileOAuthReturnUri(returnUriOverride) -> returnUriOverride
+                else -> return@withLock startError(
+                    code = "ios_mobile_oauth_invalid_return_uri",
+                    message = "Mobile sign-in could not be prepared.",
+                )
+            }
             val outcome =
                 runCatchingPreservingCancellation {
                     runtime.startNativeApple(
@@ -849,10 +866,19 @@ internal class IosMobileOAuthCoordinator(
 
 internal fun iosMobileOAuthReturnUri(environmentKey: String): String =
     if (environmentKey.trim().lowercase() == "production") {
-        IOS_MOBILE_OAUTH_PRODUCTION_RETURN_URI
+        IOS_MOBILE_OAUTH_RELEASE_RETURN_URI
     } else {
-        IOS_MOBILE_OAUTH_DEVELOPMENT_RETURN_URI
+        IOS_MOBILE_OAUTH_DEBUG_RETURN_URI
     }
+
+private fun isApprovedMobileOAuthReturnUri(value: String): Boolean =
+    value in
+        setOf(
+            IOS_MOBILE_OAUTH_RELEASE_RETURN_URI,
+            "raft-alpha://oauth/callback",
+            "raft-beta://oauth/callback",
+            IOS_MOBILE_OAUTH_DEBUG_RETURN_URI,
+        )
 
 private fun startError(code: String, message: String): SlockIosMobileOAuthStartResult =
     SlockIosMobileOAuthStartResult(
@@ -949,6 +975,7 @@ object SlockIosMobileOAuthBridge {
         provider: String,
         mode: String,
         generation: String,
+        returnUri: String,
         codeVerifier: String,
         codeChallenge: String,
         completion: (SlockIosMobileOAuthStartResult) -> Unit,
@@ -956,7 +983,14 @@ object SlockIosMobileOAuthBridge {
         scope.launch {
             val result =
                 runCatchingPreservingCancellation {
-                    coordinator.startBrowser(provider, mode, generation, codeVerifier, codeChallenge)
+                    coordinator.startBrowser(
+                        provider,
+                        mode,
+                        generation,
+                        codeVerifier,
+                        codeChallenge,
+                        returnUriOverride = returnUri,
+                    )
                 }.getOrElse {
                     startError(
                         code = "ios_mobile_oauth_bridge_unavailable",
@@ -975,6 +1009,7 @@ object SlockIosMobileOAuthBridge {
     fun startNativeApple(
         mode: String,
         generation: String,
+        returnUri: String,
         codeVerifier: String,
         codeChallenge: String,
         completion: (SlockIosMobileOAuthStartResult) -> Unit,
@@ -982,7 +1017,13 @@ object SlockIosMobileOAuthBridge {
         scope.launch {
             val result =
                 runCatchingPreservingCancellation {
-                    coordinator.startNativeApple(mode, generation, codeVerifier, codeChallenge)
+                    coordinator.startNativeApple(
+                        mode,
+                        generation,
+                        codeVerifier,
+                        codeChallenge,
+                        returnUriOverride = returnUri,
+                    )
                 }.getOrElse {
                     startError(
                         code = "ios_mobile_oauth_bridge_unavailable",

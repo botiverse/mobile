@@ -19,8 +19,11 @@ import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.SharedSettingsViewModel
+import build.raft.app.data.SLOCK_MOBILE_OAUTH_COMPLETION_EVENT
+import build.raft.app.data.SlockEventBuses
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -232,6 +235,17 @@ private fun SettingsAccountScreen() {
     LaunchedEffect(Unit) {
         bridge.log("settings_account_open instanceId=${launchPayload.instanceId}")
         settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account))
+    }
+    DisposableEffect(settingsViewModel) {
+        val subscription =
+            SlockEventBuses.inProcess().observe(SLOCK_MOBILE_OAUTH_COMPLETION_EVENT) { event ->
+                if (event?.optString("status") == "settings_account") {
+                    settingsViewModel.dispatch(
+                        SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account)
+                    )
+                }
+            }
+        onDispose(subscription::close)
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     SettingsDetailShell(
