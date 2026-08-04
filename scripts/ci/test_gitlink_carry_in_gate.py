@@ -150,6 +150,52 @@ class GitlinkCarryInGateTest(unittest.TestCase):
         self.assertIn("No gitlink changes", markdown)
         self.assertNotIn("Files different at the two endpoint trees (1)", markdown)
 
+    def test_base_advancing_the_pin_does_not_blame_a_branch_that_never_touched_it(self) -> None:
+        # The real case this gate got wrong: the base advanced the submodule
+        # pin on its own, and a branch cut before that — touching only docs —
+        # was hard-redded for "reversing" it and forced to rebase.
+        #
+        # Nothing is reversed. The merge keeps the base's newer pin; the branch
+        # simply predates it. Comparing the base TIP against head sees a
+        # backward move that no commit on the branch ever made, and that fires
+        # on every open branch each time the base moves a submodule.
+        #
+        # Comparing against the merge base asks the question that matters —
+        # what did this branch introduce — and here the answer is nothing.
+        manifest = GATE.audit(
+            self.mobile,
+            self.carry_head,  # base tip: the pin was advanced here
+            self.no_change_head,  # branch: docs only, never touched the gitlink
+            allow_local_remotes=True,
+        )
+        self.assertEqual("no_changes", manifest["status"])
+        self.assertEqual([], manifest["submodules"])
+        # And the manifest says which commit it compared from, so a reader is
+        # never left guessing why nothing was reported.
+        self.assertEqual(self.base, manifest["comparison_base"])
+        self.assertEqual(self.carry_head, manifest["base"])
+
+    def test_a_branch_that_really_moves_the_pin_backward_is_still_caught(self) -> None:
+        # The protection this gate exists for must survive the fix above. When
+        # the reversal is genuinely the branch's own doing it is still a hard
+        # red, because it is present in the branch's own diff.
+        git(self.mobile, "checkout", "-q", "-b", "revert-pin", self.carry_head)
+        git(
+            self.mobile,
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"160000,{self.old_pin},vendor/fixture",
+        )
+        reverting_head = commit_index(self.mobile, "move fixture pin backward")
+        with self.assertRaisesRegex(GATE.GateError, "not a true ancestor"):
+            GATE.audit(
+                self.mobile,
+                self.carry_head,
+                reverting_head,
+                allow_local_remotes=True,
+            )
+
     def test_empty_base_input_is_hard_red(self) -> None:
         with self.assertRaisesRegex(GATE.GateError, "base commit is empty"):
             GATE.audit(

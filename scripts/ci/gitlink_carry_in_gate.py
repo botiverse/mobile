@@ -392,10 +392,38 @@ def audit(
 ) -> dict[str, object]:
     base_commit = require_commit(repo, base, "base")
     head_commit = require_commit(repo, head, "head")
-    changes = changed_gitlinks(repo, base_commit, head_commit)
+
+    # Compare against the merge base, not the base tip.
+    #
+    # The question this gate answers is "what pin movement does THIS branch
+    # introduce", and only the merge base isolates that. Diffing the base tip
+    # against head also reports every pin the base advanced on its own, which a
+    # branch that never touched the gitlink would then be blamed for: the merge
+    # keeps the base's newer pin, so nothing is carried backward, yet the gate
+    # hard-reds on the apparent reversal and forces a rebase. That fires on
+    # every open branch each time the base advances a submodule, which is a
+    # rebase treadmill rather than a safety property.
+    #
+    # Detection is unchanged: a branch that really does move a pin backward has
+    # that move in its own diff, so it is still caught here.
+    merge_base_result = run_git(repo, "merge-base", base_commit, head_commit, check=False)
+    comparison_base = merge_base_result.stdout.strip() if merge_base_result.returncode == 0 else ""
+    if not comparison_base:
+        # Unrelated histories are refused rather than silently falling back to
+        # the base tip, which would reinstate the false positive under the one
+        # condition where it is least likely to be noticed.
+        raise GateError(
+            f"no merge base between base {base_commit} and head {head_commit}; "
+            "cannot determine what this branch introduces"
+        )
+
+    changes = changed_gitlinks(repo, comparison_base, head_commit)
     manifest: dict[str, object] = {
         "schema": SCHEMA,
         "base": base_commit,
+        # Recorded separately so a reader can tell which commit the comparison
+        # actually used; when the branch is current these are the same commit.
+        "comparison_base": comparison_base,
         "head": head_commit,
         "status": "no_changes" if not changes else "pass",
         "submodules": [],
