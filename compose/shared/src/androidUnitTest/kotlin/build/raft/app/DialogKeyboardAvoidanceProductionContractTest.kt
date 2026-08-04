@@ -21,25 +21,38 @@ import kotlin.test.assertTrue
  */
 class DialogKeyboardAvoidanceProductionContractTest {
     @Test
-    fun editorsForwardNativeKeyboardHeightToTheHostingDialog() {
+    fun bothEditorOverloadsSubscribeToAndForwardNativeKeyboardHeight() {
         val basicWidget = commonMainSource("BasicWidget.kt")
 
         assertTrue(
             basicWidget.contains("LocalSlockDialogKeyboardHeightChange.current"),
             "TextField must read the hosting dialog's keyboard-height sink"
         )
-        val keyboardHeightBlocks = basicWidget.split(".keyboardHeightChange {").drop(1)
+
+        val overloads = basicWidget.split("internal fun TextField(").drop(1)
         assertTrue(
-            keyboardHeightBlocks.isNotEmpty(),
-            "TextField must subscribe to native keyboardHeightChange events"
+            overloads.size >= 2,
+            "expected both the String and TextFieldValue TextField overloads to be present"
         )
-        assertTrue(
-            keyboardHeightBlocks.all {
-                it.substringBefore("}").contains("dialogKeyboardHeightChange(params)")
-            },
-            "every editor keyboardHeightChange block must forward its params to the hosting " +
-                "dialog; a single overload dropping the forward is enough to strand an editor"
-        )
+        overloads.forEach { overload ->
+            val label =
+                if (overload.substringBefore("\n) {").contains("value: TextFieldValue")) {
+                    "TextFieldValue"
+                } else {
+                    "String"
+                }
+            assertTrue(
+                overload.contains(".keyboardHeightChange {"),
+                "TextField($label) must subscribe to native keyboardHeightChange events; dropping " +
+                    "the whole registration strands every editor built on that overload"
+            )
+            assertTrue(
+                overload.substringAfter(".keyboardHeightChange {")
+                    .substringBefore("}")
+                    .contains("dialogKeyboardHeightChange(params)"),
+                "TextField($label) must forward its keyboard params to the hosting dialog"
+            )
+        }
     }
 
     @Test
@@ -99,13 +112,12 @@ class DialogKeyboardAvoidanceProductionContractTest {
     }
 
     @Test
-    fun runtimeApiKeyScrollIsWeightedAndTheActionRowTrailsIt() {
+    fun runtimeApiKeyActionRowIsFixedOutsideTheWeightedScrollBody() {
         val runtimeDialog = runtimeConfigDialog()
-        val weightedScroll = runtimeDialog.indexOf("Modifier.fillMaxWidth().weight(1f)")
-        val actionRow = runtimeDialog.indexOf("MR.strings.member_action_save_runtime_config")
+        val (scrollBody, afterScrollBody) = runtimeDialog.splitAroundTrailingLambda("LazyColumn(")
 
         assertTrue(
-            weightedScroll >= 0,
+            runtimeDialog.contains("Modifier.fillMaxWidth().weight(1f)"),
             "Runtime/API-key scroll body must take its height by weight, not a fixed cap"
         )
         assertTrue(
@@ -114,8 +126,13 @@ class DialogKeyboardAvoidanceProductionContractTest {
                 "whole keyboard-reduced viewport; it must not come back"
         )
         assertTrue(
-            actionRow >= 0 && actionRow > weightedScroll,
-            "The Save/Cancel row must trail the weighted scroll body so it is measured first"
+            !scrollBody.contains(SAVE_ACTION_LABEL),
+            "Save/Cancel must not live inside the LazyColumn; buttons placed in the list scroll " +
+                "away with the form instead of staying reachable above the keyboard"
+        )
+        assertTrue(
+            afterScrollBody.contains("Row(") && afterScrollBody.contains(SAVE_ACTION_LABEL),
+            "Save/Cancel must be a fixed Row after the LazyColumn so it is measured before the list"
         )
     }
 
@@ -135,4 +152,31 @@ class DialogKeyboardAvoidanceProductionContractTest {
             File("shared/src/commonMain/kotlin/build/raft/app/$fileName")
         ).firstOrNull(File::isFile)?.readText()?.replace("\r\n", "\n")
             ?: error("Unable to locate commonMain source: $fileName")
+    /**
+     * Splits the trailing lambda of [marker]'s call into its contents and everything after it,
+     * so "inside the list" and "after the list" can be told apart instead of compared by index.
+     */
+    private fun String.splitAroundTrailingLambda(marker: String): Pair<String, String> {
+        val markerAt = indexOf(marker)
+        require(markerAt >= 0) { "marker not found: $marker" }
+        val open = indexOf(") {", markerAt)
+        require(open >= 0) { "no trailing lambda found for: $marker" }
+        var depth = 0
+        var i = open + 2
+        while (i < length) {
+            when (this[i]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return substring(open + 3, i) to substring(i + 1)
+                }
+            }
+            i++
+        }
+        error("unbalanced trailing lambda for: $marker")
+    }
+
+    private companion object {
+        const val SAVE_ACTION_LABEL = "MR.strings.member_action_save_runtime_config"
+    }
 }
