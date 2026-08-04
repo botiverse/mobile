@@ -67,6 +67,11 @@ jobs:
       - name: Validate OHOS attachment-open diagnostic production wiring
         run: node compose/ohosApp/scripts/test_attachment_open_diagnostics_source_contract.mjs
 
+      - name: Validate OHOS Kuikly fork provenance contract
+        run: |
+          node compose/ohosApp/scripts/test_kuikly_plugin_source_contract.mjs
+          scripts/test_verify_kuikly_ohos_provenance.sh
+
       # Incident-born gate (task #976): PR #1920 imported kotlinx.coroutines.test
       # into commonTest; the OHOS test targets have no such KLIB, so only the
       # post-merge OHOS shared compile went red. This contract runs on every PR.
@@ -285,7 +290,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: .ci-cache/maven/kuikly-ohos
-          key: kuikly-fork-mavenlocal-ohos-${{ env.HARMONY_CACHE_EPOCH }}-${{ steps.pins.outputs.kuikly }}
+          key: kuikly-fork-mavenlocal-ohos-${{ env.HARMONY_CACHE_EPOCH }}-${{ hashFiles('scripts/build_kuikly_fork.sh') }}-${{ steps.pins.outputs.kuikly }}
 
       - name: Build kuikly fork (ohos flavor)
         if: ${{ needs.plan.outputs.run_full == 'true' && steps.kuikly-ohos-cache.outputs.cache-hit != 'true' }}
@@ -318,6 +323,8 @@ jobs:
         run: |
           stage="$GITHUB_WORKSPACE/.ci-cache/maven/kuikly-ohos"
           test -d "$stage/core-ohosarm64"
+          test -d "$stage/core-annotations-jvm"
+          test -d "$stage/core-ksp"
           test -d "$stage/compose-ohosarm64"
 
       - name: Save kuikly fork cache (ohos flavor)
@@ -325,7 +332,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: .ci-cache/maven/kuikly-ohos
-          key: kuikly-fork-mavenlocal-ohos-${{ env.HARMONY_CACHE_EPOCH }}-${{ steps.pins.outputs.kuikly }}
+          key: kuikly-fork-mavenlocal-ohos-${{ env.HARMONY_CACHE_EPOCH }}-${{ hashFiles('scripts/build_kuikly_fork.sh') }}-${{ steps.pins.outputs.kuikly }}
 
       - name: Set up Node.js for pinned HAR contract
         uses: actions/setup-node@v5
@@ -1390,7 +1397,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: .ci-cache/maven/kuikly-ohos
-          key: kuikly-fork-mavenlocal-ohos-${{ env.HARMONY_CACHE_EPOCH }}-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
+          key: kuikly-fork-mavenlocal-ohos-${{ env.HARMONY_CACHE_EPOCH }}-${{ hashFiles('scripts/build_kuikly_fork.sh') }}-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
           fail-on-cache-miss: true
 
       - name: Restore shared fork dependencies mavenLocal artifacts
@@ -1639,7 +1646,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: .ci-cache/maven/kuikly-ohos
-          key: kuikly-fork-mavenlocal-ohos-${{ env.HARMONY_CACHE_EPOCH }}-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
+          key: kuikly-fork-mavenlocal-ohos-${{ env.HARMONY_CACHE_EPOCH }}-${{ hashFiles('scripts/build_kuikly_fork.sh') }}-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
           fail-on-cache-miss: true
 
       - name: Restore shared fork dependencies mavenLocal artifacts

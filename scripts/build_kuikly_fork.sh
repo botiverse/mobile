@@ -75,6 +75,7 @@ OHOS_ARGS=(
   :core:publishKotlinMultiplatformPublicationToMavenLocal
   :core:publishOhosArm64PublicationToMavenLocal
   :core-annotations:publishKotlinMultiplatformPublicationToMavenLocal
+  :core-annotations:publishJvmPublicationToMavenLocal
   :core-annotations:publishOhosArm64PublicationToMavenLocal
   :core-ksp:publishMavenPublicationToMavenLocal
   :core-render-android:publishMavenPublicationToMavenLocal
