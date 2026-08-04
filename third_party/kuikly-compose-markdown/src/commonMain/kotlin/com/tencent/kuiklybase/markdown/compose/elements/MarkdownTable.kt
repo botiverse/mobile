@@ -79,6 +79,7 @@ fun MarkdownTable(
     val rowWidths = remember { mutableStateOf(0.dp) }
     val tableStoke = LocalMarkdownColors.current.tableStroke
     val tableSeparatorThickness = LocalMarkdownDimens.current.tableSeparatorThickness
+    val tableCellPadding = LocalMarkdownDimens.current.tableCellPadding
 
     LazyRow(
         modifier = Modifier
@@ -93,7 +94,14 @@ fun MarkdownTable(
                     // 表格少一条边框
                     if (index == 0 && node.type != TABLE_SEPARATOR) {
                         MarkdownDivider(
-                            modifier = Modifier.width(rowWidths.value),
+                            modifier = Modifier.width(
+                    markdownTableEffectiveRowWidth(
+                        rowWidth = rowWidths.value,
+                        columnWidths = columnWidths,
+                        tableCellPadding = tableCellPadding,
+                        tableSeparatorThickness = tableSeparatorThickness
+                    )
+                ),
                             color = tableStoke,
                             thickness = tableSeparatorThickness
                         )
@@ -109,7 +117,14 @@ fun MarkdownTable(
 
                         ROW -> rowBlock(content, node, style, columnWidths, rowWidths)
                         TABLE_SEPARATOR -> MarkdownDivider(
-                            modifier = Modifier.width(rowWidths.value),
+                            modifier = Modifier.width(
+                    markdownTableEffectiveRowWidth(
+                        rowWidth = rowWidths.value,
+                        columnWidths = columnWidths,
+                        tableCellPadding = tableCellPadding,
+                        tableSeparatorThickness = tableSeparatorThickness
+                    )
+                ),
                             color = tableStoke,
                             thickness = tableSeparatorThickness
                         )
@@ -174,6 +189,7 @@ fun MarkdownTableContent(
 ) {
     val tableStoke = LocalMarkdownColors.current.tableStroke
     val tableSeparatorThickness = LocalMarkdownDimens.current.tableSeparatorThickness
+    val tableCellPadding = LocalMarkdownDimens.current.tableCellPadding
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -192,7 +208,14 @@ fun MarkdownTableContent(
             )
         }
         MarkdownDivider(
-            modifier = Modifier.width(rowWidths.value),
+            modifier = Modifier.width(
+                markdownTableEffectiveRowWidth(
+                    rowWidth = rowWidths.value,
+                    columnWidths = columnWidths,
+                    tableCellPadding = tableCellPadding,
+                    tableSeparatorThickness = tableSeparatorThickness
+                )
+            ),
             color = tableStoke,
             thickness = tableSeparatorThickness
         )
@@ -377,4 +400,28 @@ internal fun markdownTableMeasuredColumnWidth(
             measuredWidth
         }
     return maxOf(currentWidth ?: 0.dp, boundedWidth)
+}
+
+/**
+ * Width for the horizontal table grid dividers. Normally the header Row's measured width
+ * ([rowWidth]). On Android the header's `wrapContentWidth` + `onSizeChanged` can report `0.dp`
+ * (`rowWidths` never fills), which zeroes every horizontal [MarkdownDivider] and drops the whole
+ * grid — the Android table renders with no row borders while iOS renders them. The per-cell
+ * [columnWidths] DO measure reliably (cells and vertical separators render), so when [rowWidth] is
+ * unavailable, derive the table content width from them: each cell occupies `columnWidth +
+ * 2*cellPadding`, plus a separator between and around the cells. A small over/under vs the exact
+ * rendered width is imperceptible and far better than an invisible grid; the iOS/normal path is
+ * unchanged (returns [rowWidth] when it is already measured).
+ */
+internal fun markdownTableEffectiveRowWidth(
+    rowWidth: Dp,
+    columnWidths: Map<Int, Dp>,
+    tableCellPadding: Dp,
+    tableSeparatorThickness: Dp
+): Dp {
+    if (rowWidth > 0.dp) return rowWidth
+    if (columnWidths.isEmpty()) return rowWidth
+    val cellsWidth = columnWidths.values.fold(0.dp) { acc, width -> acc + width + tableCellPadding * 2 }
+    val separatorsWidth = tableSeparatorThickness * (columnWidths.size + 1)
+    return cellsWidth + separatorsWidth
 }
