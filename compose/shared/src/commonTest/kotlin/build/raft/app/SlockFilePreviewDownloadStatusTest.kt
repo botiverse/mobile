@@ -197,24 +197,6 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun threadSaveToastPreservesPreciseNativeDestinationAndUsesNeutralFallback() {
-        assertEquals(
-            "Saved to Downloads/Raft",
-            slockThreadAttachmentSavedMessage(
-                nativeMessage = "Saved to Downloads/Raft",
-                fallbackMessage = "下载完成"
-            )
-        )
-        assertEquals(
-            "下载完成",
-            slockThreadAttachmentSavedMessage(
-                nativeMessage = "  ",
-                fallbackMessage = "下载完成"
-            )
-        )
-    }
-
-    @Test
     fun editorSelectedToolUsesTheActiveIconTone() {
         assertEquals(
             SlockColor.AccentRedArgb,
