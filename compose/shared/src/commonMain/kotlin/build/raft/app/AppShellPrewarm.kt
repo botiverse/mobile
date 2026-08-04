@@ -28,6 +28,20 @@ internal fun appShellChildPagePrewarmPolicy(
     }
 
 /**
+ * Computers prewarm is admitted only after auth/server resolution and Home content.
+ * The caller still enters Kuikly's idle context before dispatching the Background
+ * request, so this gate cannot move the request ahead of Home's first content paint.
+ */
+internal fun appShellComputersPrewarmServerId(
+    readyServerId: String?,
+    sessionReady: Boolean,
+    homeContentReady: Boolean
+): String? =
+    readyServerId
+        ?.trim()
+        ?.takeIf { sessionReady && homeContentReady && it.isNotBlank() }
+
+/**
  * Product-level admission gate for speculative prewarm work.
  *
  * Foreground interaction invalidates the current generation. A lease may

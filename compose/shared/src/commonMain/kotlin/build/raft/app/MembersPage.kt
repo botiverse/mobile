@@ -79,9 +79,9 @@ import build.raft.app.data.SlockAgentsNetworkApi
 import build.raft.app.data.SlockComputersApiClient
 import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SharedComputersIntent
-import build.raft.app.data.SharedComputersLoadStatus
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
+import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.CREATE_AGENT_BUILTIN_RUNTIME_ID
 import build.raft.app.data.buildBuiltInRuntimeConfig
@@ -1366,7 +1366,16 @@ internal fun MembersPageContent() {
         SharedComputersStore(
             computersApiClient = computersApiClient,
             scope = scope,
-            logger = { message -> bridge.log("members_$message") }
+            logger = { message -> bridge.log("members_$message") },
+            ownerProvider = {
+                authStore.readSession()?.let { session ->
+                    SharedComputersOwner(
+                        environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
+                        accountId = session.user.id.trim(),
+                        sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
+                    )
+                }
+            }
         )
     }
     val createAgentCoordinator = remember(agentsApiClient, computersApiClient) {
@@ -1498,6 +1507,16 @@ internal fun MembersPageContent() {
     val computersSlice by computersStore
         .computerPickerSliceFlow(serverId)
         .collectAsState(SharedComputersPickerSlice())
+    LaunchedEffect(computersStore, serverId) {
+        val cleanServerId = serverId.trim().takeIf { it.isNotBlank() }
+        computersStore.reconcileOwner()
+        if (cleanServerId != null) {
+            computersStore.ensureComputerPickerForServer(
+                serverId = cleanServerId,
+                priority = DataRequestPriority.Visible
+            )
+        }
+    }
     val createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? =
         remember(createAgentCoordinator, createAgentFormStore, serverId) {
             { submit ->
@@ -1551,11 +1570,28 @@ internal fun MembersPageContent() {
                 }
             }
         }
-    // Load machines lazily when the dialog opens; see MembersListContent state.
+    // MEMBERS_COMPUTERS_ERROR_RETRY_WIRING_START
     val loadMachines: () -> Unit = remember(computersStore, serverId) {
         {
             if (serverId.isNotBlank()) {
-                computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
+                computersStore.dispatch(
+                    SharedComputersIntent.EnsureComputerPicker(
+                        serverId = serverId,
+                        priority = DataRequestPriority.Visible
+                    )
+                )
+            }
+        }
+    }
+    val retryMachines: () -> Unit = remember(computersStore, serverId) {
+        {
+            if (serverId.isNotBlank()) {
+                computersStore.dispatch(
+                    SharedComputersIntent.RefreshComputerPicker(
+                        serverId = serverId,
+                        priority = DataRequestPriority.Visible
+                    )
+                )
             }
         }
     }
@@ -1726,10 +1762,12 @@ internal fun MembersPageContent() {
         canCreateAgents = payload.canCreateAgents,
         createAgentSubmit = createAgentSubmit,
         createAgentMachines = computersSlice.machines,
-        createAgentMachinesLoading = computersSlice.status == SharedComputersLoadStatus.InFlight,
+        createAgentMachinesLoading = computersSlice.initialLoadInFlight,
+        createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
         createAgentCurrentAgentCount = currentAgentCount,
         createAgentMaxAgents = maxAgents,
         createAgentLoadMachines = loadMachines,
+        createAgentRetryMachines = retryMachines,
         createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
         createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
         createAgentLoadRuntimeModels = loadRuntimeModels,
@@ -1748,6 +1786,7 @@ internal fun MembersPageContent() {
         // `agentScopes` / `updateAgentScopes` / `resetAgentScopes` directly.
         agentsApiClient = agentsApiClient
     )
+    // MEMBERS_COMPUTERS_ERROR_RETRY_WIRING_END
 }
 
 internal sealed interface MemberDetailRouteState {
@@ -2440,7 +2479,16 @@ private fun rememberMemberDetailRouteProvider(
         SharedComputersStore(
             computersApiClient = computersApiClient,
             scope = scope,
-            logger = { message -> bridge.log("member_detail_$message") }
+            logger = { message -> bridge.log("member_detail_$message") },
+            ownerProvider = {
+                authStore.readSession()?.let { session ->
+                    SharedComputersOwner(
+                        environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
+                        accountId = session.user.id.trim(),
+                        sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
+                    )
+                }
+            }
         )
     }
     val agentsApiClient = remember(networkClient) {
@@ -3660,9 +3708,11 @@ internal fun MembersRouteContent(
     createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
     createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
     createAgentMachinesLoading: Boolean = false,
+    createAgentMachinesErrorMessage: String? = null,
     createAgentCurrentAgentCount: Int = 0,
     createAgentMaxAgents: Int = -1,
     createAgentLoadMachines: () -> Unit = {},
+    createAgentRetryMachines: () -> Unit = {},
     createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
@@ -3704,9 +3754,11 @@ internal fun MembersRouteContent(
         createAgentSubmit = createAgentSubmit,
         createAgentMachines = createAgentMachines,
         createAgentMachinesLoading = createAgentMachinesLoading,
+        createAgentMachinesErrorMessage = createAgentMachinesErrorMessage,
         createAgentCurrentAgentCount = createAgentCurrentAgentCount,
         createAgentMaxAgents = createAgentMaxAgents,
         createAgentLoadMachines = createAgentLoadMachines,
+        createAgentRetryMachines = createAgentRetryMachines,
         createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModelsByMachineAndRuntime,
         createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
         createAgentLoadRuntimeModels = createAgentLoadRuntimeModels,
@@ -3738,9 +3790,11 @@ internal fun MembersListContent(
     createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
     createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
     createAgentMachinesLoading: Boolean = false,
+    createAgentMachinesErrorMessage: String? = null,
     createAgentCurrentAgentCount: Int = 0,
     createAgentMaxAgents: Int = -1,
     createAgentLoadMachines: () -> Unit = {},
+    createAgentRetryMachines: () -> Unit = {},
     createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
@@ -3993,6 +4047,8 @@ internal fun MembersListContent(
             errorMessage = createAgentError,
             machines = createAgentMachines,
             machinesLoading = createAgentMachinesLoading,
+            machinesErrorMessage = createAgentMachinesErrorMessage,
+            onMachinesRetry = createAgentRetryMachines,
             runtimeModelsByMachineAndRuntime = createAgentRuntimeModelsByMachineAndRuntime,
             runtimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
             onRuntimeModelsRequest = createAgentLoadRuntimeModels,

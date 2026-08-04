@@ -69,9 +69,9 @@ import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedComputersIntent
-import build.raft.app.data.SharedComputersLoadStatus
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
+import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
@@ -3105,7 +3105,16 @@ private fun ThreadPageScreen(
             SharedComputersStore(
                 computersApiClient = computersApiClient,
                 scope = routeScope,
-                logger = { message -> bridge.log("thread_$message") }
+                logger = { message -> bridge.log("thread_$message") },
+                ownerProvider = {
+                    authStore.readSession()?.let { session ->
+                        SharedComputersOwner(
+                            environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
+                            accountId = session.user.id.trim(),
+                            sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
+                        )
+                    }
+                }
             )
         }
     val selectedServerStore =
@@ -9696,7 +9705,12 @@ private fun ThreadCreateAgentActionDialogHost(
         if (!computerServerResolved) return@LaunchedEffect
         val serverId = computerServerId
         if (serverId.isNullOrBlank()) return@LaunchedEffect
-        computersStore?.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
+        computersStore?.dispatch(
+            SharedComputersIntent.EnsureComputerPicker(
+                serverId = serverId,
+                priority = DataRequestPriority.Visible
+            )
+        )
     }
 
     LaunchedEffect(dialogState.messageId, computerPickerSlice.errorCode) {
@@ -9709,7 +9723,7 @@ private fun ThreadCreateAgentActionDialogHost(
             computersStore != null &&
                 computerServerResolved &&
                 computerServerId.isNullOrBlank() -> "server_id_missing"
-            computerPickerSlice.status == SharedComputersLoadStatus.Error -> computerPickerSlice.errorCode
+            computerPickerSlice.initialLoadError != null -> computerPickerSlice.errorCode
             else -> null
         }
     SharedCreateAgentDialog(
@@ -9727,8 +9741,19 @@ private fun ThreadCreateAgentActionDialogHost(
         machinesLoading =
             computersStore != null &&
                 (!computerServerResolved ||
-                    computerPickerSlice.status == SharedComputersLoadStatus.InFlight),
+                    computerPickerSlice.initialLoadInFlight),
         machinesErrorMessage = machinesErrorCode?.let { threadCreateAgentMachinesErrorCopy(it) },
+        onMachinesRetry = {
+            val serverId = computerServerId
+            if (!serverId.isNullOrBlank()) {
+                computersStore?.dispatch(
+                    SharedComputersIntent.RefreshComputerPicker(
+                        serverId = serverId,
+                        priority = DataRequestPriority.Visible
+                    )
+                )
+            }
+        },
         createAgentFormStore = createAgentFormStore,
         createAgentServerId = computerServerId,
         onDismiss = onDismiss,
