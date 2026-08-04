@@ -32,6 +32,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# Fail-closed admission: this root carried the #976 incident; if it vanishes or
+# holds no Kotlin sources, the scan must FAIL rather than silently pass on an
+# empty scope. Additional module roots stay module-generic (optional).
+REQUIRED_ROOT = Path("compose/shared/src/commonTest/kotlin")
+
 # Denylist: package prefixes forbidden in any commonTest source set, with the
 # reason each is forbidden. Extend here when a new cross-platform-unavailable
 # test dependency is identified (and update this docstring's incident list).
@@ -68,6 +73,16 @@ def scan_tree(base: Path):
 
 
 def enforce(base: Path) -> int:
+    required = base / REQUIRED_ROOT
+    if not required.is_dir():
+        print("commonTest cross-platform test dependency contract: FAIL")
+        print(f"  required commonTest root missing: {REQUIRED_ROOT}")
+        print("  (empty scope must never pass; restore the root or update this contract deliberately)")
+        return 1
+    if not any(required.rglob("*.kt")):
+        print("commonTest cross-platform test dependency contract: FAIL")
+        print(f"  required commonTest root has no Kotlin sources: {REQUIRED_ROOT}")
+        return 1
     violations = scan_tree(base)
     if not violations:
         print("commonTest cross-platform test dependency contract: PASS")
@@ -106,10 +121,21 @@ import kotlinx.coroutines.test.runTest
 """
     with tempfile.TemporaryDirectory() as td:
         base = Path(td)
+        required_dir = base / REQUIRED_ROOT
         common_dir = base / "mod" / "src" / "commonTest" / "kotlin" / "build" / "raft" / "app"
         android_dir = base / "mod" / "src" / "androidUnitTest" / "kotlin" / "build" / "raft" / "app"
+        required_dir.mkdir(parents=True)
         common_dir.mkdir(parents=True)
         android_dir.mkdir(parents=True)
+        (required_dir / "RequiredRoot.kt").write_text(clean, encoding="utf-8")
+
+        # Arm 0 (mutation): missing required root must FAIL (empty scope never passes).
+        missing = Path(td) / "missing-root-probe"
+        missing.mkdir()
+        (missing / "mod" / "src" / "commonTest" / "kotlin").mkdir(parents=True)
+        if enforce(missing) == 0:
+            print("self-test FAIL: missing required root must be caught", file=sys.stderr)
+            return 1
 
         # Arm 1: clean commonTest + androidUnitTest-only runTest => PASS.
         (common_dir / "Portable.kt").write_text(clean, encoding="utf-8")
@@ -130,7 +156,7 @@ import kotlinx.coroutines.test.runTest
             print("self-test FAIL: androidUnitTest import must not be scanned", file=sys.stderr)
             return 1
 
-    print("commonTest cross-platform dependency contract self-test: PASS (3 arms)")
+    print("commonTest cross-platform dependency contract self-test: PASS (4 arms)")
     return 0
 
 
