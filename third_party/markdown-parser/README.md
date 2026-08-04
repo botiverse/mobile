@@ -9,7 +9,7 @@ This directory vendors the common Kotlin sources of JetBrains Markdown
 - Upstream commit: `52368fb17e1d0faf58e2f954c8d57d034a1f2f98`
 - Botiverse fork: <https://github.com/botiverse/jetbrains-markdown>
 - Fork branch: `raft/0.7.5-mobile`
-- Fork commit: `7a2cfac17afbf87830ec51f6d9f18806967b391a`
+- Fork commit: `295290f8fa81365fd6cdb9e0ce2ca9a5b45c9018`
 - Maven coordinate: `org.jetbrains:markdown:0.7.5`
 - Source archive: `markdown-0.7.5-sources.jar`
 - Source archive SHA-256:
@@ -21,7 +21,7 @@ This directory vendors the common Kotlin sources of JetBrains Markdown
 - License: Apache License 2.0; see [LICENSE](LICENSE)
 
 The 103 imported common source and generator files are byte-identical between
-the source archive and the frozen upstream commit before applying the five
+the source archive and the frozen upstream commit before applying the six
 declared fork changes below. The three platform actual files are copied
 byte-for-byte from that same commit. The complete vendored source payload
 matches the corresponding paths at the Botiverse fork commit above.
@@ -31,6 +31,8 @@ matches the corresponding paths at the Botiverse fork commit above.
 Only these vendored files intentionally differ from frozen upstream:
 
 - `src/commonMain/kotlin/org/intellij/markdown/flavours/gfm/GFMMarkerProcessor.kt`
+- `src/commonMain/kotlin/org/intellij/markdown/parser/MarkerProcessor.kt`
+- `src/commonMain/kotlin/org/intellij/markdown/parser/markerblocks/impl/ParagraphMarkerBlock.kt`
 - `src/commonMain/kotlin/org/intellij/markdown/flavours/gfm/lexer/_GFMLexer.kt`
 - `src/commonMain/kotlin/org/intellij/markdown/flavours/space/lexer/_SFMLexer.kt`
 - `src/commonMain/kotlin/org/intellij/markdown/lexer/_MarkdownLexer.kt`
@@ -40,6 +42,15 @@ remains the stock `GitHubTableMarkerProvider()`. Slock supplies a composed
 provider from `SlockGFMFlavourDescriptor`; the upstream provider implementation
 stays byte-exact, while Raft's policy recognizes chat-friendly tables whose
 separator immediately follows a paragraph line without rewriting source text.
+
+`MarkerProcessor` and `ParagraphMarkerBlock` add a paragraph
+lazy-continuation policy seam, exposed as a second `GFMMarkerProcessor`
+constructor parameter with a stock-permissive default (the full CommonMark and
+GFM spec suites pass unchanged on the fork). Slock supplies a policy from
+`SlockGFMFlavourDescriptor` that ends a paragraph when a lazily-continued line
+drops a block-quote constraint, so `> quote` followed by an unmarked reply
+line renders as a quote plus a plain paragraph, matching the web chat
+dialect; list lazy continuation is unaffected.
 
 The three generated lexer files contain only the mechanical Kotlin migration
 `String.toLowerCase()` to `String.lowercase()`. This is required because this
@@ -59,9 +70,9 @@ not change the parser grammar or lexer state machine.
    into the matching vendor source-set directories; verify 106 total files.
 4. Compare all imported files with upstream commit
    `52368fb17e1d0faf58e2f954c8d57d034a1f2f98`.
-5. Reapply and independently review the four local-divergence files listed
+5. Reapply and independently review the six local-divergence files listed
    above, or copy those files from Botiverse fork commit
-   `7a2cfac17afbf87830ec51f6d9f18806967b391a`.
+   `295290f8fa81365fd6cdb9e0ce2ca9a5b45c9018`.
 
 Build wiring lives in `compose/shared/build.gradle.kts` and
 `compose/shared/build.ohos.gradle.kts`. Neither build may also depend on a

@@ -1,6 +1,8 @@
 package build.raft.app.markdown
 
 import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
+import org.intellij.markdown.MarkdownElementTypes
+import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
@@ -128,10 +130,22 @@ class MarkdownTableSeparationTest {
     fun blockQuoteLazySeparatorDoesNotInterruptParagraph() {
         val body = "> Intro\n> a | b\n---|---\nTail"
 
+        // The table-separation property this test pins: a separator-shaped line
+        // after a quoted `a | b` line must not form a table across the quote
+        // boundary — under either flavour.
         assertFalse(parseContainsTable(body))
+        assertFalse(parseContainsTable(body, GFMFlavourDescriptor()))
+        // The flavours intentionally diverge on the block shape here since the
+        // chat dialect ends the quote at the first unmarked line (task #527):
+        // stock GFM lazily continues the separator and tail into the quote,
+        // Slock closes the quote after the `>` lines.
         assertEquals(
-            astSignature(body, GFMFlavourDescriptor()),
-            astSignature(body, SlockGFMFlavourDescriptor()),
+            listOf(MarkdownElementTypes.BLOCK_QUOTE, MarkdownElementTypes.PARAGRAPH),
+            blockShape(body, SlockGFMFlavourDescriptor()),
+        )
+        assertEquals(
+            listOf(MarkdownElementTypes.BLOCK_QUOTE),
+            blockShape(body, GFMFlavourDescriptor()),
         )
     }
 
@@ -182,6 +196,11 @@ class MarkdownTableSeparationTest {
             }
             walk(MarkdownParser(flavour).buildMarkdownTreeFromString(content))
         }
+
+    private fun blockShape(content: String, flavour: GFMFlavourDescriptor) =
+        MarkdownParser(flavour)
+            .buildMarkdownTreeFromString(content)
+            .children.map { it.type }.filter { it != MarkdownTokenTypes.EOL }
 
     private fun ASTNode.findFirst(type: org.intellij.markdown.IElementType): ASTNode? {
         if (this.type == type) return this

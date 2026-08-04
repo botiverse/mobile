@@ -42,11 +42,32 @@ class SlockGFMFlavourDescriptor : GFMFlavourDescriptor() {
                     productionHolder = productionHolder,
                     constraintsBase = GFMConstraints.BASE,
                     tableMarkerProvider = SlockTableContinuationMarkerProvider(),
+                    paragraphLazyContinuationPolicy = ::slockBlockQuoteEndsAtUnmarkedLine,
                 )
         }
 
     override fun createInlinesLexer(): MarkdownLexer =
         MarkdownLexer(SlockRaftMarkdownLexer())
+}
+
+/**
+ * Raft chat dialect: a block quote ends at the first line without a `>`
+ * marker. CommonMark lazy continuation would absorb that line into the
+ * quote, so `> quoted\nreply` renders the reply as part of the quotation —
+ * web already breaks the quote at the newline, and users typing a quote
+ * plus their reply mean two blocks. Consulted only for the lazy case (the
+ * next line satisfies a strict prefix of the paragraph's constraints):
+ * consecutive `>` lines stay one quote, and list lazy continuation is
+ * untouched because the check keys on a dropped `>` constraint alone.
+ */
+private fun slockBlockQuoteEndsAtUnmarkedLine(
+    paragraphConstraints: MarkdownConstraints,
+    nextLineConstraints: MarkdownConstraints,
+): Boolean {
+    for (index in nextLineConstraints.types.size until paragraphConstraints.types.size) {
+        if (paragraphConstraints.types[index] == '>') return false
+    }
+    return true
 }
 
 /**
