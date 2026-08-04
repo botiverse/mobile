@@ -1266,10 +1266,20 @@ class KmpVisualScreenshotCaptureTest {
                 try {
                     before = captureActivityScreenshot("components.thread.inline-selection-compact-tap.before")
                     val openProbeBefore = before.countThreadInlineSelectionOpenProbeSamples()
-                    tapDisplayDp(x = 300f, y = 124f)
-                    waitForIdleBounded()
-                    Thread.sleep(400)
-                    after = captureActivityScreenshot("components.thread.inline-selection-compact-tap.after")
+                    // Same flake family as the 2026-08-01 long-press cases: a
+                    // fixed post-tap sleep gambles against thread-open render
+                    // timing and a missed first tap. Poll the open-probe
+                    // predicate instead (with one automatic re-tap), and keep
+                    // the assertions below as the loud final verdict.
+                    after = captureAfterLongPressRendered(
+                        label = "components.thread.inline-selection-compact-tap",
+                        before = before,
+                        longPress = { tapDisplayDp(x = 300f, y = 124f) },
+                        rendered = { _, shot, _ ->
+                            shot.countThreadInlineSelectionOpenProbeSamples() >=
+                                openProbeBefore + THREAD_INLINE_SELECTION_MIN_ADDED_OPEN_PROBE_SAMPLES
+                        },
+                    )
                     val openProbeAfter = after.countThreadInlineSelectionOpenProbeSamples()
                     assertTrue(
                         "Tapping a compact inline-selection row must still open its thread; " +
