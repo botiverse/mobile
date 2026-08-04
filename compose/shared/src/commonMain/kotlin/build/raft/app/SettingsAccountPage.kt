@@ -239,7 +239,7 @@ private fun SettingsAccountScreen() {
     DisposableEffect(settingsViewModel) {
         val subscription =
             SlockEventBuses.inProcess().observe(SLOCK_MOBILE_OAUTH_COMPLETION_EVENT) { event ->
-                if (event?.optString("status") == "settings_account") {
+                if (shouldReloadSettingsAccountAfterMobileOAuth(event)) {
                     settingsViewModel.dispatch(
                         SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account)
                     )
@@ -285,6 +285,10 @@ private fun SettingsAccountScreen() {
         )
     }
 }
+
+internal fun shouldReloadSettingsAccountAfterMobileOAuth(
+    event: com.tencent.kuikly.core.nvi.serialization.json.JSONObject?,
+): Boolean = event?.optString("status") == "settings_account"
 
 @Composable
 private fun rememberAccountPayload(

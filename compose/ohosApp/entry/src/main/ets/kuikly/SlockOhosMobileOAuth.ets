@@ -26,6 +26,8 @@ export interface SlockOhosMobileOAuthCallback {
   readonly error: string;
 }
 
+export type SlockOhosMobileOAuthCallbackInvoker = (callback: SlockOhosMobileOAuthCallback) => boolean;
+
 export function prepareSlockOhosMobileOAuth(provider: string, mode: string): SlockOhosMobileOAuthPreparation {
   const normalizedProvider = provider.trim().toLowerCase();
   if (normalizedProvider !== 'google' && normalizedProvider !== 'github') {
@@ -91,9 +93,7 @@ export function parseSlockOhosMobileOAuthCallback(uri: string | undefined): Sloc
 }
 
 export function completeSlockOhosMobileOAuthCallback(uri: string | undefined): boolean {
-  const callback = parseSlockOhosMobileOAuthCallback(uri);
-  if (callback === undefined) return false;
-  return invoke<boolean>(
+  const accepted = dispatchSlockOhosMobileOAuthCallback(uri, (callback) => invoke<boolean>(
     'slockOhosMobileOAuthCompleteCallback',
     SLOCK_OHOS_MOBILE_OAUTH_SCHEME,
     SLOCK_OHOS_MOBILE_OAUTH_HOST,
@@ -102,7 +102,17 @@ export function completeSlockOhosMobileOAuthCallback(uri: string | undefined): b
     callback.mode,
     callback.code,
     callback.error
-  );
+  ));
+  return accepted;
+}
+
+export function dispatchSlockOhosMobileOAuthCallback(
+  uri: string | undefined,
+  invokeCallback: SlockOhosMobileOAuthCallbackInvoker
+): boolean {
+  const callback = parseSlockOhosMobileOAuthCallback(uri);
+  if (callback === undefined) return false;
+  return invokeCallback(callback);
 }
 
 function slockOhosMobileOAuthBase64Url(bytes: Uint8Array): string {
