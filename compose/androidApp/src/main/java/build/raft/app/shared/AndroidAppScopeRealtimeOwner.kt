@@ -56,48 +56,53 @@ internal object AndroidAppScopeRealtimeOwner {
     private var multiSessionRegistry: AndroidRealtimeSessionRegistry<MultiSessionRuntime>? = null
     private var multiSessionIdentity: MultiSessionIdentity? = null
     private var currentDesiredServerId: ServerId? = null
-    private val visibleShellOwners = AndroidVisibleShellOwners()
     private var appVisibility: AppVisibility = AppVisibility.Background
-    private var foregroundEpoch: Long = 0L
+    private var installedApplicationContext: Context? = null
     private var lastHiddenAtMillis: Long? = null
     private var backgroundKeepAliveEnabled = false
     private var networkCallbackInstalled = false
     private var processLifecycleInstalled = false
     private var hostNetworkOnline: Boolean? = null
     private val processVisibilityTracker =
-        AndroidProcessVisibilityTracker { foreground ->
+        AndroidProcessVisibilityTracker { foreground, foregroundEpoch ->
             val retired = updateSlockProcessNetworkVisibility(foreground)
             SlockAppLog.d(
                 LOG_TAG,
-                "app_scope_network_lifecycle foreground=$foreground retiredRequests=$retired"
+                "app_scope_network_lifecycle foreground=$foreground epoch=$foregroundEpoch " +
+                    "retiredRequests=$retired"
             )
+            if (foreground) {
+                installedApplicationContext?.let { context ->
+                    onAppShown(context, source = "process_activity_started")
+                }
+            } else {
+                onAppHidden(source = "process_activity_stopped")
+            }
         }
 
     fun onHostVisibilityChanged(
-        context: Context,
         visibility: AndroidHostVisibility,
         shellInstanceId: String = "",
+        pageName: String = SlockKuiklyActivity.PAGE_APP_SHELL,
         source: String = "unknown"
     ) {
-        val lifecycleForegroundEpoch =
-            synchronized(this) {
-                foregroundEpoch = nextAndroidForegroundEpoch(foregroundEpoch, appVisibility, visibility)
-                foregroundEpoch
-            }
-        applyAndroidHostVisibilityTransition(
+        val lifecycleForegroundEpoch = processVisibilityTracker.currentForegroundEpoch()
+        publishHostVisibility(
             visibility = visibility,
-            publishVisibility = { publishHostVisibility(visibility, shellInstanceId, lifecycleForegroundEpoch) },
-            applyRuntimeVisibility = {
-                when (visibility) {
-                    AndroidHostVisibility.Visible -> onAppShown(context, shellInstanceId, source)
-                    AndroidHostVisibility.Hidden -> onAppHidden(shellInstanceId, source)
-                }
-            }
+            shellInstanceId = shellInstanceId,
+            pageName = pageName,
+            lifecycleForegroundEpoch = lifecycleForegroundEpoch
+        )
+        SlockAppLog.d(
+            LOG_TAG,
+            "app_scope_host_visibility event=${visibility.wireValue} source=$source " +
+                "page=${normalizedAndroidLifecyclePageName(pageName)} epoch=$lifecycleForegroundEpoch"
         )
     }
 
     fun install(context: Context) {
         val appContext = context.applicationContext
+        installedApplicationContext = appContext
         installProcessLifecycle(appContext)
         if (networkCallbackInstalled) return
         val connectivityManager =
@@ -168,21 +173,17 @@ internal object AndroidAppScopeRealtimeOwner {
 
     private fun onAppShown(
         context: Context,
-        shellInstanceId: String = "",
         source: String = "unknown"
     ) {
         val shownAtMillis = System.currentTimeMillis()
         val multiSessionEnabled = multiServerRealtimeEnabled()
-        val becameForeground = !multiSessionEnabled || visibleShellOwners.shown(shellInstanceId)
-        val hiddenAtMillis = lastHiddenAtMillis.takeIf { becameForeground }
-        if (becameForeground) {
-            lastHiddenAtMillis = null
-            appVisibility = AppVisibility.Foreground
-        }
+        val hiddenAtMillis = lastHiddenAtMillis
+        lastHiddenAtMillis = null
+        appVisibility = AppVisibility.Foreground
         syncRealtimeReconnectPolicy()
-        if (multiSessionEnabled && becameForeground) {
+        if (multiSessionEnabled) {
             currentMultiSessionRuntimes("app_shown").forEach { it.runtime.onAppShown() }
-        } else if (!multiSessionEnabled) {
+        } else {
             realtimeRuntime?.onAppShown()
         }
         SlockAppLog.d(
@@ -193,7 +194,7 @@ internal object AndroidAppScopeRealtimeOwner {
             context = context.applicationContext,
             source = source
         )
-        if (becameForeground && shouldForceReconnectAfterLongBackground(hiddenAtMillis, shownAtMillis)) {
+        if (shouldForceReconnectAfterLongBackground(hiddenAtMillis, shownAtMillis)) {
             if (multiSessionEnabled) {
                 currentMultiSessionRuntimes("long_background").forEach { holder ->
                     reconnectMultiSession(holder, "long_background")
@@ -228,18 +229,9 @@ internal object AndroidAppScopeRealtimeOwner {
     }
 
     private fun onAppHidden(
-        shellInstanceId: String = "",
         source: String = "unknown"
     ) {
         val multiSessionEnabled = multiServerRealtimeEnabled()
-        if (multiSessionEnabled && !visibleShellOwners.hidden(shellInstanceId)) {
-            SlockAppLog.d(
-                LOG_TAG,
-                "app_scope_lifecycle event=hidden_deferred source=$source " +
-                    "visible_shells=${visibleShellOwners.snapshot().size}"
-            )
-            return
-        }
         appVisibility = AppVisibility.Background
         lastHiddenAtMillis = System.currentTimeMillis()
         syncRealtimeReconnectPolicy()
@@ -258,6 +250,7 @@ internal object AndroidAppScopeRealtimeOwner {
     private fun publishHostVisibility(
         visibility: AndroidHostVisibility,
         shellInstanceId: String,
+        pageName: String,
         lifecycleForegroundEpoch: Long
     ) {
         updateSlockHostVisibility(
@@ -271,7 +264,10 @@ internal object AndroidAppScopeRealtimeOwner {
                     .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionAppLifecycle)
                     .put(SlockRealtimeNotifyContract.KeyLifecycleEvent, visibility.wireValue)
                     .put(SlockRealtimeNotifyContract.KeyForegroundEpoch, lifecycleForegroundEpoch)
-                    .put(SlockRealtimeNotifyContract.KeyPageName, SlockKuiklyActivity.PAGE_APP_SHELL)
+                    .put(
+                        SlockRealtimeNotifyContract.KeyPageName,
+                        normalizedAndroidLifecyclePageName(pageName)
+                    )
                     .put(SlockRealtimeNotifyContract.KeyShellInstanceId, shellInstanceId)
         )
     }
@@ -1072,50 +1068,24 @@ internal enum class AndroidHostVisibility(val wireValue: String) {
     Hidden("pause")
 }
 
-internal fun nextAndroidForegroundEpoch(
-    currentEpoch: Long,
-    currentVisibility: AndroidAppScopeRealtimeOwner.AppVisibility,
-    nextHostVisibility: AndroidHostVisibility
-): Long =
-    if (
-        nextHostVisibility == AndroidHostVisibility.Visible &&
-        currentVisibility == AndroidAppScopeRealtimeOwner.AppVisibility.Background
-    ) {
-        currentEpoch + 1L
-    } else {
-        currentEpoch
-    }
-
-internal fun applyAndroidHostVisibilityTransition(
-    visibility: AndroidHostVisibility,
-    publishVisibility: () -> Unit,
-    applyRuntimeVisibility: () -> Unit
-) {
-    when (visibility) {
-        AndroidHostVisibility.Visible -> {
-            applyRuntimeVisibility()
-            publishVisibility()
-        }
-        AndroidHostVisibility.Hidden -> {
-            publishVisibility()
-            applyRuntimeVisibility()
-        }
-    }
-}
+internal fun normalizedAndroidLifecyclePageName(pageName: String): String =
+    pageName.trim().ifBlank { SlockKuiklyActivity.PAGE_APP_SHELL }
 
 /** Started-activity accounting is process visibility, not a page/pager lifecycle signal. */
 internal class AndroidProcessVisibilityTracker(
-    private val onVisibilityChanged: (foreground: Boolean) -> Unit
+    private val onVisibilityChanged: (foreground: Boolean, foregroundEpoch: Long) -> Unit
 ) {
     private var startedActivityCount = 0
     private var foreground = false
+    private var foregroundEpoch = 0L
 
     @Synchronized
     fun onActivityStarted() {
         startedActivityCount += 1
         if (!foreground) {
             foreground = true
-            onVisibilityChanged(true)
+            foregroundEpoch += 1L
+            onVisibilityChanged(true, foregroundEpoch)
         }
     }
 
@@ -1124,7 +1094,10 @@ internal class AndroidProcessVisibilityTracker(
         if (startedActivityCount > 0) startedActivityCount -= 1
         if (startedActivityCount == 0 && foreground && !changingConfigurations) {
             foreground = false
-            onVisibilityChanged(false)
+            onVisibilityChanged(false, foregroundEpoch)
         }
     }
+
+    @Synchronized
+    fun currentForegroundEpoch(): Long = foregroundEpoch
 }

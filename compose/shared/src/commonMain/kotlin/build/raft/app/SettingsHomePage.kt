@@ -2032,8 +2032,22 @@ internal class AppShellVisibleRefreshGate {
     private val keyOrder = mutableListOf<AppShellVisibleRefreshKey>()
     private val retiredThroughGenerationByTarget = mutableMapOf<String, Int>()
     private var pendingLifecycleGeneration: Int? = null
+    // Process foreground is the refresh authority. PageDidAppear remains a fallback when a
+    // newly observed process epoch reached this mounted shell while its pager was still hidden.
+    private var latestProcessForegroundEpoch: Long? = null
+    private var refreshedProcessForegroundEpoch: Long? = null
 
-    fun onLifecycleHidden(appearanceGeneration: Int) {
+    fun observeLifecycleForegroundEpoch(foregroundEpoch: Long) {
+        if (foregroundEpoch <= 0L) return
+        latestProcessForegroundEpoch =
+            maxOf(latestProcessForegroundEpoch ?: Long.MIN_VALUE, foregroundEpoch)
+    }
+
+    fun onLifecycleHidden(
+        appearanceGeneration: Int,
+        foregroundEpoch: Long? = null
+    ) {
+        foregroundEpoch?.let(::observeLifecycleForegroundEpoch)
         pendingLifecycleGeneration =
             maxOf(
                 pendingLifecycleGeneration ?: Int.MIN_VALUE,
@@ -2044,8 +2058,18 @@ internal class AppShellVisibleRefreshGate {
     fun shouldRefresh(
         signal: AppShellVisibleRefreshSignal,
         appearanceGeneration: Int,
-        target: String
+        target: String,
+        foregroundEpoch: Long? = null
     ): Boolean {
+        foregroundEpoch?.let(::observeLifecycleForegroundEpoch)
+        val effectiveForegroundEpoch = latestProcessForegroundEpoch
+        if (
+            effectiveForegroundEpoch != null &&
+            effectiveForegroundEpoch <=
+                (refreshedProcessForegroundEpoch ?: Long.MIN_VALUE)
+        ) {
+            return false
+        }
         val currentKey = AppShellVisibleRefreshKey(appearanceGeneration, target)
         val currentSignals = seenSignalsByKey[currentKey]
         val retiredThroughGeneration =
@@ -2077,14 +2101,23 @@ internal class AppShellVisibleRefreshGate {
             key.appearanceGeneration <=
             retiredThroughGenerationByTarget.getOrElse(key.target) { Int.MIN_VALUE }
         ) {
+            if (signal == AppShellVisibleRefreshSignal.Lifecycle && effectiveForegroundEpoch != null) {
+                refreshedProcessForegroundEpoch = effectiveForegroundEpoch
+            }
             return false
         }
         val seenSignals = seenSignalsByKey[key]
         if (seenSignals != null) {
             seenSignals += signal
+            if (signal == AppShellVisibleRefreshSignal.Lifecycle && effectiveForegroundEpoch != null) {
+                refreshedProcessForegroundEpoch = effectiveForegroundEpoch
+            }
             return false
         }
         seenSignalsByKey[key] = mutableSetOf(signal)
+        if (effectiveForegroundEpoch != null) {
+            refreshedProcessForegroundEpoch = effectiveForegroundEpoch
+        }
         keyOrder += key
         while (keyOrder.size > MaxRememberedAppearanceKeys) {
             val retiredKey = keyOrder.removeAt(0)
@@ -3693,17 +3726,26 @@ internal fun SlockAppShellContent(
     fun refreshVisibleAppShellRoute(
         reason: String,
         signal: AppShellVisibleRefreshSignal,
-        appearanceGeneration: Int
-    ) {
-        if (latestReadySession == null) return
+        appearanceGeneration: Int,
+        foregroundEpoch: Long? = null
+    ): Boolean {
+        if (latestReadySession == null) return false
         val refreshTarget =
             "${retainedAppShellSelectedTab(latestSelectedTab)}:${latestSelectedHomeDestination.orEmpty()}"
-        if (!visibleRefreshGate.shouldRefresh(signal, appearanceGeneration, refreshTarget)) {
+        if (
+            !visibleRefreshGate.shouldRefresh(
+                signal = signal,
+                appearanceGeneration = appearanceGeneration,
+                target = refreshTarget,
+                foregroundEpoch = foregroundEpoch
+            )
+        ) {
             bridge.log(
-                "app_shell_visible_refresh_skip reason=$reason cause=same_appearance tab=${latestSelectedTab} " +
+                "app_shell_visible_refresh_skip reason=$reason " +
+                    "cause=same_appearance_or_foreground_epoch tab=${latestSelectedTab} " +
                     "homeDestination=${latestSelectedHomeDestination.orEmpty()}"
             )
-            return
+            return false
         }
         bridge.log(
             "app_shell_visible_refresh reason=$reason tab=${latestSelectedTab} " +
@@ -3724,6 +3766,7 @@ internal fun SlockAppShellContent(
             }
             "settings" -> Unit
         }
+        return true
     }
 
     LaunchedEffect(visibleAppearanceGeneration) {
@@ -4721,6 +4764,10 @@ internal fun SlockAppShellContent(
                         SlockRealtimeNotifyContract.ActionAppLifecycle
                     ) {
                         val event = eventData.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
+                        val foregroundEpoch =
+                            eventData
+                                .optLong(SlockRealtimeNotifyContract.KeyForegroundEpoch, 0L)
+                                .takeIf { it > 0L }
                         if (!appLifecycleEventTargetsShell(
                                 eventShellInstanceId = eventData.optString(SlockRealtimeNotifyContract.KeyShellInstanceId),
                                 routeShellInstanceId = storeScope.shellInstanceId
@@ -4736,12 +4783,18 @@ internal fun SlockAppShellContent(
                             event == SlockRealtimeNotifyContract.LifecycleHidden ||
                             event == SlockRealtimeNotifyContract.LifecycleHiddenKeepAlive
                         ) {
-                            visibleRefreshGate.onLifecycleHidden(appearanceGenerationAtDelivery)
+                            visibleRefreshGate.onLifecycleHidden(
+                                appearanceGeneration = appearanceGenerationAtDelivery,
+                                foregroundEpoch = foregroundEpoch
+                            )
                             return@launch
                         }
                         val visibleLifecycleEvent =
                             event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
                                 event == SlockRealtimeNotifyContract.LifecycleVisibleShow
+                        if (visibleLifecycleEvent) {
+                            foregroundEpoch?.let(visibleRefreshGate::observeLifecycleForegroundEpoch)
+                        }
                         if (visibleLifecycleEvent && !latestPageVisible) {
                             bridge.log(
                                 "app_shell_visible_refresh_skip reason=app_lifecycle_$event " +
@@ -4760,7 +4813,18 @@ internal fun SlockAppShellContent(
                                     selectedTab = latestSelectedTab,
                                     selectedHomeDestination = latestSelectedHomeDestination
                                 )
-                            if (plan?.refreshActivityUnreadSummary == true) {
+                            val refreshedVisibleRoute =
+                                if (plan?.refreshVisibleRoute == true) {
+                                    refreshVisibleAppShellRoute(
+                                        reason = "app_lifecycle_$event",
+                                        signal = AppShellVisibleRefreshSignal.Lifecycle,
+                                        appearanceGeneration = appearanceGenerationAtDelivery,
+                                        foregroundEpoch = foregroundEpoch
+                                    )
+                                } else {
+                                    false
+                                }
+                            if (refreshedVisibleRoute && plan?.refreshActivityUnreadSummary == true) {
                                 latestReadySession
                                     ?.currentServerId
                                     ?.trim()
@@ -4768,19 +4832,12 @@ internal fun SlockAppShellContent(
                                     ?.let { serverId ->
                                         sharedStores.activityUnreadSummaryStore.onForeground(
                                             serverId = ServerId(serverId),
-                                            epoch = eventData.optLong(SlockRealtimeNotifyContract.KeyForegroundEpoch, 0L),
+                                            epoch = foregroundEpoch ?: 0L,
                                             reason = "app_shell_$event"
                                         )
                                     }
                             }
-                            if (plan?.refreshVisibleRoute == true) {
-                                refreshVisibleAppShellRoute(
-                                    reason = "app_lifecycle_$event",
-                                    signal = AppShellVisibleRefreshSignal.Lifecycle,
-                                    appearanceGeneration = appearanceGenerationAtDelivery
-                                )
-                            }
-                            if (plan?.refreshServerMembers == true) {
+                            if (refreshedVisibleRoute && plan?.refreshServerMembers == true) {
                                 sharedStores.foregroundReconciler.onForeground("app_shell_$event")
                             }
                         }

@@ -924,9 +924,9 @@ open class SlockKuiklyActivity :
         source: String,
     ) {
         AndroidAppScopeRealtimeOwner.onHostVisibilityChanged(
-            context = applicationContext,
             visibility = visibility,
             shellInstanceId = realtimeVisibilityOwnerId,
+            pageName = pageName,
             source = source
         )
     }

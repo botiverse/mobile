@@ -33,87 +33,68 @@ import org.junit.Test
 class AndroidAppScopeRealtimeOwnerTest {
     @Test
     fun processVisibilityTracksStartedActivitiesAndIgnoresPageDuplicates() {
-        val transitions = mutableListOf<Boolean>()
-        val tracker = AndroidProcessVisibilityTracker(transitions::add)
+        val transitions = mutableListOf<Pair<Boolean, Long>>()
+        val tracker = AndroidProcessVisibilityTracker { foreground, epoch ->
+            transitions += foreground to epoch
+        }
 
         tracker.onActivityStarted()
         tracker.onActivityStarted()
         tracker.onActivityStopped(changingConfigurations = false)
         tracker.onActivityStopped(changingConfigurations = false)
 
-        assertEquals(listOf(true, false), transitions)
+        assertEquals(listOf(true to 1L, false to 1L), transitions)
     }
 
     @Test
     fun configurationReplacementDoesNotCreateFalseProcessLifecycleEdges() {
-        val transitions = mutableListOf<Boolean>()
-        val tracker = AndroidProcessVisibilityTracker(transitions::add)
+        val transitions = mutableListOf<Pair<Boolean, Long>>()
+        val tracker = AndroidProcessVisibilityTracker { foreground, epoch ->
+            transitions += foreground to epoch
+        }
 
         tracker.onActivityStarted()
         tracker.onActivityStopped(changingConfigurations = true)
         tracker.onActivityStarted()
         tracker.onActivityStopped(changingConfigurations = false)
 
-        assertEquals(listOf(true, false), transitions)
+        assertEquals(listOf(true to 1L, false to 1L), transitions)
     }
 
     @Test
-    fun foregroundEpochAdvancesOnlyOnBackgroundToVisibleTransition() {
-        val first =
-            nextAndroidForegroundEpoch(
-                currentEpoch = 0L,
-                currentVisibility = AndroidAppScopeRealtimeOwner.AppVisibility.Background,
-                nextHostVisibility = AndroidHostVisibility.Visible
-            )
-        val duplicateVisible =
-            nextAndroidForegroundEpoch(
-                currentEpoch = first,
-                currentVisibility = AndroidAppScopeRealtimeOwner.AppVisibility.Foreground,
-                nextHostVisibility = AndroidHostVisibility.Visible
-            )
-        val hidden =
-            nextAndroidForegroundEpoch(
-                currentEpoch = duplicateVisible,
-                currentVisibility = AndroidAppScopeRealtimeOwner.AppVisibility.Foreground,
-                nextHostVisibility = AndroidHostVisibility.Hidden
-            )
-        val second =
-            nextAndroidForegroundEpoch(
-                currentEpoch = hidden,
-                currentVisibility = AndroidAppScopeRealtimeOwner.AppVisibility.Background,
-                nextHostVisibility = AndroidHostVisibility.Visible
-            )
+    fun foregroundEpochAdvancesOnlyAfterTheWholeProcessWasBackgrounded() {
+        val transitions = mutableListOf<Pair<Boolean, Long>>()
+        val tracker = AndroidProcessVisibilityTracker { foreground, epoch ->
+            transitions += foreground to epoch
+        }
 
-        assertEquals(1L, first)
-        assertEquals(1L, duplicateVisible)
-        assertEquals(1L, hidden)
-        assertEquals(2L, second)
-    }
+        tracker.onActivityStarted() // AppShell starts.
+        tracker.onActivityStarted() // Thread starts before AppShell stops.
+        tracker.onActivityStopped(changingConfigurations = false) // AppShell stops.
 
-    @Test
-    fun hiddenVisibilityClosesReceiptGateBeforeRuntime() {
-        val calls = mutableListOf<String>()
+        assertEquals(1L, tracker.currentForegroundEpoch())
+        assertEquals(listOf(true to 1L), transitions)
 
-        applyAndroidHostVisibilityTransition(
-            visibility = AndroidHostVisibility.Hidden,
-            publishVisibility = { calls += "gate_hidden" },
-            applyRuntimeVisibility = { calls += "runtime_hidden" }
+        tracker.onActivityStopped(changingConfigurations = false) // Thread backgrounds.
+        tracker.onActivityStarted() // A real process foreground follows.
+
+        assertEquals(2L, tracker.currentForegroundEpoch())
+        assertEquals(
+            listOf(true to 1L, false to 1L, true to 2L),
+            transitions
         )
-
-        assertEquals(listOf("gate_hidden", "runtime_hidden"), calls)
     }
 
     @Test
-    fun visibleVisibilityRestoresRuntimeBeforeOpeningReceiptGate() {
-        val calls = mutableListOf<String>()
-
-        applyAndroidHostVisibilityTransition(
-            visibility = AndroidHostVisibility.Visible,
-            publishVisibility = { calls += "gate_visible" },
-            applyRuntimeVisibility = { calls += "runtime_visible" }
+    fun lifecycleEventsKeepTheActualActivityPageIdentity() {
+        assertEquals(
+            SlockKuiklyActivity.PAGE_THREAD,
+            normalizedAndroidLifecyclePageName(SlockKuiklyActivity.PAGE_THREAD)
         )
-
-        assertEquals(listOf("runtime_visible", "gate_visible"), calls)
+        assertEquals(
+            SlockKuiklyActivity.PAGE_APP_SHELL,
+            normalizedAndroidLifecyclePageName("  ")
+        )
     }
 
     @Test

@@ -471,6 +471,102 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellInternalActivityHandoffDoesNotRefreshAgainInTheSameProcessEpoch() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                signal = AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 0,
+                target = "home:",
+                foregroundEpoch = 1L
+            )
+        )
+
+        gate.onLifecycleHidden(appearanceGeneration = 1, foregroundEpoch = 1L)
+        gate.observeLifecycleForegroundEpoch(1L)
+
+        assertFalse(
+            gate.shouldRefresh(
+                signal = AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 1,
+                target = "home:",
+                foregroundEpoch = 1L
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                signal = AppShellVisibleRefreshSignal.PageDidAppear,
+                appearanceGeneration = 2,
+                target = "home:"
+            )
+        )
+    }
+
+    @Test
+    fun appShellTrueProcessForegroundRefreshesExactlyOnceForTheNewEpoch() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                signal = AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 0,
+                target = "home:",
+                foregroundEpoch = 1L
+            )
+        )
+        gate.onLifecycleHidden(appearanceGeneration = 1, foregroundEpoch = 1L)
+
+        assertTrue(
+            gate.shouldRefresh(
+                signal = AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 1,
+                target = "home:",
+                foregroundEpoch = 2L
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                signal = AppShellVisibleRefreshSignal.PageDidAppear,
+                appearanceGeneration = 2,
+                target = "home:"
+            )
+        )
+    }
+
+    @Test
+    fun appShellPageAppearanceConsumesANewProcessEpochMissedWhileHidden() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                signal = AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 0,
+                target = "home:",
+                foregroundEpoch = 1L
+            )
+        )
+        gate.onLifecycleHidden(appearanceGeneration = 1, foregroundEpoch = 1L)
+        gate.observeLifecycleForegroundEpoch(2L)
+
+        assertTrue(
+            gate.shouldRefresh(
+                signal = AppShellVisibleRefreshSignal.PageDidAppear,
+                appearanceGeneration = 2,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                signal = AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 2,
+                target = "home:",
+                foregroundEpoch = 2L
+            )
+        )
+    }
+
+    @Test
     fun appShellBuildsOnlyTheBootstrapGraphWhileAuthIsRestoring() {
         assertTrue(appShellDefersReadyGraph(SharedAuthGateState.Restoring))
         assertFalse(appShellDefersReadyGraph(SharedAuthGateState.AuthRequired))
