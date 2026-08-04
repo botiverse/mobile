@@ -30,3 +30,13 @@ buildscript {
         classpath(BuildPlugin.kuikly)
     }
 }
+
+// Task #32: per-test hang watchdog for JVM unit tests. A hung test must fail
+// loud and named (HANG DETECTED + thread dump + fork exit 73) instead of
+// burning the job timeout in silence. Config via Gradle JVM -D properties:
+// raft.test.watchdog.{timeout.ms,heartbeat.ms,enabled}.
+allprojects {
+    tasks.withType(org.gradle.api.tasks.testing.Test::class.java).configureEach {
+        addTestListener(build.raft.ci.HangWatchdogTestListener())
+    }
+}
