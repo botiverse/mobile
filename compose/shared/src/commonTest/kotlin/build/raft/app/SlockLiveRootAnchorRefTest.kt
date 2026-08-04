@@ -213,6 +213,36 @@ class SlockLiveRootAnchorRefTest {
     }
 
     @Test
+    fun sameOwnerLazyReattachRecapturesWithoutAnotherPositionCallback() {
+        val reusedCoordinates = FakeLayoutCoordinates(root = Offset(10f, 20f))
+        val anchorRef = SlockLiveRootAnchorRef(identity = "message:same")
+        anchorRef.captureFromLayoutCoordinates(reusedCoordinates)
+
+        // LayoutNode.onDeactivate resets modifier state, which runs the capture node's detach
+        // lifecycle even when this exact semantic row is later reused by the same slot.
+        anchorRef.invalidate()
+        assertNull(anchorRef.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero)))
+
+        recaptureSlockLiveRootAnchorAfterAttach(anchorRef, reusedCoordinates)
+
+        assertNotNull(anchorRef.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero)))
+    }
+
+    @Test
+    fun sameOwnerDetachedReattachRemainsInvalid() {
+        val detachedCoordinates =
+            FakeLayoutCoordinates(
+                root = Offset(10f, 20f),
+                attached = false
+            )
+        val anchorRef = SlockLiveRootAnchorRef(identity = "message:same")
+
+        recaptureSlockLiveRootAnchorAfterAttach(anchorRef, detachedCoordinates)
+
+        assertNull(anchorRef.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero)))
+    }
+
+    @Test
     fun detachedLazyModifierOwnerUpdateInvalidatesWithoutRecapturing() {
         val detachedCoordinates = FakeLayoutCoordinates(root = Offset(10f, 20f), attached = false)
         val oldRef = SlockLiveRootAnchorRef(identity = "message:old")
