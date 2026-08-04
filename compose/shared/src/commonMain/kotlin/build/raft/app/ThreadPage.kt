@@ -10682,6 +10682,15 @@ internal val THREAD_MESSAGE_VISUAL_MD_LONG_TABLE_OVERLAP_BODY =
  */
 private fun mdTableMatrixPlainTwin(body: String): String = body.replace("**", "")
 
+/**
+ * Task #527: artin's real reply message, byte-for-byte. The parse trap is the
+ * blockquote line followed by a plain-text line with NO blank line between —
+ * CommonMark lazy continuation pulls the second line INTO the quote, and
+ * renderers that diverge on that rule show visibly different structure.
+ */
+internal val THREAD_MESSAGE_VISUAL_MD_BLOCKQUOTE_REPLY_BODY =
+    "> 锚点还在解析的那 ~0.5 秒内抬键盘才会白\n那听起来修复的很简单啊"
+
 internal val THREAD_MESSAGE_VISUAL_MD_TBLMX_3C_BOLD_BODY =
     """
     3 列 · cell 内 bold（对照组只差 `**`）：
@@ -10794,7 +10803,8 @@ internal val THREAD_MESSAGE_VISUAL_MD_TABLE_MATRIX: Map<String, Pair<String, Str
         "md_tblmx_6c_inline_bold" to ("6-col partial inline-bold cells, closest to report (task #526 matrix)" to THREAD_MESSAGE_VISUAL_MD_TBLMX_6C_INLINE_BOLD_BODY),
         "md_tblmx_longname_bold" to ("3-col ultra-long wrapping bold names (task #526 matrix)" to THREAD_MESSAGE_VISUAL_MD_TBLMX_LONGNAME_BOLD_BODY),
         "md_tblmx_longname_plain" to ("3-col ultra-long wrapping plain twin (task #526 matrix)" to mdTableMatrixPlainTwin(THREAD_MESSAGE_VISUAL_MD_TBLMX_LONGNAME_BOLD_BODY)),
-        "md_tblmx_original_bold" to ("Closest-to-report: long bold table + detail (task #526 matrix)" to THREAD_MESSAGE_VISUAL_MD_TBLMX_ORIGINAL_BOLD_BODY)
+        "md_tblmx_original_bold" to ("Closest-to-report: long bold table + detail (task #526 matrix)" to THREAD_MESSAGE_VISUAL_MD_TBLMX_ORIGINAL_BOLD_BODY),
+        "md_blockquote_reply" to ("Blockquote + lazy-continuation reply (task #527)" to THREAD_MESSAGE_VISUAL_MD_BLOCKQUOTE_REPLY_BODY)
     )
 
 private fun threadMessageVisualWidth(visualFixture: String): Dp =

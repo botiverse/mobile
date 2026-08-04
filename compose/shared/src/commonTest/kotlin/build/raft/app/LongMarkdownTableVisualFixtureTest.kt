@@ -30,6 +30,7 @@ class LongMarkdownTableVisualFixtureTest {
         // changes nothing about the parsed table structure.
         val parser = MarkdownParser(SlockGFMFlavourDescriptor())
         for ((fixture, entry) in THREAD_MESSAGE_VISUAL_MD_TABLE_MATRIX) {
+            if (!fixture.startsWith("md_tblmx_")) continue
             val body = entry.second
             val tables = parser.buildMarkdownTreeFromString(body).findAll(GFMElementTypes.TABLE)
             assertTrue(tables.isNotEmpty(), "fixture $fixture parsed no table")
