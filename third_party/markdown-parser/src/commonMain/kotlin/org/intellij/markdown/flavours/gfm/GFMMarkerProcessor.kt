@@ -19,8 +19,17 @@ class GFMMarkerProcessor(
     productionHolder: ProductionHolder,
     constraintsBase: CommonMarkdownConstraints,
     tableMarkerProvider: MarkerBlockProvider<MarkerProcessor.StateInfo> = GitHubTableMarkerProvider(),
+    /**
+     * Optional paragraph lazy-continuation policy (see
+     * [MarkerProcessor.paragraphLazyContinuationAllowed]); the default keeps
+     * stock CommonMark lazy continuation.
+     */
+    paragraphLazyContinuationPolicy: (MarkdownConstraints, MarkdownConstraints) -> Boolean = { _, _ -> true },
 )
 : CommonMarkMarkerProcessor(productionHolder, constraintsBase) {
+
+    override val paragraphLazyContinuationAllowed: (MarkdownConstraints, MarkdownConstraints) -> Boolean =
+        paragraphLazyContinuationPolicy
 
     private val markerBlockProviders = listOf(GitHubAlertMarkerProvider())
             .plus(super.getMarkerBlockProviders())

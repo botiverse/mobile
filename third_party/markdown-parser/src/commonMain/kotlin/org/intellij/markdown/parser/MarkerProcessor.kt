@@ -31,6 +31,15 @@ abstract class MarkerProcessor<T : MarkerProcessor.StateInfo>(private val produc
 
     private var nextInterestingPosForExistingMarkers: Int = -1
 
+    /**
+     * Lazy-continuation seam threaded into [ParagraphMarkerBlock]: consulted when a
+     * line satisfies only a strict prefix of an open paragraph's constraints.
+     * The stock behaviour (always continue) matches CommonMark; a flavour may
+     * override to end paragraphs at such lines for specific dropped block types.
+     */
+    protected open val paragraphLazyContinuationAllowed: (MarkdownConstraints, MarkdownConstraints) -> Boolean =
+            { _, _ -> true }
+
     private val interruptsParagraph: (LookaheadText.Position, MarkdownConstraints) -> Boolean = { position, constraints ->
         var result = false
         for (provider in getMarkerBlockProviders()) {
@@ -57,7 +66,7 @@ abstract class MarkerProcessor<T : MarkerProcessor.StateInfo>(private val produc
         //stateInfo.paragraphBlock == null &&
                 pos.offsetInCurrentLine >= stateInfo.nextConstraints.getCharsEaten(pos.currentLine)
                 && pos.charsToNonWhitespace() != null) {
-            return listOf(ParagraphMarkerBlock(stateInfo.currentConstraints, productionHolder.mark(), interruptsParagraph))
+            return listOf(ParagraphMarkerBlock(stateInfo.currentConstraints, productionHolder.mark(), interruptsParagraph, paragraphLazyContinuationAllowed))
         }
 
         return emptyList()

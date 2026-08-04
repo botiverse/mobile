@@ -15,7 +15,15 @@ import org.intellij.markdown.parser.markerblocks.MarkerBlockImpl
 
 class ParagraphMarkerBlock(constraints: MarkdownConstraints,
                            marker: ProductionHolder.Marker,
-                           val interruptsParagraph: (LookaheadText.Position, MarkdownConstraints) -> Boolean)
+                           val interruptsParagraph: (LookaheadText.Position, MarkdownConstraints) -> Boolean,
+                           /**
+                            * Lazy-continuation seam: consulted only when the next line satisfies a
+                            * strict prefix of this paragraph's constraints (the CommonMark lazy
+                            * continuation case). Receives (paragraph constraints, next-line
+                            * constraints); returning false ends the paragraph at that line instead
+                            * of absorbing it. The default preserves stock CommonMark behaviour.
+                            */
+                           val allowsLazyContinuation: (MarkdownConstraints, MarkdownConstraints) -> Boolean = { _, _ -> true })
         : MarkerBlockImpl(constraints, marker) {
     override fun allowsSubBlocks(): Boolean = false
 
@@ -44,6 +52,11 @@ class ParagraphMarkerBlock(constraints: MarkdownConstraints,
 
         val nextLineConstraints = constraints.applyToNextLineAndAddModifiers(pos)
         if (!nextLineConstraints.upstreamWith(constraints)) {
+            return MarkerBlock.ProcessingResult.DEFAULT
+        }
+
+        if (nextLineConstraints.types.size < constraints.types.size &&
+                !allowsLazyContinuation(constraints, nextLineConstraints)) {
             return MarkerBlock.ProcessingResult.DEFAULT
         }
 
