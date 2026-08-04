@@ -82,7 +82,10 @@ function buildKuiklyOhos(config: KuiklyOhosConfig): void {
   fs.rmSync(destinationSo, { force: true });
   fs.rmSync(destinationHeader, { force: true });
 
-  runGradle(config, [`:${config.moduleName}:link${buildMode}SharedOhosArm64`]);
+  // Kuikly fork artifacts intentionally shadow the public release under the
+  // same Maven coordinate. Re-resolve here so a freshly published pinned fork
+  // cannot be replaced by Gradle's older immutable-coordinate cache.
+  runGradle(config, ['--refresh-dependencies', `:${config.moduleName}:link${buildMode}SharedOhosArm64`]);
 
   const outputDirectory = path.join(
     config.projectPath,
@@ -98,6 +101,7 @@ function buildKuiklyOhos(config: KuiklyOhosConfig): void {
   fs.copyFileSync(sourceSo, destinationSo);
   fs.copyFileSync(sourceHeader, destinationHeader);
   verifyKuiklyAbi(ohosAppPath, destinationSo);
+  verifyKuiklyForkProvenance(ohosAppPath, destinationSo);
 }
 
 function verifyKuiklyAbi(ohosAppPath: string, sharedSo: string): void {
@@ -109,6 +113,11 @@ function verifyKuiklyAbi(ohosAppPath: string, sharedSo: string): void {
 
   const verifier = path.resolve(ohosAppPath, '../../scripts/verify_kuikly_ohos_abi.sh');
   execFileSync(verifier, [sharedSo, renderLibraries[0]], { stdio: 'inherit' });
+}
+
+function verifyKuiklyForkProvenance(ohosAppPath: string, sharedSo: string): void {
+  const verifier = path.resolve(ohosAppPath, '../../scripts/verify_kuikly_ohos_provenance.sh');
+  execFileSync(verifier, [sharedSo], { stdio: 'inherit' });
 }
 
 function findFilesNamed(directory: string, fileName: string): string[] {

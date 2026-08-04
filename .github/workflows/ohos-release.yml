@@ -215,7 +215,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-ohos-${{ steps.pins.outputs.kuikly }}
+          key: kuikly-fork-mavenlocal-ohos-${{ hashFiles('scripts/build_kuikly_fork.sh') }}-${{ steps.pins.outputs.kuikly }}
 
       - name: Build Kuikly OHOS fork
         if: steps.kuikly-cache.outputs.cache-hit != 'true'
@@ -225,12 +225,21 @@ jobs:
           git submodule update --init third_party/kuikly-ui
           scripts/build_kuikly_fork.sh --ohos-only
 
+      - name: Verify Kuikly OHOS fork cache
+        shell: bash
+        run: |
+          root="$HOME/.m2/repository/com/tencent/kuikly-open"
+          test -d "$root/core-ohosarm64"
+          test -d "$root/core-annotations-jvm"
+          test -d "$root/core-ksp"
+          test -d "$root/compose-ohosarm64"
+
       - name: Save Kuikly OHOS fork cache
         if: steps.kuikly-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-ohos-${{ steps.pins.outputs.kuikly }}
+          key: kuikly-fork-mavenlocal-ohos-${{ hashFiles('scripts/build_kuikly_fork.sh') }}-${{ steps.pins.outputs.kuikly }}
 
       - name: Gradle failure diagnostics
         if: failure()
@@ -479,7 +488,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-ohos-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
+          key: kuikly-fork-mavenlocal-ohos-${{ hashFiles('scripts/build_kuikly_fork.sh') }}-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
           fail-on-cache-miss: true
 
       - name: Restore shared fork dependency artifacts
@@ -504,6 +513,8 @@ jobs:
             cp -a "$src" "$userhome/.m2/"
           fi
           test -d "$dst/com/tencent/kuikly-open"
+          test -d "$dst/com/tencent/kuikly-open/core-annotations-jvm"
+          test -d "$dst/com/tencent/kuikly-open/core-ksp"
           test -d "$dst/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin"
 
       - name: Build and stage OHOS shared release library
@@ -514,6 +525,7 @@ jobs:
           ./gradlew --no-daemon --console=plain \
             --stacktrace \
             -c settings.ohos.gradle.kts \
+            --refresh-dependencies \
             copyNetworkOhosRuntimeLibs \
             :ohosBridge:linkReleaseSharedOhosArm64
 
@@ -527,6 +539,8 @@ jobs:
 
           test -s ohosApp/entry/libs/arm64-v8a/libshared.so
           test -s ohosApp/entry/src/main/cpp/libshared_api.h
+          ../scripts/verify_kuikly_ohos_provenance.sh \
+            ohosApp/entry/libs/arm64-v8a/libshared.so
 
           ../scripts/stage_ohos_mr_resources.sh
 
