@@ -100,6 +100,7 @@ class ThreadMessageLongPressSurfaceTest {
         assertFalse(
             threadMessageTapOpensThread(
                 showReplyAction = true,
+                replyCount = 1,
                 shareSelectionActive = false,
                 hasLocalSendState = false,
                 singleTapOpensThreadEnabled = false
@@ -108,6 +109,7 @@ class ThreadMessageLongPressSurfaceTest {
         assertTrue(
             threadMessageTapOpensThread(
                 showReplyAction = true,
+                replyCount = 1,
                 shareSelectionActive = false,
                 hasLocalSendState = false,
                 singleTapOpensThreadEnabled = true
@@ -123,13 +125,14 @@ class ThreadMessageLongPressSurfaceTest {
     }
 
     @Test
-    fun rowTapUsesOnByDefaultAndStillHonorsAnExplicitOffPreference() {
+    fun enabledRowTapRequiresExistingRepliesAndThePreferenceDefaultsOff() {
         val keyValueStore = InMemorySlockKeyValueStore()
         val preferenceStore = KeyValueChatLayoutPreferenceStore(keyValueStore)
 
-        assertTrue(
+        assertFalse(
             threadMessageTapOpensThread(
                 showReplyAction = true,
+                replyCount = 1,
                 shareSelectionActive = false,
                 hasLocalSendState = false,
                 singleTapOpensThreadEnabled =
@@ -137,11 +140,22 @@ class ThreadMessageLongPressSurfaceTest {
             )
         )
 
-        keyValueStore.putBoolean("chatLayout:single_tap_opens_thread_enabled", false)
+        keyValueStore.putBoolean("chatLayout:single_tap_opens_thread_enabled", true)
 
         assertFalse(
             threadMessageTapOpensThread(
                 showReplyAction = true,
+                replyCount = 0,
+                shareSelectionActive = false,
+                hasLocalSendState = false,
+                singleTapOpensThreadEnabled =
+                    preferenceStore.readSingleTapOpensThreadEnabledSync()
+            )
+        )
+        assertTrue(
+            threadMessageTapOpensThread(
+                showReplyAction = true,
+                replyCount = 1,
                 shareSelectionActive = false,
                 hasLocalSendState = false,
                 singleTapOpensThreadEnabled =
@@ -155,6 +169,7 @@ class ThreadMessageLongPressSurfaceTest {
         assertFalse(
             threadMessageTapOpensThread(
                 showReplyAction = false,
+                replyCount = 1,
                 shareSelectionActive = false,
                 hasLocalSendState = false,
                 singleTapOpensThreadEnabled = true
@@ -163,6 +178,7 @@ class ThreadMessageLongPressSurfaceTest {
         assertFalse(
             threadMessageTapOpensThread(
                 showReplyAction = true,
+                replyCount = 1,
                 shareSelectionActive = true,
                 hasLocalSendState = false,
                 singleTapOpensThreadEnabled = true
@@ -171,6 +187,7 @@ class ThreadMessageLongPressSurfaceTest {
         assertFalse(
             threadMessageTapOpensThread(
                 showReplyAction = true,
+                replyCount = 1,
                 shareSelectionActive = false,
                 hasLocalSendState = true,
                 singleTapOpensThreadEnabled = true

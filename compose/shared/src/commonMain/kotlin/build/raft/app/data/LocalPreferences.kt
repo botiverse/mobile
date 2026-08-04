@@ -254,7 +254,7 @@ data class ChatLayoutPreferenceSnapshot(
         LargeScreenNavigationPreference.entries,
     val compactConsecutiveMessages: Boolean = true,
     val longMessageCollapseEnabled: Boolean = false,
-    val singleTapOpensThreadEnabled: Boolean = true,
+    val singleTapOpensThreadEnabled: Boolean = false,
     val inlineSelectionToolbarEnabled: Boolean = false,
     val conversationForwardGestureEnabled: Boolean = false,
     val imageAnnotationEnabled: Boolean = true,
@@ -384,7 +384,7 @@ class KeyValueChatLayoutPreferenceStore(
     }
 
     override fun readSingleTapOpensThreadEnabledSync(): Boolean =
-        store.getBoolean(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, true)
+        store.getBoolean(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, false)
 
     override suspend fun readSingleTapOpensThreadEnabled(): Boolean =
         readSingleTapOpensThreadEnabledSync()

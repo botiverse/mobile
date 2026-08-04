@@ -130,7 +130,7 @@ class LocalPreferencesTest {
         assertEquals(LargeScreenNavigationPreference.LeftRail, snapshot.largeScreenNavigation)
         assertEquals(true, snapshot.compactConsecutiveMessages)
         assertEquals(false, snapshot.longMessageCollapseEnabled)
-        assertEquals(true, snapshot.singleTapOpensThreadEnabled)
+        assertEquals(false, snapshot.singleTapOpensThreadEnabled)
         assertEquals(false, snapshot.inlineSelectionToolbarEnabled)
         assertEquals(false, snapshot.conversationForwardGestureEnabled)
         assertEquals(true, snapshot.imageAnnotationEnabled)
@@ -154,6 +154,16 @@ class LocalPreferencesTest {
         assertEquals(
             listOf(ThreadRowAffordancePreference.Reactions),
             snapshot.supportedThreadRowAffordances
+        )
+    }
+
+    @Test
+    fun chatLayoutSnapshotModelDefaultsSingleTapThreadOpeningOff() {
+        assertEquals(
+            false,
+            ChatLayoutPreferenceSnapshot(
+                myMessageAlignment = MyMessageAlignmentPreference.Left
+            ).singleTapOpensThreadEnabled
         )
     }
 
@@ -185,7 +195,7 @@ class LocalPreferencesTest {
     }
 
     @Test
-    fun chatLayoutRestoresExplicitSingleTapThreadChoiceAfterDefaultChangesToOn() = runBlocking {
+    fun chatLayoutRestoresExplicitSingleTapThreadChoiceAcrossDefaultChanges() = runBlocking {
         val disabledStore = InMemorySlockKeyValueStore()
         val disabledPreferenceStore = KeyValueChatLayoutPreferenceStore(disabledStore)
         disabledPreferenceStore.saveSingleTapOpensThreadEnabled(false)
