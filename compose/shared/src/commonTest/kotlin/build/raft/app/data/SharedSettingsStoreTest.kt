@@ -87,7 +87,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
 
         val computers = assertIs<ScreenLoadState.Content<SettingsComputersSnapshot>>(store.state.value.computers).data
         assertEquals(SharedSettingsRoute(SharedSettingsDestination.Computers), store.state.value.route)
@@ -113,7 +113,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Account))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account))
         store.accept(SharedSettingsIntent.UpdateProfile(AccountProfileUpdateRequest("New Name", "@new", "new@slock.ai")))
 
         val account = assertIs<ScreenLoadState.Content<AccountSettingsSnapshot>>(store.state.value.account).data
@@ -181,7 +181,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Account))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account))
 
         val account = assertIs<ScreenLoadState.Content<AccountSettingsSnapshot>>(store.state.value.account).data
         assertEquals("https://avatars.example.test/artin.png", account.profile.avatarUrl)
@@ -208,7 +208,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.ConnectedApps))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ConnectedApps))
         val loaded = assertIs<ScreenLoadState.Content<SettingsConnectedAppsSnapshot>>(store.state.value.connectedApps).data
         assertEquals(listOf("Calendar"), loaded.marketplace.map { it.name })
 
@@ -272,7 +272,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.ConnectedApps))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ConnectedApps))
         store.accept(SharedSettingsIntent.RequestConnectedAppLogoUpload("client-1"))
 
         val uploaded = assertIs<ScreenLoadState.Content<SettingsConnectedAppsSnapshot>>(store.state.value.connectedApps).data
@@ -316,11 +316,11 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Billing))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Billing))
         val billing = assertIs<ScreenLoadState.Content<SettingsBillingSnapshot>>(store.state.value.billing).data
         assertEquals("Team", billing.currentPlan.planName)
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Server))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Server))
         val server = assertIs<ScreenLoadState.Content<SettingsServerSnapshot>>(store.state.value.server).data
         assertEquals("Slock Community", server.profile.name)
         assertEquals(listOf("Admin"), server.admins.map { it.name })
@@ -353,7 +353,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.LanguageRegion))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.LanguageRegion))
         val loaded = assertIs<ScreenLoadState.Content<SettingsLanguageRegionSnapshot>>(store.state.value.languageRegion).data
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals("Asia/Shanghai", loaded.timezone.selectedKey)
@@ -414,7 +414,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Appearance))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Appearance))
         val loaded = assertIs<ScreenLoadState.Content<SettingsAppearanceSnapshot>>(store.state.value.appearance).data
         assertEquals("md", loaded.messageBodyFontSize.selectedKey)
 
@@ -443,7 +443,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Server))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Server))
         store.accept(SharedSettingsIntent.CreateServerInvite(SettingsServerInviteCreateRequest("new@slock.ai")))
         store.accept(SharedSettingsIntent.CreateServerJoinLink())
         store.accept(SharedSettingsIntent.RequestServerConfirmation(SERVER_ACTION_INVITE_REVOKE, "invite-1"))
@@ -562,7 +562,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Server))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Server))
         store.dispatch(SharedSettingsIntent.CreateServerInvite(SettingsServerInviteCreateRequest("new@slock.ai")))
         block.awaitStarted()
         store.dispatch(SharedSettingsIntent.CreateServerInvite(SettingsServerInviteCreateRequest("new@slock.ai")))
@@ -599,7 +599,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Server))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Server))
         store.dispatch(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest("slock")))
         block.awaitStarted()
         store.dispatch(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest("slock")))
@@ -632,7 +632,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
         repository.computersResult = DataResult.Error(ScreenError("settings_computers_network"))
         store.accept(SharedSettingsIntent.Refresh)
 
@@ -681,7 +681,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals("Right", mobile.messageAlignmentPreference.statusLabel)
@@ -774,7 +774,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
         store.accept(SharedSettingsIntent.SetNotificationPreference(true))
         store.accept(SharedSettingsIntent.SetLocale("zh-Hans"))
         store.accept(SharedSettingsIntent.SetMessageAlignment("right"))
@@ -972,7 +972,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
         store.accept(SharedSettingsIntent.SetLinkOpenMode("unsupported"))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
@@ -1001,7 +1001,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
         store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
@@ -1028,7 +1028,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
         repository.calls.clear()
         store.accept(SharedSettingsIntent.SetPushPreviewMode(PushPreviewMode.Private.wireName))
 
@@ -1063,7 +1063,7 @@ class SharedSettingsStoreTest {
                     )
             }
         val store = settingsStore(repository, scope = scope)
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
         repository.calls.clear()
 
         store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.All.wireName))
@@ -1129,7 +1129,7 @@ class SharedSettingsStoreTest {
                 it.setServerNotificationModeFailure = IllegalStateException("network down")
             }
         val store = settingsStore(repository, scope = scope)
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
         repository.calls.clear()
 
         val mutation = launch {
@@ -1195,7 +1195,7 @@ class SharedSettingsStoreTest {
                     )
             }
         val store = settingsStore(repository, sessionStore = sessionStore, scope = scope)
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
 
         val mutation = launch {
             store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
@@ -1225,9 +1225,9 @@ class SharedSettingsStoreTest {
         assertTrue(retiredState === store.state.value)
         assertEquals(listOf("mobile", "setServerNotificationMode:mentions"), repository.calls)
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
         repository.mobileResult = DataResult.Content(initial)
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
         mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals(ServerPushMode.All.wireName, mobile.serverNotificationMode.selectedKey)
         assertEquals(true, mobile.serverNotificationMode.available)
@@ -1255,7 +1255,7 @@ class SharedSettingsStoreTest {
                     )
             }
         val store = settingsStore(repository, sessionStore = sessionStore, scope = scope)
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
         repository.calls.clear()
 
         val mutation = launch {
@@ -1266,7 +1266,7 @@ class SharedSettingsStoreTest {
         mutationBlock.release()
         ownerReadBlock.awaitStarted()
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
         ownerReadBlock.release()
         mutation.join()
 
@@ -1298,13 +1298,13 @@ class SharedSettingsStoreTest {
                     )
             }
         val store = settingsStore(repository, scope = scope)
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
 
         val mutation = launch {
             store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
         }
         block.awaitStarted()
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
         block.release()
         mutation.join()
 
@@ -1336,7 +1336,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
         store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
 
         var mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
@@ -1373,7 +1373,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
         store.accept(SharedSettingsIntent.RequestNotificationPermission)
         store.accept(
             SharedSettingsIntent.CompleteSystemNotificationAction(
@@ -1884,7 +1884,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
         repository.calls.clear()
         store.accept(
             SharedSettingsIntent.ApplyRealtimeEvent(
@@ -1964,7 +1964,7 @@ class SharedSettingsStoreTest {
             )
 
         // Open the Computers list route.
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
         repository.calls.clear()
 
         store.accept(
@@ -2003,7 +2003,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
 
         val computers = assertIs<ScreenLoadState.Content<SettingsComputersSnapshot>>(store.state.value.computers).data
         assertEquals(emptyList(), computers.computers)
@@ -2073,7 +2073,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
         store.accept(SharedSettingsIntent.ShowAddComputerDialog)
         store.accept(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest("my-computer")))
 
@@ -2125,7 +2125,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
         store.accept(SharedSettingsIntent.ShowAddComputerDialog)
         store.accept(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest("my-computer")))
         repository.computersResult = DataResult.Content(SettingsComputersSnapshot(computers = listOf(online)))
@@ -2175,7 +2175,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
         store.accept(SharedSettingsIntent.ShowAddComputerDialog)
         store.accept(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest("my-computer")))
         store.accept(SharedSettingsIntent.PollAddComputerMachineStatus("machine-new"))
@@ -2224,7 +2224,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
         store.accept(SharedSettingsIntent.ShowAddComputerDialog)
         store.accept(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest("my-computer")))
         store.accept(SharedSettingsIntent.DismissAddComputerDialog)
@@ -2291,12 +2291,12 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.About))
         val about = assertIs<ScreenLoadState.Content<SharedSettingsAboutSnapshot>>(store.state.value.about).data
         assertEquals("1.2.3", about.versionLabel)
         assertEquals("456", about.buildLabel)
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Diagnostics))
         val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
         assertEquals(listOf("SlockTest"), diagnostics.entries.map { it.tag })
         assertEquals(false, diagnostics.profiler.supported)
@@ -2319,7 +2319,7 @@ class SharedSettingsStoreTest {
                     ),
                 scope = scope,
             )
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Diagnostics))
 
         store.accept(
             SharedSettingsIntent.SetDiagnosticFeatureFlagOverride(
@@ -2375,7 +2375,7 @@ class SharedSettingsStoreTest {
                 diagnosticsRefreshDelay = { suspendCoroutine { pendingDelays += it } },
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Diagnostics))
         assertEquals(1, pendingDelays.size)
 
         capabilities.setDiagnosticsResult(
@@ -2434,7 +2434,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Developer))
         val initial = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
         assertEquals("production", initial.environmentKey)
 
@@ -2467,7 +2467,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Developer))
         val initial = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
         assertEquals("production", initial.environmentKey)
 
@@ -2498,7 +2498,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Developer))
         store.accept(SharedSettingsIntent.SetApiEnvironment("production"))
 
         val updated = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
@@ -2523,7 +2523,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Developer))
         store.accept(SharedSettingsIntent.CheckHandsUpdate)
 
         val updated = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
@@ -2551,7 +2551,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.About))
 
         val developer = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
         assertEquals(true, developer.updateCheck.supported)
@@ -2588,7 +2588,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.About))
 
         val developer = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
         assertEquals(false, developer.updateCheck.supported)
@@ -2650,7 +2650,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Developer))
         store.accept(
             SharedSettingsIntent.SaveApiEnvironment(
                 SharedSettingsApiEnvironmentRequest(
@@ -2701,7 +2701,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.About))
 
         val about = assertIs<ScreenLoadState.Content<SharedSettingsAboutSnapshot>>(store.state.value.about).data
         assertEquals("Artin", about.signedInUserLabel)
@@ -2735,7 +2735,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Diagnostics))
         store.accept(SharedSettingsIntent.StartRecompositionProfiler)
 
         val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
@@ -2785,7 +2785,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Diagnostics))
         store.accept(SharedSettingsIntent.StartRecompositionProfiler)
 
         assertEquals(false, engine.started)
@@ -2825,7 +2825,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Diagnostics))
 
         val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
         assertEquals(false, engine.started)
@@ -2854,7 +2854,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Diagnostics))
 
         val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
         assertEquals(emptyList(), diagnostics.entries)
@@ -2878,7 +2878,7 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Storage))
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Storage))
         var storage = assertIs<ScreenLoadState.Content<SharedSettingsStorageSnapshot>>(store.state.value.storage).data
         assertEquals("12.0 MB", storage.totalSizeLabel)
         assertEquals(listOf("database", "imageCache", "temporaryAndLogs"), storage.rows.map { it.target })

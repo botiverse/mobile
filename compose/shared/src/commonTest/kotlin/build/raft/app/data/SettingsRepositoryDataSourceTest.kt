@@ -3,7 +3,11 @@ package build.raft.app.data
 import build.raft.app.englishErrorPresentationStringsForTest
 import build.raft.app.network.MultipartFile
 import build.raft.app.resolve
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -374,6 +378,78 @@ class SettingsRepositoryDataSourceTest {
             ),
             network.accountUpdateBodies
         )
+    }
+
+    @Test
+    fun timeFormatWriteUpdatesCanonicalSessionWithoutReplacingTokens() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(
+            sampleSession().copy(
+                    user =
+                        sampleSession().user.copy(
+                            preferredTimeFormat = "24h",
+                            timeFormat = "24h",
+                        )
+                )
+        )
+        val metadataEvent =
+            async(start = CoroutineStart.UNDISPATCHED) {
+                withTimeout(1_000L) {
+                    store.authSessionEvents.first { it is AuthSessionEvent.BindingMetadataChanged }
+                }
+            }
+        val repository =
+            RealSettingsRepository(
+                store,
+                FakeSettingsNetworkClient(
+                    accountJson =
+                        """{"id":"user-1","email":"user@slock.ai","name":"slock-user","preferredTimeFormat":"12h"}"""
+                )
+            )
+
+        val result =
+            repository.updateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTimeFormat = "12h")
+            )
+
+        assertTrue(result is DataResult.Content)
+        assertIs<AuthSessionEvent.BindingMetadataChanged>(metadataEvent.await())
+        val persisted = store.readSession()
+        assertEquals("12h", persisted?.user?.preferredTimeFormat)
+        assertEquals("12h", persisted?.user?.timeFormat)
+        assertEquals("sample-access", persisted?.accessToken)
+        assertEquals("sample-refresh", persisted?.refreshToken)
+    }
+
+    @Test
+    fun unrelatedLanguageRegionWriteCannotRollbackCanonicalTimeFormat() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                sampleSession().copy(
+                    user =
+                        sampleSession().user.copy(
+                            preferredTimeFormat = "12h",
+                            timeFormat = "12h",
+                        )
+                )
+            )
+        val repository =
+            RealSettingsRepository(
+                store,
+                FakeSettingsNetworkClient(
+                    accountJson =
+                        """{"id":"user-1","email":"user@slock.ai","name":"slock-user","preferredTimezone":"Asia/Tokyo","preferredTimeFormat":"24h"}"""
+                )
+            )
+
+        val result =
+            repository.updateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTimezone = "Asia/Tokyo")
+            )
+
+        assertTrue(result is DataResult.Content)
+        assertEquals("12h", store.readSession()?.user?.preferredTimeFormat)
+        assertEquals("12h", store.readSession()?.user?.timeFormat)
     }
 
     @Test

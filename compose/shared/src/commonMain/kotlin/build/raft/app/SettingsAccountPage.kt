@@ -230,7 +230,7 @@ private fun SettingsAccountScreen() {
     val settingsState by settingsViewModel.state.collectAsState()
     LaunchedEffect(Unit) {
         bridge.log("settings_account_open instanceId=${launchPayload.instanceId}")
-        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Account))
+        settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account))
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     SettingsAccountContent(

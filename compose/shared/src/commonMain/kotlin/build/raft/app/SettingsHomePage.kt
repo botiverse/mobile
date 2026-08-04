@@ -34,9 +34,7 @@ import build.raft.app.components.slockDisabledActionBackgroundFor
 import build.raft.app.data.NetworkSlockHomeApi
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
-import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.KeyValueLocalePreferenceStore
-import build.raft.app.data.KeyValueRecompositionProfilerPreferenceStore
 import build.raft.app.data.KuiklyHostNetworkEvents
 import build.raft.app.data.KuiklyAppUpdateEvents
 import build.raft.app.data.KuiklyNotificationPreferenceEvents
@@ -114,12 +112,10 @@ import build.raft.app.data.SERVER_ACTION_SIDEBAR_ORDER
 import build.raft.app.data.SERVER_ACTION_TRANSLATION_TOGGLE
 import build.raft.app.data.NotificationPreferenceSnapshot
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
+import build.raft.app.data.ChatLayoutPreferenceSnapshotRuntimeAuthority
 import build.raft.app.data.ConversationForwardGestureRuntimeAuthority
 import build.raft.app.data.kuiklyChatLayoutPreferenceRepository
 import build.raft.app.data.reconcileConversationForwardGesturePreference
-import build.raft.app.data.PersistentLinkOpenPreferenceRepository
-import build.raft.app.data.PersistentLocaleRepository
-import build.raft.app.data.PersistentRecompositionProfilerPreferenceRepository
 import build.raft.app.data.AuthApiResult
 import build.raft.app.data.AuthAuthorityChangedMessage
 import build.raft.app.data.AuthLoginResponse
@@ -188,7 +184,6 @@ import build.raft.app.data.RealtimeGrantRecord
 import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsApiEnvironmentOption
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
-import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticFeatureFlagSnapshot
@@ -304,7 +299,6 @@ import build.raft.app.data.AgentResetRequest
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.externalShareComposerText
-import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.SettingsHandsFeedbackSubmission
 import build.raft.app.data.SettingsHandsFeedbackDraftSnapshot
@@ -315,7 +309,6 @@ import build.raft.app.data.ScreenError
 import build.raft.app.data.ConnectedAccountStatus
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
-import build.raft.app.data.kuiklyNotificationPreferenceRepository
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.savedMessageIdOrNull
 import build.raft.app.data.SettingsAppearanceSnapshot
@@ -415,7 +408,6 @@ import build.raft.app.model.threadIdentity
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.slockEpochMillisUtcIso
@@ -595,26 +587,12 @@ private val homeSecondaryDestinationKeys =
 private const val SettingsDestinationHome = "home"
 private const val SettingsDestinationAccount = "account"
 private const val SettingsDestinationComputers = "computers"
-private const val SettingsDestinationServer = "server"
 private const val SettingsDestinationAdministration = "administration"
 private const val SettingsDestinationConnectedApps = "connected-apps"
 private const val SettingsDestinationBilling = "billing"
-private const val SettingsDestinationLanguageRegion = "language-region"
-private const val SettingsDestinationAppearance = "appearance"
-private const val SettingsDestinationNotifications = "notifications"
-private const val SettingsDestinationMobile = "mobile"
 private const val SettingsDestinationStorage = "storage"
-private const val SettingsDestinationAbout = "about"
-private const val SettingsDestinationOpenSourceLicenses = "open-source-licenses"
 private const val SettingsDestinationReleaseNotes = "releaseNotes"
-private const val SettingsDestinationDiagnostics = "diagnostics"
-private const val SettingsDestinationLocalFeatureOverrides = "local-feature-overrides"
-private const val SettingsDestinationLocalFeatureOverridePrefix = "local-feature-override:"
-private const val SettingsDestinationDiagnosticsFeedbackChannel = "diagnostics-feedback-channel"
 private const val SettingsDestinationHandsFeedback = "hands-feedback"
-private const val SettingsDestinationDeveloper = "developer"
-private const val SettingsDestinationApiEnvironment = "api-environment"
-private const val SettingsDestinationRouter = "router"
 
 private const val SettingsRouteVisualDestinationKey = "destination"
 private const val SettingsRouteVisualFixtureKey = "fixtureKey"
@@ -631,7 +609,6 @@ internal val SettingsRouteVisualPageDataFields =
     )
 private const val SettingsDeveloperUnlockTapCount = 7
 private const val AppShellInitialTabKey = "slockInitialTab"
-private const val AppShellInitialSettingsDestinationKey = "slockInitialSettingsDestination"
 private const val DiagnosticsDeepLinkIdKey = "slockDiagnosticsDeepLinkId"
 private const val DiagnosticsDeepLinkEnableProfilerKey = "slockDiagnosticsDeepLinkEnableProfiler"
 private const val DiagnosticsDeepLinkResetSceneKey = "slockDiagnosticsDeepLinkResetScene"
@@ -1625,8 +1602,17 @@ internal data class KuiklySettingsHomePayload(
     val instanceId: String = "",
     val title: String = "Settings",
     val subtitle: String = "",
-    val showSelection: Boolean = true,
-    val items: List<SlockTabItemPayload> = emptyList()
+    val items: List<SettingsHomePageLinkPayload> = emptyList()
+)
+
+@Serializable
+internal data class SettingsHomePageLinkPayload(
+    val key: String,
+    val title: String,
+    val subtitle: String = "",
+    val iconName: SlockLucideIconName = SlockLucideIconName.Settings,
+    val value: String? = null,
+    val section: String? = null,
 )
 
 @Serializable
@@ -1664,72 +1650,70 @@ internal data class KuiklySharedSettingsRow(
 private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
     title = "Settings",
     subtitle = "Harmony smoke",
-    showSelection = true,
     items = listOf(
-        SlockTabItemPayload(
+        SettingsHomePageLinkPayload(
             key = "account",
             title = "Account",
             subtitle = "Profile, email, password, connected accounts",
             iconName = SlockLucideIconName.User,
             value = "Verified",
-            selected = true
         ),
-        SlockTabItemPayload(
+        SettingsHomePageLinkPayload(
             key = "computers",
             title = "Computers",
             subtitle = "Connected machines and workspaces",
             iconName = SlockLucideIconName.Monitor
         ),
-        SlockTabItemPayload(
+        SettingsHomePageLinkPayload(
             key = "server",
             title = "Server",
             subtitle = "Workspace name, members, invites, permissions",
             iconName = SlockLucideIconName.Users,
             value = "Owner"
         ),
-        SlockTabItemPayload(
+        SettingsHomePageLinkPayload(
             key = "billing",
             title = "Billing",
             subtitle = "Plan, usage, invoices",
             iconName = SlockLucideIconName.ShieldCheck
         ),
-        SlockTabItemPayload(
+        SettingsHomePageLinkPayload(
             key = "language-region",
             title = "Language & Region",
             subtitle = "Language, timezone, translation",
             iconName = SlockLucideIconName.Languages
         ),
-        SlockTabItemPayload(
+        SettingsHomePageLinkPayload(
             key = "mobile",
             title = "Mobile",
             subtitle = "Push notifications, language, layout",
             iconName = SlockLucideIconName.Smartphone
         ),
-        SlockTabItemPayload(
+        SettingsHomePageLinkPayload(
             key = "storage",
             title = "Storage",
             subtitle = "Local cache and diagnostics",
             iconName = SlockLucideIconName.Archive
         ),
-        SlockTabItemPayload(
+        SettingsHomePageLinkPayload(
             key = "about",
             title = "About",
             subtitle = "Version and build information",
             iconName = SlockLucideIconName.BadgeInfo
         ),
-        SlockTabItemPayload(
+        SettingsHomePageLinkPayload(
             key = SettingsDestinationHandsFeedback,
             title = "Send feedback",
             subtitle = "Report a problem or suggestion",
             iconName = SlockLucideIconName.MessageSquarePlus
         ),
-        SlockTabItemPayload(
+        SettingsHomePageLinkPayload(
             key = SettingsDestinationReleaseNotes,
             title = "Release Notes",
             subtitle = "Product changes and migration notes",
             iconName = SlockLucideIconName.FileText
         ),
-        SlockTabItemPayload(
+        SettingsHomePageLinkPayload(
             key = "router",
             title = "Smoke previews",
             subtitle = "Open Kuikly router and shared test pages",
@@ -1893,7 +1877,6 @@ internal fun shouldDismissHomeNotificationCenterForAppShellTabSelection(currentT
 
 internal data class AppShellLaunchSelection(
     val selectedTab: String = "home",
-    val selectedSettingsDestination: String = SettingsDestinationHome
 )
 
 internal data class DiagnosticsDeepLinkRequest(
@@ -1906,19 +1889,7 @@ internal data class DiagnosticsDeepLinkRequest(
 
 internal fun JSONObject.appShellLaunchSelection(): AppShellLaunchSelection {
     val selectedTab = retainedAppShellSelectedTab(optString(AppShellInitialTabKey))
-    return AppShellLaunchSelection(
-        selectedTab = selectedTab,
-        selectedSettingsDestination =
-            retainedAppShellInitialSettingsDestination(
-                selectedTab = selectedTab,
-                destination = optString(AppShellInitialSettingsDestinationKey)
-            )
-    )
-}
-
-internal fun retainedAppShellInitialSettingsDestination(selectedTab: String, destination: String): String {
-    if (retainedAppShellSelectedTab(selectedTab) != "settings") return SettingsDestinationHome
-    return destination.takeIf { it.toSharedSettingsDestination() != null } ?: SettingsDestinationHome
+    return AppShellLaunchSelection(selectedTab = selectedTab)
 }
 
 internal fun JSONObject.diagnosticsDeepLinkRequest(): DiagnosticsDeepLinkRequest? {
@@ -2168,7 +2139,6 @@ internal fun appShellBottomTabPerformancePhase(tab: String): String =
 internal fun appShellBottomTabsVisible(
     selectedTab: String,
     selectedHomeDestination: String?,
-    selectedSettingsDestination: String
 ): Boolean =
     when (retainedAppShellSelectedTab(selectedTab)) {
         // Home secondary destinations are native child pages. Keep the root tab bar mounted
@@ -2176,7 +2146,6 @@ internal fun appShellBottomTabsVisible(
         "home" ->
             selectedHomeDestination == null ||
                 retainedHomeSecondaryDestination(selectedHomeDestination) != null
-        "settings" -> selectedSettingsDestination == SettingsDestinationHome
         else -> true
     }
 
@@ -2466,9 +2435,6 @@ internal fun SlockAppShellContent(
     val prewarmAdmissionGate = remember { sharedPrewarmAdmissionGate() }
     val childPagePrewarmPolicy =
         remember { appShellChildPagePrewarmPolicy(slockPlatformAppShellChildPagePrewarmMode()) }
-    var selectedSettingsDestination by remember {
-        mutableStateOf(launchSelection.selectedSettingsDestination)
-    }
     var settingsHeaderTapCount by remember { mutableStateOf(0) }
     var homeListPositions by remember { mutableStateOf(AppShellServerLazyListPositions()) }
     var pendingHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
@@ -3012,10 +2978,6 @@ internal fun SlockAppShellContent(
         remember(sharedPreferenceStore) {
             KeyValueLocalePreferenceStore(sharedPreferenceStore)
         }
-    val localeRepository =
-        remember(localePreferenceStore) {
-            PersistentLocaleRepository(localePreferenceStore)
-        }
     val chatLayoutPreferenceEvents =
         remember(eventBus) { KuiklyChatLayoutPreferenceEvents(eventBus) }
     val chatLayoutPreferenceRepository =
@@ -3028,25 +2990,9 @@ internal fun SlockAppShellContent(
                 events = chatLayoutPreferenceEvents
             )
         }
-    val linkOpenPreferenceRepository =
-        remember(sharedPreferenceStore) {
-            PersistentLinkOpenPreferenceRepository(KeyValueLinkOpenPreferenceStore(sharedPreferenceStore))
-        }
-    val recompositionProfilerPreferenceRepository =
-        remember(sharedPreferenceStore) {
-            PersistentRecompositionProfilerPreferenceRepository(
-                KeyValueRecompositionProfilerPreferenceStore(sharedPreferenceStore)
-            )
-        }
-    val notificationPreferenceEvents = remember(eventBus) { KuiklyNotificationPreferenceEvents(eventBus) }
     val appUpdateEvents = remember(eventBus) { KuiklyAppUpdateEvents(eventBus) }
     val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
     val hostNetworkEvents = remember(eventBus) { KuiklyHostNetworkEvents(eventBus) }
-    val notificationPreferenceRepository =
-        remember(notificationPreferenceEvents) {
-            kuiklyNotificationPreferenceRepository(notificationPreferenceEvents)
-        }
-    val notificationPreferenceScope = rememberCoroutineScope()
     val homeActivityRepository =
         remember(shellAuthStore, appShellNetworkClient) {
             RealInboxRepository(
@@ -3154,9 +3100,6 @@ internal fun SlockAppShellContent(
                 logger = slockLogger("SlockComputers", "app_shell")
             )
         }
-    var notificationPreferenceSnapshot by remember {
-        mutableStateOf(NotificationPreferenceSnapshot(enabled = true))
-    }
     val settingsRepository =
         remember(shellAuthStore, appShellNetworkClient) {
             RealSettingsRepository(
@@ -3165,27 +3108,6 @@ internal fun SlockAppShellContent(
                 logger = slockLogger("SlockSettingsRepository", "shared_settings_repository"),
                 warningLogger = slockLogger("SlockSettingsRepository", "shared_settings_repository_warning", SlockLogLevel.Warn),
                 channelRepository = channelRepository
-            )
-        }
-    val settingsDataSource =
-        remember(
-            shellAuthStore,
-            appShellComputersStore,
-            linkOpenPreferenceRepository
-        ) {
-            SharedSettingsDataSource(
-                sessionStore = shellAuthStore,
-                settingsRepository = settingsRepository,
-                computersSource = appShellComputersStore,
-                serverMembersStore = appShellServerMembersStore,
-                notificationPreferenceRepository = notificationPreferenceRepository,
-                localeRepository = localeRepository,
-                chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
-                linkOpenPreferenceRepository = linkOpenPreferenceRepository,
-                recompositionProfilerPreferenceRepository = recompositionProfilerPreferenceRepository,
-                apiEnvironmentStore = sharedStores.apiEnvironmentStore,
-                platformCapabilities = settingsCapabilities,
-                diagnosticsLogger = slockLogger("SlockSettings", "shared_settings")
             )
         }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
@@ -3213,16 +3135,6 @@ internal fun SlockAppShellContent(
     var createChannelError by remember { mutableStateOf<String?>(null) }
     var createChannelMembersLoading by remember { mutableStateOf(false) }
     var createChannelMembers by remember { mutableStateOf<List<MemberProfile>>(emptyList()) }
-    var pendingDiagnosticsFeedback by remember { mutableStateOf<SettingsDiagnosticsFeedbackDraft?>(null) }
-    var pendingDiagnosticsFeedbackReturnDestination by remember { mutableStateOf(SettingsDestinationDiagnostics) }
-    var diagnosticsFeedbackUploadChannelId by remember { mutableStateOf<String?>(null) }
-    val diagnosticsChooseChannelToast = stringResource(MR.strings.settings_diagnostics_feedback_choose_channel)
-    val diagnosticsCannotAttachToast = stringResource(MR.strings.settings_diagnostics_feedback_cannot_attach)
-    val diagnosticsPreparingToast = stringResource(MR.strings.settings_diagnostics_feedback_preparing)
-    val diagnosticsUploadEmptyToast = stringResource(MR.strings.settings_diagnostics_feedback_upload_empty)
-    val diagnosticsDraftReadyToast = stringResource(MR.strings.settings_diagnostics_feedback_draft_ready)
-    val diagnosticsUploadFailedPrefix = stringResource(MR.strings.settings_diagnostics_feedback_upload_failed_prefix)
-    val diagnosticsComposerSeed = stringResource(MR.strings.settings_diagnostics_feedback_composer_seed)
     val hostThreadTimeCapabilities = remember(pager.pageData.params.toString()) {
         pager.pageData.params.threadTimeCapabilities()
     }
@@ -3354,14 +3266,6 @@ internal fun SlockAppShellContent(
         }
     val tasksState by tasksViewModel.state.collectAsState()
     var tasksFirstRenderLoggedKey by remember { mutableStateOf<String?>(null) }
-    val settingsViewModel: SharedSettingsViewModel =
-        viewModel(key = "shared-settings") {
-            SharedSettingsViewModel(
-                settingsDataSource,
-                diagnosticsLogger = slockLogger("SlockSettings", "shared_settings")
-            )
-        }
-    val settingsState by settingsViewModel.state.collectAsState()
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
     val readyServerId = selectedServerId
@@ -3710,11 +3614,9 @@ internal fun SlockAppShellContent(
             appUpdateEvents.removeStatusListener(callbackRef)
         }
     }
-    val loadedSettingsTimeFormat =
-        (settingsState.languageRegion as? ScreenLoadState.Content)?.data?.timeFormat?.selectedKey
-    val sessionTimeFormat = readySession?.user?.preferredTimeFormat ?: readySession?.user?.timeFormat
+    val sessionTimeFormat = readySession.appShellThreadTimeFormat()
     val threadTimeContext =
-        remember(hostThreadTimeCapabilities, loadedSettingsTimeFormat, sessionTimeFormat) {
+        remember(hostThreadTimeCapabilities, sessionTimeFormat) {
             hostThreadTimeCapabilities
                 ?.let {
                     SlockTimeContext(
@@ -3722,7 +3624,7 @@ internal fun SlockAppShellContent(
                         timeFormat = it.timeFormat
                     )
                 }
-                .withTimeFormat(loadedSettingsTimeFormat ?: sessionTimeFormat)
+                .withTimeFormat(sessionTimeFormat)
         }
     fun selectAppShellTab(nextTab: String, directChildSwitch: Boolean = false) {
         prewarmAdmissionGate.invalidate("tab_select:$nextTab")
@@ -3744,27 +3646,27 @@ internal fun SlockAppShellContent(
         consumedDiagnosticsDeepLinkId = request.id
         selectAppShellTab("settings")
         retainedAppShellTabs = retainedAppShellTabs + "settings"
-        selectedSettingsDestination = SettingsDestinationDiagnostics
         bridge.log(
             "diagnostics_deeplink_start id=${request.id} " +
                 "enableProfiler=${request.enableProfiler} resetScene=${request.resetScene} " +
                 "exportReport=${request.exportReport} autoCloseMs=${request.autoCloseMs}"
         )
-        settingsViewModel.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
-        if (request.enableProfiler) {
-            settingsViewModel.accept(SharedSettingsIntent.SetRecompositionProfilerEnabled(true))
+        val opened =
+            pager.openSettingsNativeDetailPage(
+                page = SettingsNativeDetailPage.Diagnostics,
+                storeScope = navigationStoreScope,
+                launchIntent =
+                    SettingsNativeDetailLaunchIntent(
+                        enableProfiler = request.enableProfiler,
+                        resetScene = request.resetScene,
+                        exportReport = request.exportReport,
+                        autoCloseMs = request.autoCloseMs,
+                    ),
+            )
+        if (!opened) {
+            bridge.logWarn("diagnostics_deeplink_rejected id=${request.id}")
         }
-        if (request.resetScene) {
-            settingsViewModel.accept(SharedSettingsIntent.ResetRecompositionProfiler)
-        }
-        if (request.exportReport) {
-            settingsViewModel.accept(SharedSettingsIntent.ExportRecompositionProfilerReport)
-        }
-        if (request.autoCloseMs > 0L) {
-            delay(request.autoCloseMs)
-            bridge.closePage()
-        }
-        bridge.log("diagnostics_deeplink_complete id=${request.id}")
+        bridge.log("diagnostics_deeplink_complete id=${request.id} opened=$opened")
     }
     val shellScope = rememberSlockAppShellScope(adaptivePane)
     val appShellModalHostState = rememberSlockUnifiedDialogHostState()
@@ -3820,7 +3722,7 @@ internal fun SlockAppShellContent(
                 membersListRefreshKey += 1
                 membersAgentDetailRefreshKey += 1
             }
-            "settings" -> settingsViewModel.dispatch(SharedSettingsIntent.Refresh)
+            "settings" -> Unit
         }
     }
 
@@ -3876,15 +3778,12 @@ internal fun SlockAppShellContent(
         selectAppShellTab("home")
         retainedAppShellTabs = setOf("home")
         prewarmedAppShellTabs = emptySet()
-        selectedSettingsDestination = SettingsDestinationHome
         homeListPositions = AppShellServerLazyListPositions()
         pendingHomeServerSwitchId = null
         observedHomeServerSwitchId = null
         tasksListPosition = AppShellLazyListPosition()
         membersListState = AppShellMembersListState()
         homeShellStore.reset()
-        pendingDiagnosticsFeedback = null
-        pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
     }
     LaunchedEffect(authSessionResetGeneration) {
         if (authSessionResetGeneration > appliedAuthSessionResetGeneration) {
@@ -3913,10 +3812,6 @@ internal fun SlockAppShellContent(
         resetAppShellSessionState()
     }
 
-    LaunchedEffect(notificationPreferenceRepository) {
-        notificationPreferenceSnapshot =
-            notificationPreferenceRepository.getNotificationPreference()
-    }
     val conversationForwardGestureRuntimeAuthority =
         remember(
             settingsCapabilities.supportsConversationForwardGesture,
@@ -3936,26 +3831,50 @@ internal fun SlockAppShellContent(
                 )
             }
         }
-    DisposableEffect(chatLayoutPreferenceEvents, conversationForwardGestureRuntimeAuthority) {
-        val subscription =
+    val chatLayoutPreferenceSnapshotRuntimeAuthority =
+        remember(foregroundBannerStore) {
+            ChatLayoutPreferenceSnapshotRuntimeAuthority { chatLayout ->
+                myMessageAlignment = chatLayout.myMessageAlignment
+                compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
+                foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
+                if (!chatLayout.foregroundMessageBannersEnabled) {
+                    foregroundBannerStore.dismiss()
+                }
+                activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
+                activitySenderAvatarsEnabled = chatLayout.activitySenderAvatarsEnabled
+                serverDrawerEnabled = chatLayout.serverDrawerEnabled
+                homeServerAvatarEnabled = chatLayout.homeServerAvatarEnabled
+                threadRowAffordances = chatLayout.threadRowAffordances
+            }
+        }
+    DisposableEffect(
+        chatLayoutPreferenceEvents,
+        chatLayoutPreferenceSnapshotRuntimeAuthority,
+        conversationForwardGestureRuntimeAuthority,
+    ) {
+        val forwardSubscription =
             chatLayoutPreferenceEvents.addConversationForwardGestureListener { enabled ->
                 conversationForwardGestureRuntimeAuthority.applyProcessPreferenceChange(enabled)
             }
-        onDispose { subscription.close() }
+        val snapshotSubscription =
+            chatLayoutPreferenceEvents.addPreferenceListener { chatLayout ->
+                chatLayoutPreferenceSnapshotRuntimeAuthority.applyProcessPreferenceChange(chatLayout)
+            }
+        onDispose {
+            forwardSubscription.close()
+            snapshotSubscription.close()
+        }
     }
-    LaunchedEffect(chatLayoutPreferenceRepository, conversationForwardGestureRuntimeAuthority) {
+    LaunchedEffect(
+        chatLayoutPreferenceRepository,
+        chatLayoutPreferenceSnapshotRuntimeAuthority,
+        conversationForwardGestureRuntimeAuthority,
+    ) {
         val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
-        myMessageAlignment = chatLayout.myMessageAlignment
-        compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
-        foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
-        activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
-        activitySenderAvatarsEnabled = chatLayout.activitySenderAvatarsEnabled
-        serverDrawerEnabled = chatLayout.serverDrawerEnabled
-        homeServerAvatarEnabled = chatLayout.homeServerAvatarEnabled
+        chatLayoutPreferenceSnapshotRuntimeAuthority.seedFromRepository(chatLayout)
         conversationForwardGestureRuntimeAuthority.seedFromRepository(
             chatLayout.conversationForwardGestureEnabled
         )
-        threadRowAffordances = chatLayout.threadRowAffordances
     }
     LaunchedEffect(conversationForwardGestureEnabled) {
         conversationForwardHistory.setEnabled(conversationForwardGestureEnabled)
@@ -3967,17 +3886,6 @@ internal fun SlockAppShellContent(
         )
     }
     val latestForegroundMessageBannersEnabled by rememberUpdatedState(foregroundMessageBannersEnabled)
-    DisposableEffect(notificationPreferenceEvents) {
-        val callbackRef =
-            notificationPreferenceEvents.addPreferenceListener { snapshot ->
-                notificationPreferenceScope.launch {
-                    notificationPreferenceSnapshot = snapshot
-                }
-            }
-        onDispose {
-            notificationPreferenceEvents.removePreferenceListener(callbackRef)
-        }
-    }
     when (val gate = authGateState) {
         SharedAuthGateState.Restoring -> {
             if (suppressRestoreLanding) {
@@ -4451,120 +4359,15 @@ internal fun SlockAppShellContent(
         }
     }
 
-    fun openDiagnosticsFeedbackChannel(
-        draft: SettingsDiagnosticsFeedbackDraft,
-        conversation: ConversationSummary,
-        source: String,
-        pushCurrent: Boolean
-    ) {
-        val channelId = conversation.channelId?.value?.takeIf { it.isNotBlank() } ?: conversation.threadId.value
-        if (conversation.kind != ConversationKind.Channel || channelId.isBlank()) {
-            bridge.toast(diagnosticsChooseChannelToast)
-            return
-        }
-        if (!conversation.joined || !conversation.permissions.canSend || !conversation.permissions.canAttach) {
-            bridge.toast(diagnosticsCannotAttachToast)
-            return
-        }
-        if (diagnosticsFeedbackUploadChannelId != null) {
-            bridge.toast(diagnosticsPreparingToast)
-            return
-        }
-        bridge.log(
-            "diagnostics_feedback_channel_selected channelId=$channelId source=$source " +
-                "fileName=${draft.fileName} pushCurrent=$pushCurrent"
-        )
-        diagnosticsFeedbackUploadChannelId = channelId
-        bridge.toast(diagnosticsPreparingToast)
-        appShellCoroutineScope.launch {
-            val uploadResult =
-                withContext(Dispatchers.Default) {
-                    conversationRepository.uploadAttachments(
-                        AttachmentUploadRequest(
-                            channelId = ChannelId(channelId),
-                            files = listOf(draft.toDiagnosticsPlatformFile())
-                        )
-                    )
-                }
-            diagnosticsFeedbackUploadChannelId = null
-            when (uploadResult) {
-                is DataResult.Content -> {
-                    val uploadedAttachments =
-                        uploadResult.data.attachments.map { attachment ->
-                            SharedThreadComposerAttachment(
-                                id = attachment.id.value,
-                                fileName = attachment.name,
-                                sizeLabel = attachment.sizeLabel,
-                                sizeBytes = attachment.sizeBytes,
-                                mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
-                                status = "ready"
-                            )
-                        }
-                    if (uploadedAttachments.isEmpty()) {
-                        bridge.toast(diagnosticsUploadEmptyToast)
-                        return@launch
-                    }
-                    homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(conversation.threadId.value))
-                    selectedSettingsDestination = pendingDiagnosticsFeedbackReturnDestination
-                    pendingDiagnosticsFeedback = null
-                    pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
-                    val launchPayload =
-                        buildStandaloneConversationThreadLaunchPayload(
-                            conversation = conversation.toThreadLaunchConversationIdentity(),
-                            timeContext = threadTimeContext,
-                            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                            compactConsecutiveMessages = compactConsecutiveMessages,
-                            onWarn = { bridge.logWarn(it) },
-                            threadRowAffordances = threadRowAffordances
-                        )?.withDiagnosticsFeedbackDraft(
-                            draft = draft,
-                            composerSeedText = diagnosticsComposerSeed
-                        ) ?: return@launch
-                    composerDraftPersistSlice.stageUploadedAttachments(
-                        draftKey = launchPayload.threadComposerDraftKey(),
-                        attachments = uploadedAttachments
-                    )
-                    pager.openStandaloneThreadLaunchPayload(launchPayload, navigationStoreScope)
-                    bridge.toast(diagnosticsDraftReadyToast)
-                }
-                is DataResult.Error -> {
-                    val reason =
-                        threadFailureReasonLabel(uploadResult.error.code)
-                            ?: uploadResult.error.userFacingMessage(errorStrings)
-                    bridge.toast("$diagnosticsUploadFailedPrefix $reason")
-                    bridge.log("diagnostics_feedback_attachment_upload_failed code=${uploadResult.error.code}")
-                }
-                is DataResult.NoPermission -> {
-                    bridge.toast(diagnosticsCannotAttachToast)
-                    bridge.log("diagnostics_feedback_attachment_upload_blocked code=${uploadResult.blocker.code}")
-                }
-                is DataResult.Empty -> {
-                    bridge.toast(diagnosticsUploadEmptyToast)
-                    bridge.log("diagnostics_feedback_attachment_upload_empty reason=${uploadResult.reason}")
-                }
-            }
-        }
-    }
-
     fun popMainRoute(): Boolean {
         if (createChannelDialogOpen) {
             createChannelDialogOpen = false
             createChannelError = null
             return true
         }
-        if (pendingDiagnosticsFeedback != null) {
-            selectedSettingsDestination = pendingDiagnosticsFeedbackReturnDestination
-            pendingDiagnosticsFeedback = null
-            pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
-            return true
-        }
         if (homeState.serverSwitcherExpanded) {
             serverDrawerProgrammaticCloseFence?.invoke("back")
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
-            return true
-        }
-        if (selectedTab == "settings" && selectedSettingsDestination != SettingsDestinationHome) {
-            selectedSettingsDestination = SettingsDestinationHome
             return true
         }
         if (selectedTab == "home" && selectedHomeDestination != null) {
@@ -4573,7 +4376,6 @@ internal fun SlockAppShellContent(
         }
         if (selectedTab != "home") {
             selectAppShellTab("home")
-            selectedSettingsDestination = SettingsDestinationHome
             homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
             return true
         }
@@ -4591,12 +4393,12 @@ internal fun SlockAppShellContent(
         if (popMainRoute()) {
             bridge.log(
                 "app_back_root result=main selectedTab=$selectedTab " +
-                    "homeDestination=${selectedHomeDestination.orEmpty()} settingsDestination=$selectedSettingsDestination"
+                    "homeDestination=${selectedHomeDestination.orEmpty()}"
             )
         } else {
             bridge.logWarn(
                 "app_back_root result=close_page selectedTab=$selectedTab " +
-                    "homeDestination=${selectedHomeDestination.orEmpty()} settingsDestination=$selectedSettingsDestination"
+                    "homeDestination=${selectedHomeDestination.orEmpty()}"
             )
             bridge.closePage()
         }
@@ -4606,7 +4408,7 @@ internal fun SlockAppShellContent(
         onLifecycleLog = { event ->
             bridge.log(
                 "app_back_root_handler $event selectedTab=$selectedTab " +
-                    "homeDestination=${selectedHomeDestination.orEmpty()} settingsDestination=$selectedSettingsDestination"
+                    "homeDestination=${selectedHomeDestination.orEmpty()}"
             )
         }
     ) { handleAppShellBack() }
@@ -4826,7 +4628,6 @@ internal fun SlockAppShellContent(
     DisposableEffect(
         appShellRealtimeDomainEventOwner,
         homeShellStore,
-        settingsViewModel,
         bridge,
     ) {
         val sinks =
@@ -4836,9 +4637,6 @@ internal fun SlockAppShellContent(
                 },
                 applyHomeUnreadProjection = { serverId, event ->
                     homeShellStore.acceptBackgroundServerUnreadEvent(serverId, event)
-                },
-                applySettings = { serverId, event ->
-                    settingsViewModel.accept(SharedSettingsIntent.ApplyRealtimeEvent(serverId, event))
                 },
                 applyServerMembersRefresh = { serverId, event ->
                     if (event.scope == build.raft.app.model.RealtimeRefreshScope.Agents && event.reason == "agent:deleted") {
@@ -4911,7 +4709,6 @@ internal fun SlockAppShellContent(
         realtimeEvents,
         homeStore,
         realtimeEventMapper,
-        settingsViewModel,
         realtimeCallbackGate,
     ) {
         val onRealtimeEvent: (JSONObject) -> Unit = { rawEventData ->
@@ -5183,7 +4980,6 @@ internal fun SlockAppShellContent(
         appShellBottomTabsVisible(
             selectedTab = selectedTab,
             selectedHomeDestination = selectedHomeDestination,
-            selectedSettingsDestination = selectedSettingsDestination
         )
     val homeTabLabel = stringResource(MR.strings.tab_home)
     val tasksTabLabel = stringResource(MR.strings.tab_tasks)
@@ -5469,11 +5265,6 @@ internal fun SlockAppShellContent(
                 if (nextTab == "home") {
                     homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
                 }
-                if (nextTab != "settings") {
-                    selectedSettingsDestination = SettingsDestinationHome
-                    pendingDiagnosticsFeedback = null
-                    pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
-                }
             },
             networkStatus = hostNetworkStatus,
             showBottomTabs = showAppShellBottomTabs,
@@ -5607,7 +5398,7 @@ internal fun SlockAppShellContent(
                                 onOpenComputers = {
                                     selectAppShellTab("settings")
                                     retainedAppShellTabs = retainedAppShellTabs + "settings"
-                                    selectedSettingsDestination = SettingsDestinationComputers
+                                    pager.openSettingsComputersPage(storeScope)
                                 },
                                 onOpenUrl = settingsCapabilities::openUrl,
                                 onOpenServerSelection = {
@@ -5765,187 +5556,38 @@ internal fun SlockAppShellContent(
                         )
                     }
                     val settingsTabContent: @Composable (active: Boolean) -> Unit = {
-                        SettingsAppShellContent(
-                            pager = pager,
-                            eventBus = eventBus,
+                        SettingsAppShellHomeContent(
                             session = (authGateState as? SharedAuthGateState.Ready)?.session,
-                            authDataSource = authDataSource,
-                            settingsCapabilities = settingsCapabilities,
-                            storeScope = storeScope,
-                            settingsState = settingsState,
-                            notificationPreferenceSnapshot = notificationPreferenceSnapshot,
-                            onToggleNotificationPreference = {
-                                prewarmAdmissionGate.invalidate("settings_toggle_notification")
-                                notificationPreferenceScope.launch {
-                                    notificationPreferenceSnapshot =
-                                        notificationPreferenceRepository.setNotificationEnabled(!notificationPreferenceSnapshot.enabled)
-                                }
-                            },
-                            onSettingsIntent = { intent ->
-                                prewarmAdmissionGate.invalidate("settings_intent:${intent::class.simpleName}")
-                                settingsViewModel.dispatch(intent)
-                            },
-                            selectedDestination = selectedSettingsDestination,
-                            onDestinationChange = {
-                                prewarmAdmissionGate.invalidate("settings_destination:$it")
-                                settingsHeaderTapCount = 0
-                                selectedSettingsDestination = it
-                            },
+                            bottomContentPadding = appShellBottomContentInset,
                             onSettingsHeaderClick = {
                                 prewarmAdmissionGate.invalidate("settings_header")
                                 val nextTapCount = settingsHeaderTapCount + 1
                                 if (nextTapCount >= SettingsDeveloperUnlockTapCount) {
                                     settingsHeaderTapCount = 0
-                                    selectedSettingsDestination = SettingsDestinationDeveloper
+                                    pager.openSettingsNativeDetailPage(SettingsNativeDetailPage.Developer, storeScope)
                                 } else {
                                     settingsHeaderTapCount = nextTapCount
                                 }
                             },
-                            onOpenRouter = {
-                                prewarmAdmissionGate.invalidate("settings_open_router")
-                                jumpPage(pager, "router")
-                            },
-                            onOpenReleaseNotes = {
-                                prewarmAdmissionGate.invalidate("settings_open_release_notes")
-                                val releaseNotesVersionCode =
-                                    (settingsState.about as? ScreenLoadState.Content)
-                                        ?.data
-                                        ?.buildLabel
-                                        .orEmpty()
-                                pager.openReleaseNotesPage(releaseNotesVersionCode, storeScope)
-                            },
-                            onOpenBilling = {
-                                prewarmAdmissionGate.invalidate("settings_open_billing")
-                                pager.openSettingsBillingPage(storeScope)
-                            },
-                            onOpenComputers = {
-                                prewarmAdmissionGate.invalidate("settings_open_computers")
-                                pager.openSettingsComputersPage(storeScope)
-                            },
-                            onOpenAdministration = {
-                                prewarmAdmissionGate.invalidate("settings_open_administration")
-                                pager.openSettingsAdministrationPage(storeScope)
-                            },
-                            onOpenConnectedApps = {
-                                prewarmAdmissionGate.invalidate("settings_open_connected_apps")
-                                pager.openSettingsMarketplacePage(storeScope)
-                            },
-                            onOpenHandsFeedback = {
-                                prewarmAdmissionGate.invalidate("settings_open_hands_feedback")
-                                pager.openSettingsHandsFeedbackPage(storeScope)
-                            },
-                            onMessageAlignmentSelected = {
-                                prewarmAdmissionGate.invalidate("settings_message_alignment")
-                                myMessageAlignment = it
-                            },
-                            onCompactConsecutiveMessagesSelected = {
-                                prewarmAdmissionGate.invalidate("settings_compact_messages")
-                                compactConsecutiveMessages = it
-                            },
-                            onForegroundMessageBannersSelected = {
-                                prewarmAdmissionGate.invalidate("settings_foreground_banners")
-                                foregroundMessageBannersEnabled = it
-                                if (!it) {
-                                    foregroundBannerStore.dismiss()
-                                }
-                            },
-                            onActivityTaskStatusBadgesSelected = {
-                                prewarmAdmissionGate.invalidate("settings_activity_badges")
-                                activityTaskStatusBadgesEnabled = it
-                            },
-                            onConversationForwardGestureSelected = { enabled ->
-                                prewarmAdmissionGate.invalidate("settings_conversation_forward_gesture")
-                                if (!enabled) {
-                                    conversationForwardGestureEnabled = false
-                                    conversationForwardHistory.setEnabled(false)
-                                    bridge.setConversationForwardGestureEnabled(false)
-                                }
-                            },
-                            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
-                            onActivitySenderAvatarsSelected = { enabled ->
-                                prewarmAdmissionGate.invalidate("settings_activity_sender_avatars")
-                                activitySenderAvatarsEnabled = enabled
-                                appShellCoroutineScope.launch {
-                                    chatLayoutPreferenceRepository.setActivitySenderAvatarsEnabled(enabled)
-                                }
-                            },
-                            onServerDrawerSelected = {
-                                prewarmAdmissionGate.invalidate("settings_server_drawer")
-                                serverDrawerEnabled = it
-                            },
-                            onHomeServerAvatarSelected = {
-                                prewarmAdmissionGate.invalidate("settings_home_server_avatar")
-                                homeServerAvatarEnabled = it
-                            },
-                            onThreadRowAffordanceSelected = { affordance, enabled ->
-                                prewarmAdmissionGate.invalidate("settings_thread_affordance")
-                                threadRowAffordances =
-                                    if (enabled) {
-                                        threadRowAffordances + affordance
-                                    } else {
-                                        threadRowAffordances - affordance
+                            onSelect = { key ->
+                                prewarmAdmissionGate.invalidate("settings_open_page:$key")
+                                settingsHeaderTapCount = 0
+                                when (key) {
+                                    SettingsDestinationAccount -> pager.openSettingsAccountPage(storeScope)
+                                    SettingsDestinationStorage -> pager.openSettingsStoragePage(storeScope)
+                                    SettingsDestinationReleaseNotes -> pager.openReleaseNotesPage(storeScope = storeScope)
+                                    SettingsDestinationBilling -> pager.openSettingsBillingPage(storeScope)
+                                    SettingsDestinationComputers -> pager.openSettingsComputersPage(storeScope)
+                                    SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope)
+                                    SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
+                                    SettingsDestinationHandsFeedback -> pager.openSettingsHandsFeedbackPage(storeScope)
+                                    else -> {
+                                        val page = SettingsNativeDetailPage.fromKey(key)
+                                        if (page == null || !pager.openSettingsNativeDetailPage(page, storeScope)) {
+                                            bridge.logWarn("settings_native_detail_rejected page=$key")
+                                        }
                                     }
-                            },
-                            onSettingsAction = { action, itemId ->
-                                prewarmAdmissionGate.invalidate("settings_action:$action")
-                                bridge.log("settings_shell_unsupported_action action=$action itemId=${itemId.orEmpty()}")
-                            },
-                            onDiagnosticsFeedbackPrepared = { draft ->
-                                prewarmAdmissionGate.invalidate("settings_diagnostics_prepare")
-                                pendingDiagnosticsFeedbackReturnDestination =
-                                    selectedSettingsDestination
-                                        .takeIf { it != SettingsDestinationDiagnosticsFeedbackChannel }
-                                        ?: SettingsDestinationDiagnostics
-                                pendingDiagnosticsFeedback = draft
-                                selectedSettingsDestination = SettingsDestinationDiagnosticsFeedbackChannel
-                                if (homeState.content !is SharedHomeContentState.Content) {
-                                    homeShellStore.dispatch(SharedHomeShellIntent.Start)
                                 }
-                                bridge.toast("请选择 channel")
-                            },
-                            diagnosticsFeedbackDraft = pendingDiagnosticsFeedback,
-                            diagnosticsFeedbackHomeState = homeState,
-                            onDiagnosticsFeedbackBack = {
-                                prewarmAdmissionGate.invalidate("settings_diagnostics_back")
-                                selectedSettingsDestination = pendingDiagnosticsFeedbackReturnDestination
-                                pendingDiagnosticsFeedback = null
-                                pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
-                            },
-                            onDiagnosticsFeedbackRefresh = {
-                                prewarmAdmissionGate.invalidate("settings_diagnostics_refresh")
-                                homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
-                            },
-                            onDiagnosticsFeedbackChannelSelected = { conversation ->
-                                prewarmAdmissionGate.invalidate("settings_diagnostics_channel")
-                                pendingDiagnosticsFeedback?.let { draft ->
-                                    openDiagnosticsFeedbackChannel(
-                                        draft = draft,
-                                        conversation = conversation,
-                                        source = "diagnostics_channel_page",
-                                        pushCurrent = true
-                                    )
-                                    homeShellStore.dispatch(
-                                        SharedHomeShellIntent.Home(
-                                            SharedHomeIntent.SelectConversation(conversation.threadId.value)
-                                        )
-                                    )
-                                }
-                            },
-                            bottomContentPadding = appShellBottomContentInset,
-                            timeContext = threadTimeContext,
-                            onSessionCleared = { clearedSession ->
-                                prewarmAdmissionGate.invalidate("settings_session_cleared")
-                                authSessionEvents.postSessionCleared(
-                                    reason = "local",
-                                    previousSessionFingerprint = clearedSession.authSessionClearFingerprint()
-                                )
-                            },
-                            onLogout = {
-                                prewarmAdmissionGate.invalidate("settings_logout")
-                                authGateMessage = null
-                                bridge.realtimeDisconnect("logout")
-                                authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
-                                resetAppShellSessionState()
                             }
                         )
                     }
@@ -6418,28 +6060,168 @@ internal fun appShellAuthGateViewModelKey(pagerId: String, instanceId: String = 
     "shared-auth-gate-${instanceId.ifBlank { pagerId }.ifBlank { "default" }}"
 
 @Composable
-private fun SettingsAppShellContent(
-    pager: Pager,
-    eventBus: SlockEventBus,
+internal fun SettingsNativeDetailScreen() {
+    RememberKmmResourceLocaleSeedFromLocalActivity()
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    val route = remember(pager.pageData.params.toString()) {
+        settingsNativeDetailRoute(pager.pageData.params)
+    }
+    val closePage = remember(pager) {
+        { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
+    }
+    if (route == null) {
+        SettingsDetailShell(
+            title = stringResource(MR.strings.settings_title),
+            subtitle = "",
+            iconName = SlockLucideIconName.Settings,
+            onBack = closePage,
+        ) {
+            SettingsSharedPlaceholder(
+                title = stringResource(MR.strings.settings_title),
+                detail = stringResource(MR.strings.empty_no_settings_available),
+                iconName = SlockLucideIconName.Settings,
+            )
+        }
+        return
+    }
+
+    val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val settingsViewModel: SharedSettingsViewModel =
+        viewModel(key = "standalone-settings-native-${pager.pagerId}") {
+            SharedSettingsViewModel(environment.dataSource)
+        }
+    val settingsState by settingsViewModel.state.collectAsState()
+    var session by remember { mutableStateOf<StoredAuthSession?>(null) }
+    var notificationPreferenceSnapshot by remember {
+        mutableStateOf(NotificationPreferenceSnapshot(enabled = true))
+    }
+    var activitySenderAvatarsEnabled by remember { mutableStateOf(false) }
+    val pageScope = rememberCoroutineScope()
+    val notificationEvents = remember(sharedStores.eventBus) {
+        KuiklyNotificationPreferenceEvents(sharedStores.eventBus)
+    }
+
+    LaunchedEffect(environment.authStore) {
+        session = environment.authStore.readSession()
+    }
+    LaunchedEffect(environment.notificationPreferenceRepository) {
+        notificationPreferenceSnapshot =
+            environment.notificationPreferenceRepository.getNotificationPreference()
+    }
+    DisposableEffect(notificationEvents) {
+        val subscription =
+            notificationEvents.addPreferenceListener { snapshot ->
+                notificationPreferenceSnapshot = snapshot
+            }
+        onDispose { subscription.close() }
+    }
+    LaunchedEffect(environment.chatLayoutPreferenceRepository) {
+        activitySenderAvatarsEnabled =
+            environment.chatLayoutPreferenceRepository
+                .getChatLayoutPreference()
+                .activitySenderAvatarsEnabled
+    }
+    LaunchedEffect(route.page, route.itemId, route.launchIntent) {
+        runSettingsNativeDetailLaunchSequence(
+            route = route,
+            loadPageContent = {
+                settingsViewModel.accept(SharedSettingsIntent.LoadPageContent(route.page.storeDestination))
+            },
+            enableProfiler = {
+                settingsViewModel.accept(SharedSettingsIntent.SetRecompositionProfilerEnabled(true))
+            },
+            resetProfiler = {
+                settingsViewModel.accept(SharedSettingsIntent.ResetRecompositionProfiler)
+            },
+            exportProfilerReport = {
+                settingsViewModel.accept(SharedSettingsIntent.ExportRecompositionProfilerReport)
+            },
+            waitForAutoClose = { delay(it) },
+            closePage = closePage,
+        )
+    }
+
+    fun openNativePage(page: SettingsNativeDetailPage, itemId: String? = null) {
+        if (!pager.openSettingsNativeDetailPage(page, environment.storeScope, itemId)) {
+            bridge.logWarn("settings_native_detail_rejected page=${page.key}")
+        }
+    }
+
+    SettingsNativeDetailPageContent(
+        session = session,
+        authDataSource = environment.authDataSource,
+        settingsCapabilities = environment.settingsCapabilities,
+        settingsState = settingsState,
+        notificationPreferenceSnapshot = notificationPreferenceSnapshot,
+        onSettingsIntent = settingsViewModel::dispatch,
+        route = route,
+        onBack = closePage,
+        onOpenRouterPage = { jumpPage(pager, "router") },
+        onOpenAdministrationPage = { pager.openSettingsAdministrationPage(environment.storeScope) },
+        onOpenHandsFeedbackPage = { pager.openSettingsHandsFeedbackPage(environment.storeScope) },
+        onOpenSourceLicensesPage = { openNativePage(SettingsNativeDetailPage.OpenSourceLicenses) },
+        onOpenApiEnvironmentPage = { openNativePage(SettingsNativeDetailPage.ApiEnvironment) },
+        onOpenDiagnosticsPage = { openNativePage(SettingsNativeDetailPage.Diagnostics) },
+        onOpenLocalFeatureOverridesPage = { openNativePage(SettingsNativeDetailPage.LocalFeatureOverrides) },
+        onOpenLocalFeatureOverridePage = { key ->
+            openNativePage(SettingsNativeDetailPage.LocalFeatureOverride, key)
+        },
+        onMessageAlignmentSelected = {},
+        onCompactConsecutiveMessagesSelected = {},
+        onForegroundMessageBannersSelected = {},
+        onActivityTaskStatusBadgesSelected = {},
+        onConversationForwardGestureSelected = {},
+        activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
+        onActivitySenderAvatarsSelected = { enabled ->
+            activitySenderAvatarsEnabled = enabled
+            pageScope.launch {
+                environment.chatLayoutPreferenceRepository.setActivitySenderAvatarsEnabled(enabled)
+            }
+        },
+        onServerDrawerSelected = {},
+        onHomeServerAvatarSelected = {},
+        onThreadRowAffordanceSelected = { _, _ -> },
+        bottomContentPadding = SlockSpacing.Lg,
+        timeContext = null,
+        onLogout = { pager.openLoginReplacingCurrentPage() },
+    )
+}
+
+@Composable
+private fun SettingsAppShellHomeContent(
+    session: StoredAuthSession?,
+    bottomContentPadding: Dp,
+    onSettingsHeaderClick: () -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    SettingsHomeContent(
+        payload = appShellSettingsHomePayload(session),
+        bottomContentPadding = bottomContentPadding,
+        onHeaderClick = onSettingsHeaderClick,
+        onSelect = onSelect,
+    )
+}
+
+@Composable
+private fun SettingsNativeDetailPageContent(
     session: StoredAuthSession?,
     authDataSource: SharedAuthDataSource,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
-    storeScope: SlockShellStoreScope,
-    handsFeedbackVisualFixture: SettingsHandsFeedbackVisualFixture? = null,
     settingsState: SharedSettingsState,
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
-    onToggleNotificationPreference: () -> Unit,
     onSettingsIntent: (SharedSettingsIntent) -> Unit,
-    selectedDestination: String,
-    onDestinationChange: (String) -> Unit,
-    onSettingsHeaderClick: () -> Unit,
-    onOpenRouter: () -> Unit,
-    onOpenReleaseNotes: () -> Unit,
-    onOpenBilling: () -> Unit,
-    onOpenComputers: () -> Unit,
-    onOpenAdministration: () -> Unit,
-    onOpenConnectedApps: () -> Unit,
-    onOpenHandsFeedback: () -> Unit,
+    route: SettingsNativeDetailRoute,
+    onBack: () -> Unit,
+    onOpenRouterPage: () -> Unit,
+    onOpenAdministrationPage: () -> Unit,
+    onOpenHandsFeedbackPage: () -> Unit,
+    onOpenSourceLicensesPage: () -> Unit,
+    onOpenApiEnvironmentPage: () -> Unit,
+    onOpenDiagnosticsPage: () -> Unit,
+    onOpenLocalFeatureOverridesPage: () -> Unit,
+    onOpenLocalFeatureOverridePage: (String) -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
     onForegroundMessageBannersSelected: (Boolean) -> Unit,
@@ -6450,70 +6232,33 @@ private fun SettingsAppShellContent(
     onServerDrawerSelected: (Boolean) -> Unit,
     onHomeServerAvatarSelected: (Boolean) -> Unit,
     onThreadRowAffordanceSelected: (ThreadRowAffordancePreference, Boolean) -> Unit,
-    onSettingsAction: (String, String?) -> Unit,
-    onDiagnosticsFeedbackPrepared: (SettingsDiagnosticsFeedbackDraft) -> Unit,
-    diagnosticsFeedbackDraft: SettingsDiagnosticsFeedbackDraft?,
-    diagnosticsFeedbackHomeState: SharedHomeState,
-    onDiagnosticsFeedbackBack: () -> Unit,
-    onDiagnosticsFeedbackRefresh: () -> Unit,
-    onDiagnosticsFeedbackChannelSelected: (ConversationSummary) -> Unit,
     bottomContentPadding: Dp,
     timeContext: SlockTimeContext?,
     onSessionCleared: (StoredAuthSession) -> Unit = {},
     onLogout: () -> Unit
 ) {
-    val accountLinkScope = rememberCoroutineScope()
     val diagnosticsSnapshot =
         (settingsState.diagnostics as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
     val localFeatureOverridesAvailable = diagnosticsSnapshot.localFeatureOverridesAvailable()
-    val selectedLocalFeatureOverrideKey = selectedDestination.localFeatureOverrideKeyOrNull()
-    val returnFromSettingsDetail: () -> Unit = {
-        when (selectedDestination) {
-            SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
-            SettingsDestinationHandsFeedback -> onDestinationChange(SettingsDestinationHome)
-            SettingsDestinationApiEnvironment -> onDestinationChange(SettingsDestinationDeveloper)
-            SettingsDestinationOpenSourceLicenses -> onDestinationChange(SettingsDestinationAbout)
-            SettingsDestinationLocalFeatureOverrides -> onDestinationChange(SettingsDestinationDiagnostics)
-            else ->
-                if (selectedLocalFeatureOverrideKey != null) {
-                    onDestinationChange(SettingsDestinationLocalFeatureOverrides)
-                } else {
-                    onDestinationChange(SettingsDestinationHome)
-                }
-        }
-    }
-    val handleSettingsBack: () -> Unit = returnFromSettingsDetail
-    SlockBackHandler(
-        enabled = selectedDestination != SettingsDestinationHome,
-        label = "settings_detail",
-        onBack = handleSettingsBack
-    )
+    val selectedLocalFeatureOverrideKey =
+        route.itemId.takeIf { route.page == SettingsNativeDetailPage.LocalFeatureOverride }
 
-    LaunchedEffect(selectedDestination) {
-        when (selectedDestination) {
-            SettingsDestinationComputers -> onOpenComputers()
-            SettingsDestinationBilling -> onOpenBilling()
-            SettingsDestinationReleaseNotes -> onOpenReleaseNotes()
-            SettingsDestinationApiEnvironment ->
-                onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
-            SettingsDestinationOpenSourceLicenses ->
-                onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.OpenSourceLicenses))
-            SettingsDestinationLocalFeatureOverrides ->
-                onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
-            else ->
-                if (selectedLocalFeatureOverrideKey != null) {
-                    onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
-                } else {
-                    selectedDestination.toSharedSettingsDestination()?.let { destination ->
-                        onSettingsIntent(SharedSettingsIntent.OpenDestination(destination))
-                    }
-                }
-        }
-    }
-
-    LaunchedEffect(selectedDestination, localFeatureOverridesAvailable) {
-        if (!localFeatureOverrideDestinationAllowed(selectedDestination, localFeatureOverridesAvailable)) {
-            onDestinationChange(SettingsDestinationDiagnostics)
+    val localFeatureOverrideAvailabilityResolved =
+        settingsState.diagnostics !is ScreenLoadState.Loading
+    LaunchedEffect(
+        route.page,
+        route.itemId,
+        localFeatureOverrideAvailabilityResolved,
+        localFeatureOverridesAvailable,
+    ) {
+        if (
+            shouldCloseLocalFeatureOverridePage(
+                route = route,
+                availabilityResolved = localFeatureOverrideAvailabilityResolved,
+                available = localFeatureOverridesAvailable,
+            )
+        ) {
+            onBack()
         }
     }
 
@@ -6558,7 +6303,7 @@ private fun SettingsAppShellContent(
                     onSettingsIntent(SharedSettingsIntent.Refresh)
                 }
             }
-            SharedSettingsEffect.SendFeedback -> onOpenHandsFeedback()
+            SharedSettingsEffect.SendFeedback -> onOpenHandsFeedbackPage()
             SharedSettingsEffect.RequestNotificationPermission -> {
                 val result = settingsCapabilities.requestNotificationPermission()
                 onSettingsIntent(SharedSettingsIntent.CompleteSystemNotificationAction(MOBILE_ACTION_PERMISSION, result))
@@ -6621,58 +6366,18 @@ private fun SettingsAppShellContent(
     }
 
     var serverProfileName by remember { mutableStateOf("") }
-    var serverDeleteConfirmation by remember { mutableStateOf("") }
-    var serverJoinLinkMaxUses by remember { mutableStateOf("") }
-    var serverJoinLinkExpiresAt by remember { mutableStateOf("") }
-    var serverAgreementEnabled by remember { mutableStateOf(false) }
-    var serverAgreementTitle by remember { mutableStateOf(TextFieldValue("")) }
-    var serverAgreementBody by remember { mutableStateOf(TextFieldValue("")) }
-    var serverHideHumansFromMembers by remember { mutableStateOf(false) }
-    var serverOnboardingAgentId by remember { mutableStateOf("") }
-    var serverOnboardingGreetingEnabled by remember { mutableStateOf(true) }
-    var connectedAppsTab by remember { mutableStateOf("marketplace") }
-    var connectedAppEditingId by remember { mutableStateOf("") }
-    var connectedAppName by remember { mutableStateOf("") }
-    var connectedAppClientId by remember { mutableStateOf("") }
-    var connectedAppDescription by remember { mutableStateOf(TextFieldValue("")) }
-    var connectedAppHomepageUrl by remember { mutableStateOf("") }
-    var connectedAppReturnUrl by remember { mutableStateOf("") }
-    var connectedAppManifestUrl by remember { mutableStateOf("") }
-    var connectedAppPublishCategory by remember { mutableStateOf("productivity") }
-    var connectedAppPublishDataAccess by remember { mutableStateOf(TextFieldValue("")) }
-    var connectedAppsMarketplaceSearch by remember { mutableStateOf("") }
-    var connectedAppsMarketplaceCategory by remember { mutableStateOf(SETTINGS_CONNECTED_APPS_CATEGORY_ALL) }
-    var connectedAppsSelectedMarketplaceId by remember { mutableStateOf<String?>(null) }
-    var connectedAppsSelectedBuiltInId by remember { mutableStateOf<String?>(null) }
-    var connectedAppsConfirmTarget by remember { mutableStateOf<SettingsConnectedAppsConfirmTarget?>(null) }
     var languageRegionLanguageDraft by remember { mutableStateOf("") }
     var languageRegionDisplayDraft by remember { mutableStateOf("translated") }
     var languageRegionTimezoneDraft by remember { mutableStateOf("") }
     var languageRegionTimeFormatDraft by remember { mutableStateOf("") }
     var appearanceMessageFontSizeDraft by remember { mutableStateOf("md") }
     val currentServerSnapshot = settingsState.server.currentContent()
-    val currentConnectedAppsSnapshot = settingsState.connectedApps.currentContent()
     val currentLanguageRegionSnapshot = settingsState.languageRegion.currentContent()
     val currentAppearanceSnapshot = settingsState.appearance.currentContent()
     val currentServerProfile = settingsState.server.currentContent()?.profile
     val currentServerName = currentServerProfile?.name ?: session?.currentServerSummary()?.name.orEmpty()
-    val currentServerSlug = currentServerProfile?.slug ?: session?.currentServerSummary()?.slug.orEmpty()
-    val currentAgreement = currentServerSnapshot?.agreement
-    val currentOnboarding = currentServerSnapshot?.onboarding
     LaunchedEffect(currentServerName) {
         serverProfileName = currentServerName
-    }
-    LaunchedEffect(currentServerProfile?.hideHumansFromMembers) {
-        serverHideHumansFromMembers = currentServerProfile?.hideHumansFromMembers == true
-    }
-    LaunchedEffect(currentAgreement?.enabled, currentAgreement?.title, currentAgreement?.bodyMarkdown) {
-        serverAgreementEnabled = currentAgreement?.enabled == true
-        serverAgreementTitle = textFieldValueAtEnd(currentAgreement?.title.orEmpty())
-        serverAgreementBody = textFieldValueAtEnd(currentAgreement?.bodyMarkdown.orEmpty())
-    }
-    LaunchedEffect(currentOnboarding?.onboardingAgentId, currentOnboarding?.agentAllChannelGreetingEnabled) {
-        serverOnboardingAgentId = currentOnboarding?.onboardingAgentId.orEmpty()
-        serverOnboardingGreetingEnabled = currentOnboarding?.agentAllChannelGreetingEnabled ?: true
     }
     LaunchedEffect(
         currentLanguageRegionSnapshot?.browserLanguage?.selectedKey,
@@ -6692,83 +6397,12 @@ private fun SettingsAppShellContent(
             appearanceMessageFontSizeDraft = snapshot.messageBodyFontSize.selectedKey
         }
     }
-    LaunchedEffect(currentServerSlug) {
-        serverDeleteConfirmation = ""
-        serverJoinLinkMaxUses = ""
-        serverJoinLinkExpiresAt = ""
-    }
-    LaunchedEffect(currentConnectedAppsSnapshot?.registered?.map { it.id }) {
-        if (connectedAppEditingId.isNotBlank() && currentConnectedAppsSnapshot?.registered?.none { it.id == connectedAppEditingId } == true) {
-            connectedAppEditingId = ""
-            connectedAppName = ""
-            connectedAppClientId = ""
-            connectedAppDescription = TextFieldValue("")
-            connectedAppHomepageUrl = ""
-            connectedAppReturnUrl = ""
-            connectedAppManifestUrl = ""
-            connectedAppPublishCategory = "productivity"
-            connectedAppPublishDataAccess = TextFieldValue("")
-        }
-    }
-    LaunchedEffect(
-        currentConnectedAppsSnapshot?.marketplace?.map { it.id },
-        currentConnectedAppsSnapshot?.builtIn?.map { it.id },
-        currentConnectedAppsSnapshot?.installed?.map { it.id },
-        currentConnectedAppsSnapshot?.registered?.map { it.id }
-    ) {
-        val snapshot = currentConnectedAppsSnapshot ?: return@LaunchedEffect
-        if (connectedAppsMarketplaceCategory != SETTINGS_CONNECTED_APPS_CATEGORY_ALL &&
-            snapshot.marketplace.none { it.category == connectedAppsMarketplaceCategory }
-        ) {
-            connectedAppsMarketplaceCategory = SETTINGS_CONNECTED_APPS_CATEGORY_ALL
-        }
-        connectedAppsSelectedMarketplaceId?.let { id ->
-            if (snapshot.marketplace.none { it.id == id }) connectedAppsSelectedMarketplaceId = null
-        }
-        connectedAppsSelectedBuiltInId?.let { id ->
-            if (snapshot.builtIn.none { it.id == id }) connectedAppsSelectedBuiltInId = null
-        }
-        connectedAppsConfirmTarget?.let { target ->
-            val exists =
-                when (target.kind) {
-                    SettingsConnectedAppsConfirmKind.DeleteClient -> snapshot.registered.any { it.id == target.id }
-                    SettingsConnectedAppsConfirmKind.UninstallMarketplace ->
-                        snapshot.marketplace.any { it.id == target.id } || snapshot.installed.any { it.id == target.id }
-                    else -> false
-                }
-            if (!exists) connectedAppsConfirmTarget = null
-        }
-    }
-
-    if (selectedDestination == SettingsDestinationHome) {
-        SettingsHomeContent(
-            payload = appShellSettingsHomePayload(session, selectedDestination),
-            bottomContentPadding = bottomContentPadding,
-            onHeaderClick = onSettingsHeaderClick,
-            onSelect = { key ->
-                when (key) {
-                    SettingsDestinationRouter -> onOpenRouter()
-                    SettingsDestinationReleaseNotes -> onOpenReleaseNotes()
-                    SettingsDestinationBilling -> onOpenBilling()
-                    SettingsDestinationComputers -> onOpenComputers()
-                    // Administration is the WEB settings page in an in-app
-                    // WebView (own pager, Billing pattern) — not a native
-                    // child destination.
-                    SettingsDestinationAdministration -> onOpenAdministration()
-                    SettingsDestinationConnectedApps -> onOpenConnectedApps()
-                    SettingsDestinationHandsFeedback -> onOpenHandsFeedback()
-                    else -> onDestinationChange(key)
-                }
-            }
-        )
-        return
-    }
 
     SettingsDetailShell(
-        title = settingsDestinationTitle(selectedDestination),
+        title = settingsNativeDetailPageTitle(route),
         subtitle = "",
-        iconName = settingsDestinationIcon(selectedDestination),
-        onBack = handleSettingsBack,
+        iconName = settingsNativeDetailPageIcon(route.page),
+        onBack = onBack,
         trailingContent = null
     ) {
         if (selectedLocalFeatureOverrideKey != null) {
@@ -6794,79 +6428,8 @@ private fun SettingsAppShellContent(
                     bottomContentPadding = bottomContentPadding
                 )
             }
-        } else when (selectedDestination) {
-            SettingsDestinationAccount ->
-                SettingsAccountContent(
-                    settingsState.account.toAccountPayload(
-                        session,
-                        settingsState.actionState,
-                        localizedErrorPresentationStrings()
-                    ),
-                    applyTopSafeArea = false,
-                    bottomContentPadding = bottomContentPadding,
-                    onPasswordChange = { currentPassword, newPassword ->
-                        onSettingsIntent(
-                            SharedSettingsIntent.ChangeAccountPassword(
-                                AccountPasswordChangeRequest(
-                                    currentPassword = currentPassword,
-                                    newPassword = newPassword
-                                )
-                            )
-                        )
-                    }
-                ) { action, value ->
-                    when (action) {
-                        "logout" -> onSettingsIntent(SharedSettingsIntent.Logout)
-                        "uploadAvatar" -> onSettingsIntent(SharedSettingsIntent.RequestAccountAvatarUpload)
-                        "connectProvider" ->
-                            value?.takeIf { it.isNotBlank() }?.let { providerId ->
-                                accountLinkScope.launch {
-                                    when (settingsCapabilities.startMobileOAuthAccountLink(providerId)) {
-                                        is DataResult.Content -> Unit
-                                        else ->
-                                            onSettingsIntent(
-                                                SharedSettingsIntent.ConnectAccountProvider(
-                                                    AccountProviderLinkStartRequest(providerId = providerId)
-                                                )
-                                            )
-                                    }
-                                }
-                            }
-                        "saveProfile" -> {
-                            val account = (settingsState.account as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
-                            val displayName = value.orEmpty().trim()
-                            if (account != null) {
-                                onSettingsIntent(
-                                    SharedSettingsIntent.UpdateProfile(
-                                        AccountProfileUpdateRequest(
-                                            displayName = displayName.ifBlank { account.profile.displayName },
-                                            handle = account.profile.handle,
-                                            email = account.profile.email
-                                        )
-                                    )
-                                )
-                            }
-                        }
-                        else -> onSettingsAction(action, null)
-                    }
-                }
-            SettingsDestinationComputers -> SettingsComputersLoadingContent()
-            SettingsDestinationStorage ->
-                SettingsStorageContent(
-                    settingsState.storage.toStoragePayload(
-                        actionState = settingsState.actionState,
-                        refreshing = settingsState.isRefreshing(SharedSettingsDestination.Storage)
-                    ),
-                    bottomContentPadding = bottomContentPadding
-                ) { action, target ->
-                    when (action) {
-                        "refreshStorage" -> onSettingsIntent(SharedSettingsIntent.RefreshStorage)
-                        "clearStorage" -> target?.takeIf { it.isNotBlank() }?.let { onSettingsIntent(SharedSettingsIntent.ClearStorage(it)) }
-                        else -> onSettingsAction(action, target)
-                    }
-                }
-            SettingsDestinationBilling -> SettingsComputersLoadingContent()
-            SettingsDestinationLanguageRegion ->
+        } else when (route.page) {
+            SettingsNativeDetailPage.LanguageRegion ->
                 SettingsLanguageRegionContent(
                     state = settingsState.languageRegion,
                     mobileState = settingsState.mobile,
@@ -6919,7 +6482,7 @@ private fun SettingsAppShellContent(
                     },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) }
                 )
-            SettingsDestinationAppearance ->
+            SettingsNativeDetailPage.Appearance ->
                 SettingsAppearanceContent(
                     state = settingsState.appearance,
                     actionState = settingsState.actionState,
@@ -6937,7 +6500,7 @@ private fun SettingsAppShellContent(
                     },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) }
                 )
-            SettingsDestinationServer ->
+            SettingsNativeDetailPage.Server ->
                 SharedSettingsServerContent(
                     payload = settingsState.server.toServerPayload(
                         session = session,
@@ -6957,224 +6520,11 @@ private fun SettingsAppShellContent(
                             itemId?.trim()?.takeIf { it.isNotBlank() }?.let {
                                 onSettingsIntent(SharedSettingsIntent.UpdateServerProfile(SettingsServerProfileUpdateRequest(name = it)))
                             }
-                        "openAdministration" ->
-                            onOpenAdministration()
-                        else -> onSettingsAction(action, itemId)
+                        "openAdministration" -> onOpenAdministrationPage()
+                        else -> Unit
                     }
                 }
-            SettingsDestinationAdministration ->
-                SharedSettingsServerContent(
-                    payload = settingsState.server.toAdministrationPayload(
-                        session = session,
-                        refreshing = settingsState.isRefreshing(SharedSettingsDestination.Administration),
-                        actionState = settingsState.actionState,
-                        timeContext = timeContext
-                    ),
-                    joinLinkMaxUses = serverJoinLinkMaxUses,
-                    onJoinLinkMaxUsesChange = { serverJoinLinkMaxUses = it },
-                    joinLinkExpiresAt = serverJoinLinkExpiresAt,
-                    onJoinLinkExpiresAtChange = { serverJoinLinkExpiresAt = it },
-                    profileName = serverProfileName,
-                    onProfileNameChange = { serverProfileName = it },
-                    agreementEnabled = serverAgreementEnabled,
-                    onAgreementEnabledChange = { serverAgreementEnabled = it },
-                    agreementTitle = serverAgreementTitle,
-                    onAgreementTitleChange = { serverAgreementTitle = it },
-                    agreementBody = serverAgreementBody,
-                    onAgreementBodyChange = { serverAgreementBody = it },
-                    hideHumansFromMembers = serverHideHumansFromMembers,
-                    onHideHumansFromMembersChange = { serverHideHumansFromMembers = it },
-                    onboardingAgentId = serverOnboardingAgentId,
-                    onOnboardingAgentIdChange = { serverOnboardingAgentId = it },
-                    onboardingGreetingEnabled = serverOnboardingGreetingEnabled,
-                    onOnboardingGreetingEnabledChange = { serverOnboardingGreetingEnabled = it },
-                    serverSnapshot = currentServerSnapshot,
-                    timeContext = timeContext,
-                    serverRole = session?.currentServerSummary()?.role.orEmpty(),
-                    expectedServerSlug = currentServerSlug,
-                    deleteConfirmationName = serverDeleteConfirmation,
-                    onDeleteConfirmationNameChange = { serverDeleteConfirmation = it },
-                    actionState = settingsState.actionState,
-                    bottomContentPadding = bottomContentPadding,
-                    showProfileCard = false,
-                    onCreateJoinLink = { request ->
-                        onSettingsIntent(SharedSettingsIntent.CreateServerJoinLink(request))
-                    },
-                ) { action, itemId ->
-                    when (action) {
-                        SERVER_ACTION_AGREEMENT_SAVE ->
-                            onSettingsIntent(
-                                SharedSettingsIntent.UpdateServerAgreement(
-                                    SettingsServerAgreementUpdateRequest(
-                                        enabled = serverAgreementEnabled,
-                                        title = serverAgreementTitle.text.trim(),
-                                        bodyMarkdown = serverAgreementBody.text
-                                    )
-                                )
-                            )
-                        SERVER_ACTION_ONBOARDING_SAVE ->
-                            onSettingsIntent(
-                                SharedSettingsIntent.UpdateServerOnboarding(
-                                    SettingsServerOnboardingUpdateRequest(
-                                        onboardingAgentId = serverOnboardingAgentId.trim().takeIf { it.isNotBlank() },
-                                        clearOnboardingAgent = serverOnboardingAgentId.trim().isBlank(),
-                                        agentAllChannelGreetingEnabled = serverOnboardingGreetingEnabled
-                                    )
-                                )
-                            )
-                        SERVER_ACTION_ONBOARDING_TOGGLE ->
-                            itemId?.toBooleanStrictOrNull()?.let {
-                                onSettingsIntent(SharedSettingsIntent.UpdateServerOnboarding(SettingsServerOnboardingUpdateRequest(setupModalReminderOptOut = it)))
-                            }
-                        SERVER_ACTION_TRANSLATION_TOGGLE ->
-                            itemId?.toBooleanStrictOrNull()?.let {
-                                onSettingsIntent(SharedSettingsIntent.UpdateServerTranslation(SettingsServerTranslationUpdateRequest(it)))
-                            }
-                        SERVER_ACTION_SIDEBAR_ORDER ->
-                            itemId?.takeIf { it.isNotBlank() }?.let {
-                                onSettingsIntent(SharedSettingsIntent.UpdateServerSidebarOrder(SettingsServerSidebarOrderUpdateRequest(channelSortMode = it)))
-                            }
-                        SERVER_ACTION_SYSTEM_CHANNEL_HIDE -> {
-                            val allChannelId = settingsState.server.currentContent()?.systemChannels?.allChannelId
-                            if (!allChannelId.isNullOrBlank()) {
-                                val currentHidden = settingsState.server.currentContent()?.systemChannels?.allChannelHidden == true
-                                onSettingsIntent(SharedSettingsIntent.UpdateSystemChannelVisibility(allChannelId, hide = !currentHidden))
-                            }
-                        }
-                        SERVER_ACTION_MEMBER_ROLE ->
-                            itemId?.split(":", limit = 2)?.takeIf { it.size == 2 }?.let {
-                                onSettingsIntent(SharedSettingsIntent.UpdateServerMemberRole(SettingsServerMemberRoleUpdateRequest(it[0], it[1])))
-                            }
-                        SERVER_ACTION_MEMBER_REMOVE ->
-                            itemId?.takeIf { it.isNotBlank() }?.let {
-                                if (settingsState.actionState.isServerConfirmation(SERVER_ACTION_MEMBER_REMOVE, it)) {
-                                    onSettingsIntent(SharedSettingsIntent.RemoveServerMember(it))
-                                } else {
-                                    onSettingsIntent(SharedSettingsIntent.RequestServerConfirmation(SERVER_ACTION_MEMBER_REMOVE, it))
-                                }
-                            }
-                        SERVER_ACTION_JOIN_LINK_CREATE ->
-                            onSettingsIntent(SharedSettingsIntent.CreateServerJoinLink(SettingsServerJoinLinkCreateRequest()))
-                        SERVER_ACTION_JOIN_LINK_REVOKE ->
-                            itemId?.takeIf { it.isNotBlank() }?.let {
-                                if (settingsState.actionState.isServerConfirmation(SERVER_ACTION_JOIN_LINK_REVOKE, it)) {
-                                    onSettingsIntent(SharedSettingsIntent.RevokeServerJoinLink(it))
-                                } else {
-                                    onSettingsIntent(SharedSettingsIntent.RequestServerConfirmation(SERVER_ACTION_JOIN_LINK_REVOKE, it))
-                                }
-                            }
-                        else -> onSettingsAction(action, itemId)
-                    }
-                }
-            SettingsDestinationConnectedApps ->
-                SettingsConnectedAppsContent(
-                    state = settingsState.connectedApps,
-                    selectedTab = connectedAppsTab,
-                    onSelectedTabChange = { connectedAppsTab = it },
-                    editingId = connectedAppEditingId,
-                    name = connectedAppName,
-                    clientId = connectedAppClientId,
-                    description = connectedAppDescription,
-                    homepageUrl = connectedAppHomepageUrl,
-                    returnUrl = connectedAppReturnUrl,
-                    manifestUrl = connectedAppManifestUrl,
-                    publishCategory = connectedAppPublishCategory,
-                    publishDataAccess = connectedAppPublishDataAccess,
-                    marketplaceSearch = connectedAppsMarketplaceSearch,
-                    marketplaceCategory = connectedAppsMarketplaceCategory,
-                    selectedMarketplaceId = connectedAppsSelectedMarketplaceId,
-                    selectedBuiltInId = connectedAppsSelectedBuiltInId,
-                    confirmTarget = connectedAppsConfirmTarget,
-                    actionState = settingsState.actionState,
-                    bottomContentPadding = bottomContentPadding,
-                    onNameChange = { connectedAppName = it },
-                    onClientIdChange = { connectedAppClientId = it },
-                    onDescriptionChange = { connectedAppDescription = it },
-                    onHomepageUrlChange = { connectedAppHomepageUrl = it },
-                    onReturnUrlChange = { connectedAppReturnUrl = it },
-                    onManifestUrlChange = { connectedAppManifestUrl = it },
-                    onPublishCategoryChange = { connectedAppPublishCategory = it },
-                    onPublishDataAccessChange = { connectedAppPublishDataAccess = it },
-                    onMarketplaceSearchChange = { connectedAppsMarketplaceSearch = it },
-                    onMarketplaceCategoryChange = { connectedAppsMarketplaceCategory = it },
-                    onOpenMarketplaceDetail = { connectedAppsSelectedMarketplaceId = it },
-                    onDismissMarketplaceDetail = { connectedAppsSelectedMarketplaceId = null },
-                    onOpenBuiltInDetail = { connectedAppsSelectedBuiltInId = it },
-                    onDismissBuiltInDetail = { connectedAppsSelectedBuiltInId = null },
-                    onStartEdit = { app ->
-                        connectedAppEditingId = app.id
-                        connectedAppName = app.name
-                        connectedAppClientId = app.clientId
-                        connectedAppDescription = textFieldValueAtEnd(app.description.orEmpty())
-                        connectedAppHomepageUrl = app.homepageUrl.orEmpty()
-                        connectedAppReturnUrl = app.returnUrl.orEmpty()
-                        connectedAppManifestUrl = app.agentManifestUrl.orEmpty()
-                        connectedAppPublishCategory = app.category.orEmpty().ifBlank { "productivity" }
-                        connectedAppPublishDataAccess = textFieldValueAtEnd(app.dataAccessSummary.orEmpty())
-                    },
-                    onCancelEdit = {
-                        connectedAppEditingId = ""
-                        connectedAppName = ""
-                        connectedAppClientId = ""
-                        connectedAppDescription = TextFieldValue("")
-                        connectedAppHomepageUrl = ""
-                        connectedAppReturnUrl = ""
-                        connectedAppManifestUrl = ""
-                        connectedAppPublishCategory = "productivity"
-                        connectedAppPublishDataAccess = TextFieldValue("")
-                    },
-                    onRegister = { request ->
-                        onSettingsIntent(SharedSettingsIntent.RegisterConnectedApp(request))
-                    },
-                    onUpdate = { request ->
-                        onSettingsIntent(SharedSettingsIntent.UpdateConnectedApp(request))
-                    },
-                    onUploadLogo = { id ->
-                        onSettingsIntent(SharedSettingsIntent.RequestConnectedAppLogoUpload(id))
-                    },
-                    onClearLogo = { id ->
-                        onSettingsIntent(SharedSettingsIntent.ClearConnectedAppLogo(id))
-                    },
-                    onRequestDelete = { id ->
-                        connectedAppsConfirmTarget =
-                            SettingsConnectedAppsConfirmTarget(
-                                SettingsConnectedAppsConfirmKind.DeleteClient,
-                                id
-                            )
-                    },
-                    onConfirmDelete = { id ->
-                        connectedAppsConfirmTarget = null
-                        onSettingsIntent(SharedSettingsIntent.DeleteConnectedApp(id))
-                    },
-                    onPublish = { request ->
-                        onSettingsIntent(SharedSettingsIntent.RequestConnectedAppPublish(request))
-                    },
-                    onInstall = { id ->
-                        onSettingsIntent(SharedSettingsIntent.InstallMarketplaceApp(id))
-                    },
-                    onRequestUninstall = { id ->
-                        connectedAppsConfirmTarget =
-                            SettingsConnectedAppsConfirmTarget(
-                                SettingsConnectedAppsConfirmKind.UninstallMarketplace,
-                                id
-                            )
-                    },
-                    onConfirmUninstall = { id ->
-                        connectedAppsConfirmTarget = null
-                        onSettingsIntent(SharedSettingsIntent.UninstallMarketplaceApp(id))
-                    },
-                    onDismissConfirm = { connectedAppsConfirmTarget = null },
-                    onCopySecret = { secret ->
-                        settingsCapabilities.bridgeCopyToClipboard(secret)
-                    },
-                    onOpenUrl = { url ->
-                        settingsCapabilities.openUrl(url)
-                    },
-                    onRefresh = {
-                        onSettingsIntent(SharedSettingsIntent.Refresh)
-                    }
-                )
-            SettingsDestinationNotifications ->
+            SettingsNativeDetailPage.Notifications ->
                 SettingsNotificationsContent(
                     state = settingsState.mobile,
                     actionState = settingsState.actionState,
@@ -7219,7 +6569,7 @@ private fun SettingsAppShellContent(
                     onTest = { onSettingsIntent(SharedSettingsIntent.SendTestNotification) },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) }
                 )
-            SettingsDestinationMobile ->
+            SettingsNativeDetailPage.Mobile ->
                 SettingsMobileContent(
                     state = settingsState.mobile,
                     actionState = settingsState.actionState,
@@ -7287,7 +6637,7 @@ private fun SettingsAppShellContent(
                         onThreadRowAffordanceSelected(affordance, enabled)
                     }
                 )
-            SettingsDestinationAbout ->
+            SettingsNativeDetailPage.About ->
                 SharedSettingsAboutContent(
                     state = settingsState.about,
                     fallback = appShellAboutFallback(session),
@@ -7303,28 +6653,27 @@ private fun SettingsAppShellContent(
                     onCheckHandsUpdate = {
                         onSettingsIntent(SharedSettingsIntent.CheckHandsUpdate)
                     },
-                    onOpenSourceLicenses = { onDestinationChange(SettingsDestinationOpenSourceLicenses) },
+                    onOpenSourceLicenses = onOpenSourceLicensesPage,
                     onCopyEnvironmentInfo = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
-                    onOpenApiEnvironment = { onDestinationChange(SettingsDestinationApiEnvironment) },
-                    onOpenDiagnostics = { onDestinationChange(SettingsDestinationDiagnostics) }
+                    onOpenApiEnvironment = onOpenApiEnvironmentPage,
+                    onOpenDiagnostics = onOpenDiagnosticsPage,
                 )
-            SettingsDestinationOpenSourceLicenses ->
+            SettingsNativeDetailPage.OpenSourceLicenses ->
                 SharedSettingsOpenSourceLicensesContent(
                     state = settingsState.openSourceLicenses,
                     bottomContentPadding = bottomContentPadding,
                     onOpenUrl = { url -> settingsCapabilities.openUrl(url) }
                 )
-            SettingsDestinationReleaseNotes -> SettingsComputersLoadingContent()
-            SettingsDestinationDeveloper ->
+            SettingsNativeDetailPage.Developer ->
                 SharedSettingsDeveloperContent(
                     state = settingsState.developer,
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
-                    onOpenApiEnvironment = { onDestinationChange(SettingsDestinationApiEnvironment) },
-                    onOpenDiagnostics = { onDestinationChange(SettingsDestinationDiagnostics) },
-                    onOpenRouter = onOpenRouter
+                    onOpenApiEnvironment = onOpenApiEnvironmentPage,
+                    onOpenDiagnostics = onOpenDiagnosticsPage,
+                    onOpenRouter = onOpenRouterPage,
                 )
-            SettingsDestinationApiEnvironment ->
+            SettingsNativeDetailPage.ApiEnvironment ->
                 SharedSettingsApiEnvironmentContent(
                     state = settingsState.developer,
                     actionState = settingsState.actionState,
@@ -7333,7 +6682,7 @@ private fun SettingsAppShellContent(
                         onSettingsIntent(SharedSettingsIntent.SaveApiEnvironment(request))
                     }
                 )
-            SettingsDestinationDiagnostics ->
+            SettingsNativeDetailPage.Diagnostics ->
                 SharedSettingsDiagnosticsContent(
                     state = settingsState.diagnostics,
                     actionState = settingsState.actionState,
@@ -7346,7 +6695,7 @@ private fun SettingsAppShellContent(
                     },
                     onOpenLocalFeatureOverrides = {
                         if (localFeatureOverridesAvailable) {
-                            onDestinationChange(SettingsDestinationLocalFeatureOverrides)
+                            onOpenLocalFeatureOverridesPage()
                         }
                     },
                     onSetProfilerEnabled = { enabled ->
@@ -7359,14 +6708,12 @@ private fun SettingsAppShellContent(
                     onExportProfilerReport = { onSettingsIntent(SharedSettingsIntent.ExportRecompositionProfilerReport) },
                     onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
                 )
-            SettingsDestinationLocalFeatureOverrides ->
+            SettingsNativeDetailPage.LocalFeatureOverrides ->
                 if (localFeatureOverridesAvailable && diagnosticsSnapshot != null) {
                     SharedSettingsLocalFeatureOverridesContent(
                         snapshot = diagnosticsSnapshot,
                         bottomContentPadding = bottomContentPadding,
-                        onOpenOverride = { key ->
-                            onDestinationChange(localFeatureOverrideDestination(key))
-                        }
+                        onOpenOverride = onOpenLocalFeatureOverridePage,
                     )
                 } else {
                     SettingsSharedPlaceholder(
@@ -7376,39 +6723,7 @@ private fun SettingsAppShellContent(
                         bottomContentPadding = bottomContentPadding
                     )
                 }
-            SettingsDestinationDiagnosticsFeedbackChannel ->
-                if (diagnosticsFeedbackDraft == null) {
-        SettingsSharedPlaceholder(
-            title = "请选择 channel",
-            detail = "Diagnostics feedback is no longer pending.",
-            iconName = SlockLucideIconName.Hash,
-            bottomContentPadding = bottomContentPadding
-        )
-                } else {
-                    SharedDiagnosticsFeedbackChannelPage(
-                        state = diagnosticsFeedbackHomeState,
-                        bottomContentPadding = bottomContentPadding,
-                        onRefresh = onDiagnosticsFeedbackRefresh,
-                        onSelectChannel = onDiagnosticsFeedbackChannelSelected
-                    )
-                }
-            SettingsDestinationHandsFeedback ->
-                SharedHandsFeedbackContent(
-                    pager = pager,
-                    eventBus = eventBus,
-                    settingsCapabilities = settingsCapabilities,
-                    sourceStoreScope = storeScope,
-                    accountId = session?.user?.id.orEmpty(),
-                    visualFixture = handsFeedbackVisualFixture,
-                    bottomContentPadding = bottomContentPadding
-                )
-            else ->
-        SettingsSharedPlaceholder(
-            title = "Settings",
-            detail = "This Settings section is not available on mobile yet.",
-            iconName = SlockLucideIconName.Settings,
-            bottomContentPadding = bottomContentPadding
-        )
+            SettingsNativeDetailPage.LocalFeatureOverride -> Unit
         }
     }
 }
@@ -12271,17 +11586,23 @@ private const val LOCAL_FEATURE_OVERRIDES_OPEN_ACTION = "openLocalFeatureOverrid
 private const val LOCAL_FEATURE_OVERRIDE_OPEN_ACTION_PREFIX = "openLocalFeatureOverride|"
 private const val LOCAL_FEATURE_OVERRIDE_EXPORT_ACTION = "exportLocalFeatureOverrideEvidence"
 
-internal fun localFeatureOverrideDestination(key: String): String =
-    "$SettingsDestinationLocalFeatureOverridePrefix$key"
-
-internal fun localFeatureOverrideDestinationAllowed(destination: String, available: Boolean): Boolean =
+internal fun localFeatureOverridePageAllowed(
+    route: SettingsNativeDetailRoute,
+    available: Boolean,
+): Boolean =
     available ||
-        (destination != SettingsDestinationLocalFeatureOverrides && destination.localFeatureOverrideKeyOrNull() == null)
+        route.page !in
+            setOf(
+                SettingsNativeDetailPage.LocalFeatureOverrides,
+                SettingsNativeDetailPage.LocalFeatureOverride,
+            )
 
-internal fun String.localFeatureOverrideKeyOrNull(): String? =
-    takeIf { startsWith(SettingsDestinationLocalFeatureOverridePrefix) }
-        ?.removePrefix(SettingsDestinationLocalFeatureOverridePrefix)
-        ?.takeIf { it.matches(Regex("^[a-z][a-z0-9_]{2,95}$")) }
+internal fun shouldCloseLocalFeatureOverridePage(
+    route: SettingsNativeDetailRoute,
+    availabilityResolved: Boolean,
+    available: Boolean,
+): Boolean =
+    availabilityResolved && !localFeatureOverridePageAllowed(route, available)
 
 internal fun openLocalFeatureOverrideAction(key: String): String =
     "$LOCAL_FEATURE_OVERRIDE_OPEN_ACTION_PREFIX$key"
@@ -13431,7 +12752,6 @@ private fun SettingsSharedPlaceholder(
 @Composable
 private fun appShellSettingsHomePayload(
     session: StoredAuthSession?,
-    selectedDestination: String
 ): KuiklySettingsHomePayload {
     val personalSection = stringResource(MR.strings.settings_navigation_section_personal)
     val workspaceSection = stringResource(MR.strings.settings_navigation_section_workspace)
@@ -13439,122 +12759,107 @@ private fun appShellSettingsHomePayload(
     return KuiklySettingsHomePayload(
         title = stringResource(MR.strings.settings_title),
         subtitle = "",
-        showSelection = true,
         items =
             listOf(
-                SlockTabItemPayload(
+                SettingsHomePageLinkPayload(
                     key = SettingsDestinationAccount,
                     title = stringResource(MR.strings.settings_account_title),
                     subtitle = stringResource(MR.strings.settings_account_subtitle),
                     iconName = SlockLucideIconName.User,
                     value = session?.user?.bestDisplayName,
-                    selected = selectedDestination == SettingsDestinationAccount,
                     section = personalSection
                 ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationLanguageRegion,
+                SettingsHomePageLinkPayload(
+                    key = SettingsNativeDetailPage.LanguageRegion.key,
                     title = stringResource(MR.strings.settings_language_region_title),
                     subtitle = stringResource(MR.strings.settings_language_region_subtitle),
                     iconName = SlockLucideIconName.Languages,
-                    selected = selectedDestination == SettingsDestinationLanguageRegion,
                     section = personalSection
                 ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationAppearance,
+                SettingsHomePageLinkPayload(
+                    key = SettingsNativeDetailPage.Appearance.key,
                     title = stringResource(MR.strings.settings_appearance_title),
                     subtitle = stringResource(MR.strings.settings_appearance_subtitle),
                     iconName = SlockLucideIconName.Type,
-                    selected = selectedDestination == SettingsDestinationAppearance,
                     section = personalSection
                 ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationNotifications,
+                SettingsHomePageLinkPayload(
+                    key = SettingsNativeDetailPage.Notifications.key,
                     title = stringResource(MR.strings.settings_notifications_title),
                     subtitle = stringResource(MR.strings.settings_notifications_subtitle),
                     iconName = SlockLucideIconName.Bell,
-                    selected = selectedDestination == SettingsDestinationNotifications,
                     section = personalSection
                 ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationMobile,
+                SettingsHomePageLinkPayload(
+                    key = SettingsNativeDetailPage.Mobile.key,
                     title = stringResource(MR.strings.settings_mobile_title),
                     subtitle = stringResource(MR.strings.settings_mobile_subtitle),
                     iconName = SlockLucideIconName.Smartphone,
-                    selected = selectedDestination == SettingsDestinationMobile,
                     section = personalSection
                 ),
-                SlockTabItemPayload(
+                SettingsHomePageLinkPayload(
                     key = SettingsDestinationStorage,
                     title = stringResource(MR.strings.settings_storage_title),
                     subtitle = stringResource(MR.strings.settings_storage_subtitle),
                     iconName = SlockLucideIconName.Archive,
-                    selected = selectedDestination == SettingsDestinationStorage,
                     section = personalSection
                 ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationServer,
+                SettingsHomePageLinkPayload(
+                    key = SettingsNativeDetailPage.Server.key,
                     title = stringResource(MR.strings.settings_server_profile_title),
                     subtitle = stringResource(MR.strings.settings_server_profile_subtitle),
                     iconName = SlockLucideIconName.Building2,
                     value = session?.currentServerSummary()?.role?.replaceFirstChar { it.uppercase() },
-                    selected = selectedDestination == SettingsDestinationServer,
                     section = workspaceSection
                 ),
-                SlockTabItemPayload(
+                SettingsHomePageLinkPayload(
                     key = SettingsDestinationBilling,
                     title = stringResource(MR.strings.settings_billing_title),
                     subtitle = stringResource(MR.strings.settings_billing_subtitle),
                     iconName = SlockLucideIconName.CreditCard,
                     value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
-                    selected = selectedDestination == SettingsDestinationBilling,
                     section = workspaceSection
                 ),
-                SlockTabItemPayload(
+                SettingsHomePageLinkPayload(
                     key = SettingsDestinationAdministration,
                     title = stringResource(MR.strings.settings_server_administration_title),
                     subtitle = stringResource(MR.strings.settings_server_administration_subtitle),
                     iconName = SlockLucideIconName.Shield,
-                    selected = selectedDestination == SettingsDestinationAdministration,
                     section = workspaceSection
                 ),
-                SlockTabItemPayload(
+                SettingsHomePageLinkPayload(
                     key = SettingsDestinationConnectedApps,
                     title = stringResource(MR.strings.settings_connected_apps_title),
                     subtitle = stringResource(MR.strings.settings_connected_apps_subtitle),
                     iconName = SlockLucideIconName.Link2,
-                    selected = selectedDestination == SettingsDestinationConnectedApps,
                     section = workspaceSection
                 ),
-                SlockTabItemPayload(
+                SettingsHomePageLinkPayload(
                     key = SettingsDestinationComputers,
                     title = stringResource(MR.strings.settings_computers_title),
                     subtitle = stringResource(MR.strings.settings_computers_subtitle),
                     iconName = SlockLucideIconName.Monitor,
-                    selected = selectedDestination == SettingsDestinationComputers,
                     section = workspaceSection
                 ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationAbout,
+                SettingsHomePageLinkPayload(
+                    key = SettingsNativeDetailPage.About.key,
                     title = stringResource(MR.strings.settings_about_title),
                     subtitle = stringResource(MR.strings.settings_about_subtitle),
                     iconName = SlockLucideIconName.BadgeInfo,
-                    selected = selectedDestination == SettingsDestinationAbout,
                     section = aboutSection
                 ),
-                SlockTabItemPayload(
+                SettingsHomePageLinkPayload(
                     key = SettingsDestinationHandsFeedback,
                     title = stringResource(MR.strings.settings_feedback_title),
                     subtitle = stringResource(MR.strings.settings_feedback_subtitle),
                     iconName = SlockLucideIconName.MessageSquarePlus,
-                    selected = selectedDestination == SettingsDestinationHandsFeedback,
                     section = aboutSection
                 ),
-                SlockTabItemPayload(
+                SettingsHomePageLinkPayload(
                     key = SettingsDestinationReleaseNotes,
                     title = stringResource(MR.strings.settings_release_notes_title),
                     subtitle = stringResource(MR.strings.settings_release_notes_subtitle),
                     iconName = SlockLucideIconName.FileText,
-                    selected = selectedDestination == SettingsDestinationReleaseNotes,
                     section = aboutSection
                 )
             )
@@ -15897,111 +15202,55 @@ private fun SharedSettingsAboutSnapshot.toDiagnosticsEnvironmentRows(copy: Setti
     )
 
 @Composable
-private fun settingsDestinationTitle(destination: String): String =
-    when (destination) {
-        SettingsDestinationAccount -> stringResource(MR.strings.settings_account_title)
-        SettingsDestinationComputers -> stringResource(MR.strings.settings_computers_title)
-        SettingsDestinationServer -> stringResource(MR.strings.settings_server_profile_title)
-        SettingsDestinationAdministration -> stringResource(MR.strings.settings_server_administration_title)
-        SettingsDestinationConnectedApps -> stringResource(MR.strings.settings_connected_apps_title)
-        SettingsDestinationBilling -> stringResource(MR.strings.settings_billing_title)
-        SettingsDestinationLanguageRegion -> stringResource(MR.strings.settings_language_region_title)
-        SettingsDestinationAppearance -> stringResource(MR.strings.settings_appearance_title)
-        SettingsDestinationNotifications -> stringResource(MR.strings.settings_notifications_title)
-        SettingsDestinationMobile -> stringResource(MR.strings.settings_mobile_title)
-        SettingsDestinationStorage -> stringResource(MR.strings.settings_storage_title)
-        SettingsDestinationAbout -> stringResource(MR.strings.settings_about_title)
-        SettingsDestinationOpenSourceLicenses -> stringResource(MR.strings.settings_open_source_licenses_title)
-        SettingsDestinationReleaseNotes -> stringResource(MR.strings.settings_release_notes_title)
-        SettingsDestinationDeveloper -> stringResource(MR.strings.settings_developer_title)
-        SettingsDestinationApiEnvironment -> stringResource(MR.strings.settings_developer_api_environment)
-        SettingsDestinationDiagnostics -> stringResource(MR.strings.settings_diagnostics_title)
-        SettingsDestinationLocalFeatureOverrides -> "Local Feature Overrides"
-        SettingsDestinationDiagnosticsFeedbackChannel -> stringResource(MR.strings.settings_diagnostics_feedback_channel_title)
-        SettingsDestinationHandsFeedback -> stringResource(MR.strings.settings_feedback_title)
-        else ->
-            destination.localFeatureOverrideKeyOrNull()
-                ?.replace(Regex("_v[0-9]+$"), "")
-                ?.split('_')
-                ?.filter { it.isNotBlank() }
-                ?.joinToString(" ")
-                ?.replaceFirstChar { it.uppercase() }
-                ?: stringResource(MR.strings.settings_title)
+private fun settingsNativeDetailPageTitle(route: SettingsNativeDetailRoute): String =
+    when (route.page) {
+        SettingsNativeDetailPage.LanguageRegion -> stringResource(MR.strings.settings_language_region_title)
+        SettingsNativeDetailPage.Appearance -> stringResource(MR.strings.settings_appearance_title)
+        SettingsNativeDetailPage.Notifications -> stringResource(MR.strings.settings_notifications_title)
+        SettingsNativeDetailPage.Mobile -> stringResource(MR.strings.settings_mobile_title)
+        SettingsNativeDetailPage.Server -> stringResource(MR.strings.settings_server_profile_title)
+        SettingsNativeDetailPage.About -> stringResource(MR.strings.settings_about_title)
+        SettingsNativeDetailPage.Developer -> stringResource(MR.strings.settings_developer_title)
+        SettingsNativeDetailPage.OpenSourceLicenses -> stringResource(MR.strings.settings_open_source_licenses_title)
+        SettingsNativeDetailPage.ApiEnvironment -> stringResource(MR.strings.settings_developer_api_environment)
+        SettingsNativeDetailPage.Diagnostics -> stringResource(MR.strings.settings_diagnostics_title)
+        SettingsNativeDetailPage.LocalFeatureOverrides -> "Local Feature Overrides"
+        SettingsNativeDetailPage.LocalFeatureOverride ->
+            route.itemId
+                .orEmpty()
+                .replace(Regex("_v[0-9]+$"), "")
+                .split('_')
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
+                .replaceFirstChar { it.uppercase() }
+                .ifBlank { "Local Feature Override" }
     }
 
-@Composable
-private fun settingsDestinationSubtitle(destination: String): String =
-    when (destination) {
-        SettingsDestinationAccount -> stringResource(MR.strings.settings_account_destination_subtitle)
-        SettingsDestinationComputers -> stringResource(MR.strings.settings_computers_subtitle)
-        SettingsDestinationServer -> stringResource(MR.strings.settings_server_profile_subtitle)
-        SettingsDestinationAdministration -> stringResource(MR.strings.settings_server_administration_subtitle)
-        SettingsDestinationConnectedApps -> stringResource(MR.strings.settings_connected_apps_subtitle)
-        SettingsDestinationBilling -> stringResource(MR.strings.settings_billing_subtitle)
-        SettingsDestinationLanguageRegion -> stringResource(MR.strings.settings_language_region_subtitle)
-        SettingsDestinationAppearance -> stringResource(MR.strings.settings_appearance_subtitle)
-        SettingsDestinationNotifications -> stringResource(MR.strings.settings_notifications_subtitle)
-        SettingsDestinationMobile -> stringResource(MR.strings.settings_mobile_subtitle)
-        SettingsDestinationStorage -> stringResource(MR.strings.settings_storage_subtitle)
-        SettingsDestinationAbout -> stringResource(MR.strings.settings_about_detail)
-        SettingsDestinationOpenSourceLicenses -> stringResource(MR.strings.settings_about_licenses_detail)
-        SettingsDestinationReleaseNotes -> stringResource(MR.strings.settings_release_notes_subtitle)
-        SettingsDestinationDeveloper -> stringResource(MR.strings.settings_developer_subtitle)
-        SettingsDestinationApiEnvironment -> stringResource(MR.strings.settings_developer_api_environment_subtitle)
-        SettingsDestinationDiagnostics -> stringResource(MR.strings.settings_diagnostics_subtitle)
-        SettingsDestinationLocalFeatureOverrides -> "Internal process-local feature controls"
-        SettingsDestinationDiagnosticsFeedbackChannel -> stringResource(MR.strings.settings_diagnostics_feedback_channel_subtitle)
-        SettingsDestinationHandsFeedback -> stringResource(MR.strings.settings_feedback_subtitle)
-        else -> if (destination.localFeatureOverrideKeyOrNull() != null) "Registered local override" else ""
+private fun settingsNativeDetailPageIcon(page: SettingsNativeDetailPage): SlockLucideIconName =
+    when (page) {
+        SettingsNativeDetailPage.LanguageRegion -> SlockLucideIconName.Languages
+        SettingsNativeDetailPage.Appearance -> SlockLucideIconName.Type
+        SettingsNativeDetailPage.Notifications -> SlockLucideIconName.Bell
+        SettingsNativeDetailPage.Mobile -> SlockLucideIconName.Smartphone
+        SettingsNativeDetailPage.Server -> SlockLucideIconName.Building2
+        SettingsNativeDetailPage.About -> SlockLucideIconName.BadgeInfo
+        SettingsNativeDetailPage.OpenSourceLicenses -> SlockLucideIconName.FileText
+        SettingsNativeDetailPage.Developer -> SlockLucideIconName.Terminal
+        SettingsNativeDetailPage.ApiEnvironment,
+        SettingsNativeDetailPage.LocalFeatureOverrides,
+        SettingsNativeDetailPage.LocalFeatureOverride -> SlockLucideIconName.SlidersHorizontal
+        SettingsNativeDetailPage.Diagnostics -> SlockLucideIconName.Clipboard
     }
 
-private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
-    when (destination) {
-        SettingsDestinationAccount -> SlockLucideIconName.User
-        SettingsDestinationComputers -> SlockLucideIconName.Monitor
-        SettingsDestinationServer -> SlockLucideIconName.Building2
-        SettingsDestinationAdministration -> SlockLucideIconName.Shield
-        SettingsDestinationConnectedApps -> SlockLucideIconName.Link2
-        SettingsDestinationBilling -> SlockLucideIconName.CreditCard
-        SettingsDestinationLanguageRegion -> SlockLucideIconName.Languages
-        SettingsDestinationAppearance -> SlockLucideIconName.Type
-        SettingsDestinationNotifications -> SlockLucideIconName.Bell
-        SettingsDestinationMobile -> SlockLucideIconName.Smartphone
-        SettingsDestinationStorage -> SlockLucideIconName.Archive
-        SettingsDestinationAbout -> SlockLucideIconName.BadgeInfo
-        SettingsDestinationOpenSourceLicenses -> SlockLucideIconName.FileText
-        SettingsDestinationReleaseNotes -> SlockLucideIconName.FileText
-        SettingsDestinationDeveloper -> SlockLucideIconName.Terminal
-        SettingsDestinationApiEnvironment -> SlockLucideIconName.SlidersHorizontal
-        SettingsDestinationDiagnostics -> SlockLucideIconName.Clipboard
-        SettingsDestinationLocalFeatureOverrides -> SlockLucideIconName.SlidersHorizontal
-        SettingsDestinationDiagnosticsFeedbackChannel -> SlockLucideIconName.Hash
-        SettingsDestinationHandsFeedback -> SlockLucideIconName.MessageSquarePlus
-        else ->
-            if (destination.localFeatureOverrideKeyOrNull() != null) {
-                SlockLucideIconName.SlidersHorizontal
-            } else {
-                SlockLucideIconName.Settings
-            }
-    }
-
-private fun String.toSharedSettingsDestination(): SharedSettingsDestination? =
+/** Route-visual fixture compatibility for surfaces now owned by dedicated Pagers. */
+private fun String.toVisualFixtureSharedSettingsDestination(): SharedSettingsDestination? =
     when (this) {
         SettingsDestinationAccount -> SharedSettingsDestination.Account
         SettingsDestinationComputers -> SharedSettingsDestination.Computers
-        SettingsDestinationServer -> SharedSettingsDestination.Server
         SettingsDestinationAdministration -> SharedSettingsDestination.Administration
         SettingsDestinationConnectedApps -> SharedSettingsDestination.ConnectedApps
         SettingsDestinationBilling -> SharedSettingsDestination.Billing
-        SettingsDestinationLanguageRegion -> SharedSettingsDestination.LanguageRegion
-        SettingsDestinationAppearance -> SharedSettingsDestination.Appearance
-        SettingsDestinationNotifications -> SharedSettingsDestination.Notifications
-        SettingsDestinationMobile -> SharedSettingsDestination.Mobile
         SettingsDestinationStorage -> SharedSettingsDestination.Storage
-        SettingsDestinationAbout -> SharedSettingsDestination.About
-        SettingsDestinationOpenSourceLicenses -> SharedSettingsDestination.OpenSourceLicenses
-        SettingsDestinationDeveloper -> SharedSettingsDestination.Developer
-        SettingsDestinationDiagnostics -> SharedSettingsDestination.Diagnostics
         SettingsDestinationHome -> SharedSettingsDestination.Home
         else -> null
     }
@@ -18040,220 +17289,12 @@ private fun SharedHomeScreen(
     }
 }
 
-@Composable
-private fun SharedDiagnosticsFeedbackChannelPage(
-    state: SharedHomeState,
-    bottomContentPadding: Dp,
-    onRefresh: () -> Unit,
-    onSelectChannel: (ConversationSummary) -> Unit
-) {
-    val channels = state.diagnosticsFeedbackChannelChoices()
-    val isLoading = state.content is SharedHomeContentState.Loading
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
-                .padding(horizontal = 16.dp, vertical = 14.dp)
-                .padding(bottom = bottomContentPadding),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                modifier = Modifier.weight(1f),
-                text = stringResource(MR.strings.settings_diagnostics_feedback_channel_guidance),
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray
-            )
-            SlockBrutalActionButton(
-                label = stringResource(MR.strings.settings_state_refresh),
-                backgroundColor = SlockColor.BrandYellow,
-                onClick = onRefresh
-            )
-        }
-        when {
-            isLoading -> {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(120.dp)
-                            .background(SlockColor.SurfaceCream)
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(MR.strings.settings_channels_loading),
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray
-                    )
-                }
-            }
-            channels.isEmpty() -> {
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .background(SlockColor.SurfaceCream)
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                            .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = stringResource(MR.strings.settings_channels_empty),
-                        style = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.TextBlack
-                    )
-                    Text(
-                        text = stringResource(MR.strings.settings_channels_empty_detail),
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray
-                    )
-                }
-            }
-            else -> {
-                SlockBrutalSectionLabel(
-                    label = stringResource(MR.strings.settings_diagnostics_feedback_channel_recent),
-                    size = SlockFormFieldSize.Compact
-                )
-                LazyColumn(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    channels.forEach { channel ->
-                        item(key = channel.channelId?.value ?: channel.threadId.value) {
-                            DiagnosticsFeedbackChannelRow(
-                                channel = channel,
-                                onClick = { onSelectChannel(channel) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DiagnosticsFeedbackChannelRow(
-    channel: ConversationSummary,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .clickable(onClick = onClick)
-                .padding(horizontal = 12.dp, vertical = 10.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(32.dp)
-                        .background(SlockColor.BrandYellow)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                SlockLucideIcon(SlockLucideIconName.Hash, color = "#FF000000", modifier = Modifier.size(15.dp))
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = channel.name.removePrefix("#"),
-                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = channel.diagnosticsFeedbackChannelMeta(),
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            SlockLucideIcon(SlockLucideIconName.ChevronRight, color = "#FF111111", modifier = Modifier.size(18.dp))
-        }
-    }
-}
-
-private fun SharedHomeState.diagnosticsFeedbackChannelChoices(): List<ConversationSummary> {
-    val snapshot = (content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
-    return snapshot.channels
-        .asSequence()
-        .filter { channel ->
-            channel.kind == ConversationKind.Channel &&
-                !channel.archived &&
-                channel.joined &&
-                channel.permissions.canSend &&
-                channel.permissions.canAttach
-        }
-        .map { it.toConversationSummary() }
-        .mapIndexed { index, channel -> index to channel }
-        .sortedWith(
-            compareByDescending<Pair<Int, ConversationSummary>> {
-                parseSlockTimestampEpochMillisOrNull(it.second.lastMessageAt) ?: Long.MIN_VALUE
-            }.thenBy { it.first }
-        )
-        .map { it.second }
-        .toList()
-}
-
-@Composable
-private fun ConversationSummary.diagnosticsFeedbackChannelMeta(): String {
-    val latest = lastMessageAt?.takeIf { it.isNotBlank() }
-    val unread =
-        unreadCount.takeIf { it > 0 }?.let {
-            MR.strings.settings_diagnostics_feedback_channel_unread.format(listOf(it)).localized()
-        }
-    val sender = lastMessageSenderName?.takeIf { it.isNotBlank() }
-    return listOfNotNull(latest, sender, unread)
-        .joinToString(" · ")
-        .ifBlank { stringResource(MR.strings.search_entity_channel) }
-}
-
-private fun SettingsDiagnosticsFeedbackDraft.toDiagnosticsPlatformFile(): PlatformFile =
-    PlatformFile(
-        id = "diagnostics-feedback-${fileName.hashCode().toString().replace("-", "n")}-${sizeBytes}",
-        fileName = fileName.ifBlank { "slock-feedback.txt" },
-        mimeType = mimeType.ifBlank { "text/plain" },
-        sizeBytes = sizeBytes.takeIf { it > 0L } ?: bytes.size.toLong(),
-        bytes = bytes
-    )
-
 internal const val DiagnosticsFeedbackComposerSeedText: String =
     "Diagnostics zip attached.\n\n<!-- Describe what happened here. -->"
 
 internal fun SettingsDiagnosticsFeedbackDraft.diagnosticsComposerMessage(
     seedText: String = DiagnosticsFeedbackComposerSeedText
 ): String = seedText
-
-private fun WireThreadLaunchPayload.withDiagnosticsFeedbackDraft(
-    draft: SettingsDiagnosticsFeedbackDraft,
-    composerSeedText: String
-): WireThreadLaunchPayload =
-    copy(
-        composerSeedText = draft.diagnosticsComposerMessage(composerSeedText),
-        composerSyncNonce = composerSyncNonce + 1,
-        composerFocusRequestNonce = composerFocusRequestNonce + 1
-    )
 
 @Composable
 private fun SharedCreateChannelDialog(
@@ -21380,6 +20421,10 @@ internal fun formatSettingsTimestampLabel(
 private fun String.formatSettingsBillingUsageValue(timeContext: SlockTimeContext?): String =
     formatSettingsTimestampLabel(this, timeContext) ?: this
 
+internal fun StoredAuthSession?.appShellThreadTimeFormat(): String? =
+    listOf(this?.user?.preferredTimeFormat, this?.user?.timeFormat)
+        .firstOrNull { it == "12h" || it == "24h" }
+
 private fun AppShellTimeContext?.withTimeFormat(timeFormat: String?): AppShellTimeContext? =
     this?.withTimeFormat(timeFormat)
 
@@ -24135,50 +23180,301 @@ private fun SettingsRouteVisualScreen() {
         )
     }
 
-    SettingsAppShellContent(
+    if (route.destination == SettingsDestinationHome) {
+        SettingsHomeContent(
+            payload = appShellSettingsHomePayload(session),
+            onSelect = {},
+        )
+    } else {
+        SettingsRouteVisualFixtureDetailContent(
+            pager = pager,
+            eventBus = eventBus,
+            session = session,
+            authDataSource = authDataSource,
+            settingsCapabilities = settingsCapabilities,
+            storeScope = storeScope,
+            handsFeedbackVisualFixture = handsFeedbackVisualFixture,
+            settingsState = state,
+            notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
+            onSettingsIntent = {},
+            route = route,
+            onBack = {},
+            bottomContentPadding = SlockSpacing.Lg,
+            timeContext = null,
+            onLogout = {},
+        )
+    }
+}
+
+/**
+ * Screenshot-only adapter for the route visual harness. Production navigation never calls this
+ * function: native detail pages receive one immutable page route, while dedicated Pager fixtures
+ * below render their own content without exposing any destination-changing callback.
+ */
+@Composable
+private fun SettingsRouteVisualFixtureDetailContent(
+    pager: Pager,
+    eventBus: SlockEventBus,
+    session: StoredAuthSession,
+    authDataSource: SharedAuthDataSource,
+    settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    storeScope: SlockShellStoreScope,
+    handsFeedbackVisualFixture: SettingsHandsFeedbackVisualFixture?,
+    settingsState: SharedSettingsState,
+    notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
+    onSettingsIntent: (SharedSettingsIntent) -> Unit,
+    route: SettingsRouteVisualPayload,
+    onBack: () -> Unit,
+    bottomContentPadding: Dp,
+    timeContext: SlockTimeContext?,
+    onLogout: () -> Unit,
+) {
+    val nativePage = SettingsNativeDetailPage.fromKey(route.destination)
+    if (nativePage != null) {
+        val nativeRoute =
+            SettingsNativeDetailRoute.create(
+                page = nativePage,
+                itemId = route.itemId,
+            )
+        if (nativeRoute == null) {
+            SettingsSharedPlaceholder(
+                title = "Settings",
+                detail = "This visual fixture route is invalid.",
+                iconName = SlockLucideIconName.Settings,
+                bottomContentPadding = bottomContentPadding,
+            )
+            return
+        }
+        SettingsNativeDetailPageContent(
+            session = session,
+            authDataSource = authDataSource,
+            settingsCapabilities = settingsCapabilities,
+            settingsState = settingsState,
+            notificationPreferenceSnapshot = notificationPreferenceSnapshot,
+            onSettingsIntent = onSettingsIntent,
+            route = nativeRoute,
+            onBack = onBack,
+            onOpenRouterPage = {},
+            onOpenAdministrationPage = {},
+            onOpenHandsFeedbackPage = {},
+            onOpenSourceLicensesPage = {},
+            onOpenApiEnvironmentPage = {},
+            onOpenDiagnosticsPage = {},
+            onOpenLocalFeatureOverridesPage = {},
+            onOpenLocalFeatureOverridePage = {},
+            onMessageAlignmentSelected = {},
+            onCompactConsecutiveMessagesSelected = {},
+            onForegroundMessageBannersSelected = {},
+            onActivityTaskStatusBadgesSelected = {},
+            onConversationForwardGestureSelected = {},
+            activitySenderAvatarsEnabled = false,
+            onActivitySenderAvatarsSelected = {},
+            onServerDrawerSelected = {},
+            onHomeServerAvatarSelected = {},
+            onThreadRowAffordanceSelected = { _, _ -> },
+            bottomContentPadding = bottomContentPadding,
+            timeContext = timeContext,
+            onLogout = onLogout,
+        )
+        return
+    }
+
+    SettingsDedicatedPagerVisualFixtureContent(
         pager = pager,
         eventBus = eventBus,
         session = session,
-        authDataSource = authDataSource,
         settingsCapabilities = settingsCapabilities,
         storeScope = storeScope,
         handsFeedbackVisualFixture = handsFeedbackVisualFixture,
-        settingsState = state,
-        notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
-        onToggleNotificationPreference = {},
-        onSettingsIntent = {},
-        selectedDestination = route.destination,
-        onDestinationChange = {},
-        onSettingsHeaderClick = {},
-        onOpenRouter = {},
-        onOpenReleaseNotes = {},
-        onOpenBilling = {},
-        onOpenComputers = {},
-        onOpenAdministration = {},
-        onOpenConnectedApps = {},
-        onOpenHandsFeedback = {},
-        onMessageAlignmentSelected = {},
-        onCompactConsecutiveMessagesSelected = {},
-        onForegroundMessageBannersSelected = {},
-        onActivityTaskStatusBadgesSelected = {},
-        onConversationForwardGestureSelected = {},
-        activitySenderAvatarsEnabled = false,
-        onActivitySenderAvatarsSelected = {},
-        onServerDrawerSelected = {},
-        onHomeServerAvatarSelected = {},
-        onThreadRowAffordanceSelected = { _, _ -> },
-        onSettingsAction = { _, _ -> },
-        onDiagnosticsFeedbackPrepared = {},
-        diagnosticsFeedbackDraft = null,
-        diagnosticsFeedbackHomeState = SharedHomeState(),
-        onDiagnosticsFeedbackBack = {},
-        onDiagnosticsFeedbackRefresh = {},
-        onDiagnosticsFeedbackChannelSelected = {},
-        bottomContentPadding = SlockSpacing.Lg,
-        timeContext = null,
-        onLogout = {}
+        settingsState = settingsState,
+        route = route,
+        onBack = onBack,
+        bottomContentPadding = bottomContentPadding,
+        timeContext = timeContext,
     )
 }
+
+@Composable
+private fun SettingsDedicatedPagerVisualFixtureContent(
+    pager: Pager,
+    eventBus: SlockEventBus,
+    session: StoredAuthSession,
+    settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    storeScope: SlockShellStoreScope,
+    handsFeedbackVisualFixture: SettingsHandsFeedbackVisualFixture?,
+    settingsState: SharedSettingsState,
+    route: SettingsRouteVisualPayload,
+    onBack: () -> Unit,
+    bottomContentPadding: Dp,
+    timeContext: SlockTimeContext?,
+) {
+    val serverSnapshot = settingsState.server.currentContent()
+    val serverProfile = serverSnapshot?.profile
+    val serverName = serverProfile?.name ?: session.currentServerSummary()?.name.orEmpty()
+    val serverSlug = serverProfile?.slug ?: session.currentServerSummary()?.slug.orEmpty()
+    val agreement = serverSnapshot?.agreement
+    val onboarding = serverSnapshot?.onboarding
+
+    SettingsDetailShell(
+        title = settingsDedicatedPagerVisualFixtureTitle(route.destination),
+        subtitle = "",
+        iconName = settingsDedicatedPagerVisualFixtureIcon(route.destination),
+        onBack = onBack,
+        trailingContent = null,
+    ) {
+        when (route.destination) {
+            SettingsDestinationAccount ->
+                SettingsAccountContent(
+                    settingsState.account.toAccountPayload(
+                        session,
+                        settingsState.actionState,
+                        localizedErrorPresentationStrings(),
+                    ),
+                    applyTopSafeArea = false,
+                    bottomContentPadding = bottomContentPadding,
+                    onPasswordChange = { _, _ -> },
+                    onEvent = { _, _ -> },
+                )
+            SettingsDestinationStorage ->
+                SettingsStorageContent(
+                    settingsState.storage.toStoragePayload(
+                        actionState = settingsState.actionState,
+                        refreshing = settingsState.isRefreshing(SharedSettingsDestination.Storage),
+                    ),
+                    bottomContentPadding = bottomContentPadding,
+                    onEvent = { _, _ -> },
+                )
+            SettingsDestinationAdministration ->
+                SharedSettingsServerContent(
+                    payload =
+                        settingsState.server.toAdministrationPayload(
+                            session = session,
+                            refreshing = settingsState.isRefreshing(SharedSettingsDestination.Administration),
+                            actionState = settingsState.actionState,
+                            timeContext = timeContext,
+                        ),
+                    joinLinkMaxUses = "",
+                    joinLinkExpiresAt = "",
+                    profileName = serverName,
+                    onProfileNameChange = {},
+                    agreementEnabled = agreement?.enabled == true,
+                    agreementTitle = textFieldValueAtEnd(agreement?.title.orEmpty()),
+                    agreementBody = textFieldValueAtEnd(agreement?.bodyMarkdown.orEmpty()),
+                    hideHumansFromMembers = serverProfile?.hideHumansFromMembers == true,
+                    onboardingAgentId = onboarding?.onboardingAgentId.orEmpty(),
+                    onboardingGreetingEnabled = onboarding?.agentAllChannelGreetingEnabled ?: true,
+                    serverSnapshot = serverSnapshot,
+                    timeContext = timeContext,
+                    serverRole = session.currentServerSummary()?.role.orEmpty(),
+                    expectedServerSlug = serverSlug,
+                    deleteConfirmationName = "",
+                    actionState = settingsState.actionState,
+                    bottomContentPadding = bottomContentPadding,
+                    showProfileCard = false,
+                    onAction = { _, _ -> },
+                )
+            SettingsDestinationConnectedApps ->
+                SettingsConnectedAppsContent(
+                    state = settingsState.connectedApps,
+                    selectedTab = "marketplace",
+                    onSelectedTabChange = {},
+                    editingId = "",
+                    name = "",
+                    clientId = "",
+                    description = TextFieldValue(""),
+                    homepageUrl = "",
+                    returnUrl = "",
+                    manifestUrl = "",
+                    publishCategory = "productivity",
+                    publishDataAccess = TextFieldValue(""),
+                    marketplaceSearch = "",
+                    marketplaceCategory = SETTINGS_CONNECTED_APPS_CATEGORY_ALL,
+                    selectedMarketplaceId = null,
+                    selectedBuiltInId = null,
+                    confirmTarget = null,
+                    actionState = settingsState.actionState,
+                    bottomContentPadding = bottomContentPadding,
+                    onNameChange = {},
+                    onClientIdChange = {},
+                    onDescriptionChange = {},
+                    onHomepageUrlChange = {},
+                    onReturnUrlChange = {},
+                    onManifestUrlChange = {},
+                    onPublishCategoryChange = {},
+                    onPublishDataAccessChange = {},
+                    onMarketplaceSearchChange = {},
+                    onMarketplaceCategoryChange = {},
+                    onOpenMarketplaceDetail = {},
+                    onDismissMarketplaceDetail = {},
+                    onOpenBuiltInDetail = {},
+                    onDismissBuiltInDetail = {},
+                    onStartEdit = {},
+                    onCancelEdit = {},
+                    onRegister = {},
+                    onUpdate = {},
+                    onUploadLogo = {},
+                    onClearLogo = {},
+                    onRequestDelete = {},
+                    onConfirmDelete = {},
+                    onPublish = {},
+                    onInstall = {},
+                    onRequestUninstall = {},
+                    onConfirmUninstall = {},
+                    onDismissConfirm = {},
+                    onCopySecret = {},
+                    onOpenUrl = {},
+                    onRefresh = {},
+                )
+            SettingsDestinationHandsFeedback ->
+                SharedHandsFeedbackContent(
+                    pager = pager,
+                    eventBus = eventBus,
+                    settingsCapabilities = settingsCapabilities,
+                    sourceStoreScope = storeScope,
+                    accountId = session.user.id,
+                    visualFixture = handsFeedbackVisualFixture,
+                    bottomContentPadding = bottomContentPadding,
+                )
+            SettingsDestinationComputers,
+            SettingsDestinationBilling,
+            SettingsDestinationReleaseNotes -> SettingsComputersLoadingContent()
+            else ->
+                SettingsSharedPlaceholder(
+                    title = "Settings",
+                    detail = "This visual fixture route is unavailable.",
+                    iconName = SlockLucideIconName.Settings,
+                    bottomContentPadding = bottomContentPadding,
+                )
+        }
+    }
+}
+
+@Composable
+private fun settingsDedicatedPagerVisualFixtureTitle(destination: String): String =
+    when (destination) {
+        SettingsDestinationAccount -> stringResource(MR.strings.settings_account_title)
+        SettingsDestinationComputers -> stringResource(MR.strings.settings_computers_title)
+        SettingsDestinationAdministration -> stringResource(MR.strings.settings_server_administration_title)
+        SettingsDestinationConnectedApps -> stringResource(MR.strings.settings_connected_apps_title)
+        SettingsDestinationBilling -> stringResource(MR.strings.settings_billing_title)
+        SettingsDestinationStorage -> stringResource(MR.strings.settings_storage_title)
+        SettingsDestinationReleaseNotes -> stringResource(MR.strings.settings_release_notes_title)
+        SettingsDestinationHandsFeedback -> stringResource(MR.strings.settings_feedback_title)
+        else -> stringResource(MR.strings.settings_title)
+    }
+
+private fun settingsDedicatedPagerVisualFixtureIcon(destination: String): SlockLucideIconName =
+    when (destination) {
+        SettingsDestinationAccount -> SlockLucideIconName.User
+        SettingsDestinationComputers -> SlockLucideIconName.Monitor
+        SettingsDestinationAdministration -> SlockLucideIconName.Shield
+        SettingsDestinationConnectedApps -> SlockLucideIconName.Link2
+        SettingsDestinationBilling -> SlockLucideIconName.CreditCard
+        SettingsDestinationStorage -> SlockLucideIconName.Archive
+        SettingsDestinationReleaseNotes -> SlockLucideIconName.FileText
+        SettingsDestinationHandsFeedback -> SlockLucideIconName.MessageSquarePlus
+        else -> SlockLucideIconName.Settings
+    }
 
 private fun settingsHandsFeedbackVisualFixture(fixtureKey: String): SettingsHandsFeedbackVisualFixture? {
     if (fixtureKey != "feedback-two-attachments" && fixtureKey != "feedback-submit-success") return null
@@ -24211,10 +23507,13 @@ private fun settingsHandsFeedbackVisualFixture(fixtureKey: String): SettingsHand
 }
 
 internal fun settingsRouteVisualState(route: SettingsRouteVisualPayload): SharedSettingsState {
-    val destination = route.destination.toSharedSettingsDestination() ?: SharedSettingsDestination.Administration
+    val destination =
+        SettingsNativeDetailPage.fromKey(route.destination)?.storeDestination
+            ?: route.destination.toVisualFixtureSharedSettingsDestination()
+            ?: SharedSettingsDestination.Administration
     return SharedSettingsState(
         route = SharedSettingsRoute(destination, route.itemId),
-        home = ScreenLoadState.Content(settingsRouteVisualHomeSnapshot(destination)),
+        home = ScreenLoadState.Content(SharedSettingsHomeSnapshot()),
         server =
             if (destination == SharedSettingsDestination.Administration || destination == SharedSettingsDestination.Server) {
                 ScreenLoadState.Content(settingsVisualServerSnapshot())
@@ -24251,25 +23550,6 @@ internal fun settingsRouteVisualState(route: SettingsRouteVisualPayload): Shared
             } else {
                 ScreenLoadState.Loading
             }
-    )
-}
-
-private fun settingsRouteVisualHomeSnapshot(selectedDestination: SharedSettingsDestination): SharedSettingsHomeSnapshot {
-    val session = settingsRouteVisualSession()
-    return SharedSettingsHomeSnapshot(
-        items =
-            listOf(
-                SharedSettingsNavItem(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User, session.user.bestDisplayName, selectedDestination == SharedSettingsDestination.Account),
-                SharedSettingsNavItem(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", SlockLucideIconName.Languages, null, selectedDestination == SharedSettingsDestination.LanguageRegion),
-                SharedSettingsNavItem(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", SlockLucideIconName.Type, null, selectedDestination == SharedSettingsDestination.Appearance),
-                SharedSettingsNavItem(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", SlockLucideIconName.Bell, null, selectedDestination == SharedSettingsDestination.Notifications),
-                SharedSettingsNavItem(SharedSettingsDestination.Mobile, "Mobile", "Links, conversations, and composer", SlockLucideIconName.Smartphone, null, selectedDestination == SharedSettingsDestination.Mobile),
-                SharedSettingsNavItem(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", SlockLucideIconName.Building2, settingsVisualFixtureValues.ownerRole.replaceFirstChar { it.uppercase() }, selectedDestination == SharedSettingsDestination.Server),
-                SharedSettingsNavItem(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.CreditCard, settingsVisualFixtureValues.serverPlan.replaceFirstChar { it.uppercase() }, selectedDestination == SharedSettingsDestination.Billing),
-                SharedSettingsNavItem(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", SlockLucideIconName.Shield, null, selectedDestination == SharedSettingsDestination.Administration),
-                SharedSettingsNavItem(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Link2, null, selectedDestination == SharedSettingsDestination.ConnectedApps),
-                SharedSettingsNavItem(SharedSettingsDestination.About, "About", "Version and build information", SlockLucideIconName.BadgeInfo, null, selectedDestination == SharedSettingsDestination.About)
-            )
     )
 }
 
@@ -24316,7 +23596,11 @@ private fun parseSettingsRouteVisualPayload(params: com.tencent.kuikly.core.nvi.
     val destination =
         params.optString(SettingsRouteVisualDestinationKey)
             .trim()
-            .takeIf { it.toSharedSettingsDestination() != null || it == SettingsDestinationHandsFeedback }
+            .takeIf {
+                SettingsNativeDetailPage.fromKey(it) != null ||
+                    it.toVisualFixtureSharedSettingsDestination() != null ||
+                    it == SettingsDestinationHandsFeedback
+            }
             ?: SettingsDestinationAdministration
     val itemId =
         params.optString(SettingsRouteVisualItemIdKey)
@@ -24411,8 +23695,8 @@ internal fun SettingsHomeContent(
             }
             item {
                 SlockVerticalTabBar(
-                    items = payload.items,
-                    showSelection = payload.showSelection,
+                    items = payload.items.map(SettingsHomePageLinkPayload::toTabItemPayload),
+                    showSelection = false,
                     onSelect = onSelect,
                     modifier = Modifier.padding(start = SlockSpacing.Md),
                     sectionStartPadding = 0.dp,
@@ -24428,3 +23712,13 @@ internal fun SettingsHomeContent(
         }
     }
 }
+
+private fun SettingsHomePageLinkPayload.toTabItemPayload(): SlockTabItemPayload =
+    SlockTabItemPayload(
+        key = key,
+        title = title,
+        subtitle = subtitle,
+        iconName = iconName,
+        value = value,
+        section = section,
+    )

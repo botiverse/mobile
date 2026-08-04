@@ -132,11 +132,9 @@ class SharedRealtimeDomainEventOwnerTest {
     fun ignoresBlankServerIdsAndHeartbeats() {
         val owner = SharedRealtimeDomainEventOwner()
         val homeEvents = mutableListOf<RealtimeEventRecord>()
-        val settingsEvents = mutableListOf<RealtimeEventRecord>()
         owner.registerSinks(
             RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
-                applySettings = { serverId, event -> settingsEvents += RealtimeEventRecord(serverId, event) }
+                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) }
             )
         )
 
@@ -144,20 +142,17 @@ class SharedRealtimeDomainEventOwnerTest {
         owner.accept("server-1", Heartbeat(seq = 10L))
 
         assertEquals(emptyList(), homeEvents)
-        assertEquals(emptyList(), settingsEvents)
     }
 
     @Test
     fun duplicateAcceptedEventsPatchDomainSinksOnce() {
         val owner = SharedRealtimeDomainEventOwner()
         val homeEvents = mutableListOf<RealtimeEventRecord>()
-        val settingsEvents = mutableListOf<RealtimeEventRecord>()
         val joinedChannels = mutableListOf<String>()
         val logs = mutableListOf<String>()
         val sinks =
             RealtimeDomainEventSinks(
                 applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
-                applySettings = { serverId, event -> settingsEvents += RealtimeEventRecord(serverId, event) },
                 joinChannel = { channelId -> joinedChannels += channelId },
                 log = logs::add
             )
@@ -168,7 +163,6 @@ class SharedRealtimeDomainEventOwnerTest {
         owner.accept("server-1", event, source = "app_shell")
 
         assertEquals(listOf(RealtimeEventRecord("server-1", event)), homeEvents)
-        assertEquals(listOf(RealtimeEventRecord("server-1", event)), settingsEvents)
         assertEquals(listOf("dm-1"), joinedChannels)
         assertEquals(true, logs.any { it.contains("reason=duplicate") })
     }
@@ -178,7 +172,6 @@ class SharedRealtimeDomainEventOwnerTest {
         val owner = SharedRealtimeDomainEventOwner()
         val unreadEvents = mutableListOf<RealtimeEventRecord>()
         val homeEvents = mutableListOf<RealtimeEventRecord>()
-        val settingsEvents = mutableListOf<RealtimeEventRecord>()
         val event =
             MessageNew(
                 Message(
@@ -201,8 +194,7 @@ class SharedRealtimeDomainEventOwnerTest {
         owner.registerSinks(
             RealtimeDomainEventSinks(
                 applyHomeShell = { serverId, accepted -> homeEvents += RealtimeEventRecord(serverId, accepted) },
-                applyHomeUnreadProjection = { serverId, accepted -> unreadEvents += RealtimeEventRecord(serverId, accepted) },
-                applySettings = { serverId, accepted -> settingsEvents += RealtimeEventRecord(serverId, accepted) }
+                applyHomeUnreadProjection = { serverId, accepted -> unreadEvents += RealtimeEventRecord(serverId, accepted) }
             )
         )
 
@@ -211,7 +203,6 @@ class SharedRealtimeDomainEventOwnerTest {
 
         assertEquals(listOf(RealtimeEventRecord("server-2", event)), unreadEvents)
         assertEquals(emptyList(), homeEvents)
-        assertEquals(emptyList(), settingsEvents)
     }
 
     @Test
@@ -643,11 +634,9 @@ class SharedRealtimeDomainEventOwnerTest {
     fun messageEventsUseStableIdentityForDedupe() {
         val owner = SharedRealtimeDomainEventOwner()
         val homeEvents = mutableListOf<RealtimeEventRecord>()
-        val settingsEvents = mutableListOf<RealtimeEventRecord>()
         owner.registerSinks(
             RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
-                applySettings = { serverId, event -> settingsEvents += RealtimeEventRecord(serverId, event) }
+                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) }
             )
         )
         val event =
@@ -667,7 +656,6 @@ class SharedRealtimeDomainEventOwnerTest {
         owner.accept("server-1", event, source = "app_shell")
 
         assertEquals(listOf(RealtimeEventRecord("server-1", event)), homeEvents)
-        assertEquals(listOf(RealtimeEventRecord("server-1", event)), settingsEvents)
     }
 
     @Test

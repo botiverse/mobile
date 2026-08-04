@@ -165,7 +165,7 @@ private fun ReleaseNotesScreenBody(pager: Pager) {
     val settingsState by settingsViewModel.state.collectAsState()
     LaunchedEffect(Unit) {
         bridge.log("release_notes_open versionSource=about")
-        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
+        settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.About))
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
 
@@ -176,7 +176,7 @@ private fun ReleaseNotesScreenBody(pager: Pager) {
             ReleaseNotesErrorState(
                 onRetry = {
                     settingsViewModel.dispatch(
-                        SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About)
+                        SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.About)
                     )
                 }
             )

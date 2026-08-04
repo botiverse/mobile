@@ -1988,7 +1988,6 @@ internal interface RealtimeDomainEventOwner {
 internal data class RealtimeDomainEventSinks(
     val applyHomeShell: (String, RealtimeEvent) -> Unit = { _, _ -> },
     val applyHomeUnreadProjection: (String, RealtimeEvent) -> Unit = { _, _ -> },
-    val applySettings: (String, RealtimeEvent) -> Unit = { _, _ -> },
     val applyServerMembersRefresh: (String, RealtimeRefreshRequired) -> Unit = { _, _ -> },
     val applyAgentActivity: (MemberPresenceUpdated) -> Unit = {},
     val requestMemberDetailRefresh: () -> Unit = {},
@@ -2000,7 +1999,6 @@ internal data class RealtimeDomainEventSinks(
 internal data class RealtimeGuardedDomainEventSinks(
     val applyHomeShell: suspend (String, RealtimeEvent) -> Unit = { _, _ -> },
     val applyHomeUnreadProjection: suspend (String, RealtimeEvent) -> Unit = { _, _ -> },
-    val applySettings: suspend (String, RealtimeEvent) -> Unit = { _, _ -> },
     val applyServerMembersRefresh: suspend (String, RealtimeRefreshRequired) -> Unit = { _, _ -> },
     val applyAgentActivity: suspend (MemberPresenceUpdated) -> Unit = {},
     val requestMemberDetailRefresh: suspend () -> Unit = {},
@@ -2352,7 +2350,6 @@ internal class SharedRealtimeDomainEventOwner(
             }
             acceptedEvent.patchSharedTaskProjection(resolvedServerId)
             activeSinks?.applyHomeShell?.invoke(resolvedServerId, acceptedEvent)
-            activeSinks?.applySettings?.invoke(resolvedServerId, acceptedEvent)
             if (acceptedEvent is DirectMessageCreated) {
                 activeSinks?.joinChannel?.invoke(acceptedEvent.channelId.value)
             }
@@ -2503,7 +2500,6 @@ internal class SharedRealtimeDomainEventOwner(
         activeSinks: RealtimeGuardedDomainEventSinks?,
     ) {
         activeSinks?.applyHomeShell?.invoke(resolvedServerId, event)
-        activeSinks?.applySettings?.invoke(resolvedServerId, event)
         if (event is DirectMessageCreated) {
             activeSinks?.joinChannel?.invoke(event.channelId.value)
         }

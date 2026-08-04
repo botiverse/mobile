@@ -24,6 +24,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -119,14 +120,35 @@ class SettingsHomePageDiagnosticsTest {
     @Test
     fun localFeatureOverrideNavigationCarriesOnlyRegisteredKeyIdentity() {
         val key = "sync_core_read_state_v1"
-        val destination = localFeatureOverrideDestination(key)
+        val route = assertNotNull(SettingsNativeDetailRoute.create(SettingsNativeDetailPage.LocalFeatureOverride, key))
+        val diagnosticsRoute = assertNotNull(SettingsNativeDetailRoute.create(SettingsNativeDetailPage.Diagnostics))
 
-        assertEquals(key, destination.localFeatureOverrideKeyOrNull())
+        assertEquals(key, route.itemId)
         assertEquals(key, parseOpenLocalFeatureOverrideAction(openLocalFeatureOverrideAction(key)))
-        assertTrue(localFeatureOverrideDestinationAllowed(destination, available = true))
-        assertFalse(localFeatureOverrideDestinationAllowed(destination, available = false))
-        assertTrue(localFeatureOverrideDestinationAllowed("diagnostics", available = false))
-        assertNull("local-feature-override:../../token".localFeatureOverrideKeyOrNull())
+        assertTrue(localFeatureOverridePageAllowed(route, available = true))
+        assertFalse(localFeatureOverridePageAllowed(route, available = false))
+        assertTrue(localFeatureOverridePageAllowed(diagnosticsRoute, available = false))
+        assertFalse(
+            shouldCloseLocalFeatureOverridePage(
+                route = route,
+                availabilityResolved = false,
+                available = false,
+            )
+        )
+        assertTrue(
+            shouldCloseLocalFeatureOverridePage(
+                route = route,
+                availabilityResolved = true,
+                available = false,
+            )
+        )
+        assertFalse(
+            shouldCloseLocalFeatureOverridePage(
+                route = route,
+                availabilityResolved = true,
+                available = true,
+            )
+        )
         assertNull(parseOpenLocalFeatureOverrideAction("openLocalFeatureOverride|unknown-key"))
     }
 

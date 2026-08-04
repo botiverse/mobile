@@ -131,7 +131,7 @@ private fun SettingsStorageScreen() {
     val settingsState by settingsViewModel.state.collectAsState()
     LaunchedEffect(Unit) {
         bridge.log("settings_storage_open instanceId=${launchPayload.instanceId}")
-        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Storage))
+        settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Storage))
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     SettingsStorageContent(

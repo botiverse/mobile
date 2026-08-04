@@ -8,7 +8,6 @@ private val settingsStandaloneJson = Json { ignoreUnknownKeys = true }
 @Serializable
 internal data class WireSettingsHomeLaunchPayload(
     val instanceId: String = "",
-    val selectedDestination: String? = null
 )
 
 @Serializable

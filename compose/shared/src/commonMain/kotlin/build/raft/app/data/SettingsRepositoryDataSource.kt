@@ -1339,7 +1339,7 @@ class RealSettingsRepository(
     override suspend fun updateLanguageRegionPreference(
         request: SettingsLanguageRegionPreferenceUpdateRequest
     ): DataResult<SettingsLanguageRegionSnapshot> {
-        sessionStore.readSession() ?: return authRequired()
+        val session = sessionStore.readSession() ?: return authRequired()
         val server = selectedServer() ?: return serverRequired()
         if (!request.hasAtLeastOneField()) {
             return DataResult.Error(ScreenError("settings_language_region_empty_update", retryable = false))
@@ -1361,11 +1361,43 @@ class RealSettingsRepository(
                         ?: throw IllegalStateException("Language region account response missing preferences")
                 }
             )) {
-            is DataResult.Content ->
-                DataResult.Content(result.data.toLanguageRegionSnapshot(fetchServerTranslation(server.id), server.canManageServer))
+            is DataResult.Content -> {
+                val snapshot =
+                    result.data.toLanguageRegionSnapshot(
+                        fetchServerTranslation(server.id),
+                        server.canManageServer,
+                    )
+                persistUpdatedTimeFormat(
+                    expectedAccountId = session.user.id,
+                    request = request,
+                    snapshot = snapshot,
+                )
+                DataResult.Content(snapshot)
+            }
             is DataResult.Empty -> DataResult.Empty(result.reason)
             is DataResult.Error -> DataResult.Error(result.error)
             is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+        }
+    }
+
+    private suspend fun persistUpdatedTimeFormat(
+        expectedAccountId: String,
+        request: SettingsLanguageRegionPreferenceUpdateRequest,
+        snapshot: SettingsLanguageRegionSnapshot,
+    ) {
+        if (request.preferredTimeFormat == null && !request.clearPreferredTimeFormat) return
+        val effectiveTimeFormat =
+            snapshot.timeFormat.selectedKey.takeIf { it == "12h" || it == "24h" }
+                ?: return
+        sessionStore.updateMetadata(expectedAccountId) { latest ->
+            latest.copy(
+                user =
+                    latest.user.copy(
+                        preferredTimeFormat =
+                            effectiveTimeFormat.takeUnless { request.clearPreferredTimeFormat },
+                        timeFormat = effectiveTimeFormat,
+                    )
+            )
         }
     }
 
