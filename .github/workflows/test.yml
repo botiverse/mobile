@@ -64,6 +64,15 @@ jobs:
       - name: Validate OHOS attachment-open diagnostic production wiring
         run: node compose/ohosApp/scripts/test_attachment_open_diagnostics_source_contract.mjs
 
+      # Incident-born gate (task #976): PR #1920 imported kotlinx.coroutines.test
+      # into commonTest; the OHOS test targets have no such KLIB, so only the
+      # post-merge OHOS shared compile went red. This contract runs on every PR.
+      # Denylist form: seals the listed dependencies, not the general class.
+      - name: Validate commonTest cross-platform test dependency contract
+        run: |
+          python3 scripts/ci/check_commontest_crossplatform_deps.py --self-test
+          python3 scripts/ci/check_commontest_crossplatform_deps.py
+
       - name: Resolve exact execution tier
         id: plan
         shell: bash
