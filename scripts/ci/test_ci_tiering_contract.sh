@@ -17,9 +17,9 @@ types = pull_request.fetch("types")
 end
 raise "merge_group checks_requested trigger missing" unless events.dig("merge_group", "types") == ["checks_requested"]
 branches = events.dig("push", "branches")
-raise "main full readback trigger missing" unless branches.include?("main")
+raise "main path-scoped readback trigger missing" unless branches.include?("main")
 raise "release full readback trigger missing" unless branches.include?("release-*")
-raise "push path filters would suppress release readback" if events.fetch("push").key?("paths")
+raise "push path filters would suppress the stable CI gate" if events.fetch("push").key?("paths")
 
 jobs = workflow.fetch("jobs")
 expected_jobs = %w[
@@ -61,11 +61,13 @@ expected_needs = {
 expected_needs.each do |job, needs|
   raise "#{job} needs drifted" unless Array(jobs.dig(job, "needs")) == needs
 end
-%w[kuikly-artifacts android ohos-receipt-selftest].each do |job|
-  raise "#{job} is not basic-tier gated" unless jobs.dig(job, "if").include?("run_basic")
-end
-%w[fork-deps ios ohos ohos-host].each do |job|
-  raise "#{job} is not full-tier gated" unless jobs.dig(job, "if").include?("run_full")
+raise "Kuikly prebuild must follow Android or OHOS" unless
+  jobs.dig("kuikly-artifacts", "if").include?("run_android") &&
+  jobs.dig("kuikly-artifacts", "if").include?("run_ohos")
+raise "Android compile is not Android-path gated" unless jobs.dig("android", "if").include?("run_android")
+raise "iOS compile is not iOS-path gated" unless jobs.dig("ios", "if").include?("run_ios")
+%w[fork-deps ohos-receipt-selftest ohos ohos-host].each do |job|
+  raise "#{job} is not OHOS-path gated" unless jobs.dig(job, "if").include?("run_ohos")
 end
 %w[android-device android-minimum-supported-attachment-runtime android-canonical-final-actual-host].each do |job|
   raise "#{job} is not emulator-tier gated" unless jobs.dig(job, "if").include?("run_emulators")
@@ -73,8 +75,16 @@ end
 ohos_fork_steps = jobs.fetch("kuikly-artifacts").fetch("steps").select do |step|
   step.fetch("name", "").include?("OpenHarmony") || step.fetch("name", "").include?("ohos flavor")
 end
-raise "OHOS fork work disappeared from the full tier" if ohos_fork_steps.empty?
-raise "basic PR tier still performs OHOS fork work" unless ohos_fork_steps.all? { |step| step.fetch("if", "").include?("run_full") }
+raise "OHOS fork work disappeared from the OHOS path group" if ohos_fork_steps.empty?
+raise "non-OHOS plans still perform OHOS fork work" unless ohos_fork_steps.all? { |step| step.fetch("if", "").include?("run_ohos") }
+
+plan_outputs = jobs.fetch("plan").fetch("outputs").keys
+raise "platform plan outputs drifted" unless plan_outputs == %w[run_android run_ios run_ohos run_emulators reason]
+plan_script = jobs.fetch("plan").fetch("steps").find { |step| step["id"] == "plan" }.fetch("run")
+raise "PR diff does not use merge-base semantics" unless plan_script.include?('write_changed_paths "$BASE_SHA" "$HEAD_SHA" merge-base')
+raise "main push diff is not directly path-scoped" unless plan_script.include?('write_changed_paths "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" direct')
+raise "renames can hide the removed platform path" unless plan_script.include?("--no-renames")
+raise "unavailable diffs do not fail closed" unless plan_script.include?("__CI_CHANGED_PATHS_UNKNOWN__")
 
 plan = JSON.parse(File.read(".github/rulesets/mobile-main-merge-queue.json"))
 raise "ruleset plan schema drifted" unless plan.fetch("schema") == "botiverse-mobile-merge-queue-plan/v1"

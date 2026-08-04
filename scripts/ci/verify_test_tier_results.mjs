@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 
-const BASIC_JOBS = ["kuikly-artifacts", "android", "ohos-receipt-selftest"];
-const FULL_JOBS = ["fork-deps", "ios", "ohos", "ohos-host"];
 const EMULATOR_JOBS = [
   "android-device",
   "android-minimum-supported-attachment-runtime",
@@ -20,15 +18,20 @@ export function verifyTierResults(needs) {
     throw new Error("CI plan job did not succeed");
   }
   const outputs = needs.plan.outputs || {};
-  const runBasic = requireBoolean(outputs.run_basic, "run_basic");
-  const runFull = requireBoolean(outputs.run_full, "run_full");
+  const runAndroid = requireBoolean(outputs.run_android, "run_android");
+  const runIos = requireBoolean(outputs.run_ios, "run_ios");
+  const runOhos = requireBoolean(outputs.run_ohos, "run_ohos");
   const runEmulators = requireBoolean(outputs.run_emulators, "run_emulators");
-  if (runFull && !runBasic) throw new Error("full tier cannot run without basic tier");
-  if (runEmulators && !runFull) throw new Error("emulator tier cannot run without full tier");
+  if (runEmulators && !runAndroid) throw new Error("emulator jobs require Android");
 
   const expected = new Map([
-    ...BASIC_JOBS.map((name) => [name, runBasic]),
-    ...FULL_JOBS.map((name) => [name, runFull]),
+    ["kuikly-artifacts", runAndroid || runOhos],
+    ["fork-deps", runOhos],
+    ["android", runAndroid],
+    ["ios", runIos],
+    ["ohos-receipt-selftest", runOhos],
+    ["ohos", runOhos],
+    ["ohos-host", runOhos],
     ...EMULATOR_JOBS.map((name) => [name, runEmulators]),
   ]);
   for (const [name, shouldRun] of expected) {
@@ -40,27 +43,34 @@ export function verifyTierResults(needs) {
   }
 
   return {
-    run_basic: runBasic,
-    run_full: runFull,
+    run_android: runAndroid,
+    run_ios: runIos,
+    run_ohos: runOhos,
     run_emulators: runEmulators,
     reason: outputs.reason || "missing",
   };
 }
 
-function fixture({ basic, full, emulators }) {
+function fixture({ android, ios, ohos, emulators }) {
   const needs = {
     plan: {
       result: "success",
       outputs: {
-        run_basic: String(basic),
-        run_full: String(full),
+        run_android: String(android),
+        run_ios: String(ios),
+        run_ohos: String(ohos),
         run_emulators: String(emulators),
         reason: "fixture",
       },
     },
   };
-  for (const name of BASIC_JOBS) needs[name] = { result: basic ? "success" : "skipped" };
-  for (const name of FULL_JOBS) needs[name] = { result: full ? "success" : "skipped" };
+  needs["kuikly-artifacts"] = { result: android || ohos ? "success" : "skipped" };
+  needs["fork-deps"] = { result: ohos ? "success" : "skipped" };
+  needs.android = { result: android ? "success" : "skipped" };
+  needs.ios = { result: ios ? "success" : "skipped" };
+  needs["ohos-receipt-selftest"] = { result: ohos ? "success" : "skipped" };
+  needs.ohos = { result: ohos ? "success" : "skipped" };
+  needs["ohos-host"] = { result: ohos ? "success" : "skipped" };
   for (const name of EMULATOR_JOBS) needs[name] = { result: emulators ? "success" : "skipped" };
   return needs;
 }
@@ -75,26 +85,28 @@ function expectFailure(needs, message) {
 }
 
 function selfTest() {
-  verifyTierResults(fixture({ basic: false, full: false, emulators: false }));
-  verifyTierResults(fixture({ basic: true, full: false, emulators: false }));
-  verifyTierResults(fixture({ basic: true, full: true, emulators: false }));
-  verifyTierResults(fixture({ basic: true, full: true, emulators: true }));
+  verifyTierResults(fixture({ android: false, ios: false, ohos: false, emulators: false }));
+  verifyTierResults(fixture({ android: true, ios: false, ohos: false, emulators: false }));
+  verifyTierResults(fixture({ android: false, ios: true, ohos: false, emulators: false }));
+  verifyTierResults(fixture({ android: false, ios: false, ohos: true, emulators: false }));
+  verifyTierResults(fixture({ android: true, ios: true, ohos: true, emulators: false }));
+  verifyTierResults(fixture({ android: true, ios: true, ohos: true, emulators: true }));
 
-  const failedBasic = fixture({ basic: true, full: false, emulators: false });
-  failedBasic.android.result = "failure";
-  expectFailure(failedBasic, "required basic failure");
+  const failedAndroid = fixture({ android: true, ios: false, ohos: false, emulators: false });
+  failedAndroid.android.result = "failure";
+  expectFailure(failedAndroid, "selected Android failure");
 
-  const missingFull = fixture({ basic: true, full: true, emulators: false });
-  missingFull.ohos.result = "skipped";
-  expectFailure(missingFull, "required full job skipped");
+  const missingOhos = fixture({ android: false, ios: false, ohos: true, emulators: false });
+  missingOhos.ohos.result = "skipped";
+  expectFailure(missingOhos, "selected OHOS job skipped");
 
-  const accidentalEmulator = fixture({ basic: true, full: true, emulators: false });
+  const accidentalEmulator = fixture({ android: true, ios: false, ohos: false, emulators: false });
   accidentalEmulator["android-device"].result = "success";
   expectFailure(accidentalEmulator, "unplanned emulator cost");
 
-  const invalidPlan = fixture({ basic: true, full: false, emulators: false });
+  const invalidPlan = fixture({ android: false, ios: true, ohos: false, emulators: false });
   invalidPlan.plan.outputs.run_emulators = "true";
-  expectFailure(invalidPlan, "emulator tier without full tier");
+  expectFailure(invalidPlan, "emulators without Android");
   console.log("CI tier aggregate self-test: PASS");
 }
 
