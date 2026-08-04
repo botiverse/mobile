@@ -5754,7 +5754,21 @@ internal fun SharedThreadRouteContent(
             storageUnavailable = stringResource(MR.strings.file_preview_error_storage_unavailable),
             unableToOpenAttachment = unableToOpenAttachmentLabel
         )
-    val attachmentSavedLabel = stringResource(MR.strings.file_preview_private_download_saved)
+    val attachmentSavedToDownloadsLabel = stringResource(MR.strings.file_preview_download_saved)
+    val attachmentSavedToFilesLabel = stringResource(MR.strings.file_preview_export_saved)
+    val attachmentSavedToPhotosLabel = stringResource(MR.strings.thread_image_preview_saved_to_photos)
+    val attachmentDownloadedLabel = stringResource(MR.strings.file_preview_private_download_saved)
+    val attachmentSavedLabel =
+        slockFilePreviewSavedMessage(
+            exportPrivateDownload = false,
+            toPhotos = false,
+            supportsPublicDownloadReadback = slockPlatformSupportsPublicAttachmentDownloadReadback(),
+            supportsPrivateAttachmentExport = slockPlatformSupportsPrivateAttachmentExport(),
+            downloadSaved = attachmentSavedToDownloadsLabel,
+            privateDownloadSaved = attachmentDownloadedLabel,
+            fileExportSaved = attachmentSavedToFilesLabel,
+            imageSavedToPhotos = attachmentSavedToPhotosLabel
+        )
     val attachmentUploadFailedLabel = stringResource(MR.strings.thread_error_attachment_upload)
     val preparingAttachmentPreviewLabel = stringResource(MR.strings.thread_state_preparing_attachment)
     val attachmentUploadFailedDetailTemplate =
@@ -6904,8 +6918,8 @@ internal fun SharedThreadRouteContent(
                     attachmentOperationTokens = attachmentOperationTokens - attachment.id
                     bridge.toast(
                         slockThreadAttachmentSavedMessage(
-                            nativeMessage = result.message,
-                            fallbackMessage = attachmentSavedLabel
+                            nativeMessage = attachmentSavedLabel,
+                            fallbackMessage = attachmentDownloadedLabel
                         )
                     )
                 }
@@ -9821,10 +9835,7 @@ private suspend fun saveSharedThreadAttachment(
                 )
             when (nativeResult?.optString("status").orEmpty()) {
                 "saved" ->
-                    ThreadAttachmentOpenResult(
-                        status = "saved",
-                        message = nativeResult?.optString("message").orEmpty()
-                    )
+                    ThreadAttachmentOpenResult(status = "saved")
                 "cancelled" -> ThreadAttachmentOpenResult(status = "cancelled")
                 "storage_failed" ->
                     ThreadAttachmentOpenResult(
