@@ -6,7 +6,7 @@ import build.raft.app.data.SlockShellStoreScope
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -177,7 +177,7 @@ class SettingsNativeDetailPageTest {
     }
 
     @Test
-    fun diagnosticsAutoCloseWaitsForLoadAndEveryRequestedAction() = runTest {
+    fun diagnosticsAutoCloseWaitsForLoadAndEveryRequestedAction() = runBlocking {
         val route =
             assertNotNull(
                 SettingsNativeDetailRoute.create(
