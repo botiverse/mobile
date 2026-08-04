@@ -104,6 +104,21 @@ class ThreadComposerFocusDismissTest {
     }
 
     @Test
+    fun focusedBoundsSkipsDetachedOwnersAndClearsWhenFocusLeaves() {
+        val registry = SlockInputFocusOwnerRegistry()
+        val detachedOwner = Any()
+        val attachedOwner = Any()
+        val attachedBounds = Rect(4f, 80f, 96f, 124f)
+
+        registry.setFocused(detachedOwner, true) { null }
+        registry.setFocused(attachedOwner, true) { attachedBounds }
+        assertEquals(attachedBounds, registry.focusedBounds())
+
+        registry.setFocused(attachedOwner, false)
+        assertNull(registry.focusedBounds())
+    }
+
+    @Test
     fun unreconciledClearClaimIsReleasedForTheNextGesture() {
         val registry = SlockInputFocusOwnerRegistry()
         val owner = Any()

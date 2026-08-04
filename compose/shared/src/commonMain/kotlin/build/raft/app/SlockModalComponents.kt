@@ -43,6 +43,7 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyListScope
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -52,6 +53,8 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.ui.zIndex
 import com.tencent.kuikly.core.views.KeyboardParams
+import kotlin.math.ceil
+import kotlin.math.floor
 
 private val SlockUnifiedDialogShadowOffset = 4.dp
 
@@ -157,6 +160,74 @@ internal fun slockUnifiedDialogEffectiveBottomInset(
     if (!keyboardAvoidanceEnabled) return hostBottomInset
     val keyboardInset = keyboardHeightDp.coerceAtLeast(0f).dp
     return if (keyboardInset > hostBottomInset) keyboardInset else hostBottomInset
+}
+
+/**
+ * Scroll delta needed to keep a focused editor inside a keyboard-reduced viewport.
+ * Positive values move the list content upward; negative values move it downward.
+ */
+internal fun slockUnifiedDialogFocusedEditorScrollDelta(
+    focusedTop: Float,
+    focusedBottom: Float,
+    viewportTop: Float,
+    viewportBottom: Float
+): Float =
+    when {
+        focusedBottom > viewportBottom -> focusedBottom - viewportBottom
+        focusedTop < viewportTop -> focusedTop - viewportTop
+        else -> 0f
+    }
+
+internal data class SlockUnifiedDialogListScrollPosition(
+    val index: Int,
+    val scrollOffset: Int
+) {
+    init {
+        require(index >= 0)
+        require(scrollOffset >= 0)
+    }
+}
+
+/**
+ * Waits for the keyboard-driven relayout, then samples the current focused editor and viewport.
+ * Geometry is deliberately read after both frames so focus changes and dialog disposal cannot
+ * replay the bounds captured by an earlier keyboard callback.
+ */
+internal suspend fun slockUnifiedDialogKeepFocusedEditorVisible(
+    keyboardHeight: Float,
+    awaitRelayoutFrame: suspend () -> Unit,
+    focusedBounds: () -> Rect?,
+    viewportBounds: () -> Rect?,
+    currentScrollPosition: () -> SlockUnifiedDialogListScrollPosition,
+    scrollToItem: suspend (index: Int, scrollOffset: Int) -> Unit
+) {
+    if (keyboardHeight <= 0f) return
+    awaitRelayoutFrame()
+    awaitRelayoutFrame()
+
+    val focused = focusedBounds() ?: return
+    val viewport = viewportBounds() ?: return
+    val delta =
+        slockUnifiedDialogFocusedEditorScrollDelta(
+            focusedTop = focused.top,
+            focusedBottom = focused.bottom,
+            viewportTop = viewport.top,
+            viewportBottom = viewport.bottom
+        )
+    if (delta == 0f) return
+
+    // Root bounds and LazyList offsets are pixels. Round away from zero so a fractional edge
+    // overlap cannot leave the editor one sub-pixel outside the reduced viewport.
+    val pixelDelta =
+        if (delta > 0f) {
+            ceil(delta.toDouble()).toInt()
+        } else {
+            floor(delta.toDouble()).toInt()
+        }
+    val current = currentScrollPosition()
+    val targetOffset = (current.scrollOffset + pixelDelta).coerceAtLeast(0)
+    if (targetOffset == current.scrollOffset) return
+    scrollToItem(current.index, targetOffset)
 }
 
 @Composable
