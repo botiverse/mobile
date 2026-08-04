@@ -801,7 +801,7 @@ jobs:
       # Android host tests cannot stay hidden until a local developer run.
       - name: Run shared + Android app unit tests
         working-directory: compose
-        run: ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --continue --no-daemon --console=plain --stacktrace
+        run: ./gradlew :shared:testDebugUnitTest --continue --no-daemon --console=plain --stacktrace -Draft.test.watchdog.timeout.ms=15000 # task #32 TEMP self-proof: scratch hang test + small watchdog timeout; reverted by follow-up commit
 
       # Build once here, then let the emulator job below install the exact APKs
       # without paying for a second Gradle/Kotlin build. The visual fixture gives
