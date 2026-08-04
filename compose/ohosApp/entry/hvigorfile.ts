@@ -1,5 +1,6 @@
 import { hapTasks } from '@ohos/hvigor-ohos-plugin';
 import { kuiklyCompilePlugin } from '../hvigor/kuiklyPlugin';
+import { slockOhosOAuthCallbackPlugin } from '../hvigor/oauthCallbackPlugin';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -9,7 +10,7 @@ writeSlockOhosBuildMetadata();
 
 export default {
     system: hapTasks,  /* Built-in plugin of Hvigor. It cannot be modified. */
-    plugins:[kuiklyCompilePlugin()]         /* Custom plugin to extend the functionality of Hvigor. */
+    plugins:[slockOhosOAuthCallbackPlugin(), kuiklyCompilePlugin()] /* Custom plugins. */
 }
 
 function syncSlockFontRawfiles(): void {

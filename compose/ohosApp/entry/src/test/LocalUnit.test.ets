@@ -89,6 +89,13 @@ import {
   SlockOhosAttachmentOpenPreflightStage,
 } from '../main/ets/kuikly/SlockOhosAttachmentOpenWant';
 import { wantConstant } from '@kit.AbilityKit';
+import {
+  parseSlockOhosMobileOAuthCallback,
+  dispatchSlockOhosMobileOAuthCallback,
+  prepareSlockOhosMobileOAuth,
+  SLOCK_OHOS_MOBILE_OAUTH_SCHEME,
+} from '../main/ets/kuikly/SlockOhosMobileOAuth';
+import { SlockOhosMobileOAuthIngress } from '../main/ets/kuikly/SlockOhosMobileOAuthIngress';
 
 interface FakeHandsFeedbackAttachmentInput {
   fileRef: string;
@@ -472,6 +479,73 @@ function diagnosticWork(
 
 export default function localUnitTest() {
   describe('localUnitTest',() => {
+    it('mobileOAuthPreparationCreatesPkceS256Material', 0, () => {
+      const preparation = prepareSlockOhosMobileOAuth('google', 'link');
+      expect(preparation.generation.length > 0).assertTrue();
+      expect(preparation.codeVerifier.length >= 43).assertTrue();
+      expect(preparation.codeChallenge.length >= 43).assertTrue();
+      expect(preparation.codeVerifier === preparation.codeChallenge).assertFalse();
+      expect(preparation.returnUri).assertEqual(`${SLOCK_OHOS_MOBILE_OAUTH_SCHEME}://oauth/callback`);
+    });
+    it('mobileOAuthCallbackAdmitsOnlyCanonicalRaftRoute', 0, () => {
+      const callback = parseSlockOhosMobileOAuthCallback(
+        `${SLOCK_OHOS_MOBILE_OAUTH_SCHEME}://oauth/callback?provider=github&mode=link&code=handoff%2Dcode`
+      );
+      expect(callback?.provider).assertEqual('github');
+      expect(callback?.mode).assertEqual('link');
+      expect(callback?.code).assertEqual('handoff-code');
+      expect(callback?.error).assertEqual('');
+      expect(parseSlockOhosMobileOAuthCallback('raft-dev://oauth/callback?code=x') === undefined).assertTrue();
+      const wrongVariantScheme = SLOCK_OHOS_MOBILE_OAUTH_SCHEME === 'raft' ? 'raft-debug' : 'raft';
+      expect(parseSlockOhosMobileOAuthCallback(`${wrongVariantScheme}://oauth/callback?code=x`) === undefined).assertTrue();
+      expect(parseSlockOhosMobileOAuthCallback('raft://oauth/wrong?code=x') === undefined).assertTrue();
+      expect(parseSlockOhosMobileOAuthCallback('raft://oauth/callback') === undefined).assertTrue();
+    });
+    it('mobileOAuthCallbackRejectsDuplicateOrUnknownQueries', 0, () => {
+      const prefix = `${SLOCK_OHOS_MOBILE_OAUTH_SCHEME}://oauth/callback`;
+      expect(parseSlockOhosMobileOAuthCallback(`${prefix}?code=one&code=two`) === undefined).assertTrue();
+      expect(parseSlockOhosMobileOAuthCallback(`${prefix}?code=one&state=forged`) === undefined).assertTrue();
+      expect(parseSlockOhosMobileOAuthCallback(`${prefix}?error=x&error_description=y`) === undefined).assertTrue();
+    });
+    it('mobileOAuthIngressDeliversColdAndWarmCallbacksExactlyOnceAfterPageReady', 0, () => {
+      const consumed: string[] = [];
+      const ingress = new SlockOhosMobileOAuthIngress((uri) => {
+        consumed.push(uri ?? '');
+        return true;
+      });
+      ingress.captureColdStart(`${SLOCK_OHOS_MOBILE_OAUTH_SCHEME}://oauth/callback?code=cold`);
+      expect(consumed.length).assertEqual(0);
+      ingress.markPageContentLoaded();
+      ingress.markPageContentLoaded();
+      expect(consumed.length).assertEqual(1);
+      expect(consumed[0].includes('code=cold')).assertTrue();
+      ingress.captureWarmStart(`${SLOCK_OHOS_MOBILE_OAUTH_SCHEME}://oauth/callback?code=warm`);
+      expect(consumed.length).assertEqual(2);
+      ingress.markPageContentLoaded();
+      expect(consumed.length).assertEqual(2);
+    });
+    it('mobileOAuthDispatchRejectsWrongVariantBeforeKnoiInvocation', 0, () => {
+      let invocations = 0;
+      const wrongVariantScheme = SLOCK_OHOS_MOBILE_OAUTH_SCHEME === 'raft' ? 'raft-debug' : 'raft';
+      const wrongAccepted = dispatchSlockOhosMobileOAuthCallback(
+        `${wrongVariantScheme}://oauth/callback?code=wrong`,
+        () => {
+          invocations += 1;
+          return true;
+        }
+      );
+      expect(wrongAccepted).assertFalse();
+      expect(invocations).assertEqual(0);
+      const activeAccepted = dispatchSlockOhosMobileOAuthCallback(
+        `${SLOCK_OHOS_MOBILE_OAUTH_SCHEME}://oauth/callback?code=right`,
+        () => {
+          invocations += 1;
+          return true;
+        }
+      );
+      expect(activeAccepted).assertTrue();
+      expect(invocations).assertEqual(1);
+    });
     it('attachmentOpenBuildsReadAuthorizedViewWantForPrivateUri', 0, () => {
       const uri = 'file://build.raft.mobile/data/storage/el2/base/files/slock-attachments/archive.zip';
       const wants = buildSlockOhosAttachmentOpenWants(uri, 'application/zip');

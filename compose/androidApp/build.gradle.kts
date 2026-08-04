@@ -589,6 +589,8 @@ android {
         buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"\"")
         buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"\"")
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
+        buildConfigField("String", "OAUTH_CALLBACK_SCHEME", "\"raft\"")
+        manifestPlaceholders["oauthCallbackScheme"] = "raft"
         buildConfigField("String", "BUILD_TIME", "\"${slockBuildTime()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${slockGitCommit()}\"")
         buildConfigField("String", "HANDS_BASE_URL", "\"${slockBuildConfigString("SLOCK_HANDS_BASE_URL", "https://hands.build")}\"")
@@ -638,6 +640,11 @@ android {
             buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
             buildConfigField("String", "HANDS_CHANNEL", "\"debug\"")
             matchingFallbacks += listOf("release")
+        }
+        configureEach {
+            val callbackScheme = if (name == "release") "raft" else "raft-${name.lowercase()}"
+            buildConfigField("String", "OAUTH_CALLBACK_SCHEME", "\"$callbackScheme\"")
+            manifestPlaceholders["oauthCallbackScheme"] = callbackScheme
         }
     }
     compileOptions {

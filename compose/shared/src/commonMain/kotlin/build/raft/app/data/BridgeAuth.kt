@@ -10,6 +10,8 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.CancellationException
@@ -81,12 +83,66 @@ internal class BridgeSettingsPlatformCapabilities(
         val status = response?.optString("status").orEmpty()
         return when (status) {
             "started", "ok" -> DataResult.Content(Unit)
+            "prepared" -> startSharedBrowserMobileOAuthLink(providerId, response)
             "unsupported" -> DataResult.Empty(EmptyReason.NoSettingsAvailable)
             else -> {
                 val code = response?.optString("code").orEmpty().ifBlank { "settings_mobile_oauth_link_failed" }
                 DataResult.Error(ScreenError(code, retryable = true))
             }
         }
+    }
+
+    private suspend fun startSharedBrowserMobileOAuthLink(
+        providerId: String,
+        preparation: JSONObject?,
+    ): DataResult<Unit> {
+        val generation = preparation?.optString("generation").orEmpty()
+        val verifier = preparation?.optString("codeVerifier").orEmpty()
+        val challenge = preparation?.optString("codeChallenge").orEmpty()
+        val returnUri = preparation?.optString("returnUri").orEmpty()
+        val pkcePattern = Regex("^[A-Za-z0-9_-]{43,128}$")
+        if (
+            generation.isBlank() ||
+            !pkcePattern.matches(verifier) ||
+            !pkcePattern.matches(challenge) ||
+            returnUri !in setOf("raft://oauth/callback", "raft-debug://oauth/callback")
+        ) {
+            return DataResult.Error(ScreenError("settings_mobile_oauth_pkce_failed", retryable = true))
+        }
+        val start =
+            suspendCoroutine<SlockIosMobileOAuthStartResult> { continuation ->
+                SlockIosMobileOAuthBridge.startBrowser(
+                    provider = providerId,
+                    mode = "link",
+                    generation = generation,
+                    returnUri = returnUri,
+                    codeVerifier = verifier,
+                    codeChallenge = challenge,
+                ) { continuation.resume(it) }
+            }
+        val authorizationUrl = start.authorizationUrl.orEmpty()
+        if (
+            start.status != "started" ||
+            start.presentation != "browser" ||
+            start.callbackScheme != returnUri.substringBefore("://") ||
+            !authorizationUrl.startsWith("https://")
+        ) {
+            return DataResult.Error(
+                ScreenError(start.errorCode.orEmpty().ifBlank { "settings_mobile_oauth_link_failed" }, retryable = true)
+            )
+        }
+        val open =
+            settingsCapability(
+                JSONObject()
+                    .put("action", "mobileOAuthOpen")
+                    .put("authorizationUrl", authorizationUrl)
+            )
+        if (open?.optString("status") == "started") return DataResult.Content(Unit)
+        suspendCoroutine<Unit> { continuation ->
+            SlockIosMobileOAuthBridge.cancel(generation, "browser_failed") { continuation.resume(Unit) }
+        }
+        val code = open?.optString("code").orEmpty().ifBlank { "settings_mobile_oauth_browser_failed" }
+        return DataResult.Error(ScreenError(code, retryable = true))
     }
 
     override suspend fun pickAccountAvatarFile(): DataResult<PlatformFile> {

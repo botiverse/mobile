@@ -19,8 +19,11 @@ import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.SharedSettingsViewModel
+import build.raft.app.data.SLOCK_MOBILE_OAUTH_COMPLETION_EVENT
+import build.raft.app.data.SlockEventBuses
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -233,6 +236,17 @@ private fun SettingsAccountScreen() {
         bridge.log("settings_account_open instanceId=${launchPayload.instanceId}")
         settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account))
     }
+    DisposableEffect(settingsViewModel) {
+        val subscription =
+            SlockEventBuses.inProcess().observe(SLOCK_MOBILE_OAUTH_COMPLETION_EVENT) { event ->
+                if (shouldReloadSettingsAccountAfterMobileOAuth(event)) {
+                    settingsViewModel.dispatch(
+                        SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account)
+                    )
+                }
+            }
+        onDispose(subscription::close)
+    }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     SettingsDetailShell(
         title = stringResource(MR.strings.settings_account_title),
@@ -271,6 +285,10 @@ private fun SettingsAccountScreen() {
         )
     }
 }
+
+internal fun shouldReloadSettingsAccountAfterMobileOAuth(
+    event: com.tencent.kuikly.core.nvi.serialization.json.JSONObject?,
+): Boolean = event?.optString("status") == "settings_account"
 
 @Composable
 private fun rememberAccountPayload(

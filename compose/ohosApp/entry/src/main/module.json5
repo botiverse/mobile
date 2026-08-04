@@ -47,6 +47,26 @@
             "actions": [
               "action.system.home"
             ]
+          },
+          {
+            "entities": [
+              "entity.system.browsable"
+            ],
+            "actions": [
+              "ohos.want.action.viewData"
+            ],
+            "uris": [
+              {
+                "scheme": "raft",
+                "host": "oauth",
+                "path": "/callback"
+              },
+              {
+                "scheme": "raft-debug",
+                "host": "oauth",
+                "path": "/callback"
+              }
+            ]
           }
         ]
       },

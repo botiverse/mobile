@@ -20,6 +20,8 @@ import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
 import { SlockOhosAppDiagnostics } from './SlockOhosAppDiagnostics';
 import slockOhosAdaptivePaneBridge from '../kuikly/SlockOhosAdaptivePaneBridge';
+import { completeSlockOhosMobileOAuthCallback } from '../kuikly/SlockOhosMobileOAuth';
+import { SlockOhosMobileOAuthIngress } from '../kuikly/SlockOhosMobileOAuthIngress';
 import {
   SLOCK_OHOS_ATTACHMENT_DOWNLOAD_OBSERVER_SERVICE,
   slockOhosAttachmentDownloadSink
@@ -101,6 +103,8 @@ export default class EntryAbility extends UIAbility {
   private windowSizeCallback?: Callback<window.Size>;
   private foldStatusCallback?: Callback<display.FoldStatus>;
   private foldPosture: string = 'unknown';
+  private readonly mobileOAuthIngress: SlockOhosMobileOAuthIngress =
+    new SlockOhosMobileOAuthIngress(completeSlockOhosMobileOAuthCallback);
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
@@ -120,7 +124,12 @@ export default class EntryAbility extends UIAbility {
       this.context,
     );
     this.setupKnoi();
+    this.mobileOAuthIngress.captureColdStart(want.uri);
     slockOhosProcessNetworkLifecycle.install(this.context.getApplicationContext());
+  }
+
+  onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
+    this.mobileOAuthIngress.captureWarmStart(want.uri);
   }
 
   onDestroy(): void {
@@ -153,6 +162,7 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       this.registerSlockFonts(mainWindow);
+      this.mobileOAuthIngress.markPageContentLoaded();
       hilog.info(0x0000, 'testTag', 'Succeeded in loading the content. Data: %{public}s', JSON.stringify(data) ?? '');
     });
   }
