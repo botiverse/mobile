@@ -12782,7 +12782,7 @@ private fun SettingsHandsFeedbackConversationRow(
 internal fun SettingsDetailShell(
     title: String,
     subtitle: String,
-    iconName: SlockLucideIconName,
+    iconName: SlockLucideIconName? = null,
     applyTopSafeArea: Boolean = true,
     headerHeight: Dp = SlockSize.PageHeaderHeight,
     onBack: () -> Unit,

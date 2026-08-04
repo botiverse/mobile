@@ -58,6 +58,7 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -233,30 +234,39 @@ private fun SettingsAccountScreen() {
         settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account))
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
-    SettingsAccountContent(
-        settingsState.account.toAccountPayload(
-            session = null,
-            actionState = settingsState.actionState,
-            errorStrings = localizedErrorPresentationStrings()
-        ),
-        onPasswordChange = { currentPassword, newPassword ->
-            settingsViewModel.dispatch(
-                SharedSettingsIntent.ChangeAccountPassword(
-                    AccountPasswordChangeRequest(
-                        currentPassword = currentPassword,
-                        newPassword = newPassword
+    SettingsDetailShell(
+        title = stringResource(MR.strings.settings_account_title),
+        subtitle = "",
+        onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
+    ) {
+        SettingsAccountContent(
+            payload =
+                settingsState.account.toAccountPayload(
+                    session = null,
+                    actionState = settingsState.actionState,
+                    errorStrings = localizedErrorPresentationStrings()
+                ),
+            applyTopSafeArea = false,
+            onPasswordChange = { currentPassword, newPassword ->
+                settingsViewModel.dispatch(
+                    SharedSettingsIntent.ChangeAccountPassword(
+                        AccountPasswordChangeRequest(
+                            currentPassword = currentPassword,
+                            newPassword = newPassword
+                        )
                     )
                 )
-            )
-        }
-    ) { action, value ->
-        handleStandaloneAccountAction(
-            action = action,
-            value = value,
-            settingsState = settingsState,
-            dispatch = settingsViewModel::dispatch,
-            fallbackEvent = { fallbackAction, fallbackValue ->
-                bridge.log("settings_account_unsupported_action action=$fallbackAction value=${fallbackValue.orEmpty()}")
+            },
+            onEvent = { action, value ->
+                handleStandaloneAccountAction(
+                    action = action,
+                    value = value,
+                    settingsState = settingsState,
+                    dispatch = settingsViewModel::dispatch,
+                    fallbackEvent = { fallbackAction, fallbackValue ->
+                        bridge.log("settings_account_unsupported_action action=$fallbackAction value=${fallbackValue.orEmpty()}")
+                    }
+                )
             }
         )
     }

@@ -35,6 +35,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
@@ -134,17 +135,28 @@ private fun SettingsStorageScreen() {
         settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Storage))
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
-    SettingsStorageContent(
-        settingsState.storage.toStoragePayload(
-            actionState = settingsState.actionState,
-            refreshing = settingsState.isRefreshing(SharedSettingsDestination.Storage)
+    SettingsDetailShell(
+        title = stringResource(MR.strings.settings_storage_title),
+        subtitle = "",
+        onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
+    ) {
+        SettingsStorageContent(
+            payload =
+                settingsState.storage.toStoragePayload(
+                    actionState = settingsState.actionState,
+                    refreshing = settingsState.isRefreshing(SharedSettingsDestination.Storage)
+                ),
+            onEvent = { action, target ->
+                when (action) {
+                    "refreshStorage" -> settingsViewModel.dispatch(SharedSettingsIntent.RefreshStorage)
+                    "clearStorage" ->
+                        target
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { settingsViewModel.dispatch(SharedSettingsIntent.ClearStorage(it)) }
+                    else -> bridge.log("settings_storage_unsupported_action action=$action target=${target.orEmpty()}")
+                }
+            }
         )
-    ) { action, target ->
-        when (action) {
-            "refreshStorage" -> settingsViewModel.dispatch(SharedSettingsIntent.RefreshStorage)
-            "clearStorage" -> target?.takeIf { it.isNotBlank() }?.let { settingsViewModel.dispatch(SharedSettingsIntent.ClearStorage(it)) }
-            else -> bridge.log("settings_storage_unsupported_action action=$action target=${target.orEmpty()}")
-        }
     }
 }
 
