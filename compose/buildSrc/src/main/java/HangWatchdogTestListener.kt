@@ -17,9 +17,11 @@ import org.gradle.api.tasks.testing.TestResult
  *   printed every heartbeat interval, so CI logs are never silent about which
  *   test is executing;
  * - hang kill: if one test runs longer than [timeoutMs], the listener prints
- *   `HANG DETECTED in <test>` plus a full all-thread stack dump, then exits
- *   the fork with [EXIT_CODE_HANG]. Gradle reports the fork failure bound to
- *   the executing test, so the hang is attributed instead of masked.
+ *   `HANG DETECTED in <test>` plus a full all-thread stack dump, then calls
+ *   System.exit([EXIT_CODE_HANG]). The listener runs in the Gradle process, so
+ *   this terminates the build JVM (under --no-daemon on CI: the step itself),
+ *   failing the CI step loudly. Attribution comes from the named HANG line
+ *   printed immediately before termination — the hang can never be silent.
  *
  * Configuration (Gradle JVM system properties):
  *   raft.test.watchdog.timeout.ms    default 60000
@@ -114,7 +116,7 @@ class HangWatchdogTestListener @JvmOverloads constructor(
     }
 
     private fun reportHang(current: Watched, elapsedMs: Long) {
-        out("raft-test-watchdog: HANG DETECTED in ${identify(current.descriptor)} after ${elapsedMs / 1000}s (timeout ${timeoutMs}ms); dumping all threads before killing this fork with exit code $EXIT_CODE_HANG")
+        out("raft-test-watchdog: HANG DETECTED in ${identify(current.descriptor)} after ${elapsedMs / 1000}s (timeout ${timeoutMs}ms); dumping all threads before terminating the build JVM with exit code $EXIT_CODE_HANG")
         dumpAllThreads()
     }
 

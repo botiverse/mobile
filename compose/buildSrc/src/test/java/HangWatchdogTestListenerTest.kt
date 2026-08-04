@@ -81,6 +81,7 @@ class HangWatchdogTestListenerTest {
         assertEquals(1, hangLines.size)
         assertTrue(hangLines[0].contains("build.raft.app.SomeTest.hangsForever"))
         assertTrue(hangLines[0].contains("exit code 73"))
+        assertTrue(hangLines[0].contains("terminating the build JVM"))
         assertTrue(rec.lines.any { it.contains("thread \"") })
         assertTrue(rec.lines.any { it.contains("at ") })
     }
