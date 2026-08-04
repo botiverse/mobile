@@ -1,12 +1,20 @@
 package build.raft.app.data
 
-internal fun interface SlockAvatarCacheCommitGuard {
-    fun isCurrent(): Boolean
+/**
+ * Binds a native response to one exact owner/subject/content request generation. The callback must
+ * become false when either the owner binding or that subject's selected content generation changes.
+ */
+internal class SlockAvatarCacheCommitGuard(
+    val key: SlockAvatarCacheKey,
+    private val isCurrentGeneration: () -> Boolean
+) {
+    fun allows(candidate: SlockAvatarCacheKey): Boolean =
+        candidate == key && isCurrentGeneration()
 }
 
 internal enum class SlockAvatarCacheCommitResult {
     Accepted,
-    RejectedCurrentOwner
+    RejectedStaleGeneration
 }
 
 internal interface SlockAvatarCacheMetadataStore {
@@ -95,7 +103,7 @@ internal class SqlDelightSlockAvatarCacheMetadataStore(
         metadata: SlockAvatarCacheMetadata,
         guard: SlockAvatarCacheCommitGuard
     ): SlockAvatarCacheCommitResult =
-        commitGuarded(guard) {
+        commitGuarded(metadata.key, guard) {
             val key = metadata.key
             val owner = key.owner
             val subject = key.subject
@@ -132,7 +140,7 @@ internal class SqlDelightSlockAvatarCacheMetadataStore(
         retireMatchingMetadata: Boolean,
         guard: SlockAvatarCacheCommitGuard
     ): SlockAvatarCacheCommitResult =
-        commitGuarded(guard) {
+        commitGuarded(failure.key, guard) {
             val key = failure.key
             val owner = key.owner
             val subject = key.subject
@@ -232,17 +240,18 @@ internal class SqlDelightSlockAvatarCacheMetadataStore(
     }
 
     private suspend fun commitGuarded(
+        key: SlockAvatarCacheKey,
         guard: SlockAvatarCacheCommitGuard,
         write: SlockSqlDatabase.() -> Unit
     ): SlockAvatarCacheCommitResult =
         try {
             database.transaction {
-                if (!guard.isCurrent()) throw AvatarCacheCommitRevoked
+                if (!guard.allows(key)) throw AvatarCacheCommitRevoked
                 write()
-                if (!guard.isCurrent()) throw AvatarCacheCommitRevoked
+                if (!guard.allows(key)) throw AvatarCacheCommitRevoked
             }
             SlockAvatarCacheCommitResult.Accepted
         } catch (_: AvatarCacheCommitRevoked) {
-            SlockAvatarCacheCommitResult.RejectedCurrentOwner
+            SlockAvatarCacheCommitResult.RejectedStaleGeneration
         }
 }

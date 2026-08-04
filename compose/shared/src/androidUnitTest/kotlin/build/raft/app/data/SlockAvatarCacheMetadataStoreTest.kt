@@ -17,7 +17,7 @@ class SlockAvatarCacheMetadataStoreTest {
         val metadata = metadata(key)
         assertEquals(
             SlockAvatarCacheCommitResult.Accepted,
-            store.commitSuccess(metadata, CurrentGuard)
+            store.commitSuccess(metadata, currentGuard(key))
         )
         assertEquals(metadata, store.read(key).metadata)
         assertNull(store.read(key(owner = owner(accountId = "account-b"))).metadata)
@@ -35,7 +35,7 @@ class SlockAvatarCacheMetadataStoreTest {
                 previous = null,
                 nowMs = 200L
             )
-        store.commitFailure(failure, retireMatchingMetadata = false, CurrentGuard)
+        store.commitFailure(failure, retireMatchingMetadata = false, currentGuard(key))
         assertEquals(failure, store.read(key).failure)
         val otherResource = key(content = slockAvatarContentIdentity("https://images.example/avatar.png?v=2"))
         assertNull(store.read(otherResource).failure)
@@ -52,15 +52,32 @@ class SlockAvatarCacheMetadataStoreTest {
                 previous = null,
                 nowMs = 100L
             )
-        store.commitFailure(oldFailure, retireMatchingMetadata = true, CurrentGuard)
+        store.commitFailure(oldFailure, retireMatchingMetadata = true, currentGuard(oldKey))
         assertEquals(oldFailure, store.read(oldKey).failure)
 
         val newMetadata = metadata(newKey)
-        store.commitSuccess(newMetadata, CurrentGuard)
+        store.commitSuccess(newMetadata, currentGuard(newKey))
         assertNull(store.read(oldKey).failure)
         assertEquals(newMetadata, store.read(newKey).metadata)
 
-        store.commitFailure(oldFailure, retireMatchingMetadata = true, CurrentGuard)
+        store.commitFailure(oldFailure, retireMatchingMetadata = true, currentGuard(oldKey))
+        assertEquals(newMetadata, store.read(newKey).metadata)
+    }
+
+    @Test
+    fun lateSuccessCannotReuseAnotherContentGenerationsGuard() = withStore { store ->
+        val oldKey = key(content = slockAvatarContentIdentity("https://images.example/avatar.png?v=old"))
+        val newKey = key(content = slockAvatarContentIdentity("https://images.example/avatar.png?v=new"))
+        val newMetadata = metadata(newKey)
+        store.commitSuccess(newMetadata, currentGuard(newKey))
+
+        assertEquals(
+            SlockAvatarCacheCommitResult.RejectedStaleGeneration,
+            store.commitSuccess(
+                metadata(oldKey),
+                SlockAvatarCacheCommitGuard(newKey) { true }
+            )
+        )
         assertEquals(newMetadata, store.read(newKey).metadata)
     }
 
@@ -71,13 +88,13 @@ class SlockAvatarCacheMetadataStoreTest {
         val keyA = key(owner = ownerA)
         val keyB = key(owner = ownerB)
         assertEquals(
-            SlockAvatarCacheCommitResult.RejectedCurrentOwner,
-            store.commitSuccess(metadata(keyA), SlockAvatarCacheCommitGuard { false })
+            SlockAvatarCacheCommitResult.RejectedStaleGeneration,
+            store.commitSuccess(metadata(keyA), SlockAvatarCacheCommitGuard(keyA) { false })
         )
         assertNull(store.read(keyA).metadata)
 
-        store.commitSuccess(metadata(keyA), CurrentGuard)
-        store.commitSuccess(metadata(keyB), CurrentGuard)
+        store.commitSuccess(metadata(keyA), currentGuard(keyA))
+        store.commitSuccess(metadata(keyB), currentGuard(keyB))
         store.clearOwner(ownerA)
         assertNull(store.read(keyA).metadata)
         assertEquals(metadata(keyB), store.read(keyB).metadata)
@@ -88,10 +105,10 @@ class SlockAvatarCacheMetadataStoreTest {
         val key = key()
         var checks = 0
         assertEquals(
-            SlockAvatarCacheCommitResult.RejectedCurrentOwner,
+            SlockAvatarCacheCommitResult.RejectedStaleGeneration,
             store.commitSuccess(
                 metadata(key),
-                SlockAvatarCacheCommitGuard { ++checks == 1 }
+                SlockAvatarCacheCommitGuard(key) { ++checks == 1 }
             )
         )
         assertEquals(2, checks)
@@ -107,7 +124,7 @@ class SlockAvatarCacheMetadataStoreTest {
                 nowMs = 100L
             ),
             retireMatchingMetadata = false,
-            CurrentGuard
+            currentGuard(temporaryKey)
         )
         store.commitFailure(
             SlockAvatarCachePolicy.failure(
@@ -117,7 +134,7 @@ class SlockAvatarCacheMetadataStoreTest {
                 nowMs = 100L
             ),
             retireMatchingMetadata = true,
-            CurrentGuard
+            currentGuard(absentKey)
         )
 
         store.clearTemporaryFailures(key.owner)
@@ -139,7 +156,7 @@ class SlockAvatarCacheMetadataStoreTest {
                     eTag = "v1",
                     lastModified = null,
                     contentType = "image/webp",
-                    guard = CurrentGuard
+                    guard = currentGuard(key)
                 )
             )
             assertEquals(key, store.read(key).metadata?.key)
@@ -149,7 +166,7 @@ class SlockAvatarCacheMetadataStoreTest {
                 coordinator.reportFailure(
                     key,
                     SlockAvatarCacheFailureKind.TemporaryTransport,
-                    CurrentGuard
+                    currentGuard(key)
                 )
             )
             assertEquals(key, store.read(key).metadata?.key)
@@ -164,7 +181,7 @@ class SlockAvatarCacheMetadataStoreTest {
                 coordinator.reportFailure(
                     key,
                     SlockAvatarCacheFailureKind.ResourceAbsent,
-                    CurrentGuard
+                    currentGuard(key)
                 )
             )
             assertNull(store.read(key).metadata)
@@ -178,7 +195,7 @@ class SlockAvatarCacheMetadataStoreTest {
                     eTag = "v2",
                     lastModified = null,
                     contentType = "image/webp",
-                    guard = CurrentGuard
+                    guard = currentGuard(key)
                 )
             )
             assertEquals("v2", store.read(key).metadata?.eTag)
@@ -219,7 +236,6 @@ class SlockAvatarCacheMetadataStoreTest {
             contentType = "image/webp"
         )
 
-    private companion object {
-        val CurrentGuard = SlockAvatarCacheCommitGuard { true }
-    }
+    private fun currentGuard(key: SlockAvatarCacheKey) =
+        SlockAvatarCacheCommitGuard(key) { true }
 }

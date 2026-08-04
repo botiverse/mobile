@@ -2,7 +2,7 @@ package build.raft.app.data
 
 internal sealed interface SlockAvatarCacheMutationResult {
     data object Accepted : SlockAvatarCacheMutationResult
-    data object RejectedCurrentOwner : SlockAvatarCacheMutationResult
+    data object RejectedStaleGeneration : SlockAvatarCacheMutationResult
     data object MissingCurrentMetadata : SlockAvatarCacheMutationResult
     data class RejectedTooLarge(val sizeBytes: Long, val maxBytes: Long) : SlockAvatarCacheMutationResult
 }
@@ -105,5 +105,6 @@ internal class SlockAvatarCacheCoordinator(
 private fun SlockAvatarCacheCommitResult.toMutationResult(): SlockAvatarCacheMutationResult =
     when (this) {
         SlockAvatarCacheCommitResult.Accepted -> SlockAvatarCacheMutationResult.Accepted
-        SlockAvatarCacheCommitResult.RejectedCurrentOwner -> SlockAvatarCacheMutationResult.RejectedCurrentOwner
+        SlockAvatarCacheCommitResult.RejectedStaleGeneration ->
+            SlockAvatarCacheMutationResult.RejectedStaleGeneration
     }
