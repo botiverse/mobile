@@ -20017,38 +20017,28 @@ private fun ThreadMessageCard(
         remember(message.id, messageIndex) {
             threadMessagePerformanceKey(message.id, messageIndex)
         }
+    // THREAD_SINGLE_TAP_ROW_ACTION_START
     val rowTapAction =
         if (
-            threadMessageBodyTapEligible(
+            threadMessageTapOpensThread(
                 showReplyAction = showReplyAction,
+                replyCount = replyMetadata.replyCount,
                 shareSelectionActive = shareSelectionActive,
-                hasLocalSendState = message.hasLocalSendState()
+                hasLocalSendState = message.hasLocalSendState(),
+                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled
             )
         ) {
             {
-                if (
-                    threadMessageTapOpensThread(
-                        showReplyAction = showReplyAction,
-                        shareSelectionActive = shareSelectionActive,
-                        hasLocalSendState = message.hasLocalSendState(),
-                        singleTapOpensThreadEnabled = singleTapOpensThreadEnabled
-                    )
-                ) {
-                    diagnosticsLogger(
-                        "thread_message_row_tap_open messageId=${message.id} " +
-                            "setting=single_tap_opens_thread"
-                    )
-                    onOpenThread(message.id)
-                } else {
-                    diagnosticsLogger(
-                        "thread_message_row_tap_open_disabled messageId=${message.id} " +
-                            "hint=Settings>Mobile>Single_tap_opens_Thread"
-                    )
-                }
+                diagnosticsLogger(
+                    "thread_message_row_tap_open messageId=${message.id} " +
+                        "setting=single_tap_opens_thread replyCount=${replyMetadata.replyCount}"
+                )
+                onOpenThread(message.id)
             }
         } else {
             null
         }
+    // THREAD_SINGLE_TAP_ROW_ACTION_END
     Box(
         modifier =
             Modifier
@@ -21935,11 +21925,13 @@ internal fun decideThreadMessageLongPressDispatch(
 
 internal fun threadMessageTapOpensThread(
     showReplyAction: Boolean,
+    replyCount: Int,
     shareSelectionActive: Boolean,
     hasLocalSendState: Boolean,
     singleTapOpensThreadEnabled: Boolean
 ): Boolean =
     singleTapOpensThreadEnabled &&
+        replyCount > 0 &&
         threadMessageBodyTapEligible(showReplyAction, shareSelectionActive, hasLocalSendState)
 
 internal fun threadMessageBodyTapEligible(
