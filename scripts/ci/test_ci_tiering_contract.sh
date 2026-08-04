@@ -32,6 +32,20 @@ raise "stable required context changed" unless jobs.dig("ci-gate", "name") == "C
 raise "aggregate must survive failed/skipped dependencies" unless jobs.dig("ci-gate", "if").include?("always()")
 raise "aggregate does not execute checked-in verifier" unless jobs.dig("ci-gate", "steps").any? { |step| step["run"]&.include?("verify_test_tier_results.mjs") }
 
+plan_job = jobs.fetch("plan")
+raise "plan job must have read-only source access" unless plan_job.dig("permissions", "contents") == "read"
+raise "plan job cannot publish carry-in artifacts to PRs" unless plan_job.dig("permissions", "pull-requests") == "write"
+plan_steps = plan_job.fetch("steps")
+raise "gitlink gate fixture suite is not hosted" unless plan_steps.any? { |step| step["run"]&.include?("test_gitlink_carry_in_gate.py") }
+raise "gitlink gate is not wired to exact PR base/head" unless plan_steps.any? do |step|
+  run = step["run"].to_s
+  run.include?("gitlink_carry_in_gate.py") && run.include?('--base "$BASE_SHA"') && run.include?('--head "$HEAD_SHA"')
+end
+publish_step = plan_steps.find { |step| step.fetch("name", "").include?("Publish gitlink carry-in audit") }
+raise "gitlink audit is not published into the PR" unless publish_step
+raise "gitlink publication must survive an audit RED" unless publish_step.fetch("if", "").include?("always()")
+raise "gitlink publication regressed to unreliable PR file patches" if publish_step.fetch("run", "").include?(".patch")
+
 expected_needs = {
   "kuikly-artifacts" => ["plan"],
   "fork-deps" => ["plan"],
