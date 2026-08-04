@@ -2043,6 +2043,157 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowMdLongTableOverlap() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-long-table-overlap",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-long-table-overlap")
+                    .put("visualFixture", "md_long_table_overlap"),
+            // A broken height report pulls the following detail table upward
+            // and paints it over hotel rows instead of after the final rule.
+            // This fixture uses the production-shaped bounded LazyColumn host.
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    // Task #526 isolation matrix: bold/plain twins differ ONLY by `**`, so a
+    // rendering delta inside a pair pins bold as the trigger; column count,
+    // ultra-long wrapping names, and the recycle host vary across cases.
+    // caseId stays a literal inside each @Test — the workflow's method-filter
+    // enumerator (visual_android_case_filter.py) parses it statically.
+    @Test
+    fun captureThreadMessageRowMdTblmx3cBold() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-tblmx-3c-bold",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-tblmx-3c-bold")
+                    .put("visualFixture", "md_tblmx_3c_bold"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdTblmx3cPlain() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-tblmx-3c-plain",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-tblmx-3c-plain")
+                    .put("visualFixture", "md_tblmx_3c_plain"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdTblmx4cBold() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-tblmx-4c-bold",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-tblmx-4c-bold")
+                    .put("visualFixture", "md_tblmx_4c_bold"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdTblmx4cPlain() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-tblmx-4c-plain",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-tblmx-4c-plain")
+                    .put("visualFixture", "md_tblmx_4c_plain"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdTblmx5cBold() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-tblmx-5c-bold",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-tblmx-5c-bold")
+                    .put("visualFixture", "md_tblmx_5c_bold"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdTblmx6cBold() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-tblmx-6c-bold",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-tblmx-6c-bold")
+                    .put("visualFixture", "md_tblmx_6c_bold"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdTblmx6cInlineBold() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-tblmx-6c-inline-bold",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-tblmx-6c-inline-bold")
+                    .put("visualFixture", "md_tblmx_6c_inline_bold"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdTblmxLongnameBold() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-tblmx-longname-bold",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-tblmx-longname-bold")
+                    .put("visualFixture", "md_tblmx_longname_bold"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdTblmxLongnamePlain() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-tblmx-longname-plain",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-tblmx-longname-plain")
+                    .put("visualFixture", "md_tblmx_longname_plain"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdTblmxOriginalBold() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-tblmx-original-bold",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-tblmx-original-bold")
+                    .put("visualFixture", "md_tblmx_original_bold"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowMdTableTight() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.md-table-tight",

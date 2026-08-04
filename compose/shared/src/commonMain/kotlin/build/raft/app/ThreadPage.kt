@@ -3754,13 +3754,31 @@ internal class ComposeThreadMessageRowVisualPage : build.raft.app.base.BasePager
 
 @Composable
 internal fun ThreadMessageVisualScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val visualFixture = pager.pageData.params.optString("visualFixture")
     ThreadReactionAtlasProvider {
-        ThreadMessageVisualScreenContent()
+        if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_MD_LONG_TABLE_OVERLAP ||
+            visualFixture == "md_tblmx_original_bold"
+        ) {
+            // Production renders message cards as LazyColumn items. Preserve
+            // that host for the task #526 diagnostic; the ordinary isolated
+            // visual route intentionally measures unbounded.
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+                verticalArrangement = Arrangement.Top
+            ) {
+                item {
+                    ThreadMessageVisualScreenContent(useLazyColumnHost = true)
+                }
+            }
+        } else {
+            ThreadMessageVisualScreenContent()
+        }
     }
 }
 
 @Composable
-private fun ThreadMessageVisualScreenContent() {
+private fun ThreadMessageVisualScreenContent(useLazyColumnHost: Boolean = false) {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
     val visualFixture = params.optString("visualFixture")
@@ -4075,8 +4093,18 @@ private fun ThreadMessageVisualScreenContent() {
                         // measured text height to constraints.maxHeight, but the native
                         // view still draws the full layout — so a body taller than the
                         // window overlapped the siblings placed at the clamped height.
-                        // Measure unbounded like production.
-                        .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                        // Most isolated cases measure unbounded to mirror
+                        // ordinary production rows. Task #526 instead keeps
+                        // the actual LazyColumn-item host so RED admission can
+                        // determine whether list nesting contributes; the host
+                        // alone is not treated as proof of the renderer defect.
+                        .then(
+                            if (useLazyColumnHost) {
+                                Modifier
+                            } else {
+                                Modifier.wrapContentHeight(align = Alignment.Top, unbounded = true)
+                            }
+                        )
                         .background(SlockColor.SurfaceWhite)
                         .padding(SlockSpacing.Md)
             ) {
@@ -10600,9 +10628,174 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_EMAIL = "md_code_email"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_URL = "md_code_url"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_BLOCK = "md_code_block"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE = "md_table"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LONG_TABLE_OVERLAP = "md_long_table_overlap"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE_TIGHT = "md_table_tight"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_ESCAPES = "md_escapes"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE = "md_latest_release"
+
+/**
+ * Task #526 regression specimen derived from the reported hotel-comparison
+ * screenshot. The visual route mounts this body as a LazyColumn item, matching
+ * the reported production nesting without assuming that nesting is the trigger.
+ * If MarkdownTable under-reports the tall table's height, the detail table is
+ * placed early and paints over the still-visible hotel rows.
+ */
+internal val THREAD_MESSAGE_VISUAL_MD_LONG_TABLE_OVERLAP_BODY =
+    """
+    长表格高度回归：下面的“酒店明细”只能出现在酒店对比表完整结束之后。
+
+    | 酒店 | 评分 | 约总价 |
+    | --- | ---: | ---: |
+    | Hampton Inn & Suites Sunnyvale Silicon Valley | 8.8 | ~USD 764 |
+    | Hilton Garden Inn Cupertino Silicon Valley | 8.3 | ~USD 761 |
+    | Holiday Inn Express Sunnyvale Double Room | 9.1 | ~USD 637 |
+    | Wild Palms Hotel Sunnyvale | 8.0 | ~USD 629 |
+    | Best Western Silicon Valley | 8.3 | ~USD 618 |
+    | Grand Hotel Sunnyvale Queen Beds | 7.9 | ~USD 640 |
+    | Cherry Orchard Inn Booking | 8.0 | ~USD 454 |
+    | Hampton Inn Milpitas SJC Airport | 8.8 | ~USD 581 |
+    | Maple Tree Inn Extended Stay | 8.6 | ~USD 552 |
+    | Residence Inn Sunnyvale Silicon Valley | 8.7 | ~USD 706 |
+    | Courtyard by Marriott Mountain View | 8.5 | ~USD 688 |
+    | Aloft Santa Clara North | 8.4 | ~USD 665 |
+    | AC Hotel Sunnyvale Moffett Park | 8.6 | ~USD 718 |
+    | Sonesta ES Suites Sunnyvale | 8.2 | ~USD 596 |
+
+    | 酒店明细（不得覆盖上表） | 值 |
+    | --- | --- |
+    | 酒店 | Hampton Inn & Suites Sunnyvale Silicon Valley |
+    | 地址 | 861 E El Camino Real, Sunnyvale, CA 94087 |
+    | 电话 | +1 408-523-1000 |
+    | 日期 | 8/4 入住，8/6 退房，2 成人，1 间 |
+    | 房型 | Queen Room with Two Queen Beds |
+
+    长表格尾部哨兵：两张表结束后才能看到这一行，任何重叠都算失败。
+    """.trimIndent()
+
+/**
+ * Task #526 isolation matrix. Column count, bold-in-cell, ultra-long wrapping
+ * names, and the LazyColumn recycle host are the four suspect axes from the
+ * reported screenshot; each bold case has a plain twin whose ONLY difference
+ * is the removed `**` markers, so a rendering delta between the pair pins
+ * bold as the trigger. Every body ends in a case-unique PROBE sentinel that
+ * must never paint over the table above it.
+ */
+private fun mdTableMatrixPlainTwin(body: String): String = body.replace("**", "")
+
+internal val THREAD_MESSAGE_VISUAL_MD_TBLMX_3C_BOLD_BODY =
+    """
+    3 列 · cell 内 bold（对照组只差 `**`）：
+
+    | 酒店 | 评分 | 约总价 |
+    | --- | ---: | ---: |
+    | **Hampton Inn & Suites Sunnyvale** | 8.8 | **~USD 764** |
+    | Hilton Garden Inn Cupertino | 8.3 | ~USD 761 |
+    | **Holiday Inn Express Sunnyvale** | 9.1 | ~USD 637 |
+    | Wild Palms Hotel Sunnyvale | 8.0 | **~USD 629** |
+    | **Best Western Silicon Valley** | 8.3 | ~USD 618 |
+    | Maple Tree Inn Extended Stay | 8.6 | ~USD 552 |
+
+    PROBE-3C：不得覆盖上表。
+    """.trimIndent()
+
+internal val THREAD_MESSAGE_VISUAL_MD_TBLMX_4C_BOLD_BODY =
+    """
+    4 列 · bold header + 混 bold cell：
+
+    | **酒店** | **评分** | **距离** | **约总价** |
+    | --- | ---: | ---: | ---: |
+    | **Hampton Inn & Suites Sunnyvale** | 8.8 | **2.1mi** | ~USD 764 |
+    | Hilton Garden Inn Cupertino | 8.3 | 3.4mi | **~USD 761** |
+    | **Holiday Inn Express Sunnyvale** | 9.1 | 1.8mi | ~USD 637 |
+    | Wild Palms Hotel Sunnyvale | 8.0 | **2.7mi** | ~USD 629 |
+    | Best Western Silicon Valley | 8.3 | 4.2mi | **~USD 618** |
+    | **Maple Tree Inn Extended Stay** | 8.6 | 2.9mi | ~USD 552 |
+
+    PROBE-4C：不得覆盖上表。
+    """.trimIndent()
+
+internal val THREAD_MESSAGE_VISUAL_MD_TBLMX_5C_BOLD_BODY =
+    """
+    5 列 · 混 bold（列宽极限）：
+
+    | **酒店** | 评分 | **距离** | 早餐 | **约总价** |
+    | --- | ---: | ---: | :---: | ---: |
+    | **Hampton Inn & Suites Sunnyvale** | 8.8 | 2.1mi | 含 | **~USD 764** |
+    | Hilton Garden Inn Cupertino | 8.3 | **3.4mi** | 不含 | ~USD 761 |
+    | **Holiday Inn Express Sunnyvale** | 9.1 | 1.8mi | 含 | ~USD 637 |
+    | Wild Palms Hotel Sunnyvale | 8.0 | 2.7mi | **含** | ~USD 629 |
+    | **Best Western Silicon Valley** | 8.3 | 4.2mi | 不含 | **~USD 618** |
+
+    PROBE-5C：不得覆盖上表。
+    """.trimIndent()
+
+internal val THREAD_MESSAGE_VISUAL_MD_TBLMX_6C_BOLD_BODY =
+    """
+    6 列 · 混 bold（极限列数，390dp 必然溢出）：
+
+    | **酒店** | 评分 | **距离** | 早餐 | 取消 | **约总价** |
+    | --- | ---: | ---: | :---: | :---: | ---: |
+    | **Hampton Inn & Suites Sunnyvale** | 8.8 | 2.1mi | 含 | 免费 | **~USD 764** |
+    | Hilton Garden Inn Cupertino | 8.3 | **3.4mi** | 不含 | 收费 | ~USD 761 |
+    | **Holiday Inn Express Sunnyvale** | 9.1 | 1.8mi | 含 | **免费** | ~USD 637 |
+    | Wild Palms Hotel Sunnyvale | 8.0 | 2.7mi | **含** | 免费 | ~USD 629 |
+    | **Best Western Silicon Valley** | 8.3 | 4.2mi | 不含 | 收费 | **~USD 618** |
+
+    PROBE-6C：不得覆盖上表。
+    """.trimIndent()
+
+internal val THREAD_MESSAGE_VISUAL_MD_TBLMX_6C_INLINE_BOLD_BODY =
+    """
+    6 列 · cell 内【部分】bold（贴用户原图的行内 strong）：
+
+    | **酒店** | **评分** | **约总价** | **距离** | **早餐** | **备注** |
+    | --- | --- | --- | --- | --- | --- |
+    | **本店 Hampton** Sunnyvale 2Q | **8.8** | **~764** | 2.1mi | 含 | **推荐** |
+    | Hilton Garden Inn Cupertino Silicon Valley | 8.3 | **~761** | 3.4mi | 含 | 新装 |
+    | Holiday Inn Express Sunnyvale Double | 9.1 | **~813** | 1.2mi | **含** | 泳池 |
+    | Wild Palms Hyatt Sunnyvale | 8.0 | **~629** | 4.0mi | 不含 | 商务 |
+
+    PROBE-6C-INLINE：不得覆盖上表。
+    """.trimIndent()
+
+internal val THREAD_MESSAGE_VISUAL_MD_TBLMX_LONGNAME_BOLD_BODY =
+    """
+    3 列 · 超长换行 bold 店名（换行 × bold 交互）：
+
+    | 酒店 | 评分 | 约总价 |
+    | --- | ---: | ---: |
+    | **Hampton Inn & Suites Sunnyvale–Silicon Valley Extended Stay Downtown Historic District** | 8.8 | **~USD 764** |
+    | **Hilton Garden Inn Cupertino Silicon Valley Apple Park Corporate Campus Gateway** | 8.3 | ~USD 761 |
+    | Holiday Inn Express & Suites Sunnyvale Downtown Caltrain Station Double Queen | 9.1 | **~USD 637** |
+    | **Residence Inn by Marriott Sunnyvale Silicon Valley II Extended Stay All-Suite** | 8.7 | ~USD 706 |
+
+    PROBE-LONGNAME：不得覆盖上表。
+    """.trimIndent()
+
+internal val THREAD_MESSAGE_VISUAL_MD_TBLMX_ORIGINAL_BOLD_BODY =
+    THREAD_MESSAGE_VISUAL_MD_LONG_TABLE_OVERLAP_BODY
+        .replace("| Hampton Inn & Suites Sunnyvale Silicon Valley |", "| **Hampton Inn & Suites Sunnyvale Silicon Valley** |")
+        .replace("| Holiday Inn Express Sunnyvale Double Room |", "| **Holiday Inn Express Sunnyvale Double Room** |")
+        .replace("| Best Western Silicon Valley |", "| **Best Western Silicon Valley** |")
+        .replace("| Cherry Orchard Inn Booking |", "| **Cherry Orchard Inn Booking** |")
+        .replace("| Maple Tree Inn Extended Stay |", "| **Maple Tree Inn Extended Stay** |")
+        .replace("| Courtyard by Marriott Mountain View |", "| **Courtyard by Marriott Mountain View** |")
+        .replace("| AC Hotel Sunnyvale Moffett Park |", "| **AC Hotel Sunnyvale Moffett Park** |")
+
+/** fixtureId → (subtitle, body); plain twins derive from the bold source. */
+internal val THREAD_MESSAGE_VISUAL_MD_TABLE_MATRIX: Map<String, Pair<String, String>> =
+    mapOf(
+        "md_tblmx_3c_bold" to ("3-col mixed-bold (task #526 matrix)" to THREAD_MESSAGE_VISUAL_MD_TBLMX_3C_BOLD_BODY),
+        "md_tblmx_3c_plain" to ("3-col plain twin (task #526 matrix)" to mdTableMatrixPlainTwin(THREAD_MESSAGE_VISUAL_MD_TBLMX_3C_BOLD_BODY)),
+        "md_tblmx_4c_bold" to ("4-col bold header + mixed cells (task #526 matrix)" to THREAD_MESSAGE_VISUAL_MD_TBLMX_4C_BOLD_BODY),
+        "md_tblmx_4c_plain" to ("4-col plain twin (task #526 matrix)" to mdTableMatrixPlainTwin(THREAD_MESSAGE_VISUAL_MD_TBLMX_4C_BOLD_BODY)),
+        "md_tblmx_5c_bold" to ("5-col mixed-bold width limit (task #526 matrix)" to THREAD_MESSAGE_VISUAL_MD_TBLMX_5C_BOLD_BODY),
+        "md_tblmx_6c_bold" to ("6-col mixed-bold overflow limit (task #526 matrix)" to THREAD_MESSAGE_VISUAL_MD_TBLMX_6C_BOLD_BODY),
+        "md_tblmx_6c_inline_bold" to ("6-col partial inline-bold cells, closest to report (task #526 matrix)" to THREAD_MESSAGE_VISUAL_MD_TBLMX_6C_INLINE_BOLD_BODY),
+        "md_tblmx_longname_bold" to ("3-col ultra-long wrapping bold names (task #526 matrix)" to THREAD_MESSAGE_VISUAL_MD_TBLMX_LONGNAME_BOLD_BODY),
+        "md_tblmx_longname_plain" to ("3-col ultra-long wrapping plain twin (task #526 matrix)" to mdTableMatrixPlainTwin(THREAD_MESSAGE_VISUAL_MD_TBLMX_LONGNAME_BOLD_BODY)),
+        "md_tblmx_original_bold" to ("Closest-to-report: long bold table + detail (task #526 matrix)" to THREAD_MESSAGE_VISUAL_MD_TBLMX_ORIGINAL_BOLD_BODY)
+    )
 
 private fun threadMessageVisualWidth(visualFixture: String): Dp =
     when (visualFixture) {
@@ -11579,6 +11772,90 @@ internal fun threadVisualFixture(
                                     "| No error message | PASS | zero error or retry |\n" +
                                     "| **No crash** | PASS | 28 turns stable |\n\n" +
                                     "Trailing paragraph closes the specimen."
+                        )
+                    ),
+                members = emptyList(),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        in THREAD_MESSAGE_VISUAL_MD_TABLE_MATRIX -> {
+            val (matrixSubtitle, matrixBody) = THREAD_MESSAGE_VISUAL_MD_TABLE_MATRIX.getValue(fixture)
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = matrixSubtitle,
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_${fixture}_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Pins tall Markdown table measurement regressions.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "08/04 10:40",
+                            messageType = "Chat",
+                            body = matrixBody
+                        )
+                    ),
+                members = emptyList(),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        }
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_LONG_TABLE_OVERLAP ->
+            // Task #526: a tall first table followed by a uniquely labelled
+            // detail table. The first table nearly fills the 844dp capture;
+            // the detail header may enter at the bottom edge, but it must start
+            // after the first table's final rule and never cover hotel rows.
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "Long table height/overlap regression (task #526)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_long_table_overlap_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Pins tall Markdown table measurement regressions.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "08/03 19:40",
+                            messageType = "Chat",
+                            body = THREAD_MESSAGE_VISUAL_MD_LONG_TABLE_OVERLAP_BODY
                         )
                     ),
                 members = emptyList(),
