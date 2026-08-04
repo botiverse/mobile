@@ -1216,12 +1216,16 @@ private fun SlockFilePreviewStandalonePageContent() {
                 }
                 if (!exportPrivateDownload) activeDownloadId = null
                 bridge.toast(
-                    when {
-                        exportPrivateDownload -> fileExportSaved
-                        toPhotos -> imageSavedToPhotos
-                        supportsPrivateAttachmentExport -> privateDownloadSaved
-                        else -> downloadSaved
-                    }
+                    slockFilePreviewSavedMessage(
+                        exportPrivateDownload = exportPrivateDownload,
+                        toPhotos = toPhotos,
+                        supportsPublicDownloadReadback = supportsPublicDownloadReadback,
+                        supportsPrivateAttachmentExport = supportsPrivateAttachmentExport,
+                        downloadSaved = downloadSaved,
+                        privateDownloadSaved = privateDownloadSaved,
+                        fileExportSaved = fileExportSaved,
+                        imageSavedToPhotos = imageSavedToPhotos
+                    )
                 )
                 null
             }
@@ -5321,11 +5325,22 @@ internal fun slockFilePreviewShowsDownloadProgress(status: String): Boolean =
     status == "downloading" || status == "paused"
 
 internal fun slockFilePreviewSavedMessage(
+    exportPrivateDownload: Boolean,
     toPhotos: Boolean,
+    supportsPublicDownloadReadback: Boolean,
+    supportsPrivateAttachmentExport: Boolean,
     downloadSaved: String,
+    privateDownloadSaved: String,
+    fileExportSaved: String,
     imageSavedToPhotos: String
 ): String =
-    if (toPhotos) imageSavedToPhotos else downloadSaved
+    when {
+        exportPrivateDownload -> fileExportSaved
+        toPhotos -> imageSavedToPhotos
+        supportsPrivateAttachmentExport -> privateDownloadSaved
+        supportsPublicDownloadReadback -> downloadSaved
+        else -> fileExportSaved
+    }
 
 internal fun slockFilePreviewActiveDownloadStatusLabel(
     progress: BridgeAttachmentDownloadProgress?,

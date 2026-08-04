@@ -1061,7 +1061,7 @@
     <string name="file_preview_media_ready">Ready</string>
     <string name="file_preview_download_stopped">Download stopped</string>
     <string name="file_preview_download_failed">Download failed</string>
-    <string name="file_preview_download_saved">Saved to Downloads or Files</string>
+    <string name="file_preview_download_saved">Saved to Downloads</string>
     <string name="file_preview_private_download_saved">Downloaded</string>
     <string name="file_preview_export_saved">Saved to Files</string>
     <string name="file_preview_export_failed">Unable to save to Files</string>

@@ -5745,7 +5745,7 @@ internal fun SharedThreadRouteContent(
             storageUnavailable = stringResource(MR.strings.file_preview_error_storage_unavailable),
             unableToOpenAttachment = unableToOpenAttachmentLabel
         )
-    val attachmentSavedLabel = stringResource(MR.strings.file_preview_download_saved)
+    val attachmentSavedLabel = stringResource(MR.strings.file_preview_private_download_saved)
     val attachmentUploadFailedLabel = stringResource(MR.strings.thread_error_attachment_upload)
     val preparingAttachmentPreviewLabel = stringResource(MR.strings.thread_state_preparing_attachment)
     val attachmentUploadFailedDetailTemplate =
@@ -6893,7 +6893,12 @@ internal fun SharedThreadRouteContent(
                 "saved" -> {
                     attachmentOpenStates = attachmentOpenStates - attachment.id
                     attachmentOperationTokens = attachmentOperationTokens - attachment.id
-                    bridge.toast(result.message.ifBlank { attachmentSavedLabel })
+                    bridge.toast(
+                        slockThreadAttachmentSavedMessage(
+                            nativeMessage = result.message,
+                            fallbackMessage = attachmentSavedLabel
+                        )
+                    )
                 }
                 "cancelled" -> {
                     attachmentOpenStates = attachmentOpenStates - attachment.id
@@ -9812,6 +9817,11 @@ private suspend fun saveSharedThreadAttachment(
             ThreadAttachmentOpenResult(status = "failed", message = "Unable to download attachment")
     }
 }
+
+internal fun slockThreadAttachmentSavedMessage(
+    nativeMessage: String,
+    fallbackMessage: String
+): String = nativeMessage.trim().ifBlank { fallbackMessage }
 
 internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
     toSlockMessagePermalinkTarget()?.let { target ->

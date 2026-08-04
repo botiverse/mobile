@@ -128,21 +128,88 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun successfulSaveToastUsesLocalizedSharedCopyInsteadOfNativeMessage() {
+    fun successfulSaveToastNamesTheActualPlatformDestination() {
         assertEquals(
-            "已保存到系统下载或文件",
+            "已保存到系统下载",
             slockFilePreviewSavedMessage(
+                exportPrivateDownload = false,
                 toPhotos = false,
-                downloadSaved = "已保存到系统下载或文件",
+                supportsPublicDownloadReadback = true,
+                supportsPrivateAttachmentExport = false,
+                downloadSaved = "已保存到系统下载",
+                privateDownloadSaved = "下载完成",
+                fileExportSaved = "已保存到文件",
+                imageSavedToPhotos = "已保存到照片"
+            )
+        )
+        assertEquals(
+            "已保存到文件",
+            slockFilePreviewSavedMessage(
+                exportPrivateDownload = false,
+                toPhotos = false,
+                supportsPublicDownloadReadback = false,
+                supportsPrivateAttachmentExport = false,
+                downloadSaved = "已保存到系统下载",
+                privateDownloadSaved = "下载完成",
+                fileExportSaved = "已保存到文件",
+                imageSavedToPhotos = "已保存到照片"
+            )
+        )
+        assertEquals(
+            "下载完成",
+            slockFilePreviewSavedMessage(
+                exportPrivateDownload = false,
+                toPhotos = false,
+                supportsPublicDownloadReadback = true,
+                supportsPrivateAttachmentExport = true,
+                downloadSaved = "已保存到系统下载",
+                privateDownloadSaved = "下载完成",
+                fileExportSaved = "已保存到文件",
                 imageSavedToPhotos = "已保存到照片"
             )
         )
         assertEquals(
             "已保存到照片",
             slockFilePreviewSavedMessage(
+                exportPrivateDownload = false,
                 toPhotos = true,
-                downloadSaved = "已保存到系统下载或文件",
+                supportsPublicDownloadReadback = true,
+                supportsPrivateAttachmentExport = false,
+                downloadSaved = "已保存到系统下载",
+                privateDownloadSaved = "下载完成",
+                fileExportSaved = "已保存到文件",
                 imageSavedToPhotos = "已保存到照片"
+            )
+        )
+        assertEquals(
+            "已保存到文件",
+            slockFilePreviewSavedMessage(
+                exportPrivateDownload = true,
+                toPhotos = false,
+                supportsPublicDownloadReadback = true,
+                supportsPrivateAttachmentExport = true,
+                downloadSaved = "已保存到系统下载",
+                privateDownloadSaved = "下载完成",
+                fileExportSaved = "已保存到文件",
+                imageSavedToPhotos = "已保存到照片"
+            )
+        )
+    }
+
+    @Test
+    fun threadSaveToastPreservesPreciseNativeDestinationAndUsesNeutralFallback() {
+        assertEquals(
+            "Saved to Downloads/Raft",
+            slockThreadAttachmentSavedMessage(
+                nativeMessage = "Saved to Downloads/Raft",
+                fallbackMessage = "下载完成"
+            )
+        )
+        assertEquals(
+            "下载完成",
+            slockThreadAttachmentSavedMessage(
+                nativeMessage = "  ",
+                fallbackMessage = "下载完成"
             )
         )
     }
