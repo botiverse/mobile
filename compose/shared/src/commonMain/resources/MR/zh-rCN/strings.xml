@@ -1059,7 +1059,7 @@
     <string name="file_preview_media_ready">就绪</string>
     <string name="file_preview_download_stopped">下载已停止</string>
     <string name="file_preview_download_failed">下载失败</string>
-    <string name="file_preview_download_saved">已保存到系统下载或文件</string>
+    <string name="file_preview_download_saved">已保存到系统下载</string>
     <string name="file_preview_private_download_saved">下载完成</string>
     <string name="file_preview_export_saved">已保存到文件</string>
     <string name="file_preview_export_failed">无法保存到文件</string>
