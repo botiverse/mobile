@@ -88,7 +88,13 @@ fun MarkdownTable(
             .onSizeChangedDp { onSizeChanged?.invoke(it, columnWidths) }
     ) {
         item {
-            Column(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
+            // React parity: table renders in an `overflow-x-auto` wrapper with a
+            // content-sized <table>, so wide tables scroll horizontally instead of
+            // clamping to the viewport. Kuikly's LazyRow bridge measures items with a
+            // bounded maxWidth (= viewport), so `fillMaxWidth()` here would pin the
+            // table to the viewport and clip overflow columns with nothing wider to
+            // scroll. Measure to content width so the LazyRow can scroll the overflow.
+            Column(modifier = Modifier.wrapContentWidth(align = Alignment.Start, unbounded = true).wrapContentHeight()) {
                 node.children.forEachIndexed { index, node ->
                     // 表格少一条边框
                     if (index == 0 && node.type != TABLE_SEPARATOR) {
