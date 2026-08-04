@@ -358,6 +358,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val currentGrantMessageShadowCommitLane: CurrentGrantMessageShadowCommitLane,
     private val canonicalMessageV2Canary: CanonicalMessageV2ProductionCanary,
     val localDataStore: ComposeLocalDataStore,
+    internal val avatarCacheMetadataStore: SlockAvatarCacheMetadataStore,
     val agentDetailStore: SharedAgentDetailStore,
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
     val tasksDataStore: SharedTasksDataStore,
@@ -405,6 +406,9 @@ internal class SlockSharedStoreProvider private constructor(
     private val processReadReceiptLock = SynchronizedObject()
     private var processReadReceiptCoordinator: ReadReceiptCoordinator? = null
     private val processReadReceiptRepositories = mutableMapOf<ReadReceiptOwner, RealReadReceiptRepository>()
+    internal val avatarCacheCoordinator: SlockAvatarCacheCoordinator by lazy {
+        SlockAvatarCacheCoordinator(avatarCacheMetadataStore, ::defaultNowMillis)
+    }
     private val homeStores = SlockShellScopedStoreCache<SharedHomeStore>()
     private val homeActivityStores = SlockShellScopedStoreCache<SharedActivityStore>()
     private val homeStoreScopes = SlockShellScopedStoreCache<CoroutineScope>()
@@ -1746,6 +1750,7 @@ internal class SlockSharedStoreProvider private constructor(
                 currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
                 canonicalMessageV2Canary = canonicalMessageV2Canary,
                 localDataStore = localDataStore,
+                avatarCacheMetadataStore = SqlDelightSlockAvatarCacheMetadataStore(database),
                 agentDetailStore = SharedAgentDetailStore(
                     logger = sharedInfoLogger("SlockAgentDetail", "shared_agent_detail_store")
                 ),
