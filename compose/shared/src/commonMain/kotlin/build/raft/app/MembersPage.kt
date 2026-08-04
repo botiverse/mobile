@@ -8557,14 +8557,20 @@ private fun MembersAgentRuntimeConfigDialog(
     SlockUnifiedDialog(
         title = stringResource(MR.strings.member_dialog_edit_runtime_config).uppercase(),
         dismissEnabled = !saving,
+        keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
     ) {
+        // Kuikly's row/column measure policy hands the remaining height to unweighted
+        // children first, so a capped LazyColumn can swallow the whole keyboard-reduced
+        // viewport and leave the trailing Save/Cancel row at zero height. Pin the body to
+        // `fillMaxHeight()` and give the scroll area `weight(1f)` so the action row is
+        // measured first and keeps a deterministic height. Mirrors SharedCreateAgentDialog.
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
         ) {
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {

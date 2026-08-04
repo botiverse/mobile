@@ -65,7 +65,8 @@ internal fun AddComputerDialog(
         contentPadding = 24.dp,
         titleFontSize = 18,
         titleLineHeight = 22,
-        contentSpacing = 12.dp
+        contentSpacing = 12.dp,
+        keyboardAvoidanceEnabled = true
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when (state.step) {

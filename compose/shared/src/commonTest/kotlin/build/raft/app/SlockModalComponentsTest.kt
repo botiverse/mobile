@@ -34,4 +34,36 @@ class SlockModalComponentsTest {
         assertEquals(16.dp, clearance.end)
         assertEquals(16.dp, clearance.bottom)
     }
+
+    @Test
+    fun keyboardAwareDialogUsesNativeKeyboardHeightAsBottomInset() {
+        assertEquals(
+            312.dp,
+            slockUnifiedDialogEffectiveBottomInset(
+                hostBottomInset = 34.dp,
+                keyboardHeightDp = 312f,
+                keyboardAvoidanceEnabled = true
+            )
+        )
+        assertEquals(
+            34.dp,
+            slockUnifiedDialogEffectiveBottomInset(
+                hostBottomInset = 34.dp,
+                keyboardHeightDp = -1f,
+                keyboardAvoidanceEnabled = true
+            )
+        )
+    }
+
+    @Test
+    fun ordinaryDialogIgnoresKeyboardHeight() {
+        assertEquals(
+            34.dp,
+            slockUnifiedDialogEffectiveBottomInset(
+                hostBottomInset = 34.dp,
+                keyboardHeightDp = 312f,
+                keyboardAvoidanceEnabled = false
+            )
+        )
+    }
 }
