@@ -168,6 +168,76 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun accountProviderLinkPrefersMobileFlowAndDoesNotWebFallbackAfterNativeFailure() = runBlocking {
+        val nativeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val nativeRepository = FakeSettingsRepository()
+        val nativeCapabilities =
+            FakeSettingsCapabilities(
+                mobileOAuthLinkResult = DataResult.Content(Unit)
+            )
+        val nativeStore =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = nativeRepository,
+                        platformCapabilities = nativeCapabilities
+                    ),
+                scope = nativeScope
+            )
+
+        nativeStore.accept(
+            SharedSettingsIntent.ConnectAccountProvider(
+                AccountProviderLinkStartRequest("apple")
+            )
+        )
+
+        assertEquals(listOf("mobileOAuthLink:apple"), nativeCapabilities.calls)
+        assertFalse(nativeRepository.calls.any { it.startsWith("startProviderLink:") })
+        assertEquals(null, nativeStore.state.value.effect)
+        assertEquals(
+            SharedSettingsActionState(ACCOUNT_ACTION_PROVIDER_CONNECT, "apple"),
+            nativeStore.state.value.actionState
+        )
+
+        val failedScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val failedRepository = FakeSettingsRepository()
+        val failedCapabilities =
+            FakeSettingsCapabilities(
+                mobileOAuthLinkResult =
+                    DataResult.Error(
+                        ScreenError("ios_native_apple_start_failed", retryable = true)
+                    )
+            )
+        val failedStore =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = failedRepository,
+                        platformCapabilities = failedCapabilities
+                    ),
+                scope = failedScope
+            )
+
+        failedStore.accept(
+            SharedSettingsIntent.ConnectAccountProvider(
+                AccountProviderLinkStartRequest("apple")
+            )
+        )
+
+        assertEquals(listOf("mobileOAuthLink:apple"), failedCapabilities.calls)
+        assertFalse(failedRepository.calls.any { it.startsWith("startProviderLink:") })
+        assertEquals(null, failedStore.state.value.effect)
+        assertEquals(
+            "ios_native_apple_start_failed",
+            failedStore.state.value.actionState?.errorCode
+        )
+        nativeScope.cancel()
+        failedScope.cancel()
+    }
+
+    @Test
     fun accountFallbackPreservesSessionAvatarUrl() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val baseSession = sampleSession()
@@ -3659,9 +3729,16 @@ class SharedSettingsStoreTest {
             DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable")),
         private val connectedAppLogoFileResult: DataResult<PlatformFile> =
             DataResult.Error(ScreenError("settings_connected_app_logo_picker_unavailable")),
+        private val mobileOAuthLinkResult: DataResult<Unit> =
+            DataResult.Empty(EmptyReason.NoSettingsAvailable),
         private val systemNotificationPermission: SettingsMobileActionSnapshot? = null
     ) : SharedSettingsPlatformCapabilities {
         val calls = mutableListOf<String>()
+
+        override suspend fun startMobileOAuthAccountLink(providerId: String): DataResult<Unit> {
+            calls += "mobileOAuthLink:$providerId"
+            return mobileOAuthLinkResult
+        }
 
         override suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> {
             calls += "about"
