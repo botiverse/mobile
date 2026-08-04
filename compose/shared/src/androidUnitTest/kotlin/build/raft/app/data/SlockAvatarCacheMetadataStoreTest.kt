@@ -88,7 +88,27 @@ class SlockAvatarCacheMetadataStoreTest {
         val fallbackMetadata = metadata(fallbackKey)
         store.commitSuccess(fallbackMetadata, currentGuard(fallbackKey))
         assertEquals(fallbackMetadata, store.read(fallbackKey).metadata)
-        assertNull(store.read(missingKey).metadata)
+        val stateObservedFromMissingKey = store.read(missingKey)
+        assertEquals(fallbackMetadata, stateObservedFromMissingKey.metadata)
+        assertNull(stateObservedFromMissingKey.failure)
+        assertIs<SlockAvatarCacheReadDecision.Fetch>(
+            SlockAvatarCachePolicy.decideRead(
+                missingKey,
+                stateObservedFromMissingKey,
+                bytesAvailable = true,
+                bytesDecodable = true,
+                nowMs = 150L
+            )
+        )
+        assertIs<SlockAvatarCacheReadDecision.RenderFresh>(
+            SlockAvatarCachePolicy.decideRead(
+                fallbackKey,
+                store.read(fallbackKey),
+                bytesAvailable = true,
+                bytesDecodable = true,
+                nowMs = 150L
+            )
+        )
     }
 
     @Test
