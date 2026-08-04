@@ -8,7 +8,7 @@ import kotlin.test.assertNotEquals
 
 class SlockAvatarCacheContractTest {
     @Test
-    fun immutableRaftPathAndGravatarIgnoreTransportOnlyUrlChanges() {
+    fun immutableRaftPathIgnoresTransportQueryWhileGravatarKeepsResponseQuery() {
         val cdn =
             slockAvatarContentIdentity(
                 "https://cdn.raft.build/avatars/agents/0123456789abcdef0123456789abcdef.webp?token=one"
@@ -21,10 +21,16 @@ class SlockAvatarCacheContractTest {
         assertEquals(cdn, api)
 
         val hash = "a".repeat(64)
-        val first = slockAvatarContentIdentity("https://www.gravatar.com/avatar/$hash?s=160&d=404")
-        val second = slockAvatarContentIdentity("https://secure.gravatar.com/avatar/$hash?s=320&d=retro")
-        assertEquals(SlockAvatarContentKind.Gravatar, first.kind)
-        assertEquals(first, second)
+        val missing = slockAvatarContentIdentity("https://www.gravatar.com/avatar/$hash?s=160&d=404")
+        val fallback = slockAvatarContentIdentity("https://secure.gravatar.com/avatar/$hash?s=320&d=retro")
+        assertEquals(SlockAvatarContentKind.Gravatar, missing.kind)
+        assertNotEquals(missing, fallback)
+        assertEquals(
+            missing,
+            slockAvatarContentIdentity(
+                "https://secure.gravatar.com/avatar/$hash?s=160&d=404#client-fragment"
+            )
+        )
     }
 
     @Test
@@ -40,16 +46,33 @@ class SlockAvatarCacheContractTest {
     }
 
     @Test
-    fun legacyAndSha256GravatarHashesUseContentIdentity() {
+    fun gravatarHashHostAndSchemeAreTransportButEveryResponseQueryParameterIsIdentity() {
         val md5 = "a".repeat(32)
         val sha256 = "b".repeat(64)
         assertEquals(
             slockAvatarContentIdentity("https://www.gravatar.com/avatar/$md5?s=80"),
-            slockAvatarContentIdentity("https://secure.gravatar.com/avatar/$md5?s=320")
+            slockAvatarContentIdentity("http://secure.gravatar.com/avatar/$md5?s=80")
         )
-        assertEquals(
-            slockAvatarContentIdentity("https://www.gravatar.com/avatar/$sha256?s=80"),
-            slockAvatarContentIdentity("https://secure.gravatar.com/avatar/$sha256?s=320")
+        val baseline = slockAvatarContentIdentity("https://www.gravatar.com/avatar/$sha256?s=80&d=404&r=g&f=y")
+        assertNotEquals(
+            baseline,
+            slockAvatarContentIdentity("https://www.gravatar.com/avatar/$sha256?s=160&d=404&r=g&f=y")
+        )
+        assertNotEquals(
+            baseline,
+            slockAvatarContentIdentity("https://www.gravatar.com/avatar/$sha256?s=80&d=retro&r=g&f=y")
+        )
+        assertNotEquals(
+            baseline,
+            slockAvatarContentIdentity("https://www.gravatar.com/avatar/$sha256?s=80&d=404&r=x&f=y")
+        )
+        assertNotEquals(
+            baseline,
+            slockAvatarContentIdentity("https://www.gravatar.com/avatar/$sha256?s=80&d=404&r=g")
+        )
+        assertNotEquals(
+            baseline,
+            slockAvatarContentIdentity("https://www.gravatar.com/avatar/$sha256?s=80&d=404&r=g&f=y&v=2")
         )
     }
 

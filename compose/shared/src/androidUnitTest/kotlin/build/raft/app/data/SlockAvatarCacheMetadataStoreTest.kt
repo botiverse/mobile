@@ -42,6 +42,56 @@ class SlockAvatarCacheMetadataStoreTest {
     }
 
     @Test
+    fun gravatar404CannotSuppressOrShareBytesWithAnotherResponseQuery() = withStore { store ->
+        val hash = "a".repeat(64)
+        val missingKey =
+            key(
+                content =
+                    slockAvatarContentIdentity(
+                        "https://www.gravatar.com/avatar/$hash?s=160&d=404"
+                    )
+            )
+        val fallbackKey =
+            key(
+                content =
+                    slockAvatarContentIdentity(
+                        "https://secure.gravatar.com/avatar/$hash?s=160&d=retro"
+                    )
+            )
+        assertTrue(missingKey.nativeBytesKey != fallbackKey.nativeBytesKey)
+
+        val missingFailure =
+            SlockAvatarCachePolicy.failure(
+                missingKey,
+                SlockAvatarCacheFailureKind.ResourceAbsent,
+                previous = null,
+                nowMs = 100L
+            )
+        store.commitFailure(
+            missingFailure,
+            retireMatchingMetadata = true,
+            currentGuard(missingKey)
+        )
+
+        assertEquals(missingFailure, store.read(missingKey).failure)
+        assertNull(store.read(fallbackKey).failure)
+        assertIs<SlockAvatarCacheReadDecision.Fetch>(
+            SlockAvatarCachePolicy.decideRead(
+                fallbackKey,
+                store.read(fallbackKey),
+                bytesAvailable = false,
+                bytesDecodable = false,
+                nowMs = 200L
+            )
+        )
+
+        val fallbackMetadata = metadata(fallbackKey)
+        store.commitSuccess(fallbackMetadata, currentGuard(fallbackKey))
+        assertEquals(fallbackMetadata, store.read(fallbackKey).metadata)
+        assertNull(store.read(missingKey).metadata)
+    }
+
+    @Test
     fun successClearsSubjectFailuresAndStaleFailureCannotRetireNewerMapping() = withStore { store ->
         val oldKey = key(content = slockAvatarContentIdentity("https://images.example/avatar.png?v=1"))
         val newKey = key(content = slockAvatarContentIdentity("https://images.example/avatar.png?v=2"))

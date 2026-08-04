@@ -112,8 +112,22 @@ internal fun slockAvatarContentIdentity(source: String): SlockAvatarContentIdent
     val normalized = source.trim()
     require(normalized.startsWith("http://") || normalized.startsWith("https://"))
     val canonical =
-        GravatarHttpSource.matchEntire(normalized)?.groupValues?.get(1)?.lowercase()?.let {
-            SlockAvatarContentKind.Gravatar to "gravatar:$it"
+        GravatarHttpSource.matchEntire(normalized)?.let { match ->
+            val hash = match.groupValues[1].lowercase()
+            val responseQuery = match.groupValues[2].takeIf { it.isNotBlank() }
+            // Unlike host/scheme changes, every Gravatar query parameter is resource identity:
+            // d/r/f and unknown parameters can change availability or representation, while
+            // s/size/sz change the returned bytes. Native adapters do not have a separate
+            // canonical fetch-size axis in this shared key, so size must remain here as well.
+            SlockAvatarContentKind.Gravatar to
+                buildString {
+                    append("gravatar:")
+                    append(hash)
+                    responseQuery?.let {
+                        append('?')
+                        append(it)
+                    }
+                }
         } ?: run {
             val path = normalized.substringAfter("://").substringAfter('/', "").let { "/$it" }
             RaftAvatarPath.matchEntire(path.substringBefore('?').substringBefore('#'))?.let { match ->
@@ -135,7 +149,7 @@ internal fun slockAvatarContentIdentity(source: String): SlockAvatarContentIdent
 
 private val GravatarHttpSource =
     Regex(
-        "^https?://(?:[^/]+\\.)?gravatar\\.com/avatar/([0-9A-Fa-f]{32}|[0-9A-Fa-f]{64})(?:[?#].*)?$",
+        "^https?://(?:[^/]+\\.)?gravatar\\.com/avatar/([0-9A-Fa-f]{32}|[0-9A-Fa-f]{64})(?:\\?([^#]*))?(?:#.*)?$",
         RegexOption.IGNORE_CASE
     )
 
