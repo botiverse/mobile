@@ -71,7 +71,7 @@ internal class BridgeSettingsPlatformCapabilities(
         bridge.log(message)
     }
 
-    suspend fun startMobileOAuthAccountLink(providerId: String): DataResult<Unit> {
+    override suspend fun startMobileOAuthAccountLink(providerId: String): DataResult<Unit> {
         val response =
             settingsCapability(
                 JSONObject()

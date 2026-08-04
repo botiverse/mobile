@@ -553,6 +553,17 @@ interface SharedSettingsPlatformCapabilities {
     suspend fun pickConnectedAppLogoFile(clientRecordId: String): DataResult<PlatformFile> =
         DataResult.Error(ScreenError("settings_connected_app_logo_picker_unavailable", retryable = false))
 
+    /**
+     * Starts the platform-owned mobile OAuth account-link flow.
+     *
+     * [DataResult.Empty] is the only signal that the host does not implement the
+     * mobile flow and that the repository Web flow may be used as a fallback.
+     * A real platform error must stay an error: opening the Web flow after a
+     * failed native start loses the app-owned auth/PKCE callback authority.
+     */
+    suspend fun startMobileOAuthAccountLink(providerId: String): DataResult<Unit> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
@@ -659,7 +670,20 @@ class SharedSettingsDataSource(
     }
 
     suspend fun startAccountProviderLink(request: AccountProviderLinkStartRequest): DataResult<AccountProviderLinkStartResult> =
-        settingsRepository?.startAccountProviderLink(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        when (val mobile = platformCapabilities.startMobileOAuthAccountLink(request.providerId)) {
+            is DataResult.Content ->
+                DataResult.Content(
+                    AccountProviderLinkStartResult(
+                        providerId = request.providerId,
+                        url = null
+                    )
+                )
+            is DataResult.Empty ->
+                settingsRepository?.startAccountProviderLink(request)
+                    ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            is DataResult.Error -> DataResult.Error(mobile.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(mobile.blocker)
+        }
 
     suspend fun loadConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> =
         settingsRepository?.getConnectedApps() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)

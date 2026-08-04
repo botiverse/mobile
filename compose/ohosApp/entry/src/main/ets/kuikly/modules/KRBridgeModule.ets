@@ -1099,6 +1099,11 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const records = this.parseRecord(params);
       const action = records["action"] as string;
       switch (action) {
+        case "mobileOAuthLink": {
+          // OHOS has no native account-link host; preserve the existing Web flow.
+          callback({ "status": "unsupported" });
+          return;
+        }
         case "loadStorage": {
           callback(this.loadStorageCapability());
           return;
