@@ -387,12 +387,54 @@ internal enum class ThreadImeCorrectionKind {
     RenderedTail,
 
     /**
-     * The target is off-screen, so it is scrolled back by index. Only ever used
-     * to repay a handoff debt — outside a handoff this path does not exist, so
-     * cycles that never handed off keep their previous behaviour exactly.
+     * The canonical latest message, anchored against the composer even though it
+     * does not fit the shrunken viewport.
+     *
+     * VC1000400 produced 981‰ white on a target measuring 1236px inside a 1059px
+     * viewport: too tall to "fit", so the tail path was skipped and the anchor
+     * was replayed instead, parking the viewport in the blank middle of one long
+     * message. Not fitting is not a reason to show the middle of it — the end is
+     * the part with content and the part the user is about to type after.
+     *
+     * The same `RenderedBottom` executor also covers a target that is not
+     * measurable yet: it scrolls to the index first and bottom-aligns on the
+     * following pass, so this is one behaviour rather than two.
      */
-    FocusedRecovery
+    LatestBottomAnchor
 }
+
+/**
+ * Whether an over-tall or unmeasurable target may still be bottom-anchored.
+ *
+ * Deliberately narrow. It applies only to the canonical latest message: dragging
+ * a history target to the tail would move the reader somewhere they did not ask
+ * to go, so history keeps its existing behaviour. A user scroll, an interrupted
+ * anchor, a superseded identity or a pending newer page all disqualify it.
+ */
+internal fun threadImeLatestTargetBottomAnchorEligible(
+    keyboardShrinking: Boolean,
+    viewportEpochCoherent: Boolean,
+    targetIdentity: String?,
+    targetItemIndex: Int,
+    latestMessageItemIndex: Int,
+    canLoadMoreAfter: Boolean,
+    scrollInterruptedIdentity: String?,
+    startUserScrollGeneration: Int?,
+    currentUserScrollGeneration: Int,
+    sessionSettledOrConsumed: Boolean,
+    handoffOwed: Boolean
+): Boolean =
+    keyboardShrinking &&
+        viewportEpochCoherent &&
+        targetIdentity != null &&
+        targetItemIndex >= 0 &&
+        // Canonical latest only.
+        targetItemIndex == latestMessageItemIndex &&
+        !canLoadMoreAfter &&
+        scrollInterruptedIdentity != targetIdentity &&
+        startUserScrollGeneration != null &&
+        startUserScrollGeneration == currentUserScrollGeneration &&
+        (sessionSettledOrConsumed || handoffOwed)
 
 /** Outcome of the later part of one composer pass, once the layout is known. */
 internal data class ThreadImeCorrectionPass(
@@ -413,22 +455,21 @@ internal fun threadImeCorrectionPass(
     handoff: ThreadImeHandoffState,
     targetIdentity: String?,
     layout: ThreadComposerLayoutBottomAnchorState,
-    /** Whether the target has measured geometry this pass. */
-    targetMeasurable: Boolean = true,
-    /** Whether the target exists in the list at all. */
-    targetPresent: Boolean = true
+    /**
+     * Whether the canonical latest target may be bottom-anchored even though it
+     * does not fit — see [threadImeLatestTargetBottomAnchorEligible].
+     */
+    latestBottomAnchorEligible: Boolean = false
 ): ThreadImeCorrectionPass {
     val owed = handoff.owes(targetIdentity)
     val decision =
         resolveThreadComposerLayoutBottomAnchor(layout.copy(composerHandoffOwed = owed))
     val kind =
         when {
+            // The eligible latest target wins over a replayed intent: replaying
+            // is what parked the viewport inside a 1236px message.
+            latestBottomAnchorEligible -> ThreadImeCorrectionKind.LatestBottomAnchor
             decision.shouldAnchor -> ThreadImeCorrectionKind.RenderedTail
-            // Only while a debt is outstanding, and only once the measured and
-            // laid-out viewports agree — acting on a half-applied shrink is how
-            // the earlier commands ended up superseding each other.
-            owed && targetPresent && !targetMeasurable && layout.viewportEpochCoherent ->
-                ThreadImeCorrectionKind.FocusedRecovery
             else -> ThreadImeCorrectionKind.None
         }
     val next =

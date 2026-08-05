@@ -355,90 +355,111 @@ class ThreadImeHandoffTest {
         assertTrue(correct(retired = null), "an unaffected correction must still run")
         assertTrue(correct(retired = other), "another target's handoff must not cancel it")
         assertFalse(correct(retired = target), "a handed-off correction must not dispatch")
+    
+
+    private fun eligibility(
+        targetItemIndex: Int = 17,
+        latestMessageItemIndex: Int = 17,
+        canLoadMoreAfter: Boolean = false,
+        scrollInterrupted: String? = null,
+        startGeneration: Int? = 3,
+        currentGeneration: Int = 3,
+        settled: Boolean = true,
+        owed: Boolean = false,
+        coherent: Boolean = true,
+        shrinking: Boolean = true,
+        identity: String? = target
+    ) = threadImeLatestTargetBottomAnchorEligible(
+        keyboardShrinking = shrinking,
+        viewportEpochCoherent = coherent,
+        targetIdentity = identity,
+        targetItemIndex = targetItemIndex,
+        latestMessageItemIndex = latestMessageItemIndex,
+        canLoadMoreAfter = canLoadMoreAfter,
+        scrollInterruptedIdentity = scrollInterrupted,
+        startUserScrollGeneration = startGeneration,
+        currentUserScrollGeneration = currentGeneration,
+        sessionSettledOrConsumed = settled,
+        handoffOwed = owed
+    )
+
+    @Test
+    fun theCanonicalLatestTargetIsBottomAnchoredEvenWhenItDoesNotFit() {
+        // VC1000400's white round: target 1236px measured inside a 1059px
+        // viewport, so tailFits=false and the anchor was replayed instead —
+        // parking the viewport in the blank middle of that one message.
+        assertTrue(eligibility(), "a settled latest target must still be bottom-anchored")
+        assertTrue(eligibility(settled = false, owed = true), "and so must one repaying a debt")
     }
 
     @Test
-    fun anOwedCorrectionWhoseTargetIsOffScreenIsIssuedByIndex() {
-        // VC1000400's actual geometry: with the keyboard up the viewport was
-        // 0..1059 and the target sat at 1803, so it was outside
-        // visibleItemsInfo and had no measured height for the whole rise
-        // (fitHeightPx=-1). The rendered-tail correction waited for a
-        // measurement that could not arrive *because* the target was
-        // off-screen, so nothing was issued until the keyboard had closed.
-        fun pass(
-            owed: Boolean,
-            measurable: Boolean,
-            coherent: Boolean = true,
-            present: Boolean = true
-        ) = threadImeCorrectionPass(
-            handoff =
-                if (owed) {
-                    ThreadImeHandoffState(
-                        phase = ThreadImeHandoffPhase.Owed,
-                        identity = target,
-                        userScrollGeneration = 3,
-                        retiredIdentity = target
-                    )
-                } else {
-                    ThreadImeHandoffState()
-                },
-            targetIdentity = target,
-            layout =
-                ThreadComposerLayoutBottomAnchorState(
-                    previousKeyboardInsetDp = 0f,
-                    nextKeyboardInsetDp = 299.5f,
-                    previousViewportHeightDp = 622.8f,
-                    nextViewportHeightDp = 315.3f,
-                    pendingLayoutChange = true,
-                    initialBottomAnchorReady = true,
-                    latestItemIndex = 18,
-                    allowBottomAutoAnchor = false,
-                    viewportEpochCoherent = coherent,
-                    focusedAnchorOwnsViewport = false,
-                    focusedActiveTailAnchorCanCorrectLayout = false,
-                    // Unmeasurable target cannot satisfy the tail path.
-                    focusedTailAnchorCanCorrectLayout = measurable
-                ),
-            targetMeasurable = measurable,
-            targetPresent = present
-        )
+    fun onlyTheCanonicalLatestTargetQualifies() {
+        // A history target dragged to the tail would move the reader somewhere
+        // they never asked to go, so it keeps the old behaviour.
+        assertFalse(eligibility(targetItemIndex = 12), "a history target must not be pulled to the tail")
+        assertFalse(eligibility(canLoadMoreAfter = true), "a pending newer page means this is not the tail")
+        assertFalse(eligibility(targetItemIndex = -1), "an absent target has nothing to anchor")
+        assertFalse(eligibility(identity = null))
+    }
 
-        val recovery = pass(owed = true, measurable = false)
-        assertEquals(
-            ThreadImeCorrectionKind.FocusedRecovery,
-            recovery.kind,
-            "an owed correction must not wait for a measurement the shrink prevents"
-        )
-        assertFalse(recovery.handoff.owes(target), "issuing it repays the debt")
-        assertTrue(recovery.handoff.retired(target), "and still does not revive the session")
+    @Test
+    fun aUserWhoHasTakenOverIsNotOverridden() {
+        assertFalse(eligibility(currentGeneration = 4), "a user scroll outranks this")
+        assertFalse(eligibility(scrollInterrupted = target), "so does an interrupted anchor")
+        assertFalse(eligibility(startGeneration = null), "and an anchor with no baseline is not current")
+    }
 
-        // Measurable: the precise correction, unchanged.
-        assertEquals(ThreadImeCorrectionKind.RenderedTail, pass(owed = true, measurable = true).kind)
+    @Test
+    fun aHalfAppliedShrinkStillDefers() {
+        assertFalse(eligibility(coherent = false), "a mixed viewport epoch must not be anchored against")
+        assertFalse(eligibility(shrinking = false), "and with no keyboard there is nothing to correct")
+    }
 
-        // A half-applied shrink must still defer — acting on a mixed epoch is
-        // how the earlier commands ended up superseding one another.
-        assertEquals(
-            ThreadImeCorrectionKind.None,
-            pass(owed = true, measurable = false, coherent = false).kind
-        )
-
-        // No target in the list at all: nothing to scroll to.
-        assertEquals(
-            ThreadImeCorrectionKind.None,
-            pass(owed = true, measurable = false, present = false).kind
-        )
-
-        // Outside a handoff this path does not exist, so cycles that never
-        // handed off keep exactly their previous behaviour.
-        assertEquals(
-            ThreadImeCorrectionKind.None,
-            pass(owed = false, measurable = false).kind,
-            "no debt means no recovery — this must not become a general scroll"
+    @Test
+    fun neitherSettledNorOwedMeansThisPathDoesNotExist() {
+        assertFalse(
+            eligibility(settled = false, owed = false),
+            "an unrelated cycle must keep its previous behaviour exactly"
         )
     }
 
     @Test
-    fun theRecoveryIsIssuedOnceNotEveryPass() {
+    fun theOverTallTargetProducesOneRenderedBottomNotAReplayedIntent() {
+        // Cell 1: no handoff, already consumed, measured target=latest,
+        // 1236 in 1059 with fit 1290. Must be RenderedBottom.
+        val layout =
+            ThreadComposerLayoutBottomAnchorState(
+                previousKeyboardInsetDp = 299.5f,
+                nextKeyboardInsetDp = 299.5f,
+                previousViewportHeightDp = 315.3f,
+                nextViewportHeightDp = 315.3f,
+                pendingLayoutChange = true,
+                initialBottomAnchorReady = true,
+                latestItemIndex = 18,
+                allowBottomAutoAnchor = true,
+                viewportEpochCoherent = true,
+                focusedAnchorOwnsViewport = false,
+                focusedActiveTailAnchorCanCorrectLayout = false,
+                // Too tall to fit: this is what sent it down the replay path.
+                focusedTailAnchorCanCorrectLayout = false
+            )
+
+        val settled =
+            threadImeCorrectionPass(
+                handoff = ThreadImeHandoffState(),
+                targetIdentity = target,
+                layout = layout,
+                latestBottomAnchorEligible = eligibility(settled = true)
+            )
+        assertEquals(
+            ThreadImeCorrectionKind.LatestBottomAnchor,
+            settled.kind,
+            "an over-tall latest target must be bottom-anchored, not replayed"
+        )
+
+        // Cell 2: with a debt and a target not yet visible — still exactly one
+        // bottom anchor, and the debt is repaid by it rather than by a
+        // different, weaker correction.
         var handoff =
             ThreadImeHandoffState(
                 phase = ThreadImeHandoffPhase.Owed,
@@ -446,22 +467,6 @@ class ThreadImeHandoffTest {
                 userScrollGeneration = 3,
                 retiredIdentity = target
             )
-        val layout =
-            ThreadComposerLayoutBottomAnchorState(
-                previousKeyboardInsetDp = 0f,
-                nextKeyboardInsetDp = 299.5f,
-                previousViewportHeightDp = 622.8f,
-                nextViewportHeightDp = 315.3f,
-                pendingLayoutChange = true,
-                initialBottomAnchorReady = true,
-                latestItemIndex = 18,
-                allowBottomAutoAnchor = false,
-                viewportEpochCoherent = true,
-                focusedAnchorOwnsViewport = false,
-                focusedActiveTailAnchorCanCorrectLayout = false,
-                focusedTailAnchorCanCorrectLayout = false
-            )
-
         val kinds =
             (1..3).map {
                 val pass =
@@ -469,19 +474,40 @@ class ThreadImeHandoffTest {
                         handoff = handoff,
                         targetIdentity = target,
                         layout = layout,
-                        targetMeasurable = false
+                        latestBottomAnchorEligible =
+                            eligibility(settled = false, owed = handoff.owes(target))
                     )
                 handoff = pass.handoff
                 pass.kind
             }
         assertEquals(
             listOf(
-                ThreadImeCorrectionKind.FocusedRecovery,
+                ThreadImeCorrectionKind.LatestBottomAnchor,
                 ThreadImeCorrectionKind.None,
                 ThreadImeCorrectionKind.None
             ),
             kinds,
-            "the target being off-screen must not produce a scroll on every pass"
+            "one shrink owes one bottom anchor, not one per pass"
+        )
+        assertFalse(handoff.owes(target), "and the debt is repaid by that anchor")
+        assertTrue(handoff.retired(target), "without reviving the session")
+    }
+
+    @Test
+    fun theBottomAlignmentPutsTheEndOfTheMessageAtTheComposer() {
+        // The executor's own arithmetic on the real numbers: a 1236px message
+        // with 54px trailing padding in a 1059px viewport scrolls to 231, which
+        // places the end of the message against the composer rather than its
+        // blank middle.
+        assertEquals(
+            231,
+            threadLatestItemBottomAnchorScrollOffset(
+                itemSize = 1236,
+                viewportHeight = 1059,
+                visibleItemCount = 1,
+                totalItemCount = 19,
+                trailingPaddingSize = 54
+            )
         )
     }
 }

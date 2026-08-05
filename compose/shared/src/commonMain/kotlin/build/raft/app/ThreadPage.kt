@@ -17314,8 +17314,21 @@ private fun ThreadMessagesList(
                 handoff = imeHandoffState,
                 targetIdentity = focusedTargetIdentity,
                 layout = layoutState,
-                targetMeasurable = focusedTailFit.fitHeightPx >= 0,
-                targetPresent = focusedTargetItemIndex >= 0
+                latestBottomAnchorEligible =
+                    threadImeLatestTargetBottomAnchorEligible(
+                        keyboardShrinking = composerKeyboardInsetDp > 0f,
+                        viewportEpochCoherent = focusedTailViewportEpochCoherent,
+                        targetIdentity = focusedTargetIdentity,
+                        targetItemIndex = focusedTargetItemIndex,
+                        latestMessageItemIndex = latestMessageListItemIndex,
+                        canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+                        scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                        startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
+                        currentUserScrollGeneration = userScrollGeneration.value,
+                        sessionSettledOrConsumed =
+                            consumedFocusedMessageAnchorIdentity == focusedTargetIdentity,
+                        handoffOwed = imeHandoffState.owes(focusedTargetIdentity)
+                    )
             )
         val layoutDecision = correctionPass.decision
         val handoffRepaidThisPass =
@@ -17356,14 +17369,17 @@ private fun ThreadMessagesList(
         lastComposerKeyboardInsetDp = composerKeyboardInsetDp
         lastThreadViewportHeightDp = measuredThreadViewportHeightDp
         pendingComposerLayoutBottomAnchor = layoutDecision.pendingLayoutChange
-        // task #990: the owed correction whose target is off-screen. Issued by
-        // index because the executor scrolls a non-visible item back on its own,
-        // where the rendered-tail path would keep waiting for geometry that
-        // cannot exist while the target is outside the viewport.
+        // task #990: the canonical latest target is anchored against the
+        // composer even when it does not fit the shrunken viewport. Replaying
+        // the intent instead is what left the viewport inside a 1236px message
+        // and 981‰ white. The RenderedBottom executor also handles a target that
+        // is not measurable yet — it scrolls to the index and bottom-aligns on
+        // the next pass — so this one path covers both samples.
         if (
-            correctionPass.kind == ThreadImeCorrectionKind.FocusedRecovery &&
+            correctionPass.kind == ThreadImeCorrectionKind.LatestBottomAnchor &&
             focusedTargetMessageId != null &&
-            focusedTargetIdentity != null
+            focusedTargetIdentity != null &&
+            focusedTailMessageId != null
         ) {
             lastComposerKeyboardInsetDp = composerKeyboardInsetDp
             lastThreadViewportHeightDp = measuredThreadViewportHeightDp
@@ -17371,13 +17387,22 @@ private fun ThreadMessagesList(
             pendingKeyboardBottomAnchor = true
             imeHandoffState = correctionPass.handoff
             viewportLayoutGeneration += 1L
-            focusedAnchorPlacementState = resetThreadFocusedAnchorPlacement(focusedTargetIdentity)
+            focusedAnchorPlacementState =
+                renderedThreadFocusedAnchorPlacement(
+                    identity = focusedTargetIdentity,
+                    offsetPx = initialBottomAnchorTrailingPaddingPx,
+                    renderedTailMessageId = focusedTailMessageId
+                )
             dispatchViewportEvent(
                 LazyViewportEvent.Anchor(
                     target = LazyViewportAnchorTarget.Message(focusedTargetMessageId),
-                    offset = 0,
+                    // The executor derives the true bottom alignment from the
+                    // measured item; this carries the trailing padding it needs.
+                    offset = initialBottomAnchorTrailingPaddingPx,
                     layoutGeneration = viewportLayoutGeneration,
-                    placement = LazyViewportAnchorPlacement.Focused,
+                    placement = LazyViewportAnchorPlacement.RenderedBottom,
+                    renderedTailMessageId = focusedTailMessageId,
+                    renderedTailAnchorIdentity = focusedTargetIdentity,
                     fallback = LazyViewportAnchorFallback.Free,
                     provenance =
                         LazyViewportCommandProvenance.ComposerIme(
@@ -17386,10 +17411,10 @@ private fun ThreadMessagesList(
                 )
             )
             diagnosticsLogger(
-                "thread_ime_handoff result=focused_recovery_issued " +
+                "thread_ime_latest_bottom_anchor result=issued " +
                     "messageId=$focusedTargetMessageId targetIndex=$focusedTargetItemIndex " +
-                    "fitHeightPx=${focusedTailFit.fitHeightPx} " +
-                    "keyboardInsetDp=$composerKeyboardInsetDp"
+                    "fitHeightPx=${focusedTailFit.fitHeightPx} fitViewportPx=${focusedTailFit.viewportHeightPx} " +
+                    "tailFits=${focusedTailFit.fitsViewport} trailingPaddingPx=$initialBottomAnchorTrailingPaddingPx"
             )
             return@LaunchedEffect
         }
