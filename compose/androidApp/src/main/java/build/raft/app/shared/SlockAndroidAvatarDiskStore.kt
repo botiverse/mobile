@@ -37,6 +37,11 @@ internal data class SlockAndroidAvatarRollbackRecord(
     val evicted: List<SlockAndroidAvatarEvictedBackup>
 )
 
+private data class SlockAndroidAvatarRecoveredTransient(
+    val file: File,
+    val key: SlockAndroidAvatarEntryKey?
+)
+
 /**
  * Avatar-only atomic disk/index store. It never scans or evicts sibling files
  * in the existing image_cache root.
@@ -63,6 +68,7 @@ internal class SlockAndroidAvatarDiskStore(
     private val lock = Any()
     private val entries = linkedMapOf<SlockAndroidAvatarEntryKey, SlockAndroidAvatarDiskEntry>()
     private val rollbackPendingKeys = linkedSetOf<SlockAndroidAvatarEntryKey>()
+    private val recoveredTransients = linkedMapOf<String, SlockAndroidAvatarRecoveredTransient>()
     private var loaded = false
 
     init {
@@ -94,6 +100,30 @@ internal class SlockAndroidAvatarDiskStore(
         SlockAndroidAvatarBytePayload(bytes, entry.contentType)
     }
 
+    /**
+     * Reads the just-promoted candidate without mutating its index membership.
+     * A failed validation must leave the rollback record authoritative so the
+     * previous generation can still be restored.
+     */
+    fun readPromoted(record: SlockAndroidAvatarRollbackRecord): SlockAndroidAvatarBytePayload? =
+        synchronized(lock) {
+            ensureLoadedLocked()
+            val expected = record.newEntry
+            val current = entries[expected.key] ?: return@synchronized null
+            if (
+                current.generation != expected.generation ||
+                current.fileName != expected.fileName ||
+                current.sizeBytes != expected.sizeBytes
+            ) {
+                return@synchronized null
+            }
+            val file = root.resolve(current.fileName)
+            if (!file.isFile || file.length() != current.sizeBytes) return@synchronized null
+            val bytes = runCatching { file.readBytes() }.getOrNull() ?: return@synchronized null
+            if (bytes.size.toLong() != current.sizeBytes) return@synchronized null
+            SlockAndroidAvatarBytePayload(bytes, current.contentType)
+        }
+
     fun stage(
         key: SlockAndroidAvatarEntryKey,
         generation: Long,
@@ -103,10 +133,13 @@ internal class SlockAndroidAvatarDiskStore(
         if (generation <= 0L || bytes.isEmpty() || bytes.size.toLong() > maxEntryBytes) {
             return@synchronized null
         }
+        if (hasRecoveredArtifactsLocked(key)) {
+            return@synchronized null
+        }
         ensureRootLocked()
-        val stageFile = root.resolve("${key.bytesKey}.$generation$StageSuffix")
+        val stageFile = root.resolve("${key.transientPrefix()}.$generation$StageSuffix")
+        if (!deleteRecoveredFileLocked(stageFile, key)) return@synchronized null
         runCatching {
-            stageFile.delete()
             val physicalBytes =
                 root.listFiles().orEmpty()
                     .filter { file ->
@@ -127,7 +160,7 @@ internal class SlockAndroidAvatarDiskStore(
             if (stageFile.length() != bytes.size.toLong()) error("avatar stage length mismatch")
             SlockAndroidAvatarStage(key, generation, stageFile, bytes.size.toLong())
         }.getOrElse {
-            stageFile.delete()
+            deleteRecoveredFileLocked(stageFile, key)
             null
         }
     }
@@ -144,18 +177,19 @@ internal class SlockAndroidAvatarDiskStore(
             stage.file.parentFile?.canonicalFile != root.canonicalFile ||
             stage.file.length() != stage.sizeBytes
         ) {
-            stage.file.delete()
+            deleteRecoveredFileLocked(stage.file, stage.key)
             return@synchronized null
         }
         ensureRootLocked()
         val previous = validatedEntryLocked(stage.key)
         val target = root.resolve("${stage.key.bytesKey}.bin")
-        val previousBackup = root.resolve("${stage.key.bytesKey}.${stage.generation}.replace$RollbackSuffix")
+        val previousBackup =
+            root.resolve("${stage.key.transientPrefix()}.${stage.generation}.replace$RollbackSuffix")
         val previousEntries = LinkedHashMap(entries)
         val evictedBackups = mutableListOf<SlockAndroidAvatarEvictedBackup>()
         var previousWasBackedUp = false
         try {
-            previousBackup.delete()
+            if (!deleteRecoveredFileLocked(previousBackup, stage.key)) return@synchronized null
             if (target.isFile) {
                 atomicMove(target, previousBackup)
                 previousWasBackedUp = true
@@ -175,8 +209,11 @@ internal class SlockAndroidAvatarDiskStore(
             evictionKeys.forEach { key ->
                 val entry = entries.remove(key) ?: return@forEach
                 val file = root.resolve(entry.fileName)
-                val backup = root.resolve("evict-${stage.generation}-${entry.key.bytesKey}$RollbackSuffix")
-                backup.delete()
+                val backup =
+                    root.resolve("evict-${stage.generation}-${entry.key.transientPrefix()}$RollbackSuffix")
+                if (!deleteRecoveredFileLocked(backup, entry.key)) {
+                    error("avatar eviction backup cleanup incomplete")
+                }
                 val admittedBackup =
                     if (file.isFile) {
                         atomicMove(file, backup)
@@ -198,20 +235,42 @@ internal class SlockAndroidAvatarDiskStore(
                 evicted = evictedBackups.toList()
             )
         } catch (_: Throwable) {
-            target.delete()
+            var targetResolved = !target.exists() || runCatching { deleteManagedFile(target) }.getOrDefault(false)
             if (previousWasBackedUp && previousBackup.isFile) {
-                runCatching { atomicMove(previousBackup, target) }
+                val restored =
+                    runCatching {
+                        atomicMove(previousBackup, target)
+                        true
+                    }.getOrDefault(false)
+                if (restored) {
+                    targetResolved = true
+                } else {
+                    rollbackPendingKeys += stage.key
+                    rememberRecoveredTransientLocked(previousBackup, stage.key)
+                }
+            }
+            if (!targetResolved && target.exists()) {
+                rollbackPendingKeys += stage.key
+                rememberRecoveredTransientLocked(target, stage.key)
             }
             evictedBackups.forEach { backup ->
                 val destination = root.resolve(backup.entry.fileName)
                 if (backup.backupFile?.isFile == true) {
-                    runCatching { atomicMove(backup.backupFile, destination) }
+                    val restored =
+                        runCatching {
+                            atomicMove(backup.backupFile, destination)
+                            true
+                        }.getOrDefault(false)
+                    if (!restored) {
+                        rollbackPendingKeys += backup.entry.key
+                        rememberRecoveredTransientLocked(backup.backupFile, backup.entry.key)
+                    }
                 }
             }
             entries.clear()
             entries.putAll(previousEntries)
             runCatching { persistIndexLocked() }
-            stage.file.delete()
+            deleteRecoveredFileLocked(stage.file, stage.key)
             return@synchronized null
         }
     }
@@ -299,7 +358,9 @@ internal class SlockAndroidAvatarDiskStore(
     }
 
     fun deleteRollbackArtifacts(record: SlockAndroidAvatarRollbackRecord): Boolean = synchronized(lock) {
-        val targetDeleted = deleteManagedFile(root.resolve(record.newEntry.fileName))
+        val target = root.resolve(record.newEntry.fileName)
+        val targetDeleted = !target.exists() || runCatching { deleteManagedFile(target) }.getOrDefault(false)
+        if (targetDeleted) recoveredTransients.remove(target.name)
         val backupsDeleted = cleanupRollbackFilesLocked(record)
         val deleted = targetDeleted && backupsDeleted
         if (deleted) rollbackPendingKeys.remove(record.newEntry.key)
@@ -307,26 +368,47 @@ internal class SlockAndroidAvatarDiskStore(
     }
 
     fun deleteStage(stage: SlockAndroidAvatarStage?): Boolean = synchronized(lock) {
-        stage == null || deleteManagedFile(stage.file)
+        if (stage == null) return@synchronized true
+        val deleted = !stage.file.exists() || runCatching { deleteManagedFile(stage.file) }.getOrDefault(false)
+        if (deleted) recoveredTransients.remove(stage.file.name)
+        deleted
+    }
+
+    fun hasRecoveredArtifacts(key: SlockAndroidAvatarEntryKey): Boolean = synchronized(lock) {
+        ensureLoadedLocked()
+        hasRecoveredArtifactsLocked(key)
     }
 
     fun retireOwner(partitionKey: String): Boolean = synchronized(lock) {
         ensureLoadedLocked()
-        removeEntriesLocked(entries.keys.filterTo(linkedSetOf()) { it.partitionKey == partitionKey })
+        val entriesRemoved =
+            removeEntriesLocked(entries.keys.filterTo(linkedSetOf()) { it.partitionKey == partitionKey })
+        val transientsRemoved =
+            cleanupRecoveredTransientsLocked { key -> key == null || key.partitionKey == partitionKey }
+        entriesRemoved && transientsRemoved
     }
 
     fun invalidate(key: SlockAndroidAvatarEntryKey): Boolean = synchronized(lock) {
         ensureLoadedLocked()
-        removeEntriesLocked(setOf(key))
+        val entryRemoved = removeEntriesLocked(setOf(key))
+        val transientsRemoved =
+            cleanupRecoveredTransientsLocked { recoveredKey -> recoveredKey == null || recoveredKey == key }
+        entryRemoved && transientsRemoved
     }
 
     fun retireSubject(partitionKey: String, subjectKey: String): Boolean = synchronized(lock) {
         ensureLoadedLocked()
-        removeEntriesLocked(
-            entries.keys.filterTo(linkedSetOf()) {
-                it.partitionKey == partitionKey && it.subjectKey == subjectKey
+        val entriesRemoved =
+            removeEntriesLocked(
+                entries.keys.filterTo(linkedSetOf()) {
+                    it.partitionKey == partitionKey && it.subjectKey == subjectKey
+                }
+            )
+        val transientsRemoved =
+            cleanupRecoveredTransientsLocked { key ->
+                key == null || (key.partitionKey == partitionKey && key.subjectKey == subjectKey)
             }
-        )
+        entriesRemoved && transientsRemoved
     }
 
     fun clearAll(): Boolean = synchronized(lock) {
@@ -334,6 +416,8 @@ internal class SlockAndroidAvatarDiskStore(
         if (!removeEntriesLocked(entries.keys.toSet())) return@synchronized false
         val deleted = runCatching { deleteManagedRoot(root) }.getOrDefault(false)
         if (!deleted) return@synchronized false
+        recoveredTransients.clear()
+        rollbackPendingKeys.clear()
         loaded = true
         true
     }
@@ -397,6 +481,8 @@ internal class SlockAndroidAvatarDiskStore(
         if (loaded) return
         ensureRootLocked()
         entries.clear()
+        recoveredTransients.clear()
+        rollbackPendingKeys.clear()
         val index = root.resolve(IndexFileName)
         if (index.isFile) {
             runCatching {
@@ -419,8 +505,13 @@ internal class SlockAndroidAvatarDiskStore(
         invalid.forEach(entries::remove)
         pruneBudgetLocked()
         root.listFiles().orEmpty().forEach { file ->
-            if (file.name.endsWith(StageSuffix) || file.name.endsWith(RollbackSuffix)) file.delete()
-            if (file.name.endsWith(".bin") && entries.values.none { it.fileName == file.name }) file.delete()
+            if (file.name in recoveredTransients) return@forEach
+            val isTransient = file.name.endsWith(StageSuffix) || file.name.endsWith(RollbackSuffix)
+            val isOrphanBin =
+                file.name.endsWith(".bin") && entries.values.none { it.fileName == file.name }
+            if (isTransient || isOrphanBin) {
+                deleteRecoveredFileLocked(file, transientKeyForFileLocked(file))
+            }
         }
         runCatching { persistIndexLocked() }
         if (invalid.isNotEmpty()) onEntriesRemoved(invalid)
@@ -429,29 +520,164 @@ internal class SlockAndroidAvatarDiskStore(
 
     private fun recoverRollbackFilesLocked() {
         root.listFiles().orEmpty().filter { it.name.endsWith(RollbackSuffix) }.forEach { backup ->
-            val replaceMatch = Regex("^([0-9a-f]{64})\\.([0-9]+)\\.replace\\.rollback$").matchEntire(backup.name)
-            if (replaceMatch != null) {
-                val bytesKey = replaceMatch.groupValues[1]
-                val generation = replaceMatch.groupValues[2].toLongOrNull()
+            val keyHint = transientKeyForFileLocked(backup)
+            val replaceIdentity = replaceRollbackIdentity(backup.name)
+            if (replaceIdentity != null) {
+                val bytesKey = replaceIdentity.first
+                val generation = replaceIdentity.second
                 val indexed = entries.values.firstOrNull { it.key.bytesKey == bytesKey }
-                if (generation != null && indexed?.generation != generation) {
-                    runCatching { atomicMove(backup, root.resolve("$bytesKey.bin")) }
-                } else {
-                    backup.delete()
+                val restoringPrevious = indexed?.generation != generation
+                val resolved =
+                    if (restoringPrevious) {
+                        runCatching {
+                            atomicMove(backup, root.resolve("$bytesKey.bin"))
+                            true
+                        }.getOrDefault(false)
+                    } else {
+                        runCatching { deleteManagedFile(backup) }.getOrDefault(false)
+                    }
+                if (!resolved && backup.exists()) {
+                    val recoveryKey = keyHint ?: indexed?.key
+                    if (restoringPrevious) recoveryKey?.let(rollbackPendingKeys::add)
+                    rememberRecoveredTransientLocked(backup, recoveryKey)
                 }
                 return@forEach
             }
-            val evictMatch = Regex("^evict-[0-9]+-([0-9a-f]{64})\\.rollback$").matchEntire(backup.name)
-            val indexed = evictMatch?.groupValues?.getOrNull(1)?.let { bytesKey ->
-                entries.values.firstOrNull { it.key.bytesKey == bytesKey }
-            }
-            if (indexed != null && !root.resolve(indexed.fileName).isFile) {
-                runCatching { atomicMove(backup, root.resolve(indexed.fileName)) }
+            val evictedBytesKey = evictedRollbackBytesKey(backup.name)
+            if (evictedBytesKey != null) {
+                val indexed = entries.values.firstOrNull { it.key.bytesKey == evictedBytesKey }
+                val resolved =
+                    if (indexed != null && !root.resolve(indexed.fileName).isFile) {
+                        runCatching {
+                            atomicMove(backup, root.resolve(indexed.fileName))
+                            true
+                        }.getOrDefault(false)
+                    } else {
+                        runCatching { deleteManagedFile(backup) }.getOrDefault(false)
+                    }
+                if (!resolved && backup.exists()) {
+                    rememberRecoveredTransientLocked(backup, keyHint ?: indexed?.key)
+                }
             } else {
-                backup.delete()
+                deleteRecoveredFileLocked(backup, keyHint)
             }
         }
     }
+
+    private fun cleanupRecoveredTransientsLocked(
+        matches: (SlockAndroidAvatarEntryKey?) -> Boolean
+    ): Boolean {
+        var cleaned = true
+        val cleanedKeys = linkedSetOf<SlockAndroidAvatarEntryKey>()
+        val iterator = recoveredTransients.entries.iterator()
+        while (iterator.hasNext()) {
+            val recovered = iterator.next().value
+            if (!matches(recovered.key)) continue
+            val deleted =
+                !recovered.file.exists() ||
+                    runCatching { deleteManagedFile(recovered.file) }.getOrDefault(false)
+            if (deleted) {
+                recovered.key?.let(cleanedKeys::add)
+                iterator.remove()
+            } else {
+                cleaned = false
+            }
+        }
+        rollbackPendingKeys.removeAll { pendingKey ->
+            pendingKey in cleanedKeys && recoveredTransients.values.none { it.key == pendingKey }
+        }
+        return cleaned
+    }
+
+    private fun hasRecoveredArtifactsLocked(key: SlockAndroidAvatarEntryKey): Boolean =
+        recoveredTransients.values.any { recovered -> recovered.key == null || recovered.key == key }
+
+    private fun deleteRecoveredFileLocked(
+        file: File,
+        keyHint: SlockAndroidAvatarEntryKey?
+    ): Boolean {
+        val deleted = !file.exists() || runCatching { deleteManagedFile(file) }.getOrDefault(false)
+        if (deleted) {
+            recoveredTransients.remove(file.name)
+        } else {
+            rememberRecoveredTransientLocked(file, keyHint)
+        }
+        return deleted
+    }
+
+    private fun rememberRecoveredTransientLocked(
+        file: File,
+        keyHint: SlockAndroidAvatarEntryKey?
+    ) {
+        if (file.exists()) {
+            recoveredTransients[file.name] =
+                SlockAndroidAvatarRecoveredTransient(file, keyHint ?: transientKeyForFileLocked(file))
+        }
+    }
+
+    private fun transientKeyForFileLocked(file: File): SlockAndroidAvatarEntryKey? {
+        if (!file.name.endsWith(StageSuffix) && !file.name.endsWith(RollbackSuffix)) {
+            return file.name.removeSuffix(".bin").takeIf { file.name.endsWith(".bin") }?.let { bytesKey ->
+                entries.values.firstOrNull { it.key.bytesKey == bytesKey }?.key
+            }
+        }
+        val full =
+            Regex(
+                "^(?:evict-[0-9]+-)?([0-9a-f]{64})\\.([0-9a-f]{64})\\.([0-9a-f]{64})(?:\\..+)?$"
+            ).matchEntire(file.name)
+        if (full != null) {
+            return SlockAndroidAvatarEntryKey(
+                partitionKey = full.groupValues[1],
+                subjectKey = full.groupValues[2],
+                bytesKey = full.groupValues[3]
+            )
+        }
+        val legacyBytesKey =
+            when {
+                file.name.startsWith("evict-") ->
+                    Regex("^evict-[0-9]+-([0-9a-f]{64})\\.rollback$")
+                        .matchEntire(file.name)
+                        ?.groupValues
+                        ?.get(1)
+                else ->
+                    Regex("^([0-9a-f]{64})\\.[0-9]+(?:\\.replace)?\\.(?:stage|rollback)$")
+                        .matchEntire(file.name)
+                        ?.groupValues
+                        ?.get(1)
+            }
+        return legacyBytesKey?.let { bytesKey ->
+            entries.values.firstOrNull { it.key.bytesKey == bytesKey }?.key
+        }
+    }
+
+    private fun replaceRollbackIdentity(fileName: String): Pair<String, Long>? {
+        val current =
+            Regex(
+                "^[0-9a-f]{64}\\.[0-9a-f]{64}\\.([0-9a-f]{64})\\.([0-9]+)\\.replace\\.rollback$"
+            ).matchEntire(fileName)
+        if (current != null) {
+            return current.groupValues[1] to (current.groupValues[2].toLongOrNull() ?: return null)
+        }
+        val legacy =
+            Regex("^([0-9a-f]{64})\\.([0-9]+)\\.replace\\.rollback$").matchEntire(fileName)
+                ?: return null
+        return legacy.groupValues[1] to (legacy.groupValues[2].toLongOrNull() ?: return null)
+    }
+
+    private fun evictedRollbackBytesKey(fileName: String): String? {
+        val current =
+            Regex(
+                "^evict-[0-9]+-[0-9a-f]{64}\\.[0-9a-f]{64}\\.([0-9a-f]{64})\\.rollback$"
+            ).matchEntire(fileName)
+        if (current != null) return current.groupValues[1]
+        return Regex("^evict-[0-9]+-([0-9a-f]{64})\\.rollback$")
+            .matchEntire(fileName)
+            ?.groupValues
+            ?.get(1)
+    }
+
+    private fun SlockAndroidAvatarEntryKey.transientPrefix(): String =
+        "$partitionKey.$subjectKey.$bytesKey"
 
     private fun pruneBudgetLocked() {
         var total = entries.values.sumOf { it.sizeBytes }
@@ -459,9 +685,13 @@ internal class SlockAndroidAvatarDiskStore(
         entries.values
             .sortedWith(compareBy<SlockAndroidAvatarDiskEntry> { it.lastAccessMillis }.thenBy { it.key.bytesKey })
             .forEach { entry ->
-                if (total > maxManagedBytes && entries.remove(entry.key) != null) {
+                val file = root.resolve(entry.fileName)
+                if (
+                    total > maxManagedBytes &&
+                    (!file.exists() || runCatching { deleteManagedFile(file) }.getOrDefault(false)) &&
+                    entries.remove(entry.key) != null
+                ) {
                     total -= entry.sizeBytes
-                    root.resolve(entry.fileName).delete()
                     onEntriesRemoved(setOf(entry.key))
                 }
             }
@@ -531,9 +761,17 @@ internal class SlockAndroidAvatarDiskStore(
 
     private fun cleanupRollbackFilesLocked(record: SlockAndroidAvatarRollbackRecord): Boolean {
         var cleaned = true
-        record.previousBackupFile?.let { cleaned = deleteManagedFile(it) && cleaned }
+        record.previousBackupFile?.let { backup ->
+            val deleted = !backup.exists() || runCatching { deleteManagedFile(backup) }.getOrDefault(false)
+            if (deleted) recoveredTransients.remove(backup.name)
+            cleaned = deleted && cleaned
+        }
         record.evicted.forEach { evicted ->
-            evicted.backupFile?.let { cleaned = deleteManagedFile(it) && cleaned }
+            evicted.backupFile?.let { backup ->
+                val deleted = !backup.exists() || runCatching { deleteManagedFile(backup) }.getOrDefault(false)
+                if (deleted) recoveredTransients.remove(backup.name)
+                cleaned = deleted && cleaned
+            }
         }
         return cleaned
     }

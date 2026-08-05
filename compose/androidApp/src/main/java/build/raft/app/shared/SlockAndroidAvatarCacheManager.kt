@@ -240,7 +240,10 @@ internal class SlockAndroidAvatarCacheManager(
                         operation.stage = null
                         operation.rollbackRecord = rollback
                         operation.rollbackEligible = true
-                        val admittedPayload = readValidated(request.entryKey)
+                        val admittedPayload =
+                            store.readPromoted(rollback)?.takeIf { payload ->
+                                contentValidator(payload.bytes, payload.contentType)
+                            }
                         if (admittedPayload == null) {
                             if (store.rollback(rollback)) {
                                 operation.rollbackRecord = null
@@ -262,7 +265,17 @@ internal class SlockAndroidAvatarCacheManager(
                         }
                         operation.finalized = true
                     }
-                    "resource_absent", "invalid_content", "temporary_transport" -> {
+                    "resource_absent", "invalid_content" -> {
+                        val transientsDeleted = discardOperationFilesLocked(operation)
+                        val activeMappingDeleted = store.invalidate(request.entryKey)
+                        if (!transientsDeleted || !activeMappingDeleted) {
+                            return@synchronized SlockAndroidAvatarMutation.Failed(
+                                "avatar_cache_authoritative_failure_cleanup_failed"
+                            )
+                        }
+                        operation.finalized = true
+                    }
+                    "temporary_transport" -> {
                         if (!discardOperationFilesLocked(operation)) {
                             return@synchronized SlockAndroidAvatarMutation.Failed(
                                 "avatar_cache_transient_cleanup_failed"
@@ -286,7 +299,7 @@ internal class SlockAndroidAvatarCacheManager(
                 preparedOperations.remove(request.operationKey)
                 val operation = operations[request.operationKey]
                     ?.takeIf { it.request == request }
-                    ?: return@synchronized true
+                    ?: return@synchronized !store.hasRecoveredArtifacts(request.entryKey)
                 operation.rollbackCleanup?.cancel()
                 operation.rollbackCleanup = null
                 val diskRestored =
@@ -301,12 +314,13 @@ internal class SlockAndroidAvatarCacheManager(
                 }
                 val stageDeleted = store.deleteStage(operation.stage)
                 if (stageDeleted) operation.stage = null
+                val recoveredAbsent = !store.hasRecoveredArtifacts(request.entryKey)
                 operation.closed = true
                 renderCallbacks += operation.renderWaiters.values
                 operation.renderWaiters.clear()
                 operation.resultTimeout?.cancel()
                 operation.resultTimeout = null
-                val cleaned = diskRestored && stageDeleted
+                val cleaned = diskRestored && stageDeleted && recoveredAbsent
                 if (cleaned) operations.remove(request.operationKey)
                 cleaned
             }
