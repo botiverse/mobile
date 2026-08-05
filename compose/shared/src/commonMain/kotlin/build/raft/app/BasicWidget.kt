@@ -1037,10 +1037,16 @@ internal fun SlockInputFocusDismissHost(
 internal fun Modifier.touchListenerWithConfiguration(
     onTouchEvent: (type: TouchType, position: Offset, touchSlop: Float) -> Unit
 ): Modifier {
-    val currentOnTouchEvent by rememberUpdatedState(onTouchEvent)
-    return pointerInput(Unit) {
+    val gestureOwner =
+        rememberSlockGestureOwner(
+            surface = "touch-listener",
+            semanticIdentity = Unit,
+            callbacks = SlockTouchListenerGestureCallbacks(onTouchEvent)
+        )
+    return this.slockGesturePointerInput(gestureOwner) { owner ->
         awaitEachGesture {
             val tracker = SlockTouchSequenceTracker<PointerId>()
+            var gesture: SlockGestureSession<SlockTouchListenerGestureCallbacks>? = null
 
             while (true) {
                 val event = awaitPointerEvent()
@@ -1052,7 +1058,12 @@ internal fun Modifier.touchListenerWithConfiguration(
                             positionChanged = change.positionChangedIgnoreConsumed()
                         )
                     if (type != null) {
-                        currentOnTouchEvent(type, change.position, viewConfiguration.touchSlop)
+                        if (type == TouchType.Down) gesture = owner.beginGesture()
+                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onTouchEvent?.invoke(
+                            type,
+                            change.position,
+                            viewConfiguration.touchSlop
+                        )
                         if (type == TouchType.Up) {
                             return@awaitEachGesture
                         }
@@ -1062,6 +1073,10 @@ internal fun Modifier.touchListenerWithConfiguration(
         }
     }
 }
+
+private data class SlockTouchListenerGestureCallbacks(
+    val onTouchEvent: (type: TouchType, position: Offset, touchSlop: Float) -> Unit
+)
 
 enum class TouchType { Down, Move, Up }
 
@@ -1206,16 +1221,27 @@ internal fun Button(
     val resolvedAnchorOwnerIdentity = anchorOwnerIdentity ?: clickIdentity ?: "button"
     val rootAnchor =
         remember(resolvedAnchorOwnerIdentity) { SlockLiveRootAnchorRef(identity = resolvedAnchorOwnerIdentity) }
-    var pressed by remember { mutableStateOf(false) }
-    val onClickUpdate = rememberUpdatedState(onClick)
-    val onClick2Update = rememberUpdatedState(onClick2)
-    val enabledUpdate = rememberUpdatedState(enabled)
+    var pressed by remember(resolvedAnchorOwnerIdentity) { mutableStateOf(false) }
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentEnabled by rememberUpdatedState(enabled)
+    val gestureOwner =
+        rememberSlockGestureOwner(
+            surface = "button",
+            semanticIdentity = resolvedAnchorOwnerIdentity,
+            callbacks =
+                SlockButtonGestureCallbacks(
+                    enabled = enabled,
+                    pressFeedback = pressFeedback,
+                    onClick = onClick,
+                    onClick2 = onClick2,
+                    onPressedChange = { pressed = it },
+                    rootAnchor = rootAnchor
+                )
+        )
     Box(
         modifier = Modifier
             .slockButtonAccessibility(enabled = enabled) {
-                if (enabledUpdate.value) {
-                    onClickUpdate.value.invoke()
-                }
+                if (currentEnabled) currentOnClick()
             }
             .then(
                 if (onClick2 != null) {
@@ -1224,27 +1250,34 @@ internal fun Button(
                     Modifier
                 }
             )
-            // `enabled` is read through rememberUpdatedState below. Keeping it
-            // out of the pointerInput keys prevents Kuikly from tearing down
+            // `enabled` is read through the gesture owner's current slot. Keeping it
+            // out of the pointer-input keys prevents Kuikly from tearing down
             // the tap handler when a dynamically-enabled button (for example
             // Undo/Clear after the first edit) transitions from false to true.
-            .pointerInput(pressFeedback, clickIdentity) {
+            .slockGesturePointerInput(gestureOwner, pressFeedback) { owner ->
+                var gesture: SlockGestureSession<SlockButtonGestureCallbacks>? = null
                 detectTapGestures(
                     onPress = {
-                        if (enabledUpdate.value && pressFeedback) {
-                            pressed = true
+                        val session = owner.beginGesture()
+                        gesture = session
+                        val callbacks = session.currentCallbacksOrNull()
+                        if (callbacks != null && callbacks.enabled && callbacks.pressFeedback) {
+                            callbacks.onPressedChange(true)
                             try {
                                 tryAwaitRelease()
                             } finally {
-                                pressed = false
+                                session.currentCallbacksOrNull()?.onPressedChange(false)
                             }
                         }
                     },
                     onTap = { offset ->
-                        if (enabledUpdate.value) {
-                            onClickUpdate.value.invoke()
-                            rootAnchor.resolve(SlockPopoverLocalPoint.Exact(offset))?.let { anchor ->
-                                onClick2Update.value?.invoke(anchor)
+                        val callbacks =
+                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()
+                                ?: return@detectTapGestures
+                        if (callbacks.enabled) {
+                            callbacks.onClick()
+                            callbacks.rootAnchor.resolve(SlockPopoverLocalPoint.Exact(offset))?.let { anchor ->
+                                callbacks.onClick2?.invoke(anchor)
                             }
                         }
                     }
@@ -1257,6 +1290,15 @@ internal fun Button(
         content()
     }
 }
+
+private data class SlockButtonGestureCallbacks(
+    val enabled: Boolean,
+    val pressFeedback: Boolean,
+    val onClick: () -> Unit,
+    val onClick2: ((SlockPopoverAnchor) -> Unit)?,
+    val onPressedChange: (Boolean) -> Unit,
+    val rootAnchor: SlockLiveRootAnchorRef
+)
 
 internal class Border(
     val lineWidth: Dp,

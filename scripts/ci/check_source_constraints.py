@@ -23,6 +23,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 THREAD_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt"
+BASIC_WIDGET = "compose/shared/src/commonMain/kotlin/build/raft/app/BasicWidget.kt"
+HOME_COMPONENTS = "compose/shared/src/commonMain/kotlin/build/raft/app/SlockHomeComponents.kt"
+SHARED_TASKS_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/SharedTasksPage.kt"
+SHARED_INBOX_PANEL = "compose/shared/src/commonMain/kotlin/build/raft/app/SharedInboxPanel.kt"
+SETTINGS_HOME_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt"
+BRUTAL_DROPDOWN = "compose/shared/src/commonMain/kotlin/build/raft/app/SlockBrutalDropdownMenu.kt"
+FOREGROUND_BANNER = "compose/shared/src/commonMain/kotlin/build/raft/app/SlockForegroundBannerHost.kt"
+GESTURE_OWNER = "compose/shared/src/commonMain/kotlin/build/raft/app/SlockGestureOwner.kt"
 SLOCK_MARKDOWN = "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt"
 VENDOR_PARAGRAPH = (
     "third_party/kuikly-compose-markdown/src/commonMain/kotlin/"
@@ -66,6 +74,120 @@ NOTIFICATION_ACTIONS = (
 
 class Violation(Exception):
     pass
+
+
+GESTURE_OWNER_REGIONS = (
+    (
+        BASIC_WIDGET,
+        "internal fun Modifier.touchListenerWithConfiguration(",
+        "private data class SlockTouchListenerGestureCallbacks(",
+        "touch-listener",
+    ),
+    (BASIC_WIDGET, "internal fun Button(", "internal class Border(", "button"),
+    (
+        HOME_COMPONENTS,
+        "private fun SidebarActionRow(",
+        "private data class HomeSidebarActionGestureCallbacks(",
+        "home-sidebar-action",
+    ),
+    (
+        HOME_COMPONENTS,
+        "val rowDragGestureOwner =",
+        "val dragHandleGestureOwner =",
+        "home-channel-row-drag",
+    ),
+    (
+        HOME_COMPONENTS,
+        "val dragHandleGestureOwner =",
+        "val clickGestureOwner =",
+        "home-channel-row-drag-handle",
+    ),
+    (
+        HOME_COMPONENTS,
+        "val clickGestureOwner =",
+        "traceMarkdownSection(SlockHomeTraceNames.CHANNEL_ROW_RENDER",
+        "home-channel-row-click",
+    ),
+    (
+        HOME_COMPONENTS,
+        "private fun DirectMessageRow(",
+        "private fun DirectMessageStatusDot(",
+        "home-direct-message-row",
+    ),
+    (SHARED_TASKS_PAGE, "private fun SharedTaskCard(", "internal fun tasksStatusChipClickIdentity(", "tasks-card"),
+    (SHARED_INBOX_PANEL, "private fun Modifier.activityRowGestures(", "internal fun InboxItem.inboxItemOpenGestureKey(", "activity-row"),
+    (SETTINGS_HOME_PAGE, "private fun SharedSettingsRow(", "internal fun SharedSettingsAboutContent(", "settings-row"),
+    (SETTINGS_HOME_PAGE, "private fun SharedHomeSavedResultCard(", "private fun SharedHomeSavedUnsaveButton(", "home-saved-result"),
+    (SETTINGS_HOME_PAGE, "private fun SharedHomeSearchEntityRow(", "internal data class SearchEntityPinTarget(", "home-search-entity"),
+    (
+        THREAD_PAGE,
+        "val inlineSelectionGestureOwner =",
+        "ThreadMessageGeometryTintBox(geometryTints?.bodyTint) {",
+        "thread-inline-selection",
+    ),
+    (THREAD_PAGE, "private fun ThreadReactionChip(", "internal fun threadNeutralMessageSurfaceColor(", "thread-reaction-chip"),
+    (THREAD_PAGE, "private fun ThreadMessageAvatar(", "private fun ThreadMessageStaticAvatar(", "thread-message-avatar"),
+    (BRUTAL_DROPDOWN, "private fun SlockBrutalDropdownMenuRow(", "private data class SlockBrutalDropdownRowGestureCallbacks(", "brutal-dropdown-row"),
+    (FOREGROUND_BANNER, "internal fun SlockForegroundMessageBannerView(", "private data class ForegroundBannerGestureCallbacks(", "foreground-banner"),
+)
+
+
+def check_retained_pointer_gesture_owners(sources: dict[str, str]) -> None:
+    """Incident: task #991 (equal Kuikly pointer elements retained old closures).
+
+    These lazy/recycled or lifecycle-sensitive surfaces must route pointer handlers through a
+    composition owner token plus a current callback slot. A raw pointerInput in any protected
+    region can keep an old rememberUpdatedState holder, scope, anchor, or presentation state when
+    Kuikly reuses an equal modifier element.
+    """
+    for path, start_token, end_token, surface in GESTURE_OWNER_REGIONS:
+        source = sources.get(path)
+        if source is None:
+            raise Violation(f"task #991 source missing: {path}")
+        start = source.find(start_token)
+        end = source.find(end_token, start + len(start_token)) if start >= 0 else -1
+        if start < 0 or end < 0:
+            raise Violation(
+                f"task #991 audit region missing for {surface}: {start_token!r}..{end_token!r}"
+            )
+        region = source[start:end]
+        if ".pointerInput(" in region or " pointerInput(" in region:
+            raise Violation(
+                f"task #991 regression: {surface} uses raw pointerInput; "
+                "route callbacks/state through SlockGestureOwner"
+            )
+        if ".callbacks" in region:
+            raise Violation(
+                f"task #991 regression: {surface} bypasses current-generation admission; "
+                "read callbacks through currentCallbacksOrNull()"
+            )
+        required = (
+            "rememberSlockGestureOwner(",
+            f'surface = "{surface}"',
+            ".slockGesturePointerInput(",
+            ".beginGesture()",
+            ".currentCallbacksOrNull()",
+        )
+        for token in required:
+            if token not in region:
+                raise Violation(
+                    f"task #991 regression: {surface} missing retained-pointer contract {token!r}"
+                )
+
+
+def check_gesture_owner_generation_fence(source: str) -> None:
+    required = (
+        "internal val pointerInputOwnerToken: Any = Any()",
+        "if (active) currentCallbacks = callbacks",
+        "if (active) currentGestureToken = generationToken",
+        "active && currentGestureToken === generationToken",
+        "active = false",
+    )
+    for token in required:
+        if token not in source:
+            raise Violation(
+                f"task #991 gesture owner lost opaque-token/active-generation fence {token!r}"
+            )
 
 
 def check_forward_row_identity(thread_page: str) -> None:
@@ -431,6 +553,11 @@ def run(root: Path) -> None:
         return path.read_text(encoding="utf-8").replace("\r\n", "\n")
 
     thread_page = read(THREAD_PAGE)
+    gesture_paths = {path for path, _, _, _ in GESTURE_OWNER_REGIONS}
+    check_retained_pointer_gesture_owners(
+        {path: thread_page if path == THREAD_PAGE else read(path) for path in gesture_paths}
+    )
+    check_gesture_owner_generation_fence(read(GESTURE_OWNER))
     check_forward_row_identity(thread_page)
     check_system_selectable_text_dialog(thread_page)
     check_thread_ime_tail_pixel_probe_scope(thread_page)
@@ -457,6 +584,95 @@ def run(root: Path) -> None:
 
 def self_test() -> None:
     """Every checker must reject its violation shape and accept the good shape."""
+    good_gesture_sources: dict[str, str] = {}
+    for path, start_token, end_token, surface in GESTURE_OWNER_REGIONS:
+        good_gesture_sources[path] = (
+            good_gesture_sources.get(path, "")
+            + f"""
+{start_token}
+    val owner = rememberSlockGestureOwner(
+        surface = "{surface}",
+        semanticIdentity = "id",
+        callbacks = Callbacks()
+    )
+    Modifier.slockGesturePointerInput(owner) {{ currentOwner ->
+        val gesture = currentOwner.beginGesture()
+        gesture.currentCallbacksOrNull()
+    }}
+{end_token}
+"""
+        )
+    check_retained_pointer_gesture_owners(good_gesture_sources)
+    for path, start_token, end_token, surface in GESTURE_OWNER_REGIONS:
+        source = good_gesture_sources[path]
+        start = source.index(start_token)
+        end = source.index(end_token, start + len(start_token))
+        pointer = source.index(".slockGesturePointerInput(", start, end)
+        mutated = source[:pointer] + ".pointerInput(" + source[pointer + len(".slockGesturePointerInput("):]
+        bad_sources = dict(good_gesture_sources)
+        bad_sources[path] = mutated
+        try:
+            check_retained_pointer_gesture_owners(bad_sources)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(
+                f"self-test: task #991 gesture-owner checker accepted raw pointerInput in {surface}"
+            )
+    first_path = GESTURE_OWNER_REGIONS[0][0]
+    for token, replacement in (
+        (".beginGesture()", ".gestureStartRemoved()"),
+        (".currentCallbacksOrNull()", ".currentCallbacksRemoved()"),
+    ):
+        bad_sources = dict(good_gesture_sources)
+        bad_sources[first_path] = bad_sources[first_path].replace(token, replacement, 1)
+        try:
+            check_retained_pointer_gesture_owners(bad_sources)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(
+                f"self-test: task #991 gesture-owner checker accepted missing {token}"
+            )
+    direct_callbacks = dict(good_gesture_sources)
+    direct_callbacks[first_path] = direct_callbacks[first_path].replace(
+        "gesture.currentCallbacksOrNull()",
+        "gesture.currentCallbacksOrNull()\n        gesture.callbacks",
+        1,
+    )
+    try:
+        check_retained_pointer_gesture_owners(direct_callbacks)
+    except Violation:
+        pass
+    else:
+        raise SystemExit(
+            "self-test: task #991 gesture-owner checker accepted direct callback bypass"
+        )
+
+    good_gesture_owner = """
+internal val pointerInputOwnerToken: Any = Any()
+if (active) currentCallbacks = callbacks
+if (active) currentGestureToken = generationToken
+active && currentGestureToken === generationToken
+active = false
+"""
+    check_gesture_owner_generation_fence(good_gesture_owner)
+    for token in (
+        "internal val pointerInputOwnerToken: Any = Any()",
+        "if (active) currentCallbacks = callbacks",
+        "if (active) currentGestureToken = generationToken",
+        "active && currentGestureToken === generationToken",
+        "active = false",
+    ):
+        try:
+            check_gesture_owner_generation_fence(good_gesture_owner.replace(token, "removed", 1))
+        except Violation:
+            pass
+        else:
+            raise SystemExit(
+                f"self-test: task #991 gesture-owner fence accepted missing {token!r}"
+            )
+
     good_row = "x { val rowTarget = state.items[index]\n onClick = { TargetSelected(item = rowTarget, renderGeneration = g) } }"
     bad_row_reread = good_row + "\n onClick = { TargetSelected(item = state.items[index], renderGeneration = g) }"
     bad_row_anchorless = "nothing here"
@@ -749,7 +965,7 @@ def main(argv: list[str]) -> int:
     except Violation as violation:
         print(f"source-constraint violation: {violation}", file=sys.stderr)
         return 1
-    print("source constraints hold (tasks #800/#803/#361/#161/#924/#82/#183/#76 structural faces)")
+    print("source constraints hold (tasks #800/#803/#361/#161/#924/#82/#183/#76/#991 structural faces)")
     return 0
 
 

@@ -4780,9 +4780,10 @@ private fun SidebarActivityRow(
 
 @Composable
 private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier: Modifier = Modifier, selected: Boolean = false, badge: String? = null, trailingText: String? = null, onClick: (() -> Unit)? = null) {
-    val hoverInteractionSource = remember { MutableInteractionSource() }
+    val gestureIdentity = "$icon:$label"
+    val hoverInteractionSource = remember(gestureIdentity) { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
-    var pressed by remember { mutableStateOf(false) }
+    var pressed by remember(gestureIdentity) { mutableStateOf(false) }
     val effectiveInteractionState = when {
         selected -> ChannelRowInteractionState.Selected
         pressed -> ChannelRowInteractionState.Pressed
@@ -4800,20 +4801,35 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
         ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
+    val gestureOwner =
+        rememberSlockGestureOwner(
+            surface = "home-sidebar-action",
+            semanticIdentity = gestureIdentity,
+            callbacks =
+                HomeSidebarActionGestureCallbacks(
+                    onClick = onClick,
+                    onPressedChange = { pressed = it }
+                )
+        )
     val clickModifier =
         if (onClick != null) {
-            val currentOnClick by rememberUpdatedState(onClick)
-            Modifier.pointerInput(icon, label) {
+            Modifier.slockGesturePointerInput(gestureOwner) { owner ->
+                var gesture: SlockGestureSession<HomeSidebarActionGestureCallbacks>? = null
                 detectTapGestures(
                     onPress = {
-                        pressed = true
-                        try {
-                            tryAwaitRelease()
-                        } finally {
-                            pressed = false
+                        val session = owner.beginGesture().also { gesture = it }
+                        session.currentCallbacksOrNull()?.let { callbacks ->
+                            callbacks.onPressedChange(true)
+                            try {
+                                tryAwaitRelease()
+                            } finally {
+                                session.currentCallbacksOrNull()?.onPressedChange(false)
+                            }
                         }
                     },
-                    onTap = { currentOnClick?.invoke() }
+                    onTap = {
+                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick?.invoke()
+                    }
                 )
             }
         } else {
@@ -4863,6 +4879,11 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
     }
 }
 
+private data class HomeSidebarActionGestureCallbacks(
+    val onClick: (() -> Unit)?,
+    val onPressedChange: (Boolean) -> Unit
+)
+
 internal fun formatHomeSavedCount(savedCount: Int): String? =
     formatHomeSidebarBadgeCount(savedCount)
 
@@ -4890,6 +4911,19 @@ private fun homeRowLongPressAnchor(
     pressOffset: Offset
 ): SlockPopoverAnchor? =
     rowAnchor.resolve(SlockPopoverLocalPoint.BottomAtX(pressOffset.x))
+
+private data class HomeConversationRowGestureCallbacks(
+    val onClick: (() -> Unit)?,
+    val onLongPress: ((SlockPopoverAnchor) -> Unit)?,
+    val onPress: (() -> Unit)?,
+    val onPressEnd: (() -> Unit)?,
+    val onDragStart: (() -> Unit)? = null,
+    val onDragMove: ((Float) -> Unit)? = null,
+    val onDragEnd: (() -> Unit)? = null,
+    val onDragCancel: (() -> Unit)? = null,
+    val onCaptureAnchorChange: (Boolean) -> Unit,
+    val rowAnchor: SlockLiveRootAnchorRef
+)
 
 @Composable
 private fun ChannelRow(
@@ -4936,87 +4970,144 @@ private fun ChannelRow(
     val rowAnchor = remember(interactionIdentity) { SlockLiveRootAnchorRef(identity = interactionIdentity) }
     var captureAnchorForPress by remember(interactionIdentity) { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
-    val currentOnClick by rememberUpdatedState(interaction.onClick)
-    val currentOnLongPress by rememberUpdatedState(interaction.onLongPress)
-    val currentOnPress by rememberUpdatedState(interaction.onPress)
-    val currentOnPressEnd by rememberUpdatedState(interaction.onPressEnd)
-    val currentOnDragStart by rememberUpdatedState(drag.onStart)
-    val currentOnDragMove by rememberUpdatedState(drag.onMove)
-    val currentOnDragEnd by rememberUpdatedState(drag.onEnd)
-    val currentOnDragCancel by rememberUpdatedState(drag.onCancel)
+    val gestureCallbacks =
+        HomeConversationRowGestureCallbacks(
+            onClick = interaction.onClick,
+            onLongPress = interaction.onLongPress,
+            onPress = interaction.onPress,
+            onPressEnd = interaction.onPressEnd,
+            onDragStart = drag.onStart,
+            onDragMove = drag.onMove,
+            onDragEnd = drag.onEnd,
+            onDragCancel = drag.onCancel,
+            onCaptureAnchorChange = { captureAnchorForPress = it },
+            rowAnchor = rowAnchor
+        )
+    val rowDragGestureOwner =
+        rememberSlockGestureOwner(
+            surface = "home-channel-row-drag",
+            semanticIdentity = interactionIdentity,
+            callbacks = gestureCallbacks
+        )
     val rowDragModifier =
         if (drag.rowEnabled && drag.enabled && drag.onStart != null && drag.onMove != null && drag.onEnd != null) {
-            Modifier.pointerInput(interactionIdentity, drag.rowEnabled, drag.enabled) {
+            Modifier.slockGesturePointerInput(rowDragGestureOwner, drag.rowEnabled, drag.enabled) { owner ->
+                var gesture: SlockGestureSession<HomeConversationRowGestureCallbacks>? = null
                 detectDragGesturesAfterLongPress(
-                    onDragStart = { currentOnDragStart?.invoke() },
-                    onDragEnd = { currentOnDragEnd?.invoke() },
-                    onDragCancel = { (currentOnDragCancel ?: currentOnDragEnd)?.invoke() }
+                    onDragStart = {
+                        owner.beginGesture().also { gesture = it }.currentCallbacksOrNull()?.onDragStart?.invoke()
+                    },
+                    onDragEnd = {
+                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onDragEnd?.invoke()
+                    },
+                    onDragCancel = {
+                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                            (callbacks.onDragCancel ?: callbacks.onDragEnd)?.invoke()
+                        }
+                    }
                 ) { change, dragAmount ->
                     change.consume()
-                    currentOnDragMove?.invoke(dragAmount.y)
+                    (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onDragMove?.invoke(dragAmount.y)
                 }
             }
         } else {
             Modifier
         }
+    val dragHandleGestureOwner =
+        rememberSlockGestureOwner(
+            surface = "home-channel-row-drag-handle",
+            semanticIdentity = interactionIdentity,
+            callbacks = gestureCallbacks
+        )
     val dragHandleModifier =
         if (drag.enabled && drag.onStart != null && drag.onMove != null && drag.onEnd != null) {
-            Modifier.pointerInput(interactionIdentity, drag.enabled) {
+            Modifier.slockGesturePointerInput(dragHandleGestureOwner, drag.enabled) { owner ->
+                var gesture: SlockGestureSession<HomeConversationRowGestureCallbacks>? = null
                 // Sort mode is explicit, so the handle drags immediately —
                 // no long-press gate (task #356: the v2 long-press-drag felt stuck).
                 detectDragGestures(
-                    onDragStart = { currentOnDragStart?.invoke() },
-                    onDragEnd = { currentOnDragEnd?.invoke() },
-                    onDragCancel = { (currentOnDragCancel ?: currentOnDragEnd)?.invoke() }
+                    onDragStart = {
+                        owner.beginGesture().also { gesture = it }.currentCallbacksOrNull()?.onDragStart?.invoke()
+                    },
+                    onDragEnd = {
+                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onDragEnd?.invoke()
+                    },
+                    onDragCancel = {
+                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                            (callbacks.onDragCancel ?: callbacks.onDragEnd)?.invoke()
+                        }
+                    }
                 ) { change, dragAmount ->
                     change.consume()
-                    currentOnDragMove?.invoke(dragAmount.y)
+                    (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onDragMove?.invoke(dragAmount.y)
                 }
             }
         } else {
             Modifier
         }
-    val rowClickIdentity = interactionIdentity
-    val clickModifier = remember(rowClickIdentity, interaction.onClick != null, interaction.onLongPress != null) {
+    val clickGestureOwner =
+        rememberSlockGestureOwner(
+            surface = "home-channel-row-click",
+            semanticIdentity = interactionIdentity,
+            callbacks = gestureCallbacks
+        )
+    val clickModifier =
         if (interaction.onLongPress != null) {
-            Modifier.pointerInput(rowClickIdentity, true) {
+            Modifier.slockGesturePointerInput(clickGestureOwner, true) { owner ->
+                var gesture: SlockGestureSession<HomeConversationRowGestureCallbacks>? = null
                 detectTapGestures(
                     onPress = {
-                        captureAnchorForPress = true
-                        currentOnPress?.invoke()
+                        val callbacks =
+                            owner.beginGesture().also { gesture = it }.currentCallbacksOrNull()
+                        callbacks?.let {
+                            callbacks.onCaptureAnchorChange(true)
+                            callbacks.onPress?.invoke()
+                        }
                         try {
                             tryAwaitRelease()
                         } finally {
-                            captureAnchorForPress = false
-                            currentOnPressEnd?.invoke()
+                            gesture?.currentCallbacksOrNull()?.let { callbacks ->
+                                callbacks.onCaptureAnchorChange(false)
+                                callbacks.onPressEnd?.invoke()
+                            }
                         }
                     },
-                    onTap = { currentOnClick?.invoke() },
+                    onTap = {
+                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick?.invoke()
+                    },
                     onLongPress = { pressOffset ->
-                        homeRowLongPressAnchor(rowAnchor, pressOffset)?.let { anchor ->
-                            currentOnLongPress?.invoke(anchor)
+                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                            homeRowLongPressAnchor(callbacks.rowAnchor, pressOffset)?.let { anchor ->
+                                callbacks.onLongPress?.invoke(anchor)
+                            }
                         }
                     }
                 )
             }
         } else if (interaction.onClick != null) {
-            Modifier.pointerInput(rowClickIdentity, false) {
+            Modifier.slockGesturePointerInput(clickGestureOwner, false) { owner ->
+                var gesture: SlockGestureSession<HomeConversationRowGestureCallbacks>? = null
                 detectTapGestures(
                     onPress = {
-                        currentOnPress?.invoke()
-                        try {
-                            tryAwaitRelease()
-                        } finally {
-                            currentOnPressEnd?.invoke()
+                        val callbacks =
+                            owner.beginGesture().also { gesture = it }.currentCallbacksOrNull()
+                        callbacks?.let {
+                            callbacks.onPress?.invoke()
+                            try {
+                                tryAwaitRelease()
+                            } finally {
+                                gesture?.currentCallbacksOrNull()?.onPressEnd?.invoke()
+                            }
                         }
                     },
-                    onTap = { currentOnClick?.invoke() }
+                    onTap = {
+                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick?.invoke()
+                    }
                 )
             }
         } else {
             Modifier
         }
-    }
     traceMarkdownSection(SlockHomeTraceNames.CHANNEL_ROW_RENDER, name.length) {
         Box(
             modifier =
@@ -5490,51 +5581,77 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     val rowAnchor = remember(interactionIdentity) { SlockLiveRootAnchorRef(identity = interactionIdentity) }
     var captureAnchorForPress by remember(interactionIdentity) { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
-    val currentOnClick by rememberUpdatedState(onClick)
-    val currentOnLongPress by rememberUpdatedState(onLongPress)
-    val currentOnPress by rememberUpdatedState(onPress)
-    val currentOnPressEnd by rememberUpdatedState(onPressEnd)
-    val rowClickIdentity = interactionIdentity
-    val clickModifier = remember(rowClickIdentity, onClick != null, onLongPress != null) {
+    val gestureOwner =
+        rememberSlockGestureOwner(
+            surface = "home-direct-message-row",
+            semanticIdentity = interactionIdentity,
+            callbacks =
+                HomeConversationRowGestureCallbacks(
+                    onClick = onClick,
+                    onLongPress = onLongPress,
+                    onPress = onPress,
+                    onPressEnd = onPressEnd,
+                    onCaptureAnchorChange = { captureAnchorForPress = it },
+                    rowAnchor = rowAnchor
+                )
+        )
+    val clickModifier =
         if (onLongPress != null) {
-            Modifier.pointerInput(rowClickIdentity, true) {
+            Modifier.slockGesturePointerInput(gestureOwner, "click", true) { owner ->
+                var gesture: SlockGestureSession<HomeConversationRowGestureCallbacks>? = null
                 detectTapGestures(
                     onPress = {
-                        captureAnchorForPress = true
-                        currentOnPress?.invoke()
+                        val callbacks =
+                            owner.beginGesture().also { gesture = it }.currentCallbacksOrNull()
+                        callbacks?.let {
+                            callbacks.onCaptureAnchorChange(true)
+                            callbacks.onPress?.invoke()
+                        }
                         try {
                             tryAwaitRelease()
                         } finally {
-                            captureAnchorForPress = false
-                            currentOnPressEnd?.invoke()
+                            gesture?.currentCallbacksOrNull()?.let { callbacks ->
+                                callbacks.onCaptureAnchorChange(false)
+                                callbacks.onPressEnd?.invoke()
+                            }
                         }
                     },
-                    onTap = { currentOnClick?.invoke() },
+                    onTap = {
+                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick?.invoke()
+                    },
                     onLongPress = { pressOffset ->
-                        homeRowLongPressAnchor(rowAnchor, pressOffset)?.let { anchor ->
-                            currentOnLongPress?.invoke(anchor)
+                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                            homeRowLongPressAnchor(callbacks.rowAnchor, pressOffset)?.let { anchor ->
+                                callbacks.onLongPress?.invoke(anchor)
+                            }
                         }
                     }
                 )
             }
         } else if (onClick != null) {
-            Modifier.pointerInput(rowClickIdentity, false) {
+            Modifier.slockGesturePointerInput(gestureOwner, "click", false) { owner ->
+                var gesture: SlockGestureSession<HomeConversationRowGestureCallbacks>? = null
                 detectTapGestures(
                     onPress = {
-                        currentOnPress?.invoke()
-                        try {
-                            tryAwaitRelease()
-                        } finally {
-                            currentOnPressEnd?.invoke()
+                        val callbacks =
+                            owner.beginGesture().also { gesture = it }.currentCallbacksOrNull()
+                        callbacks?.let {
+                            callbacks.onPress?.invoke()
+                            try {
+                                tryAwaitRelease()
+                            } finally {
+                                gesture?.currentCallbacksOrNull()?.onPressEnd?.invoke()
+                            }
                         }
                     },
-                    onTap = { currentOnClick?.invoke() }
+                    onTap = {
+                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick?.invoke()
+                    }
                 )
             }
         } else {
             Modifier
         }
-    }
     traceMarkdownSection(SlockHomeTraceNames.DIRECT_MESSAGE_ROW_RENDER, name.length) {
         Box(
             modifier =

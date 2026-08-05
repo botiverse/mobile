@@ -212,7 +212,18 @@ private fun SlockBrutalDropdownMenuRow(
     // Press feedback mirrors web MenuItem `hover:bg-soft-signal/30` (artin,
     // #proj-uiux task #7): the row washes brand yellow while the finger is
     // down. Destructive rows keep their red wash.
-    var pressed by remember { mutableStateOf(false) }
+    var pressed by remember(item.id) { mutableStateOf(false) }
+    val gestureOwner =
+        rememberSlockGestureOwner(
+            surface = "brutal-dropdown-row",
+            semanticIdentity = item.id,
+            callbacks =
+                SlockBrutalDropdownRowGestureCallbacks(
+                    enabled = item.enabled,
+                    onClick = onClick,
+                    onPressedChange = { pressed = it }
+                )
+        )
     val rowBackground = if (item.destructive) {
         // deliberate react-parity wash (menu destructive row / press soft-signal, web bg-*/N); triaged token-audit #1062
         SlockColor.AccentRed.copy(alpha = 0.08f)
@@ -233,19 +244,26 @@ private fun SlockBrutalDropdownMenuRow(
             .fillMaxWidth()
             .height(rowHeight)
             .background(rowBackground)
-            .pointerInput(item.enabled) {
+            .slockGesturePointerInput(gestureOwner, item.enabled) { owner ->
+                var gesture: SlockGestureSession<SlockBrutalDropdownRowGestureCallbacks>? = null
                 detectTapGestures(
                     onPress = {
-                        if (item.enabled) {
-                            pressed = true
+                        val session = owner.beginGesture().also { gesture = it }
+                        val callbacks = session.currentCallbacksOrNull()
+                        if (callbacks != null && callbacks.enabled) {
+                            callbacks.onPressedChange(true)
                             try {
                                 tryAwaitRelease()
                             } finally {
-                                pressed = false
+                                gesture?.currentCallbacksOrNull()?.onPressedChange(false)
                             }
                         }
                     },
-                    onTap = { if (item.enabled) onClick() }
+                    onTap = {
+                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                            if (callbacks.enabled) callbacks.onClick()
+                        }
+                    }
                 )
             }
             .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -294,6 +312,12 @@ private fun SlockBrutalDropdownMenuRow(
         }
     }
 }
+
+private data class SlockBrutalDropdownRowGestureCallbacks(
+    val enabled: Boolean,
+    val onClick: () -> Unit,
+    val onPressedChange: (Boolean) -> Unit
+)
 
 @Composable
 private fun SlockBrutalDropdownMenuEmptyRow(rowHeight: Dp) {

@@ -544,6 +544,14 @@ private class ThreadInlineSelectionController(
     }
 }
 
+private data class ThreadInlineSelectionGestureCallbacks(
+    val controller: ThreadInlineSelectionController?,
+    val tapMovementGate: ThreadMessageTapMovementGate,
+    val gestureAnchor: SlockLiveRootAnchorRef,
+    val diagnosticsLogger: (String) -> Unit,
+    val messageId: String
+)
+
 @Composable
 private fun rememberThreadInlineSelectionController(messageId: String): ThreadInlineSelectionController {
     val selectionState = rememberSelectionContainerState()
@@ -20033,6 +20041,19 @@ private fun ThreadMessageCard(
         remember(message.id) {
             SlockLiveRootAnchorRef(identity = "thread-inline-selection:${message.id}")
         }
+    val inlineSelectionGestureOwner =
+        rememberSlockGestureOwner(
+            surface = "thread-inline-selection",
+            semanticIdentity = message.id,
+            callbacks =
+                ThreadInlineSelectionGestureCallbacks(
+                    controller = inlineSelectionController,
+                    tapMovementGate = tapMovementGate,
+                    gestureAnchor = inlineSelectionGestureAnchor,
+                    diagnosticsLogger = diagnosticsLogger,
+                    messageId = message.id
+                )
+        )
     val inlineSelectionGapPx = with(LocalDensity.current) { ThreadInlineSelectionToolbarGap.roundToPx() }
     val inlineSelectionToolbarPlacement =
         inlineSelectionController?.let { controller ->
@@ -20390,23 +20411,33 @@ private fun ThreadMessageCard(
                                                                     selectionActive = controller.active
                                                                 )
                                                             ) {
-                                                                Modifier.pointerInput(message.id, pointerSessionKey) {
+                                                                Modifier.slockGesturePointerInput(
+                                                                    inlineSelectionGestureOwner,
+                                                                    pointerSessionKey
+                                                                ) { owner ->
                                                                     awaitEachGesture {
                                                                         val down = awaitFirstDown(requireUnconsumed = false)
+                                                                        val gesture = owner.beginGesture()
                                                                         val longPress = awaitLongPressOrCancellation(down.id)
                                                                         if (longPress != null) {
-                                                                            tapMovementGate.rejectChildAction(
+                                                                            val callbacks =
+                                                                                gesture.currentCallbacksOrNull()
+                                                                                    ?: return@awaitEachGesture
+                                                                            val currentController =
+                                                                                callbacks.controller
+                                                                                    ?: return@awaitEachGesture
+                                                                            callbacks.tapMovementGate.rejectChildAction(
                                                                                 "inline_selection_body_long_press"
                                                                             )
-                                                                            controller.actionMenuAnchor =
-                                                                                inlineSelectionGestureAnchor.resolve(
+                                                                            currentController.actionMenuAnchor =
+                                                                                callbacks.gestureAnchor.resolve(
                                                                                     SlockPopoverLocalPoint.Exact(longPress.position)
                                                                                 )
-                                                                            diagnosticsLogger(
+                                                                            callbacks.diagnosticsLogger(
                                                                                 "thread_inline_selection_long_press " +
-                                                                                    "messageId=${message.id} source=container_observer"
+                                                                                    "messageId=${callbacks.messageId} source=container_observer"
                                                                             )
-                                                                            controller.selectionState.createSelectionAll()
+                                                                            currentController.selectionState.createSelectionAll()
                                                                         }
                                                                     }
                                                                 }
@@ -21725,8 +21756,6 @@ private fun ThreadReactionChip(
     onClick: (() -> Unit)? = null,
     onLongPress: ((SlockPopoverAnchor) -> Unit)? = null
 ) {
-    val currentOnClick by rememberUpdatedState(onClick)
-    val currentOnLongPress by rememberUpdatedState(onLongPress)
     val hoverInteractionSource = remember(interactionIdentity) { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val background = threadReactionChipBackground(reaction.selected, emphasized = isHovered)
@@ -21759,15 +21788,30 @@ private fun ThreadReactionChip(
         // (same contract as the message long-press menu).
         val rootAnchor =
             remember(interactionIdentity) { SlockLiveRootAnchorRef(identity = interactionIdentity) }
+        val gestureOwner =
+            rememberSlockGestureOwner(
+                surface = "thread-reaction-chip",
+                semanticIdentity = interactionIdentity,
+                callbacks = ThreadReactionChipGestureCallbacks(onClick, onLongPress, rootAnchor)
+            )
         Box(
             modifier = Modifier
                 .slockCaptureLiveRootAnchor(rootAnchor)
-                .pointerInput(interactionIdentity, onClick != null) {
+                .slockGesturePointerInput(gestureOwner, onClick != null) { owner ->
+                    var gesture: SlockGestureSession<ThreadReactionChipGestureCallbacks>? = null
                     detectTapGestures(
-                        onTap = { currentOnClick?.invoke() },
+                        onPress = {
+                            gesture = owner.beginGesture()
+                            tryAwaitRelease()
+                        },
+                        onTap = {
+                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick?.invoke()
+                        },
                         onLongPress = { localOffset ->
-                            rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let { anchor ->
-                                currentOnLongPress?.invoke(anchor)
+                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                                callbacks.rootAnchor
+                                    .resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                                    ?.let { anchor -> callbacks.onLongPress?.invoke(anchor) }
                             }
                         }
                     )
@@ -21795,6 +21839,12 @@ private fun ThreadReactionChip(
         }
     }
 }
+
+private data class ThreadReactionChipGestureCallbacks(
+    val onClick: (() -> Unit)?,
+    val onLongPress: ((SlockPopoverAnchor) -> Unit)?,
+    val rootAnchor: SlockLiveRootAnchorRef
+)
 
 internal fun threadNeutralMessageSurfaceColor(emphasized: Boolean): Color =
     SlockColor.TextBlack.copy(alpha = if (emphasized) 0.08f else 0.03f)
@@ -24395,8 +24445,12 @@ private fun ThreadMessageAvatar(
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
-    val currentOnClick by rememberUpdatedState(onClick)
-    val currentOnLongPress by rememberUpdatedState(onLongPress)
+    val gestureOwner =
+        rememberSlockGestureOwner(
+            surface = "thread-message-avatar",
+            semanticIdentity = interactionIdentity,
+            callbacks = ThreadMessageAvatarGestureCallbacks(onClick, onLongPress)
+        )
     val avatarSource =
         remember(avatarWireValue) {
             avatarWireValue?.takeIf { it.isNotBlank() }
@@ -24405,10 +24459,19 @@ private fun ThreadMessageAvatar(
         modifier =
             Modifier
                 .size(36.dp)
-                .pointerInput(interactionIdentity) {
+                .slockGesturePointerInput(gestureOwner) { owner ->
+                    var gesture: SlockGestureSession<ThreadMessageAvatarGestureCallbacks>? = null
                     detectTapGestures(
-                        onTap = { currentOnClick() },
-                        onLongPress = { currentOnLongPress() }
+                        onPress = {
+                            gesture = owner.beginGesture()
+                            tryAwaitRelease()
+                        },
+                        onTap = {
+                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick()
+                        },
+                        onLongPress = {
+                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onLongPress()
+                        }
                     )
                 },
         contentAlignment = Alignment.Center
@@ -24442,6 +24505,11 @@ private fun ThreadMessageAvatar(
         }
     }
 }
+
+private data class ThreadMessageAvatarGestureCallbacks(
+    val onClick: () -> Unit,
+    val onLongPress: () -> Unit
+)
 
 @Composable
 private fun ThreadMessageStaticAvatar(
