@@ -13,11 +13,11 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 
 class SlockAvatarCacheRuntimeTest {
     @Test
-    fun typedRequestCarriesOpaqueManagedIdentityPolicyValidatorsAndGeneration() = runTest {
+    fun typedRequestCarriesOpaqueManagedIdentityPolicyValidatorsAndGeneration() = runBlocking {
         val store = FakeMetadataStore()
         val key = key()
         store.metadataBySlot[key.slot] = metadata(key, eTag = "etag-v1", lastModified = "yesterday")
@@ -90,7 +90,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun unsupportedNativeCapabilityUsesTheExistingUrlRenderer() = runTest {
+    fun unsupportedNativeCapabilityUsesTheExistingUrlRenderer() = runBlocking {
         val runtime = runtime(FakeMetadataStore())
         val prepared =
             runtime.prepare(
@@ -103,7 +103,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun missingNativeInspectionCallbackTimesOutToLegacyRendering() = runTest {
+    fun missingNativeInspectionCallbackTimesOutToLegacyRendering() = runBlocking {
         val native = FakeNativeCache().apply { inspectBlock = { awaitCancellation() } }
         val runtime =
             runtime(
@@ -122,7 +122,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun readDecisionAndValidatorsAreForwardedWithoutInventingNativePolicy() = runTest {
+    fun readDecisionAndValidatorsAreForwardedWithoutInventingNativePolicy() = runBlocking {
         val key = key()
         val store = FakeMetadataStore()
         store.metadataBySlot[key.slot] =
@@ -172,7 +172,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun suppressedReadCompletesWithoutMetadataFinalizeRollbackOrLegacyEscape() = runTest {
+    fun suppressedReadCompletesWithoutMetadataFinalizeRollbackOrLegacyEscape() = runBlocking {
         val key = key()
         val store = FakeMetadataStore().apply {
             failureByKey[key] =
@@ -203,7 +203,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun sameSubjectAndContentReuseGenerationWhileChangedContentRotatesIt() = runTest {
+    fun sameSubjectAndContentReuseGenerationWhileChangedContentRotatesIt() = runBlocking {
         val native = FakeNativeCache()
         val runtime = runtime(FakeMetadataStore())
         val first =
@@ -226,7 +226,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun lateOldSuccessNotModifiedAndFailureRollbackWithoutMetadataMutation() = runTest {
+    fun lateOldSuccessNotModifiedAndFailureRollbackWithoutMetadataMutation() = runBlocking {
         val oldResults =
             listOf<SlockAvatarNativeLoadResult>(
                 SlockAvatarNativeLoadResult.SuccessfulBytes(512L, "new", null, "image/webp"),
@@ -257,7 +257,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun acceptedSuccessfulBytesCommitExactMetadataThenFinalizeNativeGeneration() = runTest {
+    fun acceptedSuccessfulBytesCommitExactMetadataThenFinalizeNativeGeneration() = runBlocking {
         val events = mutableListOf<String>()
         val store = FakeMetadataStore(events)
         val native = FakeNativeCache(events).apply {
@@ -291,7 +291,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun acceptedNotModifiedRefreshesExistingMetadataAndFinalizes304() = runTest {
+    fun acceptedNotModifiedRefreshesExistingMetadataAndFinalizes304() = runBlocking {
         val key = key()
         val store = FakeMetadataStore()
         store.metadataBySlot[key.slot] =
@@ -316,7 +316,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun acceptedFailureCommitsExactBoundedFailureAndFinalizesItsKind() = runTest {
+    fun acceptedFailureCommitsExactBoundedFailureAndFinalizesItsKind() = runBlocking {
         val store = FakeMetadataStore()
         val native = FakeNativeCache().apply {
             awaitBlock = {
@@ -338,7 +338,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun oversizedSuccessAnd304WithoutMetadataBothRollbackAndNeverFinalize() = runTest {
+    fun oversizedSuccessAnd304WithoutMetadataBothRollbackAndNeverFinalize() = runBlocking {
         val results =
             listOf<SlockAvatarNativeLoadResult>(
                 SlockAvatarNativeLoadResult.SuccessfulBytes(
@@ -366,7 +366,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun nativeResultWaitIsBoundedAndRollsBack() = runTest {
+    fun nativeResultWaitIsBoundedAndRollsBack() = runBlocking {
         val native = FakeNativeCache().apply { awaitBlock = { awaitCancellation() } }
         val runtime = runtime(FakeMetadataStore(), nativeResultTimeoutMillis = 1L)
         val prepared =
@@ -381,7 +381,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun callerCancellationCannotAbandonAnAdmittedNativeResultOrHalfCommitMetadata() = runTest {
+    fun callerCancellationCannotAbandonAnAdmittedNativeResultOrHalfCommitMetadata() = runBlocking {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<SlockAvatarNativeLoadResult>()
         val store = FakeMetadataStore()
@@ -411,7 +411,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun failedNativeFinalizeRollsBackStagingAndRestoresThePreviousMetadata() = runTest {
+    fun failedNativeFinalizeRollsBackStagingAndRestoresThePreviousMetadata() = runBlocking {
         val key = key()
         val previousMetadata = metadata(key, eTag = "etag-old", lastModified = "yesterday")
         val store = FakeMetadataStore().apply { metadataBySlot[key.slot] = previousMetadata }
@@ -436,7 +436,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun reusedGenerationRunsOneMetadataAndFinalizeMutation() = runTest {
+    fun reusedGenerationRunsOneMetadataAndFinalizeMutation() = runBlocking {
         val store = FakeMetadataStore()
         val native = FakeNativeCache().apply {
             awaitBlock = {
@@ -460,7 +460,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun completedGenerationClosesForNewPrepareSoLaterStaleReadCanRevalidate() = runTest {
+    fun completedGenerationClosesForNewPrepareSoLaterStaleReadCanRevalidate() = runBlocking {
         val store = FakeMetadataStore()
         val native = FakeNativeCache().apply {
             awaitBlock = {
@@ -484,7 +484,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun retirementDuringFinalizeRejectsAndRollsBackTheNowStaleGeneration() = runTest {
+    fun retirementDuringFinalizeRejectsAndRollsBackTheNowStaleGeneration() = runBlocking {
         val store = FakeMetadataStore()
         val native = FakeNativeCache().apply {
             awaitBlock = {
@@ -512,7 +512,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun settingsClearAlwaysAttemptsNativeAndSharedAndOnlyBothSuccessIsSuccess() = runTest {
+    fun settingsClearAlwaysAttemptsNativeAndSharedAndOnlyBothSuccessIsSuccess() = runBlocking {
         data class Case(val nativeSuccess: Boolean, val metadataSuccess: Boolean)
         listOf(
             Case(true, true),
@@ -543,7 +543,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun hangingSettingsNativeClearIsBoundedAndSharedClearStillRuns() = runTest {
+    fun hangingSettingsNativeClearIsBoundedAndSharedClearStillRuns() = runBlocking {
         val store = FakeMetadataStore()
         val runtime = runtime(store, nativeMutationTimeoutMillis = 1L)
 
@@ -555,7 +555,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun terminalRetirementUsesIndexedNativeOwnerBeforeSharedMetadataAndServerSelectionNeverRetires() = runTest {
+    fun terminalRetirementUsesIndexedNativeOwnerBeforeSharedMetadataAndServerSelectionNeverRetires() = runBlocking {
         val events = mutableListOf<String>()
         val store = FakeMetadataStore(events)
         val native = FakeNativeCache(events)
@@ -577,7 +577,7 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun sessionRetirementCaptureKeepsOldEnvironmentAccountAndServersAfterSessionMutation() = runTest {
+    fun sessionRetirementCaptureKeepsOldEnvironmentAccountAndServersAfterSessionMutation() = runBlocking {
         val runtime = runtime(FakeMetadataStore())
         var session: StoredAuthSession? =
             StoredAuthSession(
