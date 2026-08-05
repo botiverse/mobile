@@ -15405,7 +15405,9 @@ private fun ThreadMessagesList(
                     ""
                 }
             diagnosticsLogger(
-                "thread_viewport_pending_command eventKind=${lazyViewportEventKind(event)} " +
+                "thread_viewport_pending_command producer=dispatchViewportEvent " +
+                    "threadInstance=$threadInstanceKey layoutGeneration=$viewportLayoutGeneration " +
+                    "eventKind=${lazyViewportEventKind(event)} " +
                     "before=${previousCommandId?.let { "${it.epoch}:${it.sequence}" } ?: "none"} " +
                     "after=${nextCommandId?.let { "${it.epoch}:${it.sequence}" } ?: "none"} " +
                     "epoch=$previousEpoch->${viewportControllerState.epoch}" +
@@ -15448,7 +15450,9 @@ private fun ThreadMessagesList(
                 else -> "cleared_without_original_terminal"
             }
         diagnosticsLogger(
-            "thread_viewport_command_settled reason=$reason outcome=$outcome " +
+            "thread_viewport_command_settled producer=awaitViewportCommandSettlement " +
+                "threadInstance=$threadInstanceKey layoutGeneration=$viewportLayoutGeneration " +
+                "reason=$reason outcome=$outcome " +
                 "commandId=${commandId.epoch}:${commandId.sequence} " +
                 "settledEpoch=$settledEpoch " +
                 "settledPendingId=${settledPendingId?.let { "${it.epoch}:${it.sequence}" } ?: "none"} " +
@@ -16684,7 +16688,10 @@ private fun ThreadMessagesList(
                     // into the viewport. Record whether it actually did, so "command was
                     // issued" is never mistaken for "target became visible again".
                     diagnosticsLogger(
-                        "thread_focused_reanchor_result commandIssued=${reanchorCommandId != null} " +
+                        "thread_focused_reanchor_result producer=focusedAnchorSession " +
+                            "function=FocusedAnchorSessionAction.Reanchor " +
+                            "threadInstance=$threadInstanceKey layoutGeneration=$viewportLayoutGeneration " +
+                            "commandIssued=${reanchorCommandId != null} " +
                             "commandId=${reanchorCommandId?.let { "${it.epoch}:${it.sequence}" } ?: "none"} " +
                             "targetIndex=$targetIndex targetOffsetPresent=${anchoredOffset != null} " +
                             "firstVisible=${listState.firstVisibleItemIndex} " +
@@ -17217,7 +17224,13 @@ private fun ThreadMessagesList(
         if (layoutChanged || layoutState.pendingLayoutChange) {
             val anchoredIntent = viewportControllerState.intent as? LazyViewportIntent.Anchored
             diagnosticsLogger(
-                "thread_composer_layout_decision actor=composer_inset_relayout " +
+                "thread_composer_layout_decision producer=composer_inset_relayout " +
+                    "function=resolveThreadComposerLayoutBottomAnchor " +
+                    "imeCycle=${imeTailDrawProbe.snapshot().generation} " +
+                    "layoutGeneration=$viewportLayoutGeneration " +
+                    "threadInstance=$threadInstanceKey " +
+                    "commandId=${viewportControllerState.pendingCommand?.id?.let { "${it.epoch}:${it.sequence}" } ?: "none"} " +
+                    "actor=composer_inset_relayout " +
                     "keyboardInset=${layoutState.previousKeyboardInsetDp}->${layoutState.nextKeyboardInsetDp} " +
                     "viewportHeight=${layoutState.previousViewportHeightDp}->${layoutState.nextViewportHeightDp} " +
                     "pendingBefore=${layoutState.pendingLayoutChange} pendingAfter=${layoutDecision.pendingLayoutChange} " +
@@ -17294,7 +17307,9 @@ private fun ThreadMessagesList(
             }
             if (!viewportPixelProbeBounds.ready()) {
                 diagnosticsLogger(
-                    "thread_ime_tail_pixel_probe phase=$pixelProbePhase generation=$pixelProbeGeneration " +
+                    "thread_ime_tail_pixel_probe producer=composer_inset_pixel_probe " +
+                            "phase=$pixelProbePhase imeCycle=$pixelProbeGeneration " +
+                            "threadInstance=$pixelProbeThreadInstanceKey generation=$pixelProbeGeneration " +
                         "status=bounds_unavailable threadInstanceCurrent=true " +
                         "layoutGeneration=$pixelProbeLayoutGeneration->${currentViewportLayoutGenerationState.value} " +
                         "targetMessageId=${pixelProbeTargetMessageId.orEmpty()}"
@@ -17342,7 +17357,9 @@ private fun ThreadMessagesList(
                     else -> acceptedPixelResult?.optString("status").orEmpty()
                 }
             diagnosticsLogger(
-                "thread_ime_tail_pixel_probe phase=$pixelProbePhase generation=$pixelProbeGeneration " +
+                "thread_ime_tail_pixel_probe producer=composer_inset_pixel_probe " +
+                            "phase=$pixelProbePhase imeCycle=$pixelProbeGeneration " +
+                            "threadInstance=$pixelProbeThreadInstanceKey generation=$pixelProbeGeneration " +
                     "status=$diagnosticStatus " +
                     "threadInstanceCurrent=$pixelProbeOwnerCurrent " +
                     "layoutGeneration=$pixelProbeLayoutGeneration->${currentViewportLayoutGenerationState.value} " +
@@ -17396,7 +17413,9 @@ private fun ThreadMessagesList(
                     )
                 if (!settledOwnerCurrent) {
                     diagnosticsLogger(
-                        "thread_ime_tail_pixel_probe phase=settled generation=$pixelProbeGeneration " +
+                        "thread_ime_tail_pixel_probe producer=composer_inset_pixel_probe " +
+                            "phase=settled imeCycle=$pixelProbeGeneration " +
+                            "threadInstance=$pixelProbeThreadInstanceKey generation=$pixelProbeGeneration " +
                             "status=stale_before_claim threadInstanceCurrent=false " +
                             "layoutGeneration=$pixelProbeLayoutGeneration->${currentViewportLayoutGenerationState.value} " +
                             "targetMessageId=${pixelProbeTargetMessageId.orEmpty()}"
@@ -17405,7 +17424,11 @@ private fun ThreadMessagesList(
                 }
                 pendingKeyboardBottomAnchor = false
                 diagnosticsLogger(
-                    "thread_composer_layout_settled actor=composer_inset_relayout " +
+                    "thread_composer_layout_settled producer=composer_inset_relayout " +
+                        "function=imeTailPixelProbeRunner.runProbe " +
+                        "imeCycle=$pixelProbeGeneration layoutGeneration=$pixelProbeLayoutGeneration " +
+                        "threadInstance=$pixelProbeThreadInstanceKey " +
+                        "actor=composer_inset_relayout " +
                         "command=${insetCommandId?.sequence ?: -1} " +
                         "placement=${if (layoutDecision.anchorFocusedTailAtRenderedBottom) "rendered_tail_bottom" else "replay_intent"} " +
                         "targetIndex=$focusedTargetItemIndex latestMessageIndex=$latestMessageListItemIndex " +
