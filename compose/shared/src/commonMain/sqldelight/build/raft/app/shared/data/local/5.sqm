@@ -1,0 +1,39 @@
+-- Schema v6: durable avatar policy only. Native platform caches remain the only byte owners.
+CREATE TABLE avatarCacheMetadataEntity (
+  environmentId TEXT NOT NULL,
+  accountId TEXT NOT NULL,
+  serverId TEXT NOT NULL,
+  subjectKind TEXT NOT NULL,
+  subjectId TEXT NOT NULL,
+  memberKind TEXT NOT NULL,
+  contentKind TEXT NOT NULL,
+  contentFingerprint TEXT NOT NULL,
+  eTag TEXT,
+  lastModified TEXT,
+  fetchedAtMs INTEGER NOT NULL,
+  validatedAtMs INTEGER NOT NULL,
+  freshUntilMs INTEGER NOT NULL,
+  staleUntilMs INTEGER NOT NULL,
+  sizeBytes INTEGER NOT NULL,
+  contentType TEXT,
+  PRIMARY KEY (environmentId, accountId, serverId, subjectKind, subjectId, memberKind)
+);
+
+CREATE TABLE avatarCacheFailureEntity (
+  environmentId TEXT NOT NULL,
+  accountId TEXT NOT NULL,
+  serverId TEXT NOT NULL,
+  subjectKind TEXT NOT NULL,
+  subjectId TEXT NOT NULL,
+  memberKind TEXT NOT NULL,
+  contentKind TEXT NOT NULL,
+  contentFingerprint TEXT NOT NULL,
+  failureKind TEXT NOT NULL,
+  consecutiveCount INTEGER NOT NULL,
+  failedAtMs INTEGER NOT NULL,
+  retryAtMs INTEGER NOT NULL,
+  PRIMARY KEY (
+    environmentId, accountId, serverId, subjectKind, subjectId, memberKind,
+    contentKind, contentFingerprint
+  )
+);

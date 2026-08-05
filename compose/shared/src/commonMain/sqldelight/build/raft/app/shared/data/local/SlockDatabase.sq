@@ -204,6 +204,49 @@ CREATE TABLE memberProfileEntity (
 
 CREATE INDEX memberProfileEntity_membershipStatus ON memberProfileEntity(serverId, membershipStatus);
 
+-- Durable avatar policy only. Native platform caches remain the sole owners of image bytes and
+-- decoded images; no file path, blob, URL, or route/pageData content belongs in these tables.
+CREATE TABLE avatarCacheMetadataEntity (
+  environmentId TEXT NOT NULL,
+  accountId TEXT NOT NULL,
+  serverId TEXT NOT NULL,
+  subjectKind TEXT NOT NULL,
+  subjectId TEXT NOT NULL,
+  memberKind TEXT NOT NULL,
+  contentKind TEXT NOT NULL,
+  contentFingerprint TEXT NOT NULL,
+  eTag TEXT,
+  lastModified TEXT,
+  fetchedAtMs INTEGER NOT NULL,
+  validatedAtMs INTEGER NOT NULL,
+  freshUntilMs INTEGER NOT NULL,
+  staleUntilMs INTEGER NOT NULL,
+  sizeBytes INTEGER NOT NULL,
+  contentType TEXT,
+  PRIMARY KEY (environmentId, accountId, serverId, subjectKind, subjectId, memberKind)
+);
+
+-- Failure state is exact-resource scoped, never host-only, so one broken avatar cannot suppress
+-- unrelated valid resources.
+CREATE TABLE avatarCacheFailureEntity (
+  environmentId TEXT NOT NULL,
+  accountId TEXT NOT NULL,
+  serverId TEXT NOT NULL,
+  subjectKind TEXT NOT NULL,
+  subjectId TEXT NOT NULL,
+  memberKind TEXT NOT NULL,
+  contentKind TEXT NOT NULL,
+  contentFingerprint TEXT NOT NULL,
+  failureKind TEXT NOT NULL,
+  consecutiveCount INTEGER NOT NULL,
+  failedAtMs INTEGER NOT NULL,
+  retryAtMs INTEGER NOT NULL,
+  PRIMARY KEY (
+    environmentId, accountId, serverId, subjectKind, subjectId, memberKind,
+    contentKind, contentFingerprint
+  )
+);
+
 CREATE TABLE syncCursorEntity (
   scopeId TEXT NOT NULL,
   environmentId TEXT NOT NULL,
@@ -707,6 +750,111 @@ SET membershipStatus = ?,
     lastSyncedAtMs = ?
 WHERE serverId = ?
   AND id = ?;
+
+selectAvatarCacheMetadata:
+SELECT *
+FROM avatarCacheMetadataEntity
+WHERE environmentId = ?
+  AND accountId = ?
+  AND serverId = ?
+  AND subjectKind = ?
+  AND subjectId = ?
+  AND memberKind = ?;
+
+upsertAvatarCacheMetadata:
+INSERT OR REPLACE INTO avatarCacheMetadataEntity(
+  environmentId, accountId, serverId,
+  subjectKind, subjectId, memberKind,
+  contentKind, contentFingerprint,
+  eTag, lastModified,
+  fetchedAtMs, validatedAtMs, freshUntilMs, staleUntilMs,
+  sizeBytes, contentType
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteAvatarCacheMetadata:
+DELETE FROM avatarCacheMetadataEntity
+WHERE environmentId = ?
+  AND accountId = ?
+  AND serverId = ?
+  AND subjectKind = ?
+  AND subjectId = ?
+  AND memberKind = ?;
+
+deleteAvatarCacheMetadataForContent:
+DELETE FROM avatarCacheMetadataEntity
+WHERE environmentId = ?
+  AND accountId = ?
+  AND serverId = ?
+  AND subjectKind = ?
+  AND subjectId = ?
+  AND memberKind = ?
+  AND contentKind = ?
+  AND contentFingerprint = ?;
+
+selectAvatarCacheFailure:
+SELECT *
+FROM avatarCacheFailureEntity
+WHERE environmentId = ?
+  AND accountId = ?
+  AND serverId = ?
+  AND subjectKind = ?
+  AND subjectId = ?
+  AND memberKind = ?
+  AND contentKind = ?
+  AND contentFingerprint = ?;
+
+upsertAvatarCacheFailure:
+INSERT OR REPLACE INTO avatarCacheFailureEntity(
+  environmentId, accountId, serverId,
+  subjectKind, subjectId, memberKind,
+  contentKind, contentFingerprint,
+  failureKind, consecutiveCount, failedAtMs, retryAtMs
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteAvatarCacheFailure:
+DELETE FROM avatarCacheFailureEntity
+WHERE environmentId = ?
+  AND accountId = ?
+  AND serverId = ?
+  AND subjectKind = ?
+  AND subjectId = ?
+  AND memberKind = ?
+  AND contentKind = ?
+  AND contentFingerprint = ?;
+
+deleteAvatarCacheFailuresForSubject:
+DELETE FROM avatarCacheFailureEntity
+WHERE environmentId = ?
+  AND accountId = ?
+  AND serverId = ?
+  AND subjectKind = ?
+  AND subjectId = ?
+  AND memberKind = ?;
+
+clearAvatarCacheMetadataForOwner:
+DELETE FROM avatarCacheMetadataEntity
+WHERE environmentId = ?
+  AND accountId = ?
+  AND serverId = ?;
+
+clearAvatarCacheFailuresForOwner:
+DELETE FROM avatarCacheFailureEntity
+WHERE environmentId = ?
+  AND accountId = ?
+  AND serverId = ?;
+
+clearTemporaryAvatarCacheFailuresForOwner:
+DELETE FROM avatarCacheFailureEntity
+WHERE environmentId = ?
+  AND accountId = ?
+  AND serverId = ?
+  AND failureKind = ?;
+
+clearAllAvatarCacheMetadata:
+DELETE FROM avatarCacheMetadataEntity;
+
+clearAllAvatarCacheFailures:
+DELETE FROM avatarCacheFailureEntity;
 
 updateThreadMetadata:
 UPDATE channelEntity

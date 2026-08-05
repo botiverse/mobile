@@ -247,7 +247,7 @@ private data class DriverOutboxRow(
 )
 
 /**
- * Runs the exact v1->v3 N=1..7 and v2->v3 N=1 rollback/retry matrices against a real file-backed
+ * Runs the exact v1->v6 N=1..19 and v2->v6 N=1..13 rollback/retry matrices against a real file-backed
  * driver's automatic open path.
  * The caller supplies AndroidSqliteDriver or NativeSqliteDriver construction.
  */
@@ -256,7 +256,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
     openDriver: (schema: SqlSchema<QueryResult.Value<Unit>>, databaseName: String) -> SqlDriver,
     cleanupDatabase: (databaseName: String) -> Unit,
 ) {
-    for (failAt in 1..7) {
+    for (failAt in 1..19) {
         val name = "slock-durable-$platformName-$failAt-${Random.nextLong().toString().replace('-', 'n')}.db"
         cleanupDatabase(name)
         try {
@@ -288,7 +288,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
             }
 
             openDriver(SlockDatabase.Schema, name).useDriver { driver ->
-                assertEquals(3L, driver.scalarLong("PRAGMA user_version"), "$platformName retry version")
+                assertEquals(6L, driver.scalarLong("PRAGMA user_version"), "$platformName retry version")
                 assertMigratedFixtureIntact(driver, "$platformName fail-at-$failAt retry")
                 assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
                 assertEquals(expectedOutbox, driver.outboxRow())
@@ -296,7 +296,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
             }
 
             openDriver(SlockDatabase.Schema, name).useDriver { driver ->
-                assertEquals(3L, driver.scalarLong("PRAGMA user_version"), "$platformName second reopen version")
+                assertEquals(6L, driver.scalarLong("PRAGMA user_version"), "$platformName second reopen version")
                 assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageEntity WHERE id='partition-message'"))
                 assertEquals(
                     11L,
@@ -314,10 +314,10 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
         }
     }
 
-    assertFileBackedV2ToV3RollbackRetry(platformName, openDriver, cleanupDatabase)
+    assertFileBackedV2ToV6RollbackRetry(platformName, openDriver, cleanupDatabase)
 }
 
-private fun assertFileBackedV2ToV3RollbackRetry(
+private fun assertFileBackedV2ToV6RollbackRetry(
     platformName: String,
     openDriver: (schema: SqlSchema<QueryResult.Value<Unit>>, databaseName: String) -> SqlDriver,
     cleanupDatabase: (databaseName: String) -> Unit,
@@ -335,33 +335,42 @@ private fun assertFileBackedV2ToV3RollbackRetry(
             expectedOutbox = driver.outboxRow()
         }
 
-        val failure = assertFails("$platformName v2->v3 fail-at-1 must abort driver open") {
-            openDriver(FailAtMigrationStatementSchema(SlockDatabase.Schema, 1), name).useDriver { driver ->
-                driver.scalarLong("SELECT 1")
+        for (failAt in 1..13) {
+            val failure = assertFails("$platformName v2->v6 fail-at-$failAt must abort driver open") {
+                openDriver(FailAtMigrationStatementSchema(SlockDatabase.Schema, failAt), name).useDriver { driver ->
+                    driver.scalarLong("SELECT 1")
+                }
             }
-        }
-        assertTrue(
-            failure.hasCause<InjectedMigrationFailure>(),
-            "$platformName v2->v3 must expose the injected DDL failure, got $failure",
-        )
+            assertTrue(
+                failure.hasCause<InjectedMigrationFailure>(),
+                "$platformName v2->v6 must expose fail-at-$failAt, got $failure",
+            )
 
-        openDriver(DurablePartitionV2Schema, name).useDriver { driver ->
-            assertEquals(2L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 rollback version")
-            assertV2FixtureIntact(driver, "$platformName v2 rollback")
-            assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
-            assertEquals(expectedOutbox, driver.outboxRow())
+            openDriver(DurablePartitionV2Schema, name).useDriver { driver ->
+                assertEquals(2L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 rollback version")
+                assertV2FixtureIntact(driver, "$platformName v2 rollback")
+                assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
+                assertEquals(expectedOutbox, driver.outboxRow())
+            }
+
+            if (failAt < 13) {
+                cleanupDatabase(name)
+                openDriver(DurablePartitionV2Schema, name).useDriver { driver ->
+                    seedV2MigrationRows(driver)
+                }
+            }
         }
 
         openDriver(SlockDatabase.Schema, name).useDriver { driver ->
-            assertEquals(3L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 retry version")
-            assertMigratedFixtureIntact(driver, "$platformName v2 retry", expectLegacyRowsCleared = false)
+            assertEquals(6L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 retry version")
+            assertMigratedFixtureIntact(driver, "$platformName v2 retry")
             assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
             assertEquals(expectedOutbox, driver.outboxRow())
             seedViewerOverlayRow(driver)
         }
 
         openDriver(SlockDatabase.Schema, name).useDriver { driver ->
-            assertEquals(3L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 second reopen version")
+            assertEquals(6L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 second reopen version")
             assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageViewerOverlayEntity"))
             assertEquals(
                 Long.MAX_VALUE,
@@ -426,6 +435,7 @@ private fun assertMigratedFixtureIntact(
 ) {
     assertEquals(
         listOf(
+            "environmentId",
             "serverId",
             "principalId",
             "consumerId",
@@ -446,6 +456,7 @@ private fun assertMigratedFixtureIntact(
     assertEquals(expectedCoreRows, driver.scalarLong("SELECT COUNT(*) FROM syncCursorEntity"), "$label: cursor rows")
     assertEquals(
         listOf(
+            "environmentId",
             "serverId",
             "principalId",
             "consumerId",
@@ -461,6 +472,9 @@ private fun assertMigratedFixtureIntact(
         driver.tableColumns("messageViewerOverlayEntity"),
         "$label: viewer-overlay schema missing",
     )
+    assertTrue(driver.hasMasterObject("table", "syncReadStateFactEntity"), "$label: read-state table missing")
+    assertTrue(driver.hasMasterObject("table", "avatarCacheMetadataEntity"), "$label: avatar metadata table missing")
+    assertTrue(driver.hasMasterObject("table", "avatarCacheFailureEntity"), "$label: avatar failure table missing")
     assertEquals(expectedOutboxRow(), driver.outboxRow(), "$label: outbox columns changed")
     assertEquals(
         "keep-me",
@@ -518,9 +532,9 @@ private fun seedViewerOverlayRow(driver: SqlDriver) {
     driver.execute(
         null,
         "INSERT INTO messageViewerOverlayEntity(" +
-            "serverId,principalId,consumerId,scopeKind,scopeId,subjectKind,subjectId,overlayKind," +
+            "environmentId,serverId,principalId,consumerId,scopeKind,scopeId,subjectKind,subjectId,overlayKind," +
             "overlayVersion,completeness,payloadJson" +
-            ") VALUES ('server-a','principal-a','sync-core.messages.v2','channel','channel-a'," +
+            ") VALUES ('https://api.example','server-a','principal-a','sync-core.messages.v2','channel','channel-a'," +
             "'message','partition-message','reactions',9223372036854775807,'complete','{}')",
         0,
     )
@@ -530,16 +544,17 @@ private fun seedNewPartitionRows(driver: SqlDriver) {
     driver.execute(
         null,
         "INSERT INTO messageEntity(" +
-            "serverId,principalId,consumerId,id,channelId,scopeKind,seq,createdAt,canonicalFactJson" +
-            ") VALUES ('server-a','principal-a','sync-core.messages.v1','partition-message'," +
+            "environmentId,serverId,principalId,consumerId,id,channelId,scopeKind,seq,createdAt,canonicalFactJson" +
+            ") VALUES ('https://api.example','server-a','principal-a','sync-core.messages.v1','partition-message'," +
             "'channel-a','channel',11,'t','{}')",
         0,
     )
     driver.execute(
         null,
         "INSERT INTO syncCursorEntity(" +
-            "scopeId,serverId,principalId,consumerId,scopeKind,latestSeq,updatedAtMs" +
-            ") VALUES ('channel-a','server-a','principal-a','sync-core.messages.v1','channel',11,123)",
+            "scopeId,environmentId,serverId,principalId,consumerId,scopeKind,latestSeq,updatedAtMs" +
+            ") VALUES ('channel-a','https://api.example','server-a','principal-a','sync-core.messages.v1'," +
+            "'channel',11,123)",
         0,
     )
 }
@@ -586,8 +601,12 @@ private fun SqlDriver.nonCoreMasterDefinitions(): List<DriverMasterDefinition> =
             "messageEntity",
             "syncCursorEntity",
             "messageViewerOverlayEntity",
+            "syncReadStateFactEntity",
+            "avatarCacheMetadataEntity",
+            "avatarCacheFailureEntity",
             "messageEntity_channelSeqId",
             "messageEntity_partitionChannelSeqId",
+            "syncCursorEntity_partitionUpdatedScope",
         )
     }
 
