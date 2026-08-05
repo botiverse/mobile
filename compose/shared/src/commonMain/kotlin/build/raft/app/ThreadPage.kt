@@ -197,6 +197,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.animation.core.animateFloatAsState
+import com.tencent.kuikly.compose.diagnostics.LazyLayoutTrace
+import com.tencent.kuikly.compose.diagnostics.LazyTraceContext
+import com.tencent.kuikly.compose.diagnostics.LocalLazyLayoutTrace
 import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.coil3.AsyncImagePainter
 import com.tencent.kuikly.compose.foundation.Canvas
@@ -17551,6 +17554,41 @@ private fun ThreadMessagesList(
             LaunchedEffect(threadInstanceKey, maxHeight) {
                 measuredThreadViewportHeightDp = maxHeight.value
             }
+            // task #990: hand the framework a trace scoped to this composition.
+            // The identity crossing the boundary is an opaque token; the library
+            // compares it and never learns what it refers to. Released with this
+            // screen rather than persisting as global state.
+            val lazyLayoutTrace =
+                remember(threadInstanceKey, focusedTargetMessageId, viewportLayoutGeneration) {
+                    LazyLayoutTrace(
+                        LazyTraceContext(
+                            traceSession = threadInstanceKey,
+                            cycle = imeTailDrawProbe.snapshot().generation,
+                            layoutGeneration = viewportLayoutGeneration,
+                            targetToken = focusedTargetMessageId
+                        )
+                    ) { traceContext, record ->
+                        diagnosticsLogger(
+                            "thread_lazy_measure producer=KuiklyLazyMeasure " +
+                                "function=${record.function} stage=${record.stage} " +
+                                "threadInstance=${traceContext.traceSession} " +
+                                "imeCycle=${traceContext.cycle} " +
+                                "layoutGeneration=${traceContext.layoutGeneration} " +
+                                "targetToken=${traceContext.targetToken.orEmpty()} commandId=none " +
+                                "frameSequence=${record.frame.frameSequence} " +
+                                "frameTimeNanos=${record.frame.frameTimeNanos} " +
+                                "constraintsMaxMainAxis=${record.constraintsMaxMainAxis} " +
+                                "viewport=${record.viewportStartPx}..${record.viewportEndPx} " +
+                                "scrollToBeConsumed=${record.scrollToBeConsumed} " +
+                                "firstVisible=${record.firstVisibleIndex}+${record.firstVisibleScrollOffset} " +
+                                "visibleItems=${record.visibleItemCount} " +
+                                "totalItems=${record.totalItemCount} " +
+                                "target=${record.targetIndex}:${record.targetOffsetPx}+${record.targetSizePx} " +
+                                "coveredPx=${record.coveredPx} gapPx=${record.gapPx}"
+                        )
+                    }
+                }
+            CompositionLocalProvider(LocalLazyLayoutTrace provides lazyLayoutTrace) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
@@ -18074,6 +18112,7 @@ private fun ThreadMessagesList(
                 )
             }
         }
+            }
         if (inlineSearchVisible) {
             ThreadInlineSearchBar(
                 query = inlineSearchQuery,
