@@ -1344,6 +1344,9 @@ jobs:
           git submodule sync third_party/kuikly-ui
           git submodule update --init third_party/kuikly-ui
 
+      - name: Validate iOS avatar-cache unsupported fallback
+        run: node compose/iosApp/scripts/test_avatar_cache_unsupported_bridge_source_contract.mjs
+
       # shared.podspec guards against a missing framework dir; the IDE's
       # Gradle sync normally creates the placeholder — CI must do it manually.
       - name: Generate shared framework placeholder
