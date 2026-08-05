@@ -11,6 +11,8 @@ import build.raft.app.model.SlockWorkspaceFileKind
 import build.raft.app.model.SlockWorkspaceNode
 import build.raft.app.network.MultipartFile
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
@@ -336,16 +338,33 @@ class RealMemberRepository(
         )
     }
 
-    override suspend fun getAgentDetail(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentDetailSnapshot> {
-        currentContext() ?: return authRequired()
-        val summary = agentsApiClient.agent(agentId)
-        val directMessages = getAgentDirectMessages(priority, agentId)
-        val channels = getAgentChannels(priority, agentId)
-        val reminders = getAgentReminders(priority, agentId)
-        val activity = getAgentActivity(priority, agentId)
-        val skills = getAgentSkills(priority, agentId)
-        val appLogins = getAgentAppLogins(priority, agentId).toAgentDetailAppLogins(agentId)
-        return when {
+    override suspend fun getAgentDetail(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentDetailSnapshot> = coroutineScope {
+        currentContext() ?: return@coroutineScope authRequired()
+        val summaryRequest = async { agentsApiClient.agent(agentId) }
+        val directMessagesRequest = async { getAgentDirectMessages(priority, agentId) }
+        val channelsRequest = async { getAgentChannels(priority, agentId) }
+        val remindersRequest = async { getAgentReminders(priority, agentId) }
+        val activityLogRequest = async { getAgentActivityLog(priority, agentId) }
+        val skillsRequest = async { getAgentSkills(priority, agentId) }
+        val appLoginsRequest = async {
+            getAgentAppLogins(priority, agentId).toAgentDetailAppLogins(agentId)
+        }
+
+        val summary = summaryRequest.await()
+        val directMessages = directMessagesRequest.await()
+        val channels = channelsRequest.await()
+        val reminders = remindersRequest.await()
+        val activity = mergeAgentActivity(
+            agentId = agentId,
+            logResult = activityLogRequest.await(),
+            summary = summary.contentOrNull()
+        )
+        val skills = skillsRequest.await()
+        val appLogins = appLoginsRequest.await()
+        when {
             summary is DataResult.Content ->
                 DataResult.Content(
                     AgentDetailSnapshot(
@@ -405,34 +424,72 @@ class RealMemberRepository(
         )
     }
 
-    override suspend fun getAgentActivity(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentActivitySnapshot> {
+    override suspend fun getAgentActivity(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentActivitySnapshot> = coroutineScope {
+        currentContext() ?: return@coroutineScope authRequired()
+        val summaryRequest = async { agentsApiClient.agent(agentId) }
+        val activityLogRequest = async { getAgentActivityLog(priority, agentId) }
+        mergeAgentActivity(
+            agentId = agentId,
+            logResult = activityLogRequest.await(),
+            summary = summaryRequest.await().contentOrNull()
+        )
+    }
+
+    private suspend fun getAgentActivityLog(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentActivitySnapshot> {
         currentContext() ?: return authRequired()
-        val logResult =
-            executeMember(
-                emptyReason = EmptyReason.NoMembers,
-                block = { networkClient.agentActivityLog(priority, agentId, limit = 50) },
-                source = "agent_activity",
-                mapper = { bodyText ->
-                    parseSharedAgentActivity(bodyText, agentId)
-                        ?: throw IllegalStateException("Agent activity response missing log array")
-                }
-            )
-        (logResult as? DataResult.Content)?.data?.let { snapshot ->
-            logger("agent_activity_log_fetch agentId=${agentId.value} mappedCount=${snapshot.activity.size}")
+        return executeMember(
+            emptyReason = EmptyReason.NoMembers,
+            block = { networkClient.agentActivityLog(priority, agentId, limit = 50) },
+            source = "agent_activity",
+            mapper = { bodyText ->
+                parseSharedAgentActivity(bodyText, agentId)
+                    ?: throw IllegalStateException("Agent activity response missing log array")
+            }
+        ).also { result ->
+            (result as? DataResult.Content)?.data?.let { snapshot ->
+                logger("agent_activity_log_fetch agentId=${agentId.value} mappedCount=${snapshot.activity.size}")
+            }
         }
-        val fallbackEntries = fetchAgentCurrentActivityFallback(priority, agentId)
+    }
+
+    private fun mergeAgentActivity(
+        agentId: MemberId,
+        logResult: DataResult<AgentActivitySnapshot>,
+        summary: AgentSummary?
+    ): DataResult<AgentActivitySnapshot> {
+        val currentEntry =
+            summary?.let {
+                currentAgentActivityEntry(
+                    agentId = agentId,
+                    activity = it.activity,
+                    status = it.status,
+                    activityDetail = it.activityDetail
+                )
+            }
+        val currentEntries = listOfNotNull(currentEntry)
         return when (logResult) {
             is DataResult.Content -> {
-                val activity = mergeAgentActivityEntries(fallbackEntries + logResult.data.activity)
+                val activity = mergeAgentActivityEntries(currentEntries + logResult.data.activity)
                 logger(
                     "repository_merge domain=agent_activity source=response_merge agentId=${agentId.value} " +
-                        "fallback=${fallbackEntries.size} log=${logResult.data.activity.size} merged=${activity.size}"
+                        "current=${currentEntries.size} log=${logResult.data.activity.size} merged=${activity.size}"
                 )
                 DataResult.Content(logResult.data.copy(activity = activity))
             }
             is DataResult.Empty -> {
-                if (fallbackEntries.isNotEmpty()) {
-                    DataResult.Content(AgentActivitySnapshot(agentId = agentId, activity = mergeAgentActivityEntries(fallbackEntries)))
+                if (currentEntries.isNotEmpty()) {
+                    DataResult.Content(
+                        AgentActivitySnapshot(
+                            agentId = agentId,
+                            activity = mergeAgentActivityEntries(currentEntries)
+                        )
+                    )
                 } else {
                     logResult
                 }
@@ -697,24 +754,6 @@ class RealMemberRepository(
         val session = sessionStore.readSession() ?: return null
         val selectedId = session.currentServerId ?: return null
         return session.toNetworkServerContext(ServerId(selectedId))
-    }
-
-    private suspend fun fetchAgentCurrentActivityFallback(priority: DataRequestPriority, agentId: MemberId): List<AgentActivityEntry> {
-        val result =
-            executeMember<List<AgentActivityEntry>>(
-                emptyReason = EmptyReason.NoMembers,
-                block = { networkClient.settingsAgents(priority) },
-                source = "agent_activity_current_fallback",
-                mapper = { bodyText ->
-                    parseSharedCurrentAgentActivityEntries(bodyText, agentId)
-                        ?: throw IllegalStateException("Current agent activity response missing agent array")
-                }
-            )
-        val entries = (result as? DataResult.Content)?.data.orEmpty()
-        if (entries.isNotEmpty()) {
-            logger("agent_activity_fallback_fetch agentId=${agentId.value} mappedCount=${entries.size}")
-        }
-        return entries
     }
 
     private suspend fun executeAgentLifecycleAction(
