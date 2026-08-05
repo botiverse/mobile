@@ -1013,13 +1013,13 @@ private class ThreadFirstViewportProbe(
             "visibleMessageRange=${stats.firstVisibleMessage}..${stats.lastVisibleMessage}"
 }
 
-private class ThreadImeTailDrawProbe {
+internal class ThreadImeTailDrawProbe {
     private var nextGeneration: Long = 0L
     private var activeGeneration: Long = 0L
     private var targetMessageId: String? = null
     private var placedCount: Int = 0
     private var drawCount: Int = 0
-    private var pixelProbeClaimedGeneration: Long = 0L
+    private val claimedPixelProbePhases = mutableSetOf<String>()
 
     fun beginOrContinue(targetMessageId: String?): Long {
         if (activeGeneration == 0L || this.targetMessageId != targetMessageId) {
@@ -1028,7 +1028,7 @@ private class ThreadImeTailDrawProbe {
             this.targetMessageId = targetMessageId
             placedCount = 0
             drawCount = 0
-            pixelProbeClaimedGeneration = 0L
+            claimedPixelProbePhases.clear()
         }
         return activeGeneration
     }
@@ -1049,17 +1049,23 @@ private class ThreadImeTailDrawProbe {
             drawCount = drawCount
         )
 
-    fun claimPixelProbe(): Long? =
+    // task #990: the original gate admitted one claim per generation, which made
+    // a multi-phase timeline impossible — the first phase claimed and every later
+    // phase silently returned. Claims are now keyed by (generation, phase) so each
+    // phase of one IME cycle samples exactly once, and a repeated phase is still
+    // refused. Callers that pass no phase keep the previous one-per-generation
+    // behaviour.
+    fun claimPixelProbe(phase: String = ""): Long? =
         activeGeneration.takeIf { generation ->
-            generation > 0L && pixelProbeClaimedGeneration != generation
-        }?.also { generation -> pixelProbeClaimedGeneration = generation }
+            generation > 0L && !claimedPixelProbePhases.contains("$generation:$phase")
+        }?.also { generation -> claimedPixelProbePhases.add("$generation:$phase") }
 
     fun finish() {
         activeGeneration = 0L
         targetMessageId = null
         placedCount = 0
         drawCount = 0
-        pixelProbeClaimedGeneration = 0L
+        claimedPixelProbePhases.clear()
     }
 }
 
@@ -1084,7 +1090,7 @@ private class ThreadViewportPixelProbeBounds {
     fun ready(): Boolean = width > 0f && height > 0f
 }
 
-private data class ThreadImeTailDrawProbeSnapshot(
+internal data class ThreadImeTailDrawProbeSnapshot(
     val generation: Long,
     val targetMessageId: String?,
     val placedCount: Int,
