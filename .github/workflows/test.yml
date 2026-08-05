@@ -1773,7 +1773,7 @@ jobs:
         working-directory: compose/ohosApp
         shell: bash
         run: |
-          node scripts/test_bridge_unknown_method_source_contract.mjs
+          bash scripts/test_bridge_unknown_method_source_contract.sh
           hvigorw --mode module \
             -p module=entry@default -p product=default -p requiredDeviceType=phone \
             default@CompileArkTS --analyze=normal --parallel --no-daemon
