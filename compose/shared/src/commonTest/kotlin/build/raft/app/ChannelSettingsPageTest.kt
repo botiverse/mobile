@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
@@ -156,6 +157,159 @@ class ChannelSettingsPageTest {
         }
 
         assertEquals(listOf("open-members", "open-members", "add-member"), calls)
+    }
+
+    @Test
+    fun addMemberLaunchTargetsTheRealThreadMembersPageAndRequestsItsAddFlow() {
+        val route = ChannelSettingsRoute(ServerId("server-1"), ChannelId("channel-9"))
+        val header =
+            channelSettingsMembersPageData(
+                route = route,
+                interaction = ChannelSettingsMemberInteraction.Header
+            )
+        val avatar =
+            channelSettingsMembersPageData(
+                route = route,
+                interaction = ChannelSettingsMemberInteraction.Avatar
+            )
+        val add =
+            channelSettingsMembersPageData(
+                route = route,
+                interaction = ChannelSettingsMemberInteraction.Add
+            )
+
+        listOf(header, avatar, add).forEach { pageData ->
+            assertEquals(THREAD_MEMBERS_PAGE, pageData.optString("pageName"))
+            assertEquals("server-1", pageData.optString("serverId"))
+            assertEquals("channel-9", pageData.optString("channelId"))
+        }
+        assertEquals(ThreadMembersInitialAction.None, header.threadMembersInitialAction())
+        assertEquals(ThreadMembersInitialAction.None, avatar.threadMembersInitialAction())
+        assertEquals(ThreadMembersInitialAction.AddMember, add.threadMembersInitialAction())
+        assertEquals(
+            ThreadMembersInitialAction.AddMember.wireValue,
+            add.optString(THREAD_MEMBERS_INITIAL_ACTION_KEY)
+        )
+        assertEquals(
+            ThreadMembersInitialAction.None,
+            JSONObject()
+                .apply { put(THREAD_MEMBERS_INITIAL_ACTION_KEY, "unknown") }
+                .threadMembersInitialAction()
+        )
+        assertEquals("", add.optString("payload"))
+        assertEquals("", add.optString("members"))
+        assertEquals("", add.optString("invitees"))
+
+        val coldRequest = add.toThreadMembersInitialActionRequest()
+        val hotRequest = coldRequest.nextFrom(add)
+        val browseRequest = hotRequest.nextFrom(header)
+        assertEquals(
+            ThreadMembersInitialActionRequest(ThreadMembersInitialAction.AddMember, revision = 0L),
+            coldRequest
+        )
+        assertEquals(
+            ThreadMembersInitialActionRequest(ThreadMembersInitialAction.AddMember, revision = 1L),
+            hotRequest
+        )
+        assertEquals(
+            ThreadMembersInitialActionRequest(ThreadMembersInitialAction.None, revision = 2L),
+            browseRequest
+        )
+    }
+
+    @Test
+    fun threadMembersPageConsumesAddActionOnceAfterAuthoritativePermission() {
+        val cold =
+            ThreadMembersInitialActionRequest(
+                ThreadMembersInitialAction.AddMember,
+                revision = 0L
+            )
+        val pending =
+            ThreadMembersAddDialogState()
+                .applyInitialAction(cold, ThreadMembersAddPermission.Unknown)
+        assertEquals(
+            ThreadMembersAddDialogState(),
+            pending,
+            "Unknown channel permission must keep AddMember pending without opening or consuming it"
+        )
+
+        val coldOpened = pending.applyInitialAction(cold, ThreadMembersAddPermission.Allowed)
+        assertEquals(
+            ThreadMembersAddDialogState(active = true, consumedInitialActionRevision = 0L),
+            coldOpened
+        )
+
+        val dismissed = coldOpened.dismissed()
+        assertEquals(
+            ThreadMembersAddDialogState(active = false, consumedInitialActionRevision = 0L),
+            dismissed
+        )
+        assertEquals(
+            dismissed,
+            dismissed.applyInitialAction(cold, ThreadMembersAddPermission.Allowed),
+            "The consumed cold action must not reopen after dismissal"
+        )
+
+        val ordinaryPageData =
+            ThreadMembersInitialActionRequest(ThreadMembersInitialAction.None, revision = 1L)
+        assertEquals(
+            dismissed,
+            dismissed.applyInitialAction(ordinaryPageData, ThreadMembersAddPermission.Allowed),
+            "An instance/pageData refresh without a new invite action must stay closed"
+        )
+
+        val hot =
+            ThreadMembersInitialActionRequest(
+                ThreadMembersInitialAction.AddMember,
+                revision = 2L
+            )
+        assertEquals(
+            ThreadMembersAddDialogState(active = true, consumedInitialActionRevision = 2L),
+            dismissed.applyInitialAction(hot, ThreadMembersAddPermission.Allowed),
+            "A new AddMember action on a reused ThreadMembers page must open once"
+        )
+        val denied = pending.applyInitialAction(cold, ThreadMembersAddPermission.Denied)
+        assertEquals(
+            ThreadMembersAddDialogState(active = false, consumedInitialActionRevision = 0L),
+            denied,
+            "Channel permission denial must close and consume that action revision"
+        )
+        assertEquals(
+            denied,
+            denied.applyInitialAction(cold, ThreadMembersAddPermission.Allowed),
+            "Permission becoming true without a new action must not open the dialog"
+        )
+        assertEquals(
+            ThreadMembersAddDialogState(active = true, consumedInitialActionRevision = 1L),
+            denied.applyInitialAction(
+                ThreadMembersInitialActionRequest(
+                    ThreadMembersInitialAction.AddMember,
+                    revision = 1L
+                ),
+                ThreadMembersAddPermission.Allowed
+            ),
+            "A later AddMember revision may open after an earlier denied revision"
+        )
+    }
+
+    @Test
+    fun addPermissionWaitsForTheAuthoritativeChannelMemberSlice() {
+        assertEquals(
+            ThreadMembersAddPermission.Unknown,
+            threadMembersAddPermission(SharedServerMembersLoadStatus.Idle, canAddMembers = true)
+        )
+        assertEquals(
+            ThreadMembersAddPermission.Unknown,
+            threadMembersAddPermission(SharedServerMembersLoadStatus.InFlight, canAddMembers = true)
+        )
+        assertEquals(
+            ThreadMembersAddPermission.Allowed,
+            threadMembersAddPermission(SharedServerMembersLoadStatus.Loaded, canAddMembers = true)
+        )
+        assertEquals(
+            ThreadMembersAddPermission.Denied,
+            threadMembersAddPermission(SharedServerMembersLoadStatus.Loaded, canAddMembers = false)
+        )
     }
 
     @Test

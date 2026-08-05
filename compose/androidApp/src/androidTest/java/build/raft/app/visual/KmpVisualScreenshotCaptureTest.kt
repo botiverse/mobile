@@ -47,7 +47,7 @@ import org.junit.rules.Timeout
 import org.junit.runner.Description
 import kotlin.math.roundToInt
 
-class KmpVisualScreenshotCaptureTest {
+open class KmpVisualScreenshotCaptureTest {
     private fun visualAttempt(): Int =
         InstrumentationRegistry.getArguments().getString("visualAttempt")?.toIntOrNull() ?: 0
 
@@ -3551,7 +3551,7 @@ class KmpVisualScreenshotCaptureTest {
         mirrorFileForAdbPull(context, metadataFile)
     }
 
-    private fun captureKmpComponentCase(
+    protected fun captureKmpComponentCase(
         caseId: String,
         pageName: String,
         crop: VisualCrop,
@@ -5104,7 +5104,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
 
-    private data class VisualCrop(
+    internal data class VisualCrop(
         val leftDp: Int,
         val topDp: Int,
         val widthDp: Int,
@@ -5122,7 +5122,7 @@ class KmpVisualScreenshotCaptureTest {
         private const val UI_AUTOMATION_CAPTURE_METHOD =
             "ui-automation-take-screenshot-viewport-crop"
 
-        private val FULL_VIEWPORT_CROP =
+        internal val FULL_VIEWPORT_CROP =
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,

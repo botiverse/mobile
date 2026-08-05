@@ -52,6 +52,8 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.semantics.contentDescription
+import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -281,7 +283,22 @@ private fun ChannelSettingsPageScreen() {
                         onOpenMembers = {
                             pager.openSlockPage(
                                 pageName = THREAD_MEMBERS_PAGE,
-                                pageData = channelSettingsMembersPageData(route),
+                                pageData =
+                                    channelSettingsMembersPageData(
+                                        route = route,
+                                        interaction = ChannelSettingsMemberInteraction.Header
+                                    ),
+                                storeScopeOverride = storeScope
+                            )
+                        },
+                        onAddMember = {
+                            pager.openSlockPage(
+                                pageName = THREAD_MEMBERS_PAGE,
+                                pageData =
+                                    channelSettingsMembersPageData(
+                                        route = route,
+                                        interaction = ChannelSettingsMemberInteraction.Add
+                                    ),
                                 storeScopeOverride = storeScope
                             )
                         },
@@ -465,12 +482,21 @@ internal fun ChannelSettingsPageScaffold(
     }
 }
 
-internal fun channelSettingsMembersPageData(route: ChannelSettingsRoute): JSONObject =
+internal fun channelSettingsMembersPageData(
+    route: ChannelSettingsRoute,
+    interaction: ChannelSettingsMemberInteraction = ChannelSettingsMemberInteraction.Header
+): JSONObject =
     JSONObject().apply {
         put("pageName", THREAD_MEMBERS_PAGE)
         put("instanceId", "channel-settings-members-${route.channelId.value}")
         put("serverId", route.serverId.value)
         put("channelId", route.channelId.value)
+        if (interaction == ChannelSettingsMemberInteraction.Add) {
+            put(
+                THREAD_MEMBERS_INITIAL_ACTION_KEY,
+                ThreadMembersInitialAction.AddMember.wireValue
+            )
+        }
     }
 
 @Composable
@@ -481,6 +507,7 @@ internal fun ChannelSettingsContent(
     canManage: Boolean,
     onEdit: () -> Unit,
     onOpenMembers: () -> Unit,
+    onAddMember: () -> Unit,
     onToggleMute: () -> Unit,
     onTogglePin: () -> Unit,
     onMakePrivate: () -> Unit,
@@ -500,7 +527,7 @@ internal fun ChannelSettingsContent(
                 slice = memberSlice,
                 fallbackCount = channel.memberCount,
                 onOpenMembers = onOpenMembers,
-                onAddMember = onOpenMembers
+                onAddMember = onAddMember
             )
         }
         item(key = "preferences") {
@@ -717,8 +744,13 @@ private fun ChannelSettingsMemberAvatar(member: MemberProfile, cellWidth: Dp, on
 
 @Composable
 private fun ChannelSettingsAddMemberTile(cellWidth: Dp, onClick: () -> Unit) {
+    val addMemberDescription = stringResource(MR.strings.thread_action_add_member)
     Column(
-        modifier = Modifier.width(cellWidth).clickable(onClick = onClick),
+        modifier =
+            Modifier
+                .width(cellWidth)
+                .semantics { contentDescription = addMemberDescription }
+                .clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(

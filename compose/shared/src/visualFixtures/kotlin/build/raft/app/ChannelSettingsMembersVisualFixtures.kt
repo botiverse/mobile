@@ -1,5 +1,9 @@
 package build.raft.app
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import build.raft.app.base.BasePager
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.SharedServerChannelMembersSlice
@@ -14,7 +18,10 @@ import build.raft.app.model.ThreadId
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -22,6 +29,8 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
 
 internal const val CHANNEL_SETTINGS_MEMBERS_VISUAL_PAGE = "compose_channel_settings_members_grid_visual"
+internal const val CHANNEL_SETTINGS_MEMBERS_INTERACTION_PAGE =
+    "compose_channel_settings_members_interaction_contract"
 
 @Page(CHANNEL_SETTINGS_MEMBERS_VISUAL_PAGE, supportInLocal = true)
 internal class ComposeChannelSettingsMembersVisualPage : BasePager() {
@@ -37,6 +46,104 @@ internal class ComposeChannelSettingsMembersVisualPage : BasePager() {
                 widthDp = widthDp,
                 canAddMembers = canAddMembers,
                 variant = variant
+            )
+        }
+    }
+}
+
+@Page(CHANNEL_SETTINGS_MEMBERS_INTERACTION_PAGE, supportInLocal = true)
+internal class ComposeChannelSettingsMembersInteractionPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ChannelSettingsMembersInteractionContractContent() }
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun ChannelSettingsMembersInteractionContractContent() {
+    val serverId = ServerId(VisualFixtureData.Server.ID)
+    val channelId = ChannelId("visual-channel-settings-interaction")
+    var openMembersCalls by remember { mutableStateOf(0) }
+    var addMemberCalls by remember { mutableStateOf(0) }
+    var addDialogState by remember { mutableStateOf(ThreadMembersAddDialogState()) }
+    val route = ChannelSettingsRoute(serverId = serverId, channelId = channelId)
+    Box(modifier = Modifier.fillMaxSize()) {
+        ChannelSettingsPageScaffold(refreshing = false, onBack = {}) {
+            ChannelSettingsContent(
+                channel =
+                    HomeChannelRow(
+                        threadId = ThreadId(channelId.value),
+                        channelId = channelId,
+                        channelType = "public",
+                        name = VisualFixtureData.Server.SLUG,
+                        subtitle = VisualFixtureData.Server.NAME,
+                        memberCount = 1
+                    ),
+                memberSlice =
+                    SharedServerChannelMembersSlice(
+                        serverId = serverId.value,
+                        channelId = channelId.value,
+                        members = visualChannelSettingsMembers(1, serverId, variant = ""),
+                        canAddMembers = true,
+                        status = SharedServerMembersLoadStatus.Loaded
+                    ),
+                pinned = false,
+                canManage = false,
+                onEdit = {},
+                onOpenMembers = { openMembersCalls += 1 },
+                onAddMember = {
+                    addMemberCalls += 1
+                    val request =
+                        channelSettingsMembersPageData(
+                            route = route,
+                            interaction = ChannelSettingsMemberInteraction.Add
+                        ).toThreadMembersInitialActionRequest()
+                    addDialogState =
+                        addDialogState.applyInitialAction(
+                            request = request,
+                            permission = ThreadMembersAddPermission.Allowed
+                        )
+                },
+                onToggleMute = {},
+                onTogglePin = {},
+                onMakePrivate = {},
+                onArchive = {},
+                onDelete = {}
+            )
+        }
+        Text(
+            text = "interaction open=$openMembersCalls add=$addMemberCalls",
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .background(SlockColor.SurfaceWhite)
+                    .padding(4.dp)
+        )
+        if (addDialogState.active) {
+            ThreadAddMemberModal(
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = VisualFixtureData.Humans.Owner.MEMBER_ID,
+                            displayName = VisualFixtureData.Humans.Owner.DISPLAY_NAME,
+                            handle = VisualFixtureData.Humans.Owner.HANDLE,
+                            sourceServerId = serverId.value
+                        )
+                    ),
+                candidates =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = VisualFixtureData.Humans.Designer.ID,
+                            displayName = VisualFixtureData.Humans.Designer.DISPLAY_NAME,
+                            handle = VisualFixtureData.Humans.Designer.HANDLE,
+                            sourceServerId = serverId.value
+                        )
+                    ),
+                canAddMembers = true,
+                addMemberStatus = "idle",
+                addMemberErrorCode = null,
+                onDismiss = { addDialogState = addDialogState.dismissed() },
+                onSubmit = { _ -> }
             )
         }
     }
@@ -77,6 +184,7 @@ private fun ChannelSettingsMembersVisualContent(
                     canManage = false,
                     onEdit = {},
                     onOpenMembers = {},
+                    onAddMember = {},
                     onToggleMute = {},
                     onTogglePin = {},
                     onMakePrivate = {},

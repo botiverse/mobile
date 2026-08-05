@@ -16,6 +16,17 @@ DEFAULT_SOURCE = Path(
     "KmpVisualScreenshotCaptureTest.kt"
 )
 TEST_CLASS = "build.raft.app.visual.KmpVisualScreenshotCaptureTest"
+CHANNEL_SETTINGS_INTERACTION_SOURCE = Path(
+    "compose/androidApp/src/androidTest/java/build/raft/app/visual/"
+    "ChannelSettingsMemberInteractionCaptureTest.kt"
+)
+CHANNEL_SETTINGS_INTERACTION_TEST_CLASS = (
+    "build.raft.app.visual.ChannelSettingsMemberInteractionCaptureTest"
+)
+DEFAULT_SOURCE_SPECS = (
+    (DEFAULT_SOURCE, TEST_CLASS),
+    (CHANNEL_SETTINGS_INTERACTION_SOURCE, CHANNEL_SETTINGS_INTERACTION_TEST_CLASS),
+)
 CASE_ID_RE = re.compile(r'"([A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9._-]+)"')
 CANONICAL_EXCLUDED_MARKER = "VISUAL_CANONICAL_EXCLUDED:"
 
@@ -31,7 +42,10 @@ def parse_csv(raw: str) -> list[str]:
     return values
 
 
-def enumerate_capture_tests(source: str) -> list[dict[str, object]]:
+def enumerate_capture_tests(
+    source: str,
+    test_class: str = TEST_CLASS,
+) -> list[dict[str, object]]:
     chunks = re.split(r"\bfun\s+(\w+)\s*\(", source)
     entries: list[dict[str, object]] = []
     for index in range(1, len(chunks) - 1, 2):
@@ -60,9 +74,9 @@ def enumerate_capture_tests(source: str) -> list[dict[str, object]]:
         entries.append(
             {
                 "caseId": case_id,
-                "class": TEST_CLASS,
+                "class": test_class,
                 "method": method,
-                "selector": f"{TEST_CLASS}#{method}",
+                "selector": f"{test_class}#{method}",
                 "sourceBodySha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
                 "canonicalEnabled": CANONICAL_EXCLUDED_MARKER not in body,
                 "testboxEligible": f"TESTBOX_ELIGIBLE: {case_id}" in body,
@@ -116,12 +130,27 @@ def run_self_test() -> None:
             capture(caseId = "case.opt-in", pageName = "page_opt_in")
         }
     '''
+    opt_in_fixture = '''
+        @Test
+        fun captureOptInFromSeparateClass() {
+            // VISUAL_CANONICAL_EXCLUDED: targeted contract case
+            capture(caseId = "case.separate-opt-in", pageName = "page_separate_opt_in")
+        }
+    '''
     entries = enumerate_capture_tests(fixture)
+    entries += enumerate_capture_tests(
+        opt_in_fixture,
+        "build.raft.app.visual.SeparateOptInCaptureTest",
+    )
     assert [entry["method"] for entry in entries] == [
-        "captureOne", "captureTwo", "captureThree", "captureOptIn"
+        "captureOne", "captureTwo", "captureThree", "captureOptIn",
+        "captureOptInFromSeparateClass",
     ]
-    assert [entry["testboxEligible"] for entry in entries] == [True, False, False, False]
-    assert [entry["canonicalEnabled"] for entry in entries] == [True, True, True, False]
+    assert [entry["testboxEligible"] for entry in entries] == [True, False, False, False, False]
+    assert [entry["canonicalEnabled"] for entry in entries] == [True, True, True, False, False]
+    assert entries[-1]["selector"] == (
+        "build.raft.app.visual.SeparateOptInCaptureTest#captureOptInFromSeparateClass"
+    )
     requested = parse_csv("case.two, case.one, case.two")
     resolved, missing = select_cases(entries, requested)
     assert not missing
@@ -157,7 +186,25 @@ def main() -> int:
         return 0
 
     try:
-        entries = enumerate_capture_tests(args.source.read_text(encoding="utf-8"))
+        source_specs = (
+            DEFAULT_SOURCE_SPECS
+            if args.source == DEFAULT_SOURCE
+            else ((args.source, TEST_CLASS),)
+        )
+        entries = [
+            entry
+            for source_path, test_class in source_specs
+            for entry in enumerate_capture_tests(
+                source_path.read_text(encoding="utf-8"),
+                test_class,
+            )
+        ]
+        case_ids = [str(entry["caseId"]) for entry in entries]
+        selectors = [str(entry["selector"]) for entry in entries]
+        if len(case_ids) != len(set(case_ids)):
+            raise ValueError("Android visual sources contain duplicate case ids")
+        if len(selectors) != len(set(selectors)):
+            raise ValueError("Android visual sources contain duplicate selectors")
     except (OSError, ValueError) as exc:
         print(f"Unable to enumerate Android visual captures: {exc}", file=sys.stderr)
         return 2

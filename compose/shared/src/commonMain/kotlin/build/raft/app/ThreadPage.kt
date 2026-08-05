@@ -334,6 +334,80 @@ import kotlin.time.TimeSource
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
+internal const val THREAD_MEMBERS_INITIAL_ACTION_KEY = "initialAction"
+
+internal enum class ThreadMembersInitialAction(val wireValue: String) {
+    None(""),
+    AddMember("addMember")
+}
+
+internal data class ThreadMembersInitialActionRequest(
+    val action: ThreadMembersInitialAction = ThreadMembersInitialAction.None,
+    val revision: Long = 0L
+)
+
+internal enum class ThreadMembersAddPermission {
+    Unknown,
+    Allowed,
+    Denied
+}
+
+internal data class ThreadMembersAddDialogState(
+    val active: Boolean = false,
+    val consumedInitialActionRevision: Long? = null
+)
+
+internal fun JSONObject.threadMembersInitialAction(): ThreadMembersInitialAction =
+    when (optString(THREAD_MEMBERS_INITIAL_ACTION_KEY)) {
+        ThreadMembersInitialAction.AddMember.wireValue -> ThreadMembersInitialAction.AddMember
+        else -> ThreadMembersInitialAction.None
+    }
+
+internal fun JSONObject.toThreadMembersInitialActionRequest(
+    revision: Long = 0L
+): ThreadMembersInitialActionRequest =
+    ThreadMembersInitialActionRequest(action = threadMembersInitialAction(), revision = revision)
+
+internal fun ThreadMembersInitialActionRequest.nextFrom(
+    pageData: JSONObject
+): ThreadMembersInitialActionRequest =
+    pageData.toThreadMembersInitialActionRequest(revision = revision + 1L)
+
+internal fun threadMembersAddPermission(
+    status: SharedServerMembersLoadStatus,
+    canAddMembers: Boolean
+): ThreadMembersAddPermission =
+    when {
+        status != SharedServerMembersLoadStatus.Loaded -> ThreadMembersAddPermission.Unknown
+        canAddMembers -> ThreadMembersAddPermission.Allowed
+        else -> ThreadMembersAddPermission.Denied
+    }
+
+internal fun ThreadMembersAddDialogState.applyInitialAction(
+    request: ThreadMembersInitialActionRequest,
+    permission: ThreadMembersAddPermission
+): ThreadMembersAddDialogState =
+    when {
+        permission == ThreadMembersAddPermission.Unknown -> this
+        permission == ThreadMembersAddPermission.Denied ->
+            copy(
+                active = false,
+                consumedInitialActionRevision =
+                    if (request.action == ThreadMembersInitialAction.AddMember) {
+                        request.revision
+                    } else {
+                        consumedInitialActionRevision
+                    }
+            )
+        request.action != ThreadMembersInitialAction.AddMember -> this
+        consumedInitialActionRevision == request.revision -> this
+        else -> copy(active = true, consumedInitialActionRevision = request.revision)
+    }
+
+internal fun ThreadMembersAddDialogState.opened(): ThreadMembersAddDialogState = copy(active = true)
+
+internal fun ThreadMembersAddDialogState.dismissed(): ThreadMembersAddDialogState = copy(active = false)
+
 private const val ThreadMessagesMinBeyondBoundsItemCount = 4
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
 private const val ThreadMessagesRepresentativeRowStepDp = 64f
@@ -3411,6 +3485,21 @@ private fun ThreadPageScreen(
 private fun ThreadMembersPageScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
+    var initialActionRequest by remember(pager) {
+        mutableStateOf(pager.pageData.params.toThreadMembersInitialActionRequest())
+    }
+    DisposableEffect(pager) {
+        val observer =
+            object : IPagerEventObserver {
+                override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
+                    if (pagerEvent == THREAD_PAGE_DATA_EVENT) {
+                        initialActionRequest = initialActionRequest.nextFrom(eventData)
+                    }
+                }
+            }
+        pager.addPagerEventObserver(observer)
+        onDispose { pager.removePagerEventObserver(observer) }
+    }
     val route = remember(pager.pageData.params.toString()) { pager.pageData.params.toThreadMembersPageRouteOrNull() }
     if (route == null) {
         Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
@@ -3486,7 +3575,7 @@ private fun ThreadMembersPageScreen() {
             diagnosticsLogger = { message -> bridge.log("thread_members_pager_avatar $message") }
         )
     }
-    var addDialogVisible by remember { mutableStateOf(false) }
+    var addDialogState by remember(route.instanceId) { mutableStateOf(ThreadMembersAddDialogState()) }
     var addMemberStatus by remember { mutableStateOf("idle") }
     var addMemberErrorCode by remember { mutableStateOf<String?>(null) }
     var removalGate by
@@ -3501,6 +3590,22 @@ private fun ThreadMembersPageScreen() {
                 channelId = route.channelId
             )
         }
+    val addPermission = threadMembersAddPermission(slice.status, slice.canAddMembers)
+    LaunchedEffect(
+        route.instanceId,
+        initialActionRequest.action,
+        initialActionRequest.revision,
+        addPermission
+    ) {
+        val nextState = addDialogState.applyInitialAction(initialActionRequest, addPermission)
+        if (nextState != addDialogState) {
+            addDialogState = nextState
+        }
+        if (addPermission == ThreadMembersAddPermission.Denied) {
+            addMemberStatus = "idle"
+            addMemberErrorCode = null
+        }
+    }
 
     fun openMember(member: KuiklyThreadMemberItem) {
         val identity = member.memberDetailIdentity() ?: return
@@ -3622,7 +3727,7 @@ private fun ThreadMembersPageScreen() {
                         {
                             SlockTopPageHeaderAction(
                                 icon = SlockLucideIconName.UserPlus,
-                                onClick = { addDialogVisible = true }
+                                onClick = { addDialogState = addDialogState.opened() }
                             )
                         }
                     } else {
@@ -3686,7 +3791,7 @@ private fun ThreadMembersPageScreen() {
                 }
             }
         }
-        if (addDialogVisible) {
+        if (addDialogState.active) {
             ThreadAddMemberModal(
                 members = members,
                 candidates = candidates,
@@ -3695,7 +3800,7 @@ private fun ThreadMembersPageScreen() {
                 memberAvatarResolver = memberAvatarResolver,
                 addMemberStatus = addMemberStatus,
                 addMemberErrorCode = addMemberErrorCode,
-                onDismiss = { addDialogVisible = false },
+                onDismiss = { addDialogState = addDialogState.dismissed() },
                 onSubmit = { member ->
                     val identity = member.memberDetailIdentity() ?: return@ThreadAddMemberModal
                     if (addMemberStatus == "adding") return@ThreadAddMemberModal
@@ -3711,7 +3816,7 @@ private fun ThreadMembersPageScreen() {
                         ) {
                             is DataResult.Content -> {
                                 addMemberStatus = "idle"
-                                addDialogVisible = false
+                                addDialogState = addDialogState.dismissed()
                             }
                             is DataResult.Empty -> {
                                 addMemberStatus = "failed"
@@ -27216,7 +27321,7 @@ private fun ThreadMembersPagerRow(
 }
 
 @Composable
-private fun ThreadAddMemberModal(
+internal fun ThreadAddMemberModal(
     members: List<KuiklyThreadMemberItem>,
     candidates: List<KuiklyThreadMemberItem>,
     canAddMembers: Boolean,
