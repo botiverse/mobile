@@ -16,6 +16,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import kotlin.test.Test
@@ -60,19 +61,19 @@ class ServerDrawerUserHeaderAvatarOwnerTest {
                 SideEffect { observedCacheServerIds += userHeader.serverId }
             }
             advanceUntilIdle()
-            assertEquals("server-a", observedCacheServerIds.last())
 
             session = session.copy(selectedServerId = "server-b")
             Snapshot.sendApplyNotifications()
             frameClock.sendFrame(System.nanoTime())
             advanceUntilIdle()
-
-            assertEquals("server-b", observedCacheServerIds.last())
         } finally {
             composition.dispose()
             recomposer.close()
-            recomposerJob.join()
+            withTimeout(5_000L) { recomposerJob.join() }
         }
+
+        assertEquals("server-a", observedCacheServerIds.first())
+        assertEquals("server-b", observedCacheServerIds.last())
     }
 }
 
