@@ -516,6 +516,92 @@ class SlockAndroidAvatarCacheTest {
     }
 
     @Test
+    fun failedRollbackRetainsRecordUntilPreviousBytesAndGenerationAreRestored() = withTempRoot { root ->
+        var failIndexCommit = false
+        val store =
+            SlockAndroidAvatarDiskStore(
+                root = root,
+                beforeIndexCommit = {
+                    if (failIndexCommit) error("injected rollback index failure")
+                }
+            )
+        val request = request(mode = SlockAndroidAvatarReadMode.Fetch, generation = 2L)
+        prime(store, request.entryKey, 1L, validBytes("old"))
+        val manager =
+            newManager(store, DirectExecutor()) { _, _ ->
+                SlockAndroidAvatarNetworkResponse(200, validBytes("candidate"), "image/test")
+            }
+        prepare(manager, request)
+        manager.awaitResult(request) {}
+        assertEquals(SlockAndroidAvatarMutation.Accepted, manager.finalize(request, "successful_bytes"))
+        assertEquals(2L, store.entry(request.entryKey)?.generation)
+        assertEquals("Bcandidate", root.resolve("${request.nativeBytesKey}.bin").readBytes().toText())
+
+        failIndexCommit = true
+        assertTrue(manager.rollback(request) is SlockAndroidAvatarMutation.Failed)
+        assertEquals(1, manager.retainedOperationCount())
+        assertEquals(2L, store.entry(request.entryKey)?.generation)
+        assertEquals("Bcandidate", root.resolve("${request.nativeBytesKey}.bin").readBytes().toText())
+
+        failIndexCommit = false
+        assertEquals(SlockAndroidAvatarMutation.Accepted, manager.rollback(request))
+        assertEquals(0, manager.retainedOperationCount())
+        assertEquals(1L, store.entry(request.entryKey)?.generation)
+        assertEquals("Bold", store.read(request.entryKey)?.bytes?.toText())
+        assertFalse(root.listFiles().orEmpty().any { it.name.endsWith(".rollback") })
+    }
+
+    @Test
+    fun failedRollbackCandidateDeleteRetainsAuthorityAfterOldIndexWasPublished() = withTempRoot { root ->
+        var rejectCandidateDelete = true
+        val store =
+            SlockAndroidAvatarDiskStore(
+                root = root,
+                deleteManagedFile = { file ->
+                    if (rejectCandidateDelete && file.exists() && file.name.endsWith(".bin")) {
+                        rejectCandidateDelete = false
+                        false
+                    } else {
+                        !file.exists() || file.delete()
+                    }
+                }
+            )
+        val request = request(mode = SlockAndroidAvatarReadMode.Fetch, generation = 1L)
+        val manager =
+            newManager(store, DirectExecutor()) { _, _ ->
+                SlockAndroidAvatarNetworkResponse(200, validBytes("candidate"), "image/test")
+            }
+        prepare(manager, request)
+        manager.awaitResult(request) {}
+        assertEquals(SlockAndroidAvatarMutation.Accepted, manager.finalize(request, "successful_bytes"))
+
+        assertTrue(manager.rollback(request) is SlockAndroidAvatarMutation.Failed)
+        assertEquals(1, manager.retainedOperationCount())
+        assertTrue(root.resolve("${request.nativeBytesKey}.bin").isFile)
+        assertTrue(store.indexedEntries().isEmpty())
+
+        assertEquals(SlockAndroidAvatarMutation.Accepted, manager.rollback(request))
+        assertEquals(0, manager.retainedOperationCount())
+        assertTrue(store.indexedEntries().isEmpty())
+        assertFalse(root.resolve("${request.nativeBytesKey}.bin").exists())
+    }
+
+    @Test
+    fun failedOwnerRetirementRetainsTransientCleanupAuthorityForRetry() = withTempRoot { root ->
+        assertTransientDeleteFailurePreservesTerminalAuthority(root, TerminalMutation.RetireOwner)
+    }
+
+    @Test
+    fun failedSubjectRetirementRetainsTransientCleanupAuthorityForRetry() = withTempRoot { root ->
+        assertTransientDeleteFailurePreservesTerminalAuthority(root, TerminalMutation.RetireSubject)
+    }
+
+    @Test
+    fun failedSettingsClearRetainsTransientCleanupAuthorityForRetry() = withTempRoot { root ->
+        assertTransientDeleteFailurePreservesTerminalAuthority(root, TerminalMutation.Clear)
+    }
+
+    @Test
     fun settingsClearClosesMemoryDiskAndInflightAndLateCompletionCannotRecreate() = withTempRoot { root ->
         val executor = ManualExecutor()
         val store = newStore(root.resolve("image_cache/slock-avatar-cache-v1"))
@@ -717,6 +803,85 @@ class SlockAndroidAvatarCacheTest {
         assertFalse(file.exists())
     }
 
+    private fun assertTransientDeleteFailurePreservesTerminalAuthority(
+        root: File,
+        terminalMutation: TerminalMutation
+    ) {
+        TransientFileKind.entries.forEach { transientKind ->
+            val caseRoot = root.resolve(transientKind.name.lowercase())
+            var rejectFirstTransientDelete = true
+            var allowRootDelete = false
+            val store =
+                SlockAndroidAvatarDiskStore(
+                    root = caseRoot,
+                    deleteManagedFile = { file ->
+                        if (
+                            rejectFirstTransientDelete &&
+                            file.exists() &&
+                            file.name.endsWith(transientKind.suffix)
+                        ) {
+                            rejectFirstTransientDelete = false
+                            false
+                        } else {
+                            !file.exists() || file.delete()
+                        }
+                    },
+                    deleteManagedRoot = { directory ->
+                        !directory.exists() || (allowRootDelete && directory.deleteRecursively())
+                    }
+                )
+            val request = request(mode = SlockAndroidAvatarReadMode.Fetch, generation = 2L)
+            if (transientKind == TransientFileKind.Rollback) {
+                prime(store, request.entryKey, 1L, validBytes("old"))
+            }
+            val manager =
+                newManager(store, DirectExecutor()) { _, _ ->
+                    SlockAndroidAvatarNetworkResponse(200, validBytes("candidate"), "image/test")
+                }
+            prepare(manager, request)
+            var renderCount = 0
+            manager.load(request) { renderCount++ }
+            if (transientKind == TransientFileKind.Rollback) {
+                assertEquals(
+                    SlockAndroidAvatarMutation.Accepted,
+                    manager.finalize(request, "successful_bytes")
+                )
+                assertEquals(1, renderCount)
+            } else {
+                assertEquals(0, renderCount)
+            }
+
+            assertFalse(applyTerminalMutation(manager, request, terminalMutation))
+            assertEquals(1, renderCount)
+            assertEquals(1, manager.retainedOperationCount())
+            assertTrue(caseRoot.listFiles().orEmpty().any { it.name.endsWith(transientKind.suffix) })
+
+            allowRootDelete = true
+            assertTrue(applyTerminalMutation(manager, request, terminalMutation))
+            assertEquals(1, renderCount)
+            assertEquals(0, manager.retainedOperationCount())
+            assertFalse(
+                caseRoot.listFiles().orEmpty().any {
+                    it.name.endsWith(".stage") || it.name.endsWith(".rollback") || it.name.endsWith(".bin")
+                }
+            )
+        }
+    }
+
+    private fun applyTerminalMutation(
+        manager: SlockAndroidAvatarCacheManager,
+        request: SlockAndroidAvatarRequest,
+        terminalMutation: TerminalMutation
+    ): Boolean =
+        when (terminalMutation) {
+            TerminalMutation.Clear -> manager.clearAll()
+            TerminalMutation.RetireOwner ->
+                manager.retireOwner(request.nativePartitionKey) == SlockAndroidAvatarMutation.Accepted
+            TerminalMutation.RetireSubject ->
+                manager.retireSubject(request.nativePartitionKey, request.nativeSubjectKey) ==
+                    SlockAndroidAvatarMutation.Accepted
+        }
+
     private fun prime(
         store: SlockAndroidAvatarDiskStore,
         key: SlockAndroidAvatarEntryKey,
@@ -732,6 +897,11 @@ class SlockAndroidAvatarCacheTest {
         Clear,
         RetireOwner,
         RetireSubject
+    }
+
+    private enum class TransientFileKind(val suffix: String) {
+        Stage(".stage"),
+        Rollback(".rollback")
     }
 
     private fun request(

@@ -38,6 +38,7 @@ internal class SlockAndroidAvatarCacheManager(
         var result: SlockAndroidAvatarLoadResult? = null
         var stage: SlockAndroidAvatarStage? = null
         var rollbackRecord: SlockAndroidAvatarRollbackRecord? = null
+        var rollbackEligible = false
         var resultTimeout: SlockAvatarCacheCancellation? = null
         var rollbackCleanup: SlockAvatarCacheCancellation? = null
         var closed = false
@@ -237,14 +238,18 @@ internal class SlockAndroidAvatarCacheManager(
                         val rollback = store.promote(stage, result.contentType)
                             ?: return@synchronized SlockAndroidAvatarMutation.Failed("avatar_cache_atomic_finalize_failed")
                         operation.stage = null
+                        operation.rollbackRecord = rollback
+                        operation.rollbackEligible = true
                         val admittedPayload = readValidated(request.entryKey)
                         if (admittedPayload == null) {
-                            store.rollback(rollback)
+                            if (store.rollback(rollback)) {
+                                operation.rollbackRecord = null
+                                operation.rollbackEligible = false
+                            }
                             return@synchronized SlockAndroidAvatarMutation.Failed(
                                 "avatar_cache_finalized_bytes_unreadable"
                             )
                         }
-                        operation.rollbackRecord = rollback
                         operation.finalized = true
                         renderPayload = admittedPayload
                         renderCallbacks += operation.renderWaiters.values
@@ -258,7 +263,11 @@ internal class SlockAndroidAvatarCacheManager(
                         operation.finalized = true
                     }
                     "resource_absent", "invalid_content", "temporary_transport" -> {
-                        discardOperationFilesLocked(operation)
+                        if (!discardOperationFilesLocked(operation)) {
+                            return@synchronized SlockAndroidAvatarMutation.Failed(
+                                "avatar_cache_transient_cleanup_failed"
+                            )
+                        }
                         operation.finalized = true
                     }
                     else -> return@synchronized SlockAndroidAvatarMutation.Failed("avatar_cache_finalize_outcome_unknown")
@@ -280,17 +289,26 @@ internal class SlockAndroidAvatarCacheManager(
                     ?: return@synchronized true
                 operation.rollbackCleanup?.cancel()
                 operation.rollbackCleanup = null
-                val diskRestored = operation.rollbackRecord?.let(store::rollback) ?: true
-                operation.rollbackRecord = null
-                store.deleteStage(operation.stage)
-                operation.stage = null
+                val diskRestored =
+                    when {
+                        operation.rollbackRecord == null -> true
+                        !operation.rollbackEligible -> false
+                        else -> store.rollback(requireNotNull(operation.rollbackRecord))
+                    }
+                if (diskRestored) {
+                    operation.rollbackRecord = null
+                    operation.rollbackEligible = false
+                }
+                val stageDeleted = store.deleteStage(operation.stage)
+                if (stageDeleted) operation.stage = null
                 operation.closed = true
                 renderCallbacks += operation.renderWaiters.values
                 operation.renderWaiters.clear()
                 operation.resultTimeout?.cancel()
                 operation.resultTimeout = null
-                if (diskRestored) operations.remove(request.operationKey)
-                diskRestored
+                val cleaned = diskRestored && stageDeleted
+                if (cleaned) operations.remove(request.operationKey)
+                cleaned
             }
         renderCallbacks.forEach { callback -> runCatching { callback(null) } }
         return if (accepted) {
@@ -308,7 +326,8 @@ internal class SlockAndroidAvatarCacheManager(
             retiredSubjectFloor.keys.removeAll { it.partitionKey == partitionKey }
             preparedOperations.keys.removeAll { it.entryKey.partitionKey == partitionKey }
             deliveries = closeOperationsLocked { it.request.nativePartitionKey == partitionKey }
-            store.retireOwner(partitionKey)
+            val indexedRemoved = store.retireOwner(partitionKey)
+            deliveries.filesCleaned && indexedRemoved
         }
         deliveries.deliver()
         return if (removed) SlockAndroidAvatarMutation.Accepted
@@ -325,7 +344,8 @@ internal class SlockAndroidAvatarCacheManager(
                 it.entryKey.partitionKey == partitionKey && it.entryKey.subjectKey == subjectKey
             }
             deliveries = closeOperationsLocked { it.request.slotKey == slot }
-            store.retireSubject(partitionKey, subjectKey)
+            val indexedRemoved = store.retireSubject(partitionKey, subjectKey)
+            deliveries.filesCleaned && indexedRemoved
         }
         deliveries.deliver()
         return if (removed) SlockAndroidAvatarMutation.Accepted
@@ -342,7 +362,8 @@ internal class SlockAndroidAvatarCacheManager(
             retiredSubjectFloor.clear()
             preparedOperations.clear()
             deliveries = closeOperationsLocked { true }
-            store.clearAll()
+            val indexedCleared = store.clearAll()
+            deliveries.filesCleaned && indexedCleared
         }
         deliveries.deliver()
         return cleared
@@ -474,14 +495,18 @@ internal class SlockAndroidAvatarCacheManager(
         var deliveredResult = result
         synchronized(lock) {
             if (operation.closed || operation.result != null || operations[operation.request.operationKey] !== operation) {
-                discardOperationFilesLocked(operation)
+                val cleaned = discardOperationFilesLocked(operation)
+                if (cleaned && operation.closed && operations[operation.request.operationKey] === operation) {
+                    operations.remove(operation.request.operationKey)
+                }
                 return
             }
             if (!isCurrentLocked(operation)) {
                 deliveredResult = SlockAndroidAvatarLoadResult.TemporaryTransport
                 operation.closed = true
-                operations.remove(operation.request.operationKey)
-                discardOperationFilesLocked(operation)
+                if (discardOperationFilesLocked(operation)) {
+                    operations.remove(operation.request.operationKey)
+                }
             }
             operation.result = deliveredResult
             operation.resultTimeout?.cancel()
@@ -554,8 +579,10 @@ internal class SlockAndroidAvatarCacheManager(
             timeoutScheduler.schedule(rollbackGraceMillis) {
                 synchronized(lock) {
                     if (operation.rollbackRecord === record) {
-                        store.commitRollback(record)
-                        operation.rollbackRecord = null
+                        operation.rollbackEligible = false
+                        if (store.commitRollback(record)) {
+                            operation.rollbackRecord = null
+                        }
                         operation.rollbackCleanup = null
                         pruneOperationsLocked()
                     }
@@ -570,14 +597,16 @@ internal class SlockAndroidAvatarCacheManager(
         return null
     }
 
-    private fun discardOperationFilesLocked(operation: Operation) {
-        store.deleteStage(operation.stage)
-        operation.stage = null
+    private fun discardOperationFilesLocked(operation: Operation): Boolean {
+        val deleted = store.deleteStage(operation.stage)
+        if (deleted) operation.stage = null
+        return deleted
     }
 
     private fun closeOperationsLocked(predicate: (Operation) -> Boolean): ClosedDeliveries {
         val resultCallbacks = mutableListOf<(SlockAndroidAvatarLoadResult) -> Unit>()
         val renderCallbacks = mutableListOf<(SlockAndroidAvatarBytePayload?) -> Unit>()
+        var filesCleaned = true
         val iterator = operations.entries.iterator()
         while (iterator.hasNext()) {
             val operation = iterator.next().value
@@ -585,16 +614,23 @@ internal class SlockAndroidAvatarCacheManager(
             operation.closed = true
             operation.resultTimeout?.cancel()
             operation.rollbackCleanup?.cancel()
-            operation.rollbackRecord?.let(store::commitRollback)
-            operation.rollbackRecord = null
-            discardOperationFilesLocked(operation)
+            operation.resultTimeout = null
+            operation.rollbackCleanup = null
+            val rollbackDeleted = operation.rollbackRecord?.let(store::deleteRollbackArtifacts) ?: true
+            if (rollbackDeleted) {
+                operation.rollbackRecord = null
+                operation.rollbackEligible = false
+            }
+            val stageDeleted = discardOperationFilesLocked(operation)
+            val operationFilesCleaned = rollbackDeleted && stageDeleted
+            filesCleaned = filesCleaned && operationFilesCleaned
             resultCallbacks += operation.resultWaiters.values
             renderCallbacks += operation.renderWaiters.values
             operation.resultWaiters.clear()
             operation.renderWaiters.clear()
-            iterator.remove()
+            if (operationFilesCleaned) iterator.remove()
         }
-        return ClosedDeliveries(resultCallbacks, renderCallbacks)
+        return ClosedDeliveries(resultCallbacks, renderCallbacks, filesCleaned)
     }
 
     private fun pruneOperationsLocked(
@@ -603,7 +639,13 @@ internal class SlockAndroidAvatarCacheManager(
         if (operations.size <= maxSize) return
         val removable =
             operations.values
-                .filter { it.result != null && it.rollbackRecord == null && it.resultWaiters.isEmpty() && it.renderWaiters.isEmpty() }
+                .filter {
+                    it.result != null &&
+                        it.stage == null &&
+                        it.rollbackRecord == null &&
+                        it.resultWaiters.isEmpty() &&
+                        it.renderWaiters.isEmpty()
+                }
                 .sortedBy { it.order }
                 .iterator()
         while (operations.size > maxSize && removable.hasNext()) {
@@ -633,7 +675,8 @@ internal class SlockAndroidAvatarCacheManager(
 
     private data class ClosedDeliveries(
         val resultCallbacks: List<(SlockAndroidAvatarLoadResult) -> Unit>,
-        val renderCallbacks: List<(SlockAndroidAvatarBytePayload?) -> Unit>
+        val renderCallbacks: List<(SlockAndroidAvatarBytePayload?) -> Unit>,
+        val filesCleaned: Boolean
     ) {
         fun deliver() {
             resultCallbacks.forEach { callback ->

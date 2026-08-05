@@ -797,7 +797,12 @@ internal class SlockAvatarCacheRuntime(
         nativeCache: SlockAvatarNativeCache,
         request: SlockAvatarNativeRequest
     ) {
-        mutateNative { nativeCache.rollback(request) }
+        val first = mutateNative { nativeCache.rollback(request) }
+        if (first == SlockAvatarNativeMutationResult.Accepted) return
+        val retry = mutateNative { nativeCache.rollback(request) }
+        if (retry != SlockAvatarNativeMutationResult.Accepted) {
+            logger("avatar_cache_native_rollback_failed")
+        }
     }
 
     private suspend fun mutateNative(

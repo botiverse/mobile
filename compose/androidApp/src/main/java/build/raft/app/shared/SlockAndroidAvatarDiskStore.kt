@@ -62,6 +62,7 @@ internal class SlockAndroidAvatarDiskStore(
 
     private val lock = Any()
     private val entries = linkedMapOf<SlockAndroidAvatarEntryKey, SlockAndroidAvatarDiskEntry>()
+    private val rollbackPendingKeys = linkedSetOf<SlockAndroidAvatarEntryKey>()
     private var loaded = false
 
     init {
@@ -218,64 +219,95 @@ internal class SlockAndroidAvatarDiskStore(
     fun rollback(record: SlockAndroidAvatarRollbackRecord): Boolean = synchronized(lock) {
         ensureLoadedLocked()
         val current = entries[record.newEntry.key]
-        if (current?.generation != record.newEntry.generation) {
-            cleanupRollbackFilesLocked(record)
-            return@synchronized true
+        val previous = record.previousEntry
+        val candidateIsCurrent = current?.generation == record.newEntry.generation
+        val candidateWasCurrent = candidateIsCurrent
+        val previousIndexIsCurrent =
+            if (previous == null) {
+                current == null
+            } else {
+                current?.generation == previous.generation && current.fileName == previous.fileName
+            }
+        if (!candidateIsCurrent && !previousIndexIsCurrent) {
+            val cleaned = cleanupRollbackFilesLocked(record)
+            if (cleaned) rollbackPendingKeys.remove(record.newEntry.key)
+            return@synchronized cleaned
         }
         val snapshot = LinkedHashMap(entries)
         val target = root.resolve(record.newEntry.fileName)
-        var rollbackIndexCommitted = false
-        return@synchronized runCatching {
+        if (!previousIndexIsCurrent) {
             // Publish the old index first. If the process dies during the file
             // moves, startup recovery sees the old generation and restores the
             // still-present rollback files instead of admitting candidate bytes.
             entries.remove(record.newEntry.key)
-            record.previousEntry?.let { entries[it.key] = it }
+            previous?.let { entries[it.key] = it }
             record.evicted.forEach { entries[it.entry.key] = it.entry }
-            persistIndexLocked()
-            rollbackIndexCommitted = true
-
-            if (target.exists() && !target.delete()) error("avatar rollback could not remove candidate")
-            val previous = record.previousEntry
-            if (previous != null) {
-                val destination = root.resolve(previous.fileName)
-                if (record.previousBackupFile?.isFile == true) {
-                    atomicMove(record.previousBackupFile, destination)
+            val indexCommitted =
+                runCatching {
+                    persistIndexLocked()
+                    true
+                }.getOrElse {
+                    entries.clear()
+                    entries.putAll(snapshot)
+                    false
                 }
-                if (!destination.isFile || destination.length() != previous.sizeBytes) {
-                    error("avatar rollback previous bytes unavailable")
-                }
-            } else {
-                record.previousBackupFile?.delete()
-            }
-            record.evicted.forEach { evicted ->
-                val destination = root.resolve(evicted.entry.fileName)
-                evicted.backupFile?.takeIf(File::isFile)?.let { backup ->
-                    atomicMove(backup, destination)
-                }
-                if (!destination.isFile || destination.length() != evicted.entry.sizeBytes) {
-                    error("avatar rollback evicted bytes unavailable")
-                }
-            }
-            onEntriesRemoved(setOf(record.newEntry.key))
-            true
-        }.getOrElse {
-            if (!rollbackIndexCommitted) {
-                entries.clear()
-                entries.putAll(snapshot)
-                runCatching { persistIndexLocked() }
-            }
-            onEntriesRemoved(setOf(record.newEntry.key))
-            false
+            if (!indexCommitted) return@synchronized false
         }
+        rollbackPendingKeys += record.newEntry.key
+        val restored =
+            runCatching {
+                if (previous != null) {
+                    val destination = root.resolve(previous.fileName)
+                    if (record.previousBackupFile?.isFile == true) {
+                        atomicMove(record.previousBackupFile, destination)
+                    } else if (candidateWasCurrent) {
+                        error("avatar rollback previous backup unavailable")
+                    }
+                    if (!destination.isFile || destination.length() != previous.sizeBytes) {
+                        error("avatar rollback previous bytes unavailable")
+                    }
+                } else {
+                    if (!deleteManagedFile(target)) error("avatar rollback could not remove candidate")
+                }
+                record.evicted.forEach { evicted ->
+                    val destination = root.resolve(evicted.entry.fileName)
+                    evicted.backupFile?.let { backup ->
+                        if (backup.isFile) {
+                            atomicMove(backup, destination)
+                        } else if (candidateWasCurrent) {
+                            error("avatar rollback evicted backup unavailable")
+                        }
+                    }
+                    if (!destination.isFile || destination.length() != evicted.entry.sizeBytes) {
+                        error("avatar rollback evicted bytes unavailable")
+                    }
+                }
+                if (!cleanupRollbackFilesLocked(record)) {
+                    error("avatar rollback cleanup incomplete")
+                }
+                true
+            }.getOrDefault(false)
+        if (restored) {
+            rollbackPendingKeys.remove(record.newEntry.key)
+            onEntriesRemoved(setOf(record.newEntry.key))
+        }
+        restored
     }
 
-    fun commitRollback(record: SlockAndroidAvatarRollbackRecord) = synchronized(lock) {
+    fun commitRollback(record: SlockAndroidAvatarRollbackRecord): Boolean = synchronized(lock) {
         cleanupRollbackFilesLocked(record)
     }
 
-    fun deleteStage(stage: SlockAndroidAvatarStage?) {
-        stage?.file?.delete()
+    fun deleteRollbackArtifacts(record: SlockAndroidAvatarRollbackRecord): Boolean = synchronized(lock) {
+        val targetDeleted = deleteManagedFile(root.resolve(record.newEntry.fileName))
+        val backupsDeleted = cleanupRollbackFilesLocked(record)
+        val deleted = targetDeleted && backupsDeleted
+        if (deleted) rollbackPendingKeys.remove(record.newEntry.key)
+        deleted
+    }
+
+    fun deleteStage(stage: SlockAndroidAvatarStage?): Boolean = synchronized(lock) {
+        stage == null || deleteManagedFile(stage.file)
     }
 
     fun retireOwner(partitionKey: String): Boolean = synchronized(lock) {
@@ -312,6 +344,7 @@ internal class SlockAndroidAvatarDiskStore(
     }
 
     private fun validatedEntryLocked(key: SlockAndroidAvatarEntryKey): SlockAndroidAvatarDiskEntry? {
+        if (key in rollbackPendingKeys) return null
         val entry = entries[key] ?: return null
         val file = root.resolve(entry.fileName)
         if (!file.isFile || file.length() != entry.sizeBytes || entry.sizeBytes !in 1L..maxEntryBytes) {
@@ -333,6 +366,7 @@ internal class SlockAndroidAvatarDiskStore(
         removed.forEach { entries.remove(it.key) }
         return runCatching {
             persistIndexLocked()
+            rollbackPendingKeys.removeAll(removed.mapTo(linkedSetOf()) { it.key })
             onEntriesRemoved(removed.mapTo(linkedSetOf()) { it.key })
             true
         }.getOrElse {
@@ -495,9 +529,13 @@ internal class SlockAndroidAvatarDiskStore(
         return SlockAndroidAvatarDiskEntry(key, fields[3], size, contentType, lastAccess, generation)
     }
 
-    private fun cleanupRollbackFilesLocked(record: SlockAndroidAvatarRollbackRecord) {
-        record.previousBackupFile?.delete()
-        record.evicted.forEach { it.backupFile?.delete() }
+    private fun cleanupRollbackFilesLocked(record: SlockAndroidAvatarRollbackRecord): Boolean {
+        var cleaned = true
+        record.previousBackupFile?.let { cleaned = deleteManagedFile(it) && cleaned }
+        record.evicted.forEach { evicted ->
+            evicted.backupFile?.let { cleaned = deleteManagedFile(it) && cleaned }
+        }
+        return cleaned
     }
 
     private fun ensureRootLocked() {

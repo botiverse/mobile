@@ -437,6 +437,35 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
+    fun failedNativeRollbackIsRetriedWhileTheRequestStillNamesRecoveryAuthority() = runBlocking {
+        val store = FakeMetadataStore()
+        var rollbackAttempts = 0
+        val native = FakeNativeCache().apply {
+            awaitBlock = {
+                SlockAvatarNativeLoadResult.SuccessfulBytes(512L, "etag-new", null, "image/webp")
+            }
+            finalizeResult = SlockAvatarNativeMutationResult.Failed("finalize_failed")
+            rollbackBlock = {
+                rollbackAttempts += 1
+                if (rollbackAttempts == 1) {
+                    SlockAvatarNativeMutationResult.Failed("rollback_retryable")
+                } else {
+                    SlockAvatarNativeMutationResult.Accepted
+                }
+            }
+        }
+        val runtime = runtime(store)
+        val prepared =
+            assertIs<SlockAvatarPreparedRender.Native>(
+                runtime.prepare(subject(), RemoteUrl, nativeCache = native)
+            )
+
+        assertIs<SlockAvatarCacheCompletionReceipt.Failed>(runtime.observeAndCommit(prepared))
+        assertEquals(listOf(prepared.request, prepared.request), native.rolledBack)
+        assertEquals(2, rollbackAttempts)
+    }
+
+    @Test
     fun reusedGenerationRunsOneMetadataAndFinalizeMutation() = runBlocking {
         val store = FakeMetadataStore()
         val native = FakeNativeCache().apply {
@@ -803,6 +832,9 @@ class SlockAvatarCacheRuntimeTest {
             suspend (SlockAvatarNativeRequest, SlockAvatarNativeFinalizeOutcome) -> SlockAvatarNativeMutationResult =
             { _, _ -> finalizeResult }
         var rollbackResult: SlockAvatarNativeMutationResult = SlockAvatarNativeMutationResult.Accepted
+        var rollbackBlock: suspend (SlockAvatarNativeRequest) -> SlockAvatarNativeMutationResult = {
+            rollbackResult
+        }
         var retireResult: SlockAvatarNativeMutationResult = SlockAvatarNativeMutationResult.Accepted
         val inspected = mutableListOf<SlockAvatarNativeInspectionCall>()
         val awaited = mutableListOf<SlockAvatarNativeRequest>()
@@ -844,7 +876,7 @@ class SlockAvatarCacheRuntimeTest {
         override suspend fun rollback(request: SlockAvatarNativeRequest): SlockAvatarNativeMutationResult {
             rolledBack += request
             events += "native_rollback"
-            return rollbackResult
+            return rollbackBlock(request)
         }
 
         override suspend fun retireOwner(nativePartitionKey: String): SlockAvatarNativeMutationResult {
