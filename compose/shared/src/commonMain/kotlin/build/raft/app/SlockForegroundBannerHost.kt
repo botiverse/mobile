@@ -226,6 +226,17 @@ internal fun SlockForegroundMessageBannerView(
     // always starts seated; on a dismissing release the offset is left as-is
     // (the host unmounts the view) to avoid a one-frame snap-back flash.
     var swipeOffsetYDp by remember(banner.id) { mutableStateOf(0f) }
+    val gestureOwner =
+        rememberSlockGestureOwner(
+            surface = "foreground-banner",
+            semanticIdentity = banner.id,
+            callbacks =
+                ForegroundBannerGestureCallbacks(
+                    currentOffsetYDp = { swipeOffsetYDp },
+                    onOffsetYDpChange = { swipeOffsetYDp = it },
+                    onDismiss = onDismiss
+                )
+        )
     Box(
         modifier =
             Modifier
@@ -243,22 +254,34 @@ internal fun SlockForegroundMessageBannerView(
                     .offset(y = swipeOffsetYDp.dp)
                     // Keep the complete DOWN..UP sequence on the banner's own hit path.
                     .slockNativeDispatchCapture()
-                    .pointerInput(banner.id) {
+                    .slockGesturePointerInput(gestureOwner) { owner ->
+                        var gesture: SlockGestureSession<ForegroundBannerGestureCallbacks>? = null
                         detectVerticalDragGestures(
+                            onDragStart = { gesture = owner.beginGesture() },
                             onDragEnd = {
-                                if (shouldDismissForegroundBannerOnSwipeRelease(swipeOffsetYDp)) {
-                                    onDismiss()
+                                val callbacks =
+                                    (gesture ?: owner.beginGesture()).currentCallbacksOrNull()
+                                        ?: return@detectVerticalDragGestures
+                                if (shouldDismissForegroundBannerOnSwipeRelease(callbacks.currentOffsetYDp())) {
+                                    callbacks.onDismiss()
                                 } else {
-                                    swipeOffsetYDp = 0f
+                                    callbacks.onOffsetYDpChange(0f)
                                 }
                             },
-                            onDragCancel = { swipeOffsetYDp = 0f },
+                            onDragCancel = {
+                                (gesture ?: owner.beginGesture())
+                                    .currentCallbacksOrNull()
+                                    ?.onOffsetYDpChange(0f)
+                            },
                             onVerticalDrag = { _, dragAmount ->
-                                swipeOffsetYDp =
+                                (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                                    callbacks.onOffsetYDpChange(
                                     foregroundBannerDragOffsetAfterDelta(
-                                        currentOffsetYDp = swipeOffsetYDp,
+                                        currentOffsetYDp = callbacks.currentOffsetYDp(),
                                         deltaYDp = dragAmount.toDp().value
                                     )
+                                    )
+                                }
                             }
                         )
                     }
@@ -303,6 +326,12 @@ internal fun SlockForegroundMessageBannerView(
         }
     }
 }
+
+private data class ForegroundBannerGestureCallbacks(
+    val currentOffsetYDp: () -> Float,
+    val onOffsetYDpChange: (Float) -> Unit,
+    val onDismiss: () -> Unit
+)
 
 @Composable
 private fun SlockForegroundBannerText(

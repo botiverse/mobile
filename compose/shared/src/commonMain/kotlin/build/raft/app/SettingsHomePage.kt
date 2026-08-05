@@ -11168,16 +11168,41 @@ private fun SharedSettingsRow(
             Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack))
         }
         val copyable = row.copyValue.isNotBlank() && onCopyValue != null
+        val gestureOwner =
+            rememberSlockGestureOwner(
+                surface = "settings-row",
+                semanticIdentity = row.key,
+                callbacks =
+                    SharedSettingsRowGestureCallbacks(
+                        row = row,
+                        onCopyValue = onCopyValue,
+                        onAction = onAction
+                    )
+            )
         val rowGestureModifier =
             if (copyable) {
-                Modifier.pointerInput(row.key, row.copyValue, row.enabled) {
+                Modifier.slockGesturePointerInput(gestureOwner, row.copyValue, row.enabled) { owner ->
+                    var gesture: SlockGestureSession<SharedSettingsRowGestureCallbacks>? = null
                     detectTapGestures(
+                        onPress = {
+                            gesture = owner.beginGesture()
+                            tryAwaitRelease()
+                        },
                         onTap = {
-                            if (row.enabled) {
-                                onAction(row.key, row.value.takeIf { it.isNotBlank() })
+                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                                if (callbacks.row.enabled) {
+                                    callbacks.onAction(
+                                        callbacks.row.key,
+                                        callbacks.row.value.takeIf { it.isNotBlank() }
+                                    )
+                                }
                             }
                         },
-                        onLongPress = { onCopyValue?.invoke(row.copyValue) }
+                        onLongPress = {
+                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                                callbacks.onCopyValue?.invoke(callbacks.row.copyValue)
+                            }
+                        }
                     )
                 }
             } else {
@@ -11231,6 +11256,12 @@ private fun SharedSettingsRow(
         }
     }
 }
+
+private data class SharedSettingsRowGestureCallbacks(
+    val row: KuiklySharedSettingsRow,
+    val onCopyValue: ((String) -> Unit)?,
+    val onAction: (String, String?) -> Unit
+)
 
 @Composable
 internal fun SharedSettingsAboutContent(
@@ -19016,9 +19047,6 @@ private fun SharedHomeSavedResultCard(
     val sender = item.latestActivitySenderName ?: item.lastMessageSenderName
     val time = item.latestActivityAt ?: item.lastMessageAt
     val openGestureKey = remember(item) { item.inboxItemOpenGestureKey() }
-    val currentOnOpen by rememberUpdatedState(onOpen)
-    val currentOnUnsave by rememberUpdatedState(onUnsave)
-    val currentOnContextMenu by rememberUpdatedState(onContextMenu)
     val gestureGeneration = remember(item.key) { mutableStateOf(0L) }
     val gestureLogger = remember { slockLogger("SlockHomeSaved", "home_saved_gesture") }
     val savedMessageId = item.savedMessageIdOrNull()?.value.orEmpty()
@@ -19037,10 +19065,54 @@ private fun SharedHomeSavedResultCard(
                 "itemKey=${item.key.take(80)} messageId=${savedMessageId.take(80)}"
         )
         when (owner) {
-            SharedHomeSavedGestureOwner.Open -> currentOnOpen()
-            SharedHomeSavedGestureOwner.Unsave -> currentOnUnsave()
+            SharedHomeSavedGestureOwner.Open -> onOpen()
+            SharedHomeSavedGestureOwner.Unsave -> onUnsave()
         }
     }
+    val gestureOwner =
+        rememberSlockGestureOwner(
+            surface = "home-saved-result",
+            semanticIdentity = openGestureKey,
+            callbacks =
+                SharedHomeSavedResultGestureCallbacks(
+                    onTap = { localOffset, rowWidthPx, trailingActionWidthPx ->
+                        dispatchSavedGesture(
+                            owner =
+                                sharedHomeSavedGestureOwner(
+                                    tapX = localOffset.x,
+                                    rowWidthPx = rowWidthPx,
+                                    trailingActionWidthPx = trailingActionWidthPx
+                                ),
+                            source = "tap"
+                        )
+                    },
+                    onLongPress = { localOffset, rowWidthPx, trailingActionWidthPx ->
+                        val owner =
+                            sharedHomeSavedGestureOwner(
+                                tapX = localOffset.x,
+                                rowWidthPx = rowWidthPx,
+                                trailingActionWidthPx = trailingActionWidthPx
+                            )
+                        val generation = gestureGeneration.value + 1L
+                        gestureGeneration.value = generation
+                        if (owner == SharedHomeSavedGestureOwner.Open) {
+                            gestureLogger(
+                                "owner=context_menu action=context_menu source=long_press generation=$generation " +
+                                    "itemKey=${item.key.take(80)} messageId=${savedMessageId.take(80)}"
+                            )
+                            contentAnchor
+                                .resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                                ?.let(onContextMenu)
+                        } else {
+                            gestureLogger(
+                                "owner=ignored action=none source=long_press generation=$generation " +
+                                    "reason=unsave_zone_long_press itemKey=${item.key.take(80)} " +
+                                    "messageId=${savedMessageId.take(80)}"
+                            )
+                        }
+                    }
+                )
+        )
     SharedHomeSavedSelectedSurface(
         selected = selected,
         modifier =
@@ -19053,42 +19125,27 @@ private fun SharedHomeSavedResultCard(
                 surfaceModifier
                     .padding(horizontal = 12.dp, vertical = 12.dp)
                     .slockCaptureLiveRootAnchor(contentAnchor)
-                    .pointerInput(openGestureKey) {
+                    .slockGesturePointerInput(gestureOwner) { owner ->
                         val trailingActionWidthPx = SavedUnsaveHitTargetSize.toPx()
+                        var gesture: SlockGestureSession<SharedHomeSavedResultGestureCallbacks>? = null
                         detectTapGestures(
+                            onPress = {
+                                gesture = owner.beginGesture()
+                                tryAwaitRelease()
+                            },
                             onTap = { localOffset ->
-                                dispatchSavedGesture(
-                                    owner =
-                                        sharedHomeSavedGestureOwner(
-                                            tapX = localOffset.x,
-                                            rowWidthPx = size.width.toFloat(),
-                                            trailingActionWidthPx = trailingActionWidthPx
-                                        ),
-                                    source = "tap"
-                                )
+                                (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onTap(
+                                        localOffset,
+                                        size.width.toFloat(),
+                                        trailingActionWidthPx
+                                    )
                             },
                             onLongPress = { localOffset ->
-                                val owner =
-                                    sharedHomeSavedGestureOwner(
-                                        tapX = localOffset.x,
-                                        rowWidthPx = size.width.toFloat(),
-                                        trailingActionWidthPx = trailingActionWidthPx
+                                (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onLongPress(
+                                        localOffset,
+                                        size.width.toFloat(),
+                                        trailingActionWidthPx
                                     )
-                                val generation = gestureGeneration.value + 1L
-                                gestureGeneration.value = generation
-                                if (owner == SharedHomeSavedGestureOwner.Open) {
-                                    gestureLogger(
-                                        "owner=context_menu action=context_menu source=long_press generation=$generation " +
-                                            "itemKey=${item.key.take(80)} messageId=${savedMessageId.take(80)}"
-                                    )
-                                    contentAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnContextMenu)
-                                } else {
-                                    gestureLogger(
-                                        "owner=ignored action=none source=long_press generation=$generation " +
-                                            "reason=unsave_zone_long_press itemKey=${item.key.take(80)} " +
-                                            "messageId=${savedMessageId.take(80)}"
-                                    )
-                                }
                             }
                         )
                     },
@@ -19167,6 +19224,11 @@ private fun SharedHomeSavedResultCard(
         }
     }
 }
+
+private data class SharedHomeSavedResultGestureCallbacks(
+    val onTap: (Offset, Float, Float) -> Unit,
+    val onLongPress: (Offset, Float, Float) -> Unit
+)
 
 @Composable
 private fun SharedHomeSavedUnsaveButton(
@@ -19352,9 +19414,13 @@ private fun SharedHomeSearchEntityRow(
     onContextMenu: ((SlockPopoverAnchor) -> Unit)? = null
 ) {
     val gestureKey = remember(result.key, isPinned, onContextMenu != null) { "search-entity:${result.key}:$isPinned" }
-    val currentOnOpen by rememberUpdatedState(onOpen)
-    val currentOnContextMenu by rememberUpdatedState(onContextMenu)
     val contentAnchor = remember(gestureKey) { SlockLiveRootAnchorRef(identity = gestureKey) }
+    val gestureOwner =
+        rememberSlockGestureOwner(
+            surface = "home-search-entity",
+            semanticIdentity = gestureKey,
+            callbacks = SharedHomeSearchEntityGestureCallbacks(onOpen, onContextMenu, contentAnchor)
+        )
     Row(
         modifier =
             Modifier
@@ -19371,14 +19437,24 @@ private fun SharedHomeSearchEntityRow(
                 Modifier
                     .weight(1f)
                     .slockCaptureLiveRootAnchor(contentAnchor)
-                    .pointerInput(gestureKey) {
+                    .slockGesturePointerInput(gestureOwner) { owner ->
+                        var gesture: SlockGestureSession<SharedHomeSearchEntityGestureCallbacks>? = null
                         detectTapGestures(
-                            onTap = { currentOnOpen() },
+                            onPress = {
+                                gesture = owner.beginGesture()
+                                tryAwaitRelease()
+                            },
+                            onTap = {
+                                (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onOpen()
+                            },
                             onLongPress = { localOffset ->
-                                currentOnContextMenu
-                                    ?.let { callback ->
-                                        contentAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(callback)
+                                (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                                    callbacks.onContextMenu?.let { callback ->
+                                        callbacks.contentAnchor
+                                            .resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                                            ?.let(callback)
                                     }
+                                }
                             }
                         )
                     },
@@ -19411,6 +19487,12 @@ private fun SharedHomeSearchEntityRow(
         }
     }
 }
+
+private data class SharedHomeSearchEntityGestureCallbacks(
+    val onOpen: () -> Unit,
+    val onContextMenu: ((SlockPopoverAnchor) -> Unit)?,
+    val contentAnchor: SlockLiveRootAnchorRef
+)
 
 internal data class SearchEntityPinTarget(
     val conversationId: String,

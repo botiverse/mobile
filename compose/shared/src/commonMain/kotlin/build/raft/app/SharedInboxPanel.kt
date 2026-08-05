@@ -1581,6 +1581,12 @@ private fun Modifier.activityRowGestures(
     onOpenMenu: (SlockPopoverAnchor) -> Unit
 ): Modifier {
     val rootAnchor = remember(gestureKey) { SlockLiveRootAnchorRef(identity = gestureKey) }
+    val gestureOwner =
+        rememberSlockGestureOwner(
+            surface = "activity-row",
+            semanticIdentity = gestureKey,
+            callbacks = ActivityRowGestureCallbacks(onClick, onOpenMenu, rootAnchor)
+        )
     val anchored =
         this
             .then(
@@ -1590,18 +1596,33 @@ private fun Modifier.activityRowGestures(
                     Modifier
                 }
             )
-    return anchored.pointerInput(gestureKey) {
+    return anchored.slockGesturePointerInput(gestureOwner) { owner ->
+        var gesture: SlockGestureSession<ActivityRowGestureCallbacks>? = null
         detectTapGestures(
-            // Deliberately capture the callback owned by this pointerInput generation. Using
-            // rememberUpdatedState here lets a recomposed row replace the callback before the old
-            // DOWN is cancelled, which can open the item newly occupying the same screen slot.
-            onTap = { onClick() },
+            // Preserve the authority that owned DOWN for this gesture. The semantic owner token
+            // cancels a lazy-slot replacement, while ordinary recomposition does not tear down a
+            // 500 ms long press.
+            onPress = {
+                gesture = owner.beginGesture()
+                tryAwaitRelease()
+            },
+            onTap = { (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick() },
             onLongPress = { localOffset ->
-                rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(onOpenMenu)
+                (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                    callbacks.rootAnchor
+                        .resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                        ?.let(callbacks.onOpenMenu)
+                }
             }
         )
     }
 }
+
+private data class ActivityRowGestureCallbacks(
+    val onClick: () -> Unit,
+    val onOpenMenu: (SlockPopoverAnchor) -> Unit,
+    val rootAnchor: SlockLiveRootAnchorRef
+)
 
 internal fun InboxItem.inboxItemOpenGestureKey(): String =
     // A stable remember-key for the row's gesture handlers. Derived from the row's own

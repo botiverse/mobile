@@ -1220,8 +1220,17 @@ private fun SharedTaskCard(
     // Keep a live card coordinate so long-press conversion remains correct after scrolling.
     val rootAnchor =
         remember(task.id.value) { SlockLiveRootAnchorRef(identity = tasksStatusMenuOwnerIdentity(task.id.value)) }
-    val currentOnClick by rememberUpdatedState(onClick)
-    val currentOnLongPress by rememberUpdatedState(onLongPress)
+    val gestureOwner =
+        rememberSlockGestureOwner(
+            surface = "tasks-card",
+            semanticIdentity = task.id.value,
+            callbacks =
+                SharedTaskCardGestureCallbacks(
+                    onClick = onClick,
+                    onLongPress = onLongPress,
+                    rootAnchor = rootAnchor
+                )
+        )
     val description = task.description?.takeIf { it.isNotBlank() }
     Box(
         modifier = Modifier
@@ -1246,14 +1255,25 @@ private fun SharedTaskCard(
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .pointerInput(task.id.value) {
+                .slockGesturePointerInput(gestureOwner) { owner ->
+                    var gesture: SlockGestureSession<SharedTaskCardGestureCallbacks>? = null
                     // tap = open task; long-press = open status menu. Wrapping both in the
-                    // same pointerInput keeps gesture semantics consistent and avoids
+                    // same pointer input keeps gesture semantics consistent and avoids
                     // clickable() swallowing the long-press.
                     detectTapGestures(
-                        onTap = { currentOnClick() },
+                        onPress = {
+                            gesture = owner.beginGesture()
+                            tryAwaitRelease()
+                        },
+                        onTap = {
+                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick()
+                        },
                         onLongPress = { localOffset ->
-                            rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnLongPress)
+                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                                callbacks.rootAnchor
+                                    .resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                                    ?.let(callbacks.onLongPress)
+                            }
                         }
                     )
                 }
@@ -1360,6 +1380,12 @@ private fun SharedTaskCard(
         }
     }
 }
+
+private data class SharedTaskCardGestureCallbacks(
+    val onClick: () -> Unit,
+    val onLongPress: (SlockPopoverAnchor) -> Unit,
+    val rootAnchor: SlockLiveRootAnchorRef
+)
 
 internal fun tasksStatusChipClickIdentity(taskId: String, status: TaskStatus): String =
     "tasks-status:$taskId:${status.name}"
