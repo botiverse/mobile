@@ -366,7 +366,8 @@ class ThreadNewerPaginationTest {
             offset = -24,
             layoutGeneration = 3L,
             placement = LazyViewportAnchorPlacement.ExactOffset,
-            fallback = LazyViewportAnchorFallback.Free
+            fallback = LazyViewportAnchorFallback.Free,
+            provenance = LazyViewportCommandProvenance.Other
         )
 
     private fun shouldAutoLoad(

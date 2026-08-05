@@ -509,7 +509,8 @@ class LazyViewportControllerTest {
                 offset = -13,
                 layoutGeneration = 7L,
                 placement = LazyViewportAnchorPlacement.ExactOffset,
-                fallback = LazyViewportAnchorFallback.Free
+                fallback = LazyViewportAnchorFallback.Free,
+                provenance = LazyViewportCommandProvenance.Other
             )
         val intents =
             listOf(
@@ -691,7 +692,8 @@ class LazyViewportControllerTest {
                 offset = -23,
                 layoutGeneration = 12L,
                 placement = LazyViewportAnchorPlacement.ExactOffset,
-                fallback = LazyViewportAnchorFallback.Free
+                fallback = LazyViewportAnchorFallback.Free,
+                provenance = LazyViewportCommandProvenance.Other
             ),
             settled.intent
         )

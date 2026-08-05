@@ -260,7 +260,10 @@ internal fun reduceLazyViewport(
                                 offset = event.anchorOffset,
                                 layoutGeneration = event.layoutGeneration,
                                 placement = LazyViewportAnchorPlacement.ExactOffset,
-                                fallback = LazyViewportAnchorFallback.Free
+                                fallback = LazyViewportAnchorFallback.Free,
+                                // Drag settlement, not part of the focused
+                                // handoff: nothing here may be retired by it.
+                                provenance = LazyViewportCommandProvenance.Other
                             ),
                             emitCommand = false
                         )
@@ -436,7 +439,9 @@ private fun LazyViewportControllerState.onNewerPageSettled(
                         offset = event.requestAnchorOffset,
                         layoutGeneration = event.layoutGeneration,
                         placement = LazyViewportAnchorPlacement.ExactOffset,
-                        fallback = LazyViewportAnchorFallback.Free
+                        fallback = LazyViewportAnchorFallback.Free,
+                        // Newer-page settlement requesting its own anchor.
+                        provenance = LazyViewportCommandProvenance.Other
                     ),
                     emitCommand = true
                 )
