@@ -16605,36 +16605,24 @@ private fun ThreadMessagesList(
             }
         }
     }
-    LaunchedEffect(
-        threadInstanceKey,
-        renderPayload.focusedMessageId,
-        renderPayload.focusedMessageRequestNonce,
-        renderPayload.originStatus,
-        renderPayload.originMessage?.id,
-        lazyItemCount
-    ) {
-        val targetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        val targetIdentity =
-            focusedMessageAnchorIdentity(
-                messageId = targetMessageId,
-                requestNonce = renderPayload.focusedMessageRequestNonce
-            )
-        val startUserScrollGeneration = focusedAnchorStartUserScrollGeneration ?: return@LaunchedEffect
-        if (
-            !shouldCorrectFocusedAnchorAfterOriginHydration(
-                originStatus = renderPayload.originStatus,
-                targetIdentity = targetIdentity,
-                anchoredIdentity = focusedAnchorSessionIdentity,
-                correctedIdentity = correctedFocusedOriginIdentity,
-                scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
-                startUserScrollGeneration = startUserScrollGeneration,
-                currentUserScrollGeneration = userScrollGeneration.value
-            )
-        ) {
-            return@LaunchedEffect
-        }
+    ThreadFocusedOriginCorrectionEffect(
+        threadInstanceKey = threadInstanceKey,
+        targetMessageId = renderPayload.focusedMessageId,
+        requestNonce = renderPayload.focusedMessageRequestNonce,
+        originStatus = renderPayload.originStatus,
+        originMessageId = renderPayload.originMessage?.id,
+        lazyItemCount = lazyItemCount,
+        anchoredIdentity = focusedAnchorSessionIdentity,
+        correctedIdentity = correctedFocusedOriginIdentity,
+        scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+        startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
+        currentUserScrollGeneration = userScrollGeneration.value
+    ) correction@{ trigger ->
+        val targetMessageId = trigger.targetMessageId
+        val targetIdentity = trigger.targetIdentity
+        val startUserScrollGeneration = trigger.startUserScrollGeneration
         val targetIndex = renderPayload.focusedMessageListItemIndex()
-        if (targetIndex < 0) return@LaunchedEffect
+        if (targetIndex < 0) return@correction
         listState.awaitThreadMessagesLayoutFrame()
         listState.awaitThreadMessagesLayoutStability(targetIndex)
         if (
@@ -16650,7 +16638,7 @@ private fun ThreadMessagesList(
             listState.isScrollInProgress ||
             !listState.canScrollToThreadItem(targetIndex)
         ) {
-            return@LaunchedEffect
+            return@correction
         }
         correctedFocusedOriginIdentity = targetIdentity
         dispatchViewportEvent(
@@ -18643,6 +18631,74 @@ internal fun shouldCorrectFocusedAnchorAfterOriginHydration(
         correctedIdentity != targetIdentity &&
         scrollInterruptedIdentity != targetIdentity &&
         startUserScrollGeneration == currentUserScrollGeneration
+
+internal data class ThreadFocusedOriginCorrectionTrigger(
+    val targetMessageId: String,
+    val targetIdentity: String,
+    val startUserScrollGeneration: Int
+)
+
+/**
+ * Starts the one-shot origin-hydration correction once its focused anchor owner is ready.
+ *
+ * Keeping the trigger in a small real Compose effect makes the ordering contract executable:
+ * origin hydration and initial anchor readiness are independent asynchronous inputs.
+ */
+@Composable
+internal fun ThreadFocusedOriginCorrectionEffect(
+    threadInstanceKey: String,
+    targetMessageId: String?,
+    requestNonce: Int,
+    originStatus: String,
+    originMessageId: String?,
+    lazyItemCount: Int,
+    anchoredIdentity: String?,
+    correctedIdentity: String?,
+    scrollInterruptedIdentity: String?,
+    startUserScrollGeneration: Int?,
+    currentUserScrollGeneration: Int,
+    onReady: suspend (ThreadFocusedOriginCorrectionTrigger) -> Unit
+) {
+    val currentOnReady by rememberUpdatedState(onReady)
+    LaunchedEffect(
+        threadInstanceKey,
+        targetMessageId,
+        requestNonce,
+        originStatus,
+        originMessageId,
+        lazyItemCount,
+        anchoredIdentity,
+        startUserScrollGeneration
+    ) {
+        val focusedMessageId = targetMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val targetIdentity =
+            focusedMessageAnchorIdentity(
+                messageId = focusedMessageId,
+                requestNonce = requestNonce
+            )
+        val startGeneration = startUserScrollGeneration ?: return@LaunchedEffect
+        if (
+            !shouldCorrectFocusedAnchorAfterOriginHydration(
+                originStatus = originStatus,
+                targetIdentity = targetIdentity,
+                anchoredIdentity = anchoredIdentity,
+                correctedIdentity = correctedIdentity,
+                scrollInterruptedIdentity = scrollInterruptedIdentity,
+                startUserScrollGeneration = startGeneration,
+                currentUserScrollGeneration = currentUserScrollGeneration
+            )
+        ) {
+            return@LaunchedEffect
+        }
+        currentOnReady(
+            ThreadFocusedOriginCorrectionTrigger(
+                targetMessageId = focusedMessageId,
+                targetIdentity = targetIdentity,
+                startUserScrollGeneration = startGeneration
+            )
+        )
+    }
+}
 
 // The session policy as a pure state machine (task #567). Precedence:
 // user interaction always wins (#554 semantics), then the hard cap (never
