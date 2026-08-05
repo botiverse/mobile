@@ -15,6 +15,23 @@ data class SharedDownloadedBytes(
     val contentType: String?
 )
 
+/**
+ * Status-preserving response used by the platform avatar cache on the same
+ * NetworkKMM client as ordinary binary downloads.
+ *
+ * [exceededMaxBytes] is reported without retaining an over-limit response in
+ * memory. Callers still receive the terminal HTTP status so they can classify
+ * 304/404/410 independently from transport failures.
+ */
+data class SharedConditionalDownloadedBytes(
+    val statusCode: Int,
+    val bytes: ByteArray,
+    val contentType: String?,
+    val eTag: String?,
+    val lastModified: String?,
+    val exceededMaxBytes: Boolean
+)
+
 fun interface BinaryDownloadDiagnosticsLogger {
     fun record(tag: String, message: String)
 }
@@ -70,6 +87,106 @@ object SharedBinaryDownloader {
             bytes = combineDownloadedChunks(chunks, totalBytes),
             contentType = contentType
         )
+    }
+
+    suspend fun fetchConditionalBytes(
+        url: String,
+        ifNoneMatch: String?,
+        ifModifiedSince: String?,
+        maxBytes: Int
+    ): SharedConditionalDownloadedBytes {
+        require(maxBytes > 0)
+        val chunks = mutableListOf<ByteArray>()
+        var retainedBytes = 0
+        var downloadedBytes = 0L
+        var exceededMaxBytes = false
+        var responseStartStatusCode = 0
+        var responseHeaders: Map<String, List<String>> = emptyMap()
+        val startedAt = TimeSource.Monotonic.markNow()
+        val urlSummary = binaryDownloadUrlDiagnostics(url)
+        recordDiagnostics("operation=fetch_conditional_bytes status=start $urlSummary")
+        return suspendCancellableCoroutine { continuation ->
+            val call =
+                client.downloadStream(
+                    request =
+                        NetworkRequest(
+                            method = VBTransportMethod.GET,
+                            url = url,
+                            body = NetworkBody.Empty,
+                            policy = NetworkRequestPolicy(timeoutMillis = DOWNLOAD_TIMEOUT_MILLIS)
+                        ).apply {
+                            setHeader("Accept", "image/*")
+                            ifNoneMatch?.trim()?.takeIf(String::isNotEmpty)?.let {
+                                setHeader("If-None-Match", it)
+                            }
+                            ifModifiedSince?.trim()?.takeIf(String::isNotEmpty)?.let {
+                                setHeader("If-Modified-Since", it)
+                            }
+                        },
+                    onResponseStart = { statusCode, contentLength, headers ->
+                        responseStartStatusCode = statusCode
+                        responseHeaders = headers
+                        if (contentLength != null && contentLength > maxBytes.toLong()) {
+                            exceededMaxBytes = true
+                        }
+                        recordDiagnostics(
+                            "operation=fetch_conditional_bytes status=response_start http=$statusCode " +
+                                "expectedBytes=${contentLength ?: "unknown"} maxBytes=$maxBytes $urlSummary"
+                        )
+                    },
+                    onChunk = { chunk ->
+                        downloadedBytes += chunk.size.toLong()
+                        if (!exceededMaxBytes && retainedBytes + chunk.size <= maxBytes) {
+                            chunks += chunk.copyOf()
+                            retainedBytes += chunk.size
+                        } else if (!exceededMaxBytes) {
+                            exceededMaxBytes = true
+                            chunks.clear()
+                            retainedBytes = 0
+                        }
+                    },
+                    onComplete = { response ->
+                        if (!continuation.isActive) return@downloadStream
+                        val status = response.statusCode ?: responseStartStatusCode
+                        val headers = response.headers.takeIf { it.isNotEmpty() } ?: responseHeaders
+                        val bytes =
+                            if (exceededMaxBytes) {
+                                ByteArray(0)
+                            } else {
+                                combineDownloadedChunks(chunks, retainedBytes)
+                            }
+                        recordDiagnostics(
+                            "operation=fetch_conditional_bytes status=complete http=$status " +
+                                "downloadedBytes=$downloadedBytes retainedBytes=${bytes.size} " +
+                                "maxExceeded=$exceededMaxBytes " +
+                                "contentType=${headers.firstHeaderValue("Content-Type") ?: "unknown"} " +
+                                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} $urlSummary"
+                        )
+                        continuation.resume(
+                            SharedConditionalDownloadedBytes(
+                                statusCode = status,
+                                bytes = bytes,
+                                contentType =
+                                    headers.firstHeaderValue("Content-Type")
+                                        ?.substringBefore(';')
+                                        ?.trim()
+                                        ?.takeIf(String::isNotBlank),
+                                eTag = headers.firstHeaderValue("ETag")?.trim()?.takeIf(String::isNotEmpty),
+                                lastModified =
+                                    headers.firstHeaderValue("Last-Modified")?.trim()?.takeIf(String::isNotEmpty),
+                                exceededMaxBytes = exceededMaxBytes
+                            )
+                        )
+                    }
+                )
+            continuation.invokeOnCancellation {
+                recordDiagnostics(
+                    "operation=fetch_conditional_bytes status=canceled downloadedBytes=$downloadedBytes " +
+                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} $urlSummary"
+                )
+                call.cancel()
+            }
+        }
     }
 
     suspend fun download(
@@ -181,6 +298,12 @@ object SharedBinaryDownloader {
             ?.substringBefore(';')
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+
+    private fun Map<String, List<String>>.firstHeaderValue(name: String): String? =
+        entries
+            .firstOrNull { (headerName, _) -> headerName.equals(name, ignoreCase = true) }
+            ?.value
+            ?.firstOrNull()
 
     private fun com.tencent.kmm.network.export.NetworkResponse.downloadErrorMessage(): String =
         listOfNotNull(error?.message, rawResponse?.errorMessage)

@@ -91,6 +91,7 @@ import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.core.data.diagnostics.SlockPerformanceDiagnostics
 import build.raft.app.core.data.storage.StorageClearTarget
 import build.raft.app.core.data.storage.StorageManagementRepository
+import build.raft.app.core.data.storage.StorageManagementRoots
 import build.raft.app.core.data.storage.StorageManagementSnapshot
 import build.raft.app.widget.SlockActivityWidgetProvider
 import build.raft.app.widget.SlockAgentStatusWidgetProvider
@@ -2242,6 +2243,7 @@ open class SlockKuiklyActivity :
 
 internal object SlockKuiklyAdapters {
     private var initialized = false
+    private var imageAdapter: SlockKuiklyImageAdapter? = null
 
     fun init(context: Context) {
         installAndroidAppScopeSharedKeyValueStores(context)
@@ -2256,7 +2258,9 @@ internal object SlockKuiklyAdapters {
         }
         initialized = true
         with(KuiklyRenderAdapterManager) {
-            krImageAdapter = SlockKuiklyImageAdapter(context.applicationContext)
+            val adapter = SlockKuiklyImageAdapter(context.applicationContext)
+            imageAdapter = adapter
+            krImageAdapter = adapter
             krLogAdapter = SlockKuiklyLogAdapter
             krUncaughtExceptionHandlerAdapter = SlockKuiklyExceptionAdapter
             SlockKuiklyFontAdapter.init(context.applicationContext)
@@ -2266,6 +2270,21 @@ internal object SlockKuiklyAdapters {
             krVideoViewAdapter = SlockKRVideoViewAdapter
         }
     }
+
+    fun avatarCacheCapability(params: String?, callback: KuiklyRenderCallback?) {
+        val adapter = imageAdapter
+        if (adapter == null) {
+            callback?.invoke(
+                    SlockAndroidAvatarCacheContract.responseContract(0L).apply {
+                        put("status", "unsupported")
+                    }
+            )
+            return
+        }
+        adapter.avatarCacheCapability(params, callback)
+    }
+
+    fun clearAvatarCache(): Boolean = imageAdapter?.clearAvatarCache() ?: true
 }
 
 private data class PendingThreadAttachmentUpload(
@@ -2524,6 +2543,7 @@ private class SlockKuiklyImageAdapter(
     private companion object {
         private const val NETWORK_BITMAP_CACHE_BYTES = 12 * 1024 * 1024
         private const val MAX_SINGLE_NETWORK_BITMAP_BYTES = 2 * 1024 * 1024
+        private const val AVATAR_BITMAP_CACHE_BYTES = 8 * 1024 * 1024
         private const val MAX_BITMAP_DECODE_EDGE_PX = 4096
 
         private val networkBitmapCache =
@@ -2536,6 +2556,49 @@ private class SlockKuiklyImageAdapter(
                 SlockImageRequestSingleFlight<SlockNetworkImageRequestKey, Bitmap>()
     }
 
+    private val avatarBitmapCache =
+            SlockAvatarDecodedMemoryCache<Bitmap>(AVATAR_BITMAP_CACHE_BYTES) { bitmap ->
+                bitmap.allocationByteCount.coerceAtLeast(bitmap.byteCount)
+            }
+    private val avatarDiskStore =
+            SlockAndroidAvatarDiskStore(
+                    root =
+                            StorageManagementRoots.fromContext(context)
+                                    .imageCacheDirs
+                                    .single()
+                                    .resolve("slock-avatar-cache-v1"),
+                    onEntriesRemoved = { keys -> keys.forEach(avatarBitmapCache::removeEntry) }
+            )
+    private val avatarCacheManager =
+            SlockAndroidAvatarCacheManager(
+                    store = avatarDiskStore,
+                    networkFetcher =
+                            SlockAndroidAvatarNetworkFetcher { request, hasAdmittedBytes ->
+                                val response =
+                                        runBlocking {
+                                            SharedBinaryDownloader.fetchConditionalBytes(
+                                                    url = request.remoteUrl,
+                                                    ifNoneMatch = request.eTag.takeIf { hasAdmittedBytes },
+                                                    ifModifiedSince = request.lastModified.takeIf { hasAdmittedBytes },
+                                                    maxBytes = SlockAndroidAvatarCacheContract.MaxEntryBytes
+                                            )
+                                        }
+                                SlockAndroidAvatarNetworkResponse(
+                                        statusCode = response.statusCode,
+                                        bytes = response.bytes,
+                                        contentType = response.contentType,
+                                        eTag = response.eTag,
+                                        lastModified = response.lastModified,
+                                        exceededMaxBytes = response.exceededMaxBytes
+                                )
+                            },
+                    contentValidator = ::isValidAvatarContent,
+                    workExecutor =
+                            SlockAvatarCacheWorkExecutor { block ->
+                                SlockKuiklyThreadAdapter.executeOnSubThread(block)
+                            }
+            )
+
     override fun fetchDrawable(
             imageLoadOption: HRImageLoadOption,
             callback: (drawable: Drawable?) -> Unit
@@ -2547,6 +2610,8 @@ private class SlockKuiklyImageAdapter(
                         "requestHeight=${imageLoadOption.requestHeight} ${binaryDownloadUrlDiagnostics(imageLoadOption.src)}"
         )
         when {
+            SlockAndroidAvatarCacheContract.isManagedImageModel(imageLoadOption.src) ->
+                    loadTypedAvatar(imageLoadOption, callback)
             imageLoadOption.isSvgSource() -> loadSvg(imageLoadOption, callback)
             imageLoadOption.isBase64() -> loadFromBase64(imageLoadOption, callback)
             imageLoadOption.isAssets() -> loadFromAssets(imageLoadOption, callback)
@@ -2562,6 +2627,225 @@ private class SlockKuiklyImageAdapter(
             }
         }
     }
+
+    fun avatarCacheCapability(params: String?, callback: KuiklyRenderCallback?) {
+        val replied = AtomicBoolean(false)
+        fun reply(response: Map<String, Any>) {
+            if (replied.compareAndSet(false, true)) callback?.invoke(response)
+        }
+        val command = runCatching { JSONObject(params ?: "{}") }.getOrNull()
+        if (command == null || !SlockAndroidAvatarCacheContract.acknowledgesRequestContract(command)) {
+            reply(avatarUnsupportedResponse())
+            return
+        }
+        when (command.optString("action")) {
+            "inspect" -> {
+                val key = command.avatarEntryKeyOrNull()
+                if (key == null) {
+                    reply(avatarUnsupportedResponse())
+                    return
+                }
+                SlockKuiklyThreadAdapter.executeOnSubThread {
+                    runCatching { avatarCacheManager.inspect(key) }
+                            .onSuccess { inspection ->
+                                reply(
+                                        SlockAndroidAvatarCacheContract.responseContract(inspection.managedBytes).apply {
+                                            put("status", "ok")
+                                            put("bytesAvailable", inspection.bytesAvailable)
+                                            put("bytesDecodable", inspection.bytesDecodable)
+                                        }
+                                )
+                            }
+                            .onFailure { reply(avatarUnsupportedResponse()) }
+                }
+            }
+            "awaitResult" -> {
+                val request = SlockAndroidAvatarCacheContract.parseRequest(command)
+                if (request == null) {
+                    reply(avatarUnsupportedResponse())
+                    return
+                }
+                runCatching {
+                    avatarCacheManager.awaitResult(request) { result ->
+                        reply(result.toBridgeMap(safeAvatarManagedBytes()))
+                    }
+                }.onFailure { reply(avatarUnsupportedResponse()) }
+            }
+            "finalize" -> {
+                val request = SlockAndroidAvatarCacheContract.parseRequest(command)
+                val outcome = command.optString("outcome")
+                if (request == null || outcome !in avatarFinalizeOutcomes) {
+                    reply(avatarUnsupportedResponse())
+                    return
+                }
+                SlockKuiklyThreadAdapter.executeOnSubThread {
+                    val mutation =
+                            runCatching { avatarCacheManager.finalize(request, outcome) }
+                                    .getOrElse { SlockAndroidAvatarMutation.Failed("avatar_cache_finalize_failed") }
+                    reply(avatarMutationResponse(mutation))
+                }
+            }
+            "rollback" -> {
+                val request = SlockAndroidAvatarCacheContract.parseRequest(command)
+                if (request == null) {
+                    reply(avatarUnsupportedResponse())
+                    return
+                }
+                SlockKuiklyThreadAdapter.executeOnSubThread {
+                    val mutation =
+                            runCatching { avatarCacheManager.rollback(request) }
+                                    .getOrElse { SlockAndroidAvatarMutation.Failed("avatar_cache_rollback_failed") }
+                    reply(avatarMutationResponse(mutation))
+                }
+            }
+            "retireOwner" -> {
+                val partitionKey = SlockAndroidAvatarCacheContract.parseOpaqueKey(command, "nativePartitionKey")
+                if (partitionKey == null) {
+                    reply(avatarUnsupportedResponse())
+                    return
+                }
+                SlockKuiklyThreadAdapter.executeOnSubThread {
+                    avatarBitmapCache.removeOwner(partitionKey)
+                    val mutation =
+                            runCatching { avatarCacheManager.retireOwner(partitionKey) }
+                                    .getOrElse { SlockAndroidAvatarMutation.Failed("avatar_cache_owner_retire_failed") }
+                    reply(avatarMutationResponse(mutation))
+                }
+            }
+            "retireSubject" -> {
+                val partitionKey = SlockAndroidAvatarCacheContract.parseOpaqueKey(command, "nativePartitionKey")
+                val subjectKey = SlockAndroidAvatarCacheContract.parseOpaqueKey(command, "nativeSubjectKey")
+                if (partitionKey == null || subjectKey == null) {
+                    reply(avatarUnsupportedResponse())
+                    return
+                }
+                SlockKuiklyThreadAdapter.executeOnSubThread {
+                    avatarBitmapCache.removeSubject(partitionKey, subjectKey)
+                    val mutation =
+                            runCatching { avatarCacheManager.retireSubject(partitionKey, subjectKey) }
+                                    .getOrElse { SlockAndroidAvatarMutation.Failed("avatar_cache_subject_retire_failed") }
+                    reply(avatarMutationResponse(mutation))
+                }
+            }
+            else -> reply(avatarUnsupportedResponse())
+        }
+    }
+
+    fun clearAvatarCache(): Boolean {
+        avatarBitmapCache.clear()
+        return runCatching(avatarCacheManager::clearAll).getOrDefault(false)
+    }
+
+    private fun loadTypedAvatar(
+            imageLoadOption: HRImageLoadOption,
+            callback: (drawable: Drawable?) -> Unit
+    ) {
+        val parsed = SlockAndroidAvatarCacheContract.parseImageModel(imageLoadOption.src)
+        val request = (parsed as? SlockAndroidAvatarDescriptorParse.Managed)?.request
+        if (request == null) {
+            SlockAppLog.record("SlockImageLoad", "source=avatar_managed status=descriptor_rejected")
+            callback(null)
+            return
+        }
+        val decodeKey = imageLoadOption.avatarDecodeKey(request)
+        val permitsAdmittedMemory =
+                request.readMode == SlockAndroidAvatarReadMode.RenderFresh ||
+                        request.readMode == SlockAndroidAvatarReadMode.RenderStaleRevalidate ||
+                        request.readMode == SlockAndroidAvatarReadMode.RenderStaleSuppressed
+        if (permitsAdmittedMemory) {
+            avatarBitmapCache.get(decodeKey)?.takeUnless(Bitmap::isRecycled)?.let { bitmap ->
+                callback(bitmap.toBitmapDrawable())
+                runCatching { avatarCacheManager.recordMemoryRendered(request) }
+                return
+            }
+        }
+        runCatching {
+            avatarCacheManager.load(request) { payload ->
+                if (payload == null) {
+                    callback(null)
+                    return@load
+                }
+                val drawable =
+                        runCatching {
+                            drawableFromBytes(payload.bytes, imageLoadOption, payload.contentType)
+                        }.getOrNull()
+                val bitmap = (drawable as? BitmapDrawable)?.bitmap
+                if (bitmap != null && !bitmap.isRecycled) avatarBitmapCache.put(decodeKey, bitmap)
+                callback(drawable)
+            }
+        }.onFailure { callback(null) }
+    }
+
+    private fun isValidAvatarContent(bytes: ByteArray, contentType: String?): Boolean =
+            runCatching {
+                if (bytes.looksLikeSvg(contentType)) {
+                    SVG.getFromInputStream(ByteArrayInputStream(bytes)).apply {
+                        setDocumentWidth(16f)
+                        setDocumentHeight(16f)
+                        renderToPicture(16, 16)
+                    }
+                    true
+                } else {
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching false
+                    var sampleSize = 1
+                    while (max(bounds.outWidth, bounds.outHeight) / sampleSize > 128) sampleSize *= 2
+                    BitmapFactory.decodeByteArray(
+                            bytes,
+                            0,
+                            bytes.size,
+                            BitmapFactory.Options().apply { inSampleSize = sampleSize.coerceAtLeast(1) }
+                    )?.let { bitmap ->
+                        bitmap.recycle()
+                        true
+                    } ?: false
+                }
+            }.getOrDefault(false)
+
+    private fun HRImageLoadOption.avatarDecodeKey(request: SlockAndroidAvatarRequest): SlockAndroidAvatarDecodeKey =
+            SlockAndroidAvatarDecodeKey(
+                    entryKey = request.entryKey,
+                    requestWidth = requestWidth.coerceAtLeast(0),
+                    requestHeight = requestHeight.coerceAtLeast(0),
+                    needResize = needResize,
+                    scaleType = scaleType.name
+            )
+
+    private fun JSONObject.avatarEntryKeyOrNull(): SlockAndroidAvatarEntryKey? {
+        val partition = SlockAndroidAvatarCacheContract.parseOpaqueKey(this, "nativePartitionKey") ?: return null
+        val subject = SlockAndroidAvatarCacheContract.parseOpaqueKey(this, "nativeSubjectKey") ?: return null
+        val bytes = SlockAndroidAvatarCacheContract.parseOpaqueKey(this, "nativeBytesKey") ?: return null
+        return SlockAndroidAvatarEntryKey(partition, subject, bytes)
+    }
+
+    private fun avatarUnsupportedResponse(): Map<String, Any> =
+            SlockAndroidAvatarCacheContract.responseContract(safeAvatarManagedBytes()).apply {
+                put("status", "unsupported")
+            }
+
+    private fun avatarMutationResponse(mutation: SlockAndroidAvatarMutation): Map<String, Any> =
+            SlockAndroidAvatarCacheContract.responseContract(safeAvatarManagedBytes()).apply {
+                when (mutation) {
+                    SlockAndroidAvatarMutation.Accepted -> put("status", "ok")
+                    is SlockAndroidAvatarMutation.Failed -> {
+                        put("status", "error")
+                        put("code", mutation.code)
+                    }
+                }
+            }
+
+    private fun safeAvatarManagedBytes(): Long =
+            runCatching(avatarCacheManager::managedBytes).getOrDefault(0L)
+
+    private val avatarFinalizeOutcomes =
+            setOf(
+                    "successful_bytes",
+                    "not_modified",
+                    "resource_absent",
+                    "invalid_content",
+                    "temporary_transport"
+            )
 
     override fun getDrawableWidth(
             kuiklyRenderViewContext: KuiklyRenderViewContext,
@@ -2974,6 +3258,7 @@ private class SlockKuiklyImageAdapter(
 
     private fun HRImageLoadOption.slockSourceKind(): String =
             when {
+                SlockAndroidAvatarCacheContract.isManagedImageModel(src) -> "avatar_managed"
                 isSvgSource() -> "svg"
                 isBase64() -> "base64"
                 isAssets() -> "assets"
@@ -2986,7 +3271,10 @@ private class SlockKuiklyImageAdapter(
         if (contentType?.contains("svg", ignoreCase = true) == true) {
             return true
         }
-        return toString(StandardCharsets.UTF_8).trimStart().startsWith("<svg", ignoreCase = true)
+        val prefixLength = size.coerceAtMost(512)
+        return String(this, 0, prefixLength, StandardCharsets.UTF_8)
+                .trimStart()
+                .startsWith("<svg", ignoreCase = true)
     }
 
     private fun decodeSvgDataUri(src: String): String {
@@ -3127,6 +3415,10 @@ internal class SlockKuiklyBridgeModule(
             }
             "settingsCapability" -> {
                 settingsCapability(params, callback)
+                null
+            }
+            "avatarCacheCapability" -> {
+                SlockKuiklyAdapters.avatarCacheCapability(params, callback)
                 null
             }
             "threadAttachmentUpload" -> {
@@ -4154,6 +4446,12 @@ internal class SlockKuiklyBridgeModule(
                     "temporaryAndLogs" -> StorageClearTarget.TemporaryAndLogs
                     else -> null
                 } ?: return mapOf("status" to "error", "code" to "settings_storage_clear_unsupported")
+        if (clearTarget == StorageClearTarget.ImageCache && !SlockKuiklyAdapters.clearAvatarCache()) {
+            return mapOf(
+                    "status" to "error",
+                    "code" to "settings_avatar_cache_clear_failed"
+            )
+        }
         val repository = StorageManagementRepository(appContext)
         val snapshot =
                 if (clearTarget == StorageClearTarget.AttachmentDownloads) {
