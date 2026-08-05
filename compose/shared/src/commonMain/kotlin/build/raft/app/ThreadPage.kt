@@ -17407,6 +17407,21 @@ private fun ThreadMessagesList(
             } else {
                 initialBottomAnchorTrailingPaddingPx
             }
+        // task #990: the distinguishing receipt for this path. Removing the
+        // earlier bypass took its log line with it, which would have left the
+        // next capture unable to separate "never reached the bottom anchor"
+        // from "reached it and still went white" — the two readings that lead
+        // to completely different next steps.
+        if (correctionPass.kind == ThreadImeCorrectionKind.LatestBottomAnchor) {
+            diagnosticsLogger(
+                "thread_ime_latest_bottom_anchor result=issued " +
+                    "messageId=${focusedTargetMessageId.orEmpty()} " +
+                    "targetIndex=$focusedTargetItemIndex latestMessageIndex=$latestMessageListItemIndex " +
+                    "fitHeightPx=${focusedTailFit.fitHeightPx} fitViewportPx=${focusedTailFit.viewportHeightPx} " +
+                    "tailFits=${focusedTailFit.fitsViewport} offsetPx=$renderedTailOffsetPx " +
+                    "keyboardInsetDp=$composerKeyboardInsetDp handoffOwed=${imeHandoffState.owes(focusedTargetIdentity)}"
+            )
+        }
         val issuedPlacement =
             applyThreadImeCorrection(
                 decision = layoutDecision,
