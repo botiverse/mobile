@@ -16,8 +16,6 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 
@@ -119,9 +117,8 @@ class MemberRepositoryDataSourceTest {
         assertTrue(network.requests.any { it.matches("DELETE", "agents/agent-1") })
     }
 
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
-    fun agentDetailStartsIndependentSectionsTogetherWithoutFullAgentsFallback() = runTest {
+    fun agentDetailStartsIndependentSectionsTogetherWithoutFullAgentsFallback() = runBlocking {
         val network = FakeMemberNetworkClient()
         val gate = CompletableDeferred<Unit>()
         network.detailRequestGate = gate
@@ -132,18 +129,17 @@ class MemberRepositoryDataSourceTest {
         }
 
         try {
-            runCurrent()
+            yield()
             assertEquals(FakeMemberNetworkClient.expectedDetailRequestStarts, network.detailRequestsStarted)
             assertFalse(network.requests.any { it.matches("GET", "agents") })
         } finally {
             gate.complete(Unit)
         }
-        runCurrent()
         assertIs<DataResult.Content<AgentDetailSnapshot>>(result.await())
     }
 
     @Test
-    fun agentDetailCurrentActivityComesFromSingleAgentSummary() = runTest {
+    fun agentDetailCurrentActivityComesFromSingleAgentSummary() = runBlocking {
         val network =
             FakeMemberNetworkClient().apply {
                 agentSummaryActivity = "working"
@@ -168,7 +164,7 @@ class MemberRepositoryDataSourceTest {
     }
 
     @Test
-    fun agentDetailSummaryRemainsTheOnlyRequiredSection() = runTest {
+    fun agentDetailSummaryRemainsTheOnlyRequiredSection() = runBlocking {
         val network =
             FakeMemberNetworkClient().apply {
                 agentSummaryResponse = HomeNetworkResponse(code = 503, bodyText = """{"error":"unavailable"}""")
