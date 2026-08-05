@@ -17042,6 +17042,22 @@ private fun ThreadMessagesList(
                 focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
                 settledCorrectionIdentity = settledFocusedOriginCorrectionIdentity
             )
+        // The debt is scoped to one rise: a keyboard that has gone away takes
+        // its owed correction with it, otherwise the resolver retains a pending
+        // change that nothing will ever discharge.
+        if (
+            composerHandoffVoidedByKeyboardClose(
+                owed = composerHandoffOwed(composerHandoffPendingIdentity, focusedTargetIdentity),
+                keyboardRaised = composerKeyboardInsetDp > 0f
+            )
+        ) {
+            composerHandoffPendingIdentity = null
+            diagnosticsLogger(
+                "thread_composer_handoff result=voided_keyboard_closed " +
+                    "messageId=${focusedTargetMessageId.orEmpty()} " +
+                    "keyboardInsetDp=$lastComposerKeyboardInsetDp->$composerKeyboardInsetDp"
+            )
+        }
         // task #990: single-owner handoff at the keyboard onset. The real layout
         // is left alone — the viewport still shrinks normally — but the focused
         // transaction stops competing for it, so this shrink is corrected once,
@@ -19250,6 +19266,17 @@ internal enum class ThreadImeOnsetOwnershipAction {
  */
 internal fun composerHandoffOwed(handoffIdentity: String?, targetIdentity: String?): Boolean =
     handoffIdentity != null && handoffIdentity == targetIdentity
+
+/**
+ * Whether an owed correction has outlived the rise that created it.
+ *
+ * The debt belongs to one keyboard rise. If the target never became measurable
+ * before the keyboard went away, issuing the correction later would move the
+ * list for a viewport that has already been restored — and leaving the debt
+ * outstanding would keep the resolver retaining a pending change forever.
+ */
+internal fun composerHandoffVoidedByKeyboardClose(owed: Boolean, keyboardRaised: Boolean): Boolean =
+    owed && !keyboardRaised
 
 internal fun threadImeOnsetOwnershipAction(
     keyboardRising: Boolean,

@@ -494,6 +494,20 @@ class ThreadImeOnsetOwnershipTest {
     }
 
     @Test
+    fun anOwedCorrectionDoesNotOutliveTheRiseThatCreatedIt() {
+        // If the target never became measurable before the keyboard went away,
+        // the debt must be voided: issuing it later would move the list for a
+        // viewport that has already been restored, and holding it would leave
+        // the resolver retaining a pending change nothing can discharge.
+        assertTrue(composerHandoffVoidedByKeyboardClose(owed = true, keyboardRaised = false))
+        assertFalse(
+            composerHandoffVoidedByKeyboardClose(owed = true, keyboardRaised = true),
+            "a rise still in progress keeps its debt"
+        )
+        assertFalse(composerHandoffVoidedByKeyboardClose(owed = false, keyboardRaised = false))
+    }
+
+    @Test
     fun theHealthyPathStillCorrectsItsOwnShrink() {
         // 02:26:14 unchanged: consumed before the keyboard, one composer command.
         assertTrue(
