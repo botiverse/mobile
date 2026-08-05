@@ -314,6 +314,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -15379,11 +15380,30 @@ private fun ThreadMessagesList(
     val dispatchViewportEvent: (LazyViewportEvent) -> Unit = { event ->
         viewportControllerState = reduceLazyViewport(viewportControllerState, event)
     }
-    suspend fun awaitViewportCommandSettlement(commandId: LazyViewportCommandId) {
-        snapshotFlow {
-            viewportControllerState.epoch to viewportControllerState.pendingCommand?.id
-        }.first { (epoch, pendingId) ->
-            epoch != commandId.epoch || pendingId == null
+    /**
+     * Waits for [commandId] to leave the pending slot and reports how it left.
+     *
+     * task #990: callers used to learn only that the wait had ended, so a
+     * command superseded before it applied was indistinguishable from one that
+     * landed — and the origin correction published success for exactly that case
+     * whenever the target happened to be visible afterwards.
+     */
+    suspend fun awaitViewportCommandSettlement(commandId: LazyViewportCommandId): String {
+        var observedReplacement = false
+        val (settledEpoch, _) =
+            snapshotFlow {
+                viewportControllerState.epoch to viewportControllerState.pendingCommand?.id
+            }.onEach { (_, pendingId) ->
+                if (pendingId != null && pendingId != commandId && pendingId.epoch == commandId.epoch) {
+                    observedReplacement = true
+                }
+            }.first { (epoch, pendingId) ->
+                epoch != commandId.epoch || pendingId == null
+            }
+        return when {
+            settledEpoch != commandId.epoch -> "superseded_epoch"
+            observedReplacement -> "replaced_same_epoch"
+            else -> "consumed_original"
         }
     }
     var measuredThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(0f) }
@@ -15515,6 +15535,10 @@ private fun ThreadMessagesList(
     var focusedAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf<Int?>(null) }
     var correctedFocusedOriginIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var settledFocusedOriginCorrectionIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    // task #990: the focused transaction retired by an IME onset. Kept separate
+    // from "consumed" so the reason a session ended stays legible in the log —
+    // and so a retired identity cannot be mistaken for one that settled.
+    var retiredFocusedAnchorSessionIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var focusedAnchorPlacementState by remember(threadInstanceKey) {
         mutableStateOf(resetThreadFocusedAnchorPlacement(identity = null))
     }
@@ -16489,6 +16513,20 @@ private fun ThreadMessagesList(
             activeFocusedMessageId = null
             return@LaunchedEffect
         }
+        // task #990: awaiting the focus command suspends, so the keyboard can
+        // arrive before this effect resumes. Resuming here would clear the
+        // correction fences back to null and start the watch loop — reviving the
+        // owner the onset just retired, one effect after the fact. The initial
+        // positioning has already succeeded at this point (didFocus above), so
+        // there is nothing left to do but hand over.
+        if (retiredFocusedAnchorSessionIdentity == targetIdentity) {
+            consumedFocusedMessageAnchorIdentity = targetIdentity
+            diagnosticsLogger(
+                "thread_focused_message_anchor result=retired_ime_onset " +
+                    "messageId=$targetMessageId targetIndex=$targetIndex"
+            )
+            return@LaunchedEffect
+        }
         focusedAnchorStartUserScrollGeneration = userScrollGeneration.value
         correctedFocusedOriginIdentity = null
         settledFocusedOriginCorrectionIdentity = null
@@ -16507,12 +16545,20 @@ private fun ThreadMessagesList(
             focusedAnchorSessionReanchors = 0
         }
         var anchoredOffset = listState.focusedAnchorTargetOffset(targetIndex)
+        // Captured with the offset it explains: comparing the two later is what
+        // separates "the user moved the list" from "the keyboard took the space".
+        var anchoredViewportExtentPx = listState.threadViewportExtentPxOrNull()
         var quietMs = 0L
         var driftMaxPx = 0
         while (true) {
             delay(FocusedAnchorSessionRecheckIntervalMs)
             focusedAnchorSessionElapsedMs += FocusedAnchorSessionRecheckIntervalMs
             val currentOffset = listState.focusedAnchorTargetOffset(targetIndex)
+            val viewportResizeDeltaPx =
+                focusedAnchorViewportResizeDelta(
+                    anchoredViewportExtentPx = anchoredViewportExtentPx,
+                    currentViewportExtentPx = listState.threadViewportExtentPxOrNull()
+                )
             val currentUserScrollGeneration = userScrollGeneration.value
             val rawScrollInProgress = listState.isScrollInProgress
             val explicitInterrupt = scrollInterruptedFocusedMessageAnchorIdentity == targetIdentity
@@ -16525,9 +16571,15 @@ private fun ThreadMessagesList(
                             targetIdentity = targetIdentity,
                             scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity
                         ),
-                    drifted = focusedAnchorTargetDrifted(anchoredOffset, currentOffset),
+                    drifted =
+                        focusedAnchorTargetDrifted(
+                            anchoredOffset = anchoredOffset,
+                            currentOffset = currentOffset,
+                            viewportResizeDeltaPx = viewportResizeDeltaPx
+                        ),
                     quietMs = quietMs,
-                    elapsedMs = focusedAnchorSessionElapsedMs
+                    elapsedMs = focusedAnchorSessionElapsedMs,
+                    viewportResizing = retiredFocusedAnchorSessionIdentity == targetIdentity
                 )
             when (action) {
                 FocusedAnchorSessionAction.Interrupt -> {
@@ -16554,6 +16606,19 @@ private fun ThreadMessagesList(
                     return@LaunchedEffect
                 }
                 FocusedAnchorSessionAction.Reanchor -> {
+                    // Second fence read, immediately before dispatching. The
+                    // decision above and this dispatch are not one atomic step,
+                    // and a handoff recorded in between must win — otherwise the
+                    // session emits exactly the stale command it just retired.
+                    if (retiredFocusedAnchorSessionIdentity == targetIdentity) {
+                        consumedFocusedMessageAnchorIdentity = targetIdentity
+                        diagnosticsLogger(
+                            "thread_focused_anchor_session outcome=retired_before_reanchor " +
+                                "reanchors=$focusedAnchorSessionReanchors driftMaxPx=$driftMaxPx " +
+                                "elapsedMs=$focusedAnchorSessionElapsedMs messageId=$targetMessageId"
+                        )
+                        return@LaunchedEffect
+                    }
                     focusedAnchorSessionReanchors += 1
                     val driftPx = focusedAnchorDriftMagnitude(anchoredOffset, currentOffset)
                     driftMaxPx = maxOf(driftMaxPx, driftPx)
@@ -16599,6 +16664,11 @@ private fun ThreadMessagesList(
                         awaitViewportCommandSettlement(reanchorCommandId)
                     }
                     anchoredOffset = listState.focusedAnchorTargetOffset(targetIndex)
+                    // Re-baselined with the offset it explains. Leaving the old
+                    // extent here would keep subtracting a resize that has
+                    // already been absorbed, and that constant excuse would hide
+                    // real drift for the rest of the session.
+                    anchoredViewportExtentPx = listState.threadViewportExtentPxOrNull()
                     quietMs = 0L
                 }
                 FocusedAnchorSessionAction.Continue -> {
@@ -16675,15 +16745,36 @@ private fun ThreadMessagesList(
             )
         )
         val correctionCommandId = viewportControllerState.pendingCommand?.id
-        if (correctionCommandId != null) {
-            awaitViewportCommandSettlement(correctionCommandId)
-        }
-        val corrected = listState.focusedAnchorTargetOffset(targetIndex) != null
+        val settlementOutcome =
+            if (correctionCommandId != null) {
+                awaitViewportCommandSettlement(correctionCommandId)
+            } else {
+                "no_command"
+            }
+        val targetVisible = listState.focusedAnchorTargetOffset(targetIndex) != null
+        // Awaiting settlement suspends, so the keyboard can take the viewport
+        // while this correction is in flight. The fence is read again here, not
+        // only before dispatch.
+        val corrected =
+            focusedOriginCorrectionMayPublishCompletion(
+                settlementOutcome = settlementOutcome,
+                targetVisible = targetVisible,
+                targetIdentity = targetIdentity,
+                retiredIdentity = retiredFocusedAnchorSessionIdentity
+            )
         if (corrected) {
             settledFocusedOriginCorrectionIdentity = targetIdentity
         }
+        val correctionResult =
+            when {
+                corrected -> "corrected"
+                retiredFocusedAnchorSessionIdentity == targetIdentity -> "retired_ime_onset"
+                !targetVisible -> "skipped_unmeasured"
+                else -> "skipped_$settlementOutcome"
+            }
         diagnosticsLogger(
-            "thread_focused_origin_correction result=${if (corrected) "corrected" else "skipped_unmeasured"} " +
+            "thread_focused_origin_correction result=$correctionResult " +
+                "settlement=$settlementOutcome targetVisible=$targetVisible " +
                 "messageId=$targetMessageId targetIndex=$targetIndex originStatus=${renderPayload.originStatus} " +
                 "userScrollGeneration=${userScrollGeneration.value}"
         )
@@ -16947,6 +17038,44 @@ private fun ThreadMessagesList(
                 focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
                 settledCorrectionIdentity = settledFocusedOriginCorrectionIdentity
             )
+        // task #990: single-owner handoff at the keyboard onset. The real layout
+        // is left alone — the viewport still shrinks normally — but the focused
+        // transaction stops competing for it, so this shrink is corrected once,
+        // by the composer, instead of by three commands that supersede one
+        // another into a blank frame.
+        when (
+            threadImeOnsetOwnershipAction(
+                keyboardRising = composerKeyboardInsetDp > lastComposerKeyboardInsetDp,
+                targetIdentity = focusedTargetIdentity,
+                focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
+                focusedOriginCorrectionPending = focusedOriginCorrectionPending,
+                retiredIdentity = retiredFocusedAnchorSessionIdentity
+            )
+        ) {
+            ThreadImeOnsetOwnershipAction.RetireFocusedSession -> {
+                retiredFocusedAnchorSessionIdentity = focusedTargetIdentity
+                // Released now rather than on the session's next recheck: a
+                // fence that expires up to one interval later is exactly the
+                // window the white sample fell into.
+                consumedFocusedMessageAnchorIdentity = focusedTargetIdentity
+                diagnosticsLogger(
+                    "thread_focused_anchor_session outcome=retired_ime_onset " +
+                        "messageId=${focusedTargetMessageId.orEmpty()} " +
+                        "keyboardInsetDp=$lastComposerKeyboardInsetDp->$composerKeyboardInsetDp " +
+                        "layoutGeneration=$viewportLayoutGeneration"
+                )
+                // Retirement is its own pass. Both writes above are keys of this
+                // effect, so continuing here would run the layout decision in a
+                // body that is about to be cancelled and then again in its
+                // replacement — two commands for one shrink, which is the defect
+                // being fixed. The inset carry-forward below is deliberately not
+                // reached, so the restarted pass still sees this rise.
+                return@LaunchedEffect
+            }
+
+            ThreadImeOnsetOwnershipAction.KeepConsumedPath,
+            ThreadImeOnsetOwnershipAction.None -> Unit
+        }
         var focusedTailViewportEpochCoherent =
             threadViewportEpochCoherent(
                 measuredViewportHeightPx = measuredFocusedTailViewportHeightPx,
@@ -18640,13 +18769,19 @@ internal fun shouldCorrectFocusedAnchorAfterOriginHydration(
     correctedIdentity: String?,
     scrollInterruptedIdentity: String?,
     startUserScrollGeneration: Int,
-    currentUserScrollGeneration: Int
+    currentUserScrollGeneration: Int,
+    // task #990: this effect awaits layout frames before dispatching, so it can
+    // arrive after the keyboard has taken the viewport. Retirement invalidates
+    // it here rather than letting it dispatch a correction for a viewport that
+    // no longer exists.
+    retiredIdentity: String? = null
 ): Boolean =
     originStatus != "none" &&
         originStatus != "loading" &&
         anchoredIdentity == targetIdentity &&
         correctedIdentity != targetIdentity &&
         scrollInterruptedIdentity != targetIdentity &&
+        retiredIdentity != targetIdentity &&
         startUserScrollGeneration == currentUserScrollGeneration
 
 internal data class ThreadFocusedOriginCorrectionTrigger(
@@ -18725,10 +18860,20 @@ internal fun focusedAnchorSessionAction(
     userInteracting: Boolean,
     drifted: Boolean,
     quietMs: Long,
-    elapsedMs: Long
+    elapsedMs: Long,
+    // task #990: the keyboard raising is a viewport resize, not the user moving
+    // the list. Aligning a healthy cycle against a white one showed the session
+    // still running at IME onset, reading the shrink's displacement as drift,
+    // and issuing a reanchor that the composer's own correction then superseded.
+    // The shrink has exactly one correct owner, so the session yields to it
+    // instead of competing.
+    viewportResizing: Boolean = false
 ): FocusedAnchorSessionAction =
     when {
         userInteracting -> FocusedAnchorSessionAction.Interrupt
+        // Yield before drift is even considered: a resize moves the target
+        // without anyone scrolling, so drift here is a false positive.
+        viewportResizing -> FocusedAnchorSessionAction.Consume
         elapsedMs >= FocusedAnchorSessionHardCapMs -> FocusedAnchorSessionAction.Consume
         drifted -> FocusedAnchorSessionAction.Reanchor
         quietMs >= FocusedAnchorSessionQuietMs -> FocusedAnchorSessionAction.Consume
@@ -18737,15 +18882,75 @@ internal fun focusedAnchorSessionAction(
 
 // Drift predicate: the target leaving the viewport entirely is always drift;
 // otherwise compare against the offset captured right after anchoring.
-internal fun focusedAnchorTargetDrifted(anchoredOffset: Int?, currentOffset: Int?): Boolean =
+//
+// task #990: an item offset is measured from the viewport, so shrinking the
+// viewport moves every offset without anyone scrolling. In the white sample the
+// target went 1803 -> 770 while the viewport went 2092 -> 1059 — the same 1033px
+// — and the session reported drift and reanchored into the keyboard's own
+// correction. The expected displacement is therefore subtracted before the
+// comparison: this asks "did the target move relative to the resize", which is
+// the question the invariant was always about.
+internal fun focusedAnchorTargetDrifted(
+    anchoredOffset: Int?,
+    currentOffset: Int?,
+    viewportResizeDeltaPx: Int = 0
+): Boolean =
     when {
         currentOffset == null -> true
         anchoredOffset == null -> false
         else -> {
-            val delta = currentOffset - anchoredOffset
+            val delta = currentOffset - anchoredOffset - viewportResizeDeltaPx
             delta > FocusedAnchorDriftTolerancePx || delta < -FocusedAnchorDriftTolerancePx
         }
     }
+
+/**
+ * Viewport extent in px, or null when the layout has not produced one yet.
+ * Null rather than 0 so "not measured" cannot be read as "zero height".
+ */
+internal fun LazyListState.threadViewportExtentPxOrNull(): Int? {
+    val extent = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+    return extent.takeIf { it > 0 }
+}
+
+/**
+ * Displacement a viewport resize is expected to impose on a bottom-held target.
+ *
+ * Returns 0 when either extent is unknown, so an unmeasured viewport degrades to
+ * the old raw comparison rather than silently excusing a real drift.
+ */
+internal fun focusedAnchorViewportResizeDelta(
+    anchoredViewportExtentPx: Int?,
+    currentViewportExtentPx: Int?
+): Int =
+    if (
+        anchoredViewportExtentPx != null && currentViewportExtentPx != null &&
+        anchoredViewportExtentPx > 0 && currentViewportExtentPx > 0
+    ) {
+        currentViewportExtentPx - anchoredViewportExtentPx
+    } else {
+        0
+    }
+
+/**
+ * Whether a focused origin correction may publish its completion.
+ *
+ * task #990: publication used to rest on "is the target visible afterwards",
+ * which is true for a command that was superseded before it ever applied — the
+ * white sample settled `superseded_epoch` and still reported corrected, which
+ * released the composer's debounce on a correction that never happened. A
+ * retired owner may not publish at all.
+ */
+internal fun focusedOriginCorrectionMayPublishCompletion(
+    settlementOutcome: String,
+    targetVisible: Boolean,
+    targetIdentity: String,
+    retiredIdentity: String?
+): Boolean =
+    targetVisible &&
+        retiredIdentity != targetIdentity &&
+        settlementOutcome != "superseded_epoch" &&
+        settlementOutcome != "replaced_same_epoch"
 
 // Marker magnitude: -1 encodes "target left the viewport" so the log line
 // stays greppable next to pixel deltas.
@@ -18981,6 +19186,52 @@ internal data class ThreadComposerLayoutBottomAnchorState(
     val focusedActiveTailAnchorCanCorrectLayout: Boolean,
     val focusedTailAnchorCanCorrectLayout: Boolean
 )
+
+/**
+ * task #990 — what the IME onset does with a focused-anchor transaction that has
+ * not finished.
+ *
+ * Aligning a healthy cycle against a white one showed the discriminator is not
+ * message length but timing: in the white sample the initial focus command had
+ * settled 38ms before the keyboard began, so the session and the origin
+ * correction were still live when the viewport shrank. Both then corrected the
+ * same shrink the composer was already correcting, and the resulting commands
+ * superseded each other into a blank frame — the final geometry was identical to
+ * the healthy one, which is why geometry alone never separated the two.
+ *
+ * The old correction is retired rather than queued. Queuing it only defers the
+ * collision: focus positioning has already succeeded in both samples, so what
+ * remains is drift compensation for a viewport that no longer exists, and
+ * replaying it after the shrink would re-fight the composer with a stale offset.
+ * Tapping the composer is the newer, explicit intent, so it wins outright.
+ */
+internal enum class ThreadImeOnsetOwnershipAction {
+    /** A focused transaction is still live: end it and hand the shrink over. */
+    RetireFocusedSession,
+
+    /** The healthy path — focus already settled, so there is nothing to retire. */
+    KeepConsumedPath,
+
+    /** Not an onset, or nothing focused. */
+    None
+}
+
+internal fun threadImeOnsetOwnershipAction(
+    keyboardRising: Boolean,
+    targetIdentity: String?,
+    focusedAnchorOwnsViewport: Boolean,
+    focusedOriginCorrectionPending: Boolean,
+    retiredIdentity: String?
+): ThreadImeOnsetOwnershipAction =
+    when {
+        !keyboardRising || targetIdentity == null -> ThreadImeOnsetOwnershipAction.None
+        // Retirement is per target and idempotent: a second inset change inside
+        // the same rise must not re-run the handoff.
+        retiredIdentity == targetIdentity -> ThreadImeOnsetOwnershipAction.None
+        focusedAnchorOwnsViewport || focusedOriginCorrectionPending ->
+            ThreadImeOnsetOwnershipAction.RetireFocusedSession
+        else -> ThreadImeOnsetOwnershipAction.KeepConsumedPath
+    }
 
 internal fun threadFocusedOriginCorrectionBlocksComposerLayout(
     messageCount: Int,
