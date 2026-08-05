@@ -2762,6 +2762,93 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureChannelSettingsMembersEmpty() {
+        captureChannelSettingsMembersCase("components.channel.settings.members-grid.empty", memberCount = 0)
+    }
+
+    @Test
+    fun captureChannelSettingsMembersOne() {
+        captureChannelSettingsMembersCase("components.channel.settings.members-grid.one", memberCount = 1)
+    }
+
+    @Test
+    fun captureChannelSettingsMembersFive() {
+        captureChannelSettingsMembersCase("components.channel.settings.members-grid.five", memberCount = 5)
+    }
+
+    @Test
+    fun captureChannelSettingsMembersFull() {
+        captureChannelSettingsMembersCase("components.channel.settings.members-grid.full", memberCount = 19)
+    }
+
+    @Test
+    fun captureChannelSettingsMembersOverflow() {
+        captureChannelSettingsMembersCase("components.channel.settings.members-grid.overflow", memberCount = 20)
+    }
+
+    @Test
+    fun captureChannelSettingsMembersMany() {
+        captureChannelSettingsMembersCase("components.channel.settings.members-grid.many", memberCount = 40)
+    }
+
+    @Test
+    fun captureChannelSettingsMembersNarrowOverflow() {
+        captureChannelSettingsMembersCase(
+            caseId = "components.channel.settings.members-grid.narrow-overflow",
+            memberCount = 16,
+            widthDp = 300
+        )
+    }
+
+    @Test
+    fun captureChannelSettingsMembersNoPermissionFull() {
+        captureChannelSettingsMembersCase(
+            caseId = "components.channel.settings.members-grid.no-permission-full",
+            memberCount = 20,
+            canAddMembers = false
+        )
+    }
+
+    @Test
+    fun captureChannelSettingsMembersLongNames() {
+        captureChannelSettingsMembersCase(
+            caseId = "components.channel.settings.members-grid.long-names",
+            memberCount = 19,
+            variant = "long-names"
+        )
+    }
+
+    @Test
+    fun captureChannelSettingsMembersMixedAvatars() {
+        captureChannelSettingsMembersCase(
+            caseId = "components.channel.settings.members-grid.mixed-avatars",
+            memberCount = 19,
+            variant = "mixed-avatars"
+        )
+    }
+
+    private fun captureChannelSettingsMembersCase(
+        caseId: String,
+        memberCount: Int,
+        widthDp: Int = 390,
+        canAddMembers: Boolean = true,
+        variant: String = ""
+    ) {
+        captureKmpComponentCase(
+            caseId = caseId,
+            pageName = "compose_channel_settings_members_grid_visual",
+            pageData =
+                JSONObject()
+                    .put("memberCount", memberCount)
+                    .put("widthDp", widthDp)
+                    .put("canAddMembers", canAddMembers)
+                    .put("variant", variant),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureTasksPanelStates() {
         captureKmpComponentCase(
             caseId = "components.tasks.panel.states",

@@ -34,7 +34,10 @@ import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
+import com.tencent.kuikly.compose.foundation.layout.FlowRow
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
@@ -43,13 +46,16 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
@@ -104,6 +110,63 @@ internal fun channelSettingsSectionKeys(canManage: Boolean): List<String> =
 
 internal fun channelSettingsUsesStandalonePage(newDesignSettingsEnabled: Boolean): Boolean =
     newDesignSettingsEnabled
+
+internal const val ChannelSettingsMemberGridMaxRows: Int = 4
+
+private const val ChannelSettingsMemberCellWidthDp: Float = 52f
+private const val ChannelSettingsMemberCellGapDp: Float = 8f
+
+internal data class ChannelSettingsMemberPreviewPlan(
+    val columns: Int,
+    val visibleMemberCount: Int,
+    val hiddenMemberCount: Int,
+    val showAddMember: Boolean
+)
+
+internal enum class ChannelSettingsMemberInteraction {
+    Header,
+    Avatar,
+    Add
+}
+
+internal fun handleChannelSettingsMemberInteraction(
+    interaction: ChannelSettingsMemberInteraction,
+    onOpenMembers: () -> Unit,
+    onAddMember: () -> Unit
+) {
+    when (interaction) {
+        ChannelSettingsMemberInteraction.Header,
+        ChannelSettingsMemberInteraction.Avatar -> onOpenMembers()
+        ChannelSettingsMemberInteraction.Add -> onAddMember()
+    }
+}
+
+internal fun channelSettingsMemberPreviewPlan(
+    memberCount: Int,
+    canAddMembers: Boolean,
+    availableWidthDp: Float
+): ChannelSettingsMemberPreviewPlan {
+    val safeMemberCount = memberCount.coerceAtLeast(0)
+    val fiveColumnWidth = ChannelSettingsMemberCellWidthDp * 5 + ChannelSettingsMemberCellGapDp * 4
+    val sixColumnWidth = ChannelSettingsMemberCellWidthDp * 6 + ChannelSettingsMemberCellGapDp * 5
+    val columns =
+        when {
+            availableWidthDp >= sixColumnWidth -> 6
+            availableWidthDp >= fiveColumnWidth -> 5
+            else -> 4
+        }
+    val memberCapacity =
+        (columns * ChannelSettingsMemberGridMaxRows - if (canAddMembers) 1 else 0)
+            .coerceAtLeast(0)
+    val visibleMemberCount = safeMemberCount.coerceAtMost(memberCapacity)
+    val hiddenMemberCount = safeMemberCount - visibleMemberCount
+    return ChannelSettingsMemberPreviewPlan(
+        columns = columns,
+        visibleMemberCount = visibleMemberCount,
+        hiddenMemberCount = hiddenMemberCount,
+        showAddMember = canAddMembers
+    )
+}
 
 @Page(CHANNEL_SETTINGS_PAGE, supportInLocal = true)
 internal class ComposeChannelSettingsPage : AuthenticatedProductPager(AuthenticatedProductRoute.ChannelSettings) {
@@ -202,20 +265,11 @@ private fun ChannelSettingsPageScreen() {
         router.closePage()
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream)) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            SlockTopPageHeader(
-                title = stringResource(MR.strings.channel_settings_title),
-                iconName = SlockLucideIconName.Settings,
-                backgroundColor = SlockColor.SurfaceWhite,
-                refreshing = (content as? SharedHomeContentState.Content)?.contentRefreshing == true,
-                leadingContent = {
-                    SlockTopPageHeaderAction(
-                        icon = SlockLucideIconName.ArrowLeft,
-                        onClick = router::closePage
-                    )
-                }
-            )
+    Box(modifier = Modifier.fillMaxSize()) {
+        ChannelSettingsPageScaffold(
+            refreshing = (content as? SharedHomeContentState.Content)?.contentRefreshing == true,
+            onBack = router::closePage
+        ) {
             when {
                 channel != null ->
                     ChannelSettingsContent(
@@ -386,6 +440,31 @@ private fun ChannelSettingsPageScreen() {
     }
 }
 
+@Composable
+internal fun ChannelSettingsPageScaffold(
+    refreshing: Boolean,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SlockTopPageHeader(
+                title = stringResource(MR.strings.channel_settings_title),
+                iconName = SlockLucideIconName.Settings,
+                backgroundColor = SlockColor.SurfaceWhite,
+                refreshing = refreshing,
+                leadingContent = {
+                    SlockTopPageHeaderAction(
+                        icon = SlockLucideIconName.ArrowLeft,
+                        onClick = onBack
+                    )
+                }
+            )
+            content()
+        }
+    }
+}
+
 internal fun channelSettingsMembersPageData(route: ChannelSettingsRoute): JSONObject =
     JSONObject().apply {
         put("pageName", THREAD_MEMBERS_PAGE)
@@ -395,7 +474,7 @@ internal fun channelSettingsMembersPageData(route: ChannelSettingsRoute): JSONOb
     }
 
 @Composable
-private fun ChannelSettingsContent(
+internal fun ChannelSettingsContent(
     channel: HomeChannelRow,
     memberSlice: SharedServerChannelMembersSlice,
     pinned: Boolean,
@@ -417,7 +496,12 @@ private fun ChannelSettingsContent(
             ChannelIdentityCard(channel = channel, editable = canManage, onClick = onEdit)
         }
         item(key = "members") {
-            ChannelMembersCard(slice = memberSlice, fallbackCount = channel.memberCount, onClick = onOpenMembers)
+            ChannelMembersCard(
+                slice = memberSlice,
+                fallbackCount = channel.memberCount,
+                onOpenMembers = onOpenMembers,
+                onAddMember = onOpenMembers
+            )
         }
         item(key = "preferences") {
             ChannelPreferencesCard(
@@ -508,20 +592,33 @@ private fun ChannelStatusBadge(channel: HomeChannelRow) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ChannelMembersCard(
+internal fun ChannelMembersCard(
     slice: SharedServerChannelMembersSlice,
     fallbackCount: Int?,
-    onClick: () -> Unit
+    onOpenMembers: () -> Unit,
+    onAddMember: () -> Unit
 ) {
-    val members = slice.members.distinctBy { it.id }.take(if (slice.canAddMembers) 4 else 5)
-    val count = if (slice.status == SharedServerMembersLoadStatus.Loaded) slice.members.size else fallbackCount ?: slice.members.size
+    val members = slice.members.distinctBy { it.id }
+    val count = if (slice.status == SharedServerMembersLoadStatus.Loaded) members.size else fallbackCount ?: members.size
     SlockBrutalCard(
-        modifier = Modifier.clickable(onClick = onClick),
         contentPadding = 16.dp,
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        handleChannelSettingsMemberInteraction(
+                            interaction = ChannelSettingsMemberInteraction.Header,
+                            onOpenMembers = onOpenMembers,
+                            onAddMember = onAddMember
+                        )
+                    },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
                 text = stringResource(MR.strings.channel_settings_members),
                 style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
@@ -531,18 +628,59 @@ private fun ChannelMembersCard(
             Text(text = count.toString(), style = SlockType.Body, color = SlockColor.TextMutedGray)
             SlockLucideIcon(SlockLucideIconName.ChevronRight, Modifier.size(20.dp), color = "#FF666666")
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            members.forEach { member -> ChannelSettingsMemberAvatar(member) }
-            if (slice.canAddMembers) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(44.dp)
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack),
-                    contentAlignment = Alignment.Center
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val previewPlan =
+                channelSettingsMemberPreviewPlan(
+                    memberCount = members.size,
+                    canAddMembers = slice.canAddMembers,
+                    availableWidthDp = maxWidth.value
+                )
+            val cellWidth =
+                (maxWidth - ChannelSettingsMemberCellGapDp.dp * (previewPlan.columns - 1)) /
+                    previewPlan.columns
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(ChannelSettingsMemberCellGapDp.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    maxItemsInEachRow = previewPlan.columns,
+                    maxLines = ChannelSettingsMemberGridMaxRows
                 ) {
-                    SlockLucideIcon(SlockLucideIconName.Plus, Modifier.size(20.dp), color = "#FF111111")
+                    members.take(previewPlan.visibleMemberCount).forEach { member ->
+                        ChannelSettingsMemberAvatar(
+                            member = member,
+                            cellWidth = cellWidth,
+                            onClick = {
+                                handleChannelSettingsMemberInteraction(
+                                    interaction = ChannelSettingsMemberInteraction.Avatar,
+                                    onOpenMembers = onOpenMembers,
+                                    onAddMember = onAddMember
+                                )
+                            }
+                        )
+                    }
+                    if (previewPlan.showAddMember) {
+                        ChannelSettingsAddMemberTile(
+                            cellWidth = cellWidth,
+                            onClick = {
+                                handleChannelSettingsMemberInteraction(
+                                    interaction = ChannelSettingsMemberInteraction.Add,
+                                    onOpenMembers = onOpenMembers,
+                                    onAddMember = onAddMember
+                                )
+                            }
+                        )
+                    }
+                }
+                if (members.isEmpty() && !previewPlan.showAddMember) {
+                    Text(
+                        text = stringResource(MR.strings.thread_state_no_members),
+                        style = SlockType.Body,
+                        color = SlockColor.TextMutedGray
+                    )
                 }
             }
         }
@@ -550,15 +688,51 @@ private fun ChannelMembersCard(
 }
 
 @Composable
-private fun ChannelSettingsMemberAvatar(member: MemberProfile) {
-    SlockAvatar(
-        avatarWireValue = member.avatarWireValueForAvatarSlot(),
-        label = member.avatarLabel.ifBlank { member.displayName.take(1) },
-        avatarSize = 44.dp,
-        borderWidth = SlockStroke.Default,
-        cacheSubject = member.slockAvatarCacheSubject(),
-        cacheServerId = member.serverId?.value
-    )
+private fun ChannelSettingsMemberAvatar(member: MemberProfile, cellWidth: Dp, onClick: () -> Unit) {
+    val label = member.displayName.ifBlank { member.handle.removePrefix("@") }.ifBlank { member.avatarLabel }
+    Column(
+        modifier = Modifier.width(cellWidth).clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        SlockAvatar(
+            avatarWireValue = member.avatarWireValueForAvatarSlot(),
+            label = member.avatarLabel.ifBlank { label.take(1) },
+            avatarSize = 44.dp,
+            borderWidth = SlockStroke.Default,
+            cacheSubject = member.slockAvatarCacheSubject(),
+            cacheServerId = member.serverId?.value
+        )
+        Text(
+            text = label,
+            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun ChannelSettingsAddMemberTile(cellWidth: Dp, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier.width(cellWidth).clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(44.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            SlockLucideIcon(SlockLucideIconName.Plus, Modifier.size(20.dp), color = "#FF111111")
+        }
+        Spacer(Modifier.height(18.dp))
+    }
 }
 
 @Composable

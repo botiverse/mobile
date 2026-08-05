@@ -67,6 +67,98 @@ class ChannelSettingsPageTest {
     }
 
     @Test
+    fun memberPreviewNormalizesEmptyCountsWithoutInventingOverflow() {
+        listOf(-4, 0).forEach { memberCount ->
+            assertEquals(
+                ChannelSettingsMemberPreviewPlan(
+                    columns = 5,
+                    visibleMemberCount = 0,
+                    hiddenMemberCount = 0,
+                    showAddMember = true
+                ),
+                channelSettingsMemberPreviewPlan(
+                    memberCount = memberCount,
+                    canAddMembers = true,
+                    availableWidthDp = 300f
+                )
+            )
+        }
+    }
+
+    @Test
+    fun memberPreviewUsesResponsiveFourFiveAndSixColumnCapacities() {
+        data class Case(val widthDp: Float, val columns: Int, val withAddCapacity: Int, val withoutAddCapacity: Int)
+
+        listOf(
+            Case(widthDp = 291f, columns = 4, withAddCapacity = 15, withoutAddCapacity = 16),
+            Case(widthDp = 292f, columns = 5, withAddCapacity = 19, withoutAddCapacity = 20),
+            Case(widthDp = 352f, columns = 6, withAddCapacity = 23, withoutAddCapacity = 24)
+        ).forEach { case ->
+            val withAdd =
+                channelSettingsMemberPreviewPlan(
+                    memberCount = 100,
+                    canAddMembers = true,
+                    availableWidthDp = case.widthDp
+                )
+            val withoutAdd =
+                channelSettingsMemberPreviewPlan(
+                    memberCount = 100,
+                    canAddMembers = false,
+                    availableWidthDp = case.widthDp
+                )
+
+            assertEquals(case.columns, withAdd.columns)
+            assertEquals(case.withAddCapacity, withAdd.visibleMemberCount)
+            assertEquals(100 - case.withAddCapacity, withAdd.hiddenMemberCount)
+            assertTrue(withAdd.showAddMember)
+            assertEquals(case.columns, withoutAdd.columns)
+            assertEquals(case.withoutAddCapacity, withoutAdd.visibleMemberCount)
+            assertEquals(100 - case.withoutAddCapacity, withoutAdd.hiddenMemberCount)
+            assertFalse(withoutAdd.showAddMember)
+        }
+    }
+
+    @Test
+    fun memberPreviewTruncatesBeyondCapacityWithoutChangingTheVisibleGrid() {
+        val exact =
+            channelSettingsMemberPreviewPlan(
+                memberCount = 19,
+                canAddMembers = true,
+                availableWidthDp = 320f
+            )
+        val overflow =
+            channelSettingsMemberPreviewPlan(
+                memberCount = 20,
+                canAddMembers = true,
+                availableWidthDp = 320f
+            )
+
+        assertEquals(19, exact.visibleMemberCount)
+        assertEquals(0, exact.hiddenMemberCount)
+        assertEquals(19, overflow.visibleMemberCount)
+        assertEquals(1, overflow.hiddenMemberCount)
+    }
+
+    @Test
+    fun memberHeaderAndAvatarOpenMembersWhileAddKeepsItsOwnAction() {
+        val calls = mutableListOf<String>()
+
+        listOf(
+            ChannelSettingsMemberInteraction.Header,
+            ChannelSettingsMemberInteraction.Avatar,
+            ChannelSettingsMemberInteraction.Add
+        ).forEach { interaction ->
+            handleChannelSettingsMemberInteraction(
+                interaction = interaction,
+                onOpenMembers = { calls += "open-members" },
+                onAddMember = { calls += "add-member" }
+            )
+        }
+
+        assertEquals(listOf("open-members", "open-members", "add-member"), calls)
+    }
+
+    @Test
     fun managementKeepsOriginalThreadSettingsActionOrder() {
         assertEquals(
             listOf("visibility", "archive", "delete"),
