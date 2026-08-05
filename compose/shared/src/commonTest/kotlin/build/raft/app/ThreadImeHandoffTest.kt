@@ -355,7 +355,7 @@ class ThreadImeHandoffTest {
         assertTrue(correct(retired = null), "an unaffected correction must still run")
         assertTrue(correct(retired = other), "another target's handoff must not cancel it")
         assertFalse(correct(retired = target), "a handed-off correction must not dispatch")
-    
+    }
 
     private fun eligibility(
         targetItemIndex: Int = 17,
@@ -441,7 +441,8 @@ class ThreadImeHandoffTest {
                 focusedAnchorOwnsViewport = false,
                 focusedActiveTailAnchorCanCorrectLayout = false,
                 // Too tall to fit: this is what sent it down the replay path.
-                focusedTailAnchorCanCorrectLayout = false
+                focusedTailAnchorCanCorrectLayout = false,
+                latestBottomAnchorEligible = true
             )
 
         val settled =

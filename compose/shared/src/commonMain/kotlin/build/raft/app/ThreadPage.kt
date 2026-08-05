@@ -17116,7 +17116,13 @@ private fun ThreadMessagesList(
                 // composer's tail path could never correct it. Null while the
                 // measurement is unavailable, which is the window the debt
                 // exists to survive; false gives the debt back.
-                tailFitsViewport = focusedTailFit.fitsViewport.takeIf { focusedTailFit.fitHeightPx >= 0 }
+                tailFitsViewport = focusedTailFit.fitsViewport.takeIf { focusedTailFit.fitHeightPx >= 0 },
+                // A latest target that does not fit is still repayable: it gets
+                // bottom-anchored rather than tail-fitted, so "does not fit"
+                // must not stop the debt being taken on for it.
+                targetIsCanonicalLatest =
+                    focusedTargetItemIndex >= 0 &&
+                        focusedTargetItemIndex == latestMessageListItemIndex
             )
         imeHandoffState = handoffPass.handoff
         // Switching on the returned directive rather than re-deriving it: the
@@ -17316,7 +17322,15 @@ private fun ThreadMessagesList(
                 layout = layoutState,
                 latestBottomAnchorEligible =
                     threadImeLatestTargetBottomAnchorEligible(
-                        keyboardShrinking = composerKeyboardInsetDp > 0f,
+                        // A real shrink this pass, not merely "the keyboard is
+                        // open": otherwise any effect restart while it is up
+                        // reissues the anchor and drags the user back.
+                        keyboardShrinking =
+                            composerKeyboardInsetDp > 0f &&
+                                (
+                                    threadComposerLayoutChanged(layoutState) ||
+                                        pendingComposerLayoutBottomAnchor
+                                ),
                         viewportEpochCoherent = focusedTailViewportEpochCoherent,
                         targetIdentity = focusedTargetIdentity,
                         targetItemIndex = focusedTargetItemIndex,
@@ -17369,55 +17383,6 @@ private fun ThreadMessagesList(
         lastComposerKeyboardInsetDp = composerKeyboardInsetDp
         lastThreadViewportHeightDp = measuredThreadViewportHeightDp
         pendingComposerLayoutBottomAnchor = layoutDecision.pendingLayoutChange
-        // task #990: the canonical latest target is anchored against the
-        // composer even when it does not fit the shrunken viewport. Replaying
-        // the intent instead is what left the viewport inside a 1236px message
-        // and 981‰ white. The RenderedBottom executor also handles a target that
-        // is not measurable yet — it scrolls to the index and bottom-aligns on
-        // the next pass — so this one path covers both samples.
-        if (
-            correctionPass.kind == ThreadImeCorrectionKind.LatestBottomAnchor &&
-            focusedTargetMessageId != null &&
-            focusedTargetIdentity != null &&
-            focusedTailMessageId != null
-        ) {
-            lastComposerKeyboardInsetDp = composerKeyboardInsetDp
-            lastThreadViewportHeightDp = measuredThreadViewportHeightDp
-            pendingComposerLayoutBottomAnchor = false
-            pendingKeyboardBottomAnchor = true
-            imeHandoffState = correctionPass.handoff
-            viewportLayoutGeneration += 1L
-            focusedAnchorPlacementState =
-                renderedThreadFocusedAnchorPlacement(
-                    identity = focusedTargetIdentity,
-                    offsetPx = initialBottomAnchorTrailingPaddingPx,
-                    renderedTailMessageId = focusedTailMessageId
-                )
-            dispatchViewportEvent(
-                LazyViewportEvent.Anchor(
-                    target = LazyViewportAnchorTarget.Message(focusedTargetMessageId),
-                    // The executor derives the true bottom alignment from the
-                    // measured item; this carries the trailing padding it needs.
-                    offset = initialBottomAnchorTrailingPaddingPx,
-                    layoutGeneration = viewportLayoutGeneration,
-                    placement = LazyViewportAnchorPlacement.RenderedBottom,
-                    renderedTailMessageId = focusedTailMessageId,
-                    renderedTailAnchorIdentity = focusedTargetIdentity,
-                    fallback = LazyViewportAnchorFallback.Free,
-                    provenance =
-                        LazyViewportCommandProvenance.ComposerIme(
-                            ownerIdentity = focusedTargetIdentity
-                        )
-                )
-            )
-            diagnosticsLogger(
-                "thread_ime_latest_bottom_anchor result=issued " +
-                    "messageId=$focusedTargetMessageId targetIndex=$focusedTargetItemIndex " +
-                    "fitHeightPx=${focusedTailFit.fitHeightPx} fitViewportPx=${focusedTailFit.viewportHeightPx} " +
-                    "tailFits=${focusedTailFit.fitsViewport} trailingPaddingPx=$initialBottomAnchorTrailingPaddingPx"
-            )
-            return@LaunchedEffect
-        }
         if (!layoutDecision.shouldAnchor) {
             pendingKeyboardBottomAnchor = false
             return@LaunchedEffect
@@ -17439,16 +17404,24 @@ private fun ThreadMessagesList(
             focusedTargetMessageId != null &&
             focusedTailMessageId != null
         ) {
+            // An unmeasured target reports trailingSpanPx=0; the executor needs
+            // the real trailing padding to bottom-align once it can measure.
+            val renderedTailOffsetPx =
+                if (focusedTailFit.fitHeightPx >= 0) {
+                    focusedTailFit.trailingSpanPx
+                } else {
+                    initialBottomAnchorTrailingPaddingPx
+                }
             focusedAnchorPlacementState =
                 renderedThreadFocusedAnchorPlacement(
                     identity = requireNotNull(focusedTargetIdentity),
-                    offsetPx = focusedTailFit.trailingSpanPx,
+                    offsetPx = renderedTailOffsetPx,
                     renderedTailMessageId = focusedTailMessageId
                 )
             dispatchViewportEvent(
                 LazyViewportEvent.Anchor(
                     target = LazyViewportAnchorTarget.Message(focusedTargetMessageId),
-                    offset = focusedTailFit.trailingSpanPx,
+                    offset = renderedTailOffsetPx,
                     layoutGeneration = viewportLayoutGeneration,
                     placement = LazyViewportAnchorPlacement.RenderedBottom,
                     renderedTailMessageId = focusedTailMessageId,
@@ -19207,7 +19180,14 @@ internal data class ThreadComposerLayoutBottomAnchorState(
     val focusedTailAnchorCanCorrectLayout: Boolean,
     // task #990: a handoff owes exactly one composer correction. Defaulted false
     // so existing callers keep their behaviour.
-    val composerHandoffOwed: Boolean = false
+    val composerHandoffOwed: Boolean = false,
+    /**
+     * task #990: the canonical latest target may be anchored against the
+     * composer even when it is taller than the shrunken viewport. Without this
+     * the resolver falls through to replaying the intent, which parks the
+     * viewport inside one long message.
+     */
+    val latestBottomAnchorEligible: Boolean = false
 )
 
 internal fun threadComposerLayoutChanged(state: ThreadComposerLayoutBottomAnchorState): Boolean =
@@ -19228,7 +19208,11 @@ internal fun shouldAnchorThreadComposerLayoutChange(
         (
             (state.allowBottomAutoAnchor && !state.focusedAnchorOwnsViewport) ||
                 state.focusedActiveTailAnchorCanCorrectLayout ||
-                state.focusedTailAnchorCanCorrectLayout
+                state.focusedTailAnchorCanCorrectLayout ||
+                // A canonical latest target that does not fit still has an
+                // owner: not fitting is a reason to bottom-align it, not a
+                // reason to leave it to a replayed intent.
+                state.latestBottomAnchorEligible
         )
 
 internal fun focusedActiveTailMessageComposerLayoutOwnsViewport(
@@ -19295,6 +19279,9 @@ internal fun resolveThreadComposerLayoutBottomAnchor(
         )
     }
     val shouldAnchor = shouldAnchorThreadComposerLayoutChange(state)
+    // Eligibility decides *how* to correct, never whether: shouldAnchor still
+    // requires a real layout change or a pending one.
+    val bottomAnchorLatest = shouldAnchor && state.latestBottomAnchorEligible
     val pendingLayoutChange =
         when {
             shouldAnchor -> false
@@ -19321,8 +19308,14 @@ internal fun resolveThreadComposerLayoutBottomAnchor(
         shouldAnchor = shouldAnchor,
         pendingLayoutChange = pendingLayoutChange,
         anchorFocusedTailAtRenderedBottom =
-            shouldAnchor &&
-                (state.focusedActiveTailAnchorCanCorrectLayout || state.focusedTailAnchorCanCorrectLayout)
+            bottomAnchorLatest ||
+                (
+                    shouldAnchor &&
+                        (
+                            state.focusedActiveTailAnchorCanCorrectLayout ||
+                                state.focusedTailAnchorCanCorrectLayout
+                        )
+                )
     )
 }
 

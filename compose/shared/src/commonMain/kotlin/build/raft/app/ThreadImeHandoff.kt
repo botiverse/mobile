@@ -307,7 +307,16 @@ internal fun threadImeHandoffPass(
      * same-page history target whose span exceeds the viewport — the debt is
      * given back, because the composer's tail path will never correct it.
      */
-    tailFitsViewport: Boolean? = null
+    tailFitsViewport: Boolean? = null,
+    /**
+     * Whether the target is the canonical latest message.
+     *
+     * A latest target that does not fit is still repayable — it is bottom
+     * anchored against the composer instead of tail-fitted — so "does not fit"
+     * must not disqualify it here. History targets keep the old rule: nothing
+     * can repay them, so no debt may be taken on for them.
+     */
+    targetIsCanonicalLatest: Boolean = false
 ): ThreadImeHandoffPass {
     if (pageCycleActive) {
         return ThreadImeHandoffPass(
@@ -321,7 +330,9 @@ internal fun threadImeHandoffPass(
     if (keyboardInsetDp <= 0f) {
         next = reduceThreadImeHandoff(next, ThreadImeHandoffEvent.KeyboardClosed)
     }
-    if (tailFitsViewport != null) {
+    // A canonical latest target keeps its debt whatever the fit resolves to:
+    // the bottom anchor repays it without needing the target to fit.
+    if (tailFitsViewport != null && !targetIsCanonicalLatest) {
         next =
             reduceThreadImeHandoff(
                 next,
@@ -345,7 +356,8 @@ internal fun threadImeHandoffPass(
                 // A target already known not to reach the tail can never be
                 // corrected by the composer's tail path, so it may not take the
                 // shrink even at the onset.
-                dischargeable = dischargeable && tailFitsViewport != false,
+                dischargeable =
+                    dischargeable && (targetIsCanonicalLatest || tailFitsViewport != false),
                 userScrollGeneration = userScrollGeneration
             )
         )
@@ -463,12 +475,20 @@ internal fun threadImeCorrectionPass(
 ): ThreadImeCorrectionPass {
     val owed = handoff.owes(targetIdentity)
     val decision =
-        resolveThreadComposerLayoutBottomAnchor(layout.copy(composerHandoffOwed = owed))
+        resolveThreadComposerLayoutBottomAnchor(
+            layout.copy(
+                composerHandoffOwed = owed,
+                latestBottomAnchorEligible = latestBottomAnchorEligible
+            )
+        )
     val kind =
         when {
-            // The eligible latest target wins over a replayed intent: replaying
-            // is what parked the viewport inside a 1236px message.
-            latestBottomAnchorEligible -> ThreadImeCorrectionKind.LatestBottomAnchor
+            // Expressed through the resolver's own decision rather than a
+            // separate exit, so the eligible case runs the existing dispatch,
+            // settlement and pixel probe instead of a bypass that would lose
+            // exactly the evidence the next capture needs.
+            decision.shouldAnchor && decision.anchorFocusedTailAtRenderedBottom &&
+                latestBottomAnchorEligible -> ThreadImeCorrectionKind.LatestBottomAnchor
             decision.shouldAnchor -> ThreadImeCorrectionKind.RenderedTail
             else -> ThreadImeCorrectionKind.None
         }
