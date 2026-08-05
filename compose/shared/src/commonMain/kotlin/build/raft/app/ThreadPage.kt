@@ -15539,6 +15539,10 @@ private fun ThreadMessagesList(
     // from "consumed" so the reason a session ended stays legible in the log —
     // and so a retired identity cannot be mistaken for one that settled.
     var retiredFocusedAnchorSessionIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    // The composer correction owed to a retired transaction. Identity-scoped and
+    // held across frames where the target is not yet measurable, so the one
+    // command survives until it can actually be issued.
+    var composerHandoffPendingIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var focusedAnchorPlacementState by remember(threadInstanceKey) {
         mutableStateOf(resetThreadFocusedAnchorPlacement(identity = null))
     }
@@ -17054,6 +17058,9 @@ private fun ThreadMessagesList(
         ) {
             ThreadImeOnsetOwnershipAction.RetireFocusedSession -> {
                 retiredFocusedAnchorSessionIdentity = focusedTargetIdentity
+                // Recorded before ownership is released. Releasing alone would
+                // leave a window where nobody is obliged to correct the shrink.
+                composerHandoffPendingIdentity = focusedTargetIdentity
                 // Released now rather than on the session's next recheck: a
                 // fence that expires up to one interval later is exactly the
                 // window the white sample fell into.
@@ -17219,6 +17226,8 @@ private fun ThreadMessagesList(
                 viewportEpochCoherent = focusedTailViewportEpochCoherent,
                 focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
                 focusedOriginCorrectionPending = focusedOriginCorrectionPending,
+                composerHandoffPending =
+                    composerHandoffOwed(composerHandoffPendingIdentity, focusedTargetIdentity),
                 focusedActiveTailAnchorCanCorrectLayout =
                     focusedAnchorOwnsViewport &&
                         focusedActiveTailMessageComposerLayoutOwnsViewport(
@@ -17285,6 +17294,19 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         pendingKeyboardBottomAnchor = true
+        // The handoff is discharged the moment its command is about to be
+        // issued, so a later pass cannot issue a second one. Cleared here rather
+        // than after settlement: settlement suspends, and a pass that ran in
+        // between would still see the debt outstanding.
+        if (composerHandoffOwed(composerHandoffPendingIdentity, focusedTargetIdentity)) {
+            composerHandoffPendingIdentity = null
+            diagnosticsLogger(
+                "thread_composer_handoff result=command_issued " +
+                    "messageId=${focusedTargetMessageId.orEmpty()} " +
+                    "placement=${if (layoutDecision.anchorFocusedTailAtRenderedBottom) "rendered_tail_bottom" else "replay_intent"} " +
+                    "layoutGeneration=$viewportLayoutGeneration"
+            )
+        }
         viewportLayoutGeneration += 1L
         if (
             layoutDecision.anchorFocusedTailAtRenderedBottom &&
@@ -19184,7 +19206,10 @@ internal data class ThreadComposerLayoutBottomAnchorState(
     val focusedAnchorOwnsViewport: Boolean,
     val focusedOriginCorrectionPending: Boolean,
     val focusedActiveTailAnchorCanCorrectLayout: Boolean,
-    val focusedTailAnchorCanCorrectLayout: Boolean
+    val focusedTailAnchorCanCorrectLayout: Boolean,
+    // task #990: a handoff is owed exactly one composer correction. Defaulted
+    // false so every existing caller keeps its behaviour.
+    val composerHandoffPending: Boolean = false
 )
 
 /**
@@ -19215,6 +19240,16 @@ internal enum class ThreadImeOnsetOwnershipAction {
     /** Not an onset, or nothing focused. */
     None
 }
+
+/**
+ * Whether a composer correction is still owed to [targetIdentity].
+ *
+ * Explicitly null-guarded: comparing the two identities alone would answer true
+ * once focus is cleared and both are null, and the resolver would then retain a
+ * pending correction that nothing can ever discharge.
+ */
+internal fun composerHandoffOwed(handoffIdentity: String?, targetIdentity: String?): Boolean =
+    handoffIdentity != null && handoffIdentity == targetIdentity
 
 internal fun threadImeOnsetOwnershipAction(
     keyboardRising: Boolean,
@@ -19341,6 +19376,14 @@ internal fun resolveThreadComposerLayoutBottomAnchor(
     val pendingLayoutChange =
         when {
             shouldAnchor -> false
+            // task #990: the retired focused owner has already been dismissed,
+            // so if this pass cannot anchor yet the composer correction has no
+            // other owner to fall back to — dropping it here turns the handoff
+            // into a silent freeze, which is the failure this fix exists to
+            // avoid. The white sequence reaches its first coherent viewport
+            // while the target is still unmeasured, so "cannot anchor yet" is
+            // the expected first tick, not an error.
+            state.composerHandoffPending -> true
             layoutChanged && !state.initialBottomAnchorReady -> true
             layoutChanged && state.focusedAnchorOwnsViewport -> true
             state.focusedAnchorOwnsViewport -> state.pendingLayoutChange

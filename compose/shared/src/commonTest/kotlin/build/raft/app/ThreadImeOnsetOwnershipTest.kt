@@ -367,6 +367,132 @@ class ThreadImeOnsetOwnershipTest {
         )
     }
 
+    private fun handoffState(
+        viewportEpochCoherent: Boolean,
+        tailFitAvailable: Boolean,
+        pendingLayoutChange: Boolean,
+        composerHandoffPending: Boolean,
+        keyboardInsetChanged: Boolean = true
+    ) = ThreadComposerLayoutBottomAnchorState(
+        previousKeyboardInsetDp = if (keyboardInsetChanged) 0f else 336f,
+        nextKeyboardInsetDp = 336f,
+        previousViewportHeightDp = if (keyboardInsetChanged) 700f else 364f,
+        nextViewportHeightDp = 364f,
+        pendingLayoutChange = pendingLayoutChange,
+        // The focused route sets this true, which is what makes the drop in
+        // step 2 possible at all.
+        initialBottomAnchorReady = true,
+        latestItemIndex = 18,
+        allowBottomAutoAnchor = false,
+        viewportEpochCoherent = viewportEpochCoherent,
+        focusedAnchorOwnsViewport = false,
+        focusedOriginCorrectionPending = false,
+        focusedActiveTailAnchorCanCorrectLayout = false,
+        // Unmeasurable target => no fit => this path cannot own the layout yet.
+        focusedTailAnchorCanCorrectLayout = tailFitAvailable,
+        composerHandoffPending = composerHandoffPending
+    )
+
+    @Test
+    fun theHandoffSurvivesAViewportWhoseTargetIsNotMeasurableYet() {
+        // Four steps, in the order the white sequence actually produces them.
+        // Step 2 is the one that makes a naive handoff a silent freeze: the
+        // viewport is already coherent but the target is still unmeasured, and
+        // with the focused owner dismissed nothing else keeps the correction
+        // alive.
+
+        // 1. onset — the shrink is registered while the epoch is still mixed.
+        val onset =
+            resolveThreadComposerLayoutBottomAnchor(
+                handoffState(
+                    viewportEpochCoherent = false,
+                    tailFitAvailable = false,
+                    pendingLayoutChange = false,
+                    composerHandoffPending = true
+                )
+            )
+        assertFalse(onset.shouldAnchor, "an incoherent epoch must not dispatch")
+        assertTrue(onset.pendingLayoutChange, "the correction must be queued")
+
+        // 2. coherent viewport, target still unmeasurable.
+        val unmeasured =
+            resolveThreadComposerLayoutBottomAnchor(
+                handoffState(
+                    viewportEpochCoherent = true,
+                    tailFitAvailable = false,
+                    pendingLayoutChange = onset.pendingLayoutChange,
+                    composerHandoffPending = true
+                )
+            )
+        assertFalse(unmeasured.shouldAnchor, "an unmeasurable target cannot be anchored")
+        assertTrue(
+            unmeasured.pendingLayoutChange,
+            "the owed correction must be retained — dropping it here is the silent freeze"
+        )
+
+        // Same tick without the handoff: this is what the code did before, and
+        // it is why the assertion above cannot be satisfied by accident.
+        assertFalse(
+            resolveThreadComposerLayoutBottomAnchor(
+                handoffState(
+                    viewportEpochCoherent = true,
+                    tailFitAvailable = false,
+                    pendingLayoutChange = true,
+                    composerHandoffPending = false
+                )
+            ).pendingLayoutChange,
+            "without a handoff the correction is still dropped — the retention is what is new"
+        )
+
+        // 3. the target becomes measurable — exactly one command is issued.
+        val issued =
+            resolveThreadComposerLayoutBottomAnchor(
+                handoffState(
+                    viewportEpochCoherent = true,
+                    tailFitAvailable = true,
+                    pendingLayoutChange = unmeasured.pendingLayoutChange,
+                    composerHandoffPending = true,
+                    // The inset already carried forward; only the retained
+                    // pending flag brings us back here.
+                    keyboardInsetChanged = false
+                )
+            )
+        assertTrue(issued.shouldAnchor, "the retained correction must eventually be issued")
+        assertTrue(
+            issued.anchorFocusedTailAtRenderedBottom,
+            "and issued as a RenderedBottom, not a replayed intent"
+        )
+        assertFalse(issued.pendingLayoutChange, "issuing it must clear the queue")
+
+        // 4. the pass after discharge — the handoff is spent, so nothing repeats.
+        val afterDischarge =
+            resolveThreadComposerLayoutBottomAnchor(
+                handoffState(
+                    viewportEpochCoherent = true,
+                    tailFitAvailable = true,
+                    pendingLayoutChange = issued.pendingLayoutChange,
+                    composerHandoffPending = false,
+                    keyboardInsetChanged = false
+                )
+            )
+        assertFalse(afterDischarge.shouldAnchor, "one shrink must not produce a second command")
+        assertFalse(afterDischarge.pendingLayoutChange, "and must not leave the queue armed")
+    }
+
+    @Test
+    fun aHandoffIsOwedOnlyToTheTargetThatEarnedIt() {
+        assertTrue(composerHandoffOwed(handoffIdentity = target, targetIdentity = target))
+        assertFalse(
+            composerHandoffOwed(handoffIdentity = target, targetIdentity = "thread-1:message-9"),
+            "a new focus target must not inherit the previous one's debt"
+        )
+        assertFalse(
+            composerHandoffOwed(handoffIdentity = null, targetIdentity = null),
+            "cleared focus must not read as an owed correction — that would retain forever"
+        )
+        assertFalse(composerHandoffOwed(handoffIdentity = null, targetIdentity = target))
+    }
+
     @Test
     fun theHealthyPathStillCorrectsItsOwnShrink() {
         // 02:26:14 unchanged: consumed before the keyboard, one composer command.
