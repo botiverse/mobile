@@ -16241,7 +16241,12 @@ private fun ThreadMessagesList(
                     stats.toDiagnosticsString(
                         result = "laid_out",
                         layoutGeneration = viewportLayoutGeneration,
-                        threadInstance = threadInstanceKey
+                        threadInstance = threadInstanceKey,
+                        imeCycle = imeTailDrawProbe.snapshot().generation,
+                        targetMessageId = imeTailDrawProbe.snapshot().targetMessageId.orEmpty(),
+                        commandId =
+                            viewportControllerState.pendingCommand?.id
+                                ?.let { "${it.epoch}:${it.sequence}" } ?: "none"
                     )
                 )
                 if (firstViewportProbe.markLogged()) {
@@ -16263,7 +16268,12 @@ private fun ThreadMessagesList(
                     stats.toDiagnosticsString(
                         result = "missing_layout",
                         layoutGeneration = viewportLayoutGeneration,
-                        threadInstance = threadInstanceKey
+                        threadInstance = threadInstanceKey,
+                        imeCycle = imeTailDrawProbe.snapshot().generation,
+                        targetMessageId = imeTailDrawProbe.snapshot().targetMessageId.orEmpty(),
+                        commandId =
+                            viewportControllerState.pendingCommand?.id
+                                ?.let { "${it.epoch}:${it.sequence}" } ?: "none"
                     )
                 )
                 if (firstViewportProbe.markLogged()) {
@@ -17098,7 +17108,10 @@ private fun ThreadMessagesList(
                             .toString()
                 )
             diagnosticsLogger(
-                "thread_ime_tail_draw_probe phase=$phase " +
+                "thread_ime_tail_draw_probe producer=publishImeTailDrawProbe " +
+                    "phase=$phase imeCycle=${imeTailDrawProbe.snapshot().generation} " +
+                    "threadInstance=$threadInstanceKey layoutGeneration=$viewportLayoutGeneration " +
+                    "commandId=${viewportControllerState.pendingCommand?.id?.let { "${it.epoch}:${it.sequence}" } ?: "none"} " +
                     metadata.entries.joinToString(separator = " ") { (key, value) -> "$key=$value" }
             )
             onComposerLayoutProbe("thread_ime_tail_draw_probe_$phase", metadata)
@@ -17509,7 +17522,7 @@ private fun ThreadMessagesList(
                         "imeCycle=$pixelProbeGeneration layoutGeneration=$pixelProbeLayoutGeneration " +
                         "threadInstance=$pixelProbeThreadInstanceKey " +
                         "actor=composer_inset_relayout " +
-                        "command=${insetCommandId?.sequence ?: -1} " +
+                        "commandId=${insetCommandId?.let { "${it.epoch}:${it.sequence}" } ?: "none"} " +
                         "placement=${if (layoutDecision.anchorFocusedTailAtRenderedBottom) "rendered_tail_bottom" else "replay_intent"} " +
                         "targetIndex=$focusedTargetItemIndex latestMessageIndex=$latestMessageListItemIndex " +
                         "latestViewportItemIndex=$latestItemIndex fitHeightPx=${focusedTailFit.fitHeightPx} " +
@@ -18691,10 +18704,14 @@ private fun ThreadLazyWindowStats.toDiagnosticsString(
     // came from or where to look in the source.
     producer: String = "thread_layout_probe",
     layoutGeneration: Long = -1L,
-    threadInstance: String = ""
+    threadInstance: String = "",
+    imeCycle: Long = -1L,
+    targetMessageId: String = "",
+    commandId: String = "none"
 ): String =
     "thread_lazy_window producer=$producer layoutGeneration=$layoutGeneration " +
-        "threadInstance=$threadInstance " +
+        "threadInstance=$threadInstance imeCycle=$imeCycle targetMessageId=$targetMessageId " +
+        "commandId=$commandId " +
         "result=$result totalItems=$totalItems totalMessages=$totalMessages " +
         "beyondBounds=$beyondBoundsItems visibleItems=$visibleItems " +
         "visibleItemRange=$firstVisibleItem..$lastVisibleItem " +
