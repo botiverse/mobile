@@ -154,12 +154,17 @@ internal enum class ThreadViewportSettlementOutcome {
     SupersededEpoch,
 
     /**
-     * Terminal without ever being observed pending. Distinct from
-     * [ConsumedOriginal] because it cannot be told apart from a command that was
-     * dropped, and folding it into success is exactly the false positive this
-     * enum exists to remove.
+     * Terminal without ever being observed pending, and without a consumption
+     * receipt naming this command.
+     *
+     * Kept distinct from [ConsumedOriginal] rather than renamed into it: not
+     * seeing something happen is not evidence that it happened, and this state
+     * cannot be told apart from a command that was dropped. If it turns up in
+     * practice the answer is to make the landing observable — the controller now
+     * writes a receipt for exactly this reason — not to widen what counts as
+     * success.
      */
-    ClearedWithoutObservation,
+    UnobservedBeforeConsume,
 
     /** There was no command to wait for. */
     NoCommand

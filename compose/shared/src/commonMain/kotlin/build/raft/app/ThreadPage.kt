@@ -15431,7 +15431,13 @@ private fun ThreadMessagesList(
             settledEpoch != commandId.epoch -> ThreadViewportSettlementOutcome.SupersededEpoch
             observedReplacement -> ThreadViewportSettlementOutcome.ReplacedSameEpoch
             observedOriginal -> ThreadViewportSettlementOutcome.ConsumedOriginal
-            else -> ThreadViewportSettlementOutcome.ClearedWithoutObservation
+            // Observation can start after the command was already taken, and an
+            // empty pending slot looks the same as a dropped command. The
+            // controller's receipt names the command it consumed, so this is
+            // positive evidence rather than a renamed absence.
+            viewportControllerState.lastConsumedCommandId == commandId ->
+                ThreadViewportSettlementOutcome.ConsumedOriginal
+            else -> ThreadViewportSettlementOutcome.UnobservedBeforeConsume
         }
     }
     var measuredThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(0f) }

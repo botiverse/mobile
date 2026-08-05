@@ -83,7 +83,19 @@ internal data class LazyViewportControllerState(
     val intent: LazyViewportIntent = LazyViewportIntent.FollowingLatest,
     val epoch: Long = 0L,
     val nextSequence: Long = 0L,
-    val pendingCommand: LazyViewportCommand? = null
+    val pendingCommand: LazyViewportCommand? = null,
+    /**
+     * task #990: receipt for the last command this controller actually
+     * consumed. A waiter that starts observing after the command has already
+     * been taken sees only an empty pending slot, which is indistinguishable
+     * from a command that was dropped — so "did mine land" is answered from a
+     * record the owner writes, rather than inferred from a gap in observation.
+     *
+     * Only [LazyViewportEvent.CommandConsumed] writes it. The other paths that
+     * clear the pending slot — anchor unavailable, rendered-tail invalidation,
+     * intent transitions — are not consumption and deliberately leave it alone.
+     */
+    val lastConsumedCommandId: LazyViewportCommandId? = null
 )
 
 internal sealed interface LazyViewportEvent {
@@ -195,7 +207,11 @@ internal fun reduceLazyViewport(
         is LazyViewportEvent.RenderedTailCommandInvalidated ->
             state.onRenderedTailCommandInvalidated(event)
         is LazyViewportEvent.CommandConsumed ->
-            if (state.pendingCommand?.id == event.commandId) state.copy(pendingCommand = null) else state
+            if (state.pendingCommand?.id == event.commandId) {
+                state.copy(pendingCommand = null, lastConsumedCommandId = event.commandId)
+            } else {
+                state
+            }
     }
 
 internal fun LazyViewportControllerState.accepts(command: LazyViewportCommand): Boolean =

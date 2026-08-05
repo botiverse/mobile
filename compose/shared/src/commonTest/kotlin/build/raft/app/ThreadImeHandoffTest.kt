@@ -213,6 +213,34 @@ class ThreadImeHandoffTest {
     }
 
     @Test
+    fun theControllerRecordsWhichCommandItActuallyConsumed() {
+        // The receipt exists so a waiter that starts observing late can still
+        // tell "landed" from "dropped" — without it, the only honest answer is
+        // UnobservedBeforeConsume, and widening that into success is the false
+        // positive being removed.
+        val pinned = reduceLazyViewport(LazyViewportControllerState(), LazyViewportEvent.PinTop)
+        val commandId = pinned.pendingCommand!!.id
+        assertEquals(null, pinned.lastConsumedCommandId, "nothing is consumed yet")
+
+        val consumed = reduceLazyViewport(pinned, LazyViewportEvent.CommandConsumed(commandId))
+        assertEquals(commandId, consumed.lastConsumedCommandId, "consumption must leave a receipt")
+        assertEquals(null, consumed.pendingCommand)
+
+        // Clearing the pending slot for any other reason is not consumption, and
+        // must not leave a receipt that says it was.
+        val abandoned =
+            reduceLazyViewport(
+                reduceLazyViewport(LazyViewportControllerState(), LazyViewportEvent.PinTop),
+                LazyViewportEvent.AnchorUnavailable(commandId)
+            )
+        assertEquals(
+            null,
+            abandoned.lastConsumedCommandId,
+            "an abandoned command must not read as consumed"
+        )
+    }
+
+    @Test
     fun aHandedOffSessionConsumesInsteadOfReanchoring() {
         assertEquals(
             FocusedAnchorSessionAction.Reanchor,
