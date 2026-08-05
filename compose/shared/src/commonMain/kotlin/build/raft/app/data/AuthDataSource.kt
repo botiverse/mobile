@@ -28,6 +28,20 @@ class SharedAuthDataSource(
     private val diagnosticsLogger: (String) -> Unit = {},
     private val criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger
 ) {
+    private var avatarCacheRuntime: SlockAvatarCacheRuntime? = null
+    private var avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
+    private var avatarCacheEnvironmentId: () -> String = { "" }
+
+    internal fun withAvatarCacheRuntime(
+        runtime: SlockAvatarCacheRuntime?,
+        nativeCache: SlockAvatarNativeCache,
+        environmentId: () -> String
+    ): SharedAuthDataSource = apply {
+        avatarCacheRuntime = runtime
+        avatarCacheNativeCache = nativeCache
+        avatarCacheEnvironmentId = environmentId
+    }
+
     private val serverSelectionMemory = sessionStore as? SlockAuthServerSelectionMemory
     private val authMiddleware =
         SlockNetworkAuthMiddleware(
@@ -79,7 +93,10 @@ class SharedAuthDataSource(
 
         diagnosticsLogger("auth_login_clear_cached_session_start provider=password")
         runCatchingPreservingCancellation {
-            sessionStore.clearSession(reason = "login_clear_cached_session", source = "auth_login")
+            clearSessionAndRetireAvatarOwners(
+                reason = "login_clear_cached_session",
+                source = "auth_login"
+            )
         }
             .getOrElse { throwable ->
                 diagnosticsLogger(
@@ -149,7 +166,9 @@ class SharedAuthDataSource(
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_selected_server_persist_start serverIdPresent=$selectedServerPresent")
         diagnosticsLogger("auth_session_persist_start userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
-        runCatchingPreservingCancellation { sessionStore.replaceAuthenticatedSession(session) }
+        runCatchingPreservingCancellation {
+            replaceAuthenticatedSessionAndRetireChangedAccount(session, "password_login")
+        }
             .getOrElse { throwable ->
                 diagnosticsLogger(
                     "auth_session_persist_result result=failure stage=session_persist ${throwable.persistenceDiagnostics()} mapped=post_login_setup"
@@ -328,7 +347,9 @@ class SharedAuthDataSource(
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_session_persist_start provider=mobile_oauth userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
-        runCatchingPreservingCancellation { sessionStore.replaceAuthenticatedSession(session) }
+        runCatchingPreservingCancellation {
+            replaceAuthenticatedSessionAndRetireChangedAccount(session, "mobile_oauth_login")
+        }
             .getOrElse { throwable ->
                 diagnosticsLogger(
                     "auth_session_persist_result provider=mobile_oauth result=failure stage=session_persist ${throwable.persistenceDiagnostics()} mapped=post_login_setup"
@@ -562,7 +583,9 @@ class SharedAuthDataSource(
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_session_persist_start provider=$provider userPresent=${user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
-        runCatchingPreservingCancellation { sessionStore.replaceAuthenticatedSession(session) }
+        runCatchingPreservingCancellation {
+            replaceAuthenticatedSessionAndRetireChangedAccount(session, "${provider}_login")
+        }
             .getOrElse { throwable ->
                 diagnosticsLogger(
                     "auth_session_persist_result provider=$provider result=failure stage=session_persist ${throwable.persistenceDiagnostics()} mapped=post_login_setup"
@@ -612,7 +635,7 @@ class SharedAuthDataSource(
                 refreshToken = register.refreshToken,
                 servers = orderedServers
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
-        sessionStore.replaceAuthenticatedSession(session)
+        replaceAuthenticatedSessionAndRetireChangedAccount(session, "register")
         return SharedAuthResult.Success(session)
     }
 
@@ -1163,7 +1186,10 @@ class SharedAuthDataSource(
 
     suspend fun consumeQaBootstrap(request: QaBootstrapConsumeRequest): SharedAuthResult<StoredAuthSession> {
         runCatchingPreservingCancellation {
-            sessionStore.clearSession(reason = "qa_bootstrap_replace", source = "qa_bootstrap")
+            clearSessionAndRetireAvatarOwners(
+                reason = "qa_bootstrap_replace",
+                source = "qa_bootstrap"
+            )
         }.getOrElse {
             return SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Could not clear the previous QA session.")
         }
@@ -1212,7 +1238,7 @@ class SharedAuthDataSource(
                 allowImplicitServerFallback = false
             )
         return runCatchingPreservingCancellation {
-            sessionStore.replaceAuthenticatedSession(session)
+            replaceAuthenticatedSessionAndRetireChangedAccount(session, "qa_bootstrap")
             SharedAuthResult.Success(session)
         }.getOrElse {
             SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Could not save the QA bootstrap session.")
@@ -1227,7 +1253,10 @@ class SharedAuthDataSource(
         deviceBootGeneration: String,
     ): SharedAuthResult<StoredAuthSession> {
         runCatchingPreservingCancellation {
-            sessionStore.clearSession(reason = "qa_login_bootstrap_replace", source = "qa_login_bootstrap")
+            clearSessionAndRetireAvatarOwners(
+                reason = "qa_login_bootstrap_replace",
+                source = "qa_login_bootstrap"
+            )
         }.getOrElse {
             return SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Could not clear the previous QA session.")
         }
@@ -1291,7 +1320,7 @@ class SharedAuthDataSource(
                 allowImplicitServerFallback = false,
             )
         return runCatchingPreservingCancellation {
-            sessionStore.replaceAuthenticatedSession(session)
+            replaceAuthenticatedSessionAndRetireChangedAccount(session, "qa_login_bootstrap")
             SharedAuthResult.Success(session)
         }.getOrElse {
             SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Could not save the QA login session.")
@@ -1441,6 +1470,7 @@ class SharedAuthDataSource(
 
     suspend fun logout(): SharedAuthResult<Unit> {
         val session = sessionStore.readSession()
+        val avatarRetirement = captureAvatarOwnerRetirement(session)
         if (session != null) {
             runCatchingPreservingCancellation {
                 SlockPushRegistrationLifecycle.unbindBeforeLogout()
@@ -1456,7 +1486,58 @@ class SharedAuthDataSource(
             session.rememberSelectedServer(serverSelectionMemory)
         }
         sessionStore.clearSession(reason = "logout", source = "auth_data_source_logout")
+        retireCapturedAvatarOwners(avatarRetirement, source = "logout")
         return SharedAuthResult.Success(Unit)
+    }
+
+    private suspend fun clearSessionAndRetireAvatarOwners(reason: String, source: String) {
+        val capture = captureAvatarOwnerRetirement(sessionStore.readSession())
+        sessionStore.clearSession(reason = reason, source = source)
+        retireCapturedAvatarOwners(capture, source)
+    }
+
+    private suspend fun replaceAuthenticatedSessionAndRetireChangedAccount(
+        session: StoredAuthSession,
+        source: String
+    ) {
+        val previous = sessionStore.readSession()
+        val capture =
+            previous
+                ?.takeIf { it.user.id.trim() != session.user.id.trim() }
+                ?.let(::captureAvatarOwnerRetirement)
+        sessionStore.replaceAuthenticatedSession(session)
+        retireCapturedAvatarOwners(capture, source)
+    }
+
+    private fun captureAvatarOwnerRetirement(session: StoredAuthSession?): SlockAvatarOwnerRetirementCapture? =
+        avatarCacheRuntime?.captureSessionRetirement(
+            environmentId = avatarCacheEnvironmentId(),
+            session = session
+        )
+
+    private suspend fun retireCapturedAvatarOwners(
+        capture: SlockAvatarOwnerRetirementCapture?,
+        source: String
+    ) {
+        val runtime = avatarCacheRuntime ?: return
+        val captured = capture ?: return
+        val receipt =
+            runCatchingPreservingCancellation {
+                runtime.retireOwners(captured, avatarCacheNativeCache)
+            }
+                .getOrElse {
+                    diagnosticsLogger("avatar_cache_retire result=failure source=$source stage=exception")
+                    return
+                }
+        when (receipt) {
+            SlockAvatarCacheClearReceipt.Success ->
+                diagnosticsLogger("avatar_cache_retire result=success source=$source owners=${captured.owners.size}")
+            is SlockAvatarCacheClearReceipt.Failed ->
+                diagnosticsLogger(
+                    "avatar_cache_retire result=failure source=$source " +
+                        "stages=${receipt.stages.joinToString(",") { it.name.lowercase() }}"
+                )
+        }
     }
 
     private suspend fun currentUserWithSession(

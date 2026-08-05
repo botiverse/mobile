@@ -31,6 +31,18 @@ internal interface SlockAvatarCacheMetadataStore {
         guard: SlockAvatarCacheCommitGuard
     ): SlockAvatarCacheCommitResult
 
+    /**
+     * Compensates the shared half of a staged native mutation that could not be finalized. The
+     * restore is admitted only while both the exact request generation and the exact post-commit
+     * state still match, so it can never erase a newer owner/subject/content decision.
+     */
+    suspend fun restoreAfterNativeFinalizeFailure(
+        key: SlockAvatarCacheKey,
+        expectedCommittedState: SlockAvatarCacheStoredState,
+        previousState: SlockAvatarCacheStoredState,
+        guard: SlockAvatarCacheCommitGuard
+    ): SlockAvatarCacheCommitResult
+
     suspend fun clearFailure(key: SlockAvatarCacheKey)
     suspend fun clearTemporaryFailures(owner: SlockAvatarCacheOwner)
     suspend fun clearSubject(owner: SlockAvatarCacheOwner, subject: SlockAvatarCacheSubject)
@@ -43,7 +55,10 @@ private object AvatarCacheCommitRevoked : RuntimeException()
 internal class SqlDelightSlockAvatarCacheMetadataStore(
     private val database: SlockSqlDatabase
 ) : SlockAvatarCacheMetadataStore {
-    override suspend fun read(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState {
+    override suspend fun read(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState =
+        readStoredState(key)
+
+    private fun readStoredState(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState {
         val owner = key.owner
         val subject = key.subject
         val metadata =
@@ -170,6 +185,78 @@ internal class SqlDelightSlockAvatarCacheMetadataStore(
                 failedAtMs = failure.failedAtMs,
                 retryAtMs = failure.retryAtMs
             )
+        }
+
+    override suspend fun restoreAfterNativeFinalizeFailure(
+        key: SlockAvatarCacheKey,
+        expectedCommittedState: SlockAvatarCacheStoredState,
+        previousState: SlockAvatarCacheStoredState,
+        guard: SlockAvatarCacheCommitGuard
+    ): SlockAvatarCacheCommitResult =
+        commitGuarded(key, guard) {
+            if (readStoredState(key) != expectedCommittedState) throw AvatarCacheCommitRevoked
+            val owner = key.owner
+            val subject = key.subject
+            val previousMetadata = previousState.metadata
+            if (previousMetadata == null) {
+                queries.deleteAvatarCacheMetadata(
+                    environmentId = owner.environmentId,
+                    accountId = owner.accountId,
+                    serverId = owner.serverId,
+                    subjectKind = subject.subjectKind,
+                    subjectId = subject.subjectId,
+                    memberKind = subject.memberKind
+                )
+            } else {
+                require(previousMetadata.key.owner == owner && previousMetadata.key.subject == subject)
+                val previousKey = previousMetadata.key
+                queries.upsertAvatarCacheMetadata(
+                    environmentId = owner.environmentId,
+                    accountId = owner.accountId,
+                    serverId = owner.serverId,
+                    subjectKind = subject.subjectKind,
+                    subjectId = subject.subjectId,
+                    memberKind = subject.memberKind,
+                    contentKind = previousKey.content.kind.storageValue,
+                    contentFingerprint = previousKey.content.fingerprint,
+                    eTag = previousMetadata.eTag,
+                    lastModified = previousMetadata.lastModified,
+                    fetchedAtMs = previousMetadata.fetchedAtMs,
+                    validatedAtMs = previousMetadata.validatedAtMs,
+                    freshUntilMs = previousMetadata.freshUntilMs,
+                    staleUntilMs = previousMetadata.staleUntilMs,
+                    sizeBytes = previousMetadata.sizeBytes,
+                    contentType = previousMetadata.contentType
+                )
+            }
+
+            queries.deleteAvatarCacheFailure(
+                environmentId = owner.environmentId,
+                accountId = owner.accountId,
+                serverId = owner.serverId,
+                subjectKind = subject.subjectKind,
+                subjectId = subject.subjectId,
+                memberKind = subject.memberKind,
+                contentKind = key.content.kind.storageValue,
+                contentFingerprint = key.content.fingerprint
+            )
+            previousState.failure?.let { previousFailure ->
+                require(previousFailure.key == key)
+                queries.upsertAvatarCacheFailure(
+                    environmentId = owner.environmentId,
+                    accountId = owner.accountId,
+                    serverId = owner.serverId,
+                    subjectKind = subject.subjectKind,
+                    subjectId = subject.subjectId,
+                    memberKind = subject.memberKind,
+                    contentKind = key.content.kind.storageValue,
+                    contentFingerprint = key.content.fingerprint,
+                    failureKind = previousFailure.kind.storageValue,
+                    consecutiveCount = previousFailure.consecutiveCount.toLong(),
+                    failedAtMs = previousFailure.failedAtMs,
+                    retryAtMs = previousFailure.retryAtMs
+                )
+            }
         }
 
     override suspend fun clearFailure(key: SlockAvatarCacheKey) {

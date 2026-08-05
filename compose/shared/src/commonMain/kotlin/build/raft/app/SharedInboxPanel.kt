@@ -1489,34 +1489,40 @@ internal fun activitySenderAvatarPresentation(enabled: Boolean): ActivitySenderA
 internal data class ActivitySenderAvatarIdentity(
     val senderKind: MemberKind?,
     val avatarWireValue: String?,
-    val label: String
+    val label: String,
+    val senderId: String? = null
 )
 
 internal fun InboxItem.activitySenderAvatarIdentity(
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
 ): ActivitySenderAvatarIdentity {
     val senderKind: MemberKind?
+    val senderId: String?
     val avatarWireValue: String?
     when (kind) {
         InboxItemKind.Thread -> {
             senderKind = latestActivitySenderKind ?: lastMessageSenderKind
+            senderId = latestActivitySenderId ?: lastMessageSenderId
             avatarWireValue = latestActivitySenderAvatarWireValue ?: lastMessageSenderAvatarWireValue
         }
         InboxItemKind.MentionAction -> {
             senderKind = MemberKind.System
+            senderId = null
             avatarWireValue = null
         }
         InboxItemKind.Channel,
         InboxItemKind.DirectMessage,
         InboxItemKind.System -> {
             senderKind = lastMessageSenderKind ?: latestActivitySenderKind
+            senderId = lastMessageSenderId ?: latestActivitySenderId
             avatarWireValue = lastMessageSenderAvatarWireValue ?: latestActivitySenderAvatarWireValue
         }
     }
     return ActivitySenderAvatarIdentity(
         senderKind = senderKind,
         avatarWireValue = avatarWireValue,
-        label = senderDisplayName(senderProfiles).orEmpty()
+        label = senderDisplayName(senderProfiles).orEmpty(),
+        senderId = senderId
     )
 }
 
@@ -1538,7 +1544,8 @@ private fun SharedActivitySenderAvatar(
                     avatarWireValue = identity.avatarWireValue,
                     label = identity.label,
                     avatarSize = ActivitySenderAvatarSize,
-                    borderWidth = ActivitySenderAvatarBorder
+                    borderWidth = ActivitySenderAvatarBorder,
+                    cacheSubject = slockMemberAvatarCacheSubject(identity.senderKind, identity.senderId)
                 )
             MemberKind.System,
             null -> SharedActivityAppAvatar()

@@ -104,6 +104,26 @@ class SlockAvatarCacheContractTest {
     }
 
     @Test
+    fun nativeSubjectKeyIsOwnerScopedButStableAcrossContentVersions() {
+        val baseline = key(content = slockAvatarContentIdentity("https://images.example/avatar.png?v=1"))
+        val changedContent = key(content = slockAvatarContentIdentity("https://images.example/avatar.png?v=2"))
+
+        assertEquals(baseline.nativeSubjectKey, changedContent.nativeSubjectKey)
+        assertNotEquals(
+            baseline.nativeSubjectKey,
+            key(owner = owner(serverId = "server-b")).nativeSubjectKey
+        )
+        assertNotEquals(
+            baseline.nativeSubjectKey,
+            key(subject = SlockAvatarCacheSubject.Member(MemberKind.Human, "member-a")).nativeSubjectKey
+        )
+        assertNotEquals(
+            baseline.nativeSubjectKey,
+            key(subject = SlockAvatarCacheSubject.Member(MemberKind.Agent, "member-b")).nativeSubjectKey
+        )
+    }
+
+    @Test
     fun readPolicySeparatesFreshStaleSuppressedAndExpiredStates() {
         val key = key()
         val metadata = metadata(key, validatedAtMs = 100L, freshUntilMs = 200L, staleUntilMs = 400L)

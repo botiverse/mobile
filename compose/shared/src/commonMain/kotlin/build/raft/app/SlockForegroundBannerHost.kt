@@ -605,7 +605,9 @@ private fun SlockForegroundBannerAvatar(
         avatarWireValue = memberAvatarWireValue ?: banner.avatarWireValue,
         label = avatarLabel,
         avatarSize = ForegroundBannerAvatarSize,
-        borderWidth = SlockStroke.Default
+        borderWidth = SlockStroke.Default,
+        cacheSubject = profile?.slockAvatarCacheSubject(),
+        cacheServerId = profile?.serverId?.value ?: currentServerId?.value
     )
 }
 

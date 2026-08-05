@@ -25,6 +25,10 @@ import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SlockComputersNetworkApi
+import build.raft.app.data.SlockAvatarCacheCompletionReceipt
+import build.raft.app.data.SlockAvatarCacheSubject
+import build.raft.app.data.SlockAvatarPreparedRender
+import build.raft.app.data.BridgeSlockAvatarNativeCache
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.parseSlockHome
@@ -115,6 +119,7 @@ import com.tencent.kuikly.compose.ui.graphics.Path
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import kotlin.coroutines.ContinuationInterceptor
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.semantics.isTraversalGroup
 import com.tencent.kuikly.compose.ui.semantics.semantics
@@ -137,6 +142,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.resource.format
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -316,6 +322,8 @@ data class SlockHomeServerDrawerSection(
 
 data class SlockServerDrawerUserHeader(
     val displayName: String,
+    val memberId: String? = null,
+    val serverId: String? = null,
     val avatarWireValue: String? = null,
     val avatarLabel: String = displayName.take(2).uppercase()
 )
@@ -1876,6 +1884,7 @@ internal fun SlockStructuralHomeShell(
                                                 memberId =
                                                     pinned?.presenceMemberId
                                                         ?: pinnedMember?.identity?.memberId?.value,
+                                                cacheServerId = currentServerId,
                                                 agentStatusResolver = agentStatusResolver,
                                                 memberAvatarResolver = memberAvatarResolver,
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
@@ -2107,6 +2116,7 @@ internal fun SlockStructuralHomeShell(
                                     avatarLabel = dm.avatarLabel,
                                     peerType = dm.peerType,
                                     memberId = dm.presenceMemberId,
+                                    cacheServerId = currentServerId,
                                     agentStatusResolver = agentStatusResolver,
                                     memberAvatarResolver = memberAvatarResolver,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
@@ -3978,7 +3988,9 @@ internal fun HomeServerDrawerHostedPanel(
                     SlockAvatar(
                         avatarWireValue = userHeader.avatarWireValue,
                         label = userHeader.avatarLabel,
-                        avatarSize = 32.dp
+                        avatarSize = 32.dp,
+                        cacheSubject = slockMemberAvatarCacheSubject(MemberKind.Human, userHeader.memberId),
+                        cacheServerId = userHeader.serverId
                     )
                     Text(
                         text = userHeader.displayName,
@@ -4255,6 +4267,7 @@ private fun HomeServerDrawerConversationRow(
             avatarLabel = item.avatarLabel,
             peerType = item.peerType,
             memberId = item.presenceMemberId,
+            cacheServerId = row.serverId,
             memberAvatarResolver = memberAvatarResolver,
             modifier = Modifier.padding(horizontal = HomeServerDrawerConversationHorizontalPadding),
             hasDraft = item.hasDraft,
@@ -4664,14 +4677,18 @@ private fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
                     label = presentation.fallbackLabel,
                     modifier = Modifier.fillMaxSize(),
                     avatarSize = 32.dp,
-                    borderWidth = 0.dp
+                    borderWidth = 0.dp,
+                    cacheSubject = SlockAvatarCacheSubject.Server(server.id),
+                    cacheServerId = server.id
                 )
             } else {
                 // The invisible prewarm Image owns its painter. Give the visible row a distinct
                 // painter so Kuikly's stateful image node can draw the already-warm cache entry.
                 SlockAvatarHttpImage(
                     source = source,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    cacheSubject = SlockAvatarCacheSubject.Server(server.id),
+                    cacheServerId = server.id
                 )
             }
         }
@@ -5550,7 +5567,7 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, interactionIdentity: String = "dm:${memberId.orEmpty()}:$name", interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((SlockPopoverAnchor) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, cacheServerId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, interactionIdentity: String = "dm:${memberId.orEmpty()}:$name", interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((SlockPopoverAnchor) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val hoverInteractionSource = remember(interactionIdentity) { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
@@ -5682,7 +5699,12 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.size(width = ChannelAvatarSize, height = ChannelAvatarSize), contentAlignment = Alignment.Center) {
-                SlockAvatar(avatarWireValue, avatarLabel)
+                SlockAvatar(
+                    avatarWireValue = avatarWireValue,
+                    label = avatarLabel,
+                    cacheSubject = slockMemberAvatarCacheSubject(peerType.homeDmPeerMemberKindOrNull(), memberId),
+                    cacheServerId = cacheServerId
+                )
             }
             com.tencent.kuikly.compose.foundation.layout.Row(
                 modifier =
@@ -5771,6 +5793,18 @@ private fun ChannelAvatar(avatarWireValue: String?, label: String, presence: Slo
     }
 }
 
+internal fun slockMemberAvatarCacheSubject(
+    kind: MemberKind?,
+    memberId: String?
+): SlockAvatarCacheSubject.Member? {
+    val cleanMemberId = memberId?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    val cacheableKind = kind?.takeIf { it == MemberKind.Human || it == MemberKind.Agent } ?: return null
+    return SlockAvatarCacheSubject.Member(cacheableKind, cleanMemberId)
+}
+
+internal fun MemberProfile.slockAvatarCacheSubject(): SlockAvatarCacheSubject.Member? =
+    slockMemberAvatarCacheSubject(kind, id.value)
+
 @Composable
 internal fun SlockAvatar(
     avatarWireValue: String?,
@@ -5778,7 +5812,9 @@ internal fun SlockAvatar(
     modifier: Modifier = Modifier,
     avatarSize: Dp = ChannelAvatarSize,
     borderWidth: Dp = SlockStroke.Thin,
-    diagnostics: SlockAvatarRowDiagnostics? = null
+    diagnostics: SlockAvatarRowDiagnostics? = null,
+    cacheSubject: SlockAvatarCacheSubject? = null,
+    cacheServerId: String? = null
 ) {
     // #192 trace scope extension: per-phase attribution for avatar rendering. The
     // avatar is rendered for every channel row in Home + every participant in
@@ -5811,7 +5847,9 @@ internal fun SlockAvatar(
             SlockAvatarHttpImage(
                 source = httpAvatarSource,
                 modifier = Modifier.fillMaxSize(),
-                diagnostics = diagnostics
+                diagnostics = diagnostics,
+                cacheSubject = cacheSubject,
+                cacheServerId = cacheServerId
             )
         }
         else -> traceMarkdownSection(SlockAvatarTraceNames.FALLBACK_DEFAULT, displayAvatarWireValue?.length ?: 0) {
@@ -5824,7 +5862,9 @@ internal fun SlockAvatar(
 private fun SlockAvatarHttpImage(
     source: String,
     modifier: Modifier = Modifier,
-    diagnostics: SlockAvatarRowDiagnostics? = null
+    diagnostics: SlockAvatarRowDiagnostics? = null,
+    cacheSubject: SlockAvatarCacheSubject? = null,
+    cacheServerId: String? = null
 ) {
     val apiBaseUrl =
         SlockSharedStoreRegistry.currentOrNull()
@@ -5889,9 +5929,55 @@ private fun SlockAvatarHttpImage(
             lease?.ownerToken == loadState.ownerToken
     if (!ownsCurrentRequest && loadState.cache != SlockAvatarHttpCacheState.Ready) return
     val activeSource = loadKey.sourceFor(loadState.endpoint) ?: return
-    val painter = rememberAsyncImagePainter(model = activeSource)
+    val avatarCacheRuntime = SlockSharedStoreRegistry.currentOrNull()?.avatarCacheRuntime
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    var preparedRender by remember(activeSource, cacheSubject, cacheServerId, avatarCacheRuntime) {
+        mutableStateOf<SlockAvatarPreparedRender?>(
+            if (avatarCacheRuntime == null || cacheSubject == null) {
+                SlockAvatarPreparedRender.Legacy(activeSource)
+            } else {
+                null
+            }
+        )
+    }
+    var forceLegacy by remember(activeSource, cacheSubject, cacheServerId, avatarCacheRuntime) {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(activeSource, cacheSubject, cacheServerId, avatarCacheRuntime, bridge) {
+        val bridgeCallContext = currentCoroutineContext()[ContinuationInterceptor]
+        preparedRender =
+            if (avatarCacheRuntime == null || cacheSubject == null || bridgeCallContext == null) {
+                SlockAvatarPreparedRender.Legacy(activeSource)
+            } else {
+                avatarCacheRuntime.prepare(
+                    subject = cacheSubject,
+                    remoteUrl = activeSource,
+                    serverId = cacheServerId,
+                    nativeCache =
+                        BridgeSlockAvatarNativeCache(
+                            bridge = bridge,
+                            bridgeCallContext = bridgeCallContext
+                        )
+                )
+            }
+    }
+    val admittedRender = preparedRender ?: return
+    val imageModel = if (forceLegacy) activeSource else admittedRender.imageModel
+    val painter = rememberAsyncImagePainter(model = imageModel)
     val imageState by painter.state.collectAsState()
-    LaunchedEffect(imageState, activeSource, loadState.generation, lease?.ownerToken) {
+    LaunchedEffect(admittedRender, avatarCacheRuntime) {
+        val native = admittedRender as? SlockAvatarPreparedRender.Native ?: return@LaunchedEffect
+        val receipt = avatarCacheRuntime?.observeAndCommit(native) ?: return@LaunchedEffect
+        if (
+            receipt is SlockAvatarCacheCompletionReceipt.NativeUnsupported ||
+            receipt is SlockAvatarCacheCompletionReceipt.RejectedStaleGeneration ||
+            receipt is SlockAvatarCacheCompletionReceipt.Failed
+        ) {
+            forceLegacy = true
+        }
+    }
+    LaunchedEffect(imageState, imageModel, loadState.generation, lease?.ownerToken) {
         val phase = imageState.toSlockAvatarHttpPainterPhase()
         if (ownsCurrentRequest) {
             lease?.let { currentLease ->

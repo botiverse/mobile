@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
+import build.raft.app.data.BridgeSlockAvatarNativeCache
 import build.raft.app.data.ChatLayoutPreferenceRepository
 import build.raft.app.data.DataResult
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
@@ -73,13 +74,20 @@ internal fun rememberStandaloneSettingsEnvironment(
     val webBaseUrl = standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore)
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
-    val authDataSource = remember(sharedStores, storeScope) {
-        sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope)
+    val scope = rememberCoroutineScope()
+    val avatarNativeCache =
+        remember(bridge, scope) {
+            BridgeSlockAvatarNativeCache(
+                bridge = bridge,
+                bridgeCallContext = scope.kuiklyBridgeCallContext()
+            )
+        }
+    val authDataSource = remember(sharedStores, storeScope, avatarNativeCache) {
+        sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope, avatarNativeCache)
     }
     val serverMembersStore = remember(sharedStores, storeScope) {
         sharedStores.serverMembersStore(storeScope)
     }
-    val scope = rememberCoroutineScope()
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
@@ -117,6 +125,7 @@ internal fun rememberStandaloneSettingsEnvironment(
             settingsCapabilities,
             chatLayoutPreferenceRepository,
             notificationPreferenceRepository,
+            avatarNativeCache,
         ) {
             SharedSettingsDataSource(
                 sessionStore = authStore,
@@ -136,10 +145,13 @@ internal fun rememberStandaloneSettingsEnvironment(
                 recompositionProfilerPreferenceRepository =
                     PersistentRecompositionProfilerPreferenceRepository(
                         KeyValueRecompositionProfilerPreferenceStore(sharedPreferenceStore)
-                    ),
+                ),
                 apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
                 diagnosticsLogger = { message -> bridge.log("settings_standalone $message") }
+            ).withAvatarCacheRuntime(
+                runtime = sharedStores.avatarCacheRuntime,
+                nativeCache = avatarNativeCache
             )
         }
     return remember(
@@ -195,7 +207,7 @@ internal fun StandaloneSettingsEffectHandler(
                 environment.settingsCapabilities.bridgeCopyToClipboard(effect.text)
             }
             is SharedSettingsEffect.ClearStorage -> {
-                val result = environment.settingsCapabilities.clearStorage(effect.target)
+                val result = environment.dataSource.clearStorage(effect.target)
                 when (result) {
                     is DataResult.Content ->
                         dispatch(

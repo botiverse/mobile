@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.KmmResourceLocaleRuntime
 import build.raft.app.SlockLucideIconName
 import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.RealtimeRefreshRequired
@@ -632,6 +633,17 @@ class SharedSettingsDataSource(
     private val linkOpenPreferenceRepository: LinkOpenPreferenceRepository? = null,
     private val authRuntimeCapabilityStore: SharedAuthRuntimeCapabilityStore? = null
 ) {
+    private var avatarCacheRuntime: SlockAvatarCacheRuntime? = null
+    private var avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
+
+    internal fun withAvatarCacheRuntime(
+        runtime: SlockAvatarCacheRuntime?,
+        nativeCache: SlockAvatarNativeCache
+    ): SharedSettingsDataSource = apply {
+        avatarCacheRuntime = runtime
+        avatarCacheNativeCache = nativeCache
+    }
+
     val authSessionEvents: SharedFlow<AuthSessionEvent>?
         get() = (sessionStore as? SlockAuthSessionEventSource)?.authSessionEvents
 
@@ -866,8 +878,14 @@ class SharedSettingsDataSource(
         (settingsRepository as? SettingsServerActionRepository)?.revokeServerJoinLink(linkId)
             ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
-    suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult> =
-        settingsRepository?.deleteServer(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult> {
+        val capture = captureCurrentAvatarOwnerRetirement()
+        val result = settingsRepository?.deleteServer(request) ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        if (result is DataResult.Content && result.data.success) {
+            retireCapturedAvatarOwners(capture, "delete_server")
+        }
+        return result
+    }
 
     suspend fun updateServerAgreement(
         request: SettingsServerAgreementUpdateRequest
@@ -900,18 +918,36 @@ class SharedSettingsDataSource(
             ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun removeServerMember(memberId: String): DataResult<SettingsServerActionResult> {
+        val cleanMemberId = memberId.trim()
+        val session = sessionStore.readSession()
+        val serverId = session?.currentServerId?.trim().orEmpty()
+        val memberKind =
+            serverId.takeIf(String::isNotBlank)
+                ?.let(::ServerId)
+                ?.let { ownerServerId ->
+                    serverMembersStore?.currentKnownMemberProfilesById(ownerServerId)?.get(cleanMemberId)?.kind
+                }
+                ?.takeIf { it == MemberKind.Human || it == MemberKind.Agent }
+        val avatarRetirement =
+            if (serverId.isNotBlank() && cleanMemberId.isNotBlank() && memberKind != null) {
+                avatarCacheRuntime?.captureCurrentSubjectRetirement(
+                    subject = SlockAvatarCacheSubject.Member(memberKind, cleanMemberId),
+                    serverId = serverId
+                )
+            } else {
+                null
+            }
         val result =
             (settingsRepository as? SettingsServerManagementRepository)?.removeServerMember(memberId)
                 ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         if (result is DataResult.Content && result.data.success) {
-            val serverId = sessionStore.readSession()?.currentServerId?.trim().orEmpty()
-            val cleanMemberId = memberId.trim()
             if (serverId.isNotBlank() && cleanMemberId.isNotBlank()) {
                 serverMembersStore?.removeMember(
                     serverId = ServerId(serverId),
                     memberId = MemberId(cleanMemberId)
                 )
             }
+            avatarRetirement?.let { retireCapturedAvatarSubject(it, "remove_server_member") }
         }
         return result
     }
@@ -927,9 +963,16 @@ class SharedSettingsDataSource(
         (settingsRepository as? SettingsServerManagementRepository)?.restoreSystemChannel()
             ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
-    suspend fun leaveServer(): DataResult<SettingsServerActionResult> =
-        (settingsRepository as? SettingsServerManagementRepository)?.leaveServer()
-            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    suspend fun leaveServer(): DataResult<SettingsServerActionResult> {
+        val capture = captureCurrentAvatarOwnerRetirement()
+        val result =
+            (settingsRepository as? SettingsServerManagementRepository)?.leaveServer()
+                ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        if (result is DataResult.Content && result.data.success) {
+            retireCapturedAvatarOwners(capture, "leave_server")
+        }
+        return result
+    }
 
     suspend fun loadBilling(): DataResult<SettingsBillingSnapshot> =
         settingsRepository?.getBilling() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -1225,8 +1268,31 @@ class SharedSettingsDataSource(
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
         platformCapabilities.loadStorage()
 
-    suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> =
-        platformCapabilities.clearStorage(target)
+    suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> {
+        val runtime = avatarCacheRuntime
+        if (target != "imageCache" || runtime == null) return platformCapabilities.clearStorage(target)
+        var nativeResult: DataResult<SharedSettingsStorageSnapshot>? = null
+        val receipt =
+            runtime.clearAll {
+                val result = platformCapabilities.clearStorage(target)
+                nativeResult = result
+                result is DataResult.Content
+            }
+        val result = nativeResult
+            ?: return DataResult.Error(ScreenError("settings_storage_clear_failed", retryable = true))
+        if (receipt is SlockAvatarCacheClearReceipt.Success) return result
+        diagnosticsLogger?.invoke(
+            "avatar_cache_clear result=failure stages=" +
+                (receipt as SlockAvatarCacheClearReceipt.Failed).stages.joinToString(",") { it.name.lowercase() }
+        )
+        return when (result) {
+            is DataResult.Content ->
+                DataResult.Error(ScreenError("settings_avatar_cache_clear_incomplete", retryable = true))
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> DataResult.Error(result.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+        }
+    }
 
     suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> {
         val sessionResult = runCatchingPreservingCancellation { sessionStore.readSession() }
@@ -1286,6 +1352,11 @@ class SharedSettingsDataSource(
     ): DataResult<SharedSettingsDeveloperSnapshot> {
         val changed = before != after
         if (changed) {
+            val avatarRetirement =
+                avatarCacheRuntime?.captureSessionRetirement(
+                    environmentId = before.apiBaseUrl,
+                    session = sessionStore.readSession()
+                )
             runCatching {
                 updateSlockNetworkKmmRecoveryEnvironment(
                     environmentKey = after.key,
@@ -1299,6 +1370,7 @@ class SharedSettingsDataSource(
                 )
             }
             sessionStore.clearSession(reason = "api_environment_changed", source = "settings_store")
+            retireCapturedAvatarOwners(avatarRetirement, "api_environment_changed")
             when (val result = platformCapabilities.onApiEnvironmentChanged(before, after)) {
                 is DataResult.Content -> Unit
                 is DataResult.Empty -> Unit
@@ -1316,6 +1388,50 @@ class SharedSettingsDataSource(
                     }
             )
         )
+    }
+
+    private suspend fun captureCurrentAvatarOwnerRetirement(): SlockAvatarOwnerRetirementCapture? {
+        val environmentId = apiEnvironmentStore?.current()?.apiBaseUrl ?: return null
+        val session = sessionStore.readSession() ?: return null
+        val currentServerId = session.currentServerId?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val owner =
+            slockCurrentAvatarCacheOwner(
+                environmentId = environmentId,
+                session = session,
+                requestedServerId = currentServerId
+            ) ?: return null
+        return SlockAvatarOwnerRetirementCapture(setOf(owner))
+    }
+
+    private suspend fun retireCapturedAvatarOwners(
+        capture: SlockAvatarOwnerRetirementCapture?,
+        source: String
+    ) {
+        val runtime = avatarCacheRuntime ?: return
+        val captured = capture ?: return
+        when (val receipt = runtime.retireOwners(captured, avatarCacheNativeCache)) {
+            SlockAvatarCacheClearReceipt.Success -> Unit
+            is SlockAvatarCacheClearReceipt.Failed ->
+                diagnosticsLogger?.invoke(
+                    "avatar_cache_retire result=failure source=$source stages=" +
+                        receipt.stages.joinToString(",") { it.name.lowercase() }
+                )
+        }
+    }
+
+    private suspend fun retireCapturedAvatarSubject(
+        capture: SlockAvatarSubjectRetirementCapture,
+        source: String
+    ) {
+        val runtime = avatarCacheRuntime ?: return
+        when (val receipt = runtime.retireSubject(capture, avatarCacheNativeCache)) {
+            SlockAvatarCacheClearReceipt.Success -> Unit
+            is SlockAvatarCacheClearReceipt.Failed ->
+                diagnosticsLogger?.invoke(
+                    "avatar_cache_retire result=failure source=$source stages=" +
+                        receipt.stages.joinToString(",") { it.name.lowercase() }
+                )
+        }
     }
 
     suspend fun loadDiagnostics(): DataResult<SharedSettingsDiagnosticsSnapshot> =

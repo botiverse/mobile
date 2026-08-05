@@ -359,6 +359,8 @@ internal class SlockSharedStoreProvider private constructor(
     private val canonicalMessageV2Canary: CanonicalMessageV2ProductionCanary,
     val localDataStore: ComposeLocalDataStore,
     internal val avatarCacheMetadataStore: SlockAvatarCacheMetadataStore,
+    internal val avatarCacheCoordinator: SlockAvatarCacheCoordinator,
+    internal val avatarCacheRuntime: SlockAvatarCacheRuntime,
     val agentDetailStore: SharedAgentDetailStore,
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
     val tasksDataStore: SharedTasksDataStore,
@@ -406,9 +408,6 @@ internal class SlockSharedStoreProvider private constructor(
     private val processReadReceiptLock = SynchronizedObject()
     private var processReadReceiptCoordinator: ReadReceiptCoordinator? = null
     private val processReadReceiptRepositories = mutableMapOf<ReadReceiptOwner, RealReadReceiptRepository>()
-    internal val avatarCacheCoordinator: SlockAvatarCacheCoordinator by lazy {
-        SlockAvatarCacheCoordinator(avatarCacheMetadataStore, ::defaultNowMillis)
-    }
     private val homeStores = SlockShellScopedStoreCache<SharedHomeStore>()
     private val homeActivityStores = SlockShellScopedStoreCache<SharedActivityStore>()
     private val homeStoreScopes = SlockShellScopedStoreCache<CoroutineScope>()
@@ -881,16 +880,25 @@ internal class SlockSharedStoreProvider private constructor(
     fun adaptiveWorkspaceStore(scope: SlockShellStoreScope): SharedAdaptiveWorkspaceStore =
         shellAdaptiveWorkspaceStores.getOrPut(scope) { SharedAdaptiveWorkspaceStore() }
 
-    fun createAuthDataSourceForCurrentEnvironment(): SharedAuthDataSource =
+    fun createAuthDataSourceForCurrentEnvironment(
+        avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
+    ): SharedAuthDataSource =
         createSharedAuthDataSourceForCurrentEnvironment(
             apiEnvironmentStore = apiEnvironmentStore,
-            authStore = authStore
+            authStore = authStore,
+            avatarCacheRuntime = avatarCacheRuntime,
+            avatarCacheNativeCache = avatarCacheNativeCache
         )
 
-    fun createAuthDataSourceForCurrentEnvironment(scope: SlockShellStoreScope): SharedAuthDataSource =
+    fun createAuthDataSourceForCurrentEnvironment(
+        scope: SlockShellStoreScope,
+        avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
+    ): SharedAuthDataSource =
         createSharedAuthDataSourceForCurrentEnvironment(
             apiEnvironmentStore = apiEnvironmentStore,
-            authStore = authStore(scope)
+            authStore = authStore(scope),
+            avatarCacheRuntime = avatarCacheRuntime,
+            avatarCacheNativeCache = avatarCacheNativeCache
         )
 
     fun markActiveAppShellPager(pagerId: String) {
@@ -1368,10 +1376,26 @@ internal class SlockSharedStoreProvider private constructor(
                 "shared_network_file_resolver",
                 "storage_scope=${platformFileResolverBinding.scope}"
             )
+            val avatarCacheMetadataStore = SqlDelightSlockAvatarCacheMetadataStore(database)
+            val avatarCacheCoordinator =
+                SlockAvatarCacheCoordinator(avatarCacheMetadataStore, ::defaultNowMillis)
+            val avatarCacheRuntime =
+                SlockAvatarCacheRuntime(
+                    coordinator = avatarCacheCoordinator,
+                    currentOwner = { requestedServerId ->
+                        slockCurrentAvatarCacheOwner(
+                            environmentId = apiEnvironmentStore.current().apiBaseUrl,
+                            session = authStore.readSession(),
+                            requestedServerId = requestedServerId
+                        )
+                    },
+                    logger = sharedWarnLogger("SlockAvatarCache", "avatar_cache_runtime")
+                )
             val authDataSource =
                 createSharedAuthDataSourceForCurrentEnvironment(
                     apiEnvironmentStore = apiEnvironmentStore,
-                    authStore = authStore
+                    authStore = authStore,
+                    avatarCacheRuntime = avatarCacheRuntime
                 )
             val authLossFunnel =
                 SharedAuthLossFunnel(
@@ -1750,7 +1774,9 @@ internal class SlockSharedStoreProvider private constructor(
                 currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
                 canonicalMessageV2Canary = canonicalMessageV2Canary,
                 localDataStore = localDataStore,
-                avatarCacheMetadataStore = SqlDelightSlockAvatarCacheMetadataStore(database),
+                avatarCacheMetadataStore = avatarCacheMetadataStore,
+                avatarCacheCoordinator = avatarCacheCoordinator,
+                avatarCacheRuntime = avatarCacheRuntime,
                 agentDetailStore = SharedAgentDetailStore(
                     logger = sharedInfoLogger("SlockAgentDetail", "shared_agent_detail_store")
                 ),
@@ -1940,6 +1966,8 @@ internal suspend fun reconcileOrClearActiveShellServerSelections(
 internal fun createSharedAuthDataSourceForCurrentEnvironment(
     apiEnvironmentStore: SharedApiEnvironmentStore,
     authStore: SlockAuthSessionStore,
+    avatarCacheRuntime: SlockAvatarCacheRuntime? = null,
+    avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache,
     transportFactory: (() -> String) -> SlockAuthTransport = { baseUrlProvider ->
         SharedSlockAuthTransport(
             baseUrlProvider = baseUrlProvider,
@@ -1961,6 +1989,10 @@ internal fun createSharedAuthDataSourceForCurrentEnvironment(
         sessionStore = authStore,
         diagnosticsLogger = diagnosticsLogger,
         criticalDiagnosticsLogger = criticalDiagnosticsLogger
+    ).withAvatarCacheRuntime(
+        runtime = avatarCacheRuntime,
+        nativeCache = avatarCacheNativeCache,
+        environmentId = { apiEnvironmentStore.current().apiBaseUrl }
     )
 
 private fun ReadReceiptOwner.toProcessActivityUnreadOwner(): ProcessActivityUnreadOwner =

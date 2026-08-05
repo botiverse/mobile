@@ -4896,7 +4896,12 @@ private fun ThreadMessageVisualCard(
                 ThreadMessageStaticAvatar(
                     avatarLabel = message.avatarLabel,
                     avatarWireValue = avatarWireValue,
-                    status = null
+                    status = null,
+                    cacheSubject =
+                        slockMemberAvatarCacheSubject(
+                            message.authorKind.projectedMemberKindOrNull(),
+                            message.authorId
+                        )
                 )
                 Column(
                     modifier = Modifier.weight(1f),
@@ -14154,6 +14159,11 @@ private fun ThreadPageHeader(
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
                     avatarLabel = headerDisplay.dmPeerAvatarLabel,
+                    cacheSubject =
+                        headerDisplay.dmPeerIdentity?.let { identity ->
+                            slockMemberAvatarCacheSubject(identity.kind, identity.memberId.value)
+                        },
+                    cacheServerId = headerDisplay.dmPeerIdentity?.sourceServerId?.value,
                     onClick =
                         headerDisplay.dmPeerIdentity?.let { identity ->
                             { onOpenMemberProfile(identity) }
@@ -14316,6 +14326,8 @@ internal fun String?.threadChannelHeaderIcon(): SlockLucideIconName =
 private fun ThreadDmPeerAvatarTile(
     avatarWireValue: String?,
     avatarLabel: String,
+    cacheSubject: build.raft.app.data.SlockAvatarCacheSubject? = null,
+    cacheServerId: String? = null,
     onClick: (() -> Unit)? = null
 ) {
     Box(
@@ -14328,7 +14340,9 @@ private fun ThreadDmPeerAvatarTile(
             avatarWireValue = avatarWireValue,
             label = avatarLabel,
             avatarSize = ThreadHeaderChannelTileSize,
-            borderWidth = SlockStroke.Default
+            borderWidth = SlockStroke.Default,
+            cacheSubject = cacheSubject,
+            cacheServerId = cacheServerId
         )
     }
 }
@@ -20222,6 +20236,11 @@ private fun ThreadMessageCard(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         avatarDiagnostics = avatarDiagnostics,
+                        cacheSubject =
+                            slockMemberAvatarCacheSubject(
+                                message.authorKind.projectedMemberKindOrNull(),
+                                message.authorId
+                            ),
                         status = agentStatus,
                         statusPulsing = { !isMessageListScrolling() },
                         muted = authorBadgeLabel != null,
@@ -20607,6 +20626,11 @@ private fun ThreadMessageCard(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         avatarDiagnostics = avatarDiagnostics,
+                        cacheSubject =
+                            slockMemberAvatarCacheSubject(
+                                message.authorKind.projectedMemberKindOrNull(),
+                                message.authorId
+                            ),
                         status = agentStatus,
                         statusPulsing = { !isMessageListScrolling() },
                         muted = authorBadgeLabel != null,
@@ -23136,6 +23160,11 @@ private fun ThreadInlineReplyRow(
             label = displayName.take(1).uppercase(),
             avatarSize = 20.dp,
             borderWidth = SlockStroke.Thin,
+            cacheSubject =
+                slockMemberAvatarCacheSubject(
+                    participant?.kind?.parsedMemberKindOrNull(),
+                    reply.senderId
+                ),
         )
         Text(
             text = displayName,
@@ -24396,6 +24425,7 @@ private fun ThreadMessageAvatarSlot(
     avatarLabel: String,
     avatarWireValue: String?,
     avatarDiagnostics: SlockAvatarRowDiagnostics? = null,
+    cacheSubject: build.raft.app.data.SlockAvatarCacheSubject? = null,
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
@@ -24417,6 +24447,7 @@ private fun ThreadMessageAvatarSlot(
                         avatarLabel = avatarLabel,
                         avatarWireValue = avatarWireValue,
                         avatarDiagnostics = avatarDiagnostics,
+                        cacheSubject = cacheSubject,
                         status = status,
                         statusPulsing = statusPulsing,
                         muted = muted,
@@ -24453,6 +24484,7 @@ private fun ThreadMessageAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
     avatarDiagnostics: SlockAvatarRowDiagnostics? = null,
+    cacheSubject: build.raft.app.data.SlockAvatarCacheSubject? = null,
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
@@ -24505,7 +24537,8 @@ private fun ThreadMessageAvatar(
                     diagnostics = avatarDiagnostics,
                     modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
                     avatarSize = 36.dp,
-                    borderWidth = SlockStroke.Default
+                    borderWidth = SlockStroke.Default,
+                    cacheSubject = cacheSubject
                 )
                 if (muted) {
                     Box(
@@ -24530,7 +24563,8 @@ private fun ThreadMessageStaticAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
     status: SlockAgentStatusIndicatorState?,
-    statusPulsing: Boolean = true
+    statusPulsing: Boolean = true,
+    cacheSubject: build.raft.app.data.SlockAvatarCacheSubject? = null
 ) {
     val avatarSource =
         remember(avatarWireValue) {
@@ -24552,7 +24586,8 @@ private fun ThreadMessageStaticAvatar(
                 avatarWireValue = avatarSource,
                 label = avatarLabel,
                 avatarSize = 36.dp,
-                borderWidth = SlockStroke.Default
+                borderWidth = SlockStroke.Default,
+                cacheSubject = cacheSubject
             )
         }
     }
@@ -25929,6 +25964,14 @@ internal fun ForwardMessageTarget.toSlockForwardTargetPickerItem(): SlockForward
         subtitle = threadForwardTargetSubtitle(),
         avatarWireValue = avatarWireValue,
         avatarLabel = avatarLabel,
+        cacheMemberKind =
+            when (kind) {
+                ForwardMessageTargetKind.HumanDirectMessageCandidate -> MemberKind.Human
+                ForwardMessageTargetKind.AgentDirectMessageCandidate -> MemberKind.Agent
+                else -> null
+            },
+        cacheMemberId = memberId?.value,
+        cacheServerId = serverId.value,
         visualKind = forwardTargetVisualKind(),
         payload = this
     )
@@ -26831,7 +26874,13 @@ private fun <T> ThreadForwardTargetRow(
                         avatarWireValue = target.avatarWireValue,
                         label = target.avatarLabel,
                         avatarSize = 38.dp,
-                        borderWidth = SlockStroke.Default
+                        borderWidth = SlockStroke.Default,
+                        cacheSubject =
+                            slockMemberAvatarCacheSubject(
+                                target.cacheMemberKind,
+                                target.cacheMemberId
+                            ),
+                        cacheServerId = target.cacheServerId
                     )
                 SlockForwardTargetVisualKind.PublicChannel,
                 SlockForwardTargetVisualKind.PrivateChannel,
@@ -27154,6 +27203,8 @@ private fun ThreadMembersPagerRow(
         sourceBadgeLabel = member.sourceServerLabel,
         avatarWireValue = avatarWireValue,
         avatarLabel = member.modalAvatarLabel(),
+        cacheSubject = slockMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
+        cacheServerId = member.sourceServerId,
         statusColor = status?.color,
         statusPulsing = status?.pulsing == true,
         enabled = !removing,
@@ -27267,6 +27318,8 @@ private fun ThreadAddMemberModal(
                                 subtitle = threadAddMemberCandidateSubtitle(member.description),
                                 avatarWireValue = avatarWireValue,
                                 avatarLabel = member.modalAvatarLabel(),
+                                cacheSubject = slockMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
+                                cacheServerId = member.sourceServerId,
                                 statusColor = status?.color,
                                 statusPulsing = status?.pulsing == true,
                                 selected = member.id == selectedId,
@@ -27295,6 +27348,8 @@ private fun ThreadAddMemberModal(
                                 subtitle = threadAddMemberCandidateSubtitle(member.description),
                                 avatarWireValue = avatarWireValue,
                                 avatarLabel = member.modalAvatarLabel(),
+                                cacheSubject = slockMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
+                                cacheServerId = member.sourceServerId,
                                 statusColor = status?.color,
                                 statusPulsing = status?.pulsing == true,
                                 selected = member.id == selectedId,
