@@ -15383,6 +15383,10 @@ private fun ThreadMessagesList(
         mutableStateOf(LazyViewportControllerState())
     }
     var viewportLayoutGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
+    // task #990: refreshed while the keyboard is closed; read at shrink onset.
+    var preShrinkBaseline by remember(threadInstanceKey) {
+        mutableStateOf<ThreadPreShrinkBaseline?>(null)
+    }
     val dispatchViewportEvent: (LazyViewportEvent) -> Unit = { event ->
         val previousCommandId = viewportControllerState.pendingCommand?.id
         val previousEpoch = viewportControllerState.epoch
@@ -17177,6 +17181,56 @@ private fun ThreadMessagesList(
                     )
             }
         }
+        // task #990: keyboard closed ⇒ this layout IS the pre-shrink state, so
+        // capture it now. Keyboard rising ⇒ report the cached baseline together
+        // with whether it still describes this thread/target/layout, so a stale
+        // one is named rather than silently compared against.
+        run {
+            val baselineStats =
+                listState.threadLazyWindowStats(
+                    timelineSlice = renderPayload,
+                    lazyItemCount = lazyItemCount,
+                    beyondBoundsItems = activeListBeyondBoundsItems
+                )
+            if (composerKeyboardInsetDp <= 0f) {
+                if (baselineStats.visibleItems > 0) {
+                    preShrinkBaseline =
+                        ThreadPreShrinkBaseline(
+                            threadInstance = threadInstanceKey,
+                            targetMessageId = focusedTargetMessageId,
+                            layoutGeneration = viewportLayoutGeneration,
+                            viewportStartPx = baselineStats.viewportStartPx,
+                            viewportEndPx = baselineStats.viewportEndPx,
+                            coveredPx = baselineStats.coveredPx,
+                            gapPx = baselineStats.gapPx,
+                            visibleItems = baselineStats.visibleItems,
+                            firstVisibleItem = baselineStats.firstVisibleItem,
+                            lastVisibleItem = baselineStats.lastVisibleItem
+                        )
+                }
+            } else if (lastComposerKeyboardInsetDp <= 0f) {
+                val cached = preShrinkBaseline
+                val status =
+                    when {
+                        cached == null -> "baseline_missing"
+                        cached.threadInstance != threadInstanceKey -> "baseline_stale_thread"
+                        cached.targetMessageId != focusedTargetMessageId -> "baseline_stale_target"
+                        else -> "baseline_ok"
+                    }
+                diagnosticsLogger(
+                    "thread_pre_shrink_baseline producer=composer_inset_relayout " +
+                        "status=$status threadInstance=$threadInstanceKey " +
+                        "layoutGeneration=${cached?.layoutGeneration ?: -1}->$viewportLayoutGeneration " +
+                        "baselineViewport=${cached?.viewportStartPx ?: -1}..${cached?.viewportEndPx ?: -1} " +
+                        "baselineCoveredPx=${cached?.coveredPx ?: -1} baselineGapPx=${cached?.gapPx ?: -1} " +
+                        "baselineVisible=${cached?.visibleItems ?: -1} " +
+                        "baselineRange=${cached?.firstVisibleItem ?: -1}..${cached?.lastVisibleItem ?: -1} " +
+                        "shrinkViewport=${baselineStats.viewportStartPx}..${baselineStats.viewportEndPx} " +
+                        "shrinkCoveredPx=${baselineStats.coveredPx} shrinkGapPx=${baselineStats.gapPx} " +
+                        "shrinkVisible=${baselineStats.visibleItems}"
+                )
+            }
+        }
         val layoutState =
             ThreadComposerLayoutBottomAnchorState(
                 previousKeyboardInsetDp = lastComposerKeyboardInsetDp,
@@ -18492,6 +18546,24 @@ internal fun threadLazyWindowConsumerCounts(
 
 internal fun threadViewportMeasurementReady(viewportHeightDp: Float): Boolean =
     viewportHeightDp.isFinite() && viewportHeightDp > 0f
+
+// task #990: a pre-shrink baseline has to be captured while the keyboard is
+// still closed. Naming a sample "onset" after the inset already changed does
+// not make it a baseline — by then the viewport being compared against is the
+// shrunken one. Captured with its identity so a stale baseline is reported as
+// stale instead of being silently compared against the wrong target.
+private data class ThreadPreShrinkBaseline(
+    val threadInstance: String,
+    val targetMessageId: String?,
+    val layoutGeneration: Long,
+    val viewportStartPx: Int,
+    val viewportEndPx: Int,
+    val coveredPx: Int,
+    val gapPx: Int,
+    val visibleItems: Int,
+    val firstVisibleItem: Int,
+    val lastVisibleItem: Int
+)
 
 private data class ThreadLazyWindowStats(
     val totalItems: Int,
