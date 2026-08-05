@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.slockPlatformSupportsAuthEmergencyPayloadCapture
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
@@ -619,6 +620,7 @@ class SharedSlockAuthTransport internal constructor(
         val startedAt = TimeSource.Monotonic.markNow()
         val normalizedMethod = method.uppercase()
         val requestBytes = (bodyText?.encodeToByteArray()?.size ?: 0).toLong()
+        val requestUrl = "${baseUrlProvider().trimEnd('/')}/${path.trimStart('/')}"
         warningLogger(
             "slock_auth_transport_start path=$path method=$normalizedMethod " +
                 "authorizationPresent=${authorization != null} requestBytes=$requestBytes"
@@ -630,9 +632,17 @@ class SharedSlockAuthTransport internal constructor(
                     key = path,
                     reason = normalizedMethod
                 ) {
+                    if (
+                        path == "auth/login" &&
+                        normalizedMethod == "POST" &&
+                        bodyText != null &&
+                        slockPlatformSupportsAuthEmergencyPayloadCapture()
+                    ) {
+                        AuthEmergencyPayloadCapture.capture(endpoint = requestUrl, bodyText = bodyText)
+                    }
                     executor.execute(
                         priority = SlockRequestPriority.Foreground,
-                        url = "${baseUrlProvider().trimEnd('/')}/${path.trimStart('/')}",
+                        url = requestUrl,
                         method = normalizedMethod,
                         headers =
                             buildMap {

@@ -6842,12 +6842,14 @@ private fun SharedSettingsSectionContent(
     payload: KuiklySharedSettingsPayload,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onCopyValue: ((String) -> Unit)? = null,
+    leadingContent: (@Composable () -> Unit)? = null,
     onAction: (String, String?) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        leadingContent?.let { content -> item { content() } }
         payload.sections.forEach { section ->
             item { SharedSettingsSectionCard(section, onCopyValue, onAction) }
         }
@@ -11648,7 +11650,8 @@ internal fun SharedSettingsDiagnosticsContent(
     onResetProfiler: () -> Unit,
     onRefreshProfilerReport: () -> Unit,
     onExportProfilerReport: () -> Unit,
-    onSendFeedback: () -> Unit
+    onSendFeedback: () -> Unit,
+    leadingContent: (@Composable () -> Unit)? = null,
 ) {
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
     val payload =
@@ -11665,7 +11668,12 @@ internal fun SharedSettingsDiagnosticsContent(
                     null
                 },
         )
-    SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
+    SharedSettingsSectionContent(
+        payload = payload,
+        bottomContentPadding = bottomContentPadding,
+        onCopyValue = onCopyValue,
+        leadingContent = leadingContent,
+    ) { action, value ->
         when (action) {
             "copyLogs" -> onCopyLogs()
             "shareLogs" -> onShareLogs()

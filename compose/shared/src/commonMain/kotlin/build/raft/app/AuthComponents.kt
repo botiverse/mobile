@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.components.SlockLinkButton
-import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockDisabledActionBorder
 import build.raft.app.components.SlockDisabledActionContent
@@ -49,6 +48,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.text.input.PasswordVisualTransformation
+import com.tencent.kuikly.compose.ui.text.input.KeyboardType
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -299,9 +299,20 @@ internal fun AuthTextField(
     focusRequester: FocusRequester? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
-    password: Boolean = false
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
+    // KeyboardType.Password is already the native masking authority. Derive the
+    // reveal control from that same source so callers cannot mask a field while
+    // accidentally omitting a second `password = true` flag.
+    val password = authTextFieldIsPassword(keyboardOptions)
+    val needsNativeKeyboardSwitch = password && slockPlatformPasswordRevealNeedsKeyboardTypeSwitch()
+    val resolvedKeyboardOptions =
+        authPasswordKeyboardOptions(
+            keyboardOptions = keyboardOptions,
+            password = password,
+            passwordVisible = passwordVisible,
+            nativeKeyboardSwitch = needsNativeKeyboardSwitch,
+        )
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
@@ -327,20 +338,24 @@ internal fun AuthTextField(
             disabledBackgroundColor = SlockColor.EmptyStateGray,
             placeholderColor = AuthInputPlaceholderColor,
             visualTransformation = if (password && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = keyboardOptions,
+            keyboardOptions = resolvedKeyboardOptions,
             keyboardActions = keyboardActions,
             focusRequester = focusRequester ?: remember { FocusRequester() },
             trailingContent =
                 if (password) {
                     {
-                        SlockBrutalIconButton(
-                            iconName = if (passwordVisible) SlockLucideIconName.EyeOff else SlockLucideIconName.Eye,
+                        Button(
                             onClick = { passwordVisible = !passwordVisible },
                             enabled = enabled,
-                            size = 28.dp,
-                            shadowOffset = 0.dp,
-                            iconSize = 15.dp
-                        )
+                            pressFeedback = false,
+                            modifier = Modifier.size(28.dp),
+                        ) {
+                            SlockLucideIcon(
+                                name = if (passwordVisible) SlockLucideIconName.EyeOff else SlockLucideIconName.Eye,
+                                modifier = Modifier.size(15.dp),
+                                color = SlockColor.TextBlackArgb,
+                            )
+                        }
                     }
                 } else {
                     null
@@ -356,6 +371,24 @@ internal fun AuthTextField(
         }
     }
 }
+
+internal fun authTextFieldIsPassword(keyboardOptions: KeyboardOptions): Boolean =
+    keyboardOptions.keyboardType == KeyboardType.Password
+
+internal fun authPasswordKeyboardOptions(
+    keyboardOptions: KeyboardOptions,
+    password: Boolean,
+    passwordVisible: Boolean,
+    nativeKeyboardSwitch: Boolean,
+): KeyboardOptions =
+    if (password && passwordVisible && nativeKeyboardSwitch) {
+        // Pinned Kuikly iOS first applies Password, which disables autocorrection,
+        // spell checking, and autocapitalization. Its later Text setter only clears
+        // secureTextEntry; it does not re-enable those three keyboard services.
+        keyboardOptions.copy(keyboardType = KeyboardType.Text)
+    } else {
+        keyboardOptions
+    }
 
 /**
  * Keeps the native editing snapshot intact across the Auth wrapper boundary.

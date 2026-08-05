@@ -1118,6 +1118,15 @@
     <string name="tasks_action_add_another">添加另一个</string>
     <string name="auth_label_email">邮箱</string>
     <string name="auth_label_password">密码</string>
+    <string name="auth_debug_payload_title">紧急登录 Payload 查看器</string>
+    <string name="auth_debug_payload_detail">抓取下一次密码登录交给 iOS transport 的完整 JSON。</string>
+    <string name="auth_debug_payload_warning">敏感信息：密码会显示在屏幕上，但不会写日志、复制、持久化或附加到反馈。</string>
+    <string name="auth_debug_payload_enable">启用单次抓取</string>
+    <string name="auth_debug_payload_disable">关闭并清除</string>
+    <string name="auth_debug_payload_clear">立即清除</string>
+    <string name="auth_debug_payload_waiting">已启用。返回登录页提交一次，再重新打开此面板。</string>
+    <string name="auth_debug_payload_endpoint">请求地址</string>
+    <string name="auth_debug_payload_expiry">内存中的 Payload 会在 60 秒后自动清除。</string>
     <string name="auth_label_name">名称</string>
     <string name="auth_password_min_length">至少 8 个字符</string>
     <string name="auth_password_pattern">字母、数字、连字符、下划线</string>

@@ -21,6 +21,10 @@ internal actual fun slockPlatformSupportsConversationForwardGesture(): Boolean =
 
 internal actual fun slockPlatformSupportsAppleSignIn(): Boolean = false
 
+internal actual fun slockPlatformPasswordRevealNeedsKeyboardTypeSwitch(): Boolean = false
+
+internal actual fun slockPlatformSupportsAuthEmergencyPayloadCapture(): Boolean = false
+
 internal actual fun slockPlatformDefaultAppTabBarRenderer(): String? = null
 
 // OHOS phase 2 (video controller line, after Android #556 / iOS #11): the

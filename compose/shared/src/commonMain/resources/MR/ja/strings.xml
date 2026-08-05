@@ -1120,6 +1120,15 @@
     <string name="tasks_action_add_another">さらに追加</string>
     <string name="auth_label_email">メールアドレス</string>
     <string name="auth_label_password">パスワード</string>
+    <string name="auth_debug_payload_title">緊急ログイン Payload ビューア</string>
+    <string name="auth_debug_payload_detail">次のパスワードログインで iOS transport に渡す正確な JSON を取得します。</string>
+    <string name="auth_debug_payload_warning">機密情報：パスワードは画面に表示されますが、ログ、コピー、保存、フィードバック添付は行いません。</string>
+    <string name="auth_debug_payload_enable">1 回だけ取得</string>
+    <string name="auth_debug_payload_disable">無効化して消去</string>
+    <string name="auth_debug_payload_clear">今すぐ消去</string>
+    <string name="auth_debug_payload_waiting">有効です。サインインに戻って 1 回送信し、このパネルを再度開いてください。</string>
+    <string name="auth_debug_payload_endpoint">エンドポイント</string>
+    <string name="auth_debug_payload_expiry">メモリ内の Payload は 60 秒後に自動消去されます。</string>
     <string name="auth_label_name">名前</string>
     <string name="auth_password_min_length">8 文字以上</string>
     <string name="auth_password_pattern">英字、数字、ハイフン、アンダースコア</string>

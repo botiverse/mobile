@@ -13,6 +13,7 @@ import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
+import build.raft.app.data.AuthEmergencyPayloadCapture
 import build.raft.app.data.DataResult
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.ScreenLoadState
@@ -287,6 +288,7 @@ private fun LoginScreen() {
                     PostAuthSessionReadback.Ready -> {
                         state = state.copy(submitting = false, errorMessage = null)
                         errorPresentation = null
+                        AuthEmergencyPayloadCapture.clear()
                         val destination = postAuthRouteDestination(result.data)
                         authDataSource.logDiagnostics(
                             "auth_post_success_route page=${destination.pageName} source=login " +
@@ -915,6 +917,85 @@ private enum class AuthAboutDestination {
 }
 
 @Composable
+private fun AuthEmergencyPayloadCaptureCard() {
+    val state by AuthEmergencyPayloadCapture.state.collectAsState()
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceCream)
+                .border(SlockStroke.Default, SlockColor.AccentRed)
+                .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = stringResource(MR.strings.auth_debug_payload_title),
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+        )
+        Text(
+            text = stringResource(MR.strings.auth_debug_payload_detail),
+            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+        )
+        Text(
+            text = stringResource(MR.strings.auth_debug_payload_warning),
+            style = SlockType.Caption.copy(color = SlockColor.AccentRed),
+            color = SlockColor.AccentRed,
+        )
+        SlockBrutalActionButton(
+            label =
+                stringResource(
+                    when {
+                        state.snapshot != null -> MR.strings.auth_debug_payload_clear
+                        state.enabled -> MR.strings.auth_debug_payload_disable
+                        else -> MR.strings.auth_debug_payload_enable
+                    }
+                ),
+            onClick = {
+                if (state.snapshot != null) {
+                    AuthEmergencyPayloadCapture.clear()
+                } else {
+                    AuthEmergencyPayloadCapture.setEnabled(!state.enabled)
+                }
+            },
+            backgroundColor = if (state.enabled) SlockColor.SurfaceWhite else SlockColor.BrandYellow,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        val snapshot = state.snapshot
+        if (snapshot == null) {
+            if (state.enabled) {
+                Text(
+                    text = stringResource(MR.strings.auth_debug_payload_waiting),
+                    style = SlockType.Caption.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                )
+            }
+        } else {
+            Text(
+                text = "${stringResource(MR.strings.auth_debug_payload_endpoint)}\n${snapshot.endpoint}",
+                style = SlockType.Caption.copy(color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+            )
+            Text(
+                text = snapshot.bodyText,
+                style =
+                    SlockType.Caption.copy(
+                        color = SlockColor.TextBlack,
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                color = SlockColor.TextBlack,
+            )
+            Text(
+                text = stringResource(MR.strings.auth_debug_payload_expiry),
+                style = SlockType.Caption.copy(color = SlockColor.AccentRed),
+                color = SlockColor.AccentRed,
+            )
+        }
+    }
+}
+
+@Composable
 private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAboutDestination.About) {
     val pager = LocalActivity.current.getPager() as Pager
     rememberKmmResourceLocaleSeed(pager)
@@ -1153,7 +1234,13 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                                 }
                             }
                         }
-                    }
+                    },
+                    leadingContent =
+                        if (slockPlatformSupportsAuthEmergencyPayloadCapture()) {
+                            { AuthEmergencyPayloadCaptureCard() }
+                        } else {
+                            null
+                        },
                 )
         }
     }
@@ -1435,7 +1522,7 @@ internal fun LoginContent(
                 errorText = passwordError,
                 focusRequester = passwordFocusRequester,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { submitCurrentDraft() })
+                keyboardActions = KeyboardActions(onDone = { submitCurrentDraft() }),
             )
             AuthError(errorMessage)
             // React parity (LoginPage.tsx): Sign In stays full pink + black text
@@ -1611,7 +1698,7 @@ internal fun RegisterContent(
                 errorText = passwordError,
                 focusRequester = passwordFocusRequester,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { submitIfAllowed() })
+                keyboardActions = KeyboardActions(onDone = { submitIfAllowed() }),
             )
             AuthTermsAgreement(termsAccepted, { termsAccepted = it })
             AuthError(errorMessage)

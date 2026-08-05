@@ -1,12 +1,57 @@
 package build.raft.app
 
 import com.tencent.kuikly.compose.ui.text.TextRange
+import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
+import com.tencent.kuikly.compose.ui.text.input.ImeAction
+import com.tencent.kuikly.compose.ui.text.input.KeyboardType
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
 
 class AuthTextFieldValueContractTest {
+    @Test
+    fun passwordKeyboardIsTheSingleRevealAdmissionAuthority() {
+        assertEquals(
+            true,
+            authTextFieldIsPassword(KeyboardOptions(keyboardType = KeyboardType.Password)),
+        )
+        assertEquals(
+            false,
+            authTextFieldIsPassword(KeyboardOptions(keyboardType = KeyboardType.Email)),
+        )
+    }
+
+    @Test
+    fun iosRevealSwitchesNativeSecureEntryOffWithoutChangingImeAction() {
+        val hidden = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go)
+
+        val visible =
+            authPasswordKeyboardOptions(
+                keyboardOptions = hidden,
+                password = true,
+                passwordVisible = true,
+                nativeKeyboardSwitch = true,
+            )
+
+        assertEquals(KeyboardType.Text, visible.keyboardType)
+        assertEquals(ImeAction.Go, visible.imeAction)
+    }
+
+    @Test
+    fun nonIosOrHiddenPasswordKeepsNativeSecureEntry() {
+        val passwordOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+
+        assertSame(
+            passwordOptions,
+            authPasswordKeyboardOptions(passwordOptions, true, true, nativeKeyboardSwitch = false),
+        )
+        assertSame(
+            passwordOptions,
+            authPasswordKeyboardOptions(passwordOptions, true, false, nativeKeyboardSwitch = true),
+        )
+    }
+
     @Test
     fun authWrapperForwardsEveryNativeSnapshotWithoutReconstruction() {
         val nativeValues =

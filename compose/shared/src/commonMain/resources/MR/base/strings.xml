@@ -1120,6 +1120,15 @@
     <string name="tasks_action_add_another">Add another</string>
     <string name="auth_label_email">Email</string>
     <string name="auth_label_password">Password</string>
+    <string name="auth_debug_payload_title">Emergency login payload viewer</string>
+    <string name="auth_debug_payload_detail">Captures the exact JSON handed to the iOS transport for the next password login.</string>
+    <string name="auth_debug_payload_warning">Sensitive: the password will be visible on screen. Nothing is logged, copied, persisted, or attached to feedback.</string>
+    <string name="auth_debug_payload_enable">Enable one-shot capture</string>
+    <string name="auth_debug_payload_disable">Disable and clear</string>
+    <string name="auth_debug_payload_clear">Clear now</string>
+    <string name="auth_debug_payload_waiting">Enabled. Return to Sign In, submit once, then reopen this panel.</string>
+    <string name="auth_debug_payload_endpoint">Endpoint</string>
+    <string name="auth_debug_payload_expiry">The in-memory payload is erased automatically after 60 seconds.</string>
     <string name="auth_label_name">Name</string>
     <string name="auth_password_min_length">Min 8 characters</string>
     <string name="auth_password_pattern">Letters, numbers, hyphens, underscores</string>

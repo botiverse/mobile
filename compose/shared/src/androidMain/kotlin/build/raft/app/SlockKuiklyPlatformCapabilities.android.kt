@@ -19,6 +19,10 @@ internal actual fun slockPlatformSupportsConversationForwardGesture(): Boolean =
 
 internal actual fun slockPlatformSupportsAppleSignIn(): Boolean = false
 
+internal actual fun slockPlatformPasswordRevealNeedsKeyboardTypeSwitch(): Boolean = false
+
+internal actual fun slockPlatformSupportsAuthEmergencyPayloadCapture(): Boolean = false
+
 internal actual fun slockPlatformDefaultAppTabBarRenderer(): String? = null
 
 // Media3 PlayerView ships the mature controller (task #556 phase 2).
