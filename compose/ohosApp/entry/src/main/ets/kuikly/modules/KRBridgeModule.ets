@@ -266,8 +266,13 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         this.threadAttachmentUpload(params, callback);
         break;
       }
-      default:
+      default: {
+        callback({
+          "code": -1,
+          "message": "Method not implemented"
+        });
         break;
+      }
     }
     return null;
   }
