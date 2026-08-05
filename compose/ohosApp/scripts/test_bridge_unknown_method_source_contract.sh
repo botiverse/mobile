@@ -28,10 +28,8 @@ extract_default_branch() {
       print
     }
     in_default && /^      \}$/ {
-      exit
-    }
-    /^  private showAlert\(/ {
-      exit
+      in_default = 0
+      in_call = 0
     }
   '
 }
