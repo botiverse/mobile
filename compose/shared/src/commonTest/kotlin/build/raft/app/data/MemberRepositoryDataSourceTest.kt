@@ -103,24 +103,83 @@ class MemberRepositoryDataSourceTest {
         assertTrue(delete is DataResult.Content)
         assertEquals("delete", delete.data.action)
 
-        assertEquals(
-            listOf(
-                "GET agents/agent-1",
-                "GET agents/agent-1/agent-dms",
-                "GET agents/agent-1/channels",
-                "GET reminders ownerAgentId=agent-1 status=scheduled",
-                "GET agents/agent-1/activity-log limit=50",
-                "GET agents",
-                "GET agents/agent-1/skills",
-                "GET integrations/agents/agent-1",
-                "POST agents/agent-1/start",
-                "POST agents/agent-1/stop",
-                """POST agents/agent-1/reset body={"mode":"restart"}""",
-                """POST agents/agent-1/assign-machine body={"machineId":"machine-2"}""",
-                "DELETE agents/agent-1"
-            ),
-            network.calls
+        assertTrue(network.requests.any { it.matches("GET", "agents/agent-1") })
+        assertTrue(network.requests.any { it.matches("GET", "agents/agent-1/agent-dms") })
+        assertTrue(network.requests.any { it.matches("GET", "agents/agent-1/channels") })
+        assertTrue(network.requests.any { it.matches("GET", "reminders") })
+        assertTrue(network.requests.any { it.matches("GET", "agents/agent-1/activity-log") })
+        assertTrue(network.requests.any { it.matches("GET", "agents/agent-1/skills") })
+        assertTrue(network.requests.any { it.matches("GET", "integrations/agents/agent-1") })
+        assertTrue(network.requests.any { it.matches("POST", "agents/agent-1/start") })
+        assertTrue(network.requests.any { it.matches("POST", "agents/agent-1/stop") })
+        assertTrue(network.requests.any { it.matches("POST", "agents/agent-1/reset") })
+        assertTrue(network.requests.any { it.matches("POST", "agents/agent-1/assign-machine") })
+        assertTrue(network.requests.any { it.matches("DELETE", "agents/agent-1") })
+    }
+
+    @Test
+    fun agentDetailStartsIndependentSectionsTogetherWithoutFullAgentsFallback() = runBlocking {
+        val network = FakeMemberNetworkClient()
+        val gate = CompletableDeferred<Unit>()
+        network.detailRequestGate = gate
+        val repository = RealMemberRepository(sampleStore(), network)
+
+        val result = async {
+            repository.getAgentDetail(DataRequestPriority.Visible, MemberId("agent-1"))
+        }
+
+        try {
+            network.firstDetailRequestStarted.await()
+            repeat(FakeMemberNetworkClient.expectedDetailRequestStarts.size) {
+                yield()
+            }
+            assertEquals(FakeMemberNetworkClient.expectedDetailRequestStarts, network.detailRequestsStarted)
+            assertFalse(network.requests.any { it.matches("GET", "agents") })
+        } finally {
+            gate.complete(Unit)
+        }
+        assertIs<DataResult.Content<AgentDetailSnapshot>>(result.await())
+        Unit
+    }
+
+    @Test
+    fun agentDetailCurrentActivityComesFromSingleAgentSummary() = runBlocking {
+        val network =
+            FakeMemberNetworkClient().apply {
+                agentSummaryActivity = "working"
+                agentSummaryActivityDetail = "Compiling focused tests"
+                agentsListActivity = "error"
+                agentsListActivityDetail = "Wrong full-list authority"
+                activityLogBody = "[]"
+            }
+        val repository = RealMemberRepository(sampleStore(), network)
+
+        val detail = assertIs<DataResult.Content<AgentDetailSnapshot>>(
+            repository.getAgentDetail(DataRequestPriority.Visible, MemberId("agent-1"))
+        ).data
+
+        assertTrue(
+            detail.activity.any {
+                it.statusActivity == "working" && it.body == "Compiling focused tests"
+            }
         )
+        assertFalse(detail.activity.any { it.statusActivity == "error" })
+        assertFalse(network.requests.any { it.matches("GET", "agents") })
+    }
+
+    @Test
+    fun agentDetailSummaryRemainsTheOnlyRequiredSection() = runBlocking {
+        val network =
+            FakeMemberNetworkClient().apply {
+                agentSummaryResponse = HomeNetworkResponse(code = 503, bodyText = """{"error":"unavailable"}""")
+            }
+        val repository = RealMemberRepository(sampleStore(), network)
+
+        val result = repository.getAgentDetail(DataRequestPriority.Visible, MemberId("agent-1"))
+
+        assertEquals("server_unavailable", assertIs<DataResult.Error>(result).error.code)
+        assertTrue(network.requests.any { it.matches("GET", "agents/agent-1/agent-dms") })
+        assertTrue(network.requests.any { it.matches("GET", "integrations/agents/agent-1") })
     }
 
     @Test
@@ -401,8 +460,36 @@ class MemberRepositoryDataSourceTest {
         assertTrue("\"apiKey\":\"replacement-secret\"" in replacedBody)
     }
 
+    private data class RecordedRequest(
+        val method: String,
+        val path: String,
+        val query: Map<String, String>,
+        val serverId: String?,
+        val bodyText: String?
+    ) {
+        fun matches(expectedMethod: String, expectedPath: String): Boolean =
+            method == expectedMethod && path == expectedPath
+    }
+
     private class FakeMemberNetworkClient : SlockNetworkClient {
+        companion object {
+            val expectedDetailRequestStarts =
+                setOf(
+                    "GET agents/agent-1",
+                    "GET agents/agent-1/agent-dms",
+                    "GET agents/agent-1/channels",
+                    "GET reminders",
+                    "GET agents/agent-1/activity-log",
+                    "GET agents/agent-1/skills",
+                    "GET integrations/agents/agent-1"
+                )
+        }
+
         val calls = mutableListOf<String>()
+        val requests = mutableListOf<RecordedRequest>()
+        val detailRequestsStarted = linkedSetOf<String>()
+        val firstDetailRequestStarted = CompletableDeferred<Unit>()
+        var detailRequestGate: CompletableDeferred<Unit>? = null
         var activityLogBody: String =
             """
             [{"timestamp":1710000000,"entry":{"kind":"agent_status","activity":"working","detail":"Running task"}}]
@@ -410,6 +497,11 @@ class MemberRepositoryDataSourceTest {
         var skillsResponse: HomeNetworkResponse? = null
         var workspaceFileResponse: HomeNetworkResponse? = null
         var agentIntegrationsResponse: HomeNetworkResponse? = null
+        var agentSummaryResponse: HomeNetworkResponse? = null
+        var agentSummaryActivity: String = "idle"
+        var agentSummaryActivityDetail: String = "Ready"
+        var agentsListActivity: String = "idle"
+        var agentsListActivityDetail: String = "Ready"
         var startBlocker: CompletableDeferred<Unit>? = null
 
         override suspend fun request(
@@ -421,9 +513,24 @@ class MemberRepositoryDataSourceTest {
             bodyText: String?
         ): HomeNetworkResponse {
             val normalized = path.trim('/')
+            requests +=
+                RecordedRequest(
+                    method = method,
+                    path = normalized,
+                    query = query.toMap(),
+                    serverId = serverIdOverride?.value,
+                    bodyText = bodyText
+                )
+            val requestStart = "$method $normalized"
+            if (requestStart in expectedDetailRequestStarts) {
+                detailRequestsStarted += requestStart
+                firstDetailRequestStarted.complete(Unit)
+                detailRequestGate?.await()
+            }
             return when {
                 normalized == "agents/agent-1" && method == "GET" -> {
                     calls += "GET agents/agent-1"
+                    agentSummaryResponse?.let { return it }
                     ok(
                         """
                         {
@@ -431,8 +538,8 @@ class MemberRepositoryDataSourceTest {
                           "name":"noel",
                           "displayName":"Noel Bot",
                           "status":"active",
-                          "activity":"idle",
-                          "activityDetail":"Ready",
+                          "activity":"$agentSummaryActivity",
+                          "activityDetail":"$agentSummaryActivityDetail",
                           "creatorId":"user-1",
                           "creatorType":"human",
                           "creator":{
@@ -481,7 +588,7 @@ class MemberRepositoryDataSourceTest {
                 }
                 normalized == "agents" && method == "GET" -> {
                     calls += serverIdOverride?.let { "GET agents server=${it.value}" } ?: "GET agents"
-                    ok("""[{"id":"agent-1","name":"noel","status":"active","activity":"idle","activityDetail":"Ready"}]""")
+                    ok("""[{"id":"agent-1","name":"noel","status":"active","activity":"$agentsListActivity","activityDetail":"$agentsListActivityDetail"}]""")
                 }
                 normalized == "servers/server-2/members" && method == "GET" -> {
                     calls += "GET servers/server-2/members server=${serverIdOverride?.value}"

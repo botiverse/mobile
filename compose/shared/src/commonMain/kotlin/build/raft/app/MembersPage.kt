@@ -2760,9 +2760,8 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
             return@LaunchedEffect
         }
         routeState = loaded
-        if (loaded is MemberDetailRouteState.Agent && selectedMemberId != null) {
-            refreshVisibleAgentActivity(loaded, selectedMemberId)
-        }
+        // The canonical detail request already includes the freshly merged durable/current
+        // activity snapshot. Do not immediately repeat the same visible activity request.
     }
     LaunchedEffect(provider.serverMembersStore, statusLookupServerId) {
         val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect

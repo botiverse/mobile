@@ -492,12 +492,26 @@ fun parseSharedCurrentAgentActivityEntries(
 }.getOrNull()
 
 private fun WireAgent.toCurrentActivityEntry(): AgentActivityEntry? {
+    return currentAgentActivityEntry(
+        agentId = MemberId(id),
+        activity = activity,
+        status = status,
+        activityDetail = activityDetail
+    )
+}
+
+internal fun currentAgentActivityEntry(
+    agentId: MemberId,
+    activity: String?,
+    status: String?,
+    activityDetail: String?
+): AgentActivityEntry? {
     val type = activity ?: status
     val normalized = AgentStatus.fromWireValue(type) ?: return null
     if (normalized == AgentStatus.Offline) return null
     val detail = activityDetail?.takeIf { it.isNotBlank() } ?: normalized.label
     return AgentActivityEntry(
-        id = "current:$id:$type:$detail",
+        id = "current:${agentId.value}:$type:$detail",
         type = "status",
         title = resolveTrajectoryStatusDisplay(type, detail).first,
         body = detail,
