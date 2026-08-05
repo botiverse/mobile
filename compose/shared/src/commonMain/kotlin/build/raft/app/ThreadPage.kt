@@ -17396,7 +17396,7 @@ private fun ThreadMessagesList(
                     )
                 if (!settledOwnerCurrent) {
                     diagnosticsLogger(
-                        "thread_ime_tail_pixel_probe phase=$pixelProbePhase generation=$pixelProbeGeneration " +
+                        "thread_ime_tail_pixel_probe phase=settled generation=$pixelProbeGeneration " +
                             "status=stale_before_claim threadInstanceCurrent=false " +
                             "layoutGeneration=$pixelProbeLayoutGeneration->${currentViewportLayoutGenerationState.value} " +
                             "targetMessageId=${pixelProbeTargetMessageId.orEmpty()}"
