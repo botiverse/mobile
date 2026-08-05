@@ -15377,14 +15377,53 @@ private fun ThreadMessagesList(
     }
     var viewportLayoutGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
     val dispatchViewportEvent: (LazyViewportEvent) -> Unit = { event ->
+        val previousCommandId = viewportControllerState.pendingCommand?.id
         viewportControllerState = reduceLazyViewport(viewportControllerState, event)
-    }
-    suspend fun awaitViewportCommandSettlement(commandId: LazyViewportCommandId) {
-        snapshotFlow {
-            viewportControllerState.epoch to viewportControllerState.pendingCommand?.id
-        }.first { (epoch, pendingId) ->
-            epoch != commandId.epoch || pendingId == null
+        // task #990 forensics: an Anchor event only reaches the list if the
+        // reducer actually emitted a command for it. Record whether one appeared
+        // and what it carries, so a reanchor that never produced a command is
+        // distinguishable from one that produced a command and was then dropped.
+        if (event is LazyViewportEvent.Anchor) {
+            val emitted = viewportControllerState.pendingCommand
+            diagnosticsLogger(
+                "thread_viewport_anchor_dispatched " +
+                    "commandEmitted=${emitted != null && emitted.id != previousCommandId} " +
+                    "commandEpoch=${emitted?.id?.epoch} " +
+                    "eventLayoutGeneration=${event.layoutGeneration} " +
+                    "currentLayoutGeneration=$viewportLayoutGeneration " +
+                    "placement=${event.placement} " +
+                    "renderedTailPresent=${event.renderedTailMessageId != null} " +
+                    "renderedTailIdentityPresent=${event.renderedTailAnchorIdentity != null}"
+            )
         }
+    }
+    // task #990 forensics: the settlement predicate below is satisfied by three
+    // materially different outcomes — the command was consumed by the list, it
+    // was superseded by a newer epoch, or its pendingCommand was cleared without
+    // ever reaching the list. Returning normally therefore proves nothing about
+    // whether a scroll happened. Report which branch released the wait so the
+    // reanchor path can be told apart from a silently dropped command.
+    suspend fun awaitViewportCommandSettlement(
+        commandId: LazyViewportCommandId,
+        reason: String = "unspecified"
+    ) {
+        val (settledEpoch, settledPendingId) =
+            snapshotFlow {
+                viewportControllerState.epoch to viewportControllerState.pendingCommand?.id
+            }.first { (epoch, pendingId) ->
+                epoch != commandId.epoch || pendingId == null
+            }
+        val outcome =
+            when {
+                settledEpoch != commandId.epoch -> "superseded"
+                settledPendingId == null -> "cleared"
+                else -> "unknown"
+            }
+        diagnosticsLogger(
+            "thread_viewport_command_settled reason=$reason outcome=$outcome " +
+                "commandEpoch=${commandId.epoch} settledEpoch=$settledEpoch " +
+                "pendingIdPresent=${settledPendingId != null}"
+        )
     }
     var measuredThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(0f) }
     val viewportMeasurementReady = threadViewportMeasurementReady(measuredThreadViewportHeightDp)
@@ -16596,9 +16635,20 @@ private fun ThreadMessagesList(
                     )
                     val reanchorCommandId = viewportControllerState.pendingCommand?.id
                     if (reanchorCommandId != null) {
-                        awaitViewportCommandSettlement(reanchorCommandId)
+                        awaitViewportCommandSettlement(reanchorCommandId, reason = "focused_reanchor")
                     }
                     anchoredOffset = listState.focusedAnchorTargetOffset(targetIndex)
+                    // task #990 forensics: the reanchor exists to bring the target back
+                    // into the viewport. Record whether it actually did, so "command was
+                    // issued" is never mistaken for "target became visible again".
+                    diagnosticsLogger(
+                        "thread_focused_reanchor_result commandIssued=${reanchorCommandId != null} " +
+                            "targetIndex=$targetIndex targetOffsetPresent=${anchoredOffset != null} " +
+                            "firstVisible=${listState.firstVisibleItemIndex} " +
+                            "lastVisible=${listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1} " +
+                            "visibleCount=${listState.layoutInfo.visibleItemsInfo.size} " +
+                            "messageId=$targetMessageId"
+                    )
                     quietMs = 0L
                 }
                 FocusedAnchorSessionAction.Continue -> {
@@ -16676,7 +16726,7 @@ private fun ThreadMessagesList(
         )
         val correctionCommandId = viewportControllerState.pendingCommand?.id
         if (correctionCommandId != null) {
-            awaitViewportCommandSettlement(correctionCommandId)
+            awaitViewportCommandSettlement(correctionCommandId, reason = "origin_correction")
         }
         val corrected = listState.focusedAnchorTargetOffset(targetIndex) != null
         if (corrected) {
@@ -17191,7 +17241,7 @@ private fun ThreadMessagesList(
         imeTailPixelProbeRunner.launch(
             awaitSettlement = {
                 if (insetCommandId != null) {
-                    awaitViewportCommandSettlement(insetCommandId)
+                    awaitViewportCommandSettlement(insetCommandId, reason = "composer_inset")
                 }
                 // Command settlement commits placement, not necessarily the
                 // subsequent native draw. Cross two frames before sampling.
