@@ -600,4 +600,208 @@ class ThreadImeShrinkSequenceTest {
                 provenance = provenance
             )
         )
+
+    /**
+     * Drives the two production seams for an over-tall canonical latest target
+     * and lands the result on the real controller.
+     */
+    private class TallLatestDriver {
+        var handoff = ThreadImeHandoffState()
+        var controller = LazyViewportControllerState()
+        var previousKeyboardInsetDp = 0f
+        var previousViewportHeightDp = 622.8f
+        var pendingLayoutChange = false
+        var consumedIdentity: String? = null
+        val target = "message-17:3"
+
+        fun pass(
+            keyboardInsetDp: Float,
+            viewportHeightDp: Float,
+            focusedTransactionLive: Boolean,
+            targetVisible: Boolean
+        ) {
+            val handoffPass =
+                threadImeHandoffPass(
+                    handoff = handoff,
+                    previousKeyboardInsetDp = previousKeyboardInsetDp,
+                    keyboardInsetDp = keyboardInsetDp,
+                    targetIdentity = target,
+                    focusedTransactionLive = focusedTransactionLive && consumedIdentity != target,
+                    dischargeable = true,
+                    userScrollGeneration = 3,
+                    pageCycleActive = false,
+                    // Measured and too tall, or not measurable at all.
+                    tailFitsViewport = if (targetVisible) false else null,
+                    targetIsCanonicalLatest = true
+                )
+            handoff = handoffPass.handoff
+            val ended =
+                applyThreadImeHandoffPass(
+                    pass = handoffPass,
+                    targetIdentity = target,
+                    markConsumed = { consumedIdentity = it },
+                    dispatch = { controller = reduceLazyViewport(controller, it) }
+                )
+            if (handoffPass.action == ThreadImeHandoffPassAction.EndPass) return
+            if (ended) return
+
+            val layout =
+                ThreadComposerLayoutBottomAnchorState(
+                    previousKeyboardInsetDp = previousKeyboardInsetDp,
+                    nextKeyboardInsetDp = keyboardInsetDp,
+                    previousViewportHeightDp = previousViewportHeightDp,
+                    nextViewportHeightDp = viewportHeightDp,
+                    pendingLayoutChange = pendingLayoutChange,
+                    initialBottomAnchorReady = true,
+                    latestItemIndex = 18,
+                    allowBottomAutoAnchor = true,
+                    viewportEpochCoherent = true,
+                    focusedAnchorOwnsViewport = false,
+                    focusedActiveTailAnchorCanCorrectLayout = false,
+                    // 1236px inside a 1059px viewport never fits.
+                    focusedTailAnchorCanCorrectLayout = false
+                )
+            val eligible =
+                threadImeLatestTargetBottomAnchorEligible(
+                    keyboardShrinking =
+                        keyboardInsetDp > 0f &&
+                            (threadComposerLayoutChanged(layout) || pendingLayoutChange),
+                    viewportEpochCoherent = true,
+                    targetIdentity = target,
+                    targetItemIndex = 17,
+                    latestMessageItemIndex = 17,
+                    canLoadMoreAfter = false,
+                    scrollInterruptedIdentity = null,
+                    startUserScrollGeneration = 3,
+                    currentUserScrollGeneration = 3,
+                    sessionSettledOrConsumed = consumedIdentity == target,
+                    handoffOwed = handoff.owes(target)
+                )
+            val correction =
+                threadImeCorrectionPass(
+                    handoff = handoff,
+                    targetIdentity = target,
+                    layout = layout,
+                    latestBottomAnchorEligible = eligible
+                )
+            handoff = correction.handoff
+            previousKeyboardInsetDp = keyboardInsetDp
+            previousViewportHeightDp = viewportHeightDp
+            pendingLayoutChange = correction.decision.pendingLayoutChange
+            if (!correction.decision.shouldAnchor) return
+
+            applyThreadImeCorrection(
+                decision = correction.decision,
+                targetMessageId = "message-17",
+                targetIdentity = target,
+                tailMessageId = "message-17",
+                // Unmeasured reports 0; the padding is what the executor needs.
+                renderedTailOffsetPx = 54,
+                layoutGeneration = 1L,
+                dispatch = { controller = reduceLazyViewport(controller, it) }
+            )
+        }
+
+        fun consumePending() {
+            controller.pendingCommand?.id?.let {
+                controller = reduceLazyViewport(controller, LazyViewportEvent.CommandConsumed(it))
+            }
+        }
+    }
+
+    @Test
+    fun aSettledTallLatestTargetIssuesARenderedBottomCommand() {
+        // Cell 1: no handoff, focus already consumed, real layout change, target
+        // measured at 1236 inside 1059. The command must reach the controller as
+        // a RenderedBottom for this identity — not a replayed intent.
+        val d = TallLatestDriver()
+        d.consumedIdentity = d.target
+
+        d.pass(
+            keyboardInsetDp = 299.5f,
+            viewportHeightDp = 315.3f,
+            focusedTransactionLive = false,
+            targetVisible = true
+        )
+
+        val pending = d.controller.pendingCommand
+        assertTrue(pending != null, "a command must reach the controller")
+        val anchored = d.controller.intent as? LazyViewportIntent.Anchored
+        assertTrue(anchored != null, "and it must anchor rather than replay")
+        assertEquals(LazyViewportAnchorPlacement.RenderedBottom, anchored.placement)
+        assertEquals(LazyViewportAnchorTarget.Message("message-17"), anchored.target)
+        assertEquals(54, anchored.offset, "the trailing padding must survive to the executor")
+        assertEquals(
+            LazyViewportCommandProvenance.ComposerIme(d.target),
+            pending!!.provenance,
+            "and it must be attributable to the composer for this identity"
+        )
+
+        d.consumePending()
+        assertEquals(
+            pending.id,
+            d.controller.lastConsumedCommandId,
+            "the receipt must name the command that landed"
+        )
+    }
+
+    @Test
+    fun anActiveTallLatestTargetTakesTheDebtAndThenIssuesOneCommand() {
+        // Cell 2: the debt is taken by the real onset — not constructed by hand
+        // — and the replacement pass issues exactly one RenderedBottom.
+        val d = TallLatestDriver()
+
+        d.pass(
+            keyboardInsetDp = 299.5f,
+            viewportHeightDp = 315.3f,
+            focusedTransactionLive = true,
+            targetVisible = true
+        )
+        assertTrue(
+            d.handoff.owes(d.target),
+            "a measured tall latest target must still be able to take the debt"
+        )
+        assertEquals(d.target, d.consumedIdentity, "and the fence must be released")
+        assertEquals(null, d.controller.pendingCommand, "taking it issues nothing by itself")
+
+        d.pass(
+            keyboardInsetDp = 299.5f,
+            viewportHeightDp = 315.3f,
+            focusedTransactionLive = true,
+            targetVisible = true
+        )
+        val pending = d.controller.pendingCommand
+        assertTrue(pending != null, "the replacement pass must issue the correction")
+        assertEquals(
+            LazyViewportAnchorPlacement.RenderedBottom,
+            (d.controller.intent as? LazyViewportIntent.Anchored)?.placement
+        )
+        assertEquals(LazyViewportCommandProvenance.ComposerIme(d.target), pending!!.provenance)
+        assertFalse(d.handoff.owes(d.target), "and it repays the debt")
+    }
+
+    @Test
+    fun anOpenKeyboardWithNoLayoutChangeIssuesNothing() {
+        // The control for the "keyboard is open" defect: without a real layout
+        // change or a pending one, an effect restart must not reissue the
+        // anchor and drag the user back.
+        val d = TallLatestDriver()
+        d.consumedIdentity = d.target
+        d.previousKeyboardInsetDp = 299.5f
+        d.previousViewportHeightDp = 315.3f
+
+        repeat(3) {
+            d.pass(
+                keyboardInsetDp = 299.5f,
+                viewportHeightDp = 315.3f,
+                focusedTransactionLive = false,
+                targetVisible = true
+            )
+        }
+        assertEquals(
+            null,
+            d.controller.pendingCommand,
+            "an open keyboard alone must not produce a command"
+        )
+    }
 }

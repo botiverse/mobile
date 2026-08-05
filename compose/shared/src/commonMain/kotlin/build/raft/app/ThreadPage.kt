@@ -17399,42 +17399,31 @@ private fun ThreadMessagesList(
             )
         }
         viewportLayoutGeneration += 1L
-        if (
-            layoutDecision.anchorFocusedTailAtRenderedBottom &&
-            focusedTargetMessageId != null &&
-            focusedTailMessageId != null
-        ) {
-            // An unmeasured target reports trailingSpanPx=0; the executor needs
-            // the real trailing padding to bottom-align once it can measure.
-            val renderedTailOffsetPx =
-                if (focusedTailFit.fitHeightPx >= 0) {
-                    focusedTailFit.trailingSpanPx
-                } else {
-                    initialBottomAnchorTrailingPaddingPx
-                }
+        // An unmeasured target reports trailingSpanPx=0; the executor needs the
+        // real trailing padding to bottom-align once it can measure.
+        val renderedTailOffsetPx =
+            if (focusedTailFit.fitHeightPx >= 0) {
+                focusedTailFit.trailingSpanPx
+            } else {
+                initialBottomAnchorTrailingPaddingPx
+            }
+        val issuedPlacement =
+            applyThreadImeCorrection(
+                decision = layoutDecision,
+                targetMessageId = focusedTargetMessageId,
+                targetIdentity = focusedTargetIdentity,
+                tailMessageId = focusedTailMessageId,
+                renderedTailOffsetPx = renderedTailOffsetPx,
+                layoutGeneration = viewportLayoutGeneration,
+                dispatch = { dispatchViewportEvent(it) }
+            )
+        if (issuedPlacement == LazyViewportAnchorPlacement.RenderedBottom) {
             focusedAnchorPlacementState =
                 renderedThreadFocusedAnchorPlacement(
                     identity = requireNotNull(focusedTargetIdentity),
                     offsetPx = renderedTailOffsetPx,
-                    renderedTailMessageId = focusedTailMessageId
+                    renderedTailMessageId = requireNotNull(focusedTailMessageId)
                 )
-            dispatchViewportEvent(
-                LazyViewportEvent.Anchor(
-                    target = LazyViewportAnchorTarget.Message(focusedTargetMessageId),
-                    offset = renderedTailOffsetPx,
-                    layoutGeneration = viewportLayoutGeneration,
-                    placement = LazyViewportAnchorPlacement.RenderedBottom,
-                    renderedTailMessageId = focusedTailMessageId,
-                    renderedTailAnchorIdentity = focusedTargetIdentity,
-                    fallback = LazyViewportAnchorFallback.Free,
-                    provenance =
-                        LazyViewportCommandProvenance.ComposerIme(
-                            ownerIdentity = requireNotNull(focusedTargetIdentity)
-                        )
-                )
-            )
-        } else {
-            dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.InsetChange))
         }
         val insetCommandId = viewportControllerState.pendingCommand?.id
         val pixelProbeThreadInstanceKey = threadInstanceKey

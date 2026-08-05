@@ -587,3 +587,48 @@ internal fun applyThreadFocusedAnchorSessionPlan(
     plan.consumedIdentityToPublish?.let(publishConsumedIdentity)
     return plan.yieldToComposer
 }
+
+/**
+ * Issues the composer's correction for one shrink.
+ *
+ * The dispatch lives here rather than inline in the effect so the sequence
+ * tests execute it instead of performing their own equivalent — deleting the
+ * RenderedBottom branch turns those tests red. A test that built the Anchor
+ * event itself would stay green through exactly that deletion, which is how
+ * three earlier defects survived review.
+ *
+ * Returns the placement it issued, so the caller can record it without
+ * re-deriving the branch.
+ */
+internal fun applyThreadImeCorrection(
+    decision: ThreadComposerLayoutBottomAnchorDecision,
+    targetMessageId: String?,
+    targetIdentity: String?,
+    tailMessageId: String?,
+    renderedTailOffsetPx: Int,
+    layoutGeneration: Long,
+    dispatch: (LazyViewportEvent) -> Unit
+): LazyViewportAnchorPlacement? {
+    if (
+        decision.anchorFocusedTailAtRenderedBottom &&
+        targetMessageId != null &&
+        targetIdentity != null &&
+        tailMessageId != null
+    ) {
+        dispatch(
+            LazyViewportEvent.Anchor(
+                target = LazyViewportAnchorTarget.Message(targetMessageId),
+                offset = renderedTailOffsetPx,
+                layoutGeneration = layoutGeneration,
+                placement = LazyViewportAnchorPlacement.RenderedBottom,
+                renderedTailMessageId = tailMessageId,
+                renderedTailAnchorIdentity = targetIdentity,
+                fallback = LazyViewportAnchorFallback.Free,
+                provenance = LazyViewportCommandProvenance.ComposerIme(ownerIdentity = targetIdentity)
+            )
+        )
+        return LazyViewportAnchorPlacement.RenderedBottom
+    }
+    dispatch(LazyViewportEvent.ContentMutated(LazyViewportMutation.InsetChange))
+    return null
+}
