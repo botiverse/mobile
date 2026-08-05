@@ -1827,6 +1827,205 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun composerLayoutBottomAnchor_serializesLateOriginCorrectionBeforeFirstImeCommit() {
+        val whileOriginCorrectionPending =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 299.51364f,
+                    previousViewportHeightDp = 622.84546f,
+                    nextViewportHeightDp = 315.29318f,
+                    allowBottomAutoAnchor = false,
+                    focusedAnchorOwnsViewport = true,
+                    focusedOriginCorrectionPending = true,
+                    focusedActiveTailAnchorCanCorrectLayout = true
+                )
+            )
+        assertFalse(whileOriginCorrectionPending.shouldAnchor)
+        assertTrue(whileOriginCorrectionPending.pendingLayoutChange)
+        assertFalse(whileOriginCorrectionPending.anchorFocusedTailAtRenderedBottom)
+
+        val afterOriginCorrectionSettles =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 299.51364f,
+                    nextKeyboardInsetDp = 299.51364f,
+                    previousViewportHeightDp = 315.29318f,
+                    nextViewportHeightDp = 315.29318f,
+                    pendingLayoutChange = whileOriginCorrectionPending.pendingLayoutChange,
+                    allowBottomAutoAnchor = false,
+                    focusedAnchorOwnsViewport = true,
+                    focusedOriginCorrectionPending = false,
+                    focusedActiveTailAnchorCanCorrectLayout = true
+                )
+            )
+        assertTrue(afterOriginCorrectionSettles.shouldAnchor)
+        assertFalse(afterOriginCorrectionSettles.pendingLayoutChange)
+        assertTrue(afterOriginCorrectionSettles.anchorFocusedTailAtRenderedBottom)
+    }
+
+    @Test
+    fun composerLayoutBottomAnchor_releasesOnceAtFocusedOwnerCapWhenCorrectionNeverSettles() {
+        val targetIdentity = "latest-message:route-request"
+        assertTrue(
+            threadFocusedOriginCorrectionBlocksComposerLayout(
+                messageCount = 16,
+                viewportHeightPx = 1059,
+                originStatus = "loaded",
+                targetIdentity = targetIdentity,
+                focusedAnchorOwnsViewport = true,
+                settledCorrectionIdentity = null
+            )
+        )
+        assertEquals(
+            FocusedAnchorSessionAction.Consume,
+            focusedAnchorSessionAction(
+                userInteracting = false,
+                drifted = true,
+                quietMs = 0L,
+                elapsedMs = FocusedAnchorSessionHardCapMs
+            )
+        )
+        assertFalse(
+            threadFocusedOriginCorrectionBlocksComposerLayout(
+                messageCount = 16,
+                viewportHeightPx = 1059,
+                originStatus = "loaded",
+                targetIdentity = targetIdentity,
+                focusedAnchorOwnsViewport = false,
+                settledCorrectionIdentity = null
+            )
+        )
+
+        val afterFocusedOwnerCap =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 299.51364f,
+                    nextKeyboardInsetDp = 299.51364f,
+                    previousViewportHeightDp = 315.29318f,
+                    nextViewportHeightDp = 315.29318f,
+                    pendingLayoutChange = true,
+                    allowBottomAutoAnchor = false,
+                    focusedAnchorOwnsViewport = false,
+                    focusedOriginCorrectionPending = false,
+                    focusedTailAnchorCanCorrectLayout = true
+                )
+            )
+        assertTrue(afterFocusedOwnerCap.shouldAnchor)
+        assertFalse(afterFocusedOwnerCap.pendingLayoutChange)
+        assertTrue(afterFocusedOwnerCap.anchorFocusedTailAtRenderedBottom)
+
+        assertEquals(
+            ThreadComposerLayoutBottomAnchorDecision(
+                shouldAnchor = false,
+                pendingLayoutChange = false
+            ),
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 299.51364f,
+                    nextKeyboardInsetDp = 299.51364f,
+                    previousViewportHeightDp = 315.29318f,
+                    nextViewportHeightDp = 315.29318f,
+                    pendingLayoutChange = afterFocusedOwnerCap.pendingLayoutChange,
+                    allowBottomAutoAnchor = false,
+                    focusedAnchorOwnsViewport = false,
+                    focusedOriginCorrectionPending = false,
+                    focusedTailAnchorCanCorrectLayout = true
+                )
+            )
+        )
+    }
+
+    @Test
+    fun composerLayoutBottomAnchor_userOverrideCancelsSerializedOriginPending() {
+        assertEquals(
+            ThreadComposerLayoutBottomAnchorDecision(
+                shouldAnchor = false,
+                pendingLayoutChange = false
+            ),
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 299.51364f,
+                    nextKeyboardInsetDp = 299.51364f,
+                    previousViewportHeightDp = 315.29318f,
+                    nextViewportHeightDp = 315.29318f,
+                    pendingLayoutChange = true,
+                    allowBottomAutoAnchor = false,
+                    focusedAnchorOwnsViewport = false,
+                    focusedOriginCorrectionPending = false,
+                    focusedActiveTailAnchorCanCorrectLayout = false,
+                    focusedTailAnchorCanCorrectLayout = false
+                )
+            )
+        )
+    }
+
+    @Test
+    fun focusedOriginCorrectionGate_blocksOnlyLiveNonemptyFocusedOriginOwner() {
+        val targetIdentity = "latest-message:route-request"
+        assertTrue(
+            threadFocusedOriginCorrectionBlocksComposerLayout(
+                messageCount = 16,
+                viewportHeightPx = 1059,
+                originStatus = "loaded",
+                targetIdentity = targetIdentity,
+                focusedAnchorOwnsViewport = true,
+                settledCorrectionIdentity = null
+            )
+        )
+        assertFalse(
+            threadFocusedOriginCorrectionBlocksComposerLayout(
+                messageCount = 0,
+                viewportHeightPx = 1059,
+                originStatus = "loaded",
+                targetIdentity = targetIdentity,
+                focusedAnchorOwnsViewport = true,
+                settledCorrectionIdentity = null
+            )
+        )
+        assertFalse(
+            threadFocusedOriginCorrectionBlocksComposerLayout(
+                messageCount = 16,
+                viewportHeightPx = 0,
+                originStatus = "loaded",
+                targetIdentity = targetIdentity,
+                focusedAnchorOwnsViewport = true,
+                settledCorrectionIdentity = null
+            )
+        )
+        assertFalse(
+            threadFocusedOriginCorrectionBlocksComposerLayout(
+                messageCount = 16,
+                viewportHeightPx = 1059,
+                originStatus = "none",
+                targetIdentity = targetIdentity,
+                focusedAnchorOwnsViewport = true,
+                settledCorrectionIdentity = null
+            )
+        )
+        assertFalse(
+            threadFocusedOriginCorrectionBlocksComposerLayout(
+                messageCount = 16,
+                viewportHeightPx = 1059,
+                originStatus = "loaded",
+                targetIdentity = targetIdentity,
+                focusedAnchorOwnsViewport = false,
+                settledCorrectionIdentity = null
+            )
+        )
+        assertFalse(
+            threadFocusedOriginCorrectionBlocksComposerLayout(
+                messageCount = 16,
+                viewportHeightPx = 1059,
+                originStatus = "loaded",
+                targetIdentity = targetIdentity,
+                focusedAnchorOwnsViewport = true,
+                settledCorrectionIdentity = targetIdentity
+            )
+        )
+    }
+
+    @Test
     fun focusedTailComposerLayoutOwner_yieldsWhenTailDoesNotFitOrUserScrolls() {
         val targetIdentity = "focused-message:route-request"
         assertFalse(
@@ -2170,6 +2369,7 @@ class ThreadBottomAnchorSignatureTest {
         allowBottomAutoAnchor: Boolean = true,
         viewportEpochCoherent: Boolean = true,
         focusedAnchorOwnsViewport: Boolean = false,
+        focusedOriginCorrectionPending: Boolean = false,
         focusedActiveTailAnchorCanCorrectLayout: Boolean = false,
         focusedTailAnchorCanCorrectLayout: Boolean = false
     ): ThreadComposerLayoutBottomAnchorState =
@@ -2184,6 +2384,7 @@ class ThreadBottomAnchorSignatureTest {
             allowBottomAutoAnchor = allowBottomAutoAnchor,
             viewportEpochCoherent = viewportEpochCoherent,
             focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
+            focusedOriginCorrectionPending = focusedOriginCorrectionPending,
             focusedActiveTailAnchorCanCorrectLayout = focusedActiveTailAnchorCanCorrectLayout,
             focusedTailAnchorCanCorrectLayout = focusedTailAnchorCanCorrectLayout
         )

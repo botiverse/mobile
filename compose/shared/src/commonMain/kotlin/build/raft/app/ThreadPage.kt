@@ -15514,6 +15514,7 @@ private fun ThreadMessagesList(
     var focusedAnchorSessionReanchors by remember(threadInstanceKey) { mutableStateOf(0) }
     var focusedAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf<Int?>(null) }
     var correctedFocusedOriginIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var settledFocusedOriginCorrectionIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var focusedAnchorPlacementState by remember(threadInstanceKey) {
         mutableStateOf(resetThreadFocusedAnchorPlacement(identity = null))
     }
@@ -16490,6 +16491,7 @@ private fun ThreadMessagesList(
         }
         focusedAnchorStartUserScrollGeneration = userScrollGeneration.value
         correctedFocusedOriginIdentity = null
+        settledFocusedOriginCorrectionIdentity = null
         // task #567 first-principles invariant: once anchored, the target must
         // hold its viewport position until the user scrolls. The list is
         // item-key anchored and the target itself becomes the anchor item
@@ -16677,6 +16679,9 @@ private fun ThreadMessagesList(
             awaitViewportCommandSettlement(correctionCommandId)
         }
         val corrected = listState.focusedAnchorTargetOffset(targetIndex) != null
+        if (corrected) {
+            settledFocusedOriginCorrectionIdentity = targetIdentity
+        }
         diagnosticsLogger(
             "thread_focused_origin_correction result=${if (corrected) "corrected" else "skipped_unmeasured"} " +
                 "messageId=$targetMessageId targetIndex=$targetIndex originStatus=${renderPayload.originStatus} " +
@@ -16905,6 +16910,7 @@ private fun ThreadMessagesList(
         scrollInterruptedFocusedMessageAnchorIdentity,
         focusedAnchorSessionIdentity,
         focusedAnchorStartUserScrollGeneration,
+        settledFocusedOriginCorrectionIdentity,
         userScrollGeneration.value,
         latestMessageListItemIndex,
         latestMessageLayoutKey,
@@ -16932,6 +16938,15 @@ private fun ThreadMessagesList(
             )
         val measuredFocusedTailViewportHeightPx =
             with(threadDensity) { measuredThreadViewportHeightDp.dp.roundToPx() }
+        val focusedOriginCorrectionPending =
+            threadFocusedOriginCorrectionBlocksComposerLayout(
+                messageCount = renderPayload.messages.size,
+                viewportHeightPx = measuredFocusedTailViewportHeightPx,
+                originStatus = renderPayload.originStatus,
+                targetIdentity = focusedTargetIdentity,
+                focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
+                settledCorrectionIdentity = settledFocusedOriginCorrectionIdentity
+            )
         var focusedTailViewportEpochCoherent =
             threadViewportEpochCoherent(
                 measuredViewportHeightPx = measuredFocusedTailViewportHeightPx,
@@ -17074,6 +17089,7 @@ private fun ThreadMessagesList(
                 allowBottomAutoAnchor = allowBottomAutoAnchor,
                 viewportEpochCoherent = focusedTailViewportEpochCoherent,
                 focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
+                focusedOriginCorrectionPending = focusedOriginCorrectionPending,
                 focusedActiveTailAnchorCanCorrectLayout =
                     focusedAnchorOwnsViewport &&
                         focusedActiveTailMessageComposerLayoutOwnsViewport(
@@ -17124,6 +17140,7 @@ private fun ThreadMessagesList(
                     "measurementResult=${if (focusedTailFit.fitHeightPx >= 0) "available" else "measurement_unavailable"} " +
                     "canLoadMoreAfter=${renderPayload.canLoadMoreAfter} " +
                     "focusedOwns=$focusedAnchorOwnsViewport consumed=${consumedFocusedMessageAnchorIdentity == focusedTargetIdentity} " +
+                    "focusedOriginCorrectionPending=$focusedOriginCorrectionPending " +
                     "interrupted=${scrollInterruptedFocusedMessageAnchorIdentity == focusedTargetIdentity} " +
                     "userGeneration=${focusedAnchorStartUserScrollGeneration ?: -1}->${userScrollGeneration.value} " +
                     "viewportIntent=${viewportControllerState.intent.threadViewportIntentDiagnosticName()} " +
@@ -18960,9 +18977,29 @@ internal data class ThreadComposerLayoutBottomAnchorState(
     val allowBottomAutoAnchor: Boolean,
     val viewportEpochCoherent: Boolean,
     val focusedAnchorOwnsViewport: Boolean,
+    val focusedOriginCorrectionPending: Boolean,
     val focusedActiveTailAnchorCanCorrectLayout: Boolean,
     val focusedTailAnchorCanCorrectLayout: Boolean
 )
+
+internal fun threadFocusedOriginCorrectionBlocksComposerLayout(
+    messageCount: Int,
+    viewportHeightPx: Int,
+    originStatus: String,
+    targetIdentity: String?,
+    focusedAnchorOwnsViewport: Boolean,
+    settledCorrectionIdentity: String?
+): Boolean =
+    // Signal-driven debounce: fold composer relayouts into one pending update
+    // while the late origin correction owns this viewport. The focused owner
+    // already has a hard cap and a user-override exit; empty/no-origin routes
+    // bypass this gate entirely.
+    messageCount > 0 &&
+        viewportHeightPx > 0 &&
+        originStatus != "none" &&
+        targetIdentity != null &&
+        focusedAnchorOwnsViewport &&
+        settledCorrectionIdentity != targetIdentity
 
 internal fun threadComposerLayoutChanged(state: ThreadComposerLayoutBottomAnchorState): Boolean =
     state.previousKeyboardInsetDp != state.nextKeyboardInsetDp ||
@@ -18979,6 +19016,7 @@ internal fun shouldAnchorThreadComposerLayoutChange(
         (threadComposerLayoutChanged(state) || state.pendingLayoutChange) &&
         state.initialBottomAnchorReady &&
         state.latestItemIndex >= 0 &&
+        !state.focusedOriginCorrectionPending &&
         (
             (state.allowBottomAutoAnchor && !state.focusedAnchorOwnsViewport) ||
                 state.focusedActiveTailAnchorCanCorrectLayout ||
