@@ -2428,6 +2428,29 @@ private fun SlockAppShellChildTabHost(
 }
 
 @Composable
+internal fun rememberSlockServerDrawerUserHeader(
+    readySession: StoredAuthSession?
+): SlockServerDrawerUserHeader =
+    remember(
+        readySession?.user?.id,
+        readySession?.user?.displayName,
+        readySession?.user?.name,
+        readySession?.user?.email,
+        readySession?.user?.avatarUrl,
+        readySession?.currentServerId
+    ) {
+        val user = readySession?.user
+        val displayName = user?.bestDisplayName ?: "Raft user"
+        SlockServerDrawerUserHeader(
+            displayName = displayName,
+            memberId = user?.id,
+            serverId = readySession?.currentServerId,
+            avatarWireValue = user?.avatarUrl,
+            avatarLabel = displayName.take(2).uppercase().ifBlank { "?" }
+        )
+    }
+
+@Composable
 internal fun SlockAppShellContent(
     pageVisibleTick: Int = 0,
     initialAuthRestoreTick: Int = 0,
@@ -5175,24 +5198,7 @@ internal fun SlockAppShellContent(
     // MEMBERS_COMPUTERS_IDLE_PREWARM_END
 
     val appShellHomeLabels = SlockHomeShellLabels.localized()
-    val serverDrawerUserHeader =
-        remember(
-            readySession?.user?.id,
-            readySession?.user?.displayName,
-            readySession?.user?.name,
-            readySession?.user?.email,
-            readySession?.user?.avatarUrl
-        ) {
-            val user = readySession?.user
-            val displayName = user?.bestDisplayName ?: "Raft user"
-            SlockServerDrawerUserHeader(
-                displayName = displayName,
-                memberId = user?.id,
-                serverId = readySession?.currentServerId,
-                avatarWireValue = user?.avatarUrl,
-                avatarLabel = displayName.take(2).uppercase().ifBlank { "?" }
-            )
-        }
+    val serverDrawerUserHeader = rememberSlockServerDrawerUserHeader(readySession)
     fun openServerDrawerConversation(serverIdValue: String, conversationId: String) {
         val normalizedServerId = serverIdValue.trim().takeIf { it.isNotBlank() } ?: return
         val normalizedConversationId = conversationId.trim().takeIf { it.isNotBlank() } ?: return
