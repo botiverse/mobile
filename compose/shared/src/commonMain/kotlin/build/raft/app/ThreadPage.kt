@@ -17193,6 +17193,9 @@ private fun ThreadMessagesList(
                     beyondBoundsItems = activeListBeyondBoundsItems
                 )
             if (composerKeyboardInsetDp <= 0f) {
+                // Refresh whenever the keyboard is closed, so a layout
+                // generation change while idle replaces the baseline instead of
+                // leaving a stale one to be compared against.
                 if (baselineStats.visibleItems > 0) {
                     preShrinkBaseline =
                         ThreadPreShrinkBaseline(
@@ -17215,6 +17218,11 @@ private fun ThreadMessagesList(
                         cached == null -> "baseline_missing"
                         cached.threadInstance != threadInstanceKey -> "baseline_stale_thread"
                         cached.targetMessageId != focusedTargetMessageId -> "baseline_stale_target"
+                        // The generation was stored and printed but never
+                        // compared, so a baseline measured under a different
+                        // layout reported as ok — recording a field is not the
+                        // same as checking it.
+                        cached.layoutGeneration != viewportLayoutGeneration -> "baseline_stale_layout"
                         else -> "baseline_ok"
                     }
                 diagnosticsLogger(
@@ -17356,6 +17364,24 @@ private fun ThreadMessagesList(
         // replayed at other phases. Extracting the whole body was the previous
         // mistake: it carried those writes to the onset phase.
         suspend fun samplePixelPhase(pixelProbePhase: String) {
+            // Validate ownership BEFORE claiming. A job that survives a restart
+            // could otherwise claim a phase, be judged stale after its
+            // PixelCopy, and leave the new owner's job to return silently for
+            // that same phase — the phase would be recorded nowhere, which is
+            // indistinguishable in the log from a phase that found nothing.
+            if (
+                pixelProbeThreadInstanceKey != currentThreadInstanceKeyState.value ||
+                pixelProbeLayoutGeneration != currentViewportLayoutGenerationState.value
+            ) {
+                diagnosticsLogger(
+                    "thread_ime_tail_pixel_probe producer=composer_inset_pixel_probe " +
+                        "phase=$pixelProbePhase imeCycle=$pixelProbeGeneration " +
+                        "threadInstance=$pixelProbeThreadInstanceKey " +
+                        "status=stale_owner_before_claim " +
+                        "layoutGeneration=$pixelProbeLayoutGeneration->${currentViewportLayoutGenerationState.value}"
+                )
+                return
+            }
             if (imeTailDrawProbe.claimPixelProbe(pixelProbePhase) != pixelProbeGeneration) {
                 return
             }
