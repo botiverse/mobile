@@ -228,7 +228,8 @@ class SharedSettingsAvatarCacheTest {
         override suspend fun inspect(
             nativePartitionKey: String,
             nativeSubjectKey: String,
-            nativeBytesKey: String
+            nativeBytesKey: String,
+            commitGeneration: Long
         ): SlockAvatarNativeInspection = SlockAvatarNativeInspection.Unsupported
 
         override suspend fun awaitResult(request: SlockAvatarNativeRequest): SlockAvatarNativeLoadResult =

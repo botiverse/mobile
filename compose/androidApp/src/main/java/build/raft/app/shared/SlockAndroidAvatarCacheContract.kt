@@ -44,8 +44,7 @@ internal object SlockAndroidAvatarCacheContract {
         val bytesKey = json.optString("nativeBytesKey")
         if (!partitionKey.isOpaqueKey() || !subjectKey.isOpaqueKey() || !bytesKey.isOpaqueKey()) return null
         val readMode = SlockAndroidAvatarReadMode.fromWire(json.optString("readMode")) ?: return null
-        val generation = json.flexibleLong("commitGeneration") ?: return null
-        if (generation <= 0L) return null
+        val generation = parseCommitGeneration(json) ?: return null
         val retryAtMillis =
             json.takeIf { it.has("retryAtMillis") }
                 ?.flexibleLong("retryAtMillis")
@@ -79,6 +78,9 @@ internal object SlockAndroidAvatarCacheContract {
 
     fun parseOpaqueKey(json: JSONObject, field: String): String? =
         json.optString(field).takeIf { it.isOpaqueKey() }
+
+    fun parseCommitGeneration(json: JSONObject): Long? =
+        json.flexibleLong("commitGeneration")?.takeIf { it > 0L }
 
     fun responseContract(managedBytes: Long): MutableMap<String, Any> =
         linkedMapOf(

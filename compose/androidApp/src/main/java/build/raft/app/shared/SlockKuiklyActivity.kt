@@ -2641,13 +2641,18 @@ private class SlockKuiklyImageAdapter(
         when (command.optString("action")) {
             "inspect" -> {
                 val key = command.avatarEntryKeyOrNull()
-                if (key == null) {
+                val commitGeneration = SlockAndroidAvatarCacheContract.parseCommitGeneration(command)
+                if (key == null || commitGeneration == null) {
                     reply(avatarUnsupportedResponse())
                     return
                 }
                 SlockKuiklyThreadAdapter.executeOnSubThread {
-                    runCatching { avatarCacheManager.inspect(key) }
+                    runCatching { avatarCacheManager.inspect(key, commitGeneration) }
                             .onSuccess { inspection ->
+                                if (inspection == null) {
+                                    reply(avatarUnsupportedResponse())
+                                    return@onSuccess
+                                }
                                 reply(
                                         SlockAndroidAvatarCacheContract.responseContract(inspection.managedBytes).apply {
                                             put("status", "ok")

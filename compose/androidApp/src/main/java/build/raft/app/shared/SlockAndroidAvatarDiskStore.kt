@@ -47,6 +47,10 @@ internal class SlockAndroidAvatarDiskStore(
     private val maxManagedBytes: Long = SlockAndroidAvatarCacheContract.MaxManagedBytes,
     private val clockMillis: () -> Long = System::currentTimeMillis,
     private val beforeIndexCommit: () -> Unit = {},
+    private val deleteManagedFile: (File) -> Boolean = { file -> !file.exists() || file.delete() },
+    private val deleteManagedRoot: (File) -> Boolean = { directory ->
+        !directory.exists() || directory.deleteRecursively()
+    },
     private val onEntriesRemoved: (Set<SlockAndroidAvatarEntryKey>) -> Unit = {}
 ) {
     private companion object {
@@ -295,12 +299,11 @@ internal class SlockAndroidAvatarDiskStore(
 
     fun clearAll(): Boolean = synchronized(lock) {
         ensureLoadedLocked()
-        val removed = entries.keys.toSet()
-        entries.clear()
-        val deleted = !root.exists() || root.deleteRecursively()
+        if (!removeEntriesLocked(entries.keys.toSet())) return@synchronized false
+        val deleted = runCatching { deleteManagedRoot(root) }.getOrDefault(false)
+        if (!deleted) return@synchronized false
         loaded = true
-        if (removed.isNotEmpty()) onEntriesRemoved(removed)
-        deleted
+        true
     }
 
     internal fun indexedEntries(): List<SlockAndroidAvatarDiskEntry> = synchronized(lock) {
@@ -320,17 +323,18 @@ internal class SlockAndroidAvatarDiskStore(
 
     private fun removeEntriesLocked(keys: Set<SlockAndroidAvatarEntryKey>): Boolean {
         if (keys.isEmpty()) return true
+        val removed = keys.mapNotNull(entries::get)
+        val filesDeleted =
+            runCatching {
+                removed.all { entry -> deleteManagedFile(root.resolve(entry.fileName)) }
+            }.getOrDefault(false)
+        if (!filesDeleted) return false
         val snapshot = LinkedHashMap(entries)
-        val removed = keys.mapNotNull { entries.remove(it) }
+        removed.forEach { entries.remove(it.key) }
         return runCatching {
             persistIndexLocked()
-            val filesDeleted =
-                removed.map { entry ->
-                    val file = root.resolve(entry.fileName)
-                    !file.exists() || file.delete()
-                }.all { it }
             onEntriesRemoved(removed.mapTo(linkedSetOf()) { it.key })
-            filesDeleted
+            true
         }.getOrElse {
             entries.clear()
             entries.putAll(snapshot)

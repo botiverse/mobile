@@ -47,9 +47,15 @@ internal class SlockAndroidAvatarCacheManager(
         val renderWaiters = linkedMapOf<Long, (SlockAndroidAvatarBytePayload?) -> Unit>()
     }
 
+    private data class PreparedOperation(
+        val processEpoch: Long,
+        val order: Long
+    )
+
     private val lock = Any()
     private val order = AtomicLong()
     private val operations = linkedMapOf<SlockAndroidAvatarOperationKey, Operation>()
+    private val preparedOperations = linkedMapOf<SlockAndroidAvatarOperationKey, PreparedOperation>()
     private val latestGenerationBySlot = mutableMapOf<SlockAndroidAvatarSlotKey, Long>()
     private val retiredOwnerFloor = mutableMapOf<String, Long>()
     private val retiredSubjectFloor = mutableMapOf<SlockAndroidAvatarSlotKey, Long>()
@@ -64,7 +70,37 @@ internal class SlockAndroidAvatarCacheManager(
 
     fun managedBytes(): Long = store.managedBytes()
 
-    fun inspect(key: SlockAndroidAvatarEntryKey): SlockAndroidAvatarInspection {
+    fun inspect(
+        key: SlockAndroidAvatarEntryKey,
+        commitGeneration: Long
+    ): SlockAndroidAvatarInspection? {
+        val operationKey = SlockAndroidAvatarOperationKey(key, commitGeneration)
+        val slotKey = SlockAndroidAvatarSlotKey(key.partitionKey, key.subjectKey)
+        synchronized(lock) {
+            val floor =
+                maxOf(
+                    clearGenerationFloor,
+                    retiredOwnerFloor[key.partitionKey] ?: 0L,
+                    retiredSubjectFloor[slotKey] ?: 0L
+                )
+            val latest = latestGenerationBySlot[slotKey] ?: 0L
+            if (commitGeneration <= floor || commitGeneration < latest) return null
+            if (commitGeneration > latest) {
+                latestGenerationBySlot[slotKey] = commitGeneration
+                preparedOperations.keys.removeAll { preparedKey ->
+                    preparedKey.entryKey.partitionKey == key.partitionKey &&
+                        preparedKey.entryKey.subjectKey == key.subjectKey &&
+                        preparedKey.generation < commitGeneration
+                }
+            }
+            maxSeenGeneration = maxOf(maxSeenGeneration, commitGeneration)
+            if (operations[operationKey] == null) {
+                preparedOperations.getOrPut(operationKey) {
+                    PreparedOperation(processEpoch = processEpoch, order = order.incrementAndGet())
+                }
+            }
+            prunePreparedOperationsLocked()
+        }
         val payload = store.read(key)
         val decodable = payload?.let { contentValidator(it.bytes, it.contentType) } == true
         if (payload != null && !decodable) store.invalidate(key)
@@ -238,6 +274,7 @@ internal class SlockAndroidAvatarCacheManager(
         val renderCallbacks = mutableListOf<(SlockAndroidAvatarBytePayload?) -> Unit>()
         val accepted =
             synchronized(lock) {
+                preparedOperations.remove(request.operationKey)
                 val operation = operations[request.operationKey]
                     ?.takeIf { it.request == request }
                     ?: return@synchronized true
@@ -269,6 +306,7 @@ internal class SlockAndroidAvatarCacheManager(
             retiredOwnerFloor[partitionKey] = maxOf(retiredOwnerFloor[partitionKey] ?: 0L, maxSeenGeneration)
             latestGenerationBySlot.keys.removeAll { it.partitionKey == partitionKey }
             retiredSubjectFloor.keys.removeAll { it.partitionKey == partitionKey }
+            preparedOperations.keys.removeAll { it.entryKey.partitionKey == partitionKey }
             deliveries = closeOperationsLocked { it.request.nativePartitionKey == partitionKey }
             store.retireOwner(partitionKey)
         }
@@ -283,6 +321,9 @@ internal class SlockAndroidAvatarCacheManager(
         val removed = synchronized(lock) {
             retiredSubjectFloor[slot] = maxOf(retiredSubjectFloor[slot] ?: 0L, maxSeenGeneration)
             latestGenerationBySlot.remove(slot)
+            preparedOperations.keys.removeAll {
+                it.entryKey.partitionKey == partitionKey && it.entryKey.subjectKey == subjectKey
+            }
             deliveries = closeOperationsLocked { it.request.slotKey == slot }
             store.retireSubject(partitionKey, subjectKey)
         }
@@ -299,6 +340,7 @@ internal class SlockAndroidAvatarCacheManager(
             latestGenerationBySlot.clear()
             retiredOwnerFloor.clear()
             retiredSubjectFloor.clear()
+            preparedOperations.clear()
             deliveries = closeOperationsLocked { true }
             store.clearAll()
         }
@@ -311,6 +353,8 @@ internal class SlockAndroidAvatarCacheManager(
     }
 
     internal fun retainedOperationCount(): Int = synchronized(lock) { operations.size }
+
+    internal fun retainedPreparationCount(): Int = synchronized(lock) { preparedOperations.size }
 
     private fun startForAwait(operation: Operation) {
         when (operation.request.readMode) {
@@ -458,6 +502,8 @@ internal class SlockAndroidAvatarCacheManager(
         operations[request.operationKey]?.let { existing ->
             return existing.takeIf { it.request == request && !it.closed }
         }
+        val prepared = preparedOperations.remove(request.operationKey) ?: return null
+        if (prepared.processEpoch != processEpoch) return null
         val floor =
             maxOf(
                 clearGenerationFloor,
@@ -565,6 +611,14 @@ internal class SlockAndroidAvatarCacheManager(
             operation.resultTimeout?.cancel()
             operations.remove(operation.request.operationKey)
         }
+    }
+
+    private fun prunePreparedOperationsLocked() {
+        if (preparedOperations.size <= SlockAndroidAvatarCacheContract.MaxRetainedOperations) return
+        preparedOperations.entries
+            .sortedBy { it.value.order }
+            .take(preparedOperations.size - SlockAndroidAvatarCacheContract.MaxRetainedOperations)
+            .forEach { preparedOperations.remove(it.key) }
     }
 
     private fun outcomeMatches(resultStatus: String, outcome: String): Boolean =

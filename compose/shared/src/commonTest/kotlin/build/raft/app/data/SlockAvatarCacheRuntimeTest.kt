@@ -45,6 +45,7 @@ class SlockAvatarCacheRuntimeTest {
         assertEquals("etag-v1", request.eTag)
         assertEquals("yesterday", request.lastModified)
         assertTrue(request.commitGeneration > 0L)
+        assertEquals(request.commitGeneration, native.inspected.single().commitGeneration)
 
         val wire = request.toJson()
         assertEquals(SLOCK_AVATAR_NATIVE_CACHE_PROTOCOL, wire.optString("protocol"))
@@ -803,7 +804,7 @@ class SlockAvatarCacheRuntimeTest {
             { _, _ -> finalizeResult }
         var rollbackResult: SlockAvatarNativeMutationResult = SlockAvatarNativeMutationResult.Accepted
         var retireResult: SlockAvatarNativeMutationResult = SlockAvatarNativeMutationResult.Accepted
-        val inspected = mutableListOf<Triple<String, String, String>>()
+        val inspected = mutableListOf<SlockAvatarNativeInspectionCall>()
         val awaited = mutableListOf<SlockAvatarNativeRequest>()
         val finalized = mutableListOf<Pair<SlockAvatarNativeRequest, SlockAvatarNativeFinalizeOutcome>>()
         val rolledBack = mutableListOf<SlockAvatarNativeRequest>()
@@ -813,9 +814,16 @@ class SlockAvatarCacheRuntimeTest {
         override suspend fun inspect(
             nativePartitionKey: String,
             nativeSubjectKey: String,
-            nativeBytesKey: String
+            nativeBytesKey: String,
+            commitGeneration: Long
         ): SlockAvatarNativeInspection {
-            inspected += Triple(nativePartitionKey, nativeSubjectKey, nativeBytesKey)
+            inspected +=
+                SlockAvatarNativeInspectionCall(
+                    nativePartitionKey = nativePartitionKey,
+                    nativeSubjectKey = nativeSubjectKey,
+                    nativeBytesKey = nativeBytesKey,
+                    commitGeneration = commitGeneration
+                )
             return inspectBlock()
         }
 
@@ -854,6 +862,13 @@ class SlockAvatarCacheRuntimeTest {
             return retireResult
         }
     }
+
+    private data class SlockAvatarNativeInspectionCall(
+        val nativePartitionKey: String,
+        val nativeSubjectKey: String,
+        val nativeBytesKey: String,
+        val commitGeneration: Long
+    )
 
     private companion object {
         const val RemoteUrl = "https://images.example/avatar.png?v=1"

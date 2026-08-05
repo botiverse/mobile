@@ -162,7 +162,8 @@ internal interface SlockAvatarNativeCache {
     suspend fun inspect(
         nativePartitionKey: String,
         nativeSubjectKey: String,
-        nativeBytesKey: String
+        nativeBytesKey: String,
+        commitGeneration: Long
     ): SlockAvatarNativeInspection
 
     /**
@@ -191,7 +192,8 @@ internal object UnsupportedSlockAvatarNativeCache : SlockAvatarNativeCache {
     override suspend fun inspect(
         nativePartitionKey: String,
         nativeSubjectKey: String,
-        nativeBytesKey: String
+        nativeBytesKey: String,
+        commitGeneration: Long
     ): SlockAvatarNativeInspection = SlockAvatarNativeInspection.Unsupported
 
     override suspend fun awaitResult(request: SlockAvatarNativeRequest): SlockAvatarNativeLoadResult =
@@ -227,7 +229,8 @@ internal class BridgeSlockAvatarNativeCache(
     override suspend fun inspect(
         nativePartitionKey: String,
         nativeSubjectKey: String,
-        nativeBytesKey: String
+        nativeBytesKey: String,
+        commitGeneration: Long
     ): SlockAvatarNativeInspection {
         val response =
             call(
@@ -237,6 +240,7 @@ internal class BridgeSlockAvatarNativeCache(
                     .put("nativePartitionKey", nativePartitionKey)
                     .put("nativeSubjectKey", nativeSubjectKey)
                     .put("nativeBytesKey", nativeBytesKey)
+                    .put("commitGeneration", commitGeneration.toString())
             )
         if (response?.optString("status") != "ok" || !response.acknowledgesSlockAvatarManagedSet()) {
             return SlockAvatarNativeInspection.Unsupported
@@ -519,7 +523,8 @@ internal class SlockAvatarCacheRuntime(
                     nativeCache.inspect(
                         nativePartitionKey = key.owner.nativePartitionKey,
                         nativeSubjectKey = key.nativeSubjectKey,
-                        nativeBytesKey = key.nativeBytesKey
+                        nativeBytesKey = key.nativeBytesKey,
+                        commitGeneration = token.generation
                     )
                 } ?: SlockAvatarNativeInspection.Unsupported
             }.getOrElse {
