@@ -136,6 +136,7 @@ class MemberRepositoryDataSourceTest {
             gate.complete(Unit)
         }
         assertIs<DataResult.Content<AgentDetailSnapshot>>(result.await())
+        Unit
     }
 
     @Test
