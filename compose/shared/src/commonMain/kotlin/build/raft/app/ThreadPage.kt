@@ -260,6 +260,7 @@ import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.ImageBitmap
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
+import com.tencent.kuikly.compose.ui.input.pointer.PointerInputScope
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.LayoutCoordinates
@@ -319,6 +320,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlinx.serialization.decodeFromString
@@ -5389,6 +5391,9 @@ internal fun SharedThreadRouteContent(
     var threadPointerSessionKey by remember(threadInstanceKey, storeScope.shellInstanceId) {
         mutableStateOf(0)
     }
+    val threadMessageLongPressGestureOwnerStore = remember(threadInstanceKey) {
+        ThreadMessageLongPressGestureOwnerStore(tapDispatchScope = coroutineScope)
+    }
     val latestRouteActive by rememberUpdatedState(active)
     val latestForegroundRejoinRoomIds by rememberUpdatedState(payload.activeRealtimeRoomIds())
     val latestCoreThreadRealtimeEventHandler by rememberUpdatedState<suspend (RealtimeEvent) -> Unit>(
@@ -7821,6 +7826,8 @@ internal fun SharedThreadRouteContent(
                 LocalSlockMarkdownRenderConfig provides
                     SlockMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
+                LocalThreadMessageLongPressGestureOwnerStore provides
+                    threadMessageLongPressGestureOwnerStore,
                 LocalThreadPendingReactionVisuals provides pendingReactionVisuals,
                 LocalSlockTimeContextProvider provides timeContextProvider
             ),
@@ -17789,7 +17796,9 @@ private fun ThreadMessagesList(
                                     actionMenuAnchor = anchor
                                     actionMessageId = message.id
                                     diagnosticsLogger("thread_message_menu_inline_more messageId=${message.id}")
-                                }
+                                },
+                                longPressGestureInstanceKey =
+                                    message.messageListItemKey(duplicateMessageRandomIds)
                             )
                         }
                     }
@@ -19900,6 +19909,7 @@ private fun ThreadMessageCard(
     onInlineSelectionSelect: () -> Unit = {},
     onInlineSelectionMore: (SlockPopoverAnchor) -> Unit = {},
     onLongPressInputReady: ((String) -> Unit)? = null,
+    longPressGestureInstanceKey: Any = message.id,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val localizedAuthorName =
@@ -19948,7 +19958,12 @@ private fun ThreadMessageCard(
         remember(message.id, message.authorId, message.authorKind) {
             message.memberDetailIdentity()
         }
-    val tapMovementGate = remember(message.id) { ThreadMessageTapMovementGate() }
+    val longPressGestureOwner =
+        rememberThreadMessageLongPressGestureOwner(
+            instanceKey = longPressGestureInstanceKey,
+            messageId = message.id
+        )
+    val tapMovementGate = longPressGestureOwner.tapMovementGate
     fun openAuthorProfile(source: String) {
         if (!message.canOpenThreadAuthorProfile(shareSelectionActive)) return
         tapMovementGate.rejectChildAction("author_profile")
@@ -19965,12 +19980,15 @@ private fun ThreadMessageCard(
         animationSpec = tween(durationMillis = ThreadFocusedMessageHighlightFadeMs),
         label = "thread-message-focus-highlight"
     )
-    var pressed by remember(message.id) { mutableStateOf(false) }
-    var pressRippleOrigin by remember(message.id) { mutableStateOf<Offset?>(null) }
-    LaunchedEffect(message.id, pressed) {
+    val pressed = longPressGestureOwner.pressed
+    val pressRippleOrigin = longPressGestureOwner.pressRippleOrigin
+    LaunchedEffect(longPressGestureOwner, pressed, pressRippleOrigin) {
         if (!pressed && pressRippleOrigin != null) {
+            val rippleLease = longPressGestureOwner.captureActiveLease()
             delay(ThreadMessageRippleFadeMs.toLong() + ThreadMessageRippleResetMarginMs)
-            pressRippleOrigin = null
+            if (rippleLease != null) {
+                longPressGestureOwner.clearReleasedPressRipple(rippleLease, pressRippleOrigin)
+            }
         }
     }
     val showAuthorChrome = !compactConsecutiveMessages || !suppressRepeatedAuthor
@@ -20105,7 +20123,7 @@ private fun ThreadMessageCard(
                         Modifier.threadMessageLongPressActions(
                             messageId = message.id,
                             pointerSessionKey = pointerSessionKey,
-                            tapMovementGate = tapMovementGate,
+                            gestureOwner = longPressGestureOwner,
                             isScrollInProgress = isMessageListScrolling,
                             diagnosticsLogger = diagnosticsLogger,
                             onTap = if (inlineSelectionController?.active == true) clearInlineSelection else rowTapAction,
@@ -20129,13 +20147,7 @@ private fun ThreadMessageCard(
                                     null
                                 },
                             onShowActions = onShowActions,
-                            onInputReady = onLongPressInputReady,
-                            onPressChanged = { isPressed, position ->
-                                pressed = isPressed
-                                if (position != null) {
-                                    pressRippleOrigin = position
-                                }
-                            }
+                            onInputReady = onLongPressInputReady
                         )
                     } else {
                         Modifier
@@ -22032,131 +22044,196 @@ internal fun threadMessageRippleRadius(
     expansion: Float
 ): Float = minRadius + (coverRadius - minRadius) * expansion
 
-@Composable
-private fun Modifier.threadMessageLongPressActions(
+internal fun Modifier.threadMessagePointerInput(
+    role: String,
     messageId: String,
     pointerSessionKey: Int,
-    tapMovementGate: ThreadMessageTapMovementGate,
+    gestureOwner: ThreadMessageLongPressGestureOwner,
+    block: suspend PointerInputScope.() -> Unit
+): Modifier = pointerInput(role, messageId, pointerSessionKey, gestureOwner, block = block)
+
+@Composable
+internal fun rememberThreadMessageLongPressGestureOwner(
+    instanceKey: Any,
+    messageId: String
+): ThreadMessageLongPressGestureOwner {
+    val ownerStore = LocalThreadMessageLongPressGestureOwnerStore.current
+    val fallbackTapDispatchScope = rememberCoroutineScope()
+    val fallbackOwnerStore = remember(fallbackTapDispatchScope) {
+        ThreadMessageLongPressGestureOwnerStore(tapDispatchScope = fallbackTapDispatchScope)
+    }
+    val effectiveOwnerStore = ownerStore ?: fallbackOwnerStore
+    val ownerKey =
+        remember(instanceKey, messageId) {
+            ThreadMessageLongPressGestureOwnerKey(instanceKey, messageId)
+        }
+    val gestureOwner =
+        remember(effectiveOwnerStore, ownerKey) {
+            effectiveOwnerStore.ownerFor(ownerKey)
+        }
+    DisposableEffect(effectiveOwnerStore, ownerKey, gestureOwner) {
+        effectiveOwnerStore.retain(ownerKey, gestureOwner)
+        onDispose {
+            effectiveOwnerStore.release(ownerKey, gestureOwner)
+        }
+    }
+    return gestureOwner
+}
+
+@Composable
+internal fun Modifier.threadMessageLongPressActions(
+    messageId: String,
+    pointerSessionKey: Int,
+    gestureOwner: ThreadMessageLongPressGestureOwner,
     isScrollInProgress: () -> Boolean = { false },
     diagnosticsLogger: (String) -> Unit = {},
     onTap: (() -> Unit)? = null,
     onTapRejected: (ThreadMessageTapMovementDecision) -> Unit = {},
     onSelectAllText: ((SlockPopoverAnchor?) -> Unit)? = null,
     onShowActions: (SlockPopoverAnchor) -> Unit,
-    onInputReady: ((String) -> Unit)? = null,
-    onPressChanged: (Boolean, Offset?) -> Unit = { _, _ -> }
+    onInputReady: ((String) -> Unit)? = null
 ): Modifier {
-    val currentOnShowActions by rememberUpdatedState(onShowActions)
-    val currentOnTap by rememberUpdatedState(onTap)
-    val currentOnTapRejected by rememberUpdatedState(onTapRejected)
-    val currentOnSelectAllText by rememberUpdatedState(onSelectAllText)
-    val currentOnInputReady by rememberUpdatedState(onInputReady)
-    val currentOnPressChanged by rememberUpdatedState(onPressChanged)
-    val currentIsScrollInProgress by rememberUpdatedState(isScrollInProgress)
-    val currentDiagnosticsLogger by rememberUpdatedState(diagnosticsLogger)
-    val rootAnchor =
-        remember(messageId) { SlockLiveRootAnchorRef(identity = threadMessageMenuOwnerIdentity(messageId)) }
-    val tapDispatchScope = rememberCoroutineScope()
-    tapMovementGate.activatePointerSession(pointerSessionKey)
+    SideEffect {
+        gestureOwner.updateCallbacks(
+            ThreadMessageLongPressCallbacks(
+                isScrollInProgress = isScrollInProgress,
+                diagnosticsLogger = diagnosticsLogger,
+                onTap = onTap,
+                onTapRejected = onTapRejected,
+                onSelectAllText = onSelectAllText,
+                onShowActions = onShowActions,
+                onInputReady = onInputReady
+            )
+        )
+    }
+    gestureOwner.tapMovementGate.activatePointerSession(pointerSessionKey)
     return this
-        .slockCaptureLiveRootAnchor(rootAnchor)
-        .pointerInput("thread-message-tap-movement-$messageId-$pointerSessionKey") {
+        .slockCaptureLiveRootAnchor(gestureOwner.rootAnchor)
+        .threadMessagePointerInput(
+            role = "tap_movement",
+            messageId = messageId,
+            pointerSessionKey = pointerSessionKey,
+            gestureOwner = gestureOwner
+        ) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
-                tapMovementGate.begin(down.position)
+                val compositionLease =
+                    gestureOwner.captureActiveLease() ?: return@awaitEachGesture
+                gestureOwner.tapMovementGate.begin(down.position, compositionLease)
                 do {
                     val event = awaitPointerEvent()
                     val activeChange = event.changes.firstOrNull { it.id == down.id }
-                    tapMovementGate.observe(
-                        position = activeChange?.position,
-                        pointerCount = event.changes.size,
-                        touchSlop = viewConfiguration.touchSlop
-                    )
+                    if (gestureOwner.isLeaseActive(compositionLease)) {
+                        gestureOwner.tapMovementGate.observe(
+                            position = activeChange?.position,
+                            pointerCount = event.changes.size,
+                            touchSlop = viewConfiguration.touchSlop
+                        )
+                    }
                 } while (event.changes.any { it.pressed })
             }
         }
-        .pointerInput(messageId, pointerSessionKey) {
-            // The visual harness uses this optional seam to prove that the
-            // exact target row's lazily-started detector coroutine received the
-            // real ACTION_DOWN before the long-press threshold. Production
-            // callers leave it null, so there is no behavior or logging change.
-            currentOnInputReady?.invoke(messageId)
+        .threadMessagePointerInput(
+            role = "actions",
+            messageId = messageId,
+            pointerSessionKey = pointerSessionKey,
+            gestureOwner = gestureOwner
+        ) {
             detectTapGestures(
                 onPress = { downPosition ->
+                    val compositionLease =
+                        gestureOwner.captureActiveLease() ?: return@detectTapGestures
+                    // The visual harness uses this optional seam to prove that the exact target
+                    // row received the real ACTION_DOWN. The callback lives on the route-owned
+                    // gesture owner, so a replacement composition updates the existing handler.
+                    gestureOwner.callbacksSnapshot(compositionLease)?.onInputReady?.invoke(messageId)
                     var indicated = false
                     try {
                         // Scrolls steal the pointer and cancel this scope
                         // within the delay — press feedback never shows for
                         // them (task #555).
                         delay(ThreadMessagePressIndicationDelayMs)
-                        indicated = true
-                        currentOnPressChanged(true, downPosition)
+                        indicated = gestureOwner.showPressFeedback(compositionLease, downPosition)
                         tryAwaitRelease()
                     } finally {
                         if (indicated) {
-                            currentOnPressChanged(false, null)
+                            gestureOwner.hidePressFeedback(compositionLease)
                         }
                     }
                 },
                 onTap = {
-                    val gestureToken = tapMovementGate.currentGestureToken()
-                    tapDispatchScope.launch {
+                    val gestureToken = gestureOwner.tapMovementGate.currentGestureToken()
+                    val compositionLease =
+                        gestureOwner.captureActiveLease(gestureToken.compositionGeneration)
+                            ?: return@detectTapGestures
+                    gestureOwner.tapDispatchScope.launch {
                         // Native rich-text annotations may dispatch their Clickable callback
                         // after the parent pointer detector completes. Commit on the next frame
                         // so every child callback from this gesture can reject its generation.
                         withFrameNanos { }
-                        val decision = tapMovementGate.decision(gestureToken)
+                        val callbacks =
+                            gestureOwner.callbacksSnapshot(compositionLease) ?: return@launch
+                        val decision = gestureOwner.tapMovementGate.decision(gestureToken)
                         if (decision.allowed) {
-                            currentOnTap?.invoke()
-                        } else if (currentOnTap != null) {
-                            currentOnTapRejected(decision)
+                            callbacks.onTap?.invoke()
+                        } else if (callbacks.onTap != null) {
+                            callbacks.onTapRejected(decision)
                         }
                     }
                 },
                 onLongPress = { localOffset ->
-                    val movementDecision = tapMovementGate.decision()
+                    val gestureToken = gestureOwner.tapMovementGate.currentGestureToken()
+                    val compositionLease =
+                        gestureOwner.captureActiveLease(gestureToken.compositionGeneration)
+                            ?: return@detectTapGestures
+                    val callbacks =
+                        gestureOwner.callbacksSnapshot(compositionLease)
+                            ?: return@detectTapGestures
+                    val movementDecision = gestureOwner.tapMovementGate.decision(gestureToken)
                     val directPointerMovementDetected =
                         movementDecision.reason == "movement" || movementDecision.reason == "multi_touch"
                     val dispatchDecision =
                         decideThreadMessageLongPressDispatch(
                             detectorAccepted = movementDecision.allowed,
                             directPointerMovementDetected = directPointerMovementDetected,
-                            isScrollInProgress = currentIsScrollInProgress()
+                            isScrollInProgress = callbacks.isScrollInProgress()
                         )
                     if (!dispatchDecision.allowed) {
-                        currentDiagnosticsLogger(
+                        callbacks.diagnosticsLogger(
                             "thread_message_long_press_rejected messageId=$messageId " +
                                 "reason=${dispatchDecision.reason} movement=${movementDecision.maxDistance} " +
                                 "touchSlop=${movementDecision.touchSlop} pointers=${movementDecision.pointerCount}"
                         )
                         return@detectTapGestures
                     }
-                    currentDiagnosticsLogger(
+                    callbacks.diagnosticsLogger(
                         "thread_message_long_press_admitted messageId=$messageId " +
                             "scrollInProgress=${dispatchDecision.scrollInProgress}"
                     )
-                    if (currentOnSelectAllText != null) {
-                        val anchor = rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))
-                        currentDiagnosticsLogger(
+                    if (callbacks.onSelectAllText != null) {
+                        val anchor =
+                            gestureOwner.rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                        callbacks.diagnosticsLogger(
                             "thread_message_long_press_select_all_emit messageId=$messageId " +
                                 "scrollInProgress=${dispatchDecision.scrollInProgress}"
                         )
-                        currentOnSelectAllText?.invoke(anchor)
+                        callbacks.onSelectAllText.invoke(anchor)
                         return@detectTapGestures
                     }
-                    val anchor = rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                    val anchor =
+                        gestureOwner.rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))
                     if (anchor == null) {
-                        currentDiagnosticsLogger(
+                        callbacks.diagnosticsLogger(
                             "thread_message_long_press_anchor_unavailable messageId=$messageId " +
                                 "scrollInProgress=${dispatchDecision.scrollInProgress}"
                         )
                         return@detectTapGestures
                     }
-                    currentDiagnosticsLogger(
+                    callbacks.diagnosticsLogger(
                         "thread_message_long_press_menu_emit messageId=$messageId " +
                             "scrollInProgress=${dispatchDecision.scrollInProgress}"
                     )
-                    currentOnShowActions(anchor)
+                    callbacks.onShowActions(anchor)
                 }
             )
         }
@@ -22172,10 +22249,224 @@ internal data class ThreadMessageTapMovementDecision(
 
 internal data class ThreadMessageTapGestureToken(
     val pointerSessionKey: Int,
-    val gestureGeneration: Int
+    val gestureGeneration: Int,
+    val compositionGeneration: Long
 )
 
 internal val LocalThreadMessagePointerSessionKey = compositionLocalOf { 0 }
+
+internal data class ThreadMessageLongPressGestureOwnerKey(
+    val instanceKey: Any,
+    val messageId: String
+)
+
+internal data class ThreadMessageLongPressCompositionLease(
+    val generation: Long
+)
+
+internal data class ThreadMessageLongPressCallbacks(
+    val isScrollInProgress: () -> Boolean = { false },
+    val diagnosticsLogger: (String) -> Unit = {},
+    val onTap: (() -> Unit)? = null,
+    val onTapRejected: (ThreadMessageTapMovementDecision) -> Unit = {},
+    val onSelectAllText: ((SlockPopoverAnchor?) -> Unit)? = null,
+    val onShowActions: (SlockPopoverAnchor) -> Unit = {},
+    val onInputReady: ((String) -> Unit)? = null
+)
+
+internal class ThreadMessageLongPressGestureOwner(
+    val key: ThreadMessageLongPressGestureOwnerKey,
+    val tapDispatchScope: CoroutineScope
+) {
+    val rootAnchor =
+        SlockLiveRootAnchorRef(identity = threadMessageMenuOwnerIdentity(key.messageId))
+    val tapMovementGate = ThreadMessageTapMovementGate()
+
+    var pressed by mutableStateOf(false)
+        private set
+    var pressRippleOrigin by mutableStateOf<Offset?>(null)
+        private set
+
+    private var callbacks = ThreadMessageLongPressCallbacks()
+    private var compositionGeneration = 0L
+    private var compositionActive = false
+
+    internal fun retainCompositionAuthority() {
+        if (compositionActive) return
+        compositionGeneration = nextThreadMessageCompositionGeneration(compositionGeneration)
+        compositionActive = true
+    }
+
+    internal fun finalizeInactiveCompositionAuthority() {
+        if (!compositionActive) return
+        compositionActive = false
+        callbacks = ThreadMessageLongPressCallbacks()
+        tapMovementGate.invalidateCompositionAuthority()
+        rootAnchor.invalidate()
+        pressed = false
+        pressRippleOrigin = null
+    }
+
+    fun captureActiveLease(): ThreadMessageLongPressCompositionLease? =
+        if (compositionActive) {
+            ThreadMessageLongPressCompositionLease(compositionGeneration)
+        } else {
+            null
+        }
+
+    fun captureActiveLease(
+        expectedGeneration: Long
+    ): ThreadMessageLongPressCompositionLease? =
+        captureActiveLease()?.takeIf { it.generation == expectedGeneration }
+
+    fun isLeaseActive(lease: ThreadMessageLongPressCompositionLease): Boolean =
+        compositionActive && lease.generation == compositionGeneration
+
+    fun updateCallbacks(next: ThreadMessageLongPressCallbacks) {
+        if (compositionActive) callbacks = next
+    }
+
+    fun callbacksSnapshot(
+        lease: ThreadMessageLongPressCompositionLease
+    ): ThreadMessageLongPressCallbacks? = callbacks.takeIf { isLeaseActive(lease) }
+
+    fun showPressFeedback(
+        lease: ThreadMessageLongPressCompositionLease,
+        origin: Offset
+    ): Boolean {
+        if (!isLeaseActive(lease)) return false
+        pressRippleOrigin = origin
+        pressed = true
+        return true
+    }
+
+    fun hidePressFeedback(lease: ThreadMessageLongPressCompositionLease) {
+        if (isLeaseActive(lease)) pressed = false
+    }
+
+    fun clearReleasedPressRipple(
+        lease: ThreadMessageLongPressCompositionLease,
+        expectedOrigin: Offset
+    ) {
+        if (isLeaseActive(lease) && !pressed && pressRippleOrigin == expectedOrigin) {
+            pressRippleOrigin = null
+        }
+    }
+}
+
+internal fun nextThreadMessageCompositionGeneration(current: Long): Long =
+    if (current == Long.MAX_VALUE) 0L else current + 1L
+
+internal const val ThreadMessageLongPressGestureOwnerRetentionLimit = 256
+
+internal class ThreadMessageLongPressGestureOwnerStore(
+    private val tapDispatchScope: CoroutineScope,
+    private val maxRetainedOwners: Int = ThreadMessageLongPressGestureOwnerRetentionLimit
+) {
+    init {
+        require(maxRetainedOwners > 0) { "maxRetainedOwners must be positive" }
+    }
+
+    private data class Entry(
+        val owner: ThreadMessageLongPressGestureOwner,
+        var activeOwnerCount: Int,
+        var lastAccessOrdinal: Long,
+        var lifecycleRevision: Long
+    )
+
+    private val owners = mutableMapOf<ThreadMessageLongPressGestureOwnerKey, Entry>()
+    private var accessOrdinal = 0L
+
+    fun ownerFor(instanceKey: Any, messageId: String): ThreadMessageLongPressGestureOwner =
+        ownerFor(ThreadMessageLongPressGestureOwnerKey(instanceKey, messageId))
+
+    fun ownerFor(key: ThreadMessageLongPressGestureOwnerKey): ThreadMessageLongPressGestureOwner {
+        owners[key]?.let { entry ->
+            entry.lastAccessOrdinal = nextAccessOrdinal()
+            return entry.owner
+        }
+        return ThreadMessageLongPressGestureOwner(key, tapDispatchScope)
+            .also { owner ->
+                owners[key] =
+                    Entry(
+                        owner = owner,
+                        activeOwnerCount = 0,
+                        lastAccessOrdinal = nextAccessOrdinal(),
+                        lifecycleRevision = 0L
+                    )
+            }
+    }
+
+    fun retain(
+        key: ThreadMessageLongPressGestureOwnerKey,
+        owner: ThreadMessageLongPressGestureOwner
+    ) {
+        val entry = owners[key]
+        if (entry == null || entry.owner !== owner) {
+            entry?.owner?.finalizeInactiveCompositionAuthority()
+            owner.retainCompositionAuthority()
+            owners[key] =
+                Entry(
+                    owner = owner,
+                    activeOwnerCount = 1,
+                    lastAccessOrdinal = nextAccessOrdinal(),
+                    lifecycleRevision = 1L
+                )
+        } else {
+            entry.lifecycleRevision = nextThreadMessageCompositionGeneration(entry.lifecycleRevision)
+            if (entry.activeOwnerCount == 0) owner.retainCompositionAuthority()
+            entry.activeOwnerCount += 1
+            entry.lastAccessOrdinal = nextAccessOrdinal()
+        }
+        pruneInactiveOwners()
+    }
+
+    fun release(
+        key: ThreadMessageLongPressGestureOwnerKey,
+        owner: ThreadMessageLongPressGestureOwner
+    ) {
+        val entry = owners[key]?.takeIf { it.owner === owner } ?: return
+        if (entry.activeOwnerCount > 0) entry.activeOwnerCount -= 1
+        if (entry.activeOwnerCount != 0) return
+        entry.lifecycleRevision = nextThreadMessageCompositionGeneration(entry.lifecycleRevision)
+        val expectedLifecycleRevision = entry.lifecycleRevision
+        tapDispatchScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            // DisposableEffect replacement can apply as 1→0→1. Yield beyond the current apply
+            // stack so a same-semantic retain can reclaim the continuing gesture authority.
+            yield()
+            val currentEntry = owners[key]
+            if (
+                currentEntry?.owner === owner &&
+                    currentEntry.activeOwnerCount == 0 &&
+                    currentEntry.lifecycleRevision == expectedLifecycleRevision
+            ) {
+                owner.finalizeInactiveCompositionAuthority()
+                pruneInactiveOwners()
+            }
+        }
+    }
+
+    private fun pruneInactiveOwners() {
+        while (owners.size > maxRetainedOwners) {
+            val oldestInactive =
+                owners.entries
+                    .filter { (_, entry) ->
+                        entry.activeOwnerCount == 0 && entry.owner.captureActiveLease() == null
+                    }
+                    .minByOrNull { (_, entry) -> entry.lastAccessOrdinal }
+                    ?: return
+            owners.remove(oldestInactive.key)?.owner?.finalizeInactiveCompositionAuthority()
+        }
+    }
+
+    private fun nextAccessOrdinal(): Long {
+        accessOrdinal += 1L
+        return accessOrdinal
+    }
+}
+
+internal val LocalThreadMessageLongPressGestureOwnerStore =
+    compositionLocalOf<ThreadMessageLongPressGestureOwnerStore?> { null }
 
 internal fun nextThreadPointerSessionKey(current: Int): Int =
     if (current == Int.MAX_VALUE) 0 else current + 1
@@ -22189,6 +22480,7 @@ internal class ThreadMessageTapMovementGate {
     private var pointerCount: Int = 1
     private var gestureGeneration: Int = 0
     private var pointerSessionKey: Int = 0
+    private var compositionGeneration: Long = 0L
 
     fun activatePointerSession(pointerSessionKey: Int) {
         if (this.pointerSessionKey == pointerSessionKey) return
@@ -22198,8 +22490,13 @@ internal class ThreadMessageTapMovementGate {
         reason = "session_superseded"
     }
 
-    fun begin(position: Offset) {
+    fun begin(
+        position: Offset,
+        compositionLease: ThreadMessageLongPressCompositionLease =
+            ThreadMessageLongPressCompositionLease(generation = 0L)
+    ) {
         gestureGeneration = nextThreadPointerSessionKey(gestureGeneration)
+        compositionGeneration = compositionLease.generation
         downPosition = position
         canceled = false
         reason = "none"
@@ -22242,8 +22539,16 @@ internal class ThreadMessageTapMovementGate {
     fun currentGestureToken(): ThreadMessageTapGestureToken =
         ThreadMessageTapGestureToken(
             pointerSessionKey = pointerSessionKey,
-            gestureGeneration = gestureGeneration
+            gestureGeneration = gestureGeneration,
+            compositionGeneration = compositionGeneration
         )
+
+    fun invalidateCompositionAuthority() {
+        gestureGeneration = nextThreadPointerSessionKey(gestureGeneration)
+        downPosition = null
+        canceled = true
+        reason = "composition_inactive"
+    }
 
     fun decision(
         expectedGestureToken: ThreadMessageTapGestureToken = currentGestureToken()

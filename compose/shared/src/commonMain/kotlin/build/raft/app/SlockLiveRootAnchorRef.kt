@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.offset
+import com.tencent.kuikly.compose.ui.ExperimentalComposeUiApi
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
@@ -97,6 +98,7 @@ internal class SlockPopoverAnchor private constructor(
         )
 
         private var coordinates: LayoutCoordinates? = null
+        private var captureOwner: Any? = null
         private var captureLease: Long = 0L
         private var placementRevisionState by mutableStateOf(0L)
         private var placementObserverCount: Int = 0
@@ -106,26 +108,40 @@ internal class SlockPopoverAnchor private constructor(
         internal val placementRevision: Long
             get() = placementRevisionState
 
-        internal fun captureFromLayoutCoordinates(next: LayoutCoordinates) {
+        internal fun captureFromLayoutCoordinates(
+            next: LayoutCoordinates,
+            owner: Any? = null
+        ) {
+            val previousCoordinates = coordinates
             coordinates
                 ?.takeIf { current -> current !== next }
                 ?.let { previous -> SlockLiveRootAnchorCaptureRegistry.release(previous, this) }
             SlockLiveRootAnchorCaptureRegistry.claim(next, this)
             coordinates = next
+            // A helper-level refresh of the same live coordinates must not erase the production
+            // node lease established by onAttach. A different coordinate with no owner remains an
+            // explicitly unowned capture, preserving the legacy helper contract.
+            if (owner != null || previousCoordinates !== next) captureOwner = owner
             publishPlacementIfObserved(next)
         }
 
         fun invalidate() {
             coordinates?.let { current -> SlockLiveRootAnchorCaptureRegistry.release(current, this) }
             coordinates = null
+            captureOwner = null
             captureLease += 1L
             placementSnapshot = null
             placementRevisionState += 1L
         }
 
+        internal fun invalidateCaptureOwner(owner: Any) {
+            if (captureOwner === owner) invalidate()
+        }
+
         internal fun invalidateReusedCapture(coordinates: LayoutCoordinates) {
             if (this.coordinates === coordinates) {
                 this.coordinates = null
+                captureOwner = null
                 reuseInvalidatedLeases += captureLease
                 captureLease += 1L
                 placementSnapshot = null
@@ -193,12 +209,27 @@ internal typealias SlockLiveRootAnchorRef = SlockPopoverAnchor.LiveRef
 internal fun refreshSlockLiveRootAnchorCaptureOwner(
     currentOwner: SlockLiveRootAnchorRef,
     nextOwner: SlockLiveRootAnchorRef,
-    coordinates: LayoutCoordinates?
+    coordinates: LayoutCoordinates?,
+    captureOwner: Any? = null
 ) {
-    if (currentOwner !== nextOwner) currentOwner.invalidate()
+    if (currentOwner !== nextOwner) {
+        if (captureOwner == null) {
+            currentOwner.invalidate()
+        } else {
+            currentOwner.invalidateCaptureOwner(captureOwner)
+        }
+    }
     coordinates
         ?.takeIf { it.isAttached }
-        ?.let(nextOwner::captureFromLayoutCoordinates)
+        ?.let { nextOwner.captureFromLayoutCoordinates(it, captureOwner) }
+}
+
+internal fun recaptureSlockLiveRootAnchorAfterAttach(
+    owner: SlockLiveRootAnchorRef,
+    coordinates: LayoutCoordinates,
+    captureOwner: Any? = null
+) {
+    if (coordinates.isAttached) owner.captureFromLayoutCoordinates(coordinates, captureOwner)
 }
 
 /**
@@ -334,6 +365,22 @@ private class SlockLiveRootAnchorCaptureNode(
     private var anchorRef: SlockLiveRootAnchorRef,
     private var onCaptured: ((IntSize) -> Unit)?
 ) : Modifier.Node(), GlobalPositionAwareModifierNode {
+    @OptIn(ExperimentalComposeUiApi::class)
+    override fun onAttach() {
+        // Lazy reuse detaches and later reattaches the same Modifier.Node. Kuikly does not mark
+        // an existing GlobalPositionAware node as inserted/updated during that reactivation, so
+        // another positioned callback is not guaranteed when the slot keeps its placement. Wait
+        // until modifier updates for this apply pass have settled, then restore the current owner
+        // from the node's live coordinator before its reattached pointer detector can resolve it.
+        sideEffect {
+            if (isAttached) {
+                val coordinates = requireLayoutCoordinates()
+                recaptureSlockLiveRootAnchorAfterAttach(anchorRef, coordinates, this)
+                onCaptured?.invoke(coordinates.size)
+            }
+        }
+    }
+
     override fun onGloballyPositioned(coordinates: LayoutCoordinates) {
         capture(coordinates)
     }
@@ -353,19 +400,22 @@ private class SlockLiveRootAnchorCaptureNode(
         // admit a gesture while its live anchor is still empty.
         if (ownerChanged && isAttached) {
             val coordinates = requireLayoutCoordinates()
-            refreshSlockLiveRootAnchorCaptureOwner(currentAnchorRef, nextAnchorRef, coordinates)
+            refreshSlockLiveRootAnchorCaptureOwner(currentAnchorRef, nextAnchorRef, coordinates, this)
             onCaptured?.invoke(coordinates.size)
         } else if (ownerChanged) {
-            currentAnchorRef.invalidate()
+            currentAnchorRef.invalidateCaptureOwner(this)
         }
     }
 
     override fun onDetach() {
-        anchorRef.invalidate()
+        // IME/lazy relayout may attach a replacement node for the same semantic message before
+        // this node's delayed detach. Only the node holding the current capture lease may revoke
+        // it; an older node must not clear the replacement's live coordinates.
+        anchorRef.invalidateCaptureOwner(this)
     }
 
     private fun capture(coordinates: LayoutCoordinates) {
-        anchorRef.captureFromLayoutCoordinates(coordinates)
+        anchorRef.captureFromLayoutCoordinates(coordinates, this)
         onCaptured?.invoke(coordinates.size)
     }
 }
