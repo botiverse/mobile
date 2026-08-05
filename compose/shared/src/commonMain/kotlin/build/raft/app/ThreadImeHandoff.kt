@@ -188,3 +188,100 @@ internal fun focusedOriginCorrectionMayPublishCompletion(
     targetVisible &&
         retiredIdentity != targetIdentity &&
         settlementOutcome == ThreadViewportSettlementOutcome.ConsumedOriginal
+
+/**
+ * Outcome of the early part of one composer pass: everything that happens
+ * before the layout is measured.
+ */
+internal data class ThreadImeHandoffPass(
+    val handoff: ThreadImeHandoffState,
+    /**
+     * True on the pass that took the shrink. The caller releases the focused
+     * fence and ends the pass there, so the layout decision runs once, in the
+     * replacement pass, rather than once in a body about to be cancelled and
+     * again in its successor — two commands for one shrink.
+     */
+    val tookHandoff: Boolean
+)
+
+/**
+ * Applies every lifecycle event of one composer pass, in the order the pass
+ * produces them: the ways a rise can end first, then the onset itself.
+ *
+ * Extracted so the sequence a test drives is the sequence production runs. The
+ * defects in the previous attempt were all in this derivation — an event that
+ * was never fed, a comparison that never fired — and none of them are visible
+ * from the reducer alone, which only ever sees events someone remembered to
+ * send it.
+ */
+internal fun threadImeHandoffPass(
+    handoff: ThreadImeHandoffState,
+    previousKeyboardInsetDp: Float,
+    keyboardInsetDp: Float,
+    targetIdentity: String?,
+    focusedTransactionLive: Boolean,
+    dischargeable: Boolean,
+    userScrollGeneration: Int,
+    pageCycleActive: Boolean
+): ThreadImeHandoffPass {
+    if (pageCycleActive) {
+        return ThreadImeHandoffPass(
+            handoff = reduceThreadImeHandoff(handoff, ThreadImeHandoffEvent.PageCycled),
+            tookHandoff = false
+        )
+    }
+    var next = reduceThreadImeHandoff(handoff, ThreadImeHandoffEvent.TargetChanged(targetIdentity))
+    next = reduceThreadImeHandoff(next, ThreadImeHandoffEvent.UserScrolled(userScrollGeneration))
+    if (keyboardInsetDp <= 0f) {
+        next = reduceThreadImeHandoff(next, ThreadImeHandoffEvent.KeyboardClosed)
+    }
+    if (keyboardInsetDp <= previousKeyboardInsetDp) {
+        return ThreadImeHandoffPass(handoff = next, tookHandoff = false)
+    }
+    val before = next
+    next =
+        reduceThreadImeHandoff(
+            next,
+            ThreadImeHandoffEvent.ImeOnset(
+                targetIdentity = targetIdentity,
+                focusedTransactionLive = focusedTransactionLive,
+                dischargeable = dischargeable,
+                userScrollGeneration = userScrollGeneration
+            )
+        )
+    return ThreadImeHandoffPass(
+        handoff = next,
+        tookHandoff = next.owes(targetIdentity) && !before.owes(targetIdentity)
+    )
+}
+
+/** Outcome of the later part of one composer pass, once the layout is known. */
+internal data class ThreadImeCorrectionPass(
+    val handoff: ThreadImeHandoffState,
+    val decision: ThreadComposerLayoutBottomAnchorDecision
+)
+
+/**
+ * Resolves the layout with the debt taken into account, and repays it at the
+ * moment the command is issued.
+ *
+ * Repaying here rather than after settlement is deliberate: settlement suspends,
+ * and a pass that ran in between would still see the debt outstanding and issue
+ * a second command for the same shrink.
+ */
+internal fun threadImeCorrectionPass(
+    handoff: ThreadImeHandoffState,
+    targetIdentity: String?,
+    layout: ThreadComposerLayoutBottomAnchorState
+): ThreadImeCorrectionPass {
+    val owed = handoff.owes(targetIdentity)
+    val decision =
+        resolveThreadComposerLayoutBottomAnchor(layout.copy(composerHandoffOwed = owed))
+    val next =
+        if (owed && decision.shouldAnchor) {
+            reduceThreadImeHandoff(handoff, ThreadImeHandoffEvent.CommandIssued)
+        } else {
+            handoff
+        }
+    return ThreadImeCorrectionPass(handoff = next, decision = decision)
+}

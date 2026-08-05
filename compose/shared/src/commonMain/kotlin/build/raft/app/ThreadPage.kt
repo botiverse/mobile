@@ -17039,7 +17039,16 @@ private fun ThreadMessagesList(
             pendingKeyboardBottomAnchor = false
             allowBottomAutoAnchor = false
             imeHandoffState =
-                reduceThreadImeHandoff(imeHandoffState, ThreadImeHandoffEvent.PageCycled)
+                threadImeHandoffPass(
+                    handoff = imeHandoffState,
+                    previousKeyboardInsetDp = lastComposerKeyboardInsetDp,
+                    keyboardInsetDp = composerKeyboardInsetDp,
+                    targetIdentity = pendingFocusedMessageAnchorIdentityState.value,
+                    focusedTransactionLive = false,
+                    dischargeable = false,
+                    userScrollGeneration = userScrollGeneration.value,
+                    pageCycleActive = true
+                ).handoff
             return@LaunchedEffect
         }
         val focusedTargetIdentity = pendingFocusedMessageAnchorIdentityState.value
@@ -17054,61 +17063,46 @@ private fun ThreadMessagesList(
                 yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
             )
         // task #990: every way this rise can end, applied before the onset is
-        // considered. A debt that only ends where it is repaid outlives the
-        // thing it was taken on for — the composer would later yank a list the
-        // user has already moved, and the resolver would retain a pending
-        // correction nobody can issue.
-        imeHandoffState =
-            reduceThreadImeHandoff(
-                imeHandoffState,
-                ThreadImeHandoffEvent.TargetChanged(focusedTargetIdentity)
+        // considered, in the order the pass produces them. Extracted so the
+        // sequence a test drives is the sequence that runs here — the previous
+        // attempt's defects were all in this derivation, where the reducer
+        // cannot see them.
+        val handoffPass =
+            threadImeHandoffPass(
+                handoff = imeHandoffState,
+                previousKeyboardInsetDp = lastComposerKeyboardInsetDp,
+                keyboardInsetDp = composerKeyboardInsetDp,
+                targetIdentity = focusedTargetIdentity,
+                focusedTransactionLive = focusedAnchorOwnsViewport,
+                // Restricted to targets the composer's tail path can actually
+                // correct. A target that will never fit against the tail could
+                // not repay the debt, and taking one on for it would retain a
+                // pending correction forever.
+                dischargeable =
+                    focusedTargetItemIndex >= 0 &&
+                        latestMessageListItemIndex >= focusedTargetItemIndex &&
+                        !renderPayload.canLoadMoreAfter,
+                userScrollGeneration = userScrollGeneration.value,
+                pageCycleActive = false
             )
-        imeHandoffState =
-            reduceThreadImeHandoff(
-                imeHandoffState,
-                ThreadImeHandoffEvent.UserScrolled(userScrollGeneration.value)
+        imeHandoffState = handoffPass.handoff
+        if (handoffPass.tookHandoff) {
+            // Ownership is released in the same pass the debt is recorded: a
+            // fence that expires one session recheck later is exactly the window
+            // the white cycle fell into.
+            consumedFocusedMessageAnchorIdentity = focusedTargetIdentity
+            diagnosticsLogger(
+                "thread_ime_handoff result=taken " +
+                    "messageId=${focusedTargetMessageId.orEmpty()} " +
+                    "keyboardInsetDp=$lastComposerKeyboardInsetDp->$composerKeyboardInsetDp " +
+                    "userScrollGeneration=${userScrollGeneration.value}"
             )
-        if (composerKeyboardInsetDp <= 0f) {
-            imeHandoffState =
-                reduceThreadImeHandoff(imeHandoffState, ThreadImeHandoffEvent.KeyboardClosed)
-        }
-        if (composerKeyboardInsetDp > lastComposerKeyboardInsetDp) {
-            val handoffBefore = imeHandoffState
-            imeHandoffState =
-                reduceThreadImeHandoff(
-                    imeHandoffState,
-                    ThreadImeHandoffEvent.ImeOnset(
-                        targetIdentity = focusedTargetIdentity,
-                        focusedTransactionLive = focusedAnchorOwnsViewport,
-                        // Restricted to targets the composer's tail path can
-                        // actually correct. A target that will never fit against
-                        // the tail could not repay the debt, and taking one on
-                        // for it would retain a pending correction forever.
-                        dischargeable =
-                            focusedTargetItemIndex >= 0 &&
-                                latestMessageListItemIndex >= focusedTargetItemIndex &&
-                                !renderPayload.canLoadMoreAfter,
-                        userScrollGeneration = userScrollGeneration.value
-                    )
-                )
-            if (imeHandoffState.owes(focusedTargetIdentity) && !handoffBefore.owes(focusedTargetIdentity)) {
-                // Ownership is released in the same pass the debt is recorded: a
-                // fence that expires one session recheck later is exactly the
-                // window the white cycle fell into.
-                consumedFocusedMessageAnchorIdentity = focusedTargetIdentity
-                diagnosticsLogger(
-                    "thread_ime_handoff result=taken " +
-                        "messageId=${focusedTargetMessageId.orEmpty()} " +
-                        "keyboardInsetDp=$lastComposerKeyboardInsetDp->$composerKeyboardInsetDp " +
-                        "userScrollGeneration=${userScrollGeneration.value}"
-                )
-                // Its own pass: the write above is a key of this effect, so
-                // continuing would run the layout decision in a body about to be
-                // cancelled and again in its replacement — two commands for one
-                // shrink. The inset carry-forward below is deliberately not
-                // reached, so the restarted pass still sees this rise.
-                return@LaunchedEffect
-            }
+            // Its own pass: the write above is a key of this effect, so
+            // continuing would run the layout decision in a body about to be
+            // cancelled and again in its replacement — two commands for one
+            // shrink. The inset carry-forward below is deliberately not reached,
+            // so the restarted pass still sees this rise.
+            return@LaunchedEffect
         }
         val measuredFocusedTailViewportHeightPx =
             with(threadDensity) { measuredThreadViewportHeightDp.dp.roundToPx() }
@@ -17254,7 +17248,6 @@ private fun ThreadMessagesList(
                 allowBottomAutoAnchor = allowBottomAutoAnchor,
                 viewportEpochCoherent = focusedTailViewportEpochCoherent,
                 focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
-                composerHandoffOwed = imeHandoffState.owes(focusedTargetIdentity),
                 focusedActiveTailAnchorCanCorrectLayout =
                     focusedAnchorOwnsViewport &&
                         focusedActiveTailMessageComposerLayoutOwnsViewport(
@@ -17283,7 +17276,20 @@ private fun ThreadMessagesList(
                         currentUserScrollGeneration = userScrollGeneration.value
                     )
             )
-        val layoutDecision = resolveThreadComposerLayoutBottomAnchor(layoutState)
+        val correctionPass =
+            threadImeCorrectionPass(
+                handoff = imeHandoffState,
+                targetIdentity = focusedTargetIdentity,
+                layout = layoutState
+            )
+        val layoutDecision = correctionPass.decision
+        val handoffRepaidThisPass =
+            imeHandoffState.owes(focusedTargetIdentity) &&
+                !correctionPass.handoff.owes(focusedTargetIdentity)
+        // Applied unconditionally, on every exit below: leaving it to the
+        // dispatch branch would mean a pass that returns early keeps a state the
+        // pass has already moved past.
+        imeHandoffState = correctionPass.handoff
         val layoutChanged = threadComposerLayoutChanged(layoutState)
         publishImeTailDrawProbe("decision")
         if (layoutChanged || layoutState.pendingLayoutChange) {
@@ -17320,12 +17326,10 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         pendingKeyboardBottomAnchor = true
-        // Discharged as the command is about to be issued, not after it settles:
-        // settlement suspends, and a pass in between would still see the debt
-        // outstanding and issue a second command for the same shrink.
-        if (imeHandoffState.owes(focusedTargetIdentity)) {
-            imeHandoffState =
-                reduceThreadImeHandoff(imeHandoffState, ThreadImeHandoffEvent.CommandIssued)
+        // The debt is repaid inside the pass, at the moment the command is
+        // issued rather than after it settles: settlement suspends, and a pass
+        // in between would still see it outstanding and issue a second command.
+        if (handoffRepaidThisPass) {
             diagnosticsLogger(
                 "thread_ime_handoff result=command_issued " +
                     "messageId=${focusedTargetMessageId.orEmpty()} " +
