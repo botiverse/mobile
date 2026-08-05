@@ -3781,6 +3781,10 @@ private fun ThreadMessageVisualScreenContent() {
     val longPressReadyToken = params.optString("longPressReadyToken")
     val longPressMenuVisibleToken = params.optString("longPressMenuVisibleToken")
     val singleTapOpensThreadEnabled = params.optBoolean("singleTapOpensThreadEnabled", false)
+    // Reply count for the inline-selection fixture's compact target group. Zero
+    // keeps the fixture exactly as authored, so cases that omit this parameter
+    // render byte-identically to before it existed.
+    val inlineSelectionTargetReplyCount = params.optInt("inlineSelectionTargetReplyCount", 0)
     val inlineSelectionToolbarEnabled =
         remember(visualFixture) {
             visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO &&
@@ -3788,8 +3792,9 @@ private fun ThreadMessageVisualScreenContent() {
                     .readInlineSelectionToolbarEnabledSync()
         }
     val payload =
-        remember(visualFixture, instanceId) {
+        remember(visualFixture, instanceId, inlineSelectionTargetReplyCount) {
             threadVisualFixture(fixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }, instanceId = instanceId)
+                .withInlineSelectionTargetReplyCount(inlineSelectionTargetReplyCount)
         }
     val highlightedMentions =
         remember(visualFixture) {
@@ -10590,7 +10595,34 @@ private fun String.toSharedThreadTaskStatus(): TaskStatus? =
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO = "inline_selection_demo"
-internal const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_REPLIED = "inline_selection_demo_replied"
+
+/** Leading messages of the inline-selection fixture that form its compact group. */
+private const val THREAD_INLINE_SELECTION_TARGET_GROUP_SIZE = 3
+
+/**
+ * Gives the inline-selection fixture's compact target group [count] replies.
+ *
+ * Single-tap thread opening only applies to messages that already have replies,
+ * so a capture case that exercises it has to say so. A count of zero returns the
+ * payload untouched, keeping every case that omits the parameter unchanged.
+ */
+private fun KuiklyThreadScreenPayload.withInlineSelectionTargetReplyCount(
+    count: Int
+): KuiklyThreadScreenPayload =
+    if (count <= 0) {
+        this
+    } else {
+        copy(
+            messages =
+                messages.mapIndexed { index, message ->
+                    if (index < THREAD_INLINE_SELECTION_TARGET_GROUP_SIZE) {
+                        message.copy(replyCount = count)
+                    } else {
+                        message
+                    }
+                }
+        )
+    }
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD = "markdown_link_child"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD = "markdown_mention_child"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
@@ -10651,7 +10683,7 @@ internal fun threadVisualFixture(
                 compactConsecutiveMessages = true,
                 messages =
                     List(20) { index ->
-                        val inTargetGroup = index < 3
+                        val inTargetGroup = index < THREAD_INLINE_SELECTION_TARGET_GROUP_SIZE
                         seed.copy(
                             id = "visual-inline-selection-$index",
                             body =
@@ -10669,19 +10701,6 @@ internal fun threadVisualFixture(
                             firstUnreadReplyMessageId = null,
                             threadChannelId = null
                         )
-                    }
-            )
-        }
-        THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_REPLIED -> {
-            // Same rows as the inline-selection demo, except the compact target
-            // group already has replies. Single-tap thread opening only applies
-            // to messages with existing replies, so the tap case needs that
-            // shape; the reply-less demo stays untouched for the sibling cases.
-            val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO, resolvedInstanceId)
-            base.copy(
-                messages =
-                    base.messages.mapIndexed { index, message ->
-                        if (index < 3) message.copy(replyCount = 1) else message
                     }
             )
         }
