@@ -17407,21 +17407,6 @@ private fun ThreadMessagesList(
             } else {
                 initialBottomAnchorTrailingPaddingPx
             }
-        // task #990: the distinguishing receipt for this path. Removing the
-        // earlier bypass took its log line with it, which would have left the
-        // next capture unable to separate "never reached the bottom anchor"
-        // from "reached it and still went white" — the two readings that lead
-        // to completely different next steps.
-        if (correctionPass.kind == ThreadImeCorrectionKind.LatestBottomAnchor) {
-            diagnosticsLogger(
-                "thread_ime_latest_bottom_anchor result=issued " +
-                    "messageId=${focusedTargetMessageId.orEmpty()} " +
-                    "targetIndex=$focusedTargetItemIndex latestMessageIndex=$latestMessageListItemIndex " +
-                    "fitHeightPx=${focusedTailFit.fitHeightPx} fitViewportPx=${focusedTailFit.viewportHeightPx} " +
-                    "tailFits=${focusedTailFit.fitsViewport} offsetPx=$renderedTailOffsetPx " +
-                    "keyboardInsetDp=$composerKeyboardInsetDp handoffOwed=${imeHandoffState.owes(focusedTargetIdentity)}"
-            )
-        }
         val issuedPlacement =
             applyThreadImeCorrection(
                 decision = layoutDecision,
@@ -17432,6 +17417,26 @@ private fun ThreadMessagesList(
                 layoutGeneration = viewportLayoutGeneration,
                 dispatch = { dispatchViewportEvent(it) }
             )
+        // task #990: the receipt that identifies this path, written *after* the
+        // dispatch and from what the dispatch actually returned. Announcing it
+        // from the decision instead would claim "issued" on a pass that fell
+        // through to a content mutation — a receipt that names something other
+        // than what happened is the defect this investigation already removed
+        // from settlement.
+        if (
+            correctionPass.kind == ThreadImeCorrectionKind.LatestBottomAnchor &&
+            issuedPlacement == LazyViewportAnchorPlacement.RenderedBottom
+        ) {
+            diagnosticsLogger(
+                "thread_ime_latest_bottom_anchor result=issued " +
+                    "messageId=${focusedTargetMessageId.orEmpty()} " +
+                    "targetIndex=$focusedTargetItemIndex latestMessageIndex=$latestMessageListItemIndex " +
+                    "fitHeightPx=${focusedTailFit.fitHeightPx} fitViewportPx=${focusedTailFit.viewportHeightPx} " +
+                    "tailFits=${focusedTailFit.fitsViewport} offsetPx=$renderedTailOffsetPx " +
+                    "commandId=${viewportControllerState.pendingCommand?.id?.let { "${it.epoch}:${it.sequence}" } ?: "none"} " +
+                    "keyboardInsetDp=$composerKeyboardInsetDp"
+            )
+        }
         if (issuedPlacement == LazyViewportAnchorPlacement.RenderedBottom) {
             focusedAnchorPlacementState =
                 renderedThreadFocusedAnchorPlacement(
