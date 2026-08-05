@@ -129,7 +129,10 @@ class MemberRepositoryDataSourceTest {
         }
 
         try {
-            yield()
+            network.firstDetailRequestStarted.await()
+            repeat(FakeMemberNetworkClient.expectedDetailRequestStarts.size) {
+                yield()
+            }
             assertEquals(FakeMemberNetworkClient.expectedDetailRequestStarts, network.detailRequestsStarted)
             assertFalse(network.requests.any { it.matches("GET", "agents") })
         } finally {
@@ -485,6 +488,7 @@ class MemberRepositoryDataSourceTest {
         val calls = mutableListOf<String>()
         val requests = mutableListOf<RecordedRequest>()
         val detailRequestsStarted = linkedSetOf<String>()
+        val firstDetailRequestStarted = CompletableDeferred<Unit>()
         var detailRequestGate: CompletableDeferred<Unit>? = null
         var activityLogBody: String =
             """
@@ -520,6 +524,7 @@ class MemberRepositoryDataSourceTest {
             val requestStart = "$method $normalized"
             if (requestStart in expectedDetailRequestStarts) {
                 detailRequestsStarted += requestStart
+                firstDetailRequestStarted.complete(Unit)
                 detailRequestGate?.await()
             }
             return when {
