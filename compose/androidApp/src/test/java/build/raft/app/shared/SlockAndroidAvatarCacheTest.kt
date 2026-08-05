@@ -4,6 +4,9 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.Base64
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -81,9 +84,15 @@ class SlockAndroidAvatarCacheTest {
         val decodeKey = decodeKey(diskRequest)
 
         memory.put(decodeKey, "memory")
-        var source: String? = memory.get(decodeKey)
-        if (source != null) manager.recordMemoryRendered(diskRequest)
-        if (source == null) manager.load(diskRequest) { source = it?.bytes?.toText() }
+        var source: String? = null
+        assertEquals(
+            SlockAndroidAvatarMemoryDelivery.Delivered,
+            manager.deliverMemory(
+                request = diskRequest,
+                payloadProvider = { memory.get(decodeKey) },
+                callback = { source = it }
+            )
+        )
         assertEquals("memory", source)
         assertEquals(0, networkCalls)
 
@@ -138,6 +147,7 @@ class SlockAndroidAvatarCacheTest {
         assertEquals(1, secondCount)
         assertEquals(0, renderCount)
         assertEquals(SlockAndroidAvatarMutation.Accepted, manager.finalize(request, "successful_bytes"))
+        executor.runAll()
         assertEquals(1, renderCount)
 
         manager.awaitResult(request) { firstCount++ }
@@ -222,6 +232,8 @@ class SlockAndroidAvatarCacheTest {
         var result: SlockAndroidAvatarLoadResult? = null
 
         manager.load(request) { rendered = it?.bytes?.toText() }
+        assertNull(rendered)
+        executor.runNext()
         assertNull(rendered)
         executor.runNext()
         assertEquals("Bstale", rendered)
@@ -390,7 +402,10 @@ class SlockAndroidAvatarCacheTest {
 
         val successor = request.copy(commitGeneration = 3L, readMode = SlockAndroidAvatarReadMode.RenderFresh)
         prepare(manager, successor)
-        manager.recordMemoryRendered(successor)
+        assertEquals(
+            SlockAndroidAvatarMemoryDelivery.Delivered,
+            manager.deliverMemory(successor, payloadProvider = { "decoded" }, callback = {})
+        )
         assertEquals(SlockAndroidAvatarMutation.Accepted, manager.rollback(request))
         assertEquals("Bold", store.read(request.entryKey)?.bytes?.toText())
         assertEquals(1L, store.entry(request.entryKey)?.generation)
@@ -748,6 +763,189 @@ class SlockAndroidAvatarCacheTest {
     }
 
     @Test
+    fun terminalMutationsClosePausedDiskDeliveryBeforeSuccessAndAllowLaterGeneration() =
+        withTempRoot { root ->
+            TerminalMutation.entries.forEach { terminalMutation ->
+                assertPausedDeliveryClosedAndLaterGenerationAdmitted(
+                    root = root.resolve("disk-${terminalMutation.name}"),
+                    terminalMutation = terminalMutation,
+                    finalizeBeforeTerminal = false
+                )
+            }
+        }
+
+    @Test
+    fun terminalMutationsClosePausedFinalizedFetchBeforeSuccessAndAllowLaterGeneration() =
+        withTempRoot { root ->
+            TerminalMutation.entries.forEach { terminalMutation ->
+                assertPausedDeliveryClosedAndLaterGenerationAdmitted(
+                    root = root.resolve("fetch-${terminalMutation.name}"),
+                    terminalMutation = terminalMutation,
+                    finalizeBeforeTerminal = true
+                )
+            }
+        }
+
+    @Test
+    fun revokedMemoryHitCannotReachDrawableBeforeAdmissionAndLaterGenerationStillRenders() =
+        withTempRoot { root ->
+            TerminalMutation.entries.forEach { terminalMutation ->
+                val caseRoot = root.resolve(terminalMutation.name)
+                val request = request(mode = SlockAndroidAvatarReadMode.RenderFresh, generation = 2L)
+                val memory = SlockAvatarDecodedMemoryCache<String>(100) { it.length }
+                val manager =
+                    newManager(
+                        store = newStore(caseRoot),
+                        executor = DirectExecutor(),
+                        clearDecodedMemory = memory::clear,
+                        retireDecodedOwner = memory::removeOwner,
+                        retireDecodedSubject = memory::removeSubject
+                    ) { _, _ -> error("network must not run for decoded-memory delivery") }
+                prepare(manager, request)
+                memory.put(decodeKey(request), "old")
+                assertTrue(applyTerminalMutation(manager, request, terminalMutation))
+                assertEquals(0, memory.size())
+
+                var revokedLookupCount = 0
+                var drawableCount = 0
+                var closureCount = 0
+                val revoked =
+                    manager.deliverMemory(
+                        request = request,
+                        payloadProvider = {
+                            revokedLookupCount++
+                            memory.get(decodeKey(request))
+                        },
+                        callback = { drawableCount++ }
+                    )
+                if (revoked == SlockAndroidAvatarMemoryDelivery.Rejected) closureCount++
+                assertEquals(SlockAndroidAvatarMemoryDelivery.Rejected, revoked)
+                assertEquals(0, revokedLookupCount)
+                assertEquals(0, drawableCount)
+                assertEquals(1, closureCount)
+
+                val fresh = request.copy(commitGeneration = request.commitGeneration + 1L)
+                prepare(manager, fresh)
+                memory.put(decodeKey(fresh), "fresh")
+                assertEquals(
+                    SlockAndroidAvatarMemoryDelivery.Delivered,
+                    manager.deliverMemory(
+                        request = fresh,
+                        payloadProvider = { memory.get(decodeKey(fresh)) },
+                        callback = { drawableCount++ }
+                    )
+                )
+                assertEquals(1, drawableCount)
+            }
+        }
+
+    @Test
+    fun settingsClearWaitsForReadPayloadDeliveryBeforeReturning() = withTempRoot { root ->
+        val request = request(mode = SlockAndroidAvatarReadMode.RenderFresh, generation = 2L)
+        val store = newStore(root)
+        prime(store, request.entryKey, 1L, validBytes("disk"))
+        val memory = SlockAvatarDecodedMemoryCache<String>(100) { it.length }
+        val manager =
+            newManager(
+                store = store,
+                executor = DirectExecutor(),
+                clearDecodedMemory = memory::clear,
+                retireDecodedOwner = memory::removeOwner,
+                retireDecodedSubject = memory::removeSubject
+            ) { _, _ -> error("network must not run") }
+        prepare(manager, request)
+        val deliveryEntered = CountDownLatch(1)
+        val resumeDelivery = CountDownLatch(1)
+        val terminalStarted = CountDownLatch(1)
+        val terminalFinished = CountDownLatch(1)
+        var terminalResult = false
+
+        val deliveryThread =
+            thread(name = "avatar-read-delivery") {
+                manager.load(request) { payload ->
+                    if (payload != null) {
+                        deliveryEntered.countDown()
+                        assertTrue(resumeDelivery.await(5, TimeUnit.SECONDS))
+                        memory.put(decodeKey(request), payload.bytes.toText())
+                    }
+                }
+            }
+        assertTrue(deliveryEntered.await(5, TimeUnit.SECONDS))
+        val terminalThread =
+            thread(name = "avatar-read-clear") {
+                terminalStarted.countDown()
+                memory.clear()
+                terminalResult = manager.clearAll()
+                terminalFinished.countDown()
+            }
+        assertTrue(terminalStarted.await(5, TimeUnit.SECONDS))
+        val returnedBeforeDeliveryFinished = terminalFinished.await(250, TimeUnit.MILLISECONDS)
+        resumeDelivery.countDown()
+        deliveryThread.join(5_000)
+        terminalThread.join(5_000)
+
+        assertFalse(returnedBeforeDeliveryFinished)
+        assertTrue(terminalResult)
+        assertEquals(0, memory.size())
+    }
+
+    @Test
+    fun settingsClearWaitsForFinalizedFetchDeliveryBeforeReturning() = withTempRoot { root ->
+        val request = request(mode = SlockAndroidAvatarReadMode.Fetch, generation = 2L)
+        val store = newStore(root)
+        val memory = SlockAvatarDecodedMemoryCache<String>(100) { it.length }
+        val manager =
+            newManager(
+                store = store,
+                executor = DirectExecutor(),
+                clearDecodedMemory = memory::clear,
+                retireDecodedOwner = memory::removeOwner,
+                retireDecodedSubject = memory::removeSubject
+            ) { _, _ ->
+                SlockAndroidAvatarNetworkResponse(200, validBytes("fetched"), "image/test")
+            }
+        prepare(manager, request)
+        val deliveryEntered = CountDownLatch(1)
+        val resumeDelivery = CountDownLatch(1)
+        val terminalStarted = CountDownLatch(1)
+        val terminalFinished = CountDownLatch(1)
+        var terminalResult = false
+        manager.load(request) { payload ->
+            if (payload != null) {
+                deliveryEntered.countDown()
+                assertTrue(resumeDelivery.await(5, TimeUnit.SECONDS))
+                memory.put(decodeKey(request), payload.bytes.toText())
+            }
+        }
+        manager.awaitResult(request) {}
+
+        val finalizeThread =
+            thread(name = "avatar-fetch-finalize") {
+                assertEquals(
+                    SlockAndroidAvatarMutation.Accepted,
+                    manager.finalize(request, "successful_bytes")
+                )
+            }
+        assertTrue(deliveryEntered.await(5, TimeUnit.SECONDS))
+        val terminalThread =
+            thread(name = "avatar-fetch-clear") {
+                terminalStarted.countDown()
+                memory.clear()
+                terminalResult = manager.clearAll()
+                terminalFinished.countDown()
+            }
+        assertTrue(terminalStarted.await(5, TimeUnit.SECONDS))
+        val returnedBeforeDeliveryFinished = terminalFinished.await(250, TimeUnit.MILLISECONDS)
+        resumeDelivery.countDown()
+        finalizeThread.join(5_000)
+        terminalThread.join(5_000)
+
+        assertFalse(returnedBeforeDeliveryFinished)
+        assertTrue(terminalResult)
+        assertEquals(0, memory.size())
+    }
+
+    @Test
     fun settingsClearClosesMemoryDiskAndInflightAndLateCompletionCannotRecreate() = withTempRoot { root ->
         val executor = ManualExecutor()
         val store = newStore(root.resolve("image_cache/slock-avatar-cache-v1"))
@@ -756,20 +954,25 @@ class SlockAndroidAvatarCacheTest {
             parentFile?.mkdirs()
             writeText("ordinary")
         }
+        val memory = SlockAvatarDecodedMemoryCache<String>(100) { it.length }
         val manager =
-            newManager(store, executor) { _, _ ->
+            newManager(
+                store = store,
+                executor = executor,
+                clearDecodedMemory = memory::clear,
+                retireDecodedOwner = memory::removeOwner,
+                retireDecodedSubject = memory::removeSubject
+            ) { _, _ ->
                 SlockAndroidAvatarNetworkResponse(200, validBytes("late"), "image/test")
             }
         val request = request(mode = SlockAndroidAvatarReadMode.Fetch, generation = 5L)
         prepare(manager, request)
-        val memory = SlockAvatarDecodedMemoryCache<String>(100) { it.length }
         memory.put(decodeKey(request), "decoded")
         var awaitCount = 0
         var renderCount = 0
         manager.awaitResult(request) { awaitCount++ }
         manager.load(request) { renderCount++ }
 
-        memory.clear()
         assertTrue(manager.clearAll())
         assertEquals(1, awaitCount)
         assertEquals(1, renderCount)
@@ -816,6 +1019,9 @@ class SlockAndroidAvatarCacheTest {
         store: SlockAndroidAvatarDiskStore,
         executor: SlockAvatarCacheWorkExecutor,
         scheduler: SlockAvatarCacheTimeoutScheduler = ManualScheduler(),
+        clearDecodedMemory: () -> Unit = {},
+        retireDecodedOwner: (String) -> Unit = {},
+        retireDecodedSubject: (String, String) -> Unit = { _, _ -> },
         fetcher: (SlockAndroidAvatarRequest, Boolean) -> SlockAndroidAvatarNetworkResponse
     ): SlockAndroidAvatarCacheManager =
         SlockAndroidAvatarCacheManager(
@@ -825,7 +1031,10 @@ class SlockAndroidAvatarCacheTest {
             workExecutor = executor,
             timeoutScheduler = scheduler,
             resultTimeoutMillis = 100L,
-            rollbackGraceMillis = 1_000L
+            rollbackGraceMillis = 1_000L,
+            clearDecodedMemory = clearDecodedMemory,
+            retireDecodedOwner = retireDecodedOwner,
+            retireDecodedSubject = retireDecodedSubject
         )
 
     private fun newStore(root: File): SlockAndroidAvatarDiskStore =
@@ -897,6 +1106,102 @@ class SlockAndroidAvatarCacheTest {
         assertEquals(1, networkCalls)
         assertEquals(SlockAndroidAvatarMutation.Accepted, manager.finalize(fresh, "successful_bytes"))
         assertEquals("Bfresh", store.read(fresh.entryKey)?.bytes?.toText())
+    }
+
+    private fun assertPausedDeliveryClosedAndLaterGenerationAdmitted(
+        root: File,
+        terminalMutation: TerminalMutation,
+        finalizeBeforeTerminal: Boolean
+    ) {
+        val executor = ManualExecutor()
+        val scheduler = ManualScheduler()
+        val memory = SlockAvatarDecodedMemoryCache<String>(100) { it.length }
+        val store =
+            SlockAndroidAvatarDiskStore(
+                root = root,
+                onEntriesRemoved = { keys -> keys.forEach(memory::removeEntry) }
+            )
+        val request =
+            request(
+                mode =
+                    if (finalizeBeforeTerminal) {
+                        SlockAndroidAvatarReadMode.Fetch
+                    } else {
+                        SlockAndroidAvatarReadMode.RenderFresh
+                    },
+                generation = 2L
+            )
+        if (!finalizeBeforeTerminal) prime(store, request.entryKey, 1L, validBytes("disk"))
+        val manager =
+            newManager(
+                store = store,
+                executor = executor,
+                scheduler = scheduler,
+                clearDecodedMemory = memory::clear,
+                retireDecodedOwner = memory::removeOwner,
+                retireDecodedSubject = memory::removeSubject
+            ) { _, _ ->
+                SlockAndroidAvatarNetworkResponse(200, validBytes("network"), "image/test")
+            }
+        prepare(manager, request)
+        var nonNullDeliveryCount = 0
+        var nullDeliveryCount = 0
+        manager.load(request) { payload ->
+            if (payload == null) {
+                nullDeliveryCount++
+            } else {
+                nonNullDeliveryCount++
+                memory.put(decodeKey(request), payload.bytes.toText())
+            }
+        }
+
+        if (finalizeBeforeTerminal) {
+            var result: SlockAndroidAvatarLoadResult? = null
+            manager.awaitResult(request) { result = it }
+            executor.runAll()
+            assertEquals("success", result?.status)
+            assertEquals(SlockAndroidAvatarMutation.Accepted, manager.finalize(request, "successful_bytes"))
+        } else {
+            assertEquals(1, executor.size)
+            executor.runNext()
+        }
+        assertEquals(1, executor.size)
+        assertEquals(0, nonNullDeliveryCount)
+        assertEquals(0, nullDeliveryCount)
+
+        assertTrue(applyTerminalMutation(manager, request, terminalMutation))
+        assertEquals(0, nonNullDeliveryCount)
+        assertEquals(1, nullDeliveryCount)
+        assertEquals(0, memory.size())
+        assertNull(store.entry(request.entryKey))
+
+        executor.runAll()
+        scheduler.runAll()
+        assertEquals(0, nonNullDeliveryCount)
+        assertEquals(1, nullDeliveryCount)
+        assertEquals(0, memory.size())
+
+        val fresh =
+            request.copy(
+                readMode = SlockAndroidAvatarReadMode.Fetch,
+                commitGeneration = request.commitGeneration + 1L
+            )
+        prepare(manager, fresh)
+        var freshStatus: String? = null
+        var freshDeliveryCount = 0
+        manager.load(fresh) { payload ->
+            if (payload != null) {
+                freshDeliveryCount++
+                memory.put(decodeKey(fresh), payload.bytes.toText())
+            }
+        }
+        manager.awaitResult(fresh) { freshStatus = it.status }
+        executor.runAll()
+        assertEquals("success", freshStatus)
+        assertEquals(SlockAndroidAvatarMutation.Accepted, manager.finalize(fresh, "successful_bytes"))
+        executor.runAll()
+        assertEquals(1, freshDeliveryCount)
+        assertEquals(1, memory.size())
     }
 
     private fun assertDeleteFailurePreservesManagerRetirementAuthority(

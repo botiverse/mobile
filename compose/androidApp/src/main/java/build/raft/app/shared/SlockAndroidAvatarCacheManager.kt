@@ -19,6 +19,12 @@ internal object SlockAndroidAvatarCacheTimeouts : SlockAvatarCacheTimeoutSchedul
     }
 }
 
+internal enum class SlockAndroidAvatarMemoryDelivery {
+    Delivered,
+    Miss,
+    Rejected
+}
+
 /** Coordinates typed descriptor rendering, native await/finalize, and one network flight. */
 internal class SlockAndroidAvatarCacheManager(
     private val store: SlockAndroidAvatarDiskStore,
@@ -27,8 +33,16 @@ internal class SlockAndroidAvatarCacheManager(
     private val workExecutor: SlockAvatarCacheWorkExecutor,
     private val timeoutScheduler: SlockAvatarCacheTimeoutScheduler = SlockAndroidAvatarCacheTimeouts,
     private val resultTimeoutMillis: Long = SlockAndroidAvatarCacheContract.ResultTimeoutMillis,
-    private val rollbackGraceMillis: Long = SlockAndroidAvatarCacheContract.RollbackGraceMillis
+    private val rollbackGraceMillis: Long = SlockAndroidAvatarCacheContract.RollbackGraceMillis,
+    private val clearDecodedMemory: () -> Unit = {},
+    private val retireDecodedOwner: (String) -> Unit = {},
+    private val retireDecodedSubject: (String, String) -> Unit = { _, _ -> }
 ) {
+    private class PendingDelivery(
+        val id: Long,
+        val callback: (SlockAndroidAvatarBytePayload?) -> Unit
+    )
+
     private class Operation(
         val request: SlockAndroidAvatarRequest,
         val processEpoch: Long,
@@ -45,7 +59,7 @@ internal class SlockAndroidAvatarCacheManager(
         var finalized = false
         var nextWaiterId = 0L
         val resultWaiters = linkedMapOf<Long, (SlockAndroidAvatarLoadResult) -> Unit>()
-        val renderWaiters = linkedMapOf<Long, (SlockAndroidAvatarBytePayload?) -> Unit>()
+        val pendingDeliveries = linkedMapOf<Long, PendingDelivery>()
     }
 
     private data class PreparedOperation(
@@ -63,6 +77,7 @@ internal class SlockAndroidAvatarCacheManager(
     private var clearGenerationFloor = 0L
     private var maxSeenGeneration = 0L
     private var processEpoch = 0L
+    private var terminalMutationInProgress = false
 
     init {
         require(resultTimeoutMillis > 0L)
@@ -78,6 +93,7 @@ internal class SlockAndroidAvatarCacheManager(
         val operationKey = SlockAndroidAvatarOperationKey(key, commitGeneration)
         val slotKey = SlockAndroidAvatarSlotKey(key.partitionKey, key.subjectKey)
         synchronized(lock) {
+            if (terminalMutationInProgress) return null
             val floor =
                 maxOf(
                     clearGenerationFloor,
@@ -141,80 +157,105 @@ internal class SlockAndroidAvatarCacheManager(
         request: SlockAndroidAvatarRequest,
         callback: (SlockAndroidAvatarBytePayload?) -> Unit
     ) {
-        val operation: Operation?
+        var operation: Operation? = null
+        var delivery: PendingDelivery? = null
         var terminalFetch: Boolean? = null
         synchronized(lock) {
             operation = admittedOperationLocked(request)
-            if (operation != null && request.readMode == SlockAndroidAvatarReadMode.Fetch) {
+            val admitted = operation
+            if (admitted != null) {
+                delivery = registerDeliveryLocked(admitted, callback)
+            }
+            if (admitted != null && request.readMode == SlockAndroidAvatarReadMode.Fetch) {
                 terminalFetch =
                     when {
-                        operation.finalized && operation.result?.status == "success" -> true
-                        operation.result != null && operation.result?.status != "success" -> false
+                        admitted.finalized && admitted.result?.status == "success" -> true
+                        admitted.result != null && admitted.result?.status != "success" -> false
                         else -> null
                     }
-                if (terminalFetch == null) {
-                    operation.renderWaiters[operation.nextWaiterId++] = callback
-                    ensureTimeoutLocked(operation)
-                }
+                if (terminalFetch == null) ensureTimeoutLocked(admitted)
             }
         }
-        if (operation == null) {
+        val admitted = operation
+        val pendingDelivery = delivery
+        if (admitted == null || pendingDelivery == null) {
             runCatching { callback(null) }
             return
         }
         if (request.readMode == SlockAndroidAvatarReadMode.Fetch && terminalFetch != null) {
             if (terminalFetch == true) {
-                workExecutor.execute { runCatching { callback(readValidated(request.entryKey)) } }
+                scheduleReadDelivery(admitted, pendingDelivery)
             } else {
-                runCatching { callback(null) }
+                deliverPending(admitted, pendingDelivery, null)
             }
             return
         }
         when (request.readMode) {
             SlockAndroidAvatarReadMode.Suppressed -> {
-                runCatching { callback(null) }
-                publish(operation, SlockAndroidAvatarLoadResult.Suppressed)
+                if (deliverPending(admitted, pendingDelivery, null)) {
+                    publish(admitted, SlockAndroidAvatarLoadResult.Suppressed)
+                }
             }
             SlockAndroidAvatarReadMode.RenderFresh,
             SlockAndroidAvatarReadMode.RenderStaleSuppressed,
             SlockAndroidAvatarReadMode.RenderStaleRevalidate ->
-                workExecutor.execute {
-                    val payload = readValidated(request.entryKey)
-                    runCatching { callback(payload) }
+                scheduleReadDelivery(admitted, pendingDelivery) { payload ->
                     when (request.readMode) {
                         SlockAndroidAvatarReadMode.RenderFresh,
                         SlockAndroidAvatarReadMode.RenderStaleSuppressed ->
                             publish(
-                                operation,
+                                admitted,
                                 if (payload != null) {
                                     SlockAndroidAvatarLoadResult.Rendered
                                 } else {
                                     SlockAndroidAvatarLoadResult.TemporaryTransport
                                 }
                             )
-                        SlockAndroidAvatarReadMode.RenderStaleRevalidate -> startNetwork(operation)
+                        SlockAndroidAvatarReadMode.RenderStaleRevalidate -> startNetwork(admitted)
                         else -> Unit
                     }
                 }
-            SlockAndroidAvatarReadMode.Fetch -> startNetwork(operation)
+            SlockAndroidAvatarReadMode.Fetch -> startNetwork(admitted)
         }
     }
 
-    /** Adapter memory hit still participates in the same bridge completion. */
-    fun recordMemoryRendered(request: SlockAndroidAvatarRequest) {
-        val operation = synchronized(lock) { admittedOperationLocked(request) } ?: return
+    /** Decoded-memory lookup and drawable delivery share the terminal generation/epoch lease. */
+    fun <T : Any> deliverMemory(
+        request: SlockAndroidAvatarRequest,
+        payloadProvider: () -> T?,
+        callback: (T) -> Unit
+    ): SlockAndroidAvatarMemoryDelivery {
+        var operation: Operation? = null
+        val outcome =
+            synchronized(lock) {
+                val admitted = admittedOperationLocked(request)
+                    ?: return@synchronized SlockAndroidAvatarMemoryDelivery.Rejected
+                if (!isCurrentLocked(admitted)) {
+                    return@synchronized SlockAndroidAvatarMemoryDelivery.Rejected
+                }
+                operation = admitted
+                val payload = runCatching(payloadProvider).getOrNull()
+                    ?: return@synchronized SlockAndroidAvatarMemoryDelivery.Miss
+                runCatching { callback(payload) }
+                SlockAndroidAvatarMemoryDelivery.Delivered
+            }
+        if (outcome != SlockAndroidAvatarMemoryDelivery.Delivered) return outcome
+        val deliveredOperation = operation ?: return SlockAndroidAvatarMemoryDelivery.Rejected
         when (request.readMode) {
             SlockAndroidAvatarReadMode.RenderFresh,
             SlockAndroidAvatarReadMode.RenderStaleSuppressed ->
-                publish(operation, SlockAndroidAvatarLoadResult.Rendered)
-            SlockAndroidAvatarReadMode.RenderStaleRevalidate -> startNetwork(operation)
-            SlockAndroidAvatarReadMode.Suppressed -> publish(operation, SlockAndroidAvatarLoadResult.Suppressed)
-            SlockAndroidAvatarReadMode.Fetch -> startNetwork(operation)
+                publish(deliveredOperation, SlockAndroidAvatarLoadResult.Rendered)
+            SlockAndroidAvatarReadMode.RenderStaleRevalidate -> startNetwork(deliveredOperation)
+            SlockAndroidAvatarReadMode.Suppressed ->
+                publish(deliveredOperation, SlockAndroidAvatarLoadResult.Suppressed)
+            SlockAndroidAvatarReadMode.Fetch -> startNetwork(deliveredOperation)
         }
+        return outcome
     }
 
     fun finalize(request: SlockAndroidAvatarRequest, outcome: String): SlockAndroidAvatarMutation {
-        val renderCallbacks = mutableListOf<(SlockAndroidAvatarBytePayload?) -> Unit>()
+        var operationForDelivery: Operation? = null
+        var deliveriesToSchedule: List<PendingDelivery> = emptyList()
         var renderPayload: SlockAndroidAvatarBytePayload? = null
         val mutation =
             synchronized(lock) {
@@ -255,8 +296,8 @@ internal class SlockAndroidAvatarCacheManager(
                         }
                         operation.finalized = true
                         renderPayload = admittedPayload
-                        renderCallbacks += operation.renderWaiters.values
-                        operation.renderWaiters.clear()
+                        operationForDelivery = operation
+                        deliveriesToSchedule = operation.pendingDeliveries.values.toList()
                         scheduleRollbackCleanupLocked(operation, rollback)
                     }
                     "not_modified" -> {
@@ -288,12 +329,14 @@ internal class SlockAndroidAvatarCacheManager(
                 pruneOperationsLocked()
                 SlockAndroidAvatarMutation.Accepted
             }
-        renderCallbacks.forEach { callback -> runCatching { callback(renderPayload) } }
+        val deliveryOperation = operationForDelivery
+        if (mutation == SlockAndroidAvatarMutation.Accepted && deliveryOperation != null) {
+            scheduleDeliveries(deliveryOperation, deliveriesToSchedule, renderPayload)
+        }
         return mutation
     }
 
     fun rollback(request: SlockAndroidAvatarRequest): SlockAndroidAvatarMutation {
-        val renderCallbacks = mutableListOf<(SlockAndroidAvatarBytePayload?) -> Unit>()
         val accepted =
             synchronized(lock) {
                 preparedOperations.remove(request.operationKey)
@@ -316,15 +359,13 @@ internal class SlockAndroidAvatarCacheManager(
                 if (stageDeleted) operation.stage = null
                 val recoveredAbsent = !store.hasRecoveredArtifacts(request.entryKey)
                 operation.closed = true
-                renderCallbacks += operation.renderWaiters.values
-                operation.renderWaiters.clear()
+                closePendingDeliveriesLocked(operation)
                 operation.resultTimeout?.cancel()
                 operation.resultTimeout = null
                 val cleaned = diskRestored && stageDeleted && recoveredAbsent
                 if (cleaned) operations.remove(request.operationKey)
                 cleaned
             }
-        renderCallbacks.forEach { callback -> runCatching { callback(null) } }
         return if (accepted) {
             SlockAndroidAvatarMutation.Accepted
         } else {
@@ -333,54 +374,75 @@ internal class SlockAndroidAvatarCacheManager(
     }
 
     fun retireOwner(partitionKey: String): SlockAndroidAvatarMutation {
-        lateinit var deliveries: ClosedDeliveries
-        val removed = synchronized(lock) {
-            retiredOwnerFloor[partitionKey] = maxOf(retiredOwnerFloor[partitionKey] ?: 0L, maxSeenGeneration)
-            latestGenerationBySlot.keys.removeAll { it.partitionKey == partitionKey }
-            retiredSubjectFloor.keys.removeAll { it.partitionKey == partitionKey }
-            preparedOperations.keys.removeAll { it.entryKey.partitionKey == partitionKey }
-            deliveries = closeOperationsLocked { it.request.nativePartitionKey == partitionKey }
-            val indexedRemoved = store.retireOwner(partitionKey)
-            deliveries.filesCleaned && indexedRemoved
-        }
-        deliveries.deliver()
+        val removed =
+            synchronized(lock) {
+                if (terminalMutationInProgress) return@synchronized false
+                terminalMutationInProgress = true
+                try {
+                    retiredOwnerFloor[partitionKey] =
+                        maxOf(retiredOwnerFloor[partitionKey] ?: 0L, maxSeenGeneration)
+                    latestGenerationBySlot.keys.removeAll { it.partitionKey == partitionKey }
+                    retiredSubjectFloor.keys.removeAll { it.partitionKey == partitionKey }
+                    preparedOperations.keys.removeAll { it.entryKey.partitionKey == partitionKey }
+                    val deliveries = closeOperationsLocked { it.request.nativePartitionKey == partitionKey }
+                    val indexedRemoved = store.retireOwner(partitionKey)
+                    val decodedRemoved = runCatching { retireDecodedOwner(partitionKey) }.isSuccess
+                    deliveries.deliver()
+                    deliveries.filesCleaned && indexedRemoved && decodedRemoved
+                } finally {
+                    terminalMutationInProgress = false
+                }
+            }
         return if (removed) SlockAndroidAvatarMutation.Accepted
         else SlockAndroidAvatarMutation.Failed("avatar_cache_owner_retire_failed")
     }
 
     fun retireSubject(partitionKey: String, subjectKey: String): SlockAndroidAvatarMutation {
         val slot = SlockAndroidAvatarSlotKey(partitionKey, subjectKey)
-        lateinit var deliveries: ClosedDeliveries
-        val removed = synchronized(lock) {
-            retiredSubjectFloor[slot] = maxOf(retiredSubjectFloor[slot] ?: 0L, maxSeenGeneration)
-            latestGenerationBySlot.remove(slot)
-            preparedOperations.keys.removeAll {
-                it.entryKey.partitionKey == partitionKey && it.entryKey.subjectKey == subjectKey
+        val removed =
+            synchronized(lock) {
+                if (terminalMutationInProgress) return@synchronized false
+                terminalMutationInProgress = true
+                try {
+                    retiredSubjectFloor[slot] = maxOf(retiredSubjectFloor[slot] ?: 0L, maxSeenGeneration)
+                    latestGenerationBySlot.remove(slot)
+                    preparedOperations.keys.removeAll {
+                        it.entryKey.partitionKey == partitionKey && it.entryKey.subjectKey == subjectKey
+                    }
+                    val deliveries = closeOperationsLocked { it.request.slotKey == slot }
+                    val indexedRemoved = store.retireSubject(partitionKey, subjectKey)
+                    val decodedRemoved =
+                        runCatching { retireDecodedSubject(partitionKey, subjectKey) }.isSuccess
+                    deliveries.deliver()
+                    deliveries.filesCleaned && indexedRemoved && decodedRemoved
+                } finally {
+                    terminalMutationInProgress = false
+                }
             }
-            deliveries = closeOperationsLocked { it.request.slotKey == slot }
-            val indexedRemoved = store.retireSubject(partitionKey, subjectKey)
-            deliveries.filesCleaned && indexedRemoved
-        }
-        deliveries.deliver()
         return if (removed) SlockAndroidAvatarMutation.Accepted
         else SlockAndroidAvatarMutation.Failed("avatar_cache_subject_retire_failed")
     }
 
     fun clearAll(): Boolean {
-        lateinit var deliveries: ClosedDeliveries
-        val cleared = synchronized(lock) {
-            processEpoch++
-            clearGenerationFloor = maxOf(clearGenerationFloor, maxSeenGeneration)
-            latestGenerationBySlot.clear()
-            retiredOwnerFloor.clear()
-            retiredSubjectFloor.clear()
-            preparedOperations.clear()
-            deliveries = closeOperationsLocked { true }
-            val indexedCleared = store.clearAll()
-            deliveries.filesCleaned && indexedCleared
+        return synchronized(lock) {
+            if (terminalMutationInProgress) return@synchronized false
+            terminalMutationInProgress = true
+            try {
+                processEpoch++
+                clearGenerationFloor = maxOf(clearGenerationFloor, maxSeenGeneration)
+                latestGenerationBySlot.clear()
+                retiredOwnerFloor.clear()
+                retiredSubjectFloor.clear()
+                preparedOperations.clear()
+                val deliveries = closeOperationsLocked { true }
+                val indexedCleared = store.clearAll()
+                val decodedCleared = runCatching(clearDecodedMemory).isSuccess
+                deliveries.deliver()
+                deliveries.filesCleaned && indexedCleared && decodedCleared
+            } finally {
+                terminalMutationInProgress = false
+            }
         }
-        deliveries.deliver()
-        return cleared
     }
 
     internal fun activeNetworkCount(): Int = synchronized(lock) {
@@ -505,7 +567,6 @@ internal class SlockAndroidAvatarCacheManager(
 
     private fun publish(operation: Operation, result: SlockAndroidAvatarLoadResult) {
         val resultCallbacks = mutableListOf<(SlockAndroidAvatarLoadResult) -> Unit>()
-        val renderCallbacks = mutableListOf<(SlockAndroidAvatarBytePayload?) -> Unit>()
         var deliveredResult = result
         synchronized(lock) {
             if (operation.closed || operation.result != null || operations[operation.request.operationKey] !== operation) {
@@ -528,16 +589,15 @@ internal class SlockAndroidAvatarCacheManager(
             resultCallbacks += operation.resultWaiters.values
             operation.resultWaiters.clear()
             if (deliveredResult.status != "success") {
-                renderCallbacks += operation.renderWaiters.values
-                operation.renderWaiters.clear()
+                closePendingDeliveriesLocked(operation)
             }
             pruneOperationsLocked()
+            resultCallbacks.forEach { callback -> runCatching { callback(deliveredResult) } }
         }
-        resultCallbacks.forEach { callback -> runCatching { callback(deliveredResult) } }
-        renderCallbacks.forEach { callback -> runCatching { callback(null) } }
     }
 
     private fun admittedOperationLocked(request: SlockAndroidAvatarRequest): Operation? {
+        if (terminalMutationInProgress) return null
         operations[request.operationKey]?.let { existing ->
             return existing.takeIf { it.request == request && !it.closed }
         }
@@ -611,6 +671,64 @@ internal class SlockAndroidAvatarCacheManager(
         return null
     }
 
+    private fun registerDeliveryLocked(
+        operation: Operation,
+        callback: (SlockAndroidAvatarBytePayload?) -> Unit
+    ): PendingDelivery {
+        val delivery = PendingDelivery(operation.nextWaiterId++, callback)
+        operation.pendingDeliveries[delivery.id] = delivery
+        return delivery
+    }
+
+    private fun scheduleReadDelivery(
+        operation: Operation,
+        delivery: PendingDelivery,
+        afterDelivery: (SlockAndroidAvatarBytePayload?) -> Unit = {}
+    ) {
+        workExecutor.execute {
+            val payload = readValidated(operation.request.entryKey)
+            workExecutor.execute {
+                if (deliverPending(operation, delivery, payload)) afterDelivery(payload)
+            }
+        }
+    }
+
+    private fun scheduleDeliveries(
+        operation: Operation,
+        deliveries: List<PendingDelivery>,
+        payload: SlockAndroidAvatarBytePayload?
+    ) {
+        deliveries.forEach { delivery ->
+            workExecutor.execute { deliverPending(operation, delivery, payload) }
+        }
+    }
+
+    /**
+     * Claims one pending drawable delivery while holding the generation/epoch
+     * lease. Decode, decoded-cache insertion, and the drawable callback all run
+     * synchronously inside [PendingDelivery.callback], so a terminal mutation
+     * cannot return until that delivery is complete.
+     */
+    private fun deliverPending(
+        operation: Operation,
+        delivery: PendingDelivery,
+        payload: SlockAndroidAvatarBytePayload?
+    ): Boolean =
+        synchronized(lock) {
+            if (operation.pendingDeliveries[delivery.id] !== delivery) return@synchronized false
+            operation.pendingDeliveries.remove(delivery.id)
+            val admitted =
+                operations[operation.request.operationKey] === operation && isCurrentLocked(operation)
+            runCatching { delivery.callback(payload.takeIf { admitted }) }
+            admitted
+        }
+
+    private fun closePendingDeliveriesLocked(operation: Operation) {
+        val callbacks = operation.pendingDeliveries.values.map(PendingDelivery::callback)
+        operation.pendingDeliveries.clear()
+        callbacks.forEach { callback -> runCatching { callback(null) } }
+    }
+
     private fun discardOperationFilesLocked(operation: Operation): Boolean {
         val deleted = store.deleteStage(operation.stage)
         if (deleted) operation.stage = null
@@ -619,7 +737,7 @@ internal class SlockAndroidAvatarCacheManager(
 
     private fun closeOperationsLocked(predicate: (Operation) -> Boolean): ClosedDeliveries {
         val resultCallbacks = mutableListOf<(SlockAndroidAvatarLoadResult) -> Unit>()
-        val renderCallbacks = mutableListOf<(SlockAndroidAvatarBytePayload?) -> Unit>()
+        val deliveryCallbacks = mutableListOf<(SlockAndroidAvatarBytePayload?) -> Unit>()
         var filesCleaned = true
         val iterator = operations.entries.iterator()
         while (iterator.hasNext()) {
@@ -639,12 +757,12 @@ internal class SlockAndroidAvatarCacheManager(
             val operationFilesCleaned = rollbackDeleted && stageDeleted
             filesCleaned = filesCleaned && operationFilesCleaned
             resultCallbacks += operation.resultWaiters.values
-            renderCallbacks += operation.renderWaiters.values
+            deliveryCallbacks += operation.pendingDeliveries.values.map(PendingDelivery::callback)
             operation.resultWaiters.clear()
-            operation.renderWaiters.clear()
+            operation.pendingDeliveries.clear()
             if (operationFilesCleaned) iterator.remove()
         }
-        return ClosedDeliveries(resultCallbacks, renderCallbacks, filesCleaned)
+        return ClosedDeliveries(resultCallbacks, deliveryCallbacks, filesCleaned)
     }
 
     private fun pruneOperationsLocked(
@@ -658,7 +776,7 @@ internal class SlockAndroidAvatarCacheManager(
                         it.stage == null &&
                         it.rollbackRecord == null &&
                         it.resultWaiters.isEmpty() &&
-                        it.renderWaiters.isEmpty()
+                        it.pendingDeliveries.isEmpty()
                 }
                 .sortedBy { it.order }
                 .iterator()
@@ -689,14 +807,14 @@ internal class SlockAndroidAvatarCacheManager(
 
     private data class ClosedDeliveries(
         val resultCallbacks: List<(SlockAndroidAvatarLoadResult) -> Unit>,
-        val renderCallbacks: List<(SlockAndroidAvatarBytePayload?) -> Unit>,
+        val deliveryCallbacks: List<(SlockAndroidAvatarBytePayload?) -> Unit>,
         val filesCleaned: Boolean
     ) {
         fun deliver() {
             resultCallbacks.forEach { callback ->
                 runCatching { callback(SlockAndroidAvatarLoadResult.TemporaryTransport) }
             }
-            renderCallbacks.forEach { callback -> runCatching { callback(null) } }
+            deliveryCallbacks.forEach { callback -> runCatching { callback(null) } }
         }
     }
 }

@@ -2596,7 +2596,10 @@ private class SlockKuiklyImageAdapter(
                     workExecutor =
                             SlockAvatarCacheWorkExecutor { block ->
                                 SlockKuiklyThreadAdapter.executeOnSubThread(block)
-                            }
+                            },
+                    clearDecodedMemory = avatarBitmapCache::clear,
+                    retireDecodedOwner = avatarBitmapCache::removeOwner,
+                    retireDecodedSubject = avatarBitmapCache::removeSubject
             )
 
     override fun fetchDrawable(
@@ -2710,7 +2713,6 @@ private class SlockKuiklyImageAdapter(
                     return
                 }
                 SlockKuiklyThreadAdapter.executeOnSubThread {
-                    avatarBitmapCache.removeOwner(partitionKey)
                     val mutation =
                             runCatching { avatarCacheManager.retireOwner(partitionKey) }
                                     .getOrElse { SlockAndroidAvatarMutation.Failed("avatar_cache_owner_retire_failed") }
@@ -2725,7 +2727,6 @@ private class SlockKuiklyImageAdapter(
                     return
                 }
                 SlockKuiklyThreadAdapter.executeOnSubThread {
-                    avatarBitmapCache.removeSubject(partitionKey, subjectKey)
                     val mutation =
                             runCatching { avatarCacheManager.retireSubject(partitionKey, subjectKey) }
                                     .getOrElse { SlockAndroidAvatarMutation.Failed("avatar_cache_subject_retire_failed") }
@@ -2736,10 +2737,7 @@ private class SlockKuiklyImageAdapter(
         }
     }
 
-    fun clearAvatarCache(): Boolean {
-        avatarBitmapCache.clear()
-        return runCatching(avatarCacheManager::clearAll).getOrDefault(false)
-    }
+    fun clearAvatarCache(): Boolean = runCatching(avatarCacheManager::clearAll).getOrDefault(false)
 
     private fun loadTypedAvatar(
             imageLoadOption: HRImageLoadOption,
@@ -2758,10 +2756,21 @@ private class SlockKuiklyImageAdapter(
                         request.readMode == SlockAndroidAvatarReadMode.RenderStaleRevalidate ||
                         request.readMode == SlockAndroidAvatarReadMode.RenderStaleSuppressed
         if (permitsAdmittedMemory) {
-            avatarBitmapCache.get(decodeKey)?.takeUnless(Bitmap::isRecycled)?.let { bitmap ->
-                callback(bitmap.toBitmapDrawable())
-                runCatching { avatarCacheManager.recordMemoryRendered(request) }
-                return
+            when (
+                    avatarCacheManager.deliverMemory(
+                            request = request,
+                            payloadProvider = {
+                                avatarBitmapCache.get(decodeKey)?.takeUnless(Bitmap::isRecycled)
+                            },
+                            callback = { bitmap -> callback(bitmap.toBitmapDrawable()) }
+                    )
+            ) {
+                SlockAndroidAvatarMemoryDelivery.Delivered -> return
+                SlockAndroidAvatarMemoryDelivery.Rejected -> {
+                    callback(null)
+                    return
+                }
+                SlockAndroidAvatarMemoryDelivery.Miss -> Unit
             }
         }
         runCatching {
