@@ -199,8 +199,6 @@ import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.animation.core.animateFloatAsState
 import com.tencent.kuikly.compose.diagnostics.LazyLayoutTrace
 import com.tencent.kuikly.compose.diagnostics.LazyTraceContext
-import com.tencent.kuikly.compose.diagnostics.LazyTraceFrame
-import com.tencent.kuikly.compose.diagnostics.LazyTraceFrameCounter
 import com.tencent.kuikly.compose.diagnostics.LocalLazyLayoutTrace
 import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.coil3.AsyncImagePainter
@@ -15388,14 +15386,12 @@ private fun ThreadMessagesList(
         mutableStateOf(LazyViewportControllerState())
     }
     var viewportLayoutGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
-    // task #990: App-side records must carry the same kind of frame identity as
-    // the Kuikly stages, otherwise a draw record cannot be tied to the frame
-    // that produced a white pixel sample and only timestamp proximity is left —
-    // the inference this investigation has already had to retract once.
-    val threadTraceFrames = remember(threadInstanceKey) { LazyTraceFrameCounter() }
-    var lastThreadTraceFrame by remember(threadInstanceKey) {
-        mutableStateOf(LazyTraceFrame(frameSequence = -1L, frameTimeNanos = -1L))
-    }
+    // task #990: the App draw probe deliberately carries NO frame identity.
+    // Stamping it with the most recently seen framework frame would be
+    // last-value guessing dressed as correlation — the same unsupported
+    // inference as matching by timestamp. Until the frame is captured inside
+    // the draw callback itself, App draw records must not claim to join the
+    // Kuikly stages by frame.
     // task #990: refreshed while the keyboard is closed; read at shrink onset.
     var preShrinkBaseline by remember(threadInstanceKey) {
         mutableStateOf<ThreadPreShrinkBaseline?>(null)
@@ -17122,8 +17118,6 @@ private fun ThreadMessagesList(
                 )
             diagnosticsLogger(
                 "thread_ime_tail_draw_probe producer=publishImeTailDrawProbe " +
-                    "frameSequence=${lastThreadTraceFrame.frameSequence} " +
-                    "frameTimeNanos=${lastThreadTraceFrame.frameTimeNanos} " +
                     "phase=$phase imeCycle=${imeTailDrawProbe.snapshot().generation} " +
                     "threadInstance=$threadInstanceKey layoutGeneration=$viewportLayoutGeneration " +
                     "commandId=${viewportControllerState.pendingCommand?.id?.let { "${it.epoch}:${it.sequence}" } ?: "none"} " +
@@ -17595,10 +17589,6 @@ private fun ThreadMessagesList(
                                     }
                         )
                     ) { traceContext, record ->
-                        // Adopt the frame the framework reported, so an App draw
-                        // or pixel record taken after it carries the same frame
-                        // identity instead of being matched by proximity.
-                        lastThreadTraceFrame = record.frame
                         diagnosticsLogger(
                             "thread_lazy_measure producer=KuiklyLazyMeasure " +
                                 "function=${record.function} stage=${record.stage} " +
