@@ -633,9 +633,9 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun sharedBottomTabBarKeepsChildPageSeamSquare() {
+    fun everyBottomTabRendererKeepsFullBleedChildPageSeamSquare() {
         assertNull(appShellChildPageGlassStyle(bottomTabBarOverlaysContent = false))
-        assertEquals("liquid", appShellChildPageGlassStyle(bottomTabBarOverlaysContent = true))
+        assertNull(appShellChildPageGlassStyle(bottomTabBarOverlaysContent = true))
     }
 
     @Test

@@ -630,10 +630,15 @@ private const val AppShellNotificationParentChannelIdKey = "slockNotificationPar
 private const val AppShellNotificationParentMessageIdKey = "slockNotificationParentMessageId"
 private const val AppShellNotificationKindKey = "slockNotificationKind"
 private const val AppShellNotificationCategoryKey = "slockNotificationCategory"
-private const val AppShellChildPageGlassStyleLiquid = "liquid"
-
-internal fun appShellChildPageGlassStyle(bottomTabBarOverlaysContent: Boolean): String? =
-    AppShellChildPageGlassStyleLiquid.takeIf { bottomTabBarOverlaysContent }
+// AppShell child pages fill the native window. A floating bottom tab bar may
+// overlay that page, but it does not turn the full-screen page into an inset
+// card. Applying the iOS `liquid` host style here clips every screen edge to a
+// fixed 28pt radius; the white AppShell surface then leaks between that radius
+// and each iPad/window corner. Keep the page full-bleed and let the native
+// window own its own corner mask. A future genuinely inset card must opt in at
+// that inset host instead of coupling its shape to the tab-bar renderer.
+@Suppress("UNUSED_PARAMETER")
+internal fun appShellChildPageGlassStyle(bottomTabBarOverlaysContent: Boolean): String? = null
 
 private val AppShellNotificationLaunchJson = Json { ignoreUnknownKeys = true }
 private val SearchControlsHorizontalPadding = 16.dp
