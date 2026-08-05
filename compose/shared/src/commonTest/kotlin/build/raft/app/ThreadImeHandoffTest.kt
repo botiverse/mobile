@@ -468,13 +468,18 @@ class ThreadImeHandoffTest {
                 userScrollGeneration = 3,
                 retiredIdentity = target
             )
+        // The focused route disables the bottom auto anchor, so the debt is the
+        // only thing that can anchor here. Leaving it enabled would let the
+        // ordinary bottom path anchor on every pass and hide whether the debt
+        // is issuing more than once.
+        val focusedRouteLayout = layout.copy(allowBottomAutoAnchor = false)
         val kinds =
             (1..3).map {
                 val pass =
                     threadImeCorrectionPass(
                         handoff = handoff,
                         targetIdentity = target,
-                        layout = layout,
+                        layout = focusedRouteLayout,
                         latestBottomAnchorEligible =
                             eligibility(settled = false, owed = handoff.owes(target))
                     )

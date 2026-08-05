@@ -82,12 +82,21 @@ class ThreadViewportProductionContractTest {
         assertTrue(source.contains("LazyViewportMutation.InsetChange"))
     }
 
-    private fun threadPageSource(): String =
+    private fun threadPageSource(): String = threadSource("ThreadPage.kt") + threadViewportOwnerSource()
+
+    /**
+     * task #990: the composer's viewport dispatch now lives beside the handoff
+     * state it belongs to, so the Thread viewport surface spans two files. The
+     * contract is about that surface, not about one filename.
+     */
+    private fun threadViewportOwnerSource(): String = threadSource("ThreadImeHandoff.kt")
+
+    private fun threadSource(fileName: String): String =
         listOf(
-            File("src/commonMain/kotlin/build/raft/app/ThreadPage.kt"),
-            File("shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt")
+            File("src/commonMain/kotlin/build/raft/app/$fileName"),
+            File("shared/src/commonMain/kotlin/build/raft/app/$fileName")
         ).firstOrNull(File::isFile)?.readText()?.replace("\r\n", "\n")
-            ?: error("ThreadPage.kt source not found")
+            ?: error("$fileName source not found")
 
     private fun String.substringBetween(start: String, end: String): String {
         val startIndex = indexOf(start)

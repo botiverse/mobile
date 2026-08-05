@@ -49,6 +49,7 @@ above and update the inventory when they establish a new ownership pattern.
 | Thread local-send bottom session | explicit local send | anchor identity + user-scroll generation; compliant |
 | Thread focused-message session | route `(messageId, nonce)` | consumed/interrupted identity, generation, active-scroll fence, bounded cap; compliant |
 | Thread initial/keyboard bottom placement | initial route or parked layout intent | drag/focus yield for initial placement; parked-tail gate for keyboard; compliant |
+| Thread IME shrink handoff (canonical latest) | keyboard-shrink layout correction | retires the running focused session and owes exactly one composer correction; identity, user-scroll generation, interrupt, page-cycle, keyboard-close and viewport-epoch fences; canonical latest target only, so history targets keep the prior behaviour; task #990 |
 
 Framework-internal Kuikly corrections and test/probe pages are not app-level inventory entries. Framework corrections still must preserve the same user-override invariant at their own ownership boundary.
 
