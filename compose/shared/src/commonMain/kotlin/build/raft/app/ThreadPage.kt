@@ -15427,16 +15427,16 @@ private fun ThreadMessagesList(
             }.first { (epoch, pendingId) ->
                 epoch != commandId.epoch || pendingId == null
             }
+        // Success is decided by the receipt naming this exact command, never by
+        // having watched it. Seeing the command pending and then seeing the slot
+        // empty is satisfied by a sequence where a same-epoch replacement took
+        // the slot and *it* was the one consumed — the waiter would report its
+        // own command as landed while the receipt names another.
+        val receiptNamesThisCommand = viewportControllerState.lastConsumedCommandId == commandId
         return when {
+            receiptNamesThisCommand -> ThreadViewportSettlementOutcome.ConsumedOriginal
             settledEpoch != commandId.epoch -> ThreadViewportSettlementOutcome.SupersededEpoch
             observedReplacement -> ThreadViewportSettlementOutcome.ReplacedSameEpoch
-            observedOriginal -> ThreadViewportSettlementOutcome.ConsumedOriginal
-            // Observation can start after the command was already taken, and an
-            // empty pending slot looks the same as a dropped command. The
-            // controller's receipt names the command it consumed, so this is
-            // positive evidence rather than a renamed absence.
-            viewportControllerState.lastConsumedCommandId == commandId ->
-                ThreadViewportSettlementOutcome.ConsumedOriginal
             else -> ThreadViewportSettlementOutcome.UnobservedBeforeConsume
         }
     }
@@ -15529,8 +15529,7 @@ private fun ThreadMessagesList(
                             offset = -anchorOffset,
                             layoutGeneration = viewportLayoutGeneration,
                             fallback = LazyViewportAnchorFallback.Free,
-                            provenance = LazyViewportCommandProvenance.Other,
-                            ownerIdentity = null
+                            provenance = LazyViewportCommandProvenance.Other
                         )
                     )
                 }
@@ -16014,8 +16013,7 @@ private fun ThreadMessagesList(
                 offset = -desiredScrollOffset,
                 layoutGeneration = viewportLayoutGeneration,
                 fallback = LazyViewportAnchorFallback.Free,
-                provenance = LazyViewportCommandProvenance.Other,
-                ownerIdentity = null
+                provenance = LazyViewportCommandProvenance.Other
             )
         )
         val commandId = viewportControllerState.pendingCommand?.id
@@ -16533,8 +16531,7 @@ private fun ThreadMessagesList(
                             focusedAnchorPlacementState.renderedTailMessageId != null
                     },
                 fallback = LazyViewportAnchorFallback.Free,
-                provenance = LazyViewportCommandProvenance.FocusedInitial,
-                ownerIdentity = targetIdentity
+                provenance = LazyViewportCommandProvenance.FocusedInitial(ownerIdentity = targetIdentity)
             )
         )
         val focusCommandId = viewportControllerState.pendingCommand?.id
@@ -16559,10 +16556,13 @@ private fun ThreadMessagesList(
         // once those exist, so returning before them leaves the owed correction
         // with nobody able to issue it: not three competing commands but none,
         // and a pending change that never retires.
-        val sessionPlan = threadFocusedAnchorSessionPlan(imeHandoffState, targetIdentity)
-        sessionPlan.sessionIdentityToPublish?.let { focusedAnchorSessionIdentity = it }
-        sessionPlan.consumedIdentityToPublish?.let { consumedFocusedMessageAnchorIdentity = it }
-        if (sessionPlan.yieldToComposer) {
+        val yieldsToComposer =
+            applyThreadFocusedAnchorSessionPlan(
+                plan = threadFocusedAnchorSessionPlan(imeHandoffState, targetIdentity),
+                publishSessionIdentity = { focusedAnchorSessionIdentity = it },
+                publishConsumedIdentity = { consumedFocusedMessageAnchorIdentity = it }
+            )
+        if (yieldsToComposer) {
             diagnosticsLogger(
                 "thread_focused_message_anchor result=handed_off_to_composer " +
                     "messageId=$targetMessageId targetIndex=$targetIndex"
@@ -16683,8 +16683,7 @@ private fun ThreadMessagesList(
                                         focusedAnchorPlacementState.renderedTailMessageId != null
                                 },
                             fallback = LazyViewportAnchorFallback.Free,
-                            provenance = LazyViewportCommandProvenance.FocusedSessionReanchor,
-                            ownerIdentity = targetIdentity
+                            provenance = LazyViewportCommandProvenance.FocusedSessionReanchor(ownerIdentity = targetIdentity)
                         )
                     )
                     val reanchorCommandId = viewportControllerState.pendingCommand?.id
@@ -16779,8 +16778,7 @@ private fun ThreadMessagesList(
                             focusedAnchorPlacementState.renderedTailMessageId != null
                     },
                 fallback = LazyViewportAnchorFallback.Free,
-                provenance = LazyViewportCommandProvenance.FocusedOriginCorrection,
-                ownerIdentity = targetIdentity
+                provenance = LazyViewportCommandProvenance.FocusedOriginCorrection(ownerIdentity = targetIdentity)
             )
         )
         val correctionCommandId = viewportControllerState.pendingCommand?.id
@@ -16830,8 +16828,7 @@ private fun ThreadMessagesList(
                 offset = 0,
                 layoutGeneration = viewportLayoutGeneration,
                 fallback = LazyViewportAnchorFallback.Free,
-                provenance = LazyViewportCommandProvenance.Other,
-                ownerIdentity = null
+                provenance = LazyViewportCommandProvenance.Other
             )
         )
     }
@@ -17122,27 +17119,35 @@ private fun ThreadMessagesList(
                 tailFitsViewport = focusedTailFit.fitsViewport.takeIf { focusedTailFit.fitHeightPx >= 0 }
             )
         imeHandoffState = handoffPass.handoff
-        if (handoffPass.tookHandoff) {
-            // Ownership is released in the same pass the debt is recorded: a
-            // fence that expires one session recheck later is exactly the window
-            // the white cycle fell into.
-            consumedFocusedMessageAnchorIdentity = focusedTargetIdentity
-            // Whatever the retired owners already put in flight stops being
-            // current here. Without this the original race still runs in full
-            // during the window where the target is not yet measurable: the
-            // session and origin corrections are forbidden from issuing
-            // anything new, but a command already pending would still apply to
-            // the shrunken viewport.
-            focusedTargetIdentity?.let {
-                dispatchViewportEvent(LazyViewportEvent.RetireFocusedCorrections(ownerIdentity = it))
-            }
+        // Switching on the returned directive rather than re-deriving it: the
+        // test driver switches on the same value, so there is no second copy of
+        // this control flow to drift from.
+        // The side effects a taken handoff owes live in this shared function, so
+        // the sequence tests execute them rather than performing their own
+        // equivalents — deleting the retire dispatch or the consumed write there
+        // turns those tests red instead of leaving them green.
+        val handoffEndsPass =
+            applyThreadImeHandoffPass(
+                pass = handoffPass,
+                targetIdentity = focusedTargetIdentity,
+                markConsumed = { consumedFocusedMessageAnchorIdentity = it },
+                dispatch = { dispatchViewportEvent(it) }
+            )
+        if (handoffPass.action == ThreadImeHandoffPassAction.EndPass) {
+            lastComposerKeyboardInsetDp = composerKeyboardInsetDp
+            lastThreadViewportHeightDp = measuredThreadViewportHeightDp
+            pendingComposerLayoutBottomAnchor = false
+            pendingKeyboardBottomAnchor = false
+            return@LaunchedEffect
+        }
+        if (handoffEndsPass) {
             diagnosticsLogger(
                 "thread_ime_handoff result=taken " +
                     "messageId=${focusedTargetMessageId.orEmpty()} " +
                     "keyboardInsetDp=$lastComposerKeyboardInsetDp->$composerKeyboardInsetDp " +
                     "userScrollGeneration=${userScrollGeneration.value}"
             )
-            // Its own pass: the write above is a key of this effect, so
+            // Its own pass: the writes above are keys of this effect, so
             // continuing would run the layout decision in a body about to be
             // cancelled and again in its replacement — two commands for one
             // shrink. The inset carry-forward below is deliberately not reached,
@@ -17385,8 +17390,10 @@ private fun ThreadMessagesList(
                     renderedTailMessageId = focusedTailMessageId,
                     renderedTailAnchorIdentity = focusedTargetIdentity,
                     fallback = LazyViewportAnchorFallback.Free,
-                    provenance = LazyViewportCommandProvenance.ComposerIme,
-                    ownerIdentity = focusedTargetIdentity
+                    provenance =
+                        LazyViewportCommandProvenance.ComposerIme(
+                            ownerIdentity = requireNotNull(focusedTargetIdentity)
+                        )
                 )
             )
         } else {

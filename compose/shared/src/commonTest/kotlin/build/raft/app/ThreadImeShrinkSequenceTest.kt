@@ -41,6 +41,19 @@ class ThreadImeShrinkSequenceTest {
         /** Scroll generation the focused anchor was taken at. */
         private val anchorUserScrollGeneration = 3
 
+        /**
+         * What the effect writes when it releases the focused fence. Kept as the
+         * identity itself rather than a boolean so the production predicates can
+         * be called with the value they actually receive.
+         */
+        private var consumedIdentity: String? = null
+
+        /** The healthy cycle: focus had already settled before the keyboard. */
+        fun startAlreadyConsumed(identity: String) {
+            focusedFenceReleased = true
+            consumedIdentity = identity
+        }
+
         fun pass(
             keyboardInsetDp: Float,
             viewportHeightDp: Float,
@@ -66,32 +79,28 @@ class ThreadImeShrinkSequenceTest {
                     pageCycleActive = pageCycleActive
                 )
             handoff = handoffPass.handoff
-            if (pageCycleActive) {
-                // Production returns from the effect here, before the layout
-                // decision: a thread reloading around a newer page resets the
-                // pending anchors rather than correcting the old viewport.
-                // Running on past this point made the driver dispatch a command
-                // the effect would never reach.
+            // The effect switches on this same directive. Re-deriving "does the
+            // pass stop here" is what made the first driver dispatch a command
+            // the effect can never reach, so the branch is taken from the value
+            // production returns rather than reconstructed.
+            // The same production function the effect calls performs the fence
+            // release and the retire dispatch. Doing them here instead would
+            // make this a replica: deleting them from production would leave
+            // every test below green.
+            val endsPass =
+                applyThreadImeHandoffPass(
+                    pass = handoffPass,
+                    targetIdentity = targetIdentity,
+                    markConsumed = { consumedIdentity = it; focusedFenceReleased = true },
+                    dispatch = { controller = reduceLazyViewport(controller, it) }
+                )
+            if (handoffPass.action == ThreadImeHandoffPassAction.EndPass) {
                 previousKeyboardInsetDp = keyboardInsetDp
                 previousViewportHeightDp = viewportHeightDp
                 pendingLayoutChange = false
                 return
             }
-            if (handoffPass.tookHandoff) {
-                // The effect releases the fence, retires whatever the old owners
-                // already put in flight, and ends the pass here — leaving the
-                // inset carry-forward unreached so the next pass still sees the
-                // rise.
-                focusedFenceReleased = true
-                targetIdentity?.let {
-                    controller =
-                        reduceLazyViewport(
-                            controller,
-                            LazyViewportEvent.RetireFocusedCorrections(ownerIdentity = it)
-                        )
-                }
-                return
-            }
+            if (endsPass) return
 
             val correctionPass =
                 threadImeCorrectionPass(
@@ -110,18 +119,50 @@ class ThreadImeShrinkSequenceTest {
                             allowBottomAutoAnchor = false,
                             viewportEpochCoherent = viewportEpochCoherent,
                             focusedAnchorOwnsViewport =
-                                focusedTransactionLive && !focusedFenceReleased,
-                            focusedActiveTailAnchorCanCorrectLayout = false,
-                            // Production also requires the user not to have
-                            // scrolled since the anchor was taken
-                            // (focusedTailMessageComposerLayoutOwnsViewport
-                            // compares the scroll generations). Leaving that out
-                            // made this driver more permissive than the code it
-                            // stands in for.
+                                focusedTransactionLive &&
+                                    focusedMessageAnchorOwnsViewport(
+                                        pendingIdentity = targetIdentity,
+                                        consumedIdentity = consumedIdentity,
+                                        scrollInterruptedIdentity = null,
+                                        yieldElapsedMs = 0L
+                                    ),
+                            focusedActiveTailAnchorCanCorrectLayout =
+                                focusedMessageAnchorOwnsViewport(
+                                    pendingIdentity = targetIdentity,
+                                    consumedIdentity = consumedIdentity,
+                                    scrollInterruptedIdentity = null,
+                                    yieldElapsedMs = 0L
+                                ) &&
+                                    focusedActiveTailMessageComposerLayoutOwnsViewport(
+                                        targetIdentity = targetIdentity,
+                                        targetItemIndex = 17,
+                                        latestMessageItemIndex = 17,
+                                        targetToTailFitsViewport = tailFitAvailable,
+                                        canLoadMoreAfter = false,
+                                        anchoredIdentity = targetIdentity,
+                                        consumedIdentity = consumedIdentity,
+                                        scrollInterruptedIdentity = null,
+                                        startUserScrollGeneration = anchorUserScrollGeneration,
+                                        currentUserScrollGeneration = userScrollGeneration
+                                    ),
+                            // Computed by the production predicates rather than
+                            // hand-written booleans. The first driver spelled
+                            // this gate out itself and forgot the scroll
+                            // generation comparison, which made it admit a
+                            // correction production would refuse.
                             focusedTailAnchorCanCorrectLayout =
-                                focusedFenceReleased &&
-                                    tailFitAvailable &&
-                                    userScrollGeneration == anchorUserScrollGeneration
+                                focusedTailMessageComposerLayoutOwnsViewport(
+                                    targetIdentity = targetIdentity,
+                                    targetItemIndex = 17,
+                                    latestMessageItemIndex = 17,
+                                    targetToTailFitsViewport = tailFitAvailable,
+                                    canLoadMoreAfter = false,
+                                    anchoredIdentity = targetIdentity,
+                                    consumedIdentity = consumedIdentity,
+                                    scrollInterruptedIdentity = null,
+                                    startUserScrollGeneration = anchorUserScrollGeneration,
+                                    currentUserScrollGeneration = userScrollGeneration
+                                )
                         )
                 )
             handoff = correctionPass.handoff
@@ -146,8 +187,10 @@ class ThreadImeShrinkSequenceTest {
                         renderedTailMessageId = "message-17",
                         renderedTailAnchorIdentity = targetIdentity,
                         fallback = LazyViewportAnchorFallback.Free,
-                        provenance = LazyViewportCommandProvenance.ComposerIme,
-                        ownerIdentity = targetIdentity
+                        provenance =
+                            LazyViewportCommandProvenance.ComposerIme(
+                                ownerIdentity = requireNotNull(targetIdentity)
+                            )
                     )
                 )
             controller.pendingCommand?.id?.let { commands += it }
@@ -161,10 +204,7 @@ class ThreadImeShrinkSequenceTest {
         }
 
         /** An owner puts a command in flight before the keyboard arrives. */
-        fun dispatchInFlight(
-            provenance: LazyViewportCommandProvenance,
-            ownerIdentity: String?
-        ): LazyViewportCommandId {
+        fun dispatchInFlight(provenance: LazyViewportCommandProvenance): LazyViewportCommandId {
             controller =
                 reduceLazyViewport(
                     controller,
@@ -176,8 +216,7 @@ class ThreadImeShrinkSequenceTest {
                         renderedTailMessageId = null,
                         renderedTailAnchorIdentity = null,
                         fallback = LazyViewportAnchorFallback.Free,
-                        provenance = provenance,
-                        ownerIdentity = ownerIdentity
+                        provenance = provenance
                     )
                 )
             return controller.pendingCommand!!.id
@@ -247,7 +286,7 @@ class ThreadImeShrinkSequenceTest {
         // taken and the composer's own path issues the single correction. If
         // this went quiet, the fix would have broken the working case.
         val driver = ComposerDriver()
-        driver.focusedFenceReleased = true
+        driver.startAlreadyConsumed(target)
 
         driver.pass(
             keyboardInsetDp = 336f,
@@ -396,11 +435,11 @@ class ThreadImeShrinkSequenceTest {
         // would apply to the already-shrunken viewport — the original race, run
         // in full, inside the debt's own window.
         listOf(
-            LazyViewportCommandProvenance.FocusedSessionReanchor,
-            LazyViewportCommandProvenance.FocusedOriginCorrection
+            LazyViewportCommandProvenance.FocusedSessionReanchor(target),
+            LazyViewportCommandProvenance.FocusedOriginCorrection(target)
         ).forEach { provenance ->
             val driver = ComposerDriver()
-            val stale = driver.dispatchInFlight(provenance, ownerIdentity = target)
+            val stale = driver.dispatchInFlight(provenance)
             assertTrue(driver.stillCurrent(stale), "$provenance is current before the onset")
 
             driver.pass(
@@ -429,10 +468,7 @@ class ThreadImeShrinkSequenceTest {
         // captures, and dropping it would leave the target unplaced.
         val driver = ComposerDriver()
         val positioning =
-            driver.dispatchInFlight(
-                LazyViewportCommandProvenance.FocusedInitial,
-                ownerIdentity = target
-            )
+            driver.dispatchInFlight(LazyViewportCommandProvenance.FocusedInitial(target))
 
         driver.pass(
             keyboardInsetDp = 336f,
@@ -457,11 +493,11 @@ class ThreadImeShrinkSequenceTest {
         // Retirement is identity-scoped: a command belonging to a different
         // focus target, or to no focus at all, must be left alone.
         listOf(
-            LazyViewportCommandProvenance.FocusedSessionReanchor to "message-9:4",
-            LazyViewportCommandProvenance.Other to null
-        ).forEach { (provenance, owner) ->
+            LazyViewportCommandProvenance.FocusedSessionReanchor("message-9:4"),
+            LazyViewportCommandProvenance.Other
+        ).forEach { provenance ->
             val driver = ComposerDriver()
-            val unrelated = driver.dispatchInFlight(provenance, ownerIdentity = owner)
+            val unrelated = driver.dispatchInFlight(provenance)
 
             driver.pass(
                 keyboardInsetDp = 336f,
@@ -471,8 +507,97 @@ class ThreadImeShrinkSequenceTest {
             )
             assertTrue(
                 driver.stillCurrent(unrelated),
-                "$provenance owned by $owner must not be retired by this target's handoff"
+                "$provenance must not be retired by this target's handoff"
             )
         }
     }
+
+    @Test
+    fun aRetiredCorrectionIsNotRegeneratedByALaterContentMutation() {
+        // Clearing the pending command is not enough on its own: the intent is
+        // what produces commands, and it survives the retirement. Any content
+        // mutation during the shrink's remeasure window would otherwise reissue
+        // the same correction, from the same intent, with the pre-shrink offset
+        // — and no second retirement is sent, because the handoff has already
+        // happened.
+        listOf(
+            LazyViewportCommandProvenance.FocusedSessionReanchor(target),
+            LazyViewportCommandProvenance.FocusedOriginCorrection(target)
+        ).forEach { provenance ->
+            var controller = LazyViewportControllerState()
+            controller = anchor(controller, provenance)
+            assertTrue(controller.pendingCommand != null, "$provenance starts pending")
+
+            controller =
+                reduceLazyViewport(
+                    controller,
+                    LazyViewportEvent.RetireFocusedCorrections(ownerIdentity = target)
+                )
+            assertEquals(null, controller.pendingCommand, "$provenance is dropped at the handoff")
+
+            listOf(
+                LazyViewportMutation.InsetChange,
+                LazyViewportMutation.HeightChange,
+                LazyViewportMutation.Prepend
+            ).forEach { mutation ->
+                controller =
+                    reduceLazyViewport(controller, LazyViewportEvent.ContentMutated(mutation))
+                assertEquals(
+                    null,
+                    controller.pendingCommand,
+                    "$mutation must not regenerate a retired $provenance"
+                )
+            }
+        }
+    }
+
+    @Test
+    fun retirementDoesNotStopTheOwnersThatAreStillAllowedToReplay() {
+        // The mirror: if retirement blocked replay generally, this fix would
+        // have disabled ordinary anchor maintenance rather than one owner's.
+        listOf(
+            LazyViewportCommandProvenance.FocusedInitial(target),
+            LazyViewportCommandProvenance.ComposerIme(target),
+            LazyViewportCommandProvenance.Other,
+            LazyViewportCommandProvenance.FocusedSessionReanchor("message-9:4")
+        ).forEach { provenance ->
+            var controller = LazyViewportControllerState()
+            controller = anchor(controller, provenance)
+            controller =
+                reduceLazyViewport(
+                    controller,
+                    LazyViewportEvent.RetireFocusedCorrections(ownerIdentity = target)
+                )
+            controller.pendingCommand?.id?.let {
+                controller = reduceLazyViewport(controller, LazyViewportEvent.CommandConsumed(it))
+            }
+            controller =
+                reduceLazyViewport(
+                    controller,
+                    LazyViewportEvent.ContentMutated(LazyViewportMutation.HeightChange)
+                )
+            assertTrue(
+                controller.pendingCommand != null,
+                "$provenance must still replay after another target's handoff"
+            )
+        }
+    }
+
+    private fun anchor(
+        state: LazyViewportControllerState,
+        provenance: LazyViewportCommandProvenance
+    ): LazyViewportControllerState =
+        reduceLazyViewport(
+            state,
+            LazyViewportEvent.Anchor(
+                target = LazyViewportAnchorTarget.Message("message-17"),
+                offset = 0,
+                layoutGeneration = 1L,
+                placement = LazyViewportAnchorPlacement.Focused,
+                renderedTailMessageId = null,
+                renderedTailAnchorIdentity = null,
+                fallback = LazyViewportAnchorFallback.Free,
+                provenance = provenance
+            )
+        )
 }

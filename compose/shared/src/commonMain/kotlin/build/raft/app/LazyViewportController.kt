@@ -17,8 +17,7 @@ internal sealed interface LazyViewportIntent {
         val renderedTailMessageId: String? = null,
         val renderedTailAnchorIdentity: String? = null,
         val fallback: LazyViewportAnchorFallback,
-        val provenance: LazyViewportCommandProvenance = LazyViewportCommandProvenance.Other,
-        val ownerIdentity: String? = null
+        val provenance: LazyViewportCommandProvenance
     ) : LazyViewportIntent
 
     data object UserDragging : LazyViewportIntent
@@ -33,21 +32,31 @@ internal sealed interface LazyViewportIntent {
  * a caller that forgets to say who it is fails to compile, rather than
  * defaulting into the class that survives retirement.
  */
-internal enum class LazyViewportCommandProvenance {
+internal sealed interface LazyViewportCommandProvenance {
+    /**
+     * The focus identity this command belongs to, or null when it belongs to no
+     * focus at all. Carried by the type rather than beside it: an enum plus a
+     * nullable identity admits `FocusedSessionReanchor` with no identity, which
+     * compiles and then silently escapes retirement.
+     */
+    val ownerIdentity: String?
+
     /** Initial focus positioning. Survives a handoff: it is what put the target in place. */
-    FocusedInitial,
+    data class FocusedInitial(override val ownerIdentity: String) : LazyViewportCommandProvenance
 
     /** Drift compensation from the focused watch loop. Retired with its session. */
-    FocusedSessionReanchor,
+    data class FocusedSessionReanchor(override val ownerIdentity: String) : LazyViewportCommandProvenance
 
     /** Late correction after origin hydration. Retired with its session. */
-    FocusedOriginCorrection,
+    data class FocusedOriginCorrection(override val ownerIdentity: String) : LazyViewportCommandProvenance
 
     /** The composer's own correction for a keyboard shrink. */
-    ComposerIme,
+    data class ComposerIme(override val ownerIdentity: String) : LazyViewportCommandProvenance
 
     /** Anything not part of the focused/composer handoff. */
-    Other
+    data object Other : LazyViewportCommandProvenance {
+        override val ownerIdentity: String? = null
+    }
 }
 
 internal sealed interface LazyViewportAnchorTarget {
@@ -105,9 +114,7 @@ internal sealed interface LazyViewportCommandTarget {
 internal data class LazyViewportCommand(
     val id: LazyViewportCommandId,
     val target: LazyViewportCommandTarget,
-    val provenance: LazyViewportCommandProvenance = LazyViewportCommandProvenance.Other,
-    /** The focus identity this command was issued for, when it had one. */
-    val ownerIdentity: String? = null
+    val provenance: LazyViewportCommandProvenance
 )
 
 internal data class LazyViewportControllerState(
@@ -126,7 +133,22 @@ internal data class LazyViewportControllerState(
      * clear the pending slot — anchor unavailable, rendered-tail invalidation,
      * intent transitions — are not consumption and deliberately leave it alone.
      */
-    val lastConsumedCommandId: LazyViewportCommandId? = null
+    val lastConsumedCommandId: LazyViewportCommandId? = null,
+    /**
+     * task #990: focus identity whose correction owners have been retired.
+     *
+     * Dropping the pending command is not enough on its own. The intent is what
+     * generates commands, and it survives — so any later content mutation
+     * regenerates the same correction from it, with the same provenance and
+     * owner, and nothing re-issues a retirement because the handoff has already
+     * happened. The race then reappears inside the very window the handoff was
+     * meant to protect. Retirement therefore has to be a fact the controller can
+     * keep applying, not a one-shot edit.
+     *
+     * Identity-scoped and never cleared: a focus identity is `messageId:nonce`,
+     * so a new focus request never reuses a retired one.
+     */
+    val retiredCorrectionOwnerIdentity: String? = null
 )
 
 internal sealed interface LazyViewportEvent {
@@ -146,8 +168,7 @@ internal sealed interface LazyViewportEvent {
         val fallback: LazyViewportAnchorFallback,
         // No default: a dispatch that does not say who issued it must not
         // silently join the class that survives a handoff.
-        val provenance: LazyViewportCommandProvenance,
-        val ownerIdentity: String? = null
+        val provenance: LazyViewportCommandProvenance
     ) : LazyViewportEvent
 
     /**
@@ -217,8 +238,7 @@ internal fun reduceLazyViewport(
                     renderedTailMessageId = event.renderedTailMessageId,
                     renderedTailAnchorIdentity = event.renderedTailAnchorIdentity,
                     fallback = event.fallback,
-                    provenance = event.provenance,
-                    ownerIdentity = event.ownerIdentity
+                    provenance = event.provenance
                 ),
                 emitCommand = true
             )
@@ -337,20 +357,27 @@ private fun LazyViewportControllerState.onRenderedTailCommandInvalidated(
  * still apply — it is the one that succeeded in both the healthy and the white
  * capture, and dropping it would leave the target unplaced.
  */
+private fun LazyViewportCommandProvenance.isRetirableCorrection(): Boolean =
+    when (this) {
+        is LazyViewportCommandProvenance.FocusedSessionReanchor,
+        is LazyViewportCommandProvenance.FocusedOriginCorrection -> true
+        is LazyViewportCommandProvenance.FocusedInitial,
+        is LazyViewportCommandProvenance.ComposerIme,
+        LazyViewportCommandProvenance.Other -> false
+    }
+
 private fun LazyViewportControllerState.retireFocusedCorrections(
     ownerIdentity: String
 ): LazyViewportControllerState {
-    val pending = pendingCommand ?: return this
+    // Recorded whether or not something is pending right now: the intent can
+    // regenerate a command later, and that replay is the part that outlives a
+    // one-shot clear.
+    val retired = copy(retiredCorrectionOwnerIdentity = ownerIdentity)
+    val pending = pendingCommand ?: return retired
     val retiring =
-        pending.ownerIdentity == ownerIdentity &&
-            when (pending.provenance) {
-                LazyViewportCommandProvenance.FocusedSessionReanchor,
-                LazyViewportCommandProvenance.FocusedOriginCorrection -> true
-                LazyViewportCommandProvenance.FocusedInitial,
-                LazyViewportCommandProvenance.ComposerIme,
-                LazyViewportCommandProvenance.Other -> false
-            }
-    return if (retiring) copy(epoch = epoch + 1L, pendingCommand = null) else this
+        pending.provenance.ownerIdentity == ownerIdentity &&
+            pending.provenance.isRetirableCorrection()
+    return if (retiring) retired.copy(epoch = epoch + 1L, pendingCommand = null) else retired
 }
 
 private fun LazyViewportControllerState.transitionTo(
@@ -450,16 +477,28 @@ private fun LazyViewportControllerState.withCommandForIntent(
                 )
             LazyViewportIntent.UserDragging -> return copy(pendingCommand = null)
         }
-    val sequence = nextSequence + 1L
     val anchored = intent as? LazyViewportIntent.Anchored
+    if (
+        anchored != null &&
+        anchored.provenance.isRetirableCorrection() &&
+        anchored.provenance.ownerIdentity != null &&
+        anchored.provenance.ownerIdentity == retiredCorrectionOwnerIdentity
+    ) {
+        // A retired correction's intent must not be replayed. Reaching here
+        // means a content mutation asked this intent to reissue — during a
+        // keyboard shrink that is exactly the remeasure window the handoff
+        // exists to protect, and the reissued command would carry the
+        // pre-shrink offset.
+        return copy(pendingCommand = null)
+    }
+    val sequence = nextSequence + 1L
     return copy(
         nextSequence = sequence,
         pendingCommand =
             LazyViewportCommand(
                 id = LazyViewportCommandId(epoch = epoch, sequence = sequence),
                 target = target,
-                provenance = anchored?.provenance ?: LazyViewportCommandProvenance.Other,
-                ownerIdentity = anchored?.ownerIdentity
+                provenance = anchored?.provenance ?: LazyViewportCommandProvenance.Other
             )
     )
 }

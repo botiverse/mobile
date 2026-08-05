@@ -243,6 +243,30 @@ internal fun focusedOriginCorrectionMayPublishCompletion(
  * Outcome of the early part of one composer pass: everything that happens
  * before the layout is measured.
  */
+/**
+ * What the caller must do after the early part of a pass.
+ *
+ * Returned rather than left to the caller to infer, because a test driver that
+ * re-implements these branches is a simulation of the effect, not the effect —
+ * and a simulation drifts. Two of the three defects CI caught in the first
+ * driver were exactly that: it ran past an early return the effect performs.
+ */
+internal enum class ThreadImeHandoffPassAction {
+    /** Carry on to the layout decision. */
+    Continue,
+
+    /**
+     * Stop here without carrying the inset forward, so the replacement pass
+     * still sees this rise. Used when the shrink has just been taken: the writes
+     * that record it are keys of the effect, so continuing would run the layout
+     * decision in a body about to be cancelled and again in its successor.
+     */
+    EndPassRetainingRise,
+
+    /** Stop here and carry the inset forward; nothing is owed. */
+    EndPass
+}
+
 internal data class ThreadImeHandoffPass(
     val handoff: ThreadImeHandoffState,
     /**
@@ -251,7 +275,8 @@ internal data class ThreadImeHandoffPass(
      * replacement pass, rather than once in a body about to be cancelled and
      * again in its successor — two commands for one shrink.
      */
-    val tookHandoff: Boolean
+    val tookHandoff: Boolean,
+    val action: ThreadImeHandoffPassAction
 )
 
 /**
@@ -287,7 +312,8 @@ internal fun threadImeHandoffPass(
     if (pageCycleActive) {
         return ThreadImeHandoffPass(
             handoff = reduceThreadImeHandoff(handoff, ThreadImeHandoffEvent.PageCycled),
-            tookHandoff = false
+            tookHandoff = false,
+            action = ThreadImeHandoffPassAction.EndPass
         )
     }
     var next = reduceThreadImeHandoff(handoff, ThreadImeHandoffEvent.TargetChanged(targetIdentity))
@@ -303,7 +329,11 @@ internal fun threadImeHandoffPass(
             )
     }
     if (keyboardInsetDp <= previousKeyboardInsetDp) {
-        return ThreadImeHandoffPass(handoff = next, tookHandoff = false)
+        return ThreadImeHandoffPass(
+            handoff = next,
+            tookHandoff = false,
+            action = ThreadImeHandoffPassAction.Continue
+        )
     }
     val before = next
     next =
@@ -319,9 +349,16 @@ internal fun threadImeHandoffPass(
                 userScrollGeneration = userScrollGeneration
             )
         )
+    val tookHandoff = next.owes(targetIdentity) && !before.owes(targetIdentity)
     return ThreadImeHandoffPass(
         handoff = next,
-        tookHandoff = next.owes(targetIdentity) && !before.owes(targetIdentity)
+        tookHandoff = tookHandoff,
+        action =
+            if (tookHandoff) {
+                ThreadImeHandoffPassAction.EndPassRetainingRise
+            } else {
+                ThreadImeHandoffPassAction.Continue
+            }
     )
 }
 
@@ -394,3 +431,51 @@ internal fun threadFocusedAnchorSessionPlan(
             consumedIdentityToPublish = null
         )
     }
+
+/**
+ * Performs the side effects a taken handoff owes, and reports whether the pass
+ * ends here.
+ *
+ * The dispatch and the fence release live in this function rather than inline in
+ * the effect, because a test that calls `RetireFocusedCorrections` itself is a
+ * replica: deleting the production dispatch would leave it green. Here the test
+ * and the effect run the same code, so removing the retire dispatch — or the
+ * consumed write — fails the sequence tests.
+ */
+internal fun applyThreadImeHandoffPass(
+    pass: ThreadImeHandoffPass,
+    targetIdentity: String?,
+    markConsumed: (String) -> Unit,
+    dispatch: (LazyViewportEvent) -> Unit
+): Boolean {
+    when (pass.action) {
+        ThreadImeHandoffPassAction.Continue -> return false
+        ThreadImeHandoffPassAction.EndPass -> return true
+        ThreadImeHandoffPassAction.EndPassRetainingRise -> Unit
+    }
+    val identity = targetIdentity ?: return true
+    // Ownership is released in the same pass the debt is recorded: a fence that
+    // expires one session recheck later is the window the white cycle fell into.
+    markConsumed(identity)
+    // Whatever the retired owners already put in flight stops being current, and
+    // the controller keeps refusing to replay their intent afterwards.
+    dispatch(LazyViewportEvent.RetireFocusedCorrections(ownerIdentity = identity))
+    return true
+}
+
+/**
+ * Applies an initial-focus plan and reports whether the effect yields.
+ *
+ * Same reason as above: the publications happen here, so deleting either of them
+ * fails the tests that assert the composer can take over. A test that applied
+ * them itself would not notice.
+ */
+internal fun applyThreadFocusedAnchorSessionPlan(
+    plan: ThreadFocusedAnchorSessionPlan,
+    publishSessionIdentity: (String) -> Unit,
+    publishConsumedIdentity: (String) -> Unit
+): Boolean {
+    plan.sessionIdentityToPublish?.let(publishSessionIdentity)
+    plan.consumedIdentityToPublish?.let(publishConsumedIdentity)
+    return plan.yieldToComposer
+}
