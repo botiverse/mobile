@@ -10570,6 +10570,7 @@ private fun String.toSharedThreadTaskStatus(): TaskStatus? =
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO = "inline_selection_demo"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_REPLIED = "inline_selection_demo_replied"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD = "markdown_link_child"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD = "markdown_mention_child"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
@@ -10648,6 +10649,19 @@ internal fun threadVisualFixture(
                             firstUnreadReplyMessageId = null,
                             threadChannelId = null
                         )
+                    }
+            )
+        }
+        THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_REPLIED -> {
+            // Same rows as the inline-selection demo, except the compact target
+            // group already has replies. Single-tap thread opening only applies
+            // to messages with existing replies, so the tap case needs that
+            // shape; the reply-less demo stays untouched for the sibling cases.
+            val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO, resolvedInstanceId)
+            base.copy(
+                messages =
+                    base.messages.mapIndexed { index, message ->
+                        if (index < 3) message.copy(replyCount = 1) else message
                     }
             )
         }

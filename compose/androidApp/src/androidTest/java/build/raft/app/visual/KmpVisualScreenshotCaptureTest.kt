@@ -1255,7 +1255,10 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-inline-selection-compact-tap")
-                    .put("visualFixture", "inline_selection_demo")
+                    // Single-tap thread opening applies only to messages that
+                    // already have replies, so this case needs the replied
+                    // variant; the sibling cases keep the reply-less demo.
+                    .put("visualFixture", "inline_selection_demo_replied")
                     .put("singleTapOpensThreadEnabled", true),
             crop = FULL_VIEWPORT_CROP,
             beforeScreenshot = {
