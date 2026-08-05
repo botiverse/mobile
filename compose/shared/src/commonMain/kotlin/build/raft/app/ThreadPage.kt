@@ -17569,7 +17569,18 @@ private fun ThreadMessagesList(
                             traceSession = threadInstanceKey,
                             cycle = imeTailDrawProbe.snapshot().generation,
                             layoutGeneration = viewportLayoutGeneration,
-                            targetToken = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() }
+                            // Must be the real Lazy item key ("thread-page:<identity>"),
+                            // not the raw message id: the framework compares this
+                            // against item.key, so a raw id matches nothing and every
+                            // target field would silently read -1.
+                            targetToken =
+                                renderPayload.focusedMessageId
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?.let { focusedId ->
+                                        renderPayload.messages
+                                            .firstOrNull { it.id == focusedId }
+                                            ?.messageListItemKey(duplicateMessageRandomIds)
+                                    }
                         )
                     ) { traceContext, record ->
                         diagnosticsLogger(
