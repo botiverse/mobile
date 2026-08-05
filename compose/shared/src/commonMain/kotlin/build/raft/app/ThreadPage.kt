@@ -16223,7 +16223,13 @@ private fun ThreadMessagesList(
                     beyondBoundsItems = activeListBeyondBoundsItems
                 )
             if (stats.visibleItems > 0) {
-                diagnosticsLogger(stats.toDiagnosticsString(result = "laid_out"))
+                diagnosticsLogger(
+                    stats.toDiagnosticsString(
+                        result = "laid_out",
+                        layoutGeneration = viewportLayoutGeneration,
+                        threadInstance = threadInstanceKey
+                    )
+                )
                 if (firstViewportProbe.markLogged()) {
                     diagnosticsLogger(
                         firstViewportProbe.toDiagnosticsString(
@@ -16239,7 +16245,13 @@ private fun ThreadMessagesList(
                 return@LaunchedEffect
             }
             if (attempt >= ThreadBottomAnchorMinimumAttempts) {
-                diagnosticsLogger(stats.toDiagnosticsString(result = "missing_layout"))
+                diagnosticsLogger(
+                    stats.toDiagnosticsString(
+                        result = "missing_layout",
+                        layoutGeneration = viewportLayoutGeneration,
+                        threadInstance = threadInstanceKey
+                    )
+                )
                 if (firstViewportProbe.markLogged()) {
                     diagnosticsLogger(
                         firstViewportProbe.toDiagnosticsString(
@@ -18518,8 +18530,18 @@ private fun LazyListState.threadLazyWindowStats(
     )
 }
 
-private fun ThreadLazyWindowStats.toDiagnosticsString(result: String): String =
-    "thread_lazy_window result=$result totalItems=$totalItems totalMessages=$totalMessages " +
+private fun ThreadLazyWindowStats.toDiagnosticsString(
+    result: String,
+    // task #990: every layer must join on the same keys and must say which code
+    // produced it, otherwise a reader cannot tell which measure pass a number
+    // came from or where to look in the source.
+    producer: String = "thread_layout_probe",
+    layoutGeneration: Long = -1L,
+    threadInstance: String = ""
+): String =
+    "thread_lazy_window producer=$producer layoutGeneration=$layoutGeneration " +
+        "threadInstance=$threadInstance " +
+        "result=$result totalItems=$totalItems totalMessages=$totalMessages " +
         "beyondBounds=$beyondBoundsItems visibleItems=$visibleItems " +
         "visibleItemRange=$firstVisibleItem..$lastVisibleItem " +
         "visibleMessageRange=$firstVisibleMessage..$lastVisibleMessage " +
