@@ -6906,7 +6906,9 @@ private fun MembersAgentAvatarChoiceGrid(
                     avatarWireValue = member.avatarUrl,
                     label = stringResource(MR.strings.member_label_custom_avatar),
                     avatarSize = MembersAgentAvatarPickerAvatarSize,
-                    borderWidth = 0.dp
+                    borderWidth = 0.dp,
+                    cacheSubject = member.slockAvatarCacheSubject(),
+                    cacheServerId = member.serverId?.value
                 )
             } else {
                 SlockLucideIcon(
@@ -11166,7 +11168,9 @@ private fun MembersAvatar(
         SlockAvatar(
             avatarWireValue = avatarWireValue,
             label = member.avatarLabel,
-            avatarSize = avatarSize
+            avatarSize = avatarSize,
+            cacheSubject = member.slockAvatarCacheSubject(),
+            cacheServerId = member.serverId?.value
         )
     }
 }

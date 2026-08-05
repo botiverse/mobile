@@ -3014,7 +3014,9 @@ private fun ComposerMemberSuggestionRow(
                 avatarWireValue = member.avatarWireValue,
                 label = member.avatarLabel.ifBlank { member.displayName },
                 avatarSize = ComposerMemberSuggestionAvatarSize,
-                borderWidth = SlockStroke.Thin
+                borderWidth = SlockStroke.Thin,
+                cacheSubject = slockMemberAvatarCacheSubject(member.kind, member.memberId),
+                cacheServerId = member.sourceServerId
             )
         }
         Spacer(modifier = Modifier.width(ComposerMemberSuggestionAvatarNameGap))

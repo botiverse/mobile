@@ -37,6 +37,7 @@ internal sealed interface SlockAvatarCacheSubject {
         val memberId: String
     ) : SlockAvatarCacheSubject {
         init {
+            require(kind == MemberKind.Human || kind == MemberKind.Agent)
             require(memberId.isNotBlank() && memberId == memberId.trim())
         }
 
@@ -90,6 +91,13 @@ internal data class SlockAvatarCacheKey(
         }
     }
 
+    /**
+     * Opaque owner-scoped subject identity used only for terminal native retirement. Native byte
+     * stores may index every content version beneath this key without learning the account,
+     * server, member kind, or member id that produced it.
+     */
+    val nativeSubjectKey: String = slockAvatarNativeSubjectKey(owner, subject)
+
     val nativeBytesKey: String =
         slockSha256Hex(
             slockCanonicalIdentityBytes(
@@ -107,6 +115,24 @@ internal data class SlockAvatarCacheKey(
             )
         )
 }
+
+internal fun slockAvatarNativeSubjectKey(
+    owner: SlockAvatarCacheOwner,
+    subject: SlockAvatarCacheSubject
+): String =
+    slockSha256Hex(
+        slockCanonicalIdentityBytes(
+            listOf(
+                "slock-avatar-subject-v1",
+                owner.environmentId,
+                owner.accountId,
+                owner.serverId,
+                subject.subjectKind,
+                subject.memberKind,
+                subject.subjectId
+            )
+        )
+    )
 
 internal fun slockAvatarContentIdentity(source: String): SlockAvatarContentIdentity {
     val normalized = source.trim()

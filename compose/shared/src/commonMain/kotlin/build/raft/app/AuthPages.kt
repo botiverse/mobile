@@ -13,6 +13,7 @@ import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
+import build.raft.app.data.BridgeSlockAvatarNativeCache
 import build.raft.app.data.DataResult
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.ScreenLoadState
@@ -125,8 +126,21 @@ private fun Modifier.authPageStaticTextFocus(): Modifier =
 private fun Set<AuthProvider>.visibleMobileSocialAuthProviders(): Set<AuthProvider> =
     filterNot { provider -> provider in MobileHiddenSocialAuthProviders }.toSet()
 
-private fun currentEnvironmentAuthDataSource(bridge: BridgeModule): SharedAuthDataSource =
-    SlockSharedStoreRegistry.get(bridge).createAuthDataSourceForCurrentEnvironment()
+@Composable
+private fun rememberCurrentEnvironmentAuthDataSource(bridge: BridgeModule): SharedAuthDataSource {
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val bridgeCallScope = rememberCoroutineScope()
+    val avatarNativeCache =
+        remember(bridge, bridgeCallScope) {
+            BridgeSlockAvatarNativeCache(
+                bridge = bridge,
+                bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
+            )
+        }
+    return remember(sharedStores, avatarNativeCache) {
+        sharedStores.createAuthDataSourceForCurrentEnvironment(avatarNativeCache)
+    }
+}
 
 private sealed interface AuthErrorPresentation {
     data class Dynamic(val message: String) : AuthErrorPresentation
@@ -230,6 +244,7 @@ private fun LoginScreen() {
     rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
     val paramsSignature = pager.pageData.params.toString()
     // Seed host capabilities synchronously, then observe the store so the signed-out
     // diagnostics Apple toggle applies as soon as the user returns to this page.
@@ -241,7 +256,7 @@ private fun LoginScreen() {
     // Probe the backend platform gate once per login composition; Apple stays hidden
     // until this succeeds (fail-closed) unless the diagnostics override forces it.
     LaunchedEffect(bridge) {
-        val probed = currentEnvironmentAuthDataSource(bridge).probeBackendSocialProviders("mobile")
+        val probed = authDataSource.probeBackendSocialProviders("mobile")
         if (probed != null) {
             sharedStores.authRuntimeCapabilityStore.setBackendEnabledSocialProviders(probed)
         }
@@ -271,7 +286,6 @@ private fun LoginScreen() {
 
     LaunchedEffect(pendingLogin) {
         val effect = pendingLogin ?: return@LaunchedEffect
-        val authDataSource = currentEnvironmentAuthDataSource(bridge)
         val result =
             runCatchingPreservingCancellation { authDataSource.login(effect.email, effect.password) }
                 .getOrNull()
@@ -483,6 +497,7 @@ private fun AuthLegalAcceptanceScreen() {
     rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
     rememberAuthRuntimeCapabilities(
         store = sharedStores.authRuntimeCapabilityStore,
         pageData = pager.pageData.params
@@ -525,7 +540,6 @@ private fun AuthLegalAcceptanceScreen() {
 
     LaunchedEffect(pending) {
         val effect = pending ?: return@LaunchedEffect
-        val authDataSource = currentEnvironmentAuthDataSource(bridge)
         val result =
             runCatchingPreservingCancellation {
                 authDataSource.completeMobileOAuthLogin(
@@ -613,6 +627,7 @@ private fun RegisterScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
     val reducer = remember { CreateAccountFormReducer() }
     var state by remember { mutableStateOf(CreateAccountFormState()) }
     var emailFieldValue by remember { mutableStateOf(TextFieldValue(state.email)) }
@@ -622,7 +637,6 @@ private fun RegisterScreen() {
 
     LaunchedEffect(pendingRegister) {
         val effect = pendingRegister ?: return@LaunchedEffect
-        val authDataSource = currentEnvironmentAuthDataSource(bridge)
         val result =
             runCatchingPreservingCancellation {
                 authDataSource.register(
@@ -725,6 +739,7 @@ private fun AuthProfileSetupScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
     val reducer = remember { IdentitySetupFormReducer() }
     var state by remember { mutableStateOf(IdentitySetupFormState()) }
     var handleFieldValue by remember { mutableStateOf(TextFieldValue(state.handle)) }
@@ -734,7 +749,6 @@ private fun AuthProfileSetupScreen() {
     var pendingProfileSetup by remember { mutableStateOf<PendingProfileSetup?>(null) }
 
     LaunchedEffect(Unit) {
-        val authDataSource = currentEnvironmentAuthDataSource(bridge)
         when (val current = authDataSource.currentSession()) {
             is SharedAuthResult.Success -> {
                 if (!current.data.user.requiresProfileSetup) {
@@ -758,7 +772,6 @@ private fun AuthProfileSetupScreen() {
 
     LaunchedEffect(pendingProfileSetup) {
         val effect = pendingProfileSetup ?: return@LaunchedEffect
-        val authDataSource = currentEnvironmentAuthDataSource(bridge)
         val result =
             runCatchingPreservingCancellation {
                 authDataSource.completeProfile(effect.handle, effect.displayName)
@@ -835,6 +848,7 @@ private fun ForgotPasswordScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
     val reducer = remember { ForgotPasswordFormReducer() }
     var state by remember { mutableStateOf(ForgotPasswordFormState()) }
     var emailFieldValue by remember { mutableStateOf(TextFieldValue(state.email)) }
@@ -843,7 +857,6 @@ private fun ForgotPasswordScreen() {
 
     LaunchedEffect(pendingForgotPassword) {
         val effect = pendingForgotPassword ?: return@LaunchedEffect
-        val authDataSource = currentEnvironmentAuthDataSource(bridge)
         val result =
             runCatchingPreservingCancellation { authDataSource.forgotPassword(effect.email) }
                 .getOrNull()
@@ -927,6 +940,13 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
         )
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val bridgeCallScope = rememberCoroutineScope()
+    val avatarNativeCache =
+        remember(bridge, bridgeCallScope) {
+            BridgeSlockAvatarNativeCache(
+                bridge = bridge,
+                bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
+            )
+        }
     val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
         remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
@@ -938,13 +958,16 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
             )
         }
     val settingsDataSource =
-        remember(sharedStores, settingsCapabilities) {
+        remember(sharedStores, settingsCapabilities, avatarNativeCache) {
             SharedSettingsDataSource(
                 sessionStore = sharedStores.authStore,
                 apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
                 diagnosticsLogger = { message -> bridge.log("compose_auth_developer $message") },
                 authRuntimeCapabilityStore = sharedStores.authRuntimeCapabilityStore
+            ).withAvatarCacheRuntime(
+                runtime = sharedStores.avatarCacheRuntime,
+                nativeCache = avatarNativeCache
             )
         }
     var aboutState by remember { mutableStateOf<ScreenLoadState<SharedSettingsAboutSnapshot>>(ScreenLoadState.Loading) }

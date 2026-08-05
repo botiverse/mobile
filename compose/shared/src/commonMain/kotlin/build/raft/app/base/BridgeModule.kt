@@ -792,6 +792,18 @@ internal class BridgeModule : Module() {
             }
         }
 
+    /**
+     * One versioned avatar-cache capability shared by every host. Commands contain only the
+     * remote transport URL plus opaque cache identities/policy state; native paths and bytes never
+     * return through this bridge.
+     */
+    suspend fun avatarCacheCapability(command: JSONObject): JSONObject? =
+        suspendCancellableCoroutine { continuation ->
+            callNativeMethod("avatarCacheCapability", command) {
+                if (continuation.isActive) continuation.resume(it)
+            }
+        }
+
     suspend fun threadAttachmentUpload(channelId: String, imageOnly: Boolean): JSONObject? =
         suspendCoroutine { continuation ->
             val methodArgs = JSONObject()

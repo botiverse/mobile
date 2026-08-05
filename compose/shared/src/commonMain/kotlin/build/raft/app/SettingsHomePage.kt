@@ -34,6 +34,7 @@ import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.slockDisabledActionBackgroundFor
 import build.raft.app.data.NetworkSlockHomeApi
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
+import build.raft.app.data.BridgeSlockAvatarNativeCache
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.KuiklyHostNetworkEvents
@@ -819,7 +820,12 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                         // avatarSize — the default (ChannelAvatarSize = 20.dp) leaves the
                         // avatar centered in a 32dp slot while the status dot anchors to
                         // the slot corner, floating ~8dp outside the visible avatar.
-                        avatarSize = 32.dp
+                        avatarSize = 32.dp,
+                        cacheSubject =
+                            result.memberIdentity?.let { identity ->
+                                slockMemberAvatarCacheSubject(identity.kind, identity.memberId.value)
+                            },
+                        cacheServerId = result.memberIdentity?.sourceServerId?.value
                     )
                 }
             }
@@ -2607,10 +2613,17 @@ internal fun SlockAppShellContent(
             canonicalFinalLifecycleEffects?.dispose(canonicalFinalDomainHandle)
         }
     }
-    val authDataSource = remember(sharedStores, storeScope) {
-        sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope)
-    }
     val appShellCoroutineScope = rememberCoroutineScope()
+    val avatarNativeCache =
+        remember(bridge, appShellCoroutineScope) {
+            BridgeSlockAvatarNativeCache(
+                bridge = bridge,
+                bridgeCallContext = appShellCoroutineScope.kuiklyBridgeCallContext()
+            )
+        }
+    val authDataSource = remember(sharedStores, storeScope, avatarNativeCache) {
+        sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope, avatarNativeCache)
+    }
     val eventBus = sharedStores.eventBus
     val authSessionEvents =
         remember(eventBus, pager.pagerId) {
@@ -5174,6 +5187,8 @@ internal fun SlockAppShellContent(
             val displayName = user?.bestDisplayName ?: "Raft user"
             SlockServerDrawerUserHeader(
                 displayName = displayName,
+                memberId = user?.id,
+                serverId = readySession?.currentServerId,
                 avatarWireValue = user?.avatarUrl,
                 avatarLabel = displayName.take(2).uppercase().ifBlank { "?" }
             )
@@ -6262,6 +6277,7 @@ internal fun SettingsNativeDetailScreen() {
         session = session,
         authDataSource = environment.authDataSource,
         settingsCapabilities = environment.settingsCapabilities,
+        clearStorage = environment.dataSource::clearStorage,
         settingsState = settingsState,
         notificationPreferenceSnapshot = notificationPreferenceSnapshot,
         onSettingsIntent = settingsViewModel::dispatch,
@@ -6318,6 +6334,7 @@ private fun SettingsNativeDetailPageContent(
     session: StoredAuthSession?,
     authDataSource: SharedAuthDataSource,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    clearStorage: suspend (String) -> DataResult<SharedSettingsStorageSnapshot> = settingsCapabilities::clearStorage,
     settingsState: SharedSettingsState,
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
     onSettingsIntent: (SharedSettingsIntent) -> Unit,
@@ -6426,7 +6443,7 @@ private fun SettingsNativeDetailPageContent(
                 onSettingsIntent(SharedSettingsIntent.CompleteSystemNotificationAction(MOBILE_ACTION_TEST_NOTIFICATION, result))
             }
             is SharedSettingsEffect.ClearStorage -> {
-                val result = settingsCapabilities.clearStorage(effect.target)
+                val result = clearStorage(effect.target)
                 when (result) {
                     is DataResult.Content -> {
                         onSettingsIntent(
@@ -15389,7 +15406,17 @@ private fun AuthChooseServerPageContent() {
         store = sharedStores.authRuntimeCapabilityStore,
         pageData = pager.pageData.params
     )
-    val authDataSource = sharedStores.authDataSource
+    val bridgeCallScope = rememberCoroutineScope()
+    val avatarNativeCache =
+        remember(bridge, bridgeCallScope) {
+            BridgeSlockAvatarNativeCache(
+                bridge = bridge,
+                bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
+            )
+        }
+    val authDataSource = remember(sharedStores, avatarNativeCache) {
+        sharedStores.createAuthDataSourceForCurrentEnvironment(avatarNativeCache)
+    }
     var session by remember { mutableStateOf<StoredAuthSession?>(null) }
     var errorPresentation by remember { mutableStateOf<AuthGateMessage?>(null) }
     var restoreAttempt by remember { mutableStateOf(0) }
@@ -17775,7 +17802,9 @@ private fun SharedCreateChannelMemberRow(
             SlockAvatar(
                 avatarWireValue = avatarWireValue,
                 label = member.avatarLabel.ifBlank { member.displayName },
-                avatarSize = 28.dp
+                avatarSize = 28.dp,
+                cacheSubject = member.slockAvatarCacheSubject(),
+                cacheServerId = member.serverId?.value
             )
         }
         Column(

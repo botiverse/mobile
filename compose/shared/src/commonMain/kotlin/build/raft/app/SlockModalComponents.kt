@@ -612,6 +612,8 @@ internal fun SlockModalCompactMemberRow(
     trailingText: String = "",
     trailingIcon: SlockLucideIconName? = null,
     onTrailingClick: (() -> Unit)? = null,
+    cacheSubject: build.raft.app.data.SlockAvatarCacheSubject? = null,
+    cacheServerId: String? = null,
     onClick: () -> Unit = {}
 ) {
     val rowBackground =
@@ -638,7 +640,9 @@ internal fun SlockModalCompactMemberRow(
             SlockAvatar(
                 avatarWireValue = avatarWireValue,
                 label = avatarLabel,
-                avatarSize = avatarSize
+                avatarSize = avatarSize,
+                cacheSubject = cacheSubject,
+                cacheServerId = cacheServerId
             )
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {

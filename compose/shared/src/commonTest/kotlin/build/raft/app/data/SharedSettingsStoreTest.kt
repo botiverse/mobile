@@ -4283,7 +4283,7 @@ class SharedSettingsStoreTest {
         override val unavailableDetail: String = "Recomposition profiler is available only in shared debug builds."
     ) : SharedSettingsRecompositionProfilerDebugGate
 
-    private fun sampleSession(role: String = "owner"): StoredAuthSession =
+    internal fun sampleSession(role: String = "owner"): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "artin@slock.ai", displayName = "Artin"),
             accessToken = "token-a",
@@ -4837,10 +4837,19 @@ class SharedSettingsStoreTest {
             request: RemoveChannelMemberRequest
         ): DataResult<ChannelMemberActionResult> = error("unused")
     }
+
+    internal fun avatarSettingsRepository(): SettingsRepository =
+        FakeSettingsRepository(serverResult = DataResult.Content(serverSnapshot()))
+
+    internal fun avatarSettingsCapabilities(): SharedSettingsPlatformCapabilities =
+        FakeSettingsCapabilities()
+
+    internal fun avatarSettingsMemberRepository(): MemberRepository =
+        FakeSettingsMemberRepository()
 }
 
-private fun settingsServer(id: String): ServerSummary =
+internal fun settingsServer(id: String): ServerSummary =
     ServerSummary(id = ServerId(id), name = "Workspace", slug = "workspace")
 
-private fun settingsMember(id: String, name: String): MemberProfile =
+internal fun settingsMember(id: String, name: String): MemberProfile =
     MemberProfile(id = MemberId(id), displayName = name, handle = name.lowercase(), kind = MemberKind.Human)

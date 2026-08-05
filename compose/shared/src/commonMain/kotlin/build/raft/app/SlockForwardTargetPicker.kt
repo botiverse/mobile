@@ -23,7 +23,10 @@ data class SlockForwardTargetPickerItem<T>(
     val visualKind: SlockForwardTargetVisualKind,
     val avatarWireValue: String? = null,
     val avatarLabel: String = title.take(1).uppercase(),
-    val payload: T
+    val payload: T,
+    val cacheMemberKind: build.raft.app.model.MemberKind? = null,
+    val cacheMemberId: String? = null,
+    val cacheServerId: String? = null
 ) {
     val rowKey: String
         get() = "${visualKind.name}:$stableKey"

@@ -213,6 +213,65 @@ class SlockAvatarCacheMetadataStoreTest {
     }
 
     @Test
+    fun nativeFinalizeCompensationRestoresExactPriorStateAndCannotEraseNewerMapping() =
+        withStore { store ->
+            val key = key()
+            val oldMetadata = metadata(key)
+            store.commitSuccess(oldMetadata, currentGuard(key))
+            val oldFailure =
+                SlockAvatarCachePolicy.failure(
+                    key,
+                    SlockAvatarCacheFailureKind.TemporaryTransport,
+                    previous = null,
+                    nowMs = 150L
+                )
+            store.commitFailure(
+                oldFailure,
+                retireMatchingMetadata = false,
+                currentGuard(key)
+            )
+            val previousState = store.read(key)
+
+            val committedMetadata =
+                oldMetadata.copy(
+                    eTag = "etag-new",
+                    validatedAtMs = 200L,
+                    freshUntilMs = 300L,
+                    staleUntilMs = 400L
+                )
+            store.commitSuccess(committedMetadata, currentGuard(key))
+            val expectedCommittedState = store.read(key)
+            assertEquals(committedMetadata, expectedCommittedState.metadata)
+            assertNull(expectedCommittedState.failure)
+
+            assertEquals(
+                SlockAvatarCacheCommitResult.Accepted,
+                store.restoreAfterNativeFinalizeFailure(
+                    key = key,
+                    expectedCommittedState = expectedCommittedState,
+                    previousState = previousState,
+                    guard = currentGuard(key)
+                )
+            )
+            assertEquals(previousState, store.read(key))
+
+            val newerKey =
+                key(content = slockAvatarContentIdentity("https://images.example/avatar.png?v=newer"))
+            val newerMetadata = metadata(newerKey)
+            store.commitSuccess(newerMetadata, currentGuard(newerKey))
+            assertEquals(
+                SlockAvatarCacheCommitResult.RejectedStaleGeneration,
+                store.restoreAfterNativeFinalizeFailure(
+                    key = key,
+                    expectedCommittedState = expectedCommittedState,
+                    previousState = previousState,
+                    guard = currentGuard(key)
+                )
+            )
+            assertEquals(newerMetadata, store.read(newerKey).metadata)
+        }
+
+    @Test
     fun coordinatorKeepsStaleOnTemporaryFailureRetiresOn404AndClearsSuppressionOnNetworkChange() =
         withStore { store ->
             var nowMs = 100L

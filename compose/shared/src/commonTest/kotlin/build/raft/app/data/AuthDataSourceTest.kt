@@ -1977,7 +1977,7 @@ class AuthDataSourceTest {
             )
         )
 
-    private class FakeAuthApi(
+    internal class FakeAuthApi(
         private val loginResponse: AuthNetworkResponse =
             AuthNetworkResponse(
                 200,

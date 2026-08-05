@@ -3,6 +3,7 @@ package build.raft.app
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 class SlockShellStoreLaunchTest {
@@ -71,5 +72,34 @@ class SlockShellStoreLaunchTest {
         assertEquals("server-owner", pageData.optString(SLOCK_SHELL_SERVER_ID))
         assertEquals("", pageData.optString("displayName"))
         assertEquals("", pageData.optString("avatarUrl"))
+    }
+
+    @Test
+    fun threadLaunchDescriptorCarriesRouteIntentButNoAvatarCacheProductState() {
+        val pageData =
+            threadLaunchPageData(
+                WireThreadLaunchPayload(
+                    instanceId = "thread-instance",
+                    threadId = "channel-a",
+                    streamChannelId = "channel-a"
+                )
+            )
+
+        assertEquals(THREAD_PAGE, pageData.optString("pageName"))
+        assertEquals("thread-instance", pageData.optString("instanceId"))
+        val payload = pageData.optString("payload")
+        assertEquals("channel-a", parseThreadScreenPayload(payload, "fallback").streamChannelId)
+        listOf(
+            "avatarCache",
+            "nativePartitionKey",
+            "nativeSubjectKey",
+            "nativeBytesKey",
+            "commitGeneration",
+            "imageBlob",
+            "nativePath"
+        ).forEach { key ->
+            assertEquals("", pageData.optString(key))
+            assertFalse(payload.contains(key))
+        }
     }
 }
