@@ -16553,9 +16553,10 @@ private fun ThreadMessagesList(
         // once those exist, so returning before them leaves the owed correction
         // with nobody able to issue it: not three competing commands but none,
         // and a pending change that never retires.
-        if (imeHandoffState.owes(targetIdentity)) {
-            focusedAnchorSessionIdentity = targetIdentity
-            consumedFocusedMessageAnchorIdentity = targetIdentity
+        val sessionPlan = threadFocusedAnchorSessionPlan(imeHandoffState, targetIdentity)
+        sessionPlan.sessionIdentityToPublish?.let { focusedAnchorSessionIdentity = it }
+        sessionPlan.consumedIdentityToPublish?.let { consumedFocusedMessageAnchorIdentity = it }
+        if (sessionPlan.yieldToComposer) {
             diagnosticsLogger(
                 "thread_focused_message_anchor result=handed_off_to_composer " +
                     "messageId=$targetMessageId targetIndex=$targetIndex"
@@ -16598,7 +16599,7 @@ private fun ThreadMessagesList(
                     drifted = focusedAnchorTargetDrifted(anchoredOffset, currentOffset),
                     quietMs = quietMs,
                     elapsedMs = focusedAnchorSessionElapsedMs,
-                    handedOff = imeHandoffState.owes(targetIdentity)
+                    handedOff = imeHandoffState.retired(targetIdentity)
                 )
             when (action) {
                 FocusedAnchorSessionAction.Interrupt -> {
@@ -16629,7 +16630,7 @@ private fun ThreadMessagesList(
                     // above and this dispatch are not one atomic step, and a
                     // handoff recorded in between must win — otherwise the
                     // session issues exactly the stale command it gave away.
-                    if (imeHandoffState.owes(targetIdentity)) {
+                    if (imeHandoffState.retired(targetIdentity)) {
                         consumedFocusedMessageAnchorIdentity = targetIdentity
                         diagnosticsLogger(
                             "thread_focused_anchor_session outcome=handed_off_before_reanchor " +
@@ -16715,7 +16716,7 @@ private fun ThreadMessagesList(
                 scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
                 startUserScrollGeneration = startUserScrollGeneration,
                 currentUserScrollGeneration = userScrollGeneration.value,
-                retiredIdentity = imeHandoffState.identity
+                retiredIdentity = imeHandoffState.retiredIdentity
             )
         ) {
             return@LaunchedEffect
@@ -16733,7 +16734,7 @@ private fun ThreadMessagesList(
                 scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
                 startUserScrollGeneration = startUserScrollGeneration,
                 currentUserScrollGeneration = userScrollGeneration.value,
-                retiredIdentity = imeHandoffState.identity
+                retiredIdentity = imeHandoffState.retiredIdentity
             ) ||
             listState.isScrollInProgress ||
             !listState.canScrollToThreadItem(targetIndex)
@@ -16788,12 +16789,12 @@ private fun ThreadMessagesList(
                 settlementOutcome = settlementOutcome,
                 targetVisible = targetVisible,
                 targetIdentity = targetIdentity,
-                retiredIdentity = imeHandoffState.identity
+                retiredIdentity = imeHandoffState.retiredIdentity
             )
         val correctionResult =
             when {
                 corrected -> "corrected"
-                imeHandoffState.owes(targetIdentity) -> "handed_off_to_composer"
+                imeHandoffState.retired(targetIdentity) -> "handed_off_to_composer"
                 !targetVisible -> "skipped_unmeasured"
                 else -> "skipped_${settlementOutcome.name}"
             }
@@ -17062,6 +17063,23 @@ private fun ThreadMessagesList(
                 scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
                 yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
             )
+        val measuredFocusedTailViewportHeightPx =
+            with(threadDensity) { measuredThreadViewportHeightDp.dp.roundToPx() }
+        var focusedTailViewportEpochCoherent =
+            threadViewportEpochCoherent(
+                measuredViewportHeightPx = measuredFocusedTailViewportHeightPx,
+                layoutViewportStartPx = listState.layoutInfo.viewportStartOffset,
+                layoutViewportEndPx = listState.layoutInfo.viewportEndOffset
+            )
+        var focusedTailFit =
+            listState.threadFocusedTailFit(
+                targetItemIndex = focusedTargetItemIndex,
+                latestMessageItemIndex = latestMessageListItemIndex,
+                bottomPaddingItemIndex = latestItemIndex,
+                viewportHeightPx =
+                    measuredFocusedTailViewportHeightPx.takeIf { focusedTailViewportEpochCoherent } ?: -1,
+                trailingPaddingPx = initialBottomAnchorTrailingPaddingPx
+            )
         // task #990: every way this rise can end, applied before the onset is
         // considered, in the order the pass produces them. Extracted so the
         // sequence a test drives is the sequence that runs here — the previous
@@ -17083,7 +17101,13 @@ private fun ThreadMessagesList(
                         latestMessageListItemIndex >= focusedTargetItemIndex &&
                         !renderPayload.canLoadMoreAfter,
                 userScrollGeneration = userScrollGeneration.value,
-                pageCycleActive = false
+                pageCycleActive = false,
+                // Index and canLoadMoreAfter alone admit a same-page history
+                // target whose span to the tail exceeds the viewport — the
+                // composer's tail path could never correct it. Null while the
+                // measurement is unavailable, which is the window the debt
+                // exists to survive; false gives the debt back.
+                tailFitsViewport = focusedTailFit.fitsViewport.takeIf { focusedTailFit.fitHeightPx >= 0 }
             )
         imeHandoffState = handoffPass.handoff
         if (handoffPass.tookHandoff) {
@@ -17104,23 +17128,6 @@ private fun ThreadMessagesList(
             // so the restarted pass still sees this rise.
             return@LaunchedEffect
         }
-        val measuredFocusedTailViewportHeightPx =
-            with(threadDensity) { measuredThreadViewportHeightDp.dp.roundToPx() }
-        var focusedTailViewportEpochCoherent =
-            threadViewportEpochCoherent(
-                measuredViewportHeightPx = measuredFocusedTailViewportHeightPx,
-                layoutViewportStartPx = listState.layoutInfo.viewportStartOffset,
-                layoutViewportEndPx = listState.layoutInfo.viewportEndOffset
-            )
-        var focusedTailFit =
-            listState.threadFocusedTailFit(
-                targetItemIndex = focusedTargetItemIndex,
-                latestMessageItemIndex = latestMessageListItemIndex,
-                bottomPaddingItemIndex = latestItemIndex,
-                viewportHeightPx =
-                    measuredFocusedTailViewportHeightPx.takeIf { focusedTailViewportEpochCoherent } ?: -1,
-                trailingPaddingPx = initialBottomAnchorTrailingPaddingPx
-            )
         val measurementViewportEpoch = viewportControllerState.epoch
         val measurementLayoutGeneration = viewportLayoutGeneration
         val focusedTailMeasurementLayoutChanged =

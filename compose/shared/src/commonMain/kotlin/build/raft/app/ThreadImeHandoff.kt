@@ -42,10 +42,24 @@ internal data class ThreadImeHandoffState(
     /** The focus identity the debt belongs to; never compared when null. */
     val identity: String? = null,
     /** User scroll generation when the debt was taken on. */
-    val userScrollGeneration: Int? = null
+    val userScrollGeneration: Int? = null,
+    /**
+     * The focus identity whose transaction was ended by a handoff.
+     *
+     * Deliberately a separate, longer-lived fact than the debt. Deriving the
+     * retirement from [identity] meant that repaying the debt also lifted it —
+     * and the focused session is a coroutine that is still alive, so its next
+     * recheck would find itself un-retired and reanchor into the correction that
+     * had just been issued. A transaction that was ended stays ended; only a new
+     * focus request (which carries a new identity) starts a new one.
+     */
+    val retiredIdentity: String? = null
 ) {
     fun owes(targetIdentity: String?): Boolean =
         phase == ThreadImeHandoffPhase.Owed && identity != null && identity == targetIdentity
+
+    fun retired(targetIdentity: String?): Boolean =
+        retiredIdentity != null && retiredIdentity == targetIdentity
 }
 
 /**
@@ -74,6 +88,16 @@ internal sealed interface ThreadImeHandoffEvent {
 
     /** The composer correction was issued. */
     data object CommandIssued : ThreadImeHandoffEvent
+
+    /**
+     * The target-to-tail fit became known.
+     *
+     * A debt can be taken on while the fit is still unmeasurable — that window
+     * is the whole reason the debt exists — so a target that turns out not to
+     * fit has to be able to give it back afterwards, or the correction is
+     * retained for a target the composer's tail path will never correct.
+     */
+    data class TailFitResolved(val fitsViewport: Boolean) : ThreadImeHandoffEvent
 
     /** The keyboard went away before the debt could be repaid. */
     data object KeyboardClosed : ThreadImeHandoffEvent
@@ -106,35 +130,61 @@ internal fun reduceThreadImeHandoff(
                 // Idempotent within one rise: a second inset change must not
                 // restart the handoff or move its scroll baseline.
                 state.owes(event.targetIdentity) -> state
+                // Declining to take a debt must not also lift a retirement that
+                // is already in force for this target: the session it ended is
+                // still alive and would revive on its next recheck.
                 event.targetIdentity == null -> ThreadImeHandoffState()
-                !event.focusedTransactionLive -> ThreadImeHandoffState()
+                !event.focusedTransactionLive -> state.clearDebt()
                 // Nothing can repay it, so nothing may take it on.
-                !event.dischargeable -> ThreadImeHandoffState()
+                !event.dischargeable -> state.clearDebt()
                 else ->
                     ThreadImeHandoffState(
                         phase = ThreadImeHandoffPhase.Owed,
                         identity = event.targetIdentity,
-                        userScrollGeneration = event.userScrollGeneration
+                        userScrollGeneration = event.userScrollGeneration,
+                        retiredIdentity = event.targetIdentity
                     )
             }
 
-        ThreadImeHandoffEvent.CommandIssued -> ThreadImeHandoffState()
+        // The debt is settled; the retirement is not undone. The session
+        // coroutine is still alive and would otherwise revive on its next
+        // recheck, reanchoring into the command just issued.
+        ThreadImeHandoffEvent.CommandIssued -> state.clearDebt()
 
-        ThreadImeHandoffEvent.KeyboardClosed -> ThreadImeHandoffState()
+        ThreadImeHandoffEvent.KeyboardClosed -> state.clearDebt()
 
+        // A reloaded thread has no focus transaction left to have retired.
         ThreadImeHandoffEvent.PageCycled -> ThreadImeHandoffState()
 
+        is ThreadImeHandoffEvent.TailFitResolved ->
+            if (event.fitsViewport) state else state.clearDebt()
+
         is ThreadImeHandoffEvent.TargetChanged ->
-            if (state.owes(event.targetIdentity)) state else ThreadImeHandoffState()
+            when {
+                state.owes(event.targetIdentity) -> state
+                // A new focus request carries a new identity, so the previous
+                // retirement is spent along with everything else.
+                state.retiredIdentity != null && state.retiredIdentity != event.targetIdentity ->
+                    ThreadImeHandoffState()
+                else -> state.clearDebt()
+            }
 
         is ThreadImeHandoffEvent.UserScrolled ->
-            // The user moving the list outranks a correction taken on for them.
+            // The user moving the list outranks a correction taken on for them,
+            // but does not resurrect a session that was already ended.
             if (state.userScrollGeneration == event.userScrollGeneration) {
                 state
             } else {
-                ThreadImeHandoffState()
+                state.clearDebt()
             }
     }
+
+private fun ThreadImeHandoffState.clearDebt(): ThreadImeHandoffState =
+    copy(
+        phase = ThreadImeHandoffPhase.Idle,
+        identity = null,
+        userScrollGeneration = null
+    )
 
 /**
  * How a settlement ended.
@@ -222,7 +272,17 @@ internal fun threadImeHandoffPass(
     focusedTransactionLive: Boolean,
     dischargeable: Boolean,
     userScrollGeneration: Int,
-    pageCycleActive: Boolean
+    pageCycleActive: Boolean,
+    /**
+     * Whether the target reaches the tail within the viewport, or null while
+     * that is still unmeasurable.
+     *
+     * Null is not treated as false: the unmeasurable window is exactly what the
+     * debt exists to survive. But once the answer is known to be false — a
+     * same-page history target whose span exceeds the viewport — the debt is
+     * given back, because the composer's tail path will never correct it.
+     */
+    tailFitsViewport: Boolean? = null
 ): ThreadImeHandoffPass {
     if (pageCycleActive) {
         return ThreadImeHandoffPass(
@@ -235,6 +295,13 @@ internal fun threadImeHandoffPass(
     if (keyboardInsetDp <= 0f) {
         next = reduceThreadImeHandoff(next, ThreadImeHandoffEvent.KeyboardClosed)
     }
+    if (tailFitsViewport != null) {
+        next =
+            reduceThreadImeHandoff(
+                next,
+                ThreadImeHandoffEvent.TailFitResolved(fitsViewport = tailFitsViewport)
+            )
+    }
     if (keyboardInsetDp <= previousKeyboardInsetDp) {
         return ThreadImeHandoffPass(handoff = next, tookHandoff = false)
     }
@@ -245,7 +312,10 @@ internal fun threadImeHandoffPass(
             ThreadImeHandoffEvent.ImeOnset(
                 targetIdentity = targetIdentity,
                 focusedTransactionLive = focusedTransactionLive,
-                dischargeable = dischargeable,
+                // A target already known not to reach the tail can never be
+                // corrected by the composer's tail path, so it may not take the
+                // shrink even at the onset.
+                dischargeable = dischargeable && tailFitsViewport != false,
                 userScrollGeneration = userScrollGeneration
             )
         )
@@ -285,3 +355,42 @@ internal fun threadImeCorrectionPass(
         }
     return ThreadImeCorrectionPass(handoff = next, decision = decision)
 }
+
+/**
+ * What the initial focus effect must do when it resumes from awaiting its focus
+ * command.
+ *
+ * The keyboard can arrive during that await. When it has, the effect must not
+ * start the watch loop — but it must still publish the session identity and mark
+ * the anchor consumed *first*, because the composer's consumed-tail owner is
+ * only eligible once both exist. A previous attempt returned before publishing
+ * them, which left the incoming owner permanently ineligible: not three
+ * competing commands but none, and a pending correction that never retires.
+ *
+ * Expressed as data rather than as statement order so the invariant can be
+ * asserted directly — a yield that publishes nothing is unrepresentable in a
+ * passing test rather than merely unlikely.
+ */
+internal data class ThreadFocusedAnchorSessionPlan(
+    val yieldToComposer: Boolean,
+    val sessionIdentityToPublish: String?,
+    val consumedIdentityToPublish: String?
+)
+
+internal fun threadFocusedAnchorSessionPlan(
+    handoff: ThreadImeHandoffState,
+    targetIdentity: String
+): ThreadFocusedAnchorSessionPlan =
+    if (handoff.retired(targetIdentity)) {
+        ThreadFocusedAnchorSessionPlan(
+            yieldToComposer = true,
+            sessionIdentityToPublish = targetIdentity,
+            consumedIdentityToPublish = targetIdentity
+        )
+    } else {
+        ThreadFocusedAnchorSessionPlan(
+            yieldToComposer = false,
+            sessionIdentityToPublish = null,
+            consumedIdentityToPublish = null
+        )
+    }

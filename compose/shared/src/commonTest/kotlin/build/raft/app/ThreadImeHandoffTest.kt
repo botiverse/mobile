@@ -213,6 +213,68 @@ class ThreadImeHandoffTest {
     }
 
     @Test
+    fun repayingTheDebtDoesNotUnRetireTheSession() {
+        // The session is a coroutine that is still alive after the handoff. If
+        // the retirement were derived from the debt, issuing the command would
+        // lift it and the session's next recheck would reanchor into the
+        // correction that had just been issued.
+        val afterIssue = run(onset(), ThreadImeHandoffEvent.CommandIssued)
+        assertFalse(afterIssue.owes(target), "the debt is settled")
+        assertTrue(afterIssue.retired(target), "but the ended session stays ended")
+
+        // Every other way the rise ends behaves the same way.
+        listOf(
+            ThreadImeHandoffEvent.KeyboardClosed,
+            ThreadImeHandoffEvent.UserScrolled(4),
+            ThreadImeHandoffEvent.TailFitResolved(fitsViewport = false),
+            ThreadImeHandoffEvent.TargetChanged(target)
+        ).forEach { event ->
+            val state = run(onset(), event)
+            assertTrue(state.retired(target), "$event must not resurrect the session")
+        }
+
+        // A new focus request carries a new identity, and that does start over.
+        val refocused = run(onset(), ThreadImeHandoffEvent.TargetChanged(other))
+        assertFalse(refocused.retired(target))
+        assertFalse(refocused.retired(other))
+    }
+
+    @Test
+    fun aTargetThatTurnsOutNotToReachTheTailGivesTheDebtBack() {
+        // The debt can be taken while the fit is unmeasurable — that window is
+        // why it exists — so a same-page history target that resolves to "does
+        // not fit" has to be able to hand it back, or the correction is retained
+        // for a target the composer's tail path will never correct.
+        val unknownThenBad =
+            run(onset(), ThreadImeHandoffEvent.TailFitResolved(fitsViewport = false))
+        assertFalse(unknownThenBad.owes(target), "a target that cannot be corrected owes nothing")
+
+        val unknownThenGood =
+            run(onset(), ThreadImeHandoffEvent.TailFitResolved(fitsViewport = true))
+        assertTrue(unknownThenGood.owes(target), "a target that does reach the tail keeps the debt")
+    }
+
+    @Test
+    fun aYieldingFocusEffectAlwaysPublishesWhatTheNewOwnerNeeds() {
+        // The defect this replaces returned before publishing, leaving the
+        // composer's consumed-tail owner permanently ineligible. Asserted as an
+        // invariant of the plan rather than as statement order.
+        val retired = run(onset())
+        val plan = threadFocusedAnchorSessionPlan(retired, target)
+        assertTrue(plan.yieldToComposer)
+        assertEquals(target, plan.sessionIdentityToPublish, "the session identity must be published")
+        assertEquals(target, plan.consumedIdentityToPublish, "and the anchor marked consumed")
+
+        val notRetired = threadFocusedAnchorSessionPlan(ThreadImeHandoffState(), target)
+        assertFalse(notRetired.yieldToComposer, "an unaffected focus runs its own watch loop")
+        assertEquals(null, notRetired.sessionIdentityToPublish)
+        assertEquals(null, notRetired.consumedIdentityToPublish)
+
+        // A retirement for another target must not divert this one.
+        assertFalse(threadFocusedAnchorSessionPlan(retired, other).yieldToComposer)
+    }
+
+    @Test
     fun theControllerRecordsWhichCommandItActuallyConsumed() {
         // The receipt exists so a waiter that starts observing late can still
         // tell "landed" from "dropped" — without it, the only honest answer is
