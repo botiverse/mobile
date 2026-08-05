@@ -356,4 +356,132 @@ class ThreadImeHandoffTest {
         assertTrue(correct(retired = other), "another target's handoff must not cancel it")
         assertFalse(correct(retired = target), "a handed-off correction must not dispatch")
     }
+
+    @Test
+    fun anOwedCorrectionWhoseTargetIsOffScreenIsIssuedByIndex() {
+        // VC1000400's actual geometry: with the keyboard up the viewport was
+        // 0..1059 and the target sat at 1803, so it was outside
+        // visibleItemsInfo and had no measured height for the whole rise
+        // (fitHeightPx=-1). The rendered-tail correction waited for a
+        // measurement that could not arrive *because* the target was
+        // off-screen, so nothing was issued until the keyboard had closed.
+        fun pass(
+            owed: Boolean,
+            measurable: Boolean,
+            coherent: Boolean = true,
+            present: Boolean = true
+        ) = threadImeCorrectionPass(
+            handoff =
+                if (owed) {
+                    ThreadImeHandoffState(
+                        phase = ThreadImeHandoffPhase.Owed,
+                        identity = target,
+                        userScrollGeneration = 3,
+                        retiredIdentity = target
+                    )
+                } else {
+                    ThreadImeHandoffState()
+                },
+            targetIdentity = target,
+            layout =
+                ThreadComposerLayoutBottomAnchorState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 299.5f,
+                    previousViewportHeightDp = 622.8f,
+                    nextViewportHeightDp = 315.3f,
+                    pendingLayoutChange = true,
+                    initialBottomAnchorReady = true,
+                    latestItemIndex = 18,
+                    allowBottomAutoAnchor = false,
+                    viewportEpochCoherent = coherent,
+                    focusedAnchorOwnsViewport = false,
+                    focusedActiveTailAnchorCanCorrectLayout = false,
+                    // Unmeasurable target cannot satisfy the tail path.
+                    focusedTailAnchorCanCorrectLayout = measurable
+                ),
+            targetMeasurable = measurable,
+            targetPresent = present
+        )
+
+        val recovery = pass(owed = true, measurable = false)
+        assertEquals(
+            ThreadImeCorrectionKind.FocusedRecovery,
+            recovery.kind,
+            "an owed correction must not wait for a measurement the shrink prevents"
+        )
+        assertFalse(recovery.handoff.owes(target), "issuing it repays the debt")
+        assertTrue(recovery.handoff.retired(target), "and still does not revive the session")
+
+        // Measurable: the precise correction, unchanged.
+        assertEquals(ThreadImeCorrectionKind.RenderedTail, pass(owed = true, measurable = true).kind)
+
+        // A half-applied shrink must still defer — acting on a mixed epoch is
+        // how the earlier commands ended up superseding one another.
+        assertEquals(
+            ThreadImeCorrectionKind.None,
+            pass(owed = true, measurable = false, coherent = false).kind
+        )
+
+        // No target in the list at all: nothing to scroll to.
+        assertEquals(
+            ThreadImeCorrectionKind.None,
+            pass(owed = true, measurable = false, present = false).kind
+        )
+
+        // Outside a handoff this path does not exist, so cycles that never
+        // handed off keep exactly their previous behaviour.
+        assertEquals(
+            ThreadImeCorrectionKind.None,
+            pass(owed = false, measurable = false).kind,
+            "no debt means no recovery — this must not become a general scroll"
+        )
+    }
+
+    @Test
+    fun theRecoveryIsIssuedOnceNotEveryPass() {
+        var handoff =
+            ThreadImeHandoffState(
+                phase = ThreadImeHandoffPhase.Owed,
+                identity = target,
+                userScrollGeneration = 3,
+                retiredIdentity = target
+            )
+        val layout =
+            ThreadComposerLayoutBottomAnchorState(
+                previousKeyboardInsetDp = 0f,
+                nextKeyboardInsetDp = 299.5f,
+                previousViewportHeightDp = 622.8f,
+                nextViewportHeightDp = 315.3f,
+                pendingLayoutChange = true,
+                initialBottomAnchorReady = true,
+                latestItemIndex = 18,
+                allowBottomAutoAnchor = false,
+                viewportEpochCoherent = true,
+                focusedAnchorOwnsViewport = false,
+                focusedActiveTailAnchorCanCorrectLayout = false,
+                focusedTailAnchorCanCorrectLayout = false
+            )
+
+        val kinds =
+            (1..3).map {
+                val pass =
+                    threadImeCorrectionPass(
+                        handoff = handoff,
+                        targetIdentity = target,
+                        layout = layout,
+                        targetMeasurable = false
+                    )
+                handoff = pass.handoff
+                pass.kind
+            }
+        assertEquals(
+            listOf(
+                ThreadImeCorrectionKind.FocusedRecovery,
+                ThreadImeCorrectionKind.None,
+                ThreadImeCorrectionKind.None
+            ),
+            kinds,
+            "the target being off-screen must not produce a scroll on every pass"
+        )
+    }
 }

@@ -362,10 +362,43 @@ internal fun threadImeHandoffPass(
     )
 }
 
+/**
+ * Which correction a pass issues.
+ *
+ * VC1000400 showed the handoff working and the correction still never being
+ * issued: with the keyboard up, the target sat at offset 1803 in a 1059px
+ * viewport, so it was outside `visibleItemsInfo` and had no measured geometry —
+ * `fitHeightPx=-1` for the whole rise. The rendered-tail correction needs that
+ * geometry, so it waited for a measurement that could not arrive precisely
+ * because the target was off-screen. The debt was retained correctly and then
+ * voided when the keyboard closed, leaving nobody competing and nobody
+ * correcting.
+ *
+ * Bringing an off-screen item back does not need it measured first — the
+ * executor already falls back to `scrollToItem(index)` when the item is not
+ * visible. So an owed correction whose target cannot be measured is issued as a
+ * focused anchor by index instead of waiting.
+ */
+internal enum class ThreadImeCorrectionKind {
+    /** Nothing to issue this pass. */
+    None,
+
+    /** The precise correction: target measured, anchored against the tail. */
+    RenderedTail,
+
+    /**
+     * The target is off-screen, so it is scrolled back by index. Only ever used
+     * to repay a handoff debt — outside a handoff this path does not exist, so
+     * cycles that never handed off keep their previous behaviour exactly.
+     */
+    FocusedRecovery
+}
+
 /** Outcome of the later part of one composer pass, once the layout is known. */
 internal data class ThreadImeCorrectionPass(
     val handoff: ThreadImeHandoffState,
-    val decision: ThreadComposerLayoutBottomAnchorDecision
+    val decision: ThreadComposerLayoutBottomAnchorDecision,
+    val kind: ThreadImeCorrectionKind
 )
 
 /**
@@ -379,18 +412,32 @@ internal data class ThreadImeCorrectionPass(
 internal fun threadImeCorrectionPass(
     handoff: ThreadImeHandoffState,
     targetIdentity: String?,
-    layout: ThreadComposerLayoutBottomAnchorState
+    layout: ThreadComposerLayoutBottomAnchorState,
+    /** Whether the target has measured geometry this pass. */
+    targetMeasurable: Boolean = true,
+    /** Whether the target exists in the list at all. */
+    targetPresent: Boolean = true
 ): ThreadImeCorrectionPass {
     val owed = handoff.owes(targetIdentity)
     val decision =
         resolveThreadComposerLayoutBottomAnchor(layout.copy(composerHandoffOwed = owed))
+    val kind =
+        when {
+            decision.shouldAnchor -> ThreadImeCorrectionKind.RenderedTail
+            // Only while a debt is outstanding, and only once the measured and
+            // laid-out viewports agree — acting on a half-applied shrink is how
+            // the earlier commands ended up superseding each other.
+            owed && targetPresent && !targetMeasurable && layout.viewportEpochCoherent ->
+                ThreadImeCorrectionKind.FocusedRecovery
+            else -> ThreadImeCorrectionKind.None
+        }
     val next =
-        if (owed && decision.shouldAnchor) {
+        if (owed && kind != ThreadImeCorrectionKind.None) {
             reduceThreadImeHandoff(handoff, ThreadImeHandoffEvent.CommandIssued)
         } else {
             handoff
         }
-    return ThreadImeCorrectionPass(handoff = next, decision = decision)
+    return ThreadImeCorrectionPass(handoff = next, decision = decision, kind = kind)
 }
 
 /**

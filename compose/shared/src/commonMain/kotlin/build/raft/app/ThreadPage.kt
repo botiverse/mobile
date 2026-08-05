@@ -17313,7 +17313,9 @@ private fun ThreadMessagesList(
             threadImeCorrectionPass(
                 handoff = imeHandoffState,
                 targetIdentity = focusedTargetIdentity,
-                layout = layoutState
+                layout = layoutState,
+                targetMeasurable = focusedTailFit.fitHeightPx >= 0,
+                targetPresent = focusedTargetItemIndex >= 0
             )
         val layoutDecision = correctionPass.decision
         val handoffRepaidThisPass =
@@ -17354,6 +17356,43 @@ private fun ThreadMessagesList(
         lastComposerKeyboardInsetDp = composerKeyboardInsetDp
         lastThreadViewportHeightDp = measuredThreadViewportHeightDp
         pendingComposerLayoutBottomAnchor = layoutDecision.pendingLayoutChange
+        // task #990: the owed correction whose target is off-screen. Issued by
+        // index because the executor scrolls a non-visible item back on its own,
+        // where the rendered-tail path would keep waiting for geometry that
+        // cannot exist while the target is outside the viewport.
+        if (
+            correctionPass.kind == ThreadImeCorrectionKind.FocusedRecovery &&
+            focusedTargetMessageId != null &&
+            focusedTargetIdentity != null
+        ) {
+            lastComposerKeyboardInsetDp = composerKeyboardInsetDp
+            lastThreadViewportHeightDp = measuredThreadViewportHeightDp
+            pendingComposerLayoutBottomAnchor = false
+            pendingKeyboardBottomAnchor = true
+            imeHandoffState = correctionPass.handoff
+            viewportLayoutGeneration += 1L
+            focusedAnchorPlacementState = resetThreadFocusedAnchorPlacement(focusedTargetIdentity)
+            dispatchViewportEvent(
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message(focusedTargetMessageId),
+                    offset = 0,
+                    layoutGeneration = viewportLayoutGeneration,
+                    placement = LazyViewportAnchorPlacement.Focused,
+                    fallback = LazyViewportAnchorFallback.Free,
+                    provenance =
+                        LazyViewportCommandProvenance.ComposerIme(
+                            ownerIdentity = focusedTargetIdentity
+                        )
+                )
+            )
+            diagnosticsLogger(
+                "thread_ime_handoff result=focused_recovery_issued " +
+                    "messageId=$focusedTargetMessageId targetIndex=$focusedTargetItemIndex " +
+                    "fitHeightPx=${focusedTailFit.fitHeightPx} " +
+                    "keyboardInsetDp=$composerKeyboardInsetDp"
+            )
+            return@LaunchedEffect
+        }
         if (!layoutDecision.shouldAnchor) {
             pendingKeyboardBottomAnchor = false
             return@LaunchedEffect
