@@ -17282,8 +17282,93 @@ private fun ThreadMessagesList(
         val pixelProbeGeneration = pixelProbeSnapshot.generation
         val pixelProbeTargetMessageId = pixelProbeSnapshot.targetMessageId
         val pixelProbeLayoutGeneration = viewportLayoutGeneration
+        // task #990: the settlement side effects above (pendingKeyboardBottomAnchor,
+        // the settled composer log, publishImeTailDrawProbe) must keep happening
+        // exactly once, after the original settlement, in the original order.
+        // Only the sampling below is pure observation, so only this half may be
+        // replayed at other phases. Extracting the whole body was the previous
+        // mistake: it carried those writes to the onset phase.
+        suspend fun samplePixelPhase(pixelProbePhase: String) {
+            if (imeTailDrawProbe.claimPixelProbe(pixelProbePhase) != pixelProbeGeneration) {
+                return
+            }
+            if (!viewportPixelProbeBounds.ready()) {
+                diagnosticsLogger(
+                    "thread_ime_tail_pixel_probe phase=$pixelProbePhase generation=$pixelProbeGeneration " +
+                        "status=bounds_unavailable threadInstanceCurrent=true " +
+                        "layoutGeneration=$pixelProbeLayoutGeneration->${currentViewportLayoutGenerationState.value} " +
+                        "targetMessageId=${pixelProbeTargetMessageId.orEmpty()}"
+                )
+                return
+            }
+            val pixelResult =
+                withTimeoutOrNull(ThreadViewportPixelProbeTimeoutMs) {
+                    runCatching {
+                        onComposerPixelProbe(
+                            viewportPixelProbeBounds.x,
+                            viewportPixelProbeBounds.y,
+                            viewportPixelProbeBounds.width,
+                            viewportPixelProbeBounds.height,
+                            pixelProbeGeneration
+                        )
+                    }.getOrNull()
+                }
+            val currentPixelProbeSnapshot = imeTailDrawProbe.snapshot()
+            val pixelProbeOwnerCurrent =
+                threadViewportPixelProbeOwnerCurrent(
+                    requestedThreadInstanceKey = pixelProbeThreadInstanceKey,
+                    currentThreadInstanceKey = currentThreadInstanceKeyState.value,
+                    requestedLayoutGeneration = pixelProbeLayoutGeneration,
+                    currentLayoutGeneration = currentViewportLayoutGenerationState.value,
+                    requestedProbeGeneration = pixelProbeGeneration,
+                    currentProbeGeneration = currentPixelProbeSnapshot.generation,
+                    requestedTargetMessageId = pixelProbeTargetMessageId,
+                    currentTargetMessageId = currentPixelProbeSnapshot.targetMessageId,
+                    requestedFocusedMessageId = focusedTargetMessageId,
+                    currentFocusedMessageId = currentPayloadState.value.focusedMessageId,
+                    requestedTailMessageId = focusedTailMessageId,
+                    currentTailMessageId = currentPayloadState.value.messages.lastOrNull()?.id
+                )
+            val pixelProbeReceiptMatches =
+                pixelResult?.optString("generation")?.toLongOrNull() == pixelProbeGeneration
+            val acceptedPixelResult =
+                pixelResult.takeIf { pixelProbeOwnerCurrent && pixelProbeReceiptMatches }
+            val diagnosticStatus =
+                when {
+                    pixelResult == null -> "infra_timeout"
+                    !pixelProbeOwnerCurrent -> "stale_owner"
+                    !pixelProbeReceiptMatches -> "stale_receipt"
+                    acceptedPixelResult?.optString("status") == "timeout" -> "infra_timeout"
+                    else -> acceptedPixelResult?.optString("status").orEmpty()
+                }
+            diagnosticsLogger(
+                "thread_ime_tail_pixel_probe phase=$pixelProbePhase generation=$pixelProbeGeneration " +
+                    "status=$diagnosticStatus " +
+                    "threadInstanceCurrent=$pixelProbeOwnerCurrent " +
+                    "layoutGeneration=$pixelProbeLayoutGeneration->${currentViewportLayoutGenerationState.value} " +
+                    "targetMessageId=${pixelProbeTargetMessageId.orEmpty()} " +
+                    "pixelCopyResult=${acceptedPixelResult?.optString("pixelCopyResult").orEmpty()} " +
+                    "sampleCount=${acceptedPixelResult?.optString("sampleCount").orEmpty()} " +
+                    "nonWhiteCount=${acceptedPixelResult?.optString("nonWhiteCount").orEmpty()} " +
+                    "darkCount=${acceptedPixelResult?.optString("darkCount").orEmpty()} " +
+                    "whitePermille=${acceptedPixelResult?.optString("whitePermille").orEmpty()} " +
+                    "descendants=${acceptedPixelResult?.optString("descendants").orEmpty()} " +
+                    "visibleDescendants=${acceptedPixelResult?.optString("visibleDescendants").orEmpty()} " +
+                    "attachedDescendants=${acceptedPixelResult?.optString("attachedDescendants").orEmpty()} " +
+                    "layoutRequestedDescendants=${acceptedPixelResult?.optString("layoutRequestedDescendants").orEmpty()} " +
+                    "rootChild=${acceptedPixelResult?.optString("rootChild").orEmpty()}"
+            )
+        }
         imeTailPixelProbeRunner.launch(
             awaitSettlement = {
+                // task #990: one runner, one stable job. Sampling the earlier
+                // phases here — rather than scheduling extra jobs — keeps the
+                // "exactly one probe per composer inset effect" guard intact and
+                // keeps every phase on the same cancellation scope. These two
+                // calls are pure observation; nothing here writes product state.
+                samplePixelPhase("shrink_onset")
+                listState.awaitThreadMessagesLayoutFrame()
+                samplePixelPhase("shrink_frame1")
                 if (insetCommandId != null) {
                     awaitViewportCommandSettlement(insetCommandId, reason = "composer_inset")
                 }
@@ -17311,7 +17396,7 @@ private fun ThreadMessagesList(
                     )
                 if (!settledOwnerCurrent) {
                     diagnosticsLogger(
-                        "thread_ime_tail_pixel_probe generation=$pixelProbeGeneration " +
+                        "thread_ime_tail_pixel_probe phase=$pixelProbePhase generation=$pixelProbeGeneration " +
                             "status=stale_before_claim threadInstanceCurrent=false " +
                             "layoutGeneration=$pixelProbeLayoutGeneration->${currentViewportLayoutGenerationState.value} " +
                             "targetMessageId=${pixelProbeTargetMessageId.orEmpty()}"
@@ -17334,75 +17419,7 @@ private fun ThreadMessagesList(
                         listState.threadViewportGeometryDiagnostics(focusedTargetItemIndex)
                 )
                 publishImeTailDrawProbe("settled")
-                if (imeTailDrawProbe.claimPixelProbe() != pixelProbeGeneration) {
-                    return@probe
-                }
-                if (!viewportPixelProbeBounds.ready()) {
-                    diagnosticsLogger(
-                        "thread_ime_tail_pixel_probe generation=$pixelProbeGeneration " +
-                            "status=bounds_unavailable threadInstanceCurrent=true " +
-                            "layoutGeneration=$pixelProbeLayoutGeneration->${currentViewportLayoutGenerationState.value} " +
-                            "targetMessageId=${pixelProbeTargetMessageId.orEmpty()}"
-                    )
-                    return@probe
-                }
-                val pixelResult =
-                    withTimeoutOrNull(ThreadViewportPixelProbeTimeoutMs) {
-                        runCatching {
-                            onComposerPixelProbe(
-                                viewportPixelProbeBounds.x,
-                                viewportPixelProbeBounds.y,
-                                viewportPixelProbeBounds.width,
-                                viewportPixelProbeBounds.height,
-                                pixelProbeGeneration
-                            )
-                        }.getOrNull()
-                    }
-                val currentPixelProbeSnapshot = imeTailDrawProbe.snapshot()
-                val pixelProbeOwnerCurrent =
-                    threadViewportPixelProbeOwnerCurrent(
-                        requestedThreadInstanceKey = pixelProbeThreadInstanceKey,
-                        currentThreadInstanceKey = currentThreadInstanceKeyState.value,
-                        requestedLayoutGeneration = pixelProbeLayoutGeneration,
-                        currentLayoutGeneration = currentViewportLayoutGenerationState.value,
-                        requestedProbeGeneration = pixelProbeGeneration,
-                        currentProbeGeneration = currentPixelProbeSnapshot.generation,
-                        requestedTargetMessageId = pixelProbeTargetMessageId,
-                        currentTargetMessageId = currentPixelProbeSnapshot.targetMessageId,
-                        requestedFocusedMessageId = focusedTargetMessageId,
-                        currentFocusedMessageId = currentPayloadState.value.focusedMessageId,
-                        requestedTailMessageId = focusedTailMessageId,
-                        currentTailMessageId = currentPayloadState.value.messages.lastOrNull()?.id
-                    )
-                val pixelProbeReceiptMatches =
-                    pixelResult?.optString("generation")?.toLongOrNull() == pixelProbeGeneration
-                val acceptedPixelResult =
-                    pixelResult.takeIf { pixelProbeOwnerCurrent && pixelProbeReceiptMatches }
-                val diagnosticStatus =
-                    when {
-                        pixelResult == null -> "infra_timeout"
-                        !pixelProbeOwnerCurrent -> "stale_owner"
-                        !pixelProbeReceiptMatches -> "stale_receipt"
-                        acceptedPixelResult?.optString("status") == "timeout" -> "infra_timeout"
-                        else -> acceptedPixelResult?.optString("status").orEmpty()
-                    }
-                diagnosticsLogger(
-                    "thread_ime_tail_pixel_probe generation=$pixelProbeGeneration " +
-                        "status=$diagnosticStatus " +
-                        "threadInstanceCurrent=$pixelProbeOwnerCurrent " +
-                        "layoutGeneration=$pixelProbeLayoutGeneration->${currentViewportLayoutGenerationState.value} " +
-                        "targetMessageId=${pixelProbeTargetMessageId.orEmpty()} " +
-                        "pixelCopyResult=${acceptedPixelResult?.optString("pixelCopyResult").orEmpty()} " +
-                        "sampleCount=${acceptedPixelResult?.optString("sampleCount").orEmpty()} " +
-                        "nonWhiteCount=${acceptedPixelResult?.optString("nonWhiteCount").orEmpty()} " +
-                        "darkCount=${acceptedPixelResult?.optString("darkCount").orEmpty()} " +
-                        "whitePermille=${acceptedPixelResult?.optString("whitePermille").orEmpty()} " +
-                        "descendants=${acceptedPixelResult?.optString("descendants").orEmpty()} " +
-                        "visibleDescendants=${acceptedPixelResult?.optString("visibleDescendants").orEmpty()} " +
-                        "attachedDescendants=${acceptedPixelResult?.optString("attachedDescendants").orEmpty()} " +
-                        "layoutRequestedDescendants=${acceptedPixelResult?.optString("layoutRequestedDescendants").orEmpty()} " +
-                        "rootChild=${acceptedPixelResult?.optString("rootChild").orEmpty()}"
-                )
+                samplePixelPhase("settled")
             }
         )
     }
