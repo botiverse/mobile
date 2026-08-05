@@ -16,10 +16,38 @@ internal sealed interface LazyViewportIntent {
         val placement: LazyViewportAnchorPlacement,
         val renderedTailMessageId: String? = null,
         val renderedTailAnchorIdentity: String? = null,
-        val fallback: LazyViewportAnchorFallback
+        val fallback: LazyViewportAnchorFallback,
+        val provenance: LazyViewportCommandProvenance = LazyViewportCommandProvenance.Other,
+        val ownerIdentity: String? = null
     ) : LazyViewportIntent
 
     data object UserDragging : LazyViewportIntent
+}
+
+/**
+ * Who issued a viewport command.
+ *
+ * task #990: the controller could not tell a stale correction from the focus
+ * positioning that must still apply, so a handoff had no way to invalidate the
+ * former without also destroying the latter. Deliberately without a default —
+ * a caller that forgets to say who it is fails to compile, rather than
+ * defaulting into the class that survives retirement.
+ */
+internal enum class LazyViewportCommandProvenance {
+    /** Initial focus positioning. Survives a handoff: it is what put the target in place. */
+    FocusedInitial,
+
+    /** Drift compensation from the focused watch loop. Retired with its session. */
+    FocusedSessionReanchor,
+
+    /** Late correction after origin hydration. Retired with its session. */
+    FocusedOriginCorrection,
+
+    /** The composer's own correction for a keyboard shrink. */
+    ComposerIme,
+
+    /** Anything not part of the focused/composer handoff. */
+    Other
 }
 
 internal sealed interface LazyViewportAnchorTarget {
@@ -76,7 +104,10 @@ internal sealed interface LazyViewportCommandTarget {
 
 internal data class LazyViewportCommand(
     val id: LazyViewportCommandId,
-    val target: LazyViewportCommandTarget
+    val target: LazyViewportCommandTarget,
+    val provenance: LazyViewportCommandProvenance = LazyViewportCommandProvenance.Other,
+    /** The focus identity this command was issued for, when it had one. */
+    val ownerIdentity: String? = null
 )
 
 internal data class LazyViewportControllerState(
@@ -112,8 +143,20 @@ internal sealed interface LazyViewportEvent {
         val placement: LazyViewportAnchorPlacement = LazyViewportAnchorPlacement.ExactOffset,
         val renderedTailMessageId: String? = null,
         val renderedTailAnchorIdentity: String? = null,
-        val fallback: LazyViewportAnchorFallback
+        val fallback: LazyViewportAnchorFallback,
+        // No default: a dispatch that does not say who issued it must not
+        // silently join the class that survives a handoff.
+        val provenance: LazyViewportCommandProvenance,
+        val ownerIdentity: String? = null
     ) : LazyViewportEvent
+
+    /**
+     * task #990: a handoff ends the focused session and its late correction, so
+     * whatever they already put in flight must stop being current. Only their
+     * commands are retired — the initial focus positioning is left alone,
+     * because it is the command that succeeded and must still apply.
+     */
+    data class RetireFocusedCorrections(val ownerIdentity: String) : LazyViewportEvent
 
     data object PointerDown : LazyViewportEvent
 
@@ -173,7 +216,9 @@ internal fun reduceLazyViewport(
                     placement = event.placement,
                     renderedTailMessageId = event.renderedTailMessageId,
                     renderedTailAnchorIdentity = event.renderedTailAnchorIdentity,
-                    fallback = event.fallback
+                    fallback = event.fallback,
+                    provenance = event.provenance,
+                    ownerIdentity = event.ownerIdentity
                 ),
                 emitCommand = true
             )
@@ -206,6 +251,7 @@ internal fun reduceLazyViewport(
         is LazyViewportEvent.AnchorUnavailable -> state.onAnchorUnavailable(event.commandId)
         is LazyViewportEvent.RenderedTailCommandInvalidated ->
             state.onRenderedTailCommandInvalidated(event)
+        is LazyViewportEvent.RetireFocusedCorrections -> state.retireFocusedCorrections(event.ownerIdentity)
         is LazyViewportEvent.CommandConsumed ->
             if (state.pendingCommand?.id == event.commandId) {
                 state.copy(pendingCommand = null, lastConsumedCommandId = event.commandId)
@@ -275,6 +321,36 @@ private fun LazyViewportControllerState.onRenderedTailCommandInvalidated(
             ),
         emitCommand = false
     )
+}
+
+/**
+ * Drops an in-flight correction belonging to a retired focused session.
+ *
+ * The epoch is advanced so the executor's `accepts` check rejects the command
+ * mid-flight — it already re-checks around every suspension point, so this is
+ * enough to stop a correction that is partway through applying. The intent is
+ * left alone: retiring a correction is not a statement about where the list
+ * should be, only about who may still move it.
+ *
+ * [LazyViewportCommandProvenance.FocusedInitial] is deliberately excluded. If a
+ * handoff lands while focus positioning is still in flight, that command must
+ * still apply — it is the one that succeeded in both the healthy and the white
+ * capture, and dropping it would leave the target unplaced.
+ */
+private fun LazyViewportControllerState.retireFocusedCorrections(
+    ownerIdentity: String
+): LazyViewportControllerState {
+    val pending = pendingCommand ?: return this
+    val retiring =
+        pending.ownerIdentity == ownerIdentity &&
+            when (pending.provenance) {
+                LazyViewportCommandProvenance.FocusedSessionReanchor,
+                LazyViewportCommandProvenance.FocusedOriginCorrection -> true
+                LazyViewportCommandProvenance.FocusedInitial,
+                LazyViewportCommandProvenance.ComposerIme,
+                LazyViewportCommandProvenance.Other -> false
+            }
+    return if (retiring) copy(epoch = epoch + 1L, pendingCommand = null) else this
 }
 
 private fun LazyViewportControllerState.transitionTo(
@@ -375,12 +451,15 @@ private fun LazyViewportControllerState.withCommandForIntent(
             LazyViewportIntent.UserDragging -> return copy(pendingCommand = null)
         }
     val sequence = nextSequence + 1L
+    val anchored = intent as? LazyViewportIntent.Anchored
     return copy(
         nextSequence = sequence,
         pendingCommand =
             LazyViewportCommand(
                 id = LazyViewportCommandId(epoch = epoch, sequence = sequence),
-                target = target
+                target = target,
+                provenance = anchored?.provenance ?: LazyViewportCommandProvenance.Other,
+                ownerIdentity = anchored?.ownerIdentity
             )
     )
 }

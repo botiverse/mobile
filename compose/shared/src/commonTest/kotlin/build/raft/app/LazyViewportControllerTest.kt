@@ -51,7 +51,8 @@ class LazyViewportControllerTest {
                     target = LazyViewportAnchorTarget.Message("message-7"),
                     offset = -24,
                     layoutGeneration = 11L,
-                    fallback = LazyViewportAnchorFallback.Free
+                    fallback = LazyViewportAnchorFallback.Free,
+                    provenance = LazyViewportCommandProvenance.Other
                 )
             )
         val afterPrepend =
@@ -102,7 +103,8 @@ class LazyViewportControllerTest {
                     placement = LazyViewportAnchorPlacement.RenderedBottom,
                     renderedTailMessageId = "latest-message",
                     renderedTailAnchorIdentity = "latest-message:request-1",
-                    fallback = LazyViewportAnchorFallback.Free
+                    fallback = LazyViewportAnchorFallback.Free,
+                    provenance = LazyViewportCommandProvenance.Other
                 )
             )
         val firstCommand = anchored.pendingCommand!!
@@ -167,7 +169,8 @@ class LazyViewportControllerTest {
                     placement = LazyViewportAnchorPlacement.RenderedBottom,
                     renderedTailMessageId = "tail-message-3",
                     renderedTailAnchorIdentity = "focused-message:request-7",
-                    fallback = LazyViewportAnchorFallback.Free
+                    fallback = LazyViewportAnchorFallback.Free,
+                    provenance = LazyViewportCommandProvenance.Other
                 )
             )
         val command = anchored.pendingCommand!!
@@ -241,7 +244,8 @@ class LazyViewportControllerTest {
                     placement = LazyViewportAnchorPlacement.RenderedBottom,
                     renderedTailMessageId = "tail-message-3",
                     renderedTailAnchorIdentity = "focused-message:request-7",
-                    fallback = LazyViewportAnchorFallback.Free
+                    fallback = LazyViewportAnchorFallback.Free,
+                    provenance = LazyViewportCommandProvenance.Other
                 )
             )
 
@@ -320,7 +324,8 @@ class LazyViewportControllerTest {
                     placement = LazyViewportAnchorPlacement.RenderedBottom,
                     renderedTailMessageId = "tail-message-3",
                     renderedTailAnchorIdentity = "focused-message:request-7",
-                    fallback = LazyViewportAnchorFallback.Free
+                    fallback = LazyViewportAnchorFallback.Free,
+                    provenance = LazyViewportCommandProvenance.Other
                 )
             )
 
@@ -345,7 +350,8 @@ class LazyViewportControllerTest {
                     target = LazyViewportAnchorTarget.Message("history-message"),
                     offset = -24,
                     layoutGeneration = 7L,
-                    fallback = LazyViewportAnchorFallback.Free
+                    fallback = LazyViewportAnchorFallback.Free,
+                    provenance = LazyViewportCommandProvenance.Other
                 )
             )
 
@@ -369,7 +375,8 @@ class LazyViewportControllerTest {
                     offset = 16,
                     layoutGeneration = 22L,
                     placement = LazyViewportAnchorPlacement.RenderedBottom,
-                    fallback = LazyViewportAnchorFallback.Free
+                    fallback = LazyViewportAnchorFallback.Free,
+                    provenance = LazyViewportCommandProvenance.Other
                 )
             )
         val staleCommand = anchored.pendingCommand!!
@@ -442,7 +449,8 @@ class LazyViewportControllerTest {
                     target = LazyViewportAnchorTarget.Message("missing"),
                     offset = 0,
                     layoutGeneration = 3L,
-                    fallback = LazyViewportAnchorFallback.PinnedTop
+                    fallback = LazyViewportAnchorFallback.PinnedTop,
+                    provenance = LazyViewportCommandProvenance.Other
                 )
             )
         val fallback =
@@ -554,7 +562,8 @@ class LazyViewportControllerTest {
                     target = LazyViewportAnchorTarget.Message("message-9"),
                     offset = -7,
                     layoutGeneration = 3L,
-                    fallback = LazyViewportAnchorFallback.Free
+                    fallback = LazyViewportAnchorFallback.Free,
+                    provenance = LazyViewportCommandProvenance.Other
                 )
             )
 
@@ -611,7 +620,8 @@ class LazyViewportControllerTest {
                     target = LazyViewportAnchorTarget.Message("message-11"),
                     offset = 29,
                     layoutGeneration = 8L,
-                    fallback = LazyViewportAnchorFallback.Free
+                    fallback = LazyViewportAnchorFallback.Free,
+                    provenance = LazyViewportCommandProvenance.Other
                 )
             )
         val anchored =
@@ -742,7 +752,8 @@ class LazyViewportControllerTest {
                     target = LazyViewportAnchorTarget.Message("history"),
                     offset = -20,
                     layoutGeneration = 2L,
-                    fallback = LazyViewportAnchorFallback.Free
+                    fallback = LazyViewportAnchorFallback.Free,
+                    provenance = LazyViewportCommandProvenance.Other
                 )
             )
         val following =

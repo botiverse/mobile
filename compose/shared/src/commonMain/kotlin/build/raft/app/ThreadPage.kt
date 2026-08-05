@@ -15528,7 +15528,9 @@ private fun ThreadMessagesList(
                             target = LazyViewportAnchorTarget.Message(messageId),
                             offset = -anchorOffset,
                             layoutGeneration = viewportLayoutGeneration,
-                            fallback = LazyViewportAnchorFallback.Free
+                            fallback = LazyViewportAnchorFallback.Free,
+                            provenance = LazyViewportCommandProvenance.Other,
+                            ownerIdentity = null
                         )
                     )
                 }
@@ -16011,7 +16013,9 @@ private fun ThreadMessagesList(
                 target = scrollTarget,
                 offset = -desiredScrollOffset,
                 layoutGeneration = viewportLayoutGeneration,
-                fallback = LazyViewportAnchorFallback.Free
+                fallback = LazyViewportAnchorFallback.Free,
+                provenance = LazyViewportCommandProvenance.Other,
+                ownerIdentity = null
             )
         )
         val commandId = viewportControllerState.pendingCommand?.id
@@ -16528,7 +16532,9 @@ private fun ThreadMessagesList(
                                 LazyViewportAnchorPlacement.RenderedBottom &&
                             focusedAnchorPlacementState.renderedTailMessageId != null
                     },
-                fallback = LazyViewportAnchorFallback.Free
+                fallback = LazyViewportAnchorFallback.Free,
+                provenance = LazyViewportCommandProvenance.FocusedInitial,
+                ownerIdentity = targetIdentity
             )
         )
         val focusCommandId = viewportControllerState.pendingCommand?.id
@@ -16676,7 +16682,9 @@ private fun ThreadMessagesList(
                                             LazyViewportAnchorPlacement.RenderedBottom &&
                                         focusedAnchorPlacementState.renderedTailMessageId != null
                                 },
-                            fallback = LazyViewportAnchorFallback.Free
+                            fallback = LazyViewportAnchorFallback.Free,
+                            provenance = LazyViewportCommandProvenance.FocusedSessionReanchor,
+                            ownerIdentity = targetIdentity
                         )
                     )
                     val reanchorCommandId = viewportControllerState.pendingCommand?.id
@@ -16770,7 +16778,9 @@ private fun ThreadMessagesList(
                                 LazyViewportAnchorPlacement.RenderedBottom &&
                             focusedAnchorPlacementState.renderedTailMessageId != null
                     },
-                fallback = LazyViewportAnchorFallback.Free
+                fallback = LazyViewportAnchorFallback.Free,
+                provenance = LazyViewportCommandProvenance.FocusedOriginCorrection,
+                ownerIdentity = targetIdentity
             )
         )
         val correctionCommandId = viewportControllerState.pendingCommand?.id
@@ -16819,7 +16829,9 @@ private fun ThreadMessagesList(
                 target = LazyViewportAnchorTarget.Message(match.messageId),
                 offset = 0,
                 layoutGeneration = viewportLayoutGeneration,
-                fallback = LazyViewportAnchorFallback.Free
+                fallback = LazyViewportAnchorFallback.Free,
+                provenance = LazyViewportCommandProvenance.Other,
+                ownerIdentity = null
             )
         )
     }
@@ -17115,6 +17127,15 @@ private fun ThreadMessagesList(
             // fence that expires one session recheck later is exactly the window
             // the white cycle fell into.
             consumedFocusedMessageAnchorIdentity = focusedTargetIdentity
+            // Whatever the retired owners already put in flight stops being
+            // current here. Without this the original race still runs in full
+            // during the window where the target is not yet measurable: the
+            // session and origin corrections are forbidden from issuing
+            // anything new, but a command already pending would still apply to
+            // the shrunken viewport.
+            focusedTargetIdentity?.let {
+                dispatchViewportEvent(LazyViewportEvent.RetireFocusedCorrections(ownerIdentity = it))
+            }
             diagnosticsLogger(
                 "thread_ime_handoff result=taken " +
                     "messageId=${focusedTargetMessageId.orEmpty()} " +
@@ -17363,7 +17384,9 @@ private fun ThreadMessagesList(
                     placement = LazyViewportAnchorPlacement.RenderedBottom,
                     renderedTailMessageId = focusedTailMessageId,
                     renderedTailAnchorIdentity = focusedTargetIdentity,
-                    fallback = LazyViewportAnchorFallback.Free
+                    fallback = LazyViewportAnchorFallback.Free,
+                    provenance = LazyViewportCommandProvenance.ComposerIme,
+                    ownerIdentity = focusedTargetIdentity
                 )
             )
         } else {
