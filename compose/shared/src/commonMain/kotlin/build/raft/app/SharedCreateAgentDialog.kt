@@ -11,6 +11,7 @@ import build.raft.app.components.SlockRaftUiBannerSize
 import build.raft.app.components.SlockRaftUiBannerStatus
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeProviderMode
+import build.raft.app.model.BASE_REASONING_EFFORT_IDS
 import build.raft.app.model.RUNTIME_MODELS
 import build.raft.app.model.RUNTIME_PROVIDER_MODE_CUSTOM
 import build.raft.app.model.RUNTIME_PROVIDER_MODE_DEFAULT
@@ -114,7 +115,13 @@ internal fun CreateAgentDialogVisualContent() {
         (listOf(runtime, "codex", "claude") + RUNTIMES.filterNot { it.deprecated }.map { it.id }).distinct()
     val runtimeModels =
         RUNTIME_MODELS[runtime].orEmpty().map { model ->
-            SharedCreateAgentRuntimeModelOption(model.id, model.label, model.verified)
+            SharedCreateAgentRuntimeModelOption(
+                id = model.id,
+                label = model.label,
+                verified = model.verified,
+                supportedReasoningEfforts = model.supportedReasoningEfforts,
+                defaultReasoningEffort = model.defaultReasoningEffort
+            )
         }
     Box(
         modifier =
@@ -282,7 +289,9 @@ internal data class SharedCreateAgentMachineOption(
 internal data class SharedCreateAgentRuntimeModelOption(
     val id: String,
     val label: String,
-    val verified: String? = null
+    val verified: String? = null,
+    val supportedReasoningEfforts: List<String> = emptyList(),
+    val defaultReasoningEffort: String? = null
 )
 
 internal data class SharedCreateAgentRuntimeModelCatalog(
@@ -590,12 +599,58 @@ internal fun createAgentProviderDropdownItems(
 
 internal fun createAgentReasoningDropdownItems(
     defaultLabel: String = "Default",
-    effortLabels: Map<String, String> = emptyMap()
-): List<CreateAgentDropdownItem> =
-    listOf(CreateAgentDropdownItem(id = CREATE_AGENT_DEFAULT_REASONING_ID, label = defaultLabel)) +
-        REASONING_EFFORTS.map { (id, label) ->
-            CreateAgentDropdownItem(id = id, label = effortLabels[id] ?: label)
-        }
+    runtime: String = "",
+    model: String = "",
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList()
+): List<CreateAgentDropdownItem> {
+    val metadata = createAgentReasoningModelMetadata(runtime, model, runtimeModelsOverride)
+    val allowedIds =
+        metadata.supportedReasoningEfforts
+            .takeIf { it.isNotEmpty() }
+            ?.toSet()
+            ?: BASE_REASONING_EFFORT_IDS
+    return listOf(CreateAgentDropdownItem(id = CREATE_AGENT_DEFAULT_REASONING_ID, label = defaultLabel)) +
+        REASONING_EFFORTS
+            .filter { (id, _) -> id in allowedIds }
+            .map { (id, label) -> CreateAgentDropdownItem(id = id, label = label) }
+}
+
+private data class CreateAgentReasoningModelMetadata(
+    val supportedReasoningEfforts: List<String> = emptyList(),
+    val defaultReasoningEffort: String? = null
+)
+
+private fun createAgentReasoningModelMetadata(
+    runtime: String,
+    model: String,
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption>
+): CreateAgentReasoningModelMetadata {
+    val live = runtimeModelsOverride.firstOrNull { it.id == model }
+    if (live?.supportedReasoningEfforts?.isNotEmpty() == true) {
+        return CreateAgentReasoningModelMetadata(
+            supportedReasoningEfforts = live.supportedReasoningEfforts,
+            defaultReasoningEffort = live.defaultReasoningEffort
+        )
+    }
+    val fallback = RUNTIME_MODELS[runtime].orEmpty().firstOrNull { it.id == model }
+    return CreateAgentReasoningModelMetadata(
+        supportedReasoningEfforts = fallback?.supportedReasoningEfforts.orEmpty(),
+        defaultReasoningEffort = fallback?.defaultReasoningEffort ?: live?.defaultReasoningEffort
+    )
+}
+
+internal fun reconcileCreateAgentReasoningEffort(
+    runtime: String,
+    model: String,
+    current: String?,
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList()
+): String? {
+    val metadata = createAgentReasoningModelMetadata(runtime, model, runtimeModelsOverride)
+    val supported = metadata.supportedReasoningEfforts
+    if (supported.isEmpty()) return current
+    if (current != null && current in supported) return current
+    return metadata.defaultReasoningEffort?.takeIf { it in supported }
+}
 
 private fun List<CreateAgentDropdownItem>.toBrutalSelectOptions(): List<SlockBrutalSelectOption> =
     map { item -> SlockBrutalSelectOption(id = item.id, label = item.label, enabled = item.enabled) }
@@ -655,7 +710,12 @@ internal fun SharedCreateAgentDialog(
     var piProviderId by remember { mutableStateOf("configured") }
     var piProviderApiKey by remember { mutableStateOf(TextFieldValue("")) }
     var fastMode by remember(initialFastMode) { mutableStateOf(initialFastMode) }
-    var reasoningEffort by remember(initialReasoningEffort) { mutableStateOf(initialReasoningEffort) }
+    var reasoningEffort by remember(initialReasoningEffort) {
+        mutableStateOf(
+            initialReasoningEffort
+                ?: reconcileCreateAgentReasoningEffort(runtime, model, current = null)
+        )
+    }
     var command by remember(initialCommand) { mutableStateOf(initialCommand) }
     var builtInProviderId by remember { mutableStateOf("") }
     var builtInApiKey by remember { mutableStateOf(TextFieldValue("")) }
@@ -1835,6 +1895,14 @@ internal fun AdvancedRuntimeSection(
                     if (customModelMode) {
                         focusManager.clearFocus(force = true)
                     }
+                    onReasoningEffortChange(
+                        reconcileCreateAgentReasoningEffort(
+                            runtime = runtime,
+                            model = item.id,
+                            current = reasoningEffort,
+                            runtimeModelsOverride = runtimeModelsOverride
+                        )
+                    )
                     onModelChange(item.id)
                     onCustomModelModeChange(false)
                 }
@@ -1860,17 +1928,15 @@ internal fun AdvancedRuntimeSection(
             }
         }
         if (supportsRuntimeReasoningEffort(runtime)) {
+            val reasoningModel =
+                if (customModelMode) customModelName.trim() else model
             SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_reasoning))
             val reasoningOptions =
                 createAgentReasoningDropdownItems(
                     defaultLabel = stringResource(MR.strings.agent_create_action_default),
-                    effortLabels =
-                        mapOf(
-                            "low" to stringResource(MR.strings.agent_create_reasoning_low),
-                            "medium" to stringResource(MR.strings.agent_create_reasoning_medium),
-                            "high" to stringResource(MR.strings.agent_create_reasoning_high),
-                            "xhigh" to stringResource(MR.strings.agent_create_reasoning_extra_high)
-                        )
+                    runtime = runtime,
+                    model = reasoningModel,
+                    runtimeModelsOverride = runtimeModelsOverride
                 )
             val reasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
             SlockBrutalSelectField(

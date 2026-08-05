@@ -136,8 +136,12 @@ val REASONING_EFFORTS: List<Pair<String, String>> = listOf(
     "low" to "Low",
     "medium" to "Medium",
     "high" to "High",
-    "xhigh" to "Extra High"
+    "xhigh" to "Extra High",
+    "max" to "Max",
+    "ultra" to "Ultra"
 )
+
+val BASE_REASONING_EFFORT_IDS: Set<String> = setOf("low", "medium", "high", "xhigh")
 
 val REASONING_EFFORT_RUNTIMES: Set<String> = setOf("builtin", "claude", "codex", "grok", "copilot", "pi")
 val RUNTIME_FAST_MODE_RUNTIMES: Set<String> = setOf("claude", "codex")
@@ -147,7 +151,9 @@ val RUNTIME_FAST_MODE_RUNTIMES: Set<String> = setOf("claude", "codex")
 data class RuntimeModelInfo(
     val id: String,
     val label: String,
-    val verified: String? = null // "launchable" | "suggestion_only" | null
+    val verified: String? = null, // "launchable" | "suggestion_only" | null
+    val supportedReasoningEfforts: List<String> = emptyList(),
+    val defaultReasoningEffort: String? = null
 )
 
 data class RuntimeModelPresentation(
@@ -168,9 +174,27 @@ val RUNTIME_MODELS: Map<String, List<RuntimeModelInfo>> = mapOf(
         RuntimeModelInfo("claude-haiku-4-5", "Claude Haiku 4.5")
     ),
     "codex" to listOf(
-        RuntimeModelInfo("gpt-5.6-sol", "GPT-5.6 Sol", verified = "launchable"),
-        RuntimeModelInfo("gpt-5.6-terra", "GPT-5.6 Terra", verified = "launchable"),
-        RuntimeModelInfo("gpt-5.6-luna", "GPT-5.6 Luna", verified = "launchable"),
+        RuntimeModelInfo(
+            "gpt-5.6-sol",
+            "GPT-5.6 Sol",
+            verified = "launchable",
+            supportedReasoningEfforts = listOf("low", "medium", "high", "xhigh", "max", "ultra"),
+            defaultReasoningEffort = "medium"
+        ),
+        RuntimeModelInfo(
+            "gpt-5.6-terra",
+            "GPT-5.6 Terra",
+            verified = "launchable",
+            supportedReasoningEfforts = listOf("low", "medium", "high", "xhigh", "max", "ultra"),
+            defaultReasoningEffort = "medium"
+        ),
+        RuntimeModelInfo(
+            "gpt-5.6-luna",
+            "GPT-5.6 Luna",
+            verified = "launchable",
+            supportedReasoningEfforts = listOf("low", "medium", "high", "xhigh", "max"),
+            defaultReasoningEffort = "medium"
+        ),
         RuntimeModelInfo("gpt-5.5", "GPT-5.5"),
         RuntimeModelInfo("gpt-5.4", "GPT-5.4"),
         RuntimeModelInfo("gpt-5.3-codex", "GPT-5.3 Codex"),

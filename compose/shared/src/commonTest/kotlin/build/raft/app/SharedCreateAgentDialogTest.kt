@@ -580,13 +580,125 @@ class SharedCreateAgentDialogTest {
     fun reasoningDropdownIncludesDefaultFirst() {
         val items = createAgentReasoningDropdownItems()
 
-        assertTrue(items.size > 1)
         assertEquals(CREATE_AGENT_DEFAULT_REASONING_ID, items.first().id)
         assertEquals("Default", items.first().label)
         assertEquals(
             listOf("low", "medium", "high", "xhigh"),
             items.drop(1).map { it.id }
         )
+        assertEquals(
+            listOf("Low", "Medium", "High", "Extra High"),
+            items.drop(1).map { it.label }
+        )
+    }
+
+    @Test
+    fun reasoningDropdownUsesCodexModelCapabilitiesAndCanonicalEnglishLabels() {
+        val solItems =
+            createAgentReasoningDropdownItems(
+                defaultLabel = "默认",
+                runtime = "codex",
+                model = "gpt-5.6-sol"
+            )
+        val lunaItems =
+            createAgentReasoningDropdownItems(
+                defaultLabel = "默认",
+                runtime = "codex",
+                model = "gpt-5.6-luna"
+            )
+
+        assertEquals(
+            listOf(CREATE_AGENT_DEFAULT_REASONING_ID, "low", "medium", "high", "xhigh", "max", "ultra"),
+            solItems.map { it.id }
+        )
+        assertEquals(
+            listOf("默认", "Low", "Medium", "High", "Extra High", "Max", "Ultra"),
+            solItems.map { it.label }
+        )
+        assertEquals(
+            listOf(CREATE_AGENT_DEFAULT_REASONING_ID, "low", "medium", "high", "xhigh", "max"),
+            lunaItems.map { it.id }
+        )
+        assertFalse(lunaItems.any { it.id == "ultra" })
+    }
+
+    @Test
+    fun reasoningDropdownPrefersLiveCapabilitiesAndKeepsUndeclaredModelsOnBaseSet() {
+        val liveModels =
+            listOf(
+                SharedCreateAgentRuntimeModelOption(
+                    id = "machine-codex",
+                    label = "Machine Codex",
+                    supportedReasoningEfforts = listOf("low", "high", "max"),
+                    defaultReasoningEffort = "high"
+                )
+            )
+
+        assertEquals(
+            listOf(CREATE_AGENT_DEFAULT_REASONING_ID, "low", "high", "max"),
+            createAgentReasoningDropdownItems(
+                runtime = "codex",
+                model = "machine-codex",
+                runtimeModelsOverride = liveModels
+            ).map { it.id }
+        )
+        assertEquals(
+            listOf(CREATE_AGENT_DEFAULT_REASONING_ID, "low", "medium", "high", "xhigh"),
+            createAgentReasoningDropdownItems(runtime = "claude", model = "opus").map { it.id }
+        )
+    }
+
+    @Test
+    fun reasoningSelectionReconcilesToDeclaredModelDefault() {
+        assertEquals(
+            "medium",
+            reconcileCreateAgentReasoningEffort(
+                runtime = "codex",
+                model = "gpt-5.6-luna",
+                current = "ultra"
+            )
+        )
+        assertEquals(
+            "max",
+            reconcileCreateAgentReasoningEffort(
+                runtime = "codex",
+                model = "gpt-5.6-luna",
+                current = "max"
+            )
+        )
+        assertEquals(
+            "medium",
+            reconcileCreateAgentReasoningEffort(
+                runtime = "codex",
+                model = "gpt-5.6-luna",
+                current = null
+            )
+        )
+    }
+
+    @Test
+    fun codexMaxReasoningSelectionReachesRuntimeConfig() {
+        val request =
+            buildSharedCreateAgentDialogSubmit(
+                name = "Max Agent",
+                description = "",
+                selectedMachineId = "machine-1",
+                requiredComputer = null,
+                external = false,
+                runtime = "codex",
+                model = "gpt-5.6-luna",
+                customModelMode = false,
+                customModelName = "",
+                providerMode = "default",
+                providerApiUrl = "",
+                providerApiKey = TextFieldValue(""),
+                fastMode = false,
+                reasoningEffort = "max",
+                envVarEntries = emptyList(),
+                command = ""
+            ).toCreateAgentRequest()
+
+        assertEquals("max", assertNotNull(request.runtimeConfig).reasoningEffort)
     }
 
     @Test
