@@ -314,6 +314,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -15401,11 +15402,36 @@ private fun ThreadMessagesList(
     val dispatchViewportEvent: (LazyViewportEvent) -> Unit = { event ->
         viewportControllerState = reduceLazyViewport(viewportControllerState, event)
     }
-    suspend fun awaitViewportCommandSettlement(commandId: LazyViewportCommandId) {
-        snapshotFlow {
-            viewportControllerState.epoch to viewportControllerState.pendingCommand?.id
-        }.first { (epoch, pendingId) ->
-            epoch != commandId.epoch || pendingId == null
+    /**
+     * Waits for [commandId] to leave the pending slot and reports how it left.
+     *
+     * task #990: callers used to learn only that the wait had ended, so a
+     * command superseded before it applied was indistinguishable from one that
+     * landed — and the origin correction published success for exactly that
+     * case whenever the target happened to be visible afterwards.
+     */
+    suspend fun awaitViewportCommandSettlement(
+        commandId: LazyViewportCommandId
+    ): ThreadViewportSettlementOutcome {
+        var observedOriginal = false
+        var observedReplacement = false
+        val (settledEpoch, _) =
+            snapshotFlow {
+                viewportControllerState.epoch to viewportControllerState.pendingCommand?.id
+            }.onEach { (_, pendingId) ->
+                if (pendingId == commandId) {
+                    observedOriginal = true
+                } else if (pendingId != null && pendingId.epoch == commandId.epoch) {
+                    observedReplacement = true
+                }
+            }.first { (epoch, pendingId) ->
+                epoch != commandId.epoch || pendingId == null
+            }
+        return when {
+            settledEpoch != commandId.epoch -> ThreadViewportSettlementOutcome.SupersededEpoch
+            observedReplacement -> ThreadViewportSettlementOutcome.ReplacedSameEpoch
+            observedOriginal -> ThreadViewportSettlementOutcome.ConsumedOriginal
+            else -> ThreadViewportSettlementOutcome.ClearedWithoutObservation
         }
     }
     var measuredThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(0f) }
@@ -15536,6 +15562,8 @@ private fun ThreadMessagesList(
     var focusedAnchorSessionReanchors by remember(threadInstanceKey) { mutableStateOf(0) }
     var focusedAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf<Int?>(null) }
     var correctedFocusedOriginIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    // task #990: the shrink taken from a focused owner and owed to the composer.
+    var imeHandoffState by remember(threadInstanceKey) { mutableStateOf(ThreadImeHandoffState()) }
     var focusedAnchorPlacementState by remember(threadInstanceKey) {
         mutableStateOf(resetThreadFocusedAnchorPlacement(identity = null))
     }
@@ -16512,6 +16540,22 @@ private fun ThreadMessagesList(
         }
         focusedAnchorStartUserScrollGeneration = userScrollGeneration.value
         correctedFocusedOriginIdentity = null
+        // task #990: the keyboard can arrive while the focus command above is
+        // still being awaited. When it has, this effect must not start the watch
+        // loop — but it must still publish the session identity and scroll
+        // baseline first. The composer's consumed-tail owner is only eligible
+        // once those exist, so returning before them leaves the owed correction
+        // with nobody able to issue it: not three competing commands but none,
+        // and a pending change that never retires.
+        if (imeHandoffState.owes(targetIdentity)) {
+            focusedAnchorSessionIdentity = targetIdentity
+            consumedFocusedMessageAnchorIdentity = targetIdentity
+            diagnosticsLogger(
+                "thread_focused_message_anchor result=handed_off_to_composer " +
+                    "messageId=$targetMessageId targetIndex=$targetIndex"
+            )
+            return@LaunchedEffect
+        }
         // task #567 first-principles invariant: once anchored, the target must
         // hold its viewport position until the user scrolls. The list is
         // item-key anchored and the target itself becomes the anchor item
@@ -16547,7 +16591,8 @@ private fun ThreadMessagesList(
                         ),
                     drifted = focusedAnchorTargetDrifted(anchoredOffset, currentOffset),
                     quietMs = quietMs,
-                    elapsedMs = focusedAnchorSessionElapsedMs
+                    elapsedMs = focusedAnchorSessionElapsedMs,
+                    handedOff = imeHandoffState.owes(targetIdentity)
                 )
             when (action) {
                 FocusedAnchorSessionAction.Interrupt -> {
@@ -16574,6 +16619,19 @@ private fun ThreadMessagesList(
                     return@LaunchedEffect
                 }
                 FocusedAnchorSessionAction.Reanchor -> {
+                    // Read again immediately before dispatching: the decision
+                    // above and this dispatch are not one atomic step, and a
+                    // handoff recorded in between must win — otherwise the
+                    // session issues exactly the stale command it gave away.
+                    if (imeHandoffState.owes(targetIdentity)) {
+                        consumedFocusedMessageAnchorIdentity = targetIdentity
+                        diagnosticsLogger(
+                            "thread_focused_anchor_session outcome=handed_off_before_reanchor " +
+                                "reanchors=$focusedAnchorSessionReanchors driftMaxPx=$driftMaxPx " +
+                                "elapsedMs=$focusedAnchorSessionElapsedMs messageId=$targetMessageId"
+                        )
+                        return@LaunchedEffect
+                    }
                     focusedAnchorSessionReanchors += 1
                     val driftPx = focusedAnchorDriftMagnitude(anchoredOffset, currentOffset)
                     driftMaxPx = maxOf(driftMaxPx, driftPx)
@@ -16650,7 +16708,8 @@ private fun ThreadMessagesList(
                 correctedIdentity = correctedFocusedOriginIdentity,
                 scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
                 startUserScrollGeneration = startUserScrollGeneration,
-                currentUserScrollGeneration = userScrollGeneration.value
+                currentUserScrollGeneration = userScrollGeneration.value,
+                retiredIdentity = imeHandoffState.identity
             )
         ) {
             return@LaunchedEffect
@@ -16667,7 +16726,8 @@ private fun ThreadMessagesList(
                 correctedIdentity = correctedFocusedOriginIdentity,
                 scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
                 startUserScrollGeneration = startUserScrollGeneration,
-                currentUserScrollGeneration = userScrollGeneration.value
+                currentUserScrollGeneration = userScrollGeneration.value,
+                retiredIdentity = imeHandoffState.identity
             ) ||
             listState.isScrollInProgress ||
             !listState.canScrollToThreadItem(targetIndex)
@@ -16707,12 +16767,33 @@ private fun ThreadMessagesList(
             )
         )
         val correctionCommandId = viewportControllerState.pendingCommand?.id
-        if (correctionCommandId != null) {
-            awaitViewportCommandSettlement(correctionCommandId)
-        }
-        val corrected = listState.focusedAnchorTargetOffset(targetIndex) != null
+        val settlementOutcome =
+            if (correctionCommandId != null) {
+                awaitViewportCommandSettlement(correctionCommandId)
+            } else {
+                ThreadViewportSettlementOutcome.NoCommand
+            }
+        val targetVisible = listState.focusedAnchorTargetOffset(targetIndex) != null
+        // Settlement suspends, so the keyboard can take the viewport while this
+        // correction is in flight. The handoff is read again here, not only at
+        // the two guards above.
+        val corrected =
+            focusedOriginCorrectionMayPublishCompletion(
+                settlementOutcome = settlementOutcome,
+                targetVisible = targetVisible,
+                targetIdentity = targetIdentity,
+                retiredIdentity = imeHandoffState.identity
+            )
+        val correctionResult =
+            when {
+                corrected -> "corrected"
+                imeHandoffState.owes(targetIdentity) -> "handed_off_to_composer"
+                !targetVisible -> "skipped_unmeasured"
+                else -> "skipped_${settlementOutcome.name}"
+            }
         diagnosticsLogger(
-            "thread_focused_origin_correction result=${if (corrected) "corrected" else "skipped_unmeasured"} " +
+            "thread_focused_origin_correction result=$correctionResult " +
+                "settlement=${settlementOutcome.name} targetVisible=$targetVisible " +
                 "messageId=$targetMessageId targetIndex=$targetIndex originStatus=${renderPayload.originStatus} " +
                 "userScrollGeneration=${userScrollGeneration.value}"
         )
@@ -16951,6 +17032,8 @@ private fun ThreadMessagesList(
             pendingComposerLayoutBottomAnchor = false
             pendingKeyboardBottomAnchor = false
             allowBottomAutoAnchor = false
+            imeHandoffState =
+                reduceThreadImeHandoff(imeHandoffState, ThreadImeHandoffEvent.PageCycled)
             return@LaunchedEffect
         }
         val focusedTargetIdentity = pendingFocusedMessageAnchorIdentityState.value
@@ -16964,6 +17047,63 @@ private fun ThreadMessagesList(
                 scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
                 yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
             )
+        // task #990: every way this rise can end, applied before the onset is
+        // considered. A debt that only ends where it is repaid outlives the
+        // thing it was taken on for — the composer would later yank a list the
+        // user has already moved, and the resolver would retain a pending
+        // correction nobody can issue.
+        imeHandoffState =
+            reduceThreadImeHandoff(
+                imeHandoffState,
+                ThreadImeHandoffEvent.TargetChanged(focusedTargetIdentity)
+            )
+        imeHandoffState =
+            reduceThreadImeHandoff(
+                imeHandoffState,
+                ThreadImeHandoffEvent.UserScrolled(userScrollGeneration.value)
+            )
+        if (composerKeyboardInsetDp <= 0f) {
+            imeHandoffState =
+                reduceThreadImeHandoff(imeHandoffState, ThreadImeHandoffEvent.KeyboardClosed)
+        }
+        if (composerKeyboardInsetDp > lastComposerKeyboardInsetDp) {
+            val handoffBefore = imeHandoffState
+            imeHandoffState =
+                reduceThreadImeHandoff(
+                    imeHandoffState,
+                    ThreadImeHandoffEvent.ImeOnset(
+                        targetIdentity = focusedTargetIdentity,
+                        focusedTransactionLive = focusedAnchorOwnsViewport,
+                        // Restricted to targets the composer's tail path can
+                        // actually correct. A target that will never fit against
+                        // the tail could not repay the debt, and taking one on
+                        // for it would retain a pending correction forever.
+                        dischargeable =
+                            focusedTargetItemIndex >= 0 &&
+                                latestMessageListItemIndex >= focusedTargetItemIndex &&
+                                !renderPayload.canLoadMoreAfter,
+                        userScrollGeneration = userScrollGeneration.value
+                    )
+                )
+            if (imeHandoffState.owes(focusedTargetIdentity) && !handoffBefore.owes(focusedTargetIdentity)) {
+                // Ownership is released in the same pass the debt is recorded: a
+                // fence that expires one session recheck later is exactly the
+                // window the white cycle fell into.
+                consumedFocusedMessageAnchorIdentity = focusedTargetIdentity
+                diagnosticsLogger(
+                    "thread_ime_handoff result=taken " +
+                        "messageId=${focusedTargetMessageId.orEmpty()} " +
+                        "keyboardInsetDp=$lastComposerKeyboardInsetDp->$composerKeyboardInsetDp " +
+                        "userScrollGeneration=${userScrollGeneration.value}"
+                )
+                // Its own pass: the write above is a key of this effect, so
+                // continuing would run the layout decision in a body about to be
+                // cancelled and again in its replacement — two commands for one
+                // shrink. The inset carry-forward below is deliberately not
+                // reached, so the restarted pass still sees this rise.
+                return@LaunchedEffect
+            }
+        }
         val measuredFocusedTailViewportHeightPx =
             with(threadDensity) { measuredThreadViewportHeightDp.dp.roundToPx() }
         var focusedTailViewportEpochCoherent =
@@ -17108,6 +17248,7 @@ private fun ThreadMessagesList(
                 allowBottomAutoAnchor = allowBottomAutoAnchor,
                 viewportEpochCoherent = focusedTailViewportEpochCoherent,
                 focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
+                composerHandoffOwed = imeHandoffState.owes(focusedTargetIdentity),
                 focusedActiveTailAnchorCanCorrectLayout =
                     focusedAnchorOwnsViewport &&
                         focusedActiveTailMessageComposerLayoutOwnsViewport(
@@ -17173,6 +17314,18 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         pendingKeyboardBottomAnchor = true
+        // Discharged as the command is about to be issued, not after it settles:
+        // settlement suspends, and a pass in between would still see the debt
+        // outstanding and issue a second command for the same shrink.
+        if (imeHandoffState.owes(focusedTargetIdentity)) {
+            imeHandoffState =
+                reduceThreadImeHandoff(imeHandoffState, ThreadImeHandoffEvent.CommandIssued)
+            diagnosticsLogger(
+                "thread_ime_handoff result=command_issued " +
+                    "messageId=${focusedTargetMessageId.orEmpty()} " +
+                    "placement=${if (layoutDecision.anchorFocusedTailAtRenderedBottom) "rendered_tail_bottom" else "replay_intent"}"
+            )
+        }
         viewportLayoutGeneration += 1L
         if (
             layoutDecision.anchorFocusedTailAtRenderedBottom &&
@@ -18657,13 +18810,20 @@ internal fun shouldCorrectFocusedAnchorAfterOriginHydration(
     correctedIdentity: String?,
     scrollInterruptedIdentity: String?,
     startUserScrollGeneration: Int,
-    currentUserScrollGeneration: Int
+    currentUserScrollGeneration: Int,
+    // task #990: deliberately without a default. This guard runs before the
+    // layout await and again after it, and an earlier attempt gave the
+    // parameter a default — which silently left both real call sites on the old
+    // behaviour while the helper's own test passed. A caller that forgets it now
+    // fails to compile.
+    retiredIdentity: String?
 ): Boolean =
     originStatus != "none" &&
         originStatus != "loading" &&
         anchoredIdentity == targetIdentity &&
         correctedIdentity != targetIdentity &&
         scrollInterruptedIdentity != targetIdentity &&
+        retiredIdentity != targetIdentity &&
         startUserScrollGeneration == currentUserScrollGeneration
 
 // The session policy as a pure state machine (task #567). Precedence:
@@ -18674,10 +18834,16 @@ internal fun focusedAnchorSessionAction(
     userInteracting: Boolean,
     drifted: Boolean,
     quietMs: Long,
-    elapsedMs: Long
+    elapsedMs: Long,
+    // task #990: the shrink has been handed to the composer, so this session no
+    // longer owns the viewport. Without this the session reads the shrink's own
+    // displacement as drift and reanchors into the correction it just gave away.
+    handedOff: Boolean = false
 ): FocusedAnchorSessionAction =
     when {
         userInteracting -> FocusedAnchorSessionAction.Interrupt
+        // Ahead of drift: the displacement it would measure is the handoff's.
+        handedOff -> FocusedAnchorSessionAction.Consume
         elapsedMs >= FocusedAnchorSessionHardCapMs -> FocusedAnchorSessionAction.Consume
         drifted -> FocusedAnchorSessionAction.Reanchor
         quietMs >= FocusedAnchorSessionQuietMs -> FocusedAnchorSessionAction.Consume
@@ -18927,7 +19093,10 @@ internal data class ThreadComposerLayoutBottomAnchorState(
     val viewportEpochCoherent: Boolean,
     val focusedAnchorOwnsViewport: Boolean,
     val focusedActiveTailAnchorCanCorrectLayout: Boolean,
-    val focusedTailAnchorCanCorrectLayout: Boolean
+    val focusedTailAnchorCanCorrectLayout: Boolean,
+    // task #990: a handoff owes exactly one composer correction. Defaulted false
+    // so existing callers keep their behaviour.
+    val composerHandoffOwed: Boolean = false
 )
 
 internal fun threadComposerLayoutChanged(state: ThreadComposerLayoutBottomAnchorState): Boolean =
@@ -19018,6 +19187,13 @@ internal fun resolveThreadComposerLayoutBottomAnchor(
     val pendingLayoutChange =
         when {
             shouldAnchor -> false
+            // task #990: the focused owner has been dismissed, so if this pass
+            // cannot anchor yet there is nobody else to correct the shrink.
+            // Dropping it here turns the handoff into a silent freeze — and the
+            // white sequence reaches its first coherent viewport while the
+            // target is still unmeasurable, so "cannot anchor yet" is the
+            // expected first tick rather than an error.
+            state.composerHandoffOwed -> true
             layoutChanged && !state.initialBottomAnchorReady -> true
             layoutChanged && state.focusedAnchorOwnsViewport -> true
             state.focusedAnchorOwnsViewport -> state.pendingLayoutChange

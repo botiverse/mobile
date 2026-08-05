@@ -285,7 +285,8 @@ class ThreadBottomAnchorSignatureTest {
                 correctedIdentity = null,
                 scrollInterruptedIdentity = null,
                 startUserScrollGeneration = 3,
-                currentUserScrollGeneration = 3
+                currentUserScrollGeneration = 3,
+                retiredIdentity = null
             )
         )
         assertFalse(
@@ -296,7 +297,8 @@ class ThreadBottomAnchorSignatureTest {
                 correctedIdentity = identity,
                 scrollInterruptedIdentity = null,
                 startUserScrollGeneration = 3,
-                currentUserScrollGeneration = 3
+                currentUserScrollGeneration = 3,
+                retiredIdentity = null
             )
         )
     }
@@ -313,7 +315,8 @@ class ThreadBottomAnchorSignatureTest {
                 correctedIdentity = null,
                 scrollInterruptedIdentity = identity,
                 startUserScrollGeneration = 3,
-                currentUserScrollGeneration = 4
+                currentUserScrollGeneration = 4,
+                retiredIdentity = null
             )
         )
     }
