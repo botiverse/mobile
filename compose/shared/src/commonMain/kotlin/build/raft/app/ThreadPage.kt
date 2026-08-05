@@ -17559,13 +17559,17 @@ private fun ThreadMessagesList(
             // compares it and never learns what it refers to. Released with this
             // screen rather than persisting as global state.
             val lazyLayoutTrace =
-                remember(threadInstanceKey, focusedTargetMessageId, viewportLayoutGeneration) {
+                remember(
+                    threadInstanceKey,
+                    renderPayload.focusedMessageId,
+                    viewportLayoutGeneration
+                ) {
                     LazyLayoutTrace(
                         LazyTraceContext(
                             traceSession = threadInstanceKey,
                             cycle = imeTailDrawProbe.snapshot().generation,
                             layoutGeneration = viewportLayoutGeneration,
-                            targetToken = focusedTargetMessageId
+                            targetToken = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() }
                         )
                     ) { traceContext, record ->
                         diagnosticsLogger(
