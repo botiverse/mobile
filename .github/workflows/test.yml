@@ -893,6 +893,7 @@ jobs:
         run: |
           scripts/ci/test_assert_instrumentation_ok.sh
           scripts/ci/test_instrumentation_retry_classification.sh
+          scripts/ci/test_prepare_android_emulator_ime.sh
 
       - name: Select Thread newer-pagination gate
         shell: bash
@@ -979,10 +980,17 @@ jobs:
             # confirmed to reproduce redRatio=0/blueRatio=0). An effectively
             # infinite timeout prevents that sleep deterministically.
             adb shell settings put system screen_off_timeout 2147483647
+            SOURCE_EXACT='${{ github.event.pull_request.head.sha || github.sha }}' ANDROID_EMULATOR_SYSTEM_IMAGE_PACKAGE='system-images;android-34;google_apis;x86_64' RUNNER_LABEL='blacksmith-4vcpu-ubuntu-2404' scripts/ci/prepare_android_emulator_ime.sh android-ime-environment.txt
             adb install -r "$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
             adb install -r "$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
             scripts/ci/run-instrumentation-with-retry.sh first-character-baseline-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockComposerFirstCharacterBaselineTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
-            scripts/ci/run-instrumentation-with-retry.sh composer-session-retirement-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockThreadImePaintConnectedTest#sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
+            # Keep this single-request capability probe unprimed. An earlier
+            # focus/IME probe can warm the emulator and invalidate this reading.
+            adb logcat -c
+            scripts/ci/run-instrumentation-with-retry.sh ime-visibility-probe-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.AndroidImeVisibilityProbeConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; RC=$?; adb shell dumpsys input_method > ime-visibility-probe-input-method.txt; adb shell dumpsys window > ime-visibility-probe-window.txt; adb shell dumpsys activity activities > ime-visibility-probe-activity.txt; adb shell dumpsys power > ime-visibility-probe-power.txt; adb shell dumpsys window policy > ime-visibility-probe-policy.txt; adb logcat -d -v threadtime > ime-visibility-probe-logcat.txt; exit $RC
+            grep -Fq 'ANDROID_IME_VISIBILITY_PROBE_PASS' ime-visibility-probe-instrumentation.txt
+            adb logcat -c
+            scripts/ci/run-instrumentation-with-retry.sh composer-session-retirement-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockThreadImePaintConnectedTest#sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; RC=$?; adb shell dumpsys input_method > composer-session-retirement-input-method.txt; adb shell dumpsys window > composer-session-retirement-window.txt; adb shell dumpsys activity activities > composer-session-retirement-activity.txt; adb shell dumpsys power > composer-session-retirement-power.txt; adb shell dumpsys window policy > composer-session-retirement-policy.txt; adb logcat -d -v threadtime > composer-session-retirement-logcat.txt; exit $RC
             grep -Fq 'SLOCK_COMPOSER_SESSION_RETIREMENT_PASS replacementFocused=true firstComposition=true firstSelection=true requestCount=1 imeSetupFailureDiagnostics=true' composer-session-retirement-instrumentation.txt
             scripts/ci/run-instrumentation-with-retry.sh multiline-text-field-value-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockMultilineTextFieldValueConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
             scripts/ci/run-instrumentation-with-retry.sh kuikly-profiler-runtime-smoke-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.KuiklyProfilerRuntimeSmokeTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
@@ -1036,7 +1044,21 @@ jobs:
           name: first-character-baseline-instrumentation
           path: |
             first-character-baseline-instrumentation.txt
+            android-ime-environment.txt
+            ime-visibility-probe-instrumentation.txt
+            ime-visibility-probe-input-method.txt
+            ime-visibility-probe-window.txt
+            ime-visibility-probe-activity.txt
+            ime-visibility-probe-power.txt
+            ime-visibility-probe-policy.txt
+            ime-visibility-probe-logcat.txt
             composer-session-retirement-instrumentation.txt
+            composer-session-retirement-input-method.txt
+            composer-session-retirement-window.txt
+            composer-session-retirement-activity.txt
+            composer-session-retirement-power.txt
+            composer-session-retirement-policy.txt
+            composer-session-retirement-logcat.txt
             multiline-text-field-value-instrumentation.txt
             kuikly-profiler-runtime-smoke-instrumentation.txt
             attachment-private-file-provider-instrumentation.txt
