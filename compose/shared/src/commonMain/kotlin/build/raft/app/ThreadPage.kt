@@ -17213,6 +17213,7 @@ private fun ThreadMessagesList(
                     "viewportEpochCoherent=$focusedTailViewportEpochCoherent " +
                     "tailSpanPx=${focusedTailFit.trailingSpanPx} tailFits=${focusedTailFit.fitsViewport} " +
                     "measurementResult=${if (focusedTailFit.fitHeightPx >= 0) "available" else "measurement_unavailable"} " +
+                    "measurementMissing=${focusedTailFit.unavailableReason.ifEmpty { "none" }} " +
                     "canLoadMoreAfter=${renderPayload.canLoadMoreAfter} " +
                     "focusedOwns=$focusedAnchorOwnsViewport consumed=${consumedFocusedMessageAnchorIdentity == focusedTargetIdentity} " +
                     "focusedOriginCorrectionPending=$focusedOriginCorrectionPending " +
@@ -18976,7 +18977,13 @@ internal data class ThreadFocusedTailFit(
     val fitHeightPx: Int,
     val viewportHeightPx: Int,
     val trailingSpanPx: Int,
-    val fitsViewport: Boolean
+    val fitsViewport: Boolean,
+    // task #990 forensics: when the fit is unavailable, name the missing inputs.
+    // "target is not visible" and "the measurement is unavailable" turned out to
+    // be different conditions in Hands e84ea154 — the target returned to the
+    // viewport while the fit stayed unavailable — so the reason must be recorded
+    // rather than inferred from target visibility.
+    val unavailableReason: String = ""
 )
 
 internal fun threadViewportEpochCoherent(
@@ -19028,6 +19035,15 @@ internal fun resolveThreadFocusedTailFit(
             latestMessageSizePx > 0 &&
             viewportHeightPx > 0
     if (!indicesValid || !geometryValid) {
+        val missing = StringBuilder()
+        if (targetItemIndex < 0) missing.append("targetIndex,")
+        if (latestMessageItemIndex < targetItemIndex) missing.append("latestBeforeTarget,")
+        if (bottomPaddingItemIndex <= latestMessageItemIndex) missing.append("bottomPadding,")
+        if (targetOffsetPx == null) missing.append("targetOffset,")
+        if (targetSizePx == null) missing.append("targetSizeNull,") else if (targetSizePx <= 0) missing.append("targetSizeZero,")
+        if (latestMessageOffsetPx == null) missing.append("latestOffset,")
+        if (latestMessageSizePx == null) missing.append("latestSizeNull,") else if (latestMessageSizePx <= 0) missing.append("latestSizeZero,")
+        if (viewportHeightPx <= 0) missing.append("viewportHeight,")
         return ThreadFocusedTailFit(
             targetItemIndex = targetItemIndex,
             latestMessageItemIndex = latestMessageItemIndex,
@@ -19035,7 +19051,8 @@ internal fun resolveThreadFocusedTailFit(
             fitHeightPx = -1,
             viewportHeightPx = viewportHeightPx,
             trailingSpanPx = 0,
-            fitsViewport = false
+            fitsViewport = false,
+            unavailableReason = missing.toString().trimEnd(',').ifEmpty { "none" }
         )
     }
     val targetOffset = requireNotNull(targetOffsetPx)
