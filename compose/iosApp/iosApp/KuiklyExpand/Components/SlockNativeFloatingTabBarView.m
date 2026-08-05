@@ -1,4 +1,5 @@
 #import "SlockNativeFloatingTabBarView.h"
+#import "SlockStackedItemTabBar.h"
 
 #import <OpenKuiklyIOSRender/KRComponentDefine.h>
 
@@ -59,7 +60,7 @@ static NSString *SlockNativeFloatingTabBarSeparator(void) {
         self.opaque = NO;
         self.userInteractionEnabled = YES;
 
-        _tabBar = [[UITabBar alloc] initWithFrame:CGRectZero];
+        _tabBar = [[SlockStackedItemTabBar alloc] initWithFrame:CGRectZero];
         _tabBar.delegate = self;
         // Let the system own the material/background so iOS 26 applies Liquid
         // Glass. Tint follows the app's black-on-yellow scheme.
