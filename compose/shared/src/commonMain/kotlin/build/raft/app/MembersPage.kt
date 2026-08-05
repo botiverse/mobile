@@ -142,6 +142,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -176,6 +177,9 @@ import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.boundsInRoot
+import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
@@ -188,6 +192,7 @@ import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.core.views.KeyboardParams
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -8610,12 +8615,44 @@ private fun MembersAgentRuntimeConfigDialog(
             currentCatalogGeneration = runtimeModelGenerationsByRuntime[runtime] ?: 0L
         )
 
+    val runtimeConfigListState = rememberLazyListState()
+    val runtimeConfigScrollScope = rememberCoroutineScope()
+    var runtimeConfigViewport by remember { mutableStateOf<Rect?>(null) }
+
     SlockUnifiedDialog(
         title = stringResource(MR.strings.member_dialog_edit_runtime_config).uppercase(),
         dismissEnabled = !saving,
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
     ) {
+        val focusedRuntimeEditorBounds = rememberSlockFocusedInputBoundsResolver()
+        val dialogKeyboardHeightChange = LocalSlockDialogKeyboardHeightChange.current
+
+        fun keepFocusedRuntimeEditorVisible(params: KeyboardParams) {
+            dialogKeyboardHeightChange(params)
+            if (params.height <= 0f) return
+            runtimeConfigScrollScope.launch {
+                slockUnifiedDialogKeepFocusedEditorVisible(
+                    keyboardHeight = params.height,
+                    awaitRelayoutFrame = { withFrameNanos { } },
+                    focusedBounds = focusedRuntimeEditorBounds,
+                    viewportBounds = { runtimeConfigViewport },
+                    currentScrollPosition = {
+                        SlockUnifiedDialogListScrollPosition(
+                            index = runtimeConfigListState.firstVisibleItemIndex,
+                            scrollOffset = runtimeConfigListState.firstVisibleItemScrollOffset
+                        )
+                    },
+                    scrollToItem = { index, scrollOffset ->
+                        runtimeConfigListState.scrollToItem(index, scrollOffset)
+                    }
+                )
+            }
+        }
+
+        CompositionLocalProvider(
+            LocalSlockDialogKeyboardHeightChange provides ::keepFocusedRuntimeEditorVisible
+        ) {
         // Kuikly's row/column measure policy hands the remaining height to unweighted
         // children first, so a capped LazyColumn can swallow the whole keyboard-reduced
         // viewport and leave the trailing Save/Cancel row at zero height. Pin the body to
@@ -8626,7 +8663,9 @@ private fun MembersAgentRuntimeConfigDialog(
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
         ) {
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                state = runtimeConfigListState,
+                modifier = Modifier.fillMaxWidth().weight(1f)
+                    .onGloballyPositioned { runtimeConfigViewport = it.boundsInRoot() },
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
@@ -8840,6 +8879,7 @@ private fun MembersAgentRuntimeConfigDialog(
                     }
                 )
             }
+        }
         }
     }
 

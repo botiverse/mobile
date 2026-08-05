@@ -725,6 +725,9 @@ internal class SlockInputFocusOwnerRegistry {
         hasActiveOwner = activeOwners.isNotEmpty()
     }
 
+    /** Returns the current focused editor bounds in root coordinates, when still attached. */
+    fun focusedBounds(): Rect? = activeOwners.values.firstNotNullOfOrNull { it() }
+
     fun shouldClearFocus(position: Offset): Boolean {
         if (activeOwners.isEmpty()) return false
         activeOwners.values.forEach { resolveBounds ->
@@ -855,6 +858,17 @@ internal fun isNativeInputFocusDismissCancellation(
 
 internal val LocalSlockInputFocusOwnerRegistry =
     compositionLocalOf<SlockInputFocusOwnerRegistry?> { null }
+
+/**
+ * Resolves focused-input geometry from the registry that is current where this resolver is
+ * composed. Modal installs its own focus-dismiss host, so callers must acquire this resolver from
+ * inside modal content rather than capture the page-level registry before entering [Modal].
+ */
+@Composable
+internal fun rememberSlockFocusedInputBoundsResolver(): () -> Rect? {
+    val currentRegistry = rememberUpdatedState(LocalSlockInputFocusOwnerRegistry.current)
+    return remember { { currentRegistry.value?.focusedBounds() } }
+}
 
 /**
  * Marks a composed interaction surface as belonging to the currently focused input experience.
