@@ -314,6 +314,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -15378,51 +15379,74 @@ private fun ThreadMessagesList(
     var viewportLayoutGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
     val dispatchViewportEvent: (LazyViewportEvent) -> Unit = { event ->
         val previousCommandId = viewportControllerState.pendingCommand?.id
+        val previousEpoch = viewportControllerState.epoch
         viewportControllerState = reduceLazyViewport(viewportControllerState, event)
-        // task #990 forensics: an Anchor event only reaches the list if the
-        // reducer actually emitted a command for it. Record whether one appeared
-        // and what it carries, so a reanchor that never produced a command is
-        // distinguishable from one that produced a command and was then dropped.
-        if (event is LazyViewportEvent.Anchor) {
-            val emitted = viewportControllerState.pendingCommand
+        val nextCommandId = viewportControllerState.pendingCommand?.id
+        // task #990 forensics: a pending command can be replaced at the SAME epoch
+        // (withCommandForIntent only advances `sequence`), so a reanchor can be
+        // displaced by any later event without the epoch moving. Record every
+        // transition of the pending id — not just Anchor dispatches — otherwise a
+        // same-epoch replacement is invisible and reads as the original settling.
+        if (nextCommandId != previousCommandId) {
+            val anchorDetail =
+                if (event is LazyViewportEvent.Anchor) {
+                    " eventLayoutGeneration=${event.layoutGeneration}" +
+                        " currentLayoutGeneration=$viewportLayoutGeneration" +
+                        " placement=${event.placement}" +
+                        " renderedTailPresent=${event.renderedTailMessageId != null}" +
+                        " renderedTailIdentityPresent=${event.renderedTailAnchorIdentity != null}"
+                } else {
+                    ""
+                }
             diagnosticsLogger(
-                "thread_viewport_anchor_dispatched " +
-                    "commandEmitted=${emitted != null && emitted.id != previousCommandId} " +
-                    "commandEpoch=${emitted?.id?.epoch} " +
-                    "eventLayoutGeneration=${event.layoutGeneration} " +
-                    "currentLayoutGeneration=$viewportLayoutGeneration " +
-                    "placement=${event.placement} " +
-                    "renderedTailPresent=${event.renderedTailMessageId != null} " +
-                    "renderedTailIdentityPresent=${event.renderedTailAnchorIdentity != null}"
+                "thread_viewport_pending_command eventKind=${lazyViewportEventKind(event)} " +
+                    "before=${previousCommandId?.let { "${it.epoch}:${it.sequence}" } ?: "none"} " +
+                    "after=${nextCommandId?.let { "${it.epoch}:${it.sequence}" } ?: "none"} " +
+                    "epoch=$previousEpoch->${viewportControllerState.epoch}" +
+                    anchorDetail
             )
         }
     }
-    // task #990 forensics: the settlement predicate below is satisfied by three
-    // materially different outcomes — the command was consumed by the list, it
-    // was superseded by a newer epoch, or its pendingCommand was cleared without
-    // ever reaching the list. Returning normally therefore proves nothing about
-    // whether a scroll happened. Report which branch released the wait so the
-    // reanchor path can be told apart from a silently dropped command.
+    // task #990 forensics: the settlement predicate below is satisfied by
+    // materially different outcomes, and `epoch` alone cannot separate them.
+    // withCommandForIntent() keeps the SAME epoch and only advances `sequence`,
+    // so a same-epoch replacement (content mutation during the wait) leaves the
+    // predicate false until the replacement itself clears — at which point a
+    // naive report would call the original "cleared" and disguise a replaced
+    // command as a completed one. Correlate on the full epoch:sequence id and
+    // observe the pending id across the wait so the four outcomes are distinct.
+    // The predicate and suspension point are deliberately unchanged.
     suspend fun awaitViewportCommandSettlement(
         commandId: LazyViewportCommandId,
         reason: String = "unspecified"
     ) {
+        var observedOriginal = false
+        var observedReplacement = false
         val (settledEpoch, settledPendingId) =
             snapshotFlow {
                 viewportControllerState.epoch to viewportControllerState.pendingCommand?.id
+            }.onEach { (_, pendingId) ->
+                if (pendingId == commandId) {
+                    observedOriginal = true
+                } else if (pendingId != null && pendingId.epoch == commandId.epoch) {
+                    observedReplacement = true
+                }
             }.first { (epoch, pendingId) ->
                 epoch != commandId.epoch || pendingId == null
             }
         val outcome =
             when {
-                settledEpoch != commandId.epoch -> "superseded"
-                settledPendingId == null -> "cleared"
-                else -> "unknown"
+                settledEpoch != commandId.epoch -> "superseded_epoch"
+                observedReplacement -> "replaced_same_epoch"
+                observedOriginal -> "consumed_original"
+                else -> "cleared_without_original_terminal"
             }
         diagnosticsLogger(
             "thread_viewport_command_settled reason=$reason outcome=$outcome " +
-                "commandEpoch=${commandId.epoch} settledEpoch=$settledEpoch " +
-                "pendingIdPresent=${settledPendingId != null}"
+                "commandId=${commandId.epoch}:${commandId.sequence} " +
+                "settledEpoch=$settledEpoch " +
+                "settledPendingId=${settledPendingId?.let { "${it.epoch}:${it.sequence}" } ?: "none"} " +
+                "observedOriginal=$observedOriginal observedReplacement=$observedReplacement"
         )
     }
     var measuredThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(0f) }
@@ -16643,6 +16667,7 @@ private fun ThreadMessagesList(
                     // issued" is never mistaken for "target became visible again".
                     diagnosticsLogger(
                         "thread_focused_reanchor_result commandIssued=${reanchorCommandId != null} " +
+                            "commandId=${reanchorCommandId?.let { "${it.epoch}:${it.sequence}" } ?: "none"} " +
                             "targetIndex=$targetIndex targetOffsetPresent=${anchoredOffset != null} " +
                             "firstVisible=${listState.firstVisibleItemIndex} " +
                             "lastVisible=${listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1} " +
@@ -18457,6 +18482,24 @@ private fun ThreadLazyWindowStats.toDiagnosticsString(result: String): String =
         "visibleItemRange=$firstVisibleItem..$lastVisibleItem " +
         "visibleMessageRange=$firstVisibleMessage..$lastVisibleMessage " +
         "visibleMessages=$visibleMessages"
+
+// task #990 forensics: compact, explicit event kind for the pending-command
+// transition log. Written as a when over the sealed hierarchy rather than
+// reflection so it compiles on the OHOS Kotlin toolchain as well.
+internal fun lazyViewportEventKind(event: LazyViewportEvent): String =
+    when (event) {
+        is LazyViewportEvent.FollowLatest -> "FollowLatest"
+        LazyViewportEvent.PinTop -> "PinTop"
+        is LazyViewportEvent.Anchor -> "Anchor"
+        LazyViewportEvent.PointerDown -> "PointerDown"
+        LazyViewportEvent.PointerMove -> "PointerMove"
+        is LazyViewportEvent.PointerSettled -> "PointerSettled"
+        is LazyViewportEvent.ContentMutated -> "ContentMutated:${event.mutation}"
+        is LazyViewportEvent.NewerPageSettled -> "NewerPageSettled"
+        is LazyViewportEvent.AnchorUnavailable -> "AnchorUnavailable"
+        is LazyViewportEvent.RenderedTailCommandInvalidated -> "RenderedTailCommandInvalidated"
+        is LazyViewportEvent.CommandConsumed -> "CommandConsumed"
+    }
 
 internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
     latestItemIndex.coerceAtLeast(0)
