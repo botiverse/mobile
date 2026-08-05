@@ -18444,7 +18444,16 @@ private data class ThreadLazyWindowStats(
     val lastVisibleItem: Int,
     val firstVisibleMessage: Int,
     val lastVisibleMessage: Int,
-    val visibleMessages: Int
+    val visibleMessages: Int,
+    // task #990: WHICH items are visible says nothing about whether they COVER
+    // the viewport. A short focused message can leave most of the shrunken
+    // viewport with nothing laid out over it — that uncovered band is what the
+    // user sees as white, and an index-range-only log cannot show it.
+    val viewportStartPx: Int = 0,
+    val viewportEndPx: Int = 0,
+    val coveredPx: Int = 0,
+    val gapPx: Int = 0,
+    val itemGeometry: String = ""
 )
 
 private fun threadMessagePerformanceKey(messageId: String, index: Int): String =
@@ -18464,6 +18473,19 @@ private fun LazyListState.threadLazyWindowStats(
             (item.index - firstMessageListItemIndex)
                 .takeIf { it in timelineSlice.messages.indices }
         }
+    val viewportStart = layoutInfo.viewportStartOffset
+    val viewportEnd = layoutInfo.viewportEndOffset
+    var covered = 0
+    val geometry = StringBuilder()
+    for (item in visibleItems) {
+        val top = if (item.offset > viewportStart) item.offset else viewportStart
+        val itemBottom = item.offset + item.size
+        val bottom = if (itemBottom < viewportEnd) itemBottom else viewportEnd
+        if (bottom > top) covered += bottom - top
+        if (geometry.isNotEmpty()) geometry.append('|')
+        geometry.append(item.index).append(':').append(item.offset).append('+').append(item.size)
+    }
+    val viewportExtent = viewportEnd - viewportStart
     return ThreadLazyWindowStats(
         totalItems = lazyItemCount,
         totalMessages = timelineSlice.messages.size,
@@ -18473,7 +18495,12 @@ private fun LazyListState.threadLazyWindowStats(
         lastVisibleItem = lastVisibleItem,
         firstVisibleMessage = visibleMessageIndexes.firstOrNull() ?: -1,
         lastVisibleMessage = visibleMessageIndexes.lastOrNull() ?: -1,
-        visibleMessages = visibleMessageIndexes.size
+        visibleMessages = visibleMessageIndexes.size,
+        viewportStartPx = viewportStart,
+        viewportEndPx = viewportEnd,
+        coveredPx = covered,
+        gapPx = if (viewportExtent > covered) viewportExtent - covered else 0,
+        itemGeometry = geometry.toString()
     )
 }
 
@@ -18482,7 +18509,9 @@ private fun ThreadLazyWindowStats.toDiagnosticsString(result: String): String =
         "beyondBounds=$beyondBoundsItems visibleItems=$visibleItems " +
         "visibleItemRange=$firstVisibleItem..$lastVisibleItem " +
         "visibleMessageRange=$firstVisibleMessage..$lastVisibleMessage " +
-        "visibleMessages=$visibleMessages"
+        "visibleMessages=$visibleMessages " +
+        "viewport=$viewportStartPx..$viewportEndPx coveredPx=$coveredPx gapPx=$gapPx " +
+        "itemGeometry=$itemGeometry"
 
 // task #990 forensics: compact, explicit event kind for the pending-command
 // transition log. Written as a when over the sealed hierarchy rather than
