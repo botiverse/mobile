@@ -2330,6 +2330,12 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
         if ([controller isKindOfClass:UINavigationController.class]) {
             controller = ((UINavigationController *)controller).topViewController;
         }
+        // On iOS 18+ the AppShell render root lives inside the selected content
+        // controller of the adaptive UITabBarController. Walk containment back
+        // to the Kuikly owner instead of silently dropping the gesture contract.
+        while (controller && ![controller isKindOfClass:KuiklyRenderViewController.class]) {
+            controller = controller.parentViewController;
+        }
         if ([controller isKindOfClass:KuiklyRenderViewController.class]) {
             KuiklyRenderViewController *renderController = (KuiklyRenderViewController *)controller;
             if (renderController.slockIsAppShellPage) {

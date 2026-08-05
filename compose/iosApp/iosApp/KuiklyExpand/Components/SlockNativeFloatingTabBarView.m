@@ -1,6 +1,8 @@
 #import "SlockNativeFloatingTabBarView.h"
 
 #import <OpenKuiklyIOSRender/KRComponentDefine.h>
+#import <OpenKuiklyIOSRender/KuiklyRenderView.h>
+#import <OpenKuiklyIOSRender/NSObject+KR.h>
 
 // Real UIKit UITabBar-backed bottom tab bar. This replaces the previous
 // hand-rolled UIVisualEffectView "dock" so iOS uses the native tab bar — on
@@ -41,6 +43,7 @@ static NSString *SlockNativeFloatingTabBarSeparator(void) {
 @property (nonatomic, copy) NSArray<NSString *> *enabled;
 @property (nonatomic, copy) NSString *selectedKey;
 @property (nonatomic, copy) KuiklyRenderCallback selectCallback;
+@property (nonatomic, assign) BOOL usesAdaptiveController;
 
 @end
 
@@ -92,6 +95,12 @@ static NSString *SlockNativeFloatingTabBarSeparator(void) {
     } else if ([propKey isEqualToString:SlockNativeFloatingTabBarSelectProp]) {
         self.selectCallback = (KuiklyRenderCallback)propValue;
     }
+    [self syncAdaptiveControllerIfAvailable];
+}
+
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    [self syncAdaptiveControllerIfAvailable];
 }
 
 - (void)layoutSubviews {
@@ -125,6 +134,9 @@ static NSString *SlockNativeFloatingTabBarSeparator(void) {
 #pragma mark - Private
 
 - (void)reloadItems {
+    if (self.usesAdaptiveController) {
+        return;
+    }
     NSMutableArray<UITabBarItem *> *items = [NSMutableArray array];
     for (NSUInteger index = 0; index < self.keys.count; index++) {
         NSString *key = self.keys[index];
@@ -145,6 +157,33 @@ static NSString *SlockNativeFloatingTabBarSeparator(void) {
     }
     self.tabBar.items = items;
     [self applySelectedKey];
+}
+
+- (void)syncAdaptiveControllerIfAvailable {
+    if (@available(iOS 18.0, *)) {
+        UIViewController *controller = self.hr_rootView.kr_viewController;
+        while (controller && ![controller conformsToProtocol:@protocol(SlockNativeAdaptiveTabBarHosting)]) {
+            controller = controller.parentViewController;
+        }
+        id<SlockNativeAdaptiveTabBarHosting> host = (id<SlockNativeAdaptiveTabBarHosting>)controller;
+        if (host && [host slock_updateAdaptiveTabKeys:self.keys
+                                               labels:self.labels
+                                                icons:self.icons
+                                              enabled:self.enabled
+                                          selectedKey:self.selectedKey ?: @""
+                                       selectCallback:self.selectCallback]) {
+            self.usesAdaptiveController = YES;
+            self.tabBar.hidden = YES;
+            self.userInteractionEnabled = NO;
+            return;
+        }
+    }
+    if (self.usesAdaptiveController) {
+        self.usesAdaptiveController = NO;
+        self.tabBar.hidden = NO;
+        self.userInteractionEnabled = YES;
+        [self reloadItems];
+    }
 }
 
 - (void)applySelectedKey {
