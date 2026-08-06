@@ -169,8 +169,11 @@ internal class SlockAndroidAvatarCacheManager(
             if (admitted != null && request.readMode == SlockAndroidAvatarReadMode.Fetch) {
                 terminalFetch =
                     when {
-                        admitted.finalized && admitted.result?.status == "success" -> true
-                        admitted.result != null && admitted.result?.status != "success" -> false
+                        admitted.finalized &&
+                            (admitted.result?.status == "success" || admitted.result?.status == "not_modified") -> true
+                        admitted.result != null &&
+                            admitted.result?.status != "success" &&
+                            admitted.result?.status != "not_modified" -> false
                         else -> null
                     }
                 if (terminalFetch == null) ensureTimeoutLocked(admitted)
@@ -301,10 +304,14 @@ internal class SlockAndroidAvatarCacheManager(
                         scheduleRollbackCleanupLocked(operation, rollback)
                     }
                     "not_modified" -> {
-                        if (readValidated(request.entryKey) == null) {
+                        val admittedPayload = readValidated(request.entryKey)
+                        if (admittedPayload == null) {
                             return@synchronized SlockAndroidAvatarMutation.Failed("avatar_cache_not_modified_bytes_missing")
                         }
                         operation.finalized = true
+                        renderPayload = admittedPayload
+                        operationForDelivery = operation
+                        deliveriesToSchedule = operation.pendingDeliveries.values.toList()
                     }
                     "resource_absent", "invalid_content" -> {
                         val transientsDeleted = discardOperationFilesLocked(operation)
@@ -315,6 +322,9 @@ internal class SlockAndroidAvatarCacheManager(
                             )
                         }
                         operation.finalized = true
+                        if (request.readMode == SlockAndroidAvatarReadMode.Fetch) {
+                            closePendingDeliveriesLocked(operation)
+                        }
                     }
                     "temporary_transport" -> {
                         if (!discardOperationFilesLocked(operation)) {
@@ -323,6 +333,9 @@ internal class SlockAndroidAvatarCacheManager(
                             )
                         }
                         operation.finalized = true
+                        if (request.readMode == SlockAndroidAvatarReadMode.Fetch) {
+                            closePendingDeliveriesLocked(operation)
+                        }
                     }
                     else -> return@synchronized SlockAndroidAvatarMutation.Failed("avatar_cache_finalize_outcome_unknown")
                 }
@@ -588,7 +601,11 @@ internal class SlockAndroidAvatarCacheManager(
             operation.resultTimeout = null
             resultCallbacks += operation.resultWaiters.values
             operation.resultWaiters.clear()
-            if (deliveredResult.status != "success") {
+            if (
+                operation.request.readMode == SlockAndroidAvatarReadMode.Fetch &&
+                deliveredResult.status != "success" &&
+                deliveredResult.status != "not_modified"
+            ) {
                 closePendingDeliveriesLocked(operation)
             }
             pruneOperationsLocked()

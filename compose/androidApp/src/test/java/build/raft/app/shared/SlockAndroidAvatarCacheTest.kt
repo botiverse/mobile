@@ -557,6 +557,173 @@ class SlockAndroidAvatarCacheTest {
     }
 
     @Test
+    fun controlPlaneResultPublicationCannotCancelPausedPerViewDiskDelivery() =
+        withTempRoot { root ->
+            val cases =
+                listOf(
+                    Triple(SlockAndroidAvatarReadMode.RenderFresh, 200, "rendered"),
+                    Triple(SlockAndroidAvatarReadMode.RenderStaleRevalidate, 304, "not_modified"),
+                    Triple(SlockAndroidAvatarReadMode.RenderStaleRevalidate, 0, "temporary_transport")
+                )
+            cases.forEachIndexed { index, (mode, statusCode, expectedStatus) ->
+                val executor = ManualExecutor()
+                val store = newStore(root.resolve("case-$index"))
+                val request = request(mode = mode, generation = 2L)
+                prime(store, request.entryKey, generation = 1L, bytes = validBytes("disk"))
+                val manager =
+                    newManager(store, executor) { _, _ ->
+                        SlockAndroidAvatarNetworkResponse(statusCode = statusCode)
+                    }
+                prepare(manager, request)
+                val deliveries = mutableListOf<String?>()
+                val statuses = mutableListOf<String>()
+
+                manager.load(request) { payload -> deliveries += payload?.bytes?.toText() }
+                manager.awaitResult(request) { statuses += it.status }
+                assertEquals(2, executor.size)
+
+                executor.runNext()
+                assertEquals(2, executor.size)
+                executor.runNext()
+                assertEquals(listOf(expectedStatus), statuses)
+                assertTrue(deliveries.isEmpty())
+
+                executor.runAll()
+                assertEquals(listOf("Bdisk"), deliveries)
+            }
+        }
+
+    @Test
+    fun fetchNotModifiedKeepsDiskDeliveryPendingUntilFinalizeAndServesLateConsumer() =
+        withTempRoot { root ->
+            val executor = ManualExecutor()
+            val store = newStore(root)
+            val request = request(mode = SlockAndroidAvatarReadMode.Fetch, generation = 2L)
+            prime(store, request.entryKey, generation = 1L, bytes = validBytes("disk"))
+            val manager =
+                newManager(store, executor) { _, _ ->
+                    SlockAndroidAvatarNetworkResponse(statusCode = 304)
+                }
+            prepare(manager, request)
+            val early = mutableListOf<String?>()
+            val late = mutableListOf<String?>()
+            val statuses = mutableListOf<String>()
+
+            manager.load(request) { payload -> early += payload?.bytes?.toText() }
+            manager.awaitResult(request) { statuses += it.status }
+            executor.runAll()
+            assertEquals(listOf("not_modified"), statuses)
+            assertTrue(early.isEmpty())
+
+            assertEquals(SlockAndroidAvatarMutation.Accepted, manager.finalize(request, "not_modified"))
+            manager.load(request) { payload -> late += payload?.bytes?.toText() }
+            executor.runAll()
+
+            assertEquals(listOf("Bdisk"), early)
+            assertEquals(listOf("Bdisk"), late)
+        }
+
+    @Test
+    fun overlappingSameGenerationRenderFreshLoadsEachReceiveDiskBytesExactlyOnce() =
+        withTempRoot { root ->
+            val executor = ManualExecutor()
+            val store = newStore(root)
+            val request = request(mode = SlockAndroidAvatarReadMode.RenderFresh, generation = 2L)
+            prime(store, request.entryKey, generation = 1L, bytes = validBytes("disk"))
+            val manager =
+                newManager(store, executor) { _, _ ->
+                    error("network must not run for RenderFresh")
+                }
+            prepare(manager, request)
+            val first = mutableListOf<String?>()
+            val second = mutableListOf<String?>()
+
+            manager.load(request) { payload -> first += payload?.bytes?.toText() }
+            manager.load(request) { payload -> second += payload?.bytes?.toText() }
+            assertEquals(2, executor.size)
+            executor.runAll()
+
+            assertEquals(listOf("Bdisk"), first)
+            assertEquals(listOf("Bdisk"), second)
+        }
+
+    @Test
+    fun openRollbackKeyCannotBeEvictedOrResurrectedByUnrelatedPromotion() =
+        withTempRoot { root ->
+            listOf(false, true).forEach { commitSecond ->
+                val caseRoot = root.resolve(if (commitSecond) "commit" else "rollback")
+                var failNextIndexCommit = false
+                val store =
+                    SlockAndroidAvatarDiskStore(
+                        root = caseRoot,
+                        maxEntryBytes = 5L,
+                        maxManagedBytes = 5L,
+                        beforeIndexCommit = {
+                            if (failNextIndexCommit) {
+                                failNextIndexCommit = false
+                                error("injected first rollback index failure")
+                            }
+                        }
+                    )
+                val first = entryKey('a', 'b', 'c')
+                val second = entryKey('d', 'e', 'f')
+                val oldFirst = byteArrayOf(1)
+                val candidateFirst = byteArrayOf(2)
+                val secondBytes = ByteArray(5) { 3 }
+                prime(store, first, generation = 1L, bytes = oldFirst)
+                val firstStage = requireNotNull(store.stage(first, 2L, candidateFirst))
+                val firstRollback = requireNotNull(store.promote(firstStage, "image/test"))
+                assertEquals(2L, store.entry(first)?.generation)
+
+                val blockedSecond = requireNotNull(store.stage(second, 3L, secondBytes))
+                assertNull(store.promote(blockedSecond, "image/test"))
+                assertEquals(2L, store.entry(first)?.generation)
+                assertNull(store.entry(second))
+
+                failNextIndexCommit = true
+                assertFalse(store.rollback(firstRollback))
+                assertEquals(2L, store.entry(first)?.generation)
+                assertArrayEquals(candidateFirst, store.read(first)?.bytes)
+
+                val blockedAfterFailure = requireNotNull(store.stage(second, 3L, secondBytes))
+                assertNull(store.promote(blockedAfterFailure, "image/test"))
+                assertTrue(store.rollback(firstRollback))
+                assertEquals(1L, store.entry(first)?.generation)
+                assertArrayEquals(oldFirst, store.read(first)?.bytes)
+
+                val secondStage = requireNotNull(store.stage(second, 3L, secondBytes))
+                val secondRollback = requireNotNull(store.promote(secondStage, "image/test"))
+                assertEquals(3L, store.entry(second)?.generation)
+                if (commitSecond) {
+                    assertTrue(store.commitRollback(secondRollback))
+                    assertNull(store.entry(first))
+                    assertArrayEquals(secondBytes, store.read(second)?.bytes)
+                } else {
+                    assertTrue(store.rollback(secondRollback))
+                    assertEquals(1L, store.entry(first)?.generation)
+                    assertArrayEquals(oldFirst, store.read(first)?.bytes)
+                    assertNull(store.entry(second))
+                }
+                assertFalse(
+                    caseRoot.listFiles().orEmpty()
+                        .filter { it.name.endsWith(".bin") || it.name.endsWith(".rollback") }
+                        .any { file ->
+                            runCatching { file.readBytes().contentEquals(candidateFirst) }.getOrDefault(false)
+                        }
+                )
+            }
+        }
+
+    @Test
+    fun ordinaryImageSvgSniffPreservesLongLeadingWhitespaceWithoutContentType() {
+        val bytes =
+            (" ".repeat(1_024) + "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>")
+                .toByteArray(StandardCharsets.UTF_8)
+
+        assertTrue(slockOrdinaryImageLooksLikeSvg(bytes, contentType = null))
+    }
+
+    @Test
     fun ownerAndSubjectRetirementUseOnlyOpaqueIndexMembership() = withTempRoot { root ->
         val store = newStore(root)
         val ownerA1 = entryKey('a', 'b', 'c')

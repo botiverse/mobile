@@ -7,6 +7,7 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.Base64
+import java.util.IdentityHashMap
 import java.util.UUID
 
 internal data class SlockAndroidAvatarDiskEntry(
@@ -68,6 +69,9 @@ internal class SlockAndroidAvatarDiskStore(
     private val lock = Any()
     private val entries = linkedMapOf<SlockAndroidAvatarEntryKey, SlockAndroidAvatarDiskEntry>()
     private val rollbackPendingKeys = linkedSetOf<SlockAndroidAvatarEntryKey>()
+    private val openRollbackRecords =
+        IdentityHashMap<SlockAndroidAvatarRollbackRecord, Set<SlockAndroidAvatarEntryKey>>()
+    private val openRollbackProtectionCounts = mutableMapOf<SlockAndroidAvatarEntryKey, Int>()
     private val recoveredTransients = linkedMapOf<String, SlockAndroidAvatarRecoveredTransient>()
     private var loaded = false
 
@@ -228,12 +232,15 @@ internal class SlockAndroidAvatarDiskStore(
             }
             persistIndexLocked()
             onEntriesRemoved(evictionKeys + stage.key)
-            return@synchronized SlockAndroidAvatarRollbackRecord(
-                newEntry = candidate,
-                previousEntry = previous,
-                previousBackupFile = previousBackup.takeIf { previousWasBackedUp },
-                evicted = evictedBackups.toList()
-            )
+            val record =
+                SlockAndroidAvatarRollbackRecord(
+                    newEntry = candidate,
+                    previousEntry = previous,
+                    previousBackupFile = previousBackup.takeIf { previousWasBackedUp },
+                    evicted = evictedBackups.toList()
+                )
+            rememberOpenRollbackLocked(record)
+            return@synchronized record
         } catch (_: Throwable) {
             var targetResolved = !target.exists() || runCatching { deleteManagedFile(target) }.getOrDefault(false)
             if (previousWasBackedUp && previousBackup.isFile) {
@@ -289,7 +296,10 @@ internal class SlockAndroidAvatarDiskStore(
             }
         if (!candidateIsCurrent && !previousIndexIsCurrent) {
             val cleaned = cleanupRollbackFilesLocked(record)
-            if (cleaned) rollbackPendingKeys.remove(record.newEntry.key)
+            if (cleaned) {
+                rollbackPendingKeys.remove(record.newEntry.key)
+                releaseOpenRollbackLocked(record)
+            }
             return@synchronized cleaned
         }
         val snapshot = LinkedHashMap(entries)
@@ -348,13 +358,19 @@ internal class SlockAndroidAvatarDiskStore(
             }.getOrDefault(false)
         if (restored) {
             rollbackPendingKeys.remove(record.newEntry.key)
+            releaseOpenRollbackLocked(record)
             onEntriesRemoved(setOf(record.newEntry.key))
         }
         restored
     }
 
     fun commitRollback(record: SlockAndroidAvatarRollbackRecord): Boolean = synchronized(lock) {
-        cleanupRollbackFilesLocked(record)
+        val cleaned = cleanupRollbackFilesLocked(record)
+        if (cleaned) {
+            rollbackPendingKeys.remove(record.newEntry.key)
+            releaseOpenRollbackLocked(record)
+        }
+        cleaned
     }
 
     fun deleteRollbackArtifacts(record: SlockAndroidAvatarRollbackRecord): Boolean = synchronized(lock) {
@@ -363,7 +379,10 @@ internal class SlockAndroidAvatarDiskStore(
         if (targetDeleted) recoveredTransients.remove(target.name)
         val backupsDeleted = cleanupRollbackFilesLocked(record)
         val deleted = targetDeleted && backupsDeleted
-        if (deleted) rollbackPendingKeys.remove(record.newEntry.key)
+        if (deleted) {
+            rollbackPendingKeys.remove(record.newEntry.key)
+            releaseOpenRollbackLocked(record)
+        }
         deleted
     }
 
@@ -418,6 +437,8 @@ internal class SlockAndroidAvatarDiskStore(
         if (!deleted) return@synchronized false
         recoveredTransients.clear()
         rollbackPendingKeys.clear()
+        openRollbackRecords.clear()
+        openRollbackProtectionCounts.clear()
         loaded = true
         true
     }
@@ -466,7 +487,7 @@ internal class SlockAndroidAvatarDiskStore(
         val selected = linkedSetOf<SlockAndroidAvatarEntryKey>()
         entries.values
             .asSequence()
-            .filter { it.key != excluding }
+            .filter { it.key != excluding && !isRollbackProtectedLocked(it.key) }
             .sortedWith(compareBy<SlockAndroidAvatarDiskEntry> { it.lastAccessMillis }.thenBy { it.key.bytesKey })
             .forEach { entry ->
                 if (projected > maxManagedBytes) {
@@ -683,6 +704,7 @@ internal class SlockAndroidAvatarDiskStore(
         var total = entries.values.sumOf { it.sizeBytes }
         if (total <= maxManagedBytes) return
         entries.values
+            .filterNot { isRollbackProtectedLocked(it.key) }
             .sortedWith(compareBy<SlockAndroidAvatarDiskEntry> { it.lastAccessMillis }.thenBy { it.key.bytesKey })
             .forEach { entry ->
                 val file = root.resolve(entry.fileName)
@@ -775,6 +797,35 @@ internal class SlockAndroidAvatarDiskStore(
         }
         return cleaned
     }
+
+    private fun rememberOpenRollbackLocked(record: SlockAndroidAvatarRollbackRecord) {
+        if (openRollbackRecords.containsKey(record)) return
+        val protectedKeys =
+            buildSet {
+                add(record.newEntry.key)
+                record.previousEntry?.let { add(it.key) }
+                record.evicted.forEach { add(it.entry.key) }
+            }
+        openRollbackRecords[record] = protectedKeys
+        protectedKeys.forEach { key ->
+            openRollbackProtectionCounts[key] = (openRollbackProtectionCounts[key] ?: 0) + 1
+        }
+    }
+
+    private fun releaseOpenRollbackLocked(record: SlockAndroidAvatarRollbackRecord) {
+        val protectedKeys = openRollbackRecords.remove(record) ?: return
+        protectedKeys.forEach { key ->
+            val remaining = (openRollbackProtectionCounts[key] ?: 1) - 1
+            if (remaining <= 0) {
+                openRollbackProtectionCounts.remove(key)
+            } else {
+                openRollbackProtectionCounts[key] = remaining
+            }
+        }
+    }
+
+    private fun isRollbackProtectedLocked(key: SlockAndroidAvatarEntryKey): Boolean =
+        key in rollbackPendingKeys || (openRollbackProtectionCounts[key] ?: 0) > 0
 
     private fun ensureRootLocked() {
         if (!root.isDirectory && !root.mkdirs() && !root.isDirectory) {

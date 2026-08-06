@@ -2537,6 +2537,13 @@ internal fun isSlockRenderableLocalImageSource(source: String): Boolean =
         source.startsWith("file://", ignoreCase = true) ||
                 source.startsWith("content://", ignoreCase = true)
 
+internal fun slockOrdinaryImageLooksLikeSvg(bytes: ByteArray, contentType: String?): Boolean {
+    if (contentType?.contains("svg", ignoreCase = true) == true) return true
+    return bytes.toString(StandardCharsets.UTF_8)
+            .trimStart()
+            .startsWith("<svg", ignoreCase = true)
+}
+
 private class SlockKuiklyImageAdapter(
         private val context: Context
 ) : IKRImageAdapter {
@@ -2781,7 +2788,7 @@ private class SlockKuiklyImageAdapter(
                 }
                 val drawable =
                         runCatching {
-                            drawableFromBytes(payload.bytes, imageLoadOption, payload.contentType)
+                            drawableFromAvatarBytes(payload.bytes, imageLoadOption, payload.contentType)
                         }.getOrNull()
                 val bitmap = (drawable as? BitmapDrawable)?.bitmap
                 if (bitmap != null && !bitmap.isRecycled) avatarBitmapCache.put(decodeKey, bitmap)
@@ -2792,7 +2799,7 @@ private class SlockKuiklyImageAdapter(
 
     private fun isValidAvatarContent(bytes: ByteArray, contentType: String?): Boolean =
             runCatching {
-                if (bytes.looksLikeSvg(contentType)) {
+                if (bytes.looksLikeAvatarSvg(contentType)) {
                     SVG.getFromInputStream(ByteArrayInputStream(bytes)).apply {
                         setDocumentWidth(16f)
                         setDocumentHeight(16f)
@@ -3091,6 +3098,18 @@ private class SlockKuiklyImageAdapter(
         }
     }
 
+    private fun drawableFromAvatarBytes(
+            bytes: ByteArray,
+            imageLoadOption: HRImageLoadOption,
+            contentType: String?
+    ): Drawable? {
+        return if (bytes.looksLikeAvatarSvg(contentType)) {
+            svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption)
+        } else {
+            bitmapDrawableFromBytes(bytes, imageLoadOption)
+        }
+    }
+
     private fun bitmapDrawableFromBytes(bytes: ByteArray, imageLoadOption: HRImageLoadOption): Drawable? {
         return bitmapFromBytes(bytes, imageLoadOption)?.toBitmapDrawable()
     }
@@ -3282,9 +3301,11 @@ private class SlockKuiklyImageAdapter(
             }
 
     private fun ByteArray.looksLikeSvg(contentType: String?): Boolean {
-        if (contentType?.contains("svg", ignoreCase = true) == true) {
-            return true
-        }
+        return slockOrdinaryImageLooksLikeSvg(this, contentType)
+    }
+
+    private fun ByteArray.looksLikeAvatarSvg(contentType: String?): Boolean {
+        if (contentType?.contains("svg", ignoreCase = true) == true) return true
         val prefixLength = size.coerceAtMost(512)
         return String(this, 0, prefixLength, StandardCharsets.UTF_8)
                 .trimStart()
