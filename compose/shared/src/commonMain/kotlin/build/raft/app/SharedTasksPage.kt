@@ -398,6 +398,23 @@ private fun SharedTasksLoadedBody(
  * clobbering its selection/composition. The seed always places the caret at the end
  * of the durable text; within the session the local editor owns the selection.
  */
+/**
+ * Write path for the create-tasks title rows (task #130 Phase D).
+ *
+ * Replaces only the edited row and reuses every other row's existing
+ * [TextFieldValue] instance, so a sibling edit (or appending a new row) can
+ * never reset another row's selection or in-flight IME composition. Out-of-range
+ * indexes are ignored rather than throwing.
+ */
+internal fun tasksCreateTitlesUpdated(
+    titles: List<TextFieldValue>,
+    index: Int,
+    next: TextFieldValue
+): List<TextFieldValue> {
+    if (index !in titles.indices) return titles
+    return titles.toMutableList().also { it[index] = next }
+}
+
 internal fun slockFilterSearchSessionSeed(
     openFilterId: String?,
     thisFilterId: String,
@@ -1624,8 +1641,13 @@ private fun TasksCreateDialog(
     onDismiss: () -> Unit,
     onSubmit: (List<String>) -> Unit
 ) {
-    var titles by remember { mutableStateOf(listOf("")) }
-    val anyNonBlank = titles.any { it.isNotBlank() }
+    // Each dynamic row owns an independent caller-local TextFieldValue session
+    // (task #130 Phase D). Replacing one row rebuilds the list but reuses the
+    // other rows' value instances, so adding a row or editing a sibling never
+    // resets an existing row's selection/composition. The List<String> is
+    // projected only at submit.
+    var titles by remember { mutableStateOf(listOf(TextFieldValue())) }
+    val anyNonBlank = titles.any { it.text.isNotBlank() }
     Modal(onWillDismiss = { if (!loading) onDismiss() }) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -1655,7 +1677,7 @@ private fun TasksCreateDialog(
                     TextField(
                         value = value,
                         onValueChange = { next ->
-                            titles = titles.toMutableList().also { it[index] = next }
+                            titles = tasksCreateTitlesUpdated(titles, index, next)
                         },
                         placeholder = stringResource(MR.strings.tasks_label_title),
                         placeholderColor = SlockColor.TextMutedGray,
@@ -1675,7 +1697,7 @@ private fun TasksCreateDialog(
                     iconName = SlockLucideIconName.Plus,
                     active = false,
                     enabled = !loading,
-                    onClick = { titles = titles + "" }
+                    onClick = { titles = titles + TextFieldValue() }
                 )
                 errorCode?.takeIf { it.isNotBlank() }?.let { code ->
                     Text(
@@ -1704,7 +1726,7 @@ private fun TasksCreateDialog(
                         iconName = SlockLucideIconName.Check,
                         active = true,
                         enabled = anyNonBlank && !loading,
-                        onClick = { onSubmit(titles) }
+                        onClick = { onSubmit(titles.map { it.text }) }
                     )
                 }
             }

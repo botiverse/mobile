@@ -215,6 +215,21 @@ internal object SlockImageEditGroupReconcile {
         if (reason in rejects) this
         else copy(rejects = rejects + reason)
 }
+/** Max characters for an image text annotation (task #130 Phase D). */
+internal const val ANNOTATION_TEXT_MAX_LENGTH = 80
+
+/**
+ * Editor value accepted by the image text-annotation field (task #130 Phase D).
+ *
+ * Delegates to [coerceTextLength], whose contract is what this field needs: while
+ * an IME composition is active the value is passed through untouched (applying a
+ * limit mid-composition would restart the input connection and drop IME state);
+ * once composition ends the text is truncated, the selection is coerced into the
+ * new bounds and the finished composition is cleared.
+ */
+internal fun slockFilePreviewAnnotationDraft(next: TextFieldValue): TextFieldValue =
+    next.coerceTextLength(ANNOTATION_TEXT_MAX_LENGTH)
+
 private const val SlockFilePreviewSaveToPhotosActionId = "save-to-photos"
 private const val SlockFilePreviewSaveToFilesActionId = "save-to-files"
 private const val SlockFilePreviewOpenWithActionId = "open-with"
@@ -2154,7 +2169,11 @@ private fun SlockFilePreviewComposerImageEditor(
     var eraseGestureOrigin by remember(payload.imageUrl) { mutableStateOf<SlockComposerImageEditorContent?>(null) }
     var textGestureOrigin by remember(payload.imageUrl) { mutableStateOf<SlockComposerImageEditorContent?>(null) }
     var activeTextAnnotationId by remember(payload.imageUrl) { mutableStateOf<Int?>(null) }
-    var textDraft by remember(payload.imageUrl) { mutableStateOf("") }
+    // Caller-local TextFieldValue owns the annotation editor; the durable
+    // annotation keeps the String projection (task #130 Phase D). Keyed on the
+    // image identity, so switching images starts a new editing session while
+    // typing never re-seeds it.
+    var textDraft by remember(payload.imageUrl) { mutableStateOf(TextFieldValue()) }
     var textPosition by remember(payload.imageUrl) { mutableStateOf(Offset(32f, 32f)) }
     var editorCanvasSize by remember(payload.imageUrl) { mutableStateOf(IntSize(0, 0)) }
     val textAnnotationSizes = remember(payload.imageUrl) { mutableStateMapOf<Int, IntSize>() }
@@ -2230,7 +2249,7 @@ private fun SlockFilePreviewComposerImageEditor(
         )
     }
     fun addTextAnnotation(): Boolean {
-        val nextText = textDraft.trim()
+        val nextText = textDraft.text.trim()
         if (nextText.isBlank()) return false
         val nextContent =
             slockComposerImageAddTextDraft(
@@ -2253,7 +2272,7 @@ private fun SlockFilePreviewComposerImageEditor(
             state.history.apply(nextContent)
         )
         nextTextAnnotationId += 1
-        textDraft = ""
+        textDraft = TextFieldValue()
         return true
     }
     fun requestDone() {
@@ -2670,7 +2689,7 @@ private fun SlockFilePreviewComposerImageEditor(
                 ) {
                     TextField(
                         value = textDraft,
-                        onValueChange = { textDraft = it.take(80) },
+                        onValueChange = { textDraft = slockFilePreviewAnnotationDraft(it) },
                         placeholder = stringResource(MR.strings.file_preview_placeholder_tap_to_add_text),
                         placeholderColor = SlockColor.TextMutedGray,
                         autoFocus = true,
@@ -2691,7 +2710,7 @@ private fun SlockFilePreviewComposerImageEditor(
                         iconName = SlockLucideIconName.Check,
                         contentDescription = stringResource(MR.strings.common_add),
                         onClick = { addTextAnnotation() },
-                        enabled = !saving && textDraft.isNotBlank(),
+                        enabled = !saving && textDraft.text.isNotBlank(),
                         backgroundColor = SlockColor.BrandYellow,
                         shadowOffset = 2.dp
                     )
