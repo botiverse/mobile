@@ -15513,6 +15513,14 @@ private fun ThreadMessagesList(
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
     var lastComposerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(composerKeyboardInsetDp) }
+    // task #990 kill-switch: the kill-switch gates run inside long-lived
+    // coroutines (the focused session's watch loop, the origin correction's
+    // layout waits) that outlive the recomposition which delivered a new inset.
+    // A captured Float parameter stays 0 forever inside them — which is exactly
+    // the incident timing, where the keyboard rises milliseconds after the
+    // session starts. The gates therefore read this state, whose value is live
+    // at every read.
+    val liveComposerKeyboardInsetDp by rememberUpdatedState(composerKeyboardInsetDp)
     var lastThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(measuredThreadViewportHeightDp) }
     var pendingComposerLayoutBottomAnchor by remember(threadInstanceKey) { mutableStateOf(false) }
     var composerLayoutViewportRetryGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
@@ -16280,6 +16288,12 @@ private fun ThreadMessagesList(
             .distinctUntilChanged()
             .collect { (cycleActive, state) ->
                 if (!cycleActive && shouldAutoCorrectThreadBottomAnchor(state)) {
+                    // task #990 kill-switch: this collector runs for the life
+                    // of the thread, so the inset must be read live at each
+                    // decision — same seam as the stability-path correction.
+                    if (suppressAutoBottomHeightChange(liveComposerKeyboardInsetDp, diagnosticsLogger)) {
+                        return@collect
+                    }
                     dispatchViewportEvent(
                         LazyViewportEvent.ContentMutated(LazyViewportMutation.HeightChange)
                     )
@@ -16472,6 +16486,24 @@ private fun ThreadMessagesList(
         activeFocusedMessageId = targetMessageId
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
+        // task #990 kill-switch: a focus request arriving after the keyboard is
+        // already open never sees a 0->open transition, so the rise-cancel can
+        // never fire for it — the initial anchor itself must not dispatch, and
+        // with no anchored intent the HeightChange replay has no source. This
+        // is a deliberate safe degradation: the request is DROPPED, not
+        // deferred — the inset is not among this effect's keys, so closing the
+        // keyboard does not rerun it. The user scrolls to the message
+        // themselves, or re-triggers the focus after closing the keyboard.
+        if (
+            suppressFocusAnchorWhileOpen(
+                liveComposerKeyboardInsetDp,
+                targetMessageId,
+                diagnosticsLogger,
+            )
+        ) {
+            activeFocusedMessageId = null
+            return@LaunchedEffect
+        }
         if (focusedAnchorPlacementState.identity != targetIdentity) {
             focusedAnchorPlacementState = resetThreadFocusedAnchorPlacement(targetIdentity)
         }
@@ -16538,6 +16570,8 @@ private fun ThreadMessagesList(
             val explicitInterrupt = scrollInterruptedFocusedMessageAnchorIdentity == targetIdentity
             val action =
                 focusedAnchorSessionAction(
+                    keyboardOpen =
+                        threadImeOpenSuppressesProgrammaticViewport(liveComposerKeyboardInsetDp),
                     userInteracting =
                         focusedAnchorSessionUserOverrideActive(
                             startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
@@ -16650,7 +16684,9 @@ private fun ThreadMessagesList(
                 correctedIdentity = correctedFocusedOriginIdentity,
                 scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
                 startUserScrollGeneration = startUserScrollGeneration,
-                currentUserScrollGeneration = userScrollGeneration.value
+                currentUserScrollGeneration = userScrollGeneration.value,
+                keyboardOpen =
+                    threadImeOpenSuppressesProgrammaticViewport(liveComposerKeyboardInsetDp)
             )
         ) {
             return@LaunchedEffect
@@ -16667,7 +16703,9 @@ private fun ThreadMessagesList(
                 correctedIdentity = correctedFocusedOriginIdentity,
                 scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
                 startUserScrollGeneration = startUserScrollGeneration,
-                currentUserScrollGeneration = userScrollGeneration.value
+                currentUserScrollGeneration = userScrollGeneration.value,
+                keyboardOpen =
+                    threadImeOpenSuppressesProgrammaticViewport(liveComposerKeyboardInsetDp)
             ) ||
             listState.isScrollInProgress ||
             !listState.canScrollToThreadItem(targetIndex)
@@ -16824,6 +16862,14 @@ private fun ThreadMessagesList(
                     initialBottomAnchorReady = true
                     return@LaunchedEffect
                 }
+                // task #990 kill-switch: read the inset live on every retry. A
+                // keyboard that opened mid-loop means the current viewport is
+                // accepted as-is — retrying into a shrinking window is the
+                // trigger every white capture shares.
+                if (suppressInitialBottomRetry(liveComposerKeyboardInsetDp, diagnosticsLogger)) {
+                    initialBottomAnchorReady = true
+                    return@LaunchedEffect
+                }
                 dispatchViewportEvent(
                     LazyViewportEvent.FollowLatest(canOverrideUserDragging = false)
                 )
@@ -16869,6 +16915,12 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         if (!listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
+            // task #990 kill-switch: automatic correction; silent while the
+            // keyboard is open. Read live — this coroutine awaited layout
+            // stability and can outlive the rise.
+            if (suppressAutoBottomHeightChange(liveComposerKeyboardInsetDp, diagnosticsLogger)) {
+                return@LaunchedEffect
+            }
             dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.HeightChange))
         }
     }
@@ -16953,6 +17005,19 @@ private fun ThreadMessagesList(
             allowBottomAutoAnchor = false
             return@LaunchedEffect
         }
+        // task #990 kill-switch: the moment the keyboard starts to rise, an
+        // in-flight programmatic anchor is cancelled rather than allowed to
+        // finish into the shrinking window; the gates below then keep every
+        // correction path silent while it stays open. The cancel itself lives
+        // in a shared seam so the behaviour test executes this code, not a
+        // copy of it.
+        cancelInflightAnchorOnImeRise(
+            keyboardInsetDp = composerKeyboardInsetDp,
+            lastKeyboardInsetDp = lastComposerKeyboardInsetDp,
+            controllerState = viewportControllerState,
+            dispatch = { dispatchViewportEvent(it) },
+            log = { diagnosticsLogger(it) },
+        )
         val focusedTargetIdentity = pendingFocusedMessageAnchorIdentityState.value
         val focusedTargetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() }
         val focusedTargetItemIndex = renderPayload.focusedMessageListItemIndex()
@@ -18657,9 +18722,13 @@ internal fun shouldCorrectFocusedAnchorAfterOriginHydration(
     correctedIdentity: String?,
     scrollInterruptedIdentity: String?,
     startUserScrollGeneration: Int,
-    currentUserScrollGeneration: Int
+    currentUserScrollGeneration: Int,
+    // task #990 kill-switch: the late origin correction is a programmatic
+    // scroll; while the keyboard is open it must not run.
+    keyboardOpen: Boolean = false
 ): Boolean =
-    originStatus != "none" &&
+    !keyboardOpen &&
+        originStatus != "none" &&
         originStatus != "loading" &&
         anchoredIdentity == targetIdentity &&
         correctedIdentity != targetIdentity &&
@@ -18674,10 +18743,15 @@ internal fun focusedAnchorSessionAction(
     userInteracting: Boolean,
     drifted: Boolean,
     quietMs: Long,
-    elapsedMs: Long
+    elapsedMs: Long,
+    // task #990 kill-switch: an open keyboard ends the watch quietly instead
+    // of reanchoring — a reanchor is a programmatic scroll into the exact
+    // window every white capture shows.
+    keyboardOpen: Boolean = false
 ): FocusedAnchorSessionAction =
     when {
         userInteracting -> FocusedAnchorSessionAction.Interrupt
+        keyboardOpen -> FocusedAnchorSessionAction.Consume
         elapsedMs >= FocusedAnchorSessionHardCapMs -> FocusedAnchorSessionAction.Consume
         drifted -> FocusedAnchorSessionAction.Reanchor
         quietMs >= FocusedAnchorSessionQuietMs -> FocusedAnchorSessionAction.Consume
@@ -18941,7 +19015,12 @@ internal fun threadComposerLayoutChanged(state: ThreadComposerLayoutBottomAnchor
 internal fun shouldAnchorThreadComposerLayoutChange(
     state: ThreadComposerLayoutBottomAnchorState
 ): Boolean =
-    state.viewportEpochCoherent &&
+    // task #990 kill-switch: while the keyboard is open no composer-side
+    // programmatic correction may move the viewport. The close transition
+    // (nextKeyboardInsetDp == 0) keeps its existing behaviour, so the layout
+    // restores normally once the keyboard goes away.
+    !threadImeOpenSuppressesProgrammaticViewport(state.nextKeyboardInsetDp) &&
+        state.viewportEpochCoherent &&
         (threadComposerLayoutChanged(state) || state.pendingLayoutChange) &&
         state.initialBottomAnchorReady &&
         state.latestItemIndex >= 0 &&
