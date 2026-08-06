@@ -1,5 +1,11 @@
 package build.raft.app
 
+import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.dp
+
+internal fun slockForwardPickerActionBottomPadding(bottomSafeArea: Dp): Dp =
+    12.dp + if (bottomSafeArea > 0.dp) bottomSafeArea else 0.dp
+
 /** Stable for one picker open. Query, retry, paging, and note steps must not replace it. */
 data class SlockForwardPickerSessionKey(
     val sourceContext: String,

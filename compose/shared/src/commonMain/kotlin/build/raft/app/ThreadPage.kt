@@ -26703,7 +26703,8 @@ internal fun <T> SlockForwardTargetPicker(
     state: SlockForwardTargetPickerUiState<T>,
     onIntent: (SlockForwardTargetPickerIntent<T>) -> Unit,
     topContent: (@Composable () -> Unit)? = null,
-    searchInputInteractive: Boolean = state.interactive
+    searchInputInteractive: Boolean = state.interactive,
+    bottomSafeArea: Dp = 0.dp
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val loading = state.loadState == SlockForwardPickerLoadState.Loading
@@ -26893,7 +26894,12 @@ internal fun <T> SlockForwardTargetPicker(
                         Modifier
                             .fillMaxWidth()
                             .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(12.dp),
+                            .padding(
+                                start = 12.dp,
+                                top = 12.dp,
+                                end = 12.dp,
+                                bottom = slockForwardPickerActionBottomPadding(bottomSafeArea)
+                            ),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(

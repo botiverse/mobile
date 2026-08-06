@@ -1,5 +1,6 @@
 package build.raft.app
 
+import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -8,6 +9,12 @@ import kotlin.test.assertTrue
 
 class SlockForwardTargetPickerTest {
     private val session = SlockForwardPickerSessionKey("thread-1", "server-1", 7)
+
+    @Test
+    fun externalShareActionPaddingClearsBottomSafeAreaWithoutChangingZeroInsetGeometry() {
+        assertEquals(60.dp, slockForwardPickerActionBottomPadding(48.dp))
+        assertEquals(12.dp, slockForwardPickerActionBottomPadding(0.dp))
+    }
 
     @Test
     fun productionFlowAdmitsRequestsSynchronouslyAndRestoresNoteSelection() {
