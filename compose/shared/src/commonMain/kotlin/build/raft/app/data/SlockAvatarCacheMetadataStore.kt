@@ -6,10 +6,26 @@ package build.raft.app.data
  */
 internal class SlockAvatarCacheCommitGuard(
     val key: SlockAvatarCacheKey,
+    internal val expectedCommit: SlockAvatarCacheCommitExpectation? = null,
     private val isCurrentGeneration: () -> Boolean
 ) {
+    init {
+        require(expectedCommit == null || expectedCommit.key == key)
+    }
+
     fun allows(candidate: SlockAvatarCacheKey): Boolean =
         candidate == key && isCurrentGeneration()
+}
+
+internal data class SlockAvatarCacheCommitExpectation(
+    val key: SlockAvatarCacheKey,
+    val commitIdentity: SlockAvatarCommitIdentity?,
+    val modelRevision: Long
+) {
+    init {
+        require(modelRevision >= 0L)
+        require((commitIdentity == null) == (modelRevision == 0L))
+    }
 }
 
 internal enum class SlockAvatarCacheCommitResult {
@@ -80,6 +96,12 @@ internal class SqlDelightSlockAvatarCacheMetadataStore(
                                 fingerprint = row.contentFingerprint
                             )
                     )
+                val durableCommit =
+                    slockAvatarDurableCommitOrNull(
+                        commitGeneration = row.commitGeneration,
+                        commitNonce = row.commitNonce,
+                        modelRevision = row.modelRevision
+                    )
                 SlockAvatarCacheMetadata(
                     key = storedKey,
                     eTag = row.eTag,
@@ -89,7 +111,9 @@ internal class SqlDelightSlockAvatarCacheMetadataStore(
                     freshUntilMs = row.freshUntilMs,
                     staleUntilMs = row.staleUntilMs,
                     sizeBytes = row.sizeBytes,
-                    contentType = row.contentType
+                    contentType = row.contentType,
+                    commitIdentity = durableCommit?.first,
+                    modelRevision = durableCommit?.second ?: 0L
                 )
             }
         val failure =
@@ -120,6 +144,16 @@ internal class SqlDelightSlockAvatarCacheMetadataStore(
     ): SlockAvatarCacheCommitResult =
         commitGuarded(metadata.key, guard) {
             val key = metadata.key
+            guard.expectedCommit?.let { expected ->
+                val current = readStoredState(key).metadata
+                if (
+                    current?.key?.let { it != expected.key } == true ||
+                    current?.commitIdentity != expected.commitIdentity ||
+                    (current?.modelRevision ?: 0L) != expected.modelRevision
+                ) {
+                    throw AvatarCacheCommitRevoked
+                }
+            }
             val owner = key.owner
             val subject = key.subject
             queries.upsertAvatarCacheMetadata(
@@ -138,7 +172,10 @@ internal class SqlDelightSlockAvatarCacheMetadataStore(
                 freshUntilMs = metadata.freshUntilMs,
                 staleUntilMs = metadata.staleUntilMs,
                 sizeBytes = metadata.sizeBytes,
-                contentType = metadata.contentType
+                contentType = metadata.contentType,
+                commitGeneration = metadata.commitIdentity?.commitGeneration,
+                commitNonce = metadata.commitIdentity?.nonce,
+                modelRevision = metadata.modelRevision.takeIf { metadata.commitIdentity != null }
             )
             queries.deleteAvatarCacheFailuresForSubject(
                 environmentId = owner.environmentId,
@@ -226,7 +263,12 @@ internal class SqlDelightSlockAvatarCacheMetadataStore(
                     freshUntilMs = previousMetadata.freshUntilMs,
                     staleUntilMs = previousMetadata.staleUntilMs,
                     sizeBytes = previousMetadata.sizeBytes,
-                    contentType = previousMetadata.contentType
+                    contentType = previousMetadata.contentType,
+                    commitGeneration = previousMetadata.commitIdentity?.commitGeneration,
+                    commitNonce = previousMetadata.commitIdentity?.nonce,
+                    modelRevision = previousMetadata.modelRevision.takeIf {
+                        previousMetadata.commitIdentity != null
+                    }
                 )
             }
 
@@ -341,4 +383,18 @@ internal class SqlDelightSlockAvatarCacheMetadataStore(
         } catch (_: AvatarCacheCommitRevoked) {
             SlockAvatarCacheCommitResult.RejectedStaleGeneration
         }
+}
+
+internal fun slockAvatarDurableCommitOrNull(
+    commitGeneration: Long?,
+    commitNonce: String?,
+    modelRevision: Long?
+): Pair<SlockAvatarCommitIdentity, Long>? {
+    if (commitGeneration == null || commitNonce == null || modelRevision == null) return null
+    if (modelRevision <= 0L) return null
+    val identity =
+        runCatching { SlockAvatarCommitIdentity(commitGeneration, commitNonce) }
+            .getOrNull()
+            ?: return null
+    return identity to modelRevision
 }

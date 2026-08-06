@@ -10,10 +10,47 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.time.TimeSource
 
+private const val SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS = 60_000L
+
 data class SharedDownloadedBytes(
     val bytes: ByteArray,
     val contentType: String?
 )
+
+data class SharedBinaryConditionalValidators(
+    val eTag: String? = null,
+    val lastModified: String? = null
+) {
+    init {
+        require(eTag == null || (eTag.isNotBlank() && eTag == eTag.trim()))
+        require(lastModified == null || (lastModified.isNotBlank() && lastModified == lastModified.trim()))
+        require(eTag != null || lastModified != null)
+    }
+}
+
+sealed interface SharedBinaryConditionalDownloadResult {
+    val statusCode: Int
+    val eTag: String?
+    val lastModified: String?
+
+    data class Modified(
+        override val statusCode: Int,
+        val contentType: String?,
+        override val eTag: String?,
+        override val lastModified: String?
+    ) : SharedBinaryConditionalDownloadResult {
+        init {
+            require(statusCode in 200..299)
+        }
+    }
+
+    data class NotModified(
+        override val eTag: String?,
+        override val lastModified: String?
+    ) : SharedBinaryConditionalDownloadResult {
+        override val statusCode: Int = 304
+    }
+}
 
 fun interface BinaryDownloadDiagnosticsLogger {
     fun record(tag: String, message: String)
@@ -29,7 +66,6 @@ fun interface BinaryDownloadDiagnosticsLogger {
  * the server sends that header.
  */
 object SharedBinaryDownloader {
-    private const val DOWNLOAD_TIMEOUT_MILLIS = 60_000L
     private const val DIAGNOSTICS_TAG = "SlockBinaryDownload"
 
     private var diagnosticsLogger: BinaryDownloadDiagnosticsLogger? = null
@@ -44,7 +80,7 @@ object SharedBinaryDownloader {
         }
         NetworkClient(
             slockNetworkClientConfig(
-                defaultPolicy = NetworkRequestPolicy(timeoutMillis = DOWNLOAD_TIMEOUT_MILLIS),
+                defaultPolicy = NetworkRequestPolicy(timeoutMillis = SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS),
                 diagnosticsLogger = { message ->
                     recordDiagnostics("operation=engine_diagnostics $message")
                 }
@@ -87,6 +123,92 @@ object SharedBinaryDownloader {
             onChunk = onChunk
         )
 
+    /**
+     * Streams one typed conditional request through the same client as ordinary downloads. A 304
+     * is body-less and explicit; redirects and every other non-2xx status retain failure semantics.
+     */
+    suspend fun downloadConditional(
+        url: String,
+        validators: SharedBinaryConditionalValidators?,
+        onStart: (totalBytes: Long?) -> Unit,
+        beforeRead: () -> Unit = {},
+        onChunk: (bytes: ByteArray, downloadedBytes: Long, totalBytes: Long?) -> Unit
+    ): SharedBinaryConditionalDownloadResult {
+        val operation = "conditional_download_stream"
+        val failurePrefix = "Conditional download failed"
+        var responseStatus = 0
+        var downloadedBytes = 0L
+        var totalBytes: Long? = null
+        val startedAt = TimeSource.Monotonic.markNow()
+        val urlSummary = binaryDownloadUrlDiagnostics(url)
+        recordDiagnostics("operation=$operation status=start $urlSummary")
+        return suspendCancellableCoroutine { continuation ->
+            val call =
+                client.downloadStream(
+                    request = sharedBinaryConditionalRequest(url, validators),
+                    onResponseStart = { statusCode, contentLength, _ ->
+                        responseStatus = statusCode
+                        totalBytes = contentLength?.takeIf { it > 0L }
+                        recordDiagnostics(
+                            "operation=$operation status=response_start http=$statusCode " +
+                                "expectedBytes=${totalBytes ?: "unknown"} $urlSummary"
+                        )
+                        if (statusCode in 200..299) onStart(totalBytes)
+                    },
+                    onChunk = { chunk ->
+                        if (responseStatus in 200..299) {
+                            beforeRead()
+                            downloadedBytes += chunk.size.toLong()
+                            onChunk(chunk, downloadedBytes, totalBytes)
+                        }
+                    },
+                    onComplete = { response ->
+                        if (!continuation.isActive) return@downloadStream
+                        val status = response.statusCode
+                        val result =
+                            status?.let {
+                                sharedBinaryConditionalResult(
+                                    statusCode = it,
+                                    headers = response.headers
+                                )
+                            }
+                        if (result == null) {
+                            val safeErrorMessage = response.downloadErrorMessage()
+                            recordDiagnostics(
+                                "operation=$operation status=failed http=${status ?: 0} " +
+                                    "downloadedBytes=$downloadedBytes expectedBytes=${totalBytes ?: "unknown"} " +
+                                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                                    "errorKind=${response.error?.kind ?: "none"} " +
+                                    "errorRawCode=${response.error?.rawCode ?: response.rawResponse?.errorCode ?: "none"} " +
+                                    "message=$safeErrorMessage $urlSummary"
+                            )
+                            continuation.resumeWithException(
+                                IllegalStateException(
+                                    "$failurePrefix: HTTP ${status ?: 0}" +
+                                        safeErrorMessage.takeUnless { it == "none" }?.let { " ($it)" }.orEmpty()
+                                )
+                            )
+                        } else {
+                            recordDiagnostics(
+                                "operation=$operation status=complete http=${result.statusCode} " +
+                                    "downloadedBytes=$downloadedBytes expectedBytes=${totalBytes ?: "unknown"} " +
+                                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} $urlSummary"
+                            )
+                            continuation.resume(result)
+                        }
+                    }
+                )
+            continuation.invokeOnCancellation {
+                recordDiagnostics(
+                    "operation=$operation status=canceled downloadedBytes=$downloadedBytes " +
+                        "expectedBytes=${totalBytes ?: "unknown"} " +
+                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} $urlSummary"
+                )
+                call.cancel()
+            }
+        }
+    }
+
     private suspend fun streamDownload(
         url: String,
         operation: String,
@@ -111,7 +233,7 @@ object SharedBinaryDownloader {
                             method = VBTransportMethod.GET,
                             url = url,
                             body = NetworkBody.Empty,
-                            policy = NetworkRequestPolicy(timeoutMillis = DOWNLOAD_TIMEOUT_MILLIS)
+                            policy = NetworkRequestPolicy(timeoutMillis = SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS)
                         ).apply {
                             setHeader("Accept", "*/*")
                         },
@@ -188,6 +310,51 @@ object SharedBinaryDownloader {
             ?.toSafeDiagnosticsToken()
             ?: "none"
 }
+
+internal fun sharedBinaryConditionalRequest(
+    url: String,
+    validators: SharedBinaryConditionalValidators?
+): NetworkRequest =
+    NetworkRequest(
+        method = VBTransportMethod.GET,
+        url = url,
+        body = NetworkBody.Empty,
+        policy = NetworkRequestPolicy(timeoutMillis = SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS)
+    ).apply {
+        setHeader("Accept", "*/*")
+        validators?.eTag?.let { setHeader("If-None-Match", it) }
+        validators?.lastModified?.let { setHeader("If-Modified-Since", it) }
+    }
+
+internal fun sharedBinaryConditionalResult(
+    statusCode: Int,
+    headers: Map<String, List<String>>
+): SharedBinaryConditionalDownloadResult? {
+    val eTag = headers.firstHeaderValue("ETag")
+    val lastModified = headers.firstHeaderValue("Last-Modified")
+    return when (statusCode) {
+        304 -> SharedBinaryConditionalDownloadResult.NotModified(eTag, lastModified)
+        in 200..299 ->
+            SharedBinaryConditionalDownloadResult.Modified(
+                statusCode = statusCode,
+                contentType =
+                    headers.firstHeaderValue("Content-Type")
+                        ?.substringBefore(';')
+                        ?.trim()
+                        ?.takeIf(String::isNotBlank),
+                eTag = eTag,
+                lastModified = lastModified
+            )
+        else -> null
+    }
+}
+
+private fun Map<String, List<String>>.firstHeaderValue(name: String): String? =
+    entries.firstOrNull { (headerName, _) -> headerName.equals(name, ignoreCase = true) }
+        ?.value
+        ?.firstOrNull()
+        ?.trim()
+        ?.takeIf(String::isNotBlank)
 
 internal fun combineDownloadedChunks(chunks: List<ByteArray>, totalBytes: Int): ByteArray {
     val output = ByteArray(totalBytes)

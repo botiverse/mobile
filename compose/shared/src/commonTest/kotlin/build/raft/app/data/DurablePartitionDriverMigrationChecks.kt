@@ -247,7 +247,7 @@ private data class DriverOutboxRow(
 )
 
 /**
- * Runs the exact v1->v6 N=1..19 and v2->v6 N=1..13 rollback/retry matrices against a real file-backed
+ * Runs the exact v1->v7 N=1..22 and v2->v7 N=1..16 rollback/retry matrices against a real file-backed
  * driver's automatic open path.
  * The caller supplies AndroidSqliteDriver or NativeSqliteDriver construction.
  */
@@ -256,7 +256,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
     openDriver: (schema: SqlSchema<QueryResult.Value<Unit>>, databaseName: String) -> SqlDriver,
     cleanupDatabase: (databaseName: String) -> Unit,
 ) {
-    for (failAt in 1..19) {
+    for (failAt in 1..22) {
         val name = "slock-durable-$platformName-$failAt-${Random.nextLong().toString().replace('-', 'n')}.db"
         cleanupDatabase(name)
         try {
@@ -288,7 +288,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
             }
 
             openDriver(SlockDatabase.Schema, name).useDriver { driver ->
-                assertEquals(6L, driver.scalarLong("PRAGMA user_version"), "$platformName retry version")
+                assertEquals(7L, driver.scalarLong("PRAGMA user_version"), "$platformName retry version")
                 assertMigratedFixtureIntact(driver, "$platformName fail-at-$failAt retry")
                 assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
                 assertEquals(expectedOutbox, driver.outboxRow())
@@ -296,7 +296,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
             }
 
             openDriver(SlockDatabase.Schema, name).useDriver { driver ->
-                assertEquals(6L, driver.scalarLong("PRAGMA user_version"), "$platformName second reopen version")
+                assertEquals(7L, driver.scalarLong("PRAGMA user_version"), "$platformName second reopen version")
                 assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageEntity WHERE id='partition-message'"))
                 assertEquals(
                     11L,
@@ -314,10 +314,10 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
         }
     }
 
-    assertFileBackedV2ToV6RollbackRetry(platformName, openDriver, cleanupDatabase)
+    assertFileBackedV2ToV7RollbackRetry(platformName, openDriver, cleanupDatabase)
 }
 
-private fun assertFileBackedV2ToV6RollbackRetry(
+private fun assertFileBackedV2ToV7RollbackRetry(
     platformName: String,
     openDriver: (schema: SqlSchema<QueryResult.Value<Unit>>, databaseName: String) -> SqlDriver,
     cleanupDatabase: (databaseName: String) -> Unit,
@@ -335,15 +335,15 @@ private fun assertFileBackedV2ToV6RollbackRetry(
             expectedOutbox = driver.outboxRow()
         }
 
-        for (failAt in 1..13) {
-            val failure = assertFails("$platformName v2->v6 fail-at-$failAt must abort driver open") {
+        for (failAt in 1..16) {
+            val failure = assertFails("$platformName v2->v7 fail-at-$failAt must abort driver open") {
                 openDriver(FailAtMigrationStatementSchema(SlockDatabase.Schema, failAt), name).useDriver { driver ->
                     driver.scalarLong("SELECT 1")
                 }
             }
             assertTrue(
                 failure.hasCause<InjectedMigrationFailure>(),
-                "$platformName v2->v6 must expose fail-at-$failAt, got $failure",
+                "$platformName v2->v7 must expose fail-at-$failAt, got $failure",
             )
 
             openDriver(DurablePartitionV2Schema, name).useDriver { driver ->
@@ -353,7 +353,7 @@ private fun assertFileBackedV2ToV6RollbackRetry(
                 assertEquals(expectedOutbox, driver.outboxRow())
             }
 
-            if (failAt < 13) {
+            if (failAt < 16) {
                 cleanupDatabase(name)
                 openDriver(DurablePartitionV2Schema, name).useDriver { driver ->
                     seedV2MigrationRows(driver)
@@ -362,7 +362,7 @@ private fun assertFileBackedV2ToV6RollbackRetry(
         }
 
         openDriver(SlockDatabase.Schema, name).useDriver { driver ->
-            assertEquals(6L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 retry version")
+            assertEquals(7L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 retry version")
             assertMigratedFixtureIntact(driver, "$platformName v2 retry")
             assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
             assertEquals(expectedOutbox, driver.outboxRow())
@@ -370,7 +370,7 @@ private fun assertFileBackedV2ToV6RollbackRetry(
         }
 
         openDriver(SlockDatabase.Schema, name).useDriver { driver ->
-            assertEquals(6L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 second reopen version")
+            assertEquals(7L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 second reopen version")
             assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageViewerOverlayEntity"))
             assertEquals(
                 Long.MAX_VALUE,
@@ -475,6 +475,17 @@ private fun assertMigratedFixtureIntact(
     assertTrue(driver.hasMasterObject("table", "syncReadStateFactEntity"), "$label: read-state table missing")
     assertTrue(driver.hasMasterObject("table", "avatarCacheMetadataEntity"), "$label: avatar metadata table missing")
     assertTrue(driver.hasMasterObject("table", "avatarCacheFailureEntity"), "$label: avatar failure table missing")
+    assertEquals(
+        listOf(
+            "environmentId", "accountId", "serverId",
+            "subjectKind", "subjectId", "memberKind",
+            "contentKind", "contentFingerprint", "eTag", "lastModified",
+            "fetchedAtMs", "validatedAtMs", "freshUntilMs", "staleUntilMs",
+            "sizeBytes", "contentType", "commitGeneration", "commitNonce", "modelRevision"
+        ),
+        driver.tableColumns("avatarCacheMetadataEntity"),
+        "$label: durable avatar commit columns missing"
+    )
     assertEquals(expectedOutboxRow(), driver.outboxRow(), "$label: outbox columns changed")
     assertEquals(
         "keep-me",

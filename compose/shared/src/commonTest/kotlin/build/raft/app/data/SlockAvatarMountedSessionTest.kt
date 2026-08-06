@@ -71,6 +71,7 @@ class SlockAvatarMountedSessionTest {
         val oldFlight = assertNotNull(session.beginFlight(old))
 
         assertTrue(session.dispose(old))
+        assertFalse(session.dispose(old))
         val remounted = session.mount(key)
         assertNotEquals(old.sessionEpoch, remounted.sessionEpoch)
         assertIs<SlockAvatarMountedResolution.RejectedStaleFlight>(
@@ -437,6 +438,60 @@ class SlockAvatarMountedSessionTest {
     }
 
     @Test
+    fun exactDurableIdentitySeedsOneUntouchedMountAfterRestart() {
+        val key = avatarKey()
+        val identity = commitIdentity(7, '7')
+        val durable = durableMetadata(key, identity, modelRevision = 11, eTag = "restart-etag")
+        val restarted = SlockAvatarMountedSession()
+        val token = restarted.mount(key)
+
+        assertTrue(restarted.seedDurable(token, durable))
+        val snapshot = assertNotNull(restarted.snapshot(token))
+        assertEquals(identity, snapshot.commitIdentity)
+        assertEquals(11L, snapshot.modelRevision)
+        assertEquals("restart-etag", snapshot.validators?.eTag)
+        val flight = assertNotNull(restarted.beginFlight(token))
+        assertEquals(identity, flight.expectedCommitIdentity)
+        assertEquals(11L, flight.expectedModelRevision)
+        assertEquals("restart-etag", flight.validators?.eTag)
+        assertFalse(flight.requiresFullCanonicalBody)
+    }
+
+    @Test
+    fun legacyWrongPartitionAndDelayedDurableSeedsFailClosed() {
+        val key = avatarKey()
+        val exact = durableMetadata(key, commitIdentity(1, '1'), modelRevision = 1, eTag = "exact")
+
+        val legacySession = SlockAvatarMountedSession()
+        val legacyToken = legacySession.mount(key)
+        val legacy = exact.copy(commitIdentity = null, modelRevision = 0L, eTag = "legacy")
+        assertFalse(legacySession.seedDurable(legacyToken, legacy))
+        val legacyFlight = assertNotNull(legacySession.beginFlight(legacyToken))
+        assertTrue(legacyFlight.requiresFullCanonicalBody)
+        assertNull(legacyFlight.validators)
+
+        val wrongSession = SlockAvatarMountedSession()
+        val wrongToken = wrongSession.mount(key)
+        assertFalse(
+            wrongSession.seedDurable(
+                wrongToken,
+                durableMetadata(
+                    avatarKey(serverId = "server-b"),
+                    commitIdentity(1, '2'),
+                    modelRevision = 1,
+                    eTag = "wrong"
+                )
+            )
+        )
+
+        val delayedSession = SlockAvatarMountedSession()
+        val delayedToken = delayedSession.mount(key)
+        val active = assertNotNull(delayedSession.beginFlight(delayedToken))
+        assertFalse(delayedSession.seedDurable(delayedToken, exact))
+        assertSame(active, delayedSession.beginFlight(delayedToken))
+    }
+
+    @Test
     fun wrongCommitIdentityCannotKeepOrClearCurrentMountedState() {
         val session = SlockAvatarMountedSession()
         val key = avatarKey()
@@ -455,9 +510,19 @@ class SlockAvatarMountedSessionTest {
                 )
             )
         )
+        assertIs<SlockAvatarMountedResolution.RejectedStaleFlight>(
+            session.resolve(
+                keepFlight,
+                SlockAvatarMountedOutcome.Keep(
+                    expectedCommitIdentity = committed,
+                    reason = SlockAvatarMountedKeepReason.NotModified
+                )
+            )
+        )
         assertEquals(committed, session.snapshot(mount)?.commitIdentity)
 
         val clearFlight = assertNotNull(session.beginFlight(mount))
+        assertNotEquals(keepFlight.requestGeneration, clearFlight.requestGeneration)
         assertIs<SlockAvatarMountedResolution.RejectedCommitCas>(
             session.resolve(
                 clearFlight,
@@ -511,6 +576,25 @@ class SlockAvatarMountedSessionTest {
                     kind = SlockAvatarContentKind.RaftImmutable,
                     fingerprint = contentHex.toString().repeat(64)
                 )
+        )
+
+    private fun durableMetadata(
+        key: SlockAvatarCacheKey,
+        identity: SlockAvatarCommitIdentity,
+        modelRevision: Long,
+        eTag: String?
+    ): SlockAvatarCacheMetadata =
+        SlockAvatarCacheMetadata(
+            key = key,
+            eTag = eTag,
+            fetchedAtMs = 100L,
+            validatedAtMs = 100L,
+            freshUntilMs = 200L,
+            staleUntilMs = 300L,
+            sizeBytes = 128L,
+            contentType = "image/webp",
+            commitIdentity = identity,
+            modelRevision = modelRevision
         )
 
     private fun commitIdentity(generation: Long, nonceHex: Char): SlockAvatarCommitIdentity =

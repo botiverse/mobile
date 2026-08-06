@@ -194,7 +194,9 @@ internal data class SlockAvatarCacheMetadata(
     val freshUntilMs: Long,
     val staleUntilMs: Long,
     val sizeBytes: Long,
-    val contentType: String? = null
+    val contentType: String? = null,
+    val commitIdentity: SlockAvatarCommitIdentity? = null,
+    val modelRevision: Long = 0L
 ) {
     init {
         require(fetchedAtMs >= 0L)
@@ -203,7 +205,14 @@ internal data class SlockAvatarCacheMetadata(
         require(staleUntilMs >= freshUntilMs)
         require(sizeBytes in 1..SlockAvatarCachePolicy.MaxEntryBytes)
         require(contentType == null || contentType.startsWith("image/", ignoreCase = true))
+        require(modelRevision >= 0L)
+        require((commitIdentity == null) == (modelRevision == 0L)) {
+            "avatar commit identity and positive model revision must be persisted together"
+        }
     }
+
+    val hasExactCommitIdentity: Boolean
+        get() = commitIdentity != null
 }
 
 internal enum class SlockAvatarCacheFailureKind(val storageValue: String) {
@@ -275,7 +284,8 @@ internal object SlockAvatarCachePolicy {
         require(nowMs >= 0L)
         val metadata = stored.metadata?.takeIf { it.key == key }
         val failure = stored.failure?.takeIf { it.key == key && it.blocksAt(nowMs) }
-        val usableBytes = metadata != null && bytesAvailable && bytesDecodable
+        val usableBytes =
+            metadata?.hasExactCommitIdentity == true && bytesAvailable && bytesDecodable
         if (!usableBytes) {
             return failure?.let {
                 SlockAvatarCacheReadDecision.Suppressed(key.nativeBytesKey, it.retryAtMs)
@@ -299,6 +309,8 @@ internal object SlockAvatarCachePolicy {
         key: SlockAvatarCacheKey,
         nowMs: Long,
         sizeBytes: Long,
+        commitIdentity: SlockAvatarCommitIdentity,
+        modelRevision: Long,
         eTag: String? = null,
         lastModified: String? = null,
         contentType: String? = null
@@ -317,7 +329,9 @@ internal object SlockAvatarCachePolicy {
                 freshUntilMs = saturatingAdd(nowMs, FreshTtlMillis),
                 staleUntilMs = saturatingAdd(nowMs, StaleRetentionMillis),
                 sizeBytes = sizeBytes,
-                contentType = contentType?.trim()?.takeIf(String::isNotEmpty)
+                contentType = contentType?.trim()?.takeIf(String::isNotEmpty),
+                commitIdentity = commitIdentity,
+                modelRevision = modelRevision
             )
         )
     }

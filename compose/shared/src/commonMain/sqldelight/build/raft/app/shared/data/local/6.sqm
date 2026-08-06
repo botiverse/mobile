@@ -1,0 +1,5 @@
+-- Schema v7: bind durable validators to one exact native avatar commit identity.
+-- Legacy rows remain nullable and therefore require a full canonical response.
+ALTER TABLE avatarCacheMetadataEntity ADD COLUMN commitGeneration INTEGER;
+ALTER TABLE avatarCacheMetadataEntity ADD COLUMN commitNonce TEXT;
+ALTER TABLE avatarCacheMetadataEntity ADD COLUMN modelRevision INTEGER;
