@@ -9615,12 +9615,22 @@ private fun SettingsConnectedAppsMarketplaceCard(
     val categoryOptions = marketplace.settingsConnectedAppCategoryOptions(stringResource(MR.strings.settings_connected_apps_category_all), otherCategoryLabel)
     val resolvedCategory =
         category.takeIf { selected -> categoryOptions.any { it.id == selected } } ?: SETTINGS_CONNECTED_APPS_CATEGORY_ALL
-    val filteredMarketplace = marketplace.settingsConnectedAppFilteredMarketplace(search, resolvedCategory)
+    // Caller-local TextFieldValue owns the search editor for this card's mount;
+    // the durable store keeps the String projection (task #130 Phase D). There
+    // is no production reset token for this field (the `search = ""` writes
+    // live only in visual-fixture content), so the mount is the session
+    // boundary and the projected String is never echoed back into the editor.
+    var searchValue by remember { mutableStateOf(textFieldValueAtEnd(search)) }
+    val filteredMarketplace =
+        marketplace.settingsConnectedAppFilteredMarketplace(searchValue.text, resolvedCategory)
     SettingsFormSectionCard(iconName = SlockLucideIconName.Store, title = stringResource(MR.strings.settings_connected_apps_tab_marketplace)) {
         SlockBrutalSearchField(
-            value = search,
+            value = searchValue,
             placeholder = stringResource(MR.strings.settings_connected_apps_marketplace_search),
-            onValueChange = onSearchChange
+            onValueChange = {
+                searchValue = it
+                onSearchChange(it.text)
+            }
         )
         SlockRaftUiSelectField(
             options = categoryOptions,
@@ -10522,9 +10532,19 @@ private fun SettingsServerSlugInput(
     enabled: Boolean,
     onValueChange: (String) -> Unit
 ) {
+    // Caller-local TextFieldValue owns the confirmation-slug editor for this
+    // modal's mount; the durable store keeps the String projection (task #130
+    // Phase D). The slug path applies no per-keystroke filtering or truncation
+    // (both SlockSlugInput overloads pass the value straight through; the only
+    // normalisation is a .trim() at submit), so there is nothing to coerce the
+    // selection against here — the editor value is forwarded verbatim.
+    var slugValue by remember { mutableStateOf(textFieldValueAtEnd(value)) }
     SlockSlugInput(
-        value = value,
-        onValueChange = onValueChange,
+        value = slugValue,
+        onValueChange = {
+            slugValue = it
+            onValueChange(it.text)
+        },
         placeholder = placeholder,
         enabled = enabled
     )
@@ -17517,7 +17537,9 @@ private fun SharedCreateChannelDialog(
     var name by remember(initialName) { mutableStateOf(initialName) }
     var description by remember(initialDescription) { mutableStateOf(initialDescription) }
     var visibility by remember(initialVisibility) { mutableStateOf(initialVisibility) }
-    var memberSearch by remember { mutableStateOf("") }
+    // Caller-local TextFieldValue owns the member-search editor for this
+    // dialog's mount; filtering reads the String projection (task #130 Phase D).
+    var memberSearch by remember { mutableStateOf(TextFieldValue()) }
     var selectedMemberKeys by remember(initialSelectedMemberKeys) {
         mutableStateOf(initialSelectedMemberKeys)
     }
@@ -17532,7 +17554,7 @@ private fun SharedCreateChannelDialog(
     val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
     val filteredMembers =
         filterPeopleSuggestions(
-            query = memberSearch,
+            query = memberSearch.text,
             suggestions = selectableMembers,
             handle = { member -> member.handle },
             displayName = { member -> member.displayName },
@@ -17694,8 +17716,8 @@ private fun SharedCreateChannelVisibilityControl(
 private fun SharedCreateChannelMemberPicker(
     loading: Boolean,
     hasMembers: Boolean,
-    query: String,
-    onQueryChange: (String) -> Unit,
+    query: TextFieldValue,
+    onQueryChange: (TextFieldValue) -> Unit,
     filteredAgentMembers: List<MemberProfile>,
     filteredHumanMembers: List<MemberProfile>,
     hasFilteredMembers: Boolean,
@@ -17740,7 +17762,7 @@ private fun SharedCreateChannelMemberPicker(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = MR.strings.settings_members_no_matches.format(listOf(query.trim())).localized(),
+                                text = MR.strings.settings_members_no_matches.format(listOf(query.text.trim())).localized(),
                                 style = SlockType.Caption,
                                 color = SlockColor.TextMutedGray
                             )
