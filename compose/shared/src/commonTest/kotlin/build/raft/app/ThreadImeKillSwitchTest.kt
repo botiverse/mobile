@@ -327,4 +327,54 @@ class ThreadImeKillSwitchTest {
         assertFalse(suppressAutoBottomHeightChange(0f, { logs += it }))
         assertEquals(1, logs.size, "no receipt when nothing is suppressed")
     }
+
+    @Test
+    fun theBottomCollectorPassIssuesNothingWhileOpenAndCorrectsWhenClosed() {
+        // The long-lived collector: an ordinary FollowingLatest viewport where
+        // the list falls off the rendered bottom (true -> false). With the
+        // keyboard open the pass must land nothing on the reducer; with it
+        // closed the correction proceeds as before.
+        var controller = LazyViewportControllerState()
+        controller =
+            reduceLazyViewport(
+                controller,
+                LazyViewportEvent.FollowLatest(canOverrideUserDragging = true)
+            )
+        controller =
+            reduceLazyViewport(
+                controller,
+                LazyViewportEvent.CommandConsumed(requireNotNull(controller.pendingCommand).id)
+            )
+        val sequenceBefore = controller.nextSequence
+        val state =
+            ThreadBottomAnchorCorrectionState(
+                allowBottomAutoAnchor = true,
+                isScrollInProgress = false,
+                isAtRenderedBottom = false,
+                focusedAnchorOwnsViewport = false,
+            )
+        assertTrue(shouldAutoCorrectThreadBottomAnchor(state), "the pass would correct")
+
+        // Keyboard open: the production pass ends at the seam, nothing reaches
+        // the reducer.
+        if (!suppressAutoBottomHeightChange(299.5f) { }) {
+            controller =
+                reduceLazyViewport(
+                    controller,
+                    LazyViewportEvent.ContentMutated(LazyViewportMutation.HeightChange)
+                )
+        }
+        assertEquals(sequenceBefore, controller.nextSequence, "no new sequence while open")
+        assertEquals(null, controller.pendingCommand, "no new pending while open")
+
+        // Keyboard closed: the same pass corrects.
+        if (!suppressAutoBottomHeightChange(0f) { }) {
+            controller =
+                reduceLazyViewport(
+                    controller,
+                    LazyViewportEvent.ContentMutated(LazyViewportMutation.HeightChange)
+                )
+        }
+        assertTrue(controller.pendingCommand != null, "the correction returns once closed")
+    }
 }

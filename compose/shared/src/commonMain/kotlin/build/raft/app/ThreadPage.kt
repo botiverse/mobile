@@ -16288,6 +16288,12 @@ private fun ThreadMessagesList(
             .distinctUntilChanged()
             .collect { (cycleActive, state) ->
                 if (!cycleActive && shouldAutoCorrectThreadBottomAnchor(state)) {
+                    // task #990 kill-switch: this collector runs for the life
+                    // of the thread, so the inset must be read live at each
+                    // decision — same seam as the stability-path correction.
+                    if (suppressAutoBottomHeightChange(liveComposerKeyboardInsetDp, diagnosticsLogger)) {
+                        return@collect
+                    }
                     dispatchViewportEvent(
                         LazyViewportEvent.ContentMutated(LazyViewportMutation.HeightChange)
                     )
@@ -16483,9 +16489,11 @@ private fun ThreadMessagesList(
         // task #990 kill-switch: a focus request arriving after the keyboard is
         // already open never sees a 0->open transition, so the rise-cancel can
         // never fire for it — the initial anchor itself must not dispatch, and
-        // with no anchored intent the HeightChange replay has no source. The
-        // focus takes effect when the keyboard closes and the user still wants
-        // it, or the user scrolls there themselves.
+        // with no anchored intent the HeightChange replay has no source. This
+        // is a deliberate safe degradation: the request is DROPPED, not
+        // deferred — the inset is not among this effect's keys, so closing the
+        // keyboard does not rerun it. The user scrolls to the message
+        // themselves, or re-triggers the focus after closing the keyboard.
         if (
             suppressFocusAnchorWhileOpen(
                 liveComposerKeyboardInsetDp,
