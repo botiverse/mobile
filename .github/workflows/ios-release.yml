@@ -149,8 +149,10 @@ jobs:
       SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
       SLOCK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.SLOCK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
       SLOCK_IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.SLOCK_IOS_PROVISIONING_PROFILE_BASE64 }}
+      SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64: ${{ secrets.SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64 }}
       SLOCK_IOS_APPLE_TEAM_ID: ${{ secrets.SLOCK_IOS_APPLE_TEAM_ID }}
       SLOCK_IOS_PROVISIONING_PROFILE_SPECIFIER: ${{ secrets.SLOCK_IOS_PROVISIONING_PROFILE_SPECIFIER }}
+      SLOCK_IOS_SHARE_EXTENSION_PROFILE_SPECIFIER: ${{ secrets.SLOCK_IOS_SHARE_EXTENSION_PROFILE_SPECIFIER }}
       SLOCK_IOS_CODE_SIGN_IDENTITY: ${{ secrets.SLOCK_IOS_CODE_SIGN_IDENTITY }}
       SLOCK_IOS_EXPORT_OPTIONS_PLIST_BASE64: ${{ secrets.SLOCK_IOS_EXPORT_OPTIONS_PLIST_BASE64 }}
     steps:
@@ -213,12 +215,15 @@ jobs:
           [ -n "${SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64}" ] || { echo "::error::Missing SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64"; exit 1; }
           [ -n "${SLOCK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD}" ] || { echo "::error::Missing SLOCK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD"; exit 1; }
           [ -n "${SLOCK_IOS_PROVISIONING_PROFILE_BASE64}" ] || { echo "::error::Missing SLOCK_IOS_PROVISIONING_PROFILE_BASE64"; exit 1; }
+          [ -n "${SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64}" ] || { echo "::error::Missing SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64"; exit 1; }
 
           KEYCHAIN_PATH="${RUNNER_TEMP}/slock-ios-signing.keychain-db"
           KEYCHAIN_PASSWORD="$(uuidgen)"
           CERT_PATH="${RUNNER_TEMP}/slock-ios-distribution.p12"
           PROFILE_PATH="${RUNNER_TEMP}/slock-ios.mobileprovision"
           PROFILE_PLIST="${RUNNER_TEMP}/slock-ios-profile.plist"
+          SHARE_PROFILE_PATH="${RUNNER_TEMP}/slock-ios-share-extension.mobileprovision"
+          SHARE_PROFILE_PLIST="${RUNNER_TEMP}/slock-ios-share-extension-profile.plist"
 
           # Decode a base64 secret robustly: tolerate whitespace/newline wrapping
           # (e.g. secrets created with `base64` without -b0), and fail with a
@@ -234,6 +239,7 @@ jobs:
           }
           decode_secret "${SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64}" "${CERT_PATH}" "SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64"
           decode_secret "${SLOCK_IOS_PROVISIONING_PROFILE_BASE64}" "${PROFILE_PATH}" "SLOCK_IOS_PROVISIONING_PROFILE_BASE64"
+          decode_secret "${SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64}" "${SHARE_PROFILE_PATH}" "SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64"
 
           security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
           security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
@@ -247,11 +253,20 @@ jobs:
           PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "${PROFILE_PLIST}")"
           PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "${PROFILE_PLIST}")"
           PROFILE_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "${PROFILE_PLIST}")"
+          security cms -D -i "${SHARE_PROFILE_PATH}" > "${SHARE_PROFILE_PLIST}"
+          SHARE_PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "${SHARE_PROFILE_PLIST}")"
+          SHARE_PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "${SHARE_PROFILE_PLIST}")"
+          SHARE_PROFILE_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "${SHARE_PROFILE_PLIST}")"
+          [ "${SHARE_PROFILE_TEAM}" = "${PROFILE_TEAM}" ] || { echo "::error::App and Share Extension profiles use different teams"; exit 1; }
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "${PROFILE_PLIST}" | grep -Fq 'group.build.raft.app.external-share' || { echo "::error::App profile lacks external-share App Group"; exit 1; }
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "${SHARE_PROFILE_PLIST}" | grep -Fq 'group.build.raft.app.external-share' || { echo "::error::Share Extension profile lacks external-share App Group"; exit 1; }
           cp "${PROFILE_PATH}" "${HOME}/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"
+          cp "${SHARE_PROFILE_PATH}" "${HOME}/Library/MobileDevice/Provisioning Profiles/${SHARE_PROFILE_UUID}.mobileprovision"
 
           echo "profile_uuid=${PROFILE_UUID}" >> "$GITHUB_OUTPUT"
           echo "profile_name=${PROFILE_NAME}" >> "$GITHUB_OUTPUT"
           echo "profile_team=${PROFILE_TEAM}" >> "$GITHUB_OUTPUT"
+          echo "share_profile_name=${SHARE_PROFILE_NAME}" >> "$GITHUB_OUTPUT"
           echo "keychain_path=${KEYCHAIN_PATH}" >> "$GITHUB_OUTPUT"
 
       - name: Test diagnostics path admission
@@ -270,6 +285,7 @@ jobs:
           ARCHIVE_PATH="${RUNNER_TEMP}/ios-release/iosApp.xcarchive"
           TEAM_ID="${SLOCK_IOS_APPLE_TEAM_ID:-${PROFILE_TEAM}}"
           PROFILE_SPECIFIER="${SLOCK_IOS_PROVISIONING_PROFILE_SPECIFIER:-${PROFILE_NAME}}"
+          SHARE_PROFILE_SPECIFIER="${SLOCK_IOS_SHARE_EXTENSION_PROFILE_SPECIFIER:-${{ steps.signing.outputs.share_profile_name }}}"
           CODE_SIGN_IDENTITY="${SLOCK_IOS_CODE_SIGN_IDENTITY:-Apple Distribution}"
           BUILD_SETTINGS=(
             "MARKETING_VERSION=${RAFT_IOS_VERSION_NAME}"
@@ -280,7 +296,8 @@ jobs:
             "CODE_SIGN_STYLE=Manual"
             "DEVELOPMENT_TEAM=${TEAM_ID}"
             "CODE_SIGN_IDENTITY=${CODE_SIGN_IDENTITY}"
-            "PROVISIONING_PROFILE_SPECIFIER=${PROFILE_SPECIFIER}"
+            "SLOCK_APP_PROFILE_SPECIFIER=${PROFILE_SPECIFIER}"
+            "SLOCK_SHARE_EXTENSION_PROFILE_SPECIFIER=${SHARE_PROFILE_SPECIFIER}"
           )
           set -o pipefail
           xcodebuild \
@@ -309,6 +326,7 @@ jobs:
           else
             TEAM_ID="${SLOCK_IOS_APPLE_TEAM_ID:-${PROFILE_TEAM}}"
             PROFILE_SPECIFIER="${SLOCK_IOS_PROVISIONING_PROFILE_SPECIFIER:-${PROFILE_NAME}}"
+            SHARE_PROFILE_SPECIFIER="${SLOCK_IOS_SHARE_EXTENSION_PROFILE_SPECIFIER:-${{ steps.signing.outputs.share_profile_name }}}"
             /usr/libexec/PlistBuddy -c "Add :method string ${{ needs.resolve.outputs.export_method }}" "${EXPORT_OPTIONS}"
             /usr/libexec/PlistBuddy -c "Add :signingStyle string manual" "${EXPORT_OPTIONS}"
             /usr/libexec/PlistBuddy -c "Add :teamID string ${TEAM_ID}" "${EXPORT_OPTIONS}"
@@ -317,6 +335,7 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :uploadSymbols bool true" "${EXPORT_OPTIONS}"
             /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "${EXPORT_OPTIONS}"
             /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:build.raft.app string ${PROFILE_SPECIFIER}" "${EXPORT_OPTIONS}"
+            /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:build.raft.app.share string ${SHARE_PROFILE_SPECIFIER}" "${EXPORT_OPTIONS}"
           fi
           xcodebuild \
             -exportArchive \
@@ -354,6 +373,16 @@ jobs:
           [ "${VERSION_CODE}" = "${RAFT_IOS_VERSION_CODE}" ] || { echo "Unexpected version code: ${VERSION_CODE}" >&2; exit 1; }
           [ "${VERSION_CODE}" != "1" ] || { echo "CFBundleVersion must not be the project default 1" >&2; exit 1; }
           [ -f "${APP_PATH}/embedded.mobileprovision" ] || { echo "embedded.mobileprovision missing" >&2; exit 1; }
+          SHARE_APP_PATH="${APP_PATH}/PlugIns/RaftShareExtension.appex"
+          [ -d "${SHARE_APP_PATH}" ] || { echo "Raft Share Extension missing" >&2; exit 1; }
+          [ -f "${SHARE_APP_PATH}/embedded.mobileprovision" ] || { echo "Share Extension embedded.mobileprovision missing" >&2; exit 1; }
+          SHARE_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${SHARE_APP_PATH}/Info.plist")"
+          [ "${SHARE_BUNDLE_ID}" = "build.raft.app.share" ] || { echo "Unexpected Share Extension bundle id: ${SHARE_BUNDLE_ID}" >&2; exit 1; }
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${SHARE_APP_PATH}/Info.plist")" = "${RAFT_IOS_VERSION_CODE}" ] || { echo "Share Extension build version mismatch" >&2; exit 1; }
+          codesign -d --entitlements "${TMP_DIR}/app-entitlements.plist" "${APP_PATH}" 2>/dev/null
+          codesign -d --entitlements "${TMP_DIR}/share-entitlements.plist" "${SHARE_APP_PATH}" 2>/dev/null
+          /usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups' "${TMP_DIR}/app-entitlements.plist" | grep -Fq 'group.build.raft.app.external-share' || { echo "Signed app lacks external-share App Group" >&2; exit 1; }
+          /usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups' "${TMP_DIR}/share-entitlements.plist" | grep -Fq 'group.build.raft.app.external-share' || { echo "Signed Share Extension lacks external-share App Group" >&2; exit 1; }
           [ -d "${APP_PATH}/build.raft.app.resources.MR.bundle" ] || { echo "MR bundle missing from app" >&2; exit 1; }
           find "${APP_PATH}/build.raft.app.resources.MR.bundle" -name 'Localizable.strings' -type f | grep -q . || { echo "MR Localizable.strings missing" >&2; exit 1; }
           # The reaction atlas is injected into the MR bundle flattened per the
