@@ -3941,6 +3941,15 @@ private fun ThreadMessageVisualScreenContent() {
     ) {
         ThreadInlineSelectionCompactGroupVisual(
             messages = payload.toThreadTimelineSlice().messages,
+            // The slice strips per-message reply metadata
+            // (withoutThreadReplyMetadata); production reads replyCount through
+            // this side-channel map built from the UNstripped payload. Without
+            // it the card's replyMetadata default derives from the stripped
+            // message, replyCount stays 0, and single-tap-opens-thread is
+            // (correctly) ineligible — which is exactly how the
+            // inlineSelectionTargetReplyCount override got silently erased
+            // (nightly 31128964690).
+            replyMetadataByParentId = payload.toThreadReplyMetadataMap(),
             messageBodyTextStyle = messageBodyTextStyle,
             inlineSelectionEnabled = inlineSelectionToolbarEnabled,
             singleTapOpensThreadEnabled = singleTapOpensThreadEnabled
@@ -4255,6 +4264,7 @@ private fun ThreadMessageVisualScreenContent() {
 @Composable
 private fun ThreadInlineSelectionCompactGroupVisual(
     messages: List<KuiklyThreadMessageItem>,
+    replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     messageBodyTextStyle: TextStyle,
     inlineSelectionEnabled: Boolean,
     singleTapOpensThreadEnabled: Boolean
@@ -4272,6 +4282,7 @@ private fun ThreadInlineSelectionCompactGroupVisual(
                 val message = messages[index]
                 ThreadMessageCard(
                     message = message,
+                    replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message),
                     messageBodyTextStyle = messageBodyTextStyle,
                     messageIndex = index,
                     compactConsecutiveMessages = true,
