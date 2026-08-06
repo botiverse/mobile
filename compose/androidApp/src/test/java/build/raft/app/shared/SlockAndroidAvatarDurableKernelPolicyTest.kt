@@ -81,6 +81,77 @@ class SlockAndroidAvatarDurableKernelPolicyTest {
     }
 
     @Test
+    fun terminalCompletionStartsFreshNativeNamespaceAfterRestart() {
+        val rig = AvatarKernelTestRig()
+        val kernel = rig.kernel()
+        val key = avatarKey(subject = "fresh-terminal-subject")
+        val retiredCommit = avatarCommit(2L, "fresh-terminal-retired")
+        val retiredEntry =
+            kernel.commitCandidate(
+                key = key,
+                requestGeneration = 1L,
+                commitIdentity = retiredCommit,
+                bytes = "retired-avatar".toByteArray()
+            )
+        val retiredHit = kernel.readHit(key, 2L, retiredCommit)
+        assertTrue(
+            kernel.registerDecoded(
+                retiredHit.snapshot,
+                retiredHit.lease,
+                SlockAndroidAvatarDecodedVariant(80, 80, "terminal-fresh")
+            )
+        )
+        retiredHit.lease.close()
+
+        val terminalScope =
+            SlockAndroidAvatarTerminalScope.Subject(
+                key.partitionKey,
+                key.ownerKey,
+                key.subjectKey
+            )
+        val terminal = kernel.retireSubject(key.partitionKey, key.ownerKey, key.subjectKey)
+
+        assertEquals(SlockAndroidAvatarTerminalStatus.Complete, terminal.status)
+        assertFalse(rig.files.exists(retiredEntry.entryPath))
+        assertFalse(rig.files.paths().any(key::ownsManagedPath))
+        assertFalse(rig.files.exists(terminalScope.markerPath))
+        assertEquals(0, kernel.decodedIdentityCountForTest())
+        assertNull(kernel.durableStateForTest(key))
+
+        val restarted = rig.kernel()
+        assertEquals(SlockAndroidAvatarOperationStatus.Applied, restarted.startupRecovery.status)
+        assertEquals(
+            SlockAndroidAvatarReadResult.Miss(SlockAndroidAvatarReadMissReason.Empty),
+            restarted.readSnapshot(restarted.acceptedFence(key, 3L), retiredCommit)
+        )
+        val freshFence = restarted.acceptedFence(key, 4L)
+        assertEquals(
+            SlockAndroidAvatarReadResult.Miss(
+                SlockAndroidAvatarReadMissReason.NoExpectedCommitIdentity
+            ),
+            restarted.readSnapshot(freshFence, expectedCommitIdentity = null)
+        )
+        val freshCommit = avatarCommit(1L, "fresh-terminal-current")
+        assertEquals(
+            SlockAndroidAvatarOperationStatus.Applied,
+            restarted.stageCandidate(
+                fence = freshFence,
+                expectedCurrentCommitIdentity = null,
+                candidateCommitIdentity = freshCommit,
+                bytes = "canonical-current-avatar".toByteArray(),
+                contentType = "image/png"
+            ).status
+        )
+        assertEquals(
+            SlockAndroidAvatarOperationStatus.Applied,
+            restarted.finalizeCandidate(freshFence, freshCommit).status
+        )
+        val currentHit = restarted.readHit(key, 5L, freshCommit)
+        assertArrayEquals("canonical-current-avatar".toByteArray(), currentHit.snapshot.bytes)
+        currentHit.lease.close()
+    }
+
+    @Test
     fun terminalScopePersistsEveryLogicalTombstoneBeforeDecodedEvictionOrPhysicalDelete() {
         val files = FakeAvatarDurableFileSystem()
         val firstKey = avatarKey(subject = "ordered-terminal", bytes = "ordered-first")

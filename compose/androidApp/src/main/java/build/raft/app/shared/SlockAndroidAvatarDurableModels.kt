@@ -207,7 +207,12 @@ internal enum class SlockAndroidAvatarTombstoneReason {
 internal data class SlockAndroidAvatarDurableState(
     val key: SlockAndroidAvatarOpaqueKey,
     val stateSequence: Long = 0L,
-    /** Highest generation durably reserved for this key; rollback/ordinary retirement never lowers it. */
+    /**
+     * Highest generation reserved inside this live native key namespace. Prepared writes,
+     * rollback, ordinary retirement, and restart never lower it. A successful terminal retirement
+     * physically removes the whole key namespace, including this authority; the next canonical
+     * full-body fetch starts a fresh namespace rather than retaining per-key history forever.
+     */
     val commitGenerationHighWater: Long,
     val phase: SlockAndroidAvatarDurablePhase,
     val transactionId: String?,

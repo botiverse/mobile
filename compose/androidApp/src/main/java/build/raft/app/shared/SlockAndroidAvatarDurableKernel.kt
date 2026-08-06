@@ -576,6 +576,12 @@ internal class SlockAndroidAvatarDurableKernel(
             retireCurrentLocked(state, snapshot.entryIdentity, reason, notifyCuts = true)
         }
 
+    /**
+     * Terminal operations close matching admission, drain leases, and physically remove the
+     * matching native cache namespace. They intentionally do not retain commit-generation history
+     * after physical zero. Product wiring must clear matching metadata/validators so the next
+     * request starts with no expected native identity and supplies a canonical full body.
+     */
     fun clearAll(): SlockAndroidAvatarTerminalResult =
         retireScope(SlockAndroidAvatarTerminalScope.All)
 
@@ -917,7 +923,7 @@ internal class SlockAndroidAvatarDurableKernel(
             tombstone.copy(cleanupArtifacts = emptySet()),
             current = null,
             notifyCuts = false,
-            discardCommitGenerationHighWater = true
+            resetCommitNamespace = true
         )
     }
 
@@ -1577,10 +1583,10 @@ internal class SlockAndroidAvatarDurableKernel(
         cleanupState: SlockAndroidAvatarDurableState,
         current: SlockAndroidAvatarEntryRecord?,
         notifyCuts: Boolean,
-        discardCommitGenerationHighWater: Boolean = false
+        resetCommitNamespace: Boolean = false
     ): Boolean {
         if (current == null &&
-            (discardCommitGenerationHighWater || cleanupState.commitGenerationHighWater == 0L)
+            (resetCommitNamespace || cleanupState.commitGenerationHighWater == 0L)
         ) {
             if (!deleteDurablyLocked(cleanupState.key.indexPath)) return false
             if (!deleteDurablyLocked(cleanupState.key.journalPath)) return false
