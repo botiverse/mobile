@@ -139,7 +139,12 @@ internal class SharedCreateAgentCoordinator(
                         SharedCreateAgentRuntimeModelOption(
                             id = model.id,
                             label = model.label.takeIf { it.isNotBlank() } ?: fallback?.label ?: model.id,
-                            verified = model.verified ?: fallback?.verified
+                            verified = model.verified ?: fallback?.verified,
+                            supportedReasoningEfforts =
+                                model.supportedReasoningEfforts.takeIf { it.isNotEmpty() }
+                                    ?: fallback?.supportedReasoningEfforts.orEmpty(),
+                            defaultReasoningEffort =
+                                model.defaultReasoningEffort ?: fallback?.defaultReasoningEffort
                         )
                     }
                 DataResult.Content(

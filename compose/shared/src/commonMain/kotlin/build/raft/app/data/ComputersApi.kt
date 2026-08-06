@@ -11,6 +11,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -639,7 +640,26 @@ private fun JsonElement.toRuntimeModelInfo(): RuntimeModelInfo? {
     if (id.isBlank()) return null
     val label = obj["label"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotBlank() } ?: id
     val verified = obj["verified"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
-    return RuntimeModelInfo(id = id, label = label, verified = verified)
+    val supportedReasoningEfforts =
+        runCatching { obj["supportedReasoningEfforts"]?.jsonArray }
+            .getOrNull()
+            .orEmpty()
+            .mapNotNull { effort ->
+                runCatching { effort.jsonPrimitive.contentOrNull }
+                    .getOrNull()
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+            }
+            .distinct()
+    val defaultReasoningEffort =
+        obj["defaultReasoningEffort"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
+    return RuntimeModelInfo(
+        id = id,
+        label = label,
+        verified = verified,
+        supportedReasoningEfforts = supportedReasoningEfforts,
+        defaultReasoningEffort = defaultReasoningEffort
+    )
 }
 
 @Serializable

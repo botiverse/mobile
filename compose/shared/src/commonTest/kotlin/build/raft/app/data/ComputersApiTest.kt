@@ -43,6 +43,13 @@ class ComputersApiTest {
         assertEquals(listOf("sonnet", "opus"), runtimeModels.models.map { it.id })
         assertEquals(listOf("Claude Sonnet", "Claude Opus"), runtimeModels.models.map { it.label })
         assertEquals(listOf("launchable", null), runtimeModels.models.map { it.verified })
+        assertEquals(
+            listOf("low", "medium", "high", "xhigh"),
+            runtimeModels.models.first().supportedReasoningEfforts
+        )
+        assertEquals("medium", runtimeModels.models.first().defaultReasoningEffort)
+        assertEquals(emptyList(), runtimeModels.models.last().supportedReasoningEfforts)
+        assertEquals(null, runtimeModels.models.last().defaultReasoningEffort)
         val runtimeCatalog =
             assertIs<DataResult.Content<SharedCreateAgentRuntimeCatalog>>(
                 client.runtimeOptions(serverId, "machine-1")
@@ -354,7 +361,7 @@ class ComputersApiTest {
         private val workspacesBody: String =
             """[{"directoryName":"agent-live","totalSizeBytes":2048,"lastModified":"2026-05-26T00:00:00.000Z","fileCount":12,"status":"active","agentName":"Noel","agentStatus":"active"},{"directoryName":"agent-old","totalSizeBytes":1,"lastModified":"2026-05-25T00:00:00.000Z","fileCount":1,"status":"orphan","agentName":null,"agentStatus":null}]""",
         private val runtimeModelsBody: String =
-            """{"models":[{"id":"sonnet","label":"Claude Sonnet","verified":"launchable"},{"id":"opus","label":"Claude Opus"}],"default":"sonnet"}""",
+            """{"models":[{"id":"sonnet","label":"Claude Sonnet","verified":"launchable","supportedReasoningEfforts":["low","medium","high","xhigh"],"defaultReasoningEffort":"medium"},{"id":"opus","label":"Claude Opus"}],"default":"sonnet"}""",
         private val runtimeOptionsBody: String = canonicalRuntimeOptionsBody,
         private val runtimeFormDefinitionBody: String = canonicalRuntimeFormDefinitionBody,
         private val runtimeFormOptionSourceBodies: Map<String, String> =

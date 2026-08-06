@@ -136,8 +136,12 @@ val REASONING_EFFORTS: List<Pair<String, String>> = listOf(
     "low" to "Low",
     "medium" to "Medium",
     "high" to "High",
-    "xhigh" to "Extra High"
+    "xhigh" to "Extra High",
+    "max" to "Max",
+    "ultra" to "Ultra"
 )
+
+val BASE_REASONING_EFFORT_IDS: Set<String> = setOf("low", "medium", "high", "xhigh")
 
 val REASONING_EFFORT_RUNTIMES: Set<String> = setOf("builtin", "claude", "codex", "grok", "copilot", "pi")
 val RUNTIME_FAST_MODE_RUNTIMES: Set<String> = setOf("claude", "codex")
@@ -147,7 +151,9 @@ val RUNTIME_FAST_MODE_RUNTIMES: Set<String> = setOf("claude", "codex")
 data class RuntimeModelInfo(
     val id: String,
     val label: String,
-    val verified: String? = null // "launchable" | "suggestion_only" | null
+    val verified: String? = null, // "launchable" | "suggestion_only" | null
+    val supportedReasoningEfforts: List<String> = emptyList(),
+    val defaultReasoningEffort: String? = null
 )
 
 data class RuntimeModelPresentation(
@@ -168,9 +174,27 @@ val RUNTIME_MODELS: Map<String, List<RuntimeModelInfo>> = mapOf(
         RuntimeModelInfo("claude-haiku-4-5", "Claude Haiku 4.5")
     ),
     "codex" to listOf(
-        RuntimeModelInfo("gpt-5.6-sol", "GPT-5.6 Sol", verified = "launchable"),
-        RuntimeModelInfo("gpt-5.6-terra", "GPT-5.6 Terra", verified = "launchable"),
-        RuntimeModelInfo("gpt-5.6-luna", "GPT-5.6 Luna", verified = "launchable"),
+        RuntimeModelInfo(
+            "gpt-5.6-sol",
+            "GPT-5.6 Sol",
+            verified = "launchable",
+            supportedReasoningEfforts = listOf("low", "medium", "high", "xhigh", "max", "ultra"),
+            defaultReasoningEffort = "medium"
+        ),
+        RuntimeModelInfo(
+            "gpt-5.6-terra",
+            "GPT-5.6 Terra",
+            verified = "launchable",
+            supportedReasoningEfforts = listOf("low", "medium", "high", "xhigh", "max", "ultra"),
+            defaultReasoningEffort = "medium"
+        ),
+        RuntimeModelInfo(
+            "gpt-5.6-luna",
+            "GPT-5.6 Luna",
+            verified = "launchable",
+            supportedReasoningEfforts = listOf("low", "medium", "high", "xhigh", "max"),
+            defaultReasoningEffort = "medium"
+        ),
         RuntimeModelInfo("gpt-5.5", "GPT-5.5"),
         RuntimeModelInfo("gpt-5.4", "GPT-5.4"),
         RuntimeModelInfo("gpt-5.3-codex", "GPT-5.3 Codex"),
@@ -275,6 +299,40 @@ fun supportsRuntimeCommand(runtime: String): Boolean = runtime == "claude"
 
 fun supportsRuntimeReasoningEffort(runtime: String): Boolean = REASONING_EFFORT_RUNTIMES.contains(runtime)
 
+fun reconcileRuntimeReasoningEffort(
+    runtime: String,
+    model: String,
+    current: String?,
+    supportedReasoningEfforts: List<String>? = null,
+    defaultReasoningEffort: String? = null
+): String? {
+    if (!supportsRuntimeReasoningEffort(runtime)) return null
+    val staticModel = RUNTIME_MODELS[runtime].orEmpty().firstOrNull { it.id == model }
+    val declaredSupported = supportedReasoningEfforts ?: staticModel?.supportedReasoningEfforts.orEmpty()
+    val supported = declaredSupported.takeIf { it.isNotEmpty() } ?: BASE_REASONING_EFFORT_IDS.toList()
+    if (current != null && current in supported) return current
+    val declaredDefault =
+        if (supportedReasoningEfforts != null) defaultReasoningEffort else staticModel?.defaultReasoningEffort
+    return declaredDefault?.takeIf { it in supported }
+}
+
+fun validateRuntimeReasoningEffort(
+    runtime: String,
+    model: String,
+    current: String?,
+    supportedReasoningEfforts: List<String>? = null,
+    defaultReasoningEffort: String? = null
+): String? {
+    if (current == null || !supportsRuntimeReasoningEffort(runtime)) return null
+    return reconcileRuntimeReasoningEffort(
+        runtime = runtime,
+        model = model,
+        current = current,
+        supportedReasoningEfforts = supportedReasoningEfforts,
+        defaultReasoningEffort = defaultReasoningEffort
+    )
+}
+
 // ── Builder ──
 
 /**
@@ -294,6 +352,8 @@ fun buildRuntimeConfig(
     piProviderApiKey: String? = null,
     fastMode: Boolean = false,
     reasoningEffort: String? = null,
+    reasoningSupportedEfforts: List<String>? = null,
+    reasoningDefaultEffort: String? = null,
     envVars: Map<String, String>? = null,
     command: String? = null
 ): RuntimeConfig {
@@ -327,10 +387,21 @@ fun buildRuntimeConfig(
         } else {
             RuntimeModelConfig.Preset(id = model.ifBlank { getDefaultModel(effectiveRuntime) })
         }
+    val effectiveModelId =
+        when (effectiveModel) {
+            is RuntimeModelConfig.Preset -> effectiveModel.id
+            is RuntimeModelConfig.Custom -> effectiveModel.name
+        }
     val effectiveCommand: String? =
         if (supportsRuntimeCommand(effectiveRuntime) && !command.isNullOrBlank()) command.trim() else null
     val effectiveReasoningEffort: String? =
-        if (supportsRuntimeReasoningEffort(effectiveRuntime)) reasoningEffort else null
+        validateRuntimeReasoningEffort(
+            runtime = effectiveRuntime,
+            model = effectiveModelId,
+            current = reasoningEffort,
+            supportedReasoningEfforts = reasoningSupportedEfforts,
+            defaultReasoningEffort = reasoningDefaultEffort
+        )
     return RuntimeConfig(
         version = RUNTIME_CONFIG_VERSION,
         runtime = effectiveRuntime,

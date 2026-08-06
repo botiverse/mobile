@@ -8600,10 +8600,19 @@ private fun MembersAgentRuntimeConfigDialog(
     }
     LaunchedEffect(runtime, runtimeModelsCatalog, awaitingServerModelForRuntime) {
         if (awaitingServerModelForRuntime && runtimeModelsCatalog != null) {
-            model =
+            val nextModel =
                 runtimeModelsCatalog.defaultModel
                     ?.takeIf { default -> runtimeModelsCatalog.models.any { it.id == default } }
                     ?: runtimeModelsCatalog.models.firstOrNull()?.id.orEmpty()
+            val selection =
+                createAgentRuntimeModelReasoningSelection(
+                    runtime = runtime,
+                    model = nextModel,
+                    currentReasoningEffort = reasoningEffort,
+                    runtimeModelsOverride = runtimeModelsCatalog.models
+                )
+            model = selection.model
+            reasoningEffort = selection.reasoningEffort
             acceptedCatalogGeneration = runtimeModelGenerationsByRuntime[runtime] ?: 0L
             awaitingServerModelForRuntime = false
         }
@@ -8674,9 +8683,23 @@ private fun MembersAgentRuntimeConfigDialog(
                         BuiltInRuntimeSection(
                             runtime = runtime,
                             onRuntimeChange = { nextRuntime ->
-                                runtime = nextRuntime
+                                val nextModel =
+                                    if (nextRuntime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
+                                        stableInitialConfig.toMembersRuntimeModelValue()
+                                    } else {
+                                        ""
+                                    }
+                                val selection =
+                                    createAgentRuntimeModelReasoningSelection(
+                                        runtime = nextRuntime,
+                                        model = nextModel,
+                                        currentReasoningEffort = reasoningEffort,
+                                        runtimeModelsOverride = runtimeModelsByRuntime[nextRuntime]?.models.orEmpty()
+                                    )
+                                runtime = selection.runtime
+                                model = selection.model
+                                reasoningEffort = selection.reasoningEffort
                                 if (nextRuntime != CREATE_AGENT_BUILTIN_RUNTIME_ID) {
-                                    model = ""
                                     awaitingServerModelForRuntime = true
                                     customModelMode = false
                                     customModelName = ""
@@ -8727,14 +8750,27 @@ private fun MembersAgentRuntimeConfigDialog(
                     } else AdvancedRuntimeSection(
                         runtime = runtime,
                         onRuntimeChange = { nextRuntime ->
-                            runtime = nextRuntime
+                            val nextModel =
+                                if (nextRuntime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
+                                    stableInitialConfig.toMembersRuntimeModelValue()
+                                } else {
+                                    ""
+                                }
+                            val selection =
+                                createAgentRuntimeModelReasoningSelection(
+                                    runtime = nextRuntime,
+                                    model = nextModel,
+                                    currentReasoningEffort = reasoningEffort,
+                                    runtimeModelsOverride = runtimeModelsByRuntime[nextRuntime]?.models.orEmpty()
+                                )
+                            runtime = selection.runtime
+                            model = selection.model
+                            reasoningEffort = selection.reasoningEffort
                             if (nextRuntime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
                                 awaitingServerModelForRuntime = false
-                                model = stableInitialConfig.toMembersRuntimeModelValue()
                             } else {
                                 // A runtime switch must wait for this machine's canonical model catalog;
                                 // enum/static defaults are not server truth and cannot seed a save.
-                                model = ""
                                 awaitingServerModelForRuntime = true
                                 customModelMode = false
                                 customModelName = ""
@@ -8746,20 +8782,27 @@ private fun MembersAgentRuntimeConfigDialog(
                             piProviderApiKey = TextFieldValue("")
                             fastMode = false
                             command = ""
-                            if (!supportsRuntimeReasoningEffort(nextRuntime)) {
-                                reasoningEffort = null
-                            }
                         },
                         model = model,
-                        onModelChange = { selectedModel ->
-                            model = selectedModel
-                            customModelName = selectedModel
+                        onModelSelectionChange = { selection ->
+                            model = selection.model
+                            reasoningEffort = selection.reasoningEffort
+                            customModelName = selection.model
                         },
                         customModelMode = customModelMode,
                         onCustomModelModeChange = { enabled ->
                             customModelMode = enabled
                             if (enabled && customModelName.isBlank()) {
                                 customModelName = model
+                            }
+                            if (enabled) {
+                                reasoningEffort =
+                                    reconcileCreateAgentReasoningEffort(
+                                        runtime = runtime,
+                                        model = customModelName.trim(),
+                                        current = reasoningEffort,
+                                        runtimeModelsOverride = emptyList()
+                                    )
                             }
                         },
                         customModelName = customModelName,
@@ -8853,6 +8896,13 @@ private fun MembersAgentRuntimeConfigDialog(
                     backgroundColor = SlockColor.AccentPink,
                     minWidth = 166.dp,
                     onClick = {
+                        val effectiveModel = if (customModelMode) customModelName.trim() else model
+                        val reasoningMetadata =
+                            createAgentReasoningModelMetadata(
+                                runtime = runtime,
+                                model = effectiveModel,
+                                runtimeModelsOverride = runtimeModelsOverride
+                            )
                         val nextConfig =
                             if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
                                 builtInConfigForSave ?: return@SlockBrutalActionButton
@@ -8868,6 +8918,8 @@ private fun MembersAgentRuntimeConfigDialog(
                                 piProviderApiKey = piProviderApiKey.text,
                                 fastMode = fastMode,
                                 reasoningEffort = reasoningEffort,
+                                reasoningSupportedEfforts = reasoningMetadata.supportedReasoningEfforts,
+                                reasoningDefaultEffort = reasoningMetadata.defaultReasoningEffort,
                                 envVars = envVarEntries.toMembersRuntimeEnvVars(),
                                 command = command
                             )

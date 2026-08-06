@@ -14,7 +14,7 @@ class SharedCreateAgentCoordinatorTest {
         val computersApi =
             FakeCreateAgentComputersApi(
                 runtimeModelsBody =
-                    """{"models":[{"id":"claude-sonnet-4-6","label":"Machine Sonnet","verified":"launchable"},{"id":"vendor/custom","label":"Vendor Custom","verified":"suggestion_only"}],"default":"vendor/custom"}"""
+                    """{"models":[{"id":"claude-sonnet-4-6","label":"Machine Sonnet","verified":"launchable"},{"id":"vendor/custom","label":"Vendor Custom","verified":"suggestion_only","supportedReasoningEfforts":["low","high"],"defaultReasoningEffort":"high"}],"default":"vendor/custom"}"""
             )
         val coordinator =
             SharedCreateAgentCoordinator(
@@ -30,6 +30,8 @@ class SharedCreateAgentCoordinatorTest {
         assertEquals(listOf("claude-sonnet-4-6", "vendor/custom"), catalog.models.map { it.id })
         assertEquals(listOf("Machine Sonnet", "Vendor Custom"), catalog.models.map { it.label })
         assertEquals(listOf("launchable", "suggestion_only"), catalog.models.map { it.verified })
+        assertEquals(listOf("low", "high"), catalog.models.last().supportedReasoningEfforts)
+        assertEquals("high", catalog.models.last().defaultReasoningEffort)
     }
 
     @Test
@@ -53,6 +55,11 @@ class SharedCreateAgentCoordinatorTest {
             listOf("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4"),
             catalog.models.map { it.id }
         )
+        assertEquals(
+            listOf("low", "medium", "high", "xhigh", "max", "ultra"),
+            catalog.models.first().supportedReasoningEfforts
+        )
+        assertEquals("medium", catalog.models.first().defaultReasoningEffort)
     }
 }
 
