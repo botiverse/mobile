@@ -189,8 +189,13 @@ internal class SlockAvatarMountedSession {
     fun mount(key: SlockAvatarCacheKey): SlockAvatarMountToken =
         synchronized(lock) {
             val slot = key.mountedSlot()
-            val selected = metadata[slot]
-            if (selected != null && selected.key != key) {
+            val occupiedByDifferentContent =
+                metadata[slot]?.key?.let { it != key } == true ||
+                    activeFlights[slot]?.flight?.key?.let { it != key } == true ||
+                    mounts.values.any { record ->
+                        record.token.key.mountedSlot() == slot && record.token.key != key
+                    }
+            if (occupiedByDifferentContent) {
                 clearSlotLocked(slot, SlockAvatarMountedClearReason.Terminal)
             }
             val token =
