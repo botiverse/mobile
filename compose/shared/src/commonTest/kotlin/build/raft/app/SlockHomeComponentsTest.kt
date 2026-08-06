@@ -325,7 +325,7 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun appUpdateNotificationMovesToDedicatedBanner() {
+    fun appUpdateNotificationStaysInNotificationCenter() {
         val update =
             SlockHomeNotificationItem(
                 id = build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID,
@@ -334,8 +334,9 @@ class SlockHomeComponentsTest {
         val machine = SlockHomeNotificationItem(id = "machine-offline:1", title = "Offline")
         val notifications = listOf(machine, update)
 
-        assertEquals(update, notifications.homeAppUpdateBannerNotification())
-        assertEquals(listOf(machine), notifications.nonAppUpdateHomeNotifications())
+        // Web parity (task #692 / PR #5605): no dedicated top banner — the
+        // app-update entry lives in the same notification center list.
+        assertEquals(listOf(machine, update), notifications.visibleHomeNotifications())
     }
 
     @Test
@@ -1917,29 +1918,6 @@ class SlockHomeComponentsTest {
             SlockLucideIconName.TriangleAlert,
             SlockHomeNotificationIcon.Default.notificationIconName(SlockHomeNotificationKind.Warning)
         )
-    }
-
-    @Test
-    fun notificationTriggerUsesFirstVisibleNotificationIcon() {
-        val notifications =
-            listOf(
-                SlockHomeNotificationItem(
-                    id = "app-update:hands",
-                    title = "App update available",
-                    body = "Current version 1.0.0. Latest version 1.0.1.",
-                    kind = SlockHomeNotificationKind.Info,
-                    icon = SlockHomeNotificationIcon.CircleArrowUp
-                ),
-                SlockHomeNotificationItem(
-                    id = "machine-offline:1",
-                    title = "Machine offline",
-                    body = "Reconnect when needed.",
-                    kind = SlockHomeNotificationKind.Warning,
-                    icon = SlockHomeNotificationIcon.WifiOff
-                )
-            )
-
-        assertEquals(SlockLucideIconName.CircleArrowUp, notifications.homeNotificationTriggerIconName())
     }
 
     @Test

@@ -1142,9 +1142,8 @@ internal fun HomeTitlebarResizeVisualScreen() {
 @Composable
 internal fun HomeNotificationCenterVisualScreen() {
     // Fill the full 390x844 viewport crop with SurfaceWhite so the pager's default
-    // surface does not bleed a cream band below/right of the popover (matches the
-    // React baseline and the sibling HomeAppUpdateBannerVisualScreen, which pins the
-    // full viewport for the same reason). Fixes visual-drift #767.
+    // surface does not bleed a cream band below/right of the popover. Fixes
+    // visual-drift #767.
     Box(modifier = Modifier.width(390.dp).height(844.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp).padding(16.dp)) {
         HomeNotificationPopover(
             notifications = visualHomeNotifications(),
@@ -1152,40 +1151,6 @@ internal fun HomeNotificationCenterVisualScreen() {
             onDismiss = {},
             modifier = Modifier.align(Alignment.TopStart)
         )
-    }
-}
-
-@Composable
-internal fun HomeAppUpdateBannerVisualScreen() {
-    Column(modifier = Modifier.width(390.dp).height(844.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
-        HomeTitlebar(
-            serverName = "Raft Design",
-            hasOtherServerUnread = false,
-            notifications = emptyList(),
-            refreshing = false,
-            topSafeArea = 0.dp,
-            onServerBadgeClick = {},
-            onNotificationToggle = {}
-        )
-        HomeAppUpdateBanner(
-            notification =
-                SlockHomeNotificationItem(
-                    id = APP_UPDATE_HOME_NOTIFICATION_ID,
-                    title = "Raft 1.6.0 is available",
-                    body = "See what's new, then download and install the update.",
-                    actionLabel = "View",
-                    kind = SlockHomeNotificationKind.Info,
-                    icon = SlockHomeNotificationIcon.CircleArrowUp
-                ),
-            onClick = {}
-        )
-        Box(modifier = Modifier.fillMaxSize().background(SlockColor.AppBgLightBlue).padding(16.dp)) {
-            Text(
-                text = "HOME",
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray
-            )
-        }
     }
 }
 
@@ -1594,14 +1559,11 @@ internal fun SlockStructuralHomeShell(
         contentRefreshing = contentRefreshing,
         pullRefreshing = pullRefreshing
     )
-    val appUpdateBanner = remember(notifications) { notifications.homeAppUpdateBannerNotification() }
-    val visibleNotifications = remember(notifications) { notifications.nonAppUpdateHomeNotifications() }
+    // Web parity (task #692 / PR #5605): all active notifications — including
+    // the app-update entry — live in the notification center. There is no
+    // separate top banner, and the popover may stay open on an empty drawer.
+    val visibleNotifications = remember(notifications) { notifications.visibleHomeNotifications() }
     var notificationCenterExpanded by remember(currentServerId) { mutableStateOf(false) }
-    LaunchedEffect(visibleNotifications.size) {
-        if (visibleNotifications.isEmpty()) {
-            notificationCenterExpanded = false
-        }
-    }
     LaunchedEffect(externalFocusLossDismissEpoch) {
         if (externalFocusLossDismissEpoch > 0) {
             notificationCenterExpanded = false
@@ -1671,6 +1633,7 @@ internal fun SlockStructuralHomeShell(
                         serverIdentity = currentHomeHeaderServer.takeIf { homeServerAvatarEnabled },
                         hasOtherServerUnread = serverSwitcherHasOtherUnread,
                         notifications = visibleNotifications,
+                        notificationCenterExpanded = notificationCenterExpanded,
                         refreshing = headerRefreshing,
                         topSafeArea = topSafeArea,
                         onServerBadgeClick = onServerBadgeClickWithDismiss,
@@ -1684,12 +1647,6 @@ internal fun SlockStructuralHomeShell(
                     )
                 }
                 SlockAppShellBodyTopBanner()
-                appUpdateBanner?.let { update ->
-                    HomeAppUpdateBanner(
-                        notification = update,
-                        onClick = { onNotificationView(update) }
-                    )
-                }
                 BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     val targetHomeBeyondBoundsItemCount =
                         homeListBeyondBoundsItemCount(
@@ -2221,7 +2178,7 @@ internal fun SlockStructuralHomeShell(
                     }
                 }
             }
-            if (notificationCenterExpanded && visibleNotifications.isNotEmpty()) {
+            if (notificationCenterExpanded) {
                 SlockFloatingOverlayHost(
                     onDismiss = { notificationCenterExpanded = false },
                     modifier = Modifier.padding(bottom = bottomContentPadding),
@@ -3319,6 +3276,7 @@ private fun HomeTitlebar(
     serverIdentity: SlockServerSwitcherItem? = null,
     hasOtherServerUnread: Boolean,
     notifications: List<SlockHomeNotificationItem>,
+    notificationCenterExpanded: Boolean = false,
     refreshing: Boolean,
     topSafeArea: Dp,
     onServerBadgeClick: () -> Unit,
@@ -3365,6 +3323,7 @@ private fun HomeTitlebar(
             }
             HomeNotificationCenter(
                 notifications = notifications,
+                open = notificationCenterExpanded,
                 onToggle = onNotificationToggle
             )
         }
@@ -3571,30 +3530,43 @@ private fun ServerUnreadMarker(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem>, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+private fun HomeNotificationCenter(
+    notifications: List<SlockHomeNotificationItem>,
+    open: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // Web parity (task #692 / PR #5605): the Bell trigger is permanent and
+    // neutral. Availability (trigger exists), disclosure (popup open) and
+    // attention (unread notifications) are independent states: only attention
+    // gets the pink dot; only disclosure gets the selected button treatment.
+    // The trigger never carries warning/error severity colors.
     val visibleNotifications = remember(notifications) { notifications.visibleHomeNotifications() }
-    if (visibleNotifications.isEmpty()) return
-    val activeKind = visibleNotifications.first().kind
+    val hasUnread = visibleNotifications.isNotEmpty()
     Box(modifier = modifier.size(HomeNotificationTriggerSlotSize)) {
         Box(modifier = Modifier.align(Alignment.TopEnd).padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
-            Box(
-                modifier = Modifier
-                    .size(HomeNotificationTriggerSize)
-                    .offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
-                    .background(SlockColor.ShadowBlack)
-            )
+            if (open) {
+                Box(
+                    modifier = Modifier
+                        .size(HomeNotificationTriggerSize)
+                        .offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
+                        .background(SlockColor.ShadowBlack)
+                )
+            }
             Button(
                 onClick = onToggle,
                 modifier =
                     Modifier
                         .size(HomeNotificationTriggerSize)
-                        .background(activeKind.notificationColor())
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .background(if (open) SlockColor.SurfaceWhite else Color.Transparent)
+                        .border(SlockStroke.Default, if (open) SlockColor.BorderBlack else Color.Transparent)
             ) {
-                SlockLucideIcon(visibleNotifications.homeNotificationTriggerIconName(), Modifier.size(16.dp))
+                SlockLucideIcon(SlockLucideIconName.Bell, Modifier.size(16.dp))
             }
         }
-        ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
+        if (hasUnread) {
+            ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
+        }
     }
 }
 
@@ -3616,64 +3588,15 @@ internal fun List<SlockHomeNotificationItem>.visibleHomeNotifications(): List<Sl
         notification.title.isNotBlank() || notification.body.isNotBlank()
     }
 
-internal fun List<SlockHomeNotificationItem>.homeAppUpdateBannerNotification(): SlockHomeNotificationItem? =
-    visibleHomeNotifications().firstOrNull { it.id == APP_UPDATE_HOME_NOTIFICATION_ID }
-
-internal fun List<SlockHomeNotificationItem>.nonAppUpdateHomeNotifications(): List<SlockHomeNotificationItem> =
-    visibleHomeNotifications().filterNot { it.id == APP_UPDATE_HOME_NOTIFICATION_ID }
-
-@Composable
-private fun HomeAppUpdateBanner(
-    notification: SlockHomeNotificationItem,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(SlockColor.SurfaceCream)
-                .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        SlockLucideIcon(
-            SlockLucideIconName.CircleArrowUp,
-            modifier = Modifier.size(16.dp),
-            color = "#FF000000"
-        )
-        Text(
-            text = notification.title.ifBlank { notification.body },
-            modifier = Modifier.weight(1f),
-            style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 15.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = stringResource(MR.strings.app_update_view),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1
-        )
-        SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(16.dp), color = "#FF000000")
-    }
-    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-}
-
-internal fun List<SlockHomeNotificationItem>.homeNotificationTriggerIconName(): SlockLucideIconName =
-    visibleHomeNotifications()
-        .firstOrNull()
-        ?.let { notification -> notification.icon.notificationIconName(notification.kind) }
-        ?: SlockLucideIconName.Bell
-
 @Composable
 private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationItem>, onView: (SlockHomeNotificationItem) -> Unit, onDismiss: (SlockHomeNotificationItem) -> Unit, modifier: Modifier = Modifier) {
     HardShadowPanel(modifier = modifier, minWidth = 320.dp, maxWidth = 320.dp) {
         com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(MR.strings.home_notification_center_title), style = SlockType.SectionLabel, color = SlockColor.TextMutedGray, maxLines = 1)
             Text(
-                if (notifications.size == 1) {
+                if (notifications.isEmpty()) {
+                    stringResource(MR.strings.home_notification_center_item_count_all_clear)
+                } else if (notifications.size == 1) {
                     MR.strings.home_notification_center_item_count_one.format(listOf(notifications.size)).localized()
                 } else {
                     MR.strings.home_notification_center_item_count_many.format(listOf(notifications.size)).localized()
@@ -3684,12 +3607,47 @@ private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationIte
             )
         }
         Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-        notifications.forEachIndexed { index, notification ->
-            if (index > 0) {
-                Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        if (notifications.isEmpty()) {
+            HomeNotificationCenterEmptyState()
+        } else {
+            notifications.forEachIndexed { index, notification ->
+                if (index > 0) {
+                    Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+                }
+                HomeNotificationRow(notification, { onView(notification) }, { onDismiss(notification) })
             }
-            HomeNotificationRow(notification, { onView(notification) }, { onDismiss(notification) })
         }
+    }
+}
+
+@Composable
+private fun HomeNotificationCenterEmptyState() {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        SlockLucideIcon(
+            SlockLucideIconName.CircleCheck,
+            modifier = Modifier.size(36.dp),
+            color = SlockColor.TextMutedGrayArgb
+        )
+        Text(
+            text = stringResource(MR.strings.home_notification_center_empty_title),
+            style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+            color = SlockColor.TextMutedGray,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = stringResource(MR.strings.home_notification_center_empty_body),
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray,
+            textAlign = TextAlign.Center,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

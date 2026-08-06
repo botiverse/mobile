@@ -1339,6 +1339,9 @@
     <string name="home_notification_center_title">通知</string>
     <string name="home_notification_center_item_count_one">%1$d 条</string>
     <string name="home_notification_center_item_count_many">%1$d 条</string>
+    <string name="home_notification_center_item_count_all_clear">全部已处理</string>
+    <string name="home_notification_center_empty_title">暂无通知</string>
+    <string name="home_notification_center_empty_body">需要你关注的事项会显示在这里。</string>
     <string name="home_notification_app_update_title">有可用的应用更新</string>
     <string name="home_notification_app_update_body">当前版本：%1$s；最新版本：%2$s。</string>
     <string name="app_update_view">查看</string>
