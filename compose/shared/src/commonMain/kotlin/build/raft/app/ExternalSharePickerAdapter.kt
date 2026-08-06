@@ -25,6 +25,7 @@ internal fun ExternalShareTargetPickerSurface(
     onIntent: (ExternalShareIntent) -> Unit
 ) {
     var inputQuery by remember(state.envelope.token, state.serverId) { mutableStateOf(state.query) }
+    val bottomSafeArea = slockBottomSafeAreaPadding()
     LaunchedEffect(state.envelope.token, state.serverId, inputQuery) {
         if (inputQuery != state.query) {
             delay(ExternalShareSearchDebounceMillis)
@@ -49,6 +50,7 @@ internal fun ExternalShareTargetPickerSurface(
         // Keep the native input mounted while directory rows reload. Replacing it with the
         // non-interactive placeholder on every debounced request drops Android IME focus.
         searchInputInteractive = true,
+        bottomSafeArea = bottomSafeArea,
         topContent = {
             SlockServerChoice(
                 title = "Server",
