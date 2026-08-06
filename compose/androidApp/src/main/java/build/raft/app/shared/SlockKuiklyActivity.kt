@@ -2365,7 +2365,7 @@ private object SlockKuiklyLogAdapter : IKRLogAdapter {
         // are forwarded into the persistent diagnostics ring. The warn channel
         // is used because the info channel is verbosity-gated off in release
         // builds, where every device capture happens.
-        if (msg.startsWith("pending_content_offset")) {
+        if (msg.startsWith("pending_content_offset") || msg.startsWith("content_window_flush")) {
             SlockAppLog.w(tag, msg)
         }
     }
