@@ -27413,11 +27413,14 @@ private fun ThreadAddMemberModal(
     onSubmit: (KuiklyThreadMemberItem) -> Unit
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
-    var query by remember { mutableStateOf("") }
+    // Caller-local TextFieldValue is the sole editor owner for the search box;
+    // the modal's mount is the session boundary, so it is never re-seeded from
+    // a projected String (task #130 Phase D).
+    var query by remember { mutableStateOf(TextFieldValue()) }
     var selectedId by remember(candidates, initialSelectedId) { mutableStateOf(initialSelectedId) }
     var localError by remember { mutableStateOf(false) }
     val currentKeys = remember(members) { members.map { it.memberKey }.toSet() }
-    val filteredCandidates = filterThreadAddMemberCandidates(query = query, candidates = candidates)
+    val filteredCandidates = filterThreadAddMemberCandidates(query = query.text, candidates = candidates)
     val agentCandidates = filteredCandidates.filter { it.kind.equals("agent", ignoreCase = true) }
     val humanCandidates = filteredCandidates.filter { !it.kind.equals("agent", ignoreCase = true) }
     val blocked = !canAddMembers || addMemberStatus == "no_permission"
