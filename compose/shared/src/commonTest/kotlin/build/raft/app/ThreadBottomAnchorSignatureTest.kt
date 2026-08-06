@@ -1484,8 +1484,9 @@ class ThreadBottomAnchorSignatureTest {
         assertFalse(mixedEpoch.anchorFocusedTailAtRenderedBottom)
 
         // task #990 kill-switch contract: even a coherent epoch does not anchor
-        // while the keyboard is open; the pending change is carried to the
-        // close transition, which performs it.
+        // while the keyboard is open — and the open decision CLEARS the
+        // automatic pending instead of replaying it. The close transition
+        // recovers on its own from the real inset/viewport change.
         val coherentEpochWhileOpen =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
@@ -1499,6 +1500,7 @@ class ThreadBottomAnchorSignatureTest {
                 )
             )
         assertFalse(coherentEpochWhileOpen.shouldAnchor)
+        assertFalse(coherentEpochWhileOpen.pendingLayoutChange)
         val coherentEpochOnClose =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
@@ -1506,7 +1508,7 @@ class ThreadBottomAnchorSignatureTest {
                     nextKeyboardInsetDp = 0f,
                     previousViewportHeightDp = 315.29318f,
                     nextViewportHeightDp = 622.84546f,
-                    pendingLayoutChange = true,
+                    pendingLayoutChange = coherentEpochWhileOpen.pendingLayoutChange,
                     viewportEpochCoherent = true,
                     focusedTailAnchorCanCorrectLayout = true
                 )
@@ -1541,8 +1543,9 @@ class ThreadBottomAnchorSignatureTest {
         // layout viewport catching up; the pending-only retry flow must rerun
         // the decision without ever replaying the mixed one.
         // task #990 kill-switch contract: the Lazy viewport catching up while
-        // the keyboard is still open no longer triggers the retry — the
-        // pending change is held for the close transition, which performs it.
+        // the keyboard is still open no longer triggers the retry — the open
+        // decision CLEARS the automatic pending instead of replaying it, and
+        // the close transition recovers on its own from the real inset change.
         val layoutOnlyCatchUpWhileOpen =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
@@ -1556,6 +1559,7 @@ class ThreadBottomAnchorSignatureTest {
                 )
             )
         assertFalse(layoutOnlyCatchUpWhileOpen.shouldAnchor)
+        assertFalse(layoutOnlyCatchUpWhileOpen.pendingLayoutChange)
         val catchUpOnClose =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
@@ -1563,7 +1567,7 @@ class ThreadBottomAnchorSignatureTest {
                     nextKeyboardInsetDp = 0f,
                     previousViewportHeightDp = 622.84546f,
                     nextViewportHeightDp = 622.84546f,
-                    pendingLayoutChange = mixedEpoch.pendingLayoutChange,
+                    pendingLayoutChange = layoutOnlyCatchUpWhileOpen.pendingLayoutChange,
                     viewportEpochCoherent = true,
                     focusedTailAnchorCanCorrectLayout = true
                 )
@@ -1982,9 +1986,10 @@ class ThreadBottomAnchorSignatureTest {
     @Test
     fun composerLayoutBottomAnchor_runsOncePendingColdEntryBecomesReady() {
         // task #990 kill-switch contract: with the keyboard open (the helper's
-        // default insets) the cold entry becoming ready does NOT anchor — the
-        // pending change is held. The closed-keyboard arm below keeps the
-        // original single-shot flow as the positive control.
+        // default insets) the cold entry becoming ready does NOT anchor — and
+        // the ready decision CLEARS the automatic pending instead of replaying
+        // it. The closed-keyboard arm below keeps the original single-shot
+        // flow as the positive control.
         val beforeReadyOpen =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
@@ -2004,6 +2009,7 @@ class ThreadBottomAnchorSignatureTest {
                 )
             )
         assertFalse(afterReadyOpen.shouldAnchor, "no anchor while the keyboard is open")
+        assertFalse(afterReadyOpen.pendingLayoutChange, "open clears the pending instead of replaying it")
 
         val beforeReady =
             resolveThreadComposerLayoutBottomAnchor(
