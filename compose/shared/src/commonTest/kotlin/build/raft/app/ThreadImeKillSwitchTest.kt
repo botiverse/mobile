@@ -109,10 +109,11 @@ class ThreadImeKillSwitchTest {
     }
 
     @Test
-    fun theRiseCancelsAnInflightAnchoredCommandWithoutIssuingAnother() {
-        // An anchored command is mid-flight when the keyboard starts to rise:
-        // the cancel must clear it and hand the viewport to the user, issuing
-        // nothing new. This is the production cancel primitive.
+    fun theRiseCancelsAnInflightAnchoredCommandThroughTheProductionSeam() {
+        // An anchored command is mid-flight when the keyboard starts to rise.
+        // The cancel is driven through the production seam the effect calls —
+        // deleting the production cancel logic turns this red, where a test
+        // that dispatched AnchorUnavailable itself would stay green.
         var controller = LazyViewportControllerState()
         controller =
             reduceLazyViewport(
@@ -127,15 +128,63 @@ class ThreadImeKillSwitchTest {
                     fallback = LazyViewportAnchorFallback.Free,
                 )
             )
-        val inflight = requireNotNull(controller.pendingCommand).id
+        assertTrue(controller.pendingCommand != null)
+        val logs = mutableListOf<String>()
 
-        controller = reduceLazyViewport(controller, LazyViewportEvent.AnchorUnavailable(inflight))
+        val roseNow =
+            cancelInflightAnchorOnImeRise(
+                keyboardInsetDp = 299.5f,
+                lastKeyboardInsetDp = 0f,
+                controllerState = controller,
+                dispatch = { controller = reduceLazyViewport(controller, it) },
+                log = { logs += it },
+            )
 
+        assertTrue(roseNow, "0 -> 299.5 is a rise transition")
         assertEquals(null, controller.pendingCommand, "the in-flight anchor must be cancelled")
         assertEquals(
             LazyViewportIntent.UserDragging,
             controller.intent,
             "and the viewport must belong to the user, not to another command"
+        )
+        assertTrue(
+            logs.single().contains("cancelled_inflight"),
+            "the receipt must say what was cancelled"
+        )
+
+        // While the keyboard stays open, later passes are not rise transitions
+        // and must touch nothing.
+        val stillOpen =
+            cancelInflightAnchorOnImeRise(
+                keyboardInsetDp = 299.5f,
+                lastKeyboardInsetDp = 299.5f,
+                controllerState = controller,
+                dispatch = { throw AssertionError("no dispatch while already open") },
+                log = { },
+            )
+        assertFalse(stillOpen)
+
+        // A user's explicit back-to-bottom afterwards must not be collateral:
+        // FollowLatest is not an Anchored intent, so a fresh rise leaves its
+        // command alone.
+        var userController = LazyViewportControllerState()
+        userController =
+            reduceLazyViewport(
+                userController,
+                LazyViewportEvent.FollowLatest(canOverrideUserDragging = true)
+            )
+        val userCommand = requireNotNull(userController.pendingCommand).id
+        cancelInflightAnchorOnImeRise(
+            keyboardInsetDp = 299.5f,
+            lastKeyboardInsetDp = 0f,
+            controllerState = userController,
+            dispatch = { userController = reduceLazyViewport(userController, it) },
+            log = { },
+        )
+        assertEquals(
+            userCommand,
+            userController.pendingCommand?.id,
+            "a user-intent command must survive the rise-cancel"
         )
     }
 

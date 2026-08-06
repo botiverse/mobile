@@ -27,3 +27,47 @@ package build.raft.app
  */
 internal fun threadImeOpenSuppressesProgrammaticViewport(keyboardInsetDp: Float): Boolean =
     keyboardInsetDp > 0f
+
+/**
+ * Cancels an in-flight programmatic anchor at the moment the keyboard starts
+ * to rise, and reports whether this pass was a rise transition.
+ *
+ * Lives here rather than inline in the composer effect so the behaviour test
+ * executes this exact code against the real controller reducer — a test that
+ * performed its own cancellation would stay green with the production call
+ * deleted, which is the harness defect this task kept producing.
+ *
+ * Only a Free-fallback anchored intent family exists on these paths, and
+ * [LazyViewportEvent.AnchorUnavailable] on it hands the viewport to the user
+ * and issues nothing new. Explicit user commands (FollowLatest and friends)
+ * never carry an Anchored intent here and are untouched.
+ */
+internal fun cancelInflightAnchorOnImeRise(
+    keyboardInsetDp: Float,
+    lastKeyboardInsetDp: Float,
+    controllerState: LazyViewportControllerState,
+    dispatch: (LazyViewportEvent) -> Unit,
+    log: (String) -> Unit,
+): Boolean {
+    if (!threadImeOpenSuppressesProgrammaticViewport(keyboardInsetDp)) {
+        return false
+    }
+    if (threadImeOpenSuppressesProgrammaticViewport(lastKeyboardInsetDp)) {
+        return false
+    }
+    val inflight = controllerState.pendingCommand?.id
+    if (inflight != null && controllerState.intent is LazyViewportIntent.Anchored) {
+        dispatch(LazyViewportEvent.AnchorUnavailable(inflight))
+        log(
+            "thread_ime_kill_switch result=cancelled_inflight " +
+                "commandId=${inflight.epoch}:${inflight.sequence} " +
+                "keyboardInsetDp=$lastKeyboardInsetDp->$keyboardInsetDp"
+        )
+    } else {
+        log(
+            "thread_ime_kill_switch result=armed " +
+                "keyboardInsetDp=$lastKeyboardInsetDp->$keyboardInsetDp"
+        )
+    }
+    return true
+}

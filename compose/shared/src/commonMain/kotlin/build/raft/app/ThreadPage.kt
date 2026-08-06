@@ -15513,6 +15513,14 @@ private fun ThreadMessagesList(
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
     var lastComposerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(composerKeyboardInsetDp) }
+    // task #990 kill-switch: the kill-switch gates run inside long-lived
+    // coroutines (the focused session's watch loop, the origin correction's
+    // layout waits) that outlive the recomposition which delivered a new inset.
+    // A captured Float parameter stays 0 forever inside them — which is exactly
+    // the incident timing, where the keyboard rises milliseconds after the
+    // session starts. The gates therefore read this state, whose value is live
+    // at every read.
+    val liveComposerKeyboardInsetDp by rememberUpdatedState(composerKeyboardInsetDp)
     var lastThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(measuredThreadViewportHeightDp) }
     var pendingComposerLayoutBottomAnchor by remember(threadInstanceKey) { mutableStateOf(false) }
     var composerLayoutViewportRetryGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
@@ -16539,7 +16547,7 @@ private fun ThreadMessagesList(
             val action =
                 focusedAnchorSessionAction(
                     keyboardOpen =
-                        threadImeOpenSuppressesProgrammaticViewport(composerKeyboardInsetDp),
+                        threadImeOpenSuppressesProgrammaticViewport(liveComposerKeyboardInsetDp),
                     userInteracting =
                         focusedAnchorSessionUserOverrideActive(
                             startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
@@ -16654,7 +16662,7 @@ private fun ThreadMessagesList(
                 startUserScrollGeneration = startUserScrollGeneration,
                 currentUserScrollGeneration = userScrollGeneration.value,
                 keyboardOpen =
-                    threadImeOpenSuppressesProgrammaticViewport(composerKeyboardInsetDp)
+                    threadImeOpenSuppressesProgrammaticViewport(liveComposerKeyboardInsetDp)
             )
         ) {
             return@LaunchedEffect
@@ -16673,7 +16681,7 @@ private fun ThreadMessagesList(
                 startUserScrollGeneration = startUserScrollGeneration,
                 currentUserScrollGeneration = userScrollGeneration.value,
                 keyboardOpen =
-                    threadImeOpenSuppressesProgrammaticViewport(composerKeyboardInsetDp)
+                    threadImeOpenSuppressesProgrammaticViewport(liveComposerKeyboardInsetDp)
             ) ||
             listState.isScrollInProgress ||
             !listState.canScrollToThreadItem(targetIndex)
@@ -16961,30 +16969,17 @@ private fun ThreadMessagesList(
         }
         // task #990 kill-switch: the moment the keyboard starts to rise, an
         // in-flight programmatic anchor is cancelled rather than allowed to
-        // finish into the shrinking window. AnchorUnavailable on a Free-fallback
-        // anchored intent hands the viewport to the user and issues nothing —
-        // the focused and composer corrections are exactly that family. The
-        // gates below then keep every correction path silent while the keyboard
-        // stays open.
-        if (
-            threadImeOpenSuppressesProgrammaticViewport(composerKeyboardInsetDp) &&
-            !threadImeOpenSuppressesProgrammaticViewport(lastComposerKeyboardInsetDp)
-        ) {
-            val inflight = viewportControllerState.pendingCommand?.id
-            if (inflight != null && viewportControllerState.intent is LazyViewportIntent.Anchored) {
-                dispatchViewportEvent(LazyViewportEvent.AnchorUnavailable(inflight))
-                diagnosticsLogger(
-                    "thread_ime_kill_switch result=cancelled_inflight " +
-                        "commandId=${inflight.epoch}:${inflight.sequence} " +
-                        "keyboardInsetDp=$lastComposerKeyboardInsetDp->$composerKeyboardInsetDp"
-                )
-            } else {
-                diagnosticsLogger(
-                    "thread_ime_kill_switch result=armed " +
-                        "keyboardInsetDp=$lastComposerKeyboardInsetDp->$composerKeyboardInsetDp"
-                )
-            }
-        }
+        // finish into the shrinking window; the gates below then keep every
+        // correction path silent while it stays open. The cancel itself lives
+        // in a shared seam so the behaviour test executes this code, not a
+        // copy of it.
+        cancelInflightAnchorOnImeRise(
+            keyboardInsetDp = composerKeyboardInsetDp,
+            lastKeyboardInsetDp = lastComposerKeyboardInsetDp,
+            controllerState = viewportControllerState,
+            dispatch = { dispatchViewportEvent(it) },
+            log = { diagnosticsLogger(it) },
+        )
         val focusedTargetIdentity = pendingFocusedMessageAnchorIdentityState.value
         val focusedTargetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() }
         val focusedTargetItemIndex = renderPayload.focusedMessageListItemIndex()
