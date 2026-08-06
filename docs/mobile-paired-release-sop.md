@@ -194,11 +194,72 @@ audience, but each announcement must:
 - derive every product claim from the approved platform notes and preserve the
   reviewed section structure instead of inventing a second feature summary;
 - include the supported update path and feedback path where applicable;
-- avoid build coordinates, CI detail, internal task language, and unshipped
-  work;
+- avoid CI detail, internal task language, and unshipped work. Android
+  community copy should omit build coordinates; an iOS TestFlight announcement
+  must include the exact marketing version and build number shown by
+  TestFlight;
 - receive explicit release-owner approval before it is posted to a community
 channel. Chinese and English may be posted together or as separate messages,
 but the release receipt must identify the final message receipt for each.
+
+### iOS TestFlight Announcement Format
+
+Use the established complete format below for every iOS TestFlight community
+announcement. Do not shorten it to "open TestFlight" or omit the join URL.
+The current Raft app-level join URL is
+`https://testflight.apple.com/join/JvM5wXuc`; confirm it against the latest
+owner-approved announcement or authoritative TestFlight public-link readback
+before posting, and never guess or manufacture a replacement URL.
+
+Before posting, fresh-read the exact TestFlight build and require all of the
+following:
+
+- the title and final canonical-version sentence use the exact marketing
+  version and build number, not values copied from the previous announcement;
+- the intended community audience can actually reach that exact build through
+  the named TestFlight group/public link; an internal-only build must not be
+  announced as publicly available;
+- every highlight comes from the approved iOS release notes;
+- the TestFlight join URL is present as an angle-bracketed link;
+- the final sentence states that this is a TestFlight beta, not an App Store
+  production release;
+- ordinary release or link follow-ups do not use warning symbols. Reserve a
+  warning marker for a real safety issue, invalidation, or hold.
+
+Chinese template:
+
+```markdown
+📱 Raft iOS {MARKETING_VERSION} ({BUILD_NUMBER}) 已在 TestFlight 提供测试
+
+本次更新包括：
+
+- {APPROVED_IOS_NOTE}
+- {APPROVED_IOS_NOTE}
+
+TestFlight：<{TESTFLIGHT_JOIN_URL}>
+
+说明：这是 TestFlight 测试版本，不是 App Store 正式发布。版本号以 TestFlight 中显示的 `{MARKETING_VERSION} ({BUILD_NUMBER})` 为准。
+```
+
+English template:
+
+```markdown
+📱 Raft iOS {MARKETING_VERSION} ({BUILD_NUMBER}) is now available on TestFlight
+
+Highlights:
+
+- {APPROVED_IOS_NOTE}
+- {APPROVED_IOS_NOTE}
+
+TestFlight: <{TESTFLIGHT_JOIN_URL}>
+
+This is a TestFlight beta, not an App Store production release. The canonical TestFlight version is `{MARKETING_VERSION} ({BUILD_NUMBER})`.
+```
+
+Post the complete Chinese and English announcements as their own community
+messages. If an incomplete announcement was already posted and messages cannot
+be edited, publish the complete corrected announcement in the same locale and
+record only that superseding message id as the final receipt.
 
 Posting the announcement is a separate communication action, not an implied
 side effect of Hands activation or TestFlight distribution. Record the final
