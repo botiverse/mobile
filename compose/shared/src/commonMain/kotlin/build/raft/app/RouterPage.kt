@@ -32,6 +32,8 @@ import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.text.TextRange
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -155,14 +157,17 @@ internal fun ComposeRouteImpl() {
     val routePreferenceRepository = remember(localPager) {
         KeyValueRouterPreferenceRepository(slockSharedPreferenceStore())
     }
+    // Caller-local TextFieldValue owns the editor; the durable preference store
+    // keeps a String projection (task #130 Phase D).
     var textFieldValue by remember(routePreferenceRepository) {
-        mutableStateOf(routePreferenceRepository.readLastRouteInput().orEmpty())
+        val restored = routePreferenceRepository.readLastRouteInput().orEmpty()
+        mutableStateOf(TextFieldValue(restored, selection = TextRange(restored.length)))
     }
     val statusBarHeight = LocalActivity.current.pageData.statusBarHeight
     val routeCount = remember { DeveloperRouteGroups.fold(0) { count, group -> count + group.routes.size } }
     val allRoutes = remember { DeveloperRouteGroups.flatMap { it.routes } }
-    val suggestions = remember(textFieldValue, allRoutes) {
-        developerRouteSuggestions(textFieldValue, allRoutes)
+    val suggestions = remember(textFieldValue.text, allRoutes) {
+        developerRouteSuggestions(textFieldValue.text, allRoutes)
     }
 
     LazyColumn(
@@ -182,10 +187,13 @@ internal fun ComposeRouteImpl() {
                 onValueChange = { textFieldValue = it },
                 suggestions = suggestions,
                 onSuggestionSelected = { route ->
-                    textFieldValue = textFieldValue.withDeveloperRoutePageName(route.pageName)
+                    textFieldValue =
+                        developerRouteInputReplaced(
+                            textFieldValue.text.withDeveloperRoutePageName(route.pageName)
+                        )
                 },
                 onOpen = {
-                    val normalized = textFieldValue.trim()
+                    val normalized = textFieldValue.text.trim()
                     if (normalized.isEmpty()) {
                         Utils.bridgeModule(localPager.pagerId).toast("请输入 pageName")
                     } else {
@@ -206,7 +214,7 @@ internal fun ComposeRouteImpl() {
                     subtitle = route.subtitle,
                     onClick = {
                         routePreferenceRepository.saveLastRouteInput(route.pageName)
-                        textFieldValue = route.pageName
+                        textFieldValue = developerRouteInputReplaced(route.pageName)
                         jumpPage(localPager, route.pageName, route.payloadProvider?.invoke())
                     }
                 )
@@ -240,8 +248,8 @@ private fun DeveloperRouterHeader(routeCount: Int) {
 
 @Composable
 private fun DeveloperRouterJumpCard(
-    value: String,
-    onValueChange: (String) -> Unit,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
     suggestions: List<DeveloperRouteItem>,
     onSuggestionSelected: (DeveloperRouteItem) -> Unit,
     onOpen: () -> Unit
@@ -382,6 +390,17 @@ private fun developerRouteSuggestions(input: String, routes: List<DeveloperRoute
         )
         .take(5)
 }
+
+/**
+ * Programmatic replacement of the developer-route input (task #130 Phase D).
+ *
+ * Picking a suggestion or a route row replaces the whole text, so the caret is
+ * placed at the end — typing continues after the injected route instead of
+ * landing wherever the previous selection happened to be. User typing never
+ * goes through here; it keeps the editor's own [TextFieldValue] untouched.
+ */
+internal fun developerRouteInputReplaced(text: String): TextFieldValue =
+    TextFieldValue(text, selection = TextRange(text.length))
 
 private fun String.developerRouteQueryToken(): String {
     val normalized = trim().removePrefix("?")
