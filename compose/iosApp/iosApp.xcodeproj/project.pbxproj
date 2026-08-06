@@ -31,12 +31,14 @@
 		D43B80142E0E500100C0DE01 /* SlockKuiklyPageView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */; };
 		D43B80172E0F000100C0DE03 /* SlockKRVideoViewHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80192E0F000100C0DE03 /* SlockKRVideoViewHandler.m */; };
 		D43B80202E0F100100C0DE04 /* SlockSandboxWebView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80222E0F100100C0DE04 /* SlockSandboxWebView.m */; };
+		D43B80412E19000100C0DE12 /* SlockSandboxWebView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80222E0F100100C0DE04 /* SlockSandboxWebView.m */; };
 		D43B80262E0F400100C0DE06 /* SlockLucideIconView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80282E0F400100C0DE06 /* SlockLucideIconView.m */; };
 		D43B80292E0F400100C0DE07 /* SlockPixelAvatarView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B802B2E0F400100C0DE07 /* SlockPixelAvatarView.m */; };
 		D43B802C2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B802E2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m */; };
 		D43B80302E18000100C0DE11 /* SlockStackedItemTabBar.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80342E18000100C0DE11 /* SlockStackedItemTabBar.m */; };
 		D43B80312E18000100C0DE11 /* SlockStackedItemTabBar.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80342E18000100C0DE11 /* SlockStackedItemTabBar.m */; };
 		D43B80322E18000100C0DE11 /* SlockStackedItemTabBarTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */; };
+		D43B80422E19000100C0DE12 /* SlockSandboxWebViewTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */; };
 		D49163022E14000100C0DE01 /* space_grotesk_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163122E14000100C0DE01 /* space_grotesk_regular.ttf */; };
 		D49163032E14000100C0DE01 /* space_grotesk_medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */; };
 		D49163042E14000100C0DE01 /* space_grotesk_semibold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */; };
@@ -102,6 +104,7 @@
 		D43B80332E18000100C0DE11 /* SlockStackedItemTabBar.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockStackedItemTabBar.h; sourceTree = "<group>"; };
 		D43B80342E18000100C0DE11 /* SlockStackedItemTabBar.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockStackedItemTabBar.m; sourceTree = "<group>"; };
 		D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockStackedItemTabBarTests.m; sourceTree = "<group>"; };
+		D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockSandboxWebViewTests.m; sourceTree = "<group>"; };
 		D49163122E14000100C0DE01 /* space_grotesk_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_regular.ttf; sourceTree = "<group>"; };
 		D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_medium.ttf; sourceTree = "<group>"; };
 		D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_semibold.ttf; sourceTree = "<group>"; };
@@ -250,6 +253,7 @@
 				A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */,
 				A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */,
 				D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */,
+				D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */,
 			);
 			path = iosAppTests;
 			sourceTree = "<group>";
@@ -624,7 +628,9 @@
 				A13000010000000000000002 /* SlockIosAdaptivePanePublisher.swift in Sources */,
 				A13000010000000000000003 /* SlockIosAdaptivePanePublisherTests.swift in Sources */,
 				D43B80312E18000100C0DE11 /* SlockStackedItemTabBar.m in Sources */,
+				D43B80412E19000100C0DE12 /* SlockSandboxWebView.m in Sources */,
 				D43B80322E18000100C0DE11 /* SlockStackedItemTabBarTests.m in Sources */,
+				D43B80422E19000100C0DE12 /* SlockSandboxWebViewTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

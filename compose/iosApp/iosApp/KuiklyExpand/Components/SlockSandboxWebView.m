@@ -12,6 +12,7 @@ static NSString *const SlockSandboxWebViewEphemeralProp = @"ephemeral";
 static NSString *const SlockSandboxWebViewInjectedJavaScriptProp = @"injectedJavaScript";
 static NSString *const SlockSandboxWebViewAllowedNavigationSchemesProp = @"allowedNavigationSchemes";
 static NSString *const SlockSandboxWebViewNavigationCommandMethod = @"navigationCommand";
+static NSString *const SlockSandboxWebViewLoadCommitProp = @"loadCommit";
 static NSString *const SlockSandboxWebViewLoadSuccessProp = @"loadSuccess";
 static NSString *const SlockSandboxWebViewLoadFailureProp = @"loadFailure";
 static NSString *const SlockSandboxWebViewNavigationBlockedProp = @"navigationBlocked";
@@ -54,6 +55,7 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
 @property (nonatomic, assign) BOOL observingWebView;
 @property (nonatomic, assign) BOOL detachedFromSuperview;
 @property (nonatomic, assign) BOOL reloadOnReattach;
+@property (nonatomic, copy) KuiklyRenderCallback loadCommitCallback;
 @property (nonatomic, copy) KuiklyRenderCallback loadSuccessCallback;
 @property (nonatomic, copy) KuiklyRenderCallback loadFailureCallback;
 @property (nonatomic, copy) KuiklyRenderCallback navigationBlockedCallback;
@@ -105,6 +107,8 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
         [self updateInjectedJavaScript:[self stringFromValue:propValue]];
     } else if ([propKey isEqualToString:SlockSandboxWebViewAllowedNavigationSchemesProp]) {
         [self updateAllowedNavigationSchemes:[self stringFromValue:propValue]];
+    } else if ([propKey isEqualToString:SlockSandboxWebViewLoadCommitProp]) {
+        self.loadCommitCallback = propValue;
     } else if ([propKey isEqualToString:SlockSandboxWebViewLoadSuccessProp]) {
         self.loadSuccessCallback = propValue;
     } else if ([propKey isEqualToString:SlockSandboxWebViewLoadFailureProp]) {
@@ -166,6 +170,7 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
     self.webView.navigationDelegate = nil;
     self.webView.UIDelegate = nil;
     [self.webView stopLoading];
+    _loadCommitCallback = nil;
     _loadSuccessCallback = nil;
     _loadFailureCallback = nil;
     _navigationBlockedCallback = nil;
@@ -222,6 +227,9 @@ decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
     self.currentLoading = webView.loading;
     [self notifyURLChange:self.currentURL];
     [self notifyNavigationStateForce:NO];
+    if (self.loadCommitCallback) {
+        self.loadCommitCallback(@{});
+    }
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {

@@ -234,6 +234,12 @@ internal class SlockWebViewController {
 internal fun rememberSlockWebViewController(): SlockWebViewController = remember { SlockWebViewController() }
 
 internal class SlockSandboxWebViewEvent : Event() {
+    fun loadCommit(handler: () -> Unit) {
+        register(EVENT_LOAD_COMMIT) {
+            handler()
+        }
+    }
+
     fun loadSuccess(handler: () -> Unit) {
         register(EVENT_LOAD_SUCCESS) {
             handler()
@@ -265,6 +271,7 @@ internal class SlockSandboxWebViewEvent : Event() {
     }
 
     companion object {
+        const val EVENT_LOAD_COMMIT = "loadCommit"
         const val EVENT_LOAD_SUCCESS = "loadSuccess"
         const val EVENT_LOAD_FAILURE = "loadFailure"
         const val EVENT_NAVIGATION_BLOCKED = "navigationBlocked"
@@ -284,6 +291,7 @@ internal fun SlockSandboxWebView(
     cacheEnabled: Boolean = false,
     ephemeral: Boolean = true,
     injectedJavaScript: String = "",
+    onLoadCommit: () -> Unit = {},
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
     onNavigationBlocked: (String) -> Unit = {},
@@ -322,6 +330,7 @@ internal fun SlockSandboxWebView(
         modifier = modifier,
         viewInit = {
             event {
+                loadCommit(onLoadCommit)
                 loadSuccess(onLoadSuccess)
                 loadFailure(onLoadFailure)
                 navigationBlocked(onNavigationBlocked)
@@ -343,6 +352,7 @@ internal fun SlockSandboxWebView(
         },
         viewUpdate = { view ->
             view.event {
+                loadCommit(onLoadCommit)
                 loadSuccess(onLoadSuccess)
                 loadFailure(onLoadFailure)
                 navigationBlocked(onNavigationBlocked)
@@ -369,6 +379,7 @@ internal fun SlockSandboxWebView(
     cacheEnabled: Boolean = false,
     ephemeral: Boolean = true,
     injectedJavaScript: String = "",
+    onLoadCommit: () -> Unit = {},
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
     onNavigationBlocked: (String) -> Unit = {},
@@ -383,6 +394,7 @@ internal fun SlockSandboxWebView(
         cacheEnabled = cacheEnabled,
         ephemeral = ephemeral,
         injectedJavaScript = injectedJavaScript,
+        onLoadCommit = onLoadCommit,
         onLoadSuccess = onLoadSuccess,
         onLoadFailure = onLoadFailure,
         onNavigationBlocked = onNavigationBlocked,
@@ -404,6 +416,7 @@ internal fun SlockWebView(
     cacheEnabled: Boolean = true,
     ephemeral: Boolean = false,
     injectedJavaScript: String = "",
+    onLoadCommit: () -> Unit = {},
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
     onNavigationBlocked: (String) -> Unit = {},
@@ -421,6 +434,7 @@ internal fun SlockWebView(
         cacheEnabled = cacheEnabled,
         ephemeral = ephemeral,
         injectedJavaScript = injectedJavaScript,
+        onLoadCommit = onLoadCommit,
         onLoadSuccess = onLoadSuccess,
         onLoadFailure = onLoadFailure,
         onNavigationBlocked = onNavigationBlocked,
@@ -445,6 +459,7 @@ internal fun SlockWebView(
     cacheEnabled: Boolean = true,
     ephemeral: Boolean = false,
     injectedJavaScript: String = "",
+    onLoadCommit: () -> Unit = {},
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
     onNavigationBlocked: (String) -> Unit = {},
@@ -459,6 +474,7 @@ internal fun SlockWebView(
         cacheEnabled = cacheEnabled,
         ephemeral = ephemeral,
         injectedJavaScript = injectedJavaScript,
+        onLoadCommit = onLoadCommit,
         onLoadSuccess = onLoadSuccess,
         onLoadFailure = onLoadFailure,
         onNavigationBlocked = onNavigationBlocked,
