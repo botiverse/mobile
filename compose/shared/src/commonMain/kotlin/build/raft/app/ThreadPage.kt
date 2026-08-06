@@ -15789,7 +15789,7 @@ private fun ThreadMessagesList(
         }
         dispatchViewportEvent(LazyViewportEvent.ContentMutated(mutation))
     }
-    // THREAD_VIEWPORT_EXECUTOR_START: the only production owner allowed to mutate listState.
+    // The only production owner allowed to mutate listState.
     LaunchedEffect(threadInstanceKey, viewportControllerState.pendingCommand?.id) {
         val command = viewportControllerState.pendingCommand ?: return@LaunchedEffect
         fun commandStillCurrent(): Boolean =
@@ -15910,7 +15910,6 @@ private fun ThreadMessagesList(
             }
         }
     }
-    // THREAD_VIEWPORT_EXECUTOR_END
     val headerScrollToTopRequestFence =
         remember(threadInstanceKey) { AppShellScrollToTopRequestFence(headerScrollToTopRequest) }
     LaunchedEffect(threadInstanceKey, headerScrollToTopRequest, lazyItemCount) {
@@ -16111,7 +16110,6 @@ private fun ThreadMessagesList(
             ) {
                 return
             }
-            // THREAD_NEWER_PAGE_VIEWPORT_SETTLEMENT_START
             viewportLayoutGeneration += 1L
             dispatchViewportEvent(
                 LazyViewportEvent.NewerPageSettled(
@@ -16126,7 +16124,6 @@ private fun ThreadMessagesList(
             if (settlementCommandId != null) {
                 awaitViewportCommandSettlement(settlementCommandId)
             }
-            // THREAD_NEWER_PAGE_VIEWPORT_SETTLEMENT_END
         }
         // Consume every newer-directed gesture observed through this request,
         // including a second gesture while the page was in flight. Only a
@@ -16412,11 +16409,9 @@ private fun ThreadMessagesList(
         latestLocalSendBottomAnchorStartUserScrollGeneration = userScrollGeneration.value
         latestLocalSendBottomAnchorActiveKey = latestLocalSendBottomAnchorKey
         allowBottomAutoAnchor = true
-        // THREAD_LOCAL_SEND_VIEWPORT_HANDOFF_START
         dispatchViewportEvent(
             LazyViewportEvent.FollowLatest(canOverrideUserDragging = false)
         )
-        // THREAD_LOCAL_SEND_VIEWPORT_HANDOFF_END
     }
     LaunchedEffect(threadInstanceKey, latestLocalSendBottomAnchorActiveKey) {
         val anchorKey = latestLocalSendBottomAnchorActiveKey ?: return@LaunchedEffect
@@ -20209,7 +20204,6 @@ private fun ThreadMessageCard(
         remember(message.id, messageIndex) {
             threadMessagePerformanceKey(message.id, messageIndex)
         }
-    // THREAD_SINGLE_TAP_ROW_ACTION_START
     val rowTapAction =
         if (
             threadMessageTapOpensThread(
@@ -20230,7 +20224,6 @@ private fun ThreadMessageCard(
         } else {
             null
         }
-    // THREAD_SINGLE_TAP_ROW_ACTION_END
     Box(
         modifier =
             Modifier
