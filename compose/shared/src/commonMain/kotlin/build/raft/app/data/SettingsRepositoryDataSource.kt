@@ -290,7 +290,8 @@ class RealSettingsRepository(
     private val networkClient: SlockNetworkClient,
     private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {},
-    private val channelRepository: ChannelRepository? = null
+    private val channelRepository: ChannelRepository? = null,
+    private val onAppearanceSnapshot: suspend (ownerId: String, snapshot: SettingsAppearanceSnapshot) -> Unit = { _, _ -> },
 ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
     private val computersApiClient = SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
 
@@ -1227,7 +1228,7 @@ class RealSettingsRepository(
     }
 
     override suspend fun getAppearanceSettings(): DataResult<SettingsAppearanceSnapshot> {
-        sessionStore.readSession() ?: return authRequired()
+        val session = sessionStore.readSession() ?: return authRequired()
         return executeSettings(
             emptyReason = EmptyReason.NoSettingsAvailable,
             source = "settings_appearance_account",
@@ -1238,13 +1239,17 @@ class RealSettingsRepository(
                 parseSharedAppearanceSettingsSnapshot(bodyText)
                     ?: throw IllegalStateException("Appearance settings response missing preferences")
             }
-        )
+        ).also { result ->
+            (result as? DataResult.Content)?.data?.let { snapshot ->
+                onAppearanceSnapshot(session.user.id, snapshot)
+            }
+        }
     }
 
     override suspend fun updateAppearanceSettings(
         request: SettingsAppearanceUpdateRequest
     ): DataResult<SettingsAppearanceSnapshot> {
-        sessionStore.readSession() ?: return authRequired()
+        val session = sessionStore.readSession() ?: return authRequired()
         return executeSettings(
             emptyReason = EmptyReason.NoSettingsAvailable,
             source = "settings_appearance_update",
@@ -1260,7 +1265,11 @@ class RealSettingsRepository(
                 parseSharedAppearanceSettingsSnapshot(bodyText)
                     ?: throw IllegalStateException("Appearance update response missing preferences")
             }
-        )
+        ).also { result ->
+            (result as? DataResult.Content)?.data?.let { snapshot ->
+                onAppearanceSnapshot(session.user.id, snapshot)
+            }
+        }
     }
 
     override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {

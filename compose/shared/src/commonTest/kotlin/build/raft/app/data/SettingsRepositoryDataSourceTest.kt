@@ -458,7 +458,15 @@ class SettingsRepositoryDataSourceTest {
             FakeSettingsNetworkClient(
                 accountJson = """{"id":"user-1","email":"user@slock.ai","name":"slock-user","preferredMessageBodyFontSize":"sm"}"""
             )
-        val repository = RealSettingsRepository(sampleStore(), network)
+        val published = mutableListOf<Pair<String, String>>()
+        val repository =
+            RealSettingsRepository(
+                sessionStore = sampleStore(),
+                networkClient = network,
+                onAppearanceSnapshot = { ownerId, snapshot ->
+                    published += ownerId to snapshot.messageBodyFontSize.selectedKey
+                },
+            )
 
         val loaded = repository.getAppearanceSettings()
         val updated = repository.updateAppearanceSettings(SettingsAppearanceUpdateRequest("lg"))
@@ -468,6 +476,7 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(updated is DataResult.Content)
         assertEquals("sm", updated.data.messageBodyFontSize.selectedKey)
         assertEquals("""{"preferredMessageBodyFontSize":"lg"}""", network.accountUpdateBodies.single())
+        assertEquals(listOf("user-1" to "sm", "user-1" to "sm"), published)
     }
 
     @Test

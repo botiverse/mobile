@@ -382,6 +382,7 @@ internal class SlockSharedStoreProvider private constructor(
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner,
     val realtimeAuthorityProvider: RealtimeAuthorityProvider,
     val messageTranslationStore: SharedMessageTranslationStore,
+    val messageBodyFontSizeStore: SharedMessageBodyFontSizeStore,
     val threadMessageStore: SharedThreadMessageStore,
     val threadPayloadStore: SharedThreadPayloadStore,
     val foregroundReconciler: SharedForegroundReconciler,
@@ -1460,6 +1461,11 @@ internal class SlockSharedStoreProvider private constructor(
                     )
                 }
             val networkClient = scopedNetworkClientFactory(authStore)
+            val messageBodyFontSizeStore =
+                SharedMessageBodyFontSizeStore(
+                    scope = CoroutineScope(SupervisorJob()),
+                    diagnosticsLogger = sharedInfoLogger("SlockMessageBodyFontSize", "store"),
+                )
             val processServerMembersRepository =
                 RealMemberRepository(
                     sessionStore = authStore,
@@ -1849,6 +1855,7 @@ internal class SlockSharedStoreProvider private constructor(
                         systemLanguage = ::currentSystemLanguageTag,
                         diagnosticsLogger = sharedInfoLogger("SlockMessageTranslation", "shared_message_translation")
                     ),
+                messageBodyFontSizeStore = messageBodyFontSizeStore,
                 threadMessageStore = SharedThreadMessageStore(),
                 threadPayloadStore = SharedThreadPayloadStore(CoroutineScope(SupervisorJob())),
                 foregroundReconciler = foregroundReconciler,
