@@ -48,24 +48,33 @@ class TasksCreateTitleRowsTest {
     }
 
     @Test
-    fun editingARowPreservesSiblingComposition() {
-        // The in-flight IME composition is what actually breaks if a sibling row
-        // is rebuilt: losing it restarts the input connection mid-character.
-        val composing = TextFieldValue("ni", selection = TextRange(2), composition = TextRange(0, 2))
+    fun editingARowLeavesAComposingSiblingWhole() {
+        // One fixture carrying text + selection + composition at once, asserting all
+        // three together. Split fixtures (identity asserted only on non-composing
+        // rows, composition asserted alone) leave a hole: a write path that rebuilds
+        // just the composing rows and drops their selection satisfies each separate
+        // assertion while still breaking the row mid-character.
+        val composing = TextFieldValue("ni", selection = TextRange(1, 2), composition = TextRange(0, 2))
         val titles = listOf(composing, TextFieldValue(""))
 
         val updated = tasksCreateTitlesUpdated(titles, 1, TextFieldValue("x"))
 
+        assertSame(composing, updated[0])
+        assertEquals(TextRange(1, 2), updated[0].selection)
         assertEquals(TextRange(0, 2), updated[0].composition)
+        assertEquals("ni", updated[0].text)
     }
 
     @Test
-    fun appendingARowPreservesSiblingComposition() {
-        val composing = TextFieldValue("你", selection = TextRange(1), composition = TextRange(0, 1))
+    fun appendingARowLeavesAComposingSiblingWhole() {
+        val composing = TextFieldValue("你", selection = TextRange(0, 1), composition = TextRange(0, 1))
 
         val appended = tasksCreateTitlesAppended(listOf(composing))
 
+        assertSame(composing, appended[0])
+        assertEquals(TextRange(0, 1), appended[0].selection)
         assertEquals(TextRange(0, 1), appended[0].composition)
+        assertEquals("你", appended[0].text)
         assertNull(appended[1].composition)
     }
 
