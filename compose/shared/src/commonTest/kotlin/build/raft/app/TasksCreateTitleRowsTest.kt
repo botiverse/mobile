@@ -4,6 +4,7 @@ import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 /**
@@ -44,6 +45,28 @@ class TasksCreateTitleRowsTest {
 
         assertSame(first, appended[0])
         assertEquals("", appended[1].text)
+    }
+
+    @Test
+    fun editingARowPreservesSiblingComposition() {
+        // The in-flight IME composition is what actually breaks if a sibling row
+        // is rebuilt: losing it restarts the input connection mid-character.
+        val composing = TextFieldValue("ni", selection = TextRange(2), composition = TextRange(0, 2))
+        val titles = listOf(composing, TextFieldValue(""))
+
+        val updated = tasksCreateTitlesUpdated(titles, 1, TextFieldValue("x"))
+
+        assertEquals(TextRange(0, 2), updated[0].composition)
+    }
+
+    @Test
+    fun appendingARowPreservesSiblingComposition() {
+        val composing = TextFieldValue("你", selection = TextRange(1), composition = TextRange(0, 1))
+
+        val appended = tasksCreateTitlesAppended(listOf(composing))
+
+        assertEquals(TextRange(0, 1), appended[0].composition)
+        assertNull(appended[1].composition)
     }
 
     @Test
