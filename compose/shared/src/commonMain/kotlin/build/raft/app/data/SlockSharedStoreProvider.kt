@@ -361,6 +361,7 @@ internal class SlockSharedStoreProvider private constructor(
     internal val avatarCacheMetadataStore: SlockAvatarCacheMetadataStore,
     internal val avatarCacheCoordinator: SlockAvatarCacheCoordinator,
     internal val avatarCacheRuntime: SlockAvatarCacheRuntime,
+    internal val avatarMountedBinding: SlockAvatarMountedBinding,
     val agentDetailStore: SharedAgentDetailStore,
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
     val tasksDataStore: SharedTasksDataStore,
@@ -1380,16 +1381,23 @@ internal class SlockSharedStoreProvider private constructor(
             val avatarCacheMetadataStore = SqlDelightSlockAvatarCacheMetadataStore(database)
             val avatarCacheCoordinator =
                 SlockAvatarCacheCoordinator(avatarCacheMetadataStore, ::defaultNowMillis)
+            val avatarOwnerResolver: suspend (String?) -> SlockAvatarCacheOwner? = { requestedServerId ->
+                slockCurrentAvatarCacheOwner(
+                    environmentId = apiEnvironmentStore.current().apiBaseUrl,
+                    session = authStore.readSession(),
+                    requestedServerId = requestedServerId
+                )
+            }
+            val avatarMountedBinding =
+                SlockAvatarMountedBinding(
+                    coordinator = avatarCacheCoordinator,
+                    currentOwner = avatarOwnerResolver
+                )
             val avatarCacheRuntime =
                 SlockAvatarCacheRuntime(
                     coordinator = avatarCacheCoordinator,
-                    currentOwner = { requestedServerId ->
-                        slockCurrentAvatarCacheOwner(
-                            environmentId = apiEnvironmentStore.current().apiBaseUrl,
-                            session = authStore.readSession(),
-                            requestedServerId = requestedServerId
-                        )
-                    },
+                    currentOwner = avatarOwnerResolver,
+                    mountedBinding = avatarMountedBinding,
                     logger = sharedWarnLogger("SlockAvatarCache", "avatar_cache_runtime")
                 )
             val authDataSource =
@@ -1783,6 +1791,7 @@ internal class SlockSharedStoreProvider private constructor(
                 avatarCacheMetadataStore = avatarCacheMetadataStore,
                 avatarCacheCoordinator = avatarCacheCoordinator,
                 avatarCacheRuntime = avatarCacheRuntime,
+                avatarMountedBinding = avatarMountedBinding,
                 agentDetailStore = SharedAgentDetailStore(
                     logger = sharedInfoLogger("SlockAgentDetail", "shared_agent_detail_store")
                 ),

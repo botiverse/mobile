@@ -13,6 +13,31 @@ import kotlin.test.assertTrue
 
 class SlockAvatarMountedSessionTest {
     @Test
+    fun joinedMountsShareRequestNonceAndSuccessorFlightGetsFreshNonce() {
+        var nonce = 0
+        val session =
+            SlockAvatarMountedSession {
+                (++nonce).toString(16).padStart(64, '0')
+            }
+        val first = session.mount(avatarKey())
+        val second = session.mount(avatarKey())
+
+        val joined = assertNotNull(session.beginFlight(first))
+        assertSame(joined, session.beginFlight(second))
+        assertEquals("1".padStart(64, '0'), joined.requestNonce)
+        assertIs<SlockAvatarMountedResolution.Applied>(
+            session.resolve(
+                joined,
+                SlockAvatarMountedOutcome.Keep(null, SlockAvatarMountedKeepReason.TemporaryFailure)
+            )
+        )
+
+        val successor = assertNotNull(session.beginFlight(first))
+        assertEquals("2".padStart(64, '0'), successor.requestNonce)
+        assertNotEquals(joined.requestNonce, successor.requestNonce)
+    }
+
+    @Test
     fun sameFlightFansReloadOutToIndependentCurrentMountTokens() {
         val session = SlockAvatarMountedSession()
         val key = avatarKey()
@@ -455,6 +480,21 @@ class SlockAvatarMountedSessionTest {
         assertEquals(11L, flight.expectedModelRevision)
         assertEquals("restart-etag", flight.validators?.eTag)
         assertFalse(flight.requiresFullCanonicalBody)
+    }
+
+    @Test
+    fun missingNativeBodyKeepsExpectedIdentityButDropsValidatorsForFullBody() {
+        val session = SlockAvatarMountedSession()
+        val token = session.mount(avatarKey())
+        val identity = commitIdentity(7, '8')
+
+        assertTrue(session.seedPrepared(token, identity, validators = null, modelRevision = 11L))
+
+        val flight = assertNotNull(session.beginFlight(token))
+        assertEquals(identity, flight.expectedCommitIdentity)
+        assertEquals(11L, flight.expectedModelRevision)
+        assertNull(flight.validators)
+        assertTrue(flight.requiresFullCanonicalBody)
     }
 
     @Test

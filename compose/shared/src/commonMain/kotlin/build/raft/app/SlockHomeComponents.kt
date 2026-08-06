@@ -25,10 +25,8 @@ import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SlockComputersNetworkApi
-import build.raft.app.data.SlockAvatarCacheCompletionReceipt
 import build.raft.app.data.SlockAvatarCacheSubject
-import build.raft.app.data.SlockAvatarPreparedRender
-import build.raft.app.data.BridgeSlockAvatarNativeCache
+import build.raft.app.data.SlockAvatarMountedHandle
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.parseSlockHome
@@ -119,7 +117,6 @@ import com.tencent.kuikly.compose.ui.graphics.Path
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import kotlin.coroutines.ContinuationInterceptor
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.semantics.isTraversalGroup
 import com.tencent.kuikly.compose.ui.semantics.semantics
@@ -6056,54 +6053,42 @@ private fun SlockAvatarHttpImage(
             lease?.ownerToken == loadState.ownerToken
     if (!ownsCurrentRequest && loadState.cache != SlockAvatarHttpCacheState.Ready) return
     val activeSource = loadKey.sourceFor(loadState.endpoint) ?: return
-    val avatarCacheRuntime = SlockSharedStoreRegistry.currentOrNull()?.avatarCacheRuntime
-    val pager = LocalActivity.current.getPager() as Pager
-    val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
-    var preparedRender by remember(activeSource, cacheSubject, cacheServerId, avatarCacheRuntime) {
-        mutableStateOf<SlockAvatarPreparedRender?>(
-            if (avatarCacheRuntime == null || cacheSubject == null) {
-                SlockAvatarPreparedRender.Legacy(activeSource)
-            } else {
+    val avatarMountedBinding = SlockSharedStoreRegistry.currentOrNull()?.avatarMountedBinding
+    var mountedHandle by
+        remember(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
+            mutableStateOf<SlockAvatarMountedHandle?>(null)
+        }
+    LaunchedEffect(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
+        mountedHandle =
+            if (avatarMountedBinding == null || cacheSubject == null) {
                 null
-            }
-        )
-    }
-    var forceLegacy by remember(activeSource, cacheSubject, cacheServerId, avatarCacheRuntime) {
-        mutableStateOf(false)
-    }
-    LaunchedEffect(activeSource, cacheSubject, cacheServerId, avatarCacheRuntime, bridge) {
-        val bridgeCallContext = currentCoroutineContext()[ContinuationInterceptor]
-        preparedRender =
-            if (avatarCacheRuntime == null || cacheSubject == null || bridgeCallContext == null) {
-                SlockAvatarPreparedRender.Legacy(activeSource)
             } else {
-                avatarCacheRuntime.prepare(
+                avatarMountedBinding.mount(
                     subject = cacheSubject,
                     remoteUrl = activeSource,
-                    serverId = cacheServerId,
-                    nativeCache =
-                        BridgeSlockAvatarNativeCache(
-                            bridge = bridge,
-                            bridgeCallContext = bridgeCallContext
-                        )
+                    serverId = cacheServerId
                 )
             }
     }
-    val admittedRender = preparedRender ?: return
-    val imageModel = if (forceLegacy) activeSource else admittedRender.imageModel
-    val painter = rememberAsyncImagePainter(model = imageModel)
-    val imageState by painter.state.collectAsState()
-    LaunchedEffect(admittedRender, avatarCacheRuntime) {
-        val native = admittedRender as? SlockAvatarPreparedRender.Native ?: return@LaunchedEffect
-        val receipt = avatarCacheRuntime?.observeAndCommit(native) ?: return@LaunchedEffect
-        if (
-            receipt is SlockAvatarCacheCompletionReceipt.NativeUnsupported ||
-            receipt is SlockAvatarCacheCompletionReceipt.RejectedStaleGeneration ||
-            receipt is SlockAvatarCacheCompletionReceipt.Failed
-        ) {
-            forceLegacy = true
+    DisposableEffect(avatarMountedBinding, mountedHandle) {
+        val ownedHandle = mountedHandle
+        onDispose {
+            if (ownedHandle != null) avatarMountedBinding?.dispose(ownedHandle)
         }
     }
+    LaunchedEffect(avatarMountedBinding, mountedHandle) {
+        val handle = mountedHandle ?: return@LaunchedEffect
+        avatarMountedBinding?.refresh(handle)
+    }
+    val imageModel =
+        if (avatarMountedBinding == null || cacheSubject == null) {
+            activeSource
+        } else {
+            val handle = mountedHandle ?: return
+            handle.imageModel.collectAsState().value ?: return
+        }
+    val painter = rememberAsyncImagePainter(model = imageModel)
+    val imageState by painter.state.collectAsState()
     LaunchedEffect(imageState, imageModel, loadState.generation, lease?.ownerToken) {
         val phase = imageState.toSlockAvatarHttpPainterPhase()
         if (ownsCurrentRequest) {
