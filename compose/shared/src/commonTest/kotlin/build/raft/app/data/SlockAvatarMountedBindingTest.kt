@@ -152,6 +152,7 @@ class SlockAvatarMountedBindingTest {
 
         assertNull(downloader.lastValidators)
         assertNotNull(parseSlockAvatarMountedRenderModel(handle.imageModel.value.orEmpty()))
+        Unit
     }
 
     @Test
