@@ -278,11 +278,16 @@ internal fun UiFormFieldVisualContent() {
 
 @Composable
 internal fun UiTextareaVisualContent() {
+    // Fixed 342x252 frame (capture-contract, XiShi source-derived H=252dp): the old 240dp crop
+    // dropped the 2nd textarea's error row ("Agreement body must be shorter." + 57/40) on iOS.
+    // 252 = max(brutal) content height (two frames 92+4 / 68+4 shadow reserve, helper rows
+    // 4 gap + 14 line, 16 between textareas, 32 outer padding); elegant drops the two 4dp reserves
+    // (244dp) and simply gains ~8dp of bottom white. UI_TEXTAREA_CROP matches.
     Box(
         modifier =
             Modifier
                 .width(342.dp)
-                .height(240.dp)
+                .height(252.dp)
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {

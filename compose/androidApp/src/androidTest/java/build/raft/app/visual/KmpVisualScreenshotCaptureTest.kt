@@ -343,6 +343,18 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // Elegant-register textarea capture (same content under SlockThemeProvider(elegantTheme)):
+    // inherits the SlockBrutalInputField elegant flat-field register. Paired against the React
+    // elegant render as components.ui.textarea.states.elegant.
+    @Test
+    fun captureUiTextareaStatesElegant() {
+        captureKmpComponentCase(
+            caseId = "components.ui.textarea.states.elegant",
+            pageName = "compose_ui_textarea_elegant_visual",
+            crop = UI_TEXTAREA_CROP
+        )
+    }
+
     @Test
     fun captureUiCheckboxStates() {
         captureKmpComponentCase(
@@ -5183,11 +5195,15 @@ class KmpVisualScreenshotCaptureTest {
                 heightDp = 296
             )
         private val UI_TEXTAREA_CROP =
+            // 252dp = max(brutal) textarea content height; contains both textareas' full error/
+            // counter rows + bottom padding in all three platforms (XiShi capture-contract). The
+            // prior 240dp dropped the 2nd error row ("Agreement body must be shorter." + 57/40) on
+            // iOS. Matches the UiTextareaVisualContent 252dp frame.
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 342,
-                heightDp = 240
+                heightDp = 252
             )
         private val UI_CHECKBOX_CROP =
             VisualCrop(
