@@ -142,6 +142,14 @@ internal class ComposeHomeAppUpdateBannerVisualPage : BasePager() {
     }
 }
 
+@Page("compose_home_notification_trigger_states_visual", supportInLocal = true)
+internal class ComposeHomeNotificationTriggerStatesVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeNotificationTriggerStatesVisualScreen() }
+    }
+}
+
 @Page("compose_app_update_details_visual", supportInLocal = true)
 internal class ComposeAppUpdateDetailsVisualPage : BasePager() {
     override fun willInit() {

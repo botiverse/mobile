@@ -1339,6 +1339,9 @@
     <string name="home_notification_center_title">通知</string>
     <string name="home_notification_center_item_count_one">%1$d 件</string>
     <string name="home_notification_center_item_count_many">%1$d 件</string>
+    <string name="home_notification_center_item_count_all_clear">すべて処理済み</string>
+    <string name="home_notification_center_empty_title">現在の通知はありません</string>
+    <string name="home_notification_center_empty_body">あなたの対応が必要な事項がここに表示されます。</string>
     <string name="home_notification_app_update_title">アプリのアップデートがあります</string>
     <string name="home_notification_app_update_body">現在のバージョン %1$s。最新バージョン %2$s。</string>
     <string name="app_update_view">表示</string>

@@ -1339,6 +1339,9 @@
     <string name="home_notification_center_title">NOTIFICATIONS</string>
     <string name="home_notification_center_item_count_one">%1$d item</string>
     <string name="home_notification_center_item_count_many">%1$d items</string>
+    <string name="home_notification_center_item_count_all_clear">all clear</string>
+    <string name="home_notification_center_empty_title">No notifications right now</string>
+    <string name="home_notification_center_empty_body">You\'ll see things here that need your attention.</string>
     <string name="home_notification_app_update_title">App update available</string>
     <string name="home_notification_app_update_body">Current version %1$s. Latest version %2$s.</string>
     <string name="app_update_view">View</string>

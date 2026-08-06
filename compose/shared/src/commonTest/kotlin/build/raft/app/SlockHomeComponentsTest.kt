@@ -334,6 +334,8 @@ class SlockHomeComponentsTest {
         val machine = SlockHomeNotificationItem(id = "machine-offline:1", title = "Offline")
         val notifications = listOf(machine, update)
 
+        // artin 2026-08-06 ruling (task #113): app update keeps its independent
+        // top banner and does not go through the notification center.
         assertEquals(update, notifications.homeAppUpdateBannerNotification())
         assertEquals(listOf(machine), notifications.nonAppUpdateHomeNotifications())
     }
@@ -1917,29 +1919,6 @@ class SlockHomeComponentsTest {
             SlockLucideIconName.TriangleAlert,
             SlockHomeNotificationIcon.Default.notificationIconName(SlockHomeNotificationKind.Warning)
         )
-    }
-
-    @Test
-    fun notificationTriggerUsesFirstVisibleNotificationIcon() {
-        val notifications =
-            listOf(
-                SlockHomeNotificationItem(
-                    id = "app-update:hands",
-                    title = "App update available",
-                    body = "Current version 1.0.0. Latest version 1.0.1.",
-                    kind = SlockHomeNotificationKind.Info,
-                    icon = SlockHomeNotificationIcon.CircleArrowUp
-                ),
-                SlockHomeNotificationItem(
-                    id = "machine-offline:1",
-                    title = "Machine offline",
-                    body = "Reconnect when needed.",
-                    kind = SlockHomeNotificationKind.Warning,
-                    icon = SlockHomeNotificationIcon.WifiOff
-                )
-            )
-
-        assertEquals(SlockLucideIconName.CircleArrowUp, notifications.homeNotificationTriggerIconName())
     }
 
     @Test

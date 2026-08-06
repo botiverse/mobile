@@ -2529,6 +2529,18 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeNotificationTriggerStates() {
+        // Native-only evidence capture (no React baseline): Bell trigger
+        // state matrix — empty-closed, unread-closed, unread-open, narrow,
+        // empty drawer. Bound to the exact in the PR evidence.
+        captureKmpComponentCase(
+            caseId = "components.home.notification-trigger.states",
+            pageName = "compose_home_notification_trigger_states_visual",
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureAppUpdateDetails() {
         captureKmpComponentCase(
             caseId = "screens.app-update.details",
