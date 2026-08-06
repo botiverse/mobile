@@ -227,6 +227,7 @@ import build.raft.app.data.KuiklyAuthSessionEvents
 import build.raft.app.data.isRefreshing
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.data.serverConfirmationItemId
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
@@ -3180,13 +3181,21 @@ internal fun SlockAppShellContent(
             )
         }
     val settingsRepository =
-        remember(shellAuthStore, appShellNetworkClient) {
+        remember(sharedStores, shellAuthStore, appShellNetworkClient) {
             RealSettingsRepository(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
                 logger = slockLogger("SlockSettingsRepository", "shared_settings_repository"),
                 warningLogger = slockLogger("SlockSettingsRepository", "shared_settings_repository_warning", SlockLogLevel.Warn),
-                channelRepository = channelRepository
+                channelRepository = channelRepository,
+                onAppearanceSnapshot = { ownerId, snapshot ->
+                    messageBodyFontSizeOwnerKey(
+                        sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                        ownerId,
+                    )?.let { ownerKey ->
+                        sharedStores.messageBodyFontSizeStore.acceptAuthoritative(ownerKey, snapshot)
+                    }
+                },
             )
         }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
@@ -7829,12 +7838,7 @@ private fun SettingsAppearanceFontSizeCard(
 
 @Composable
 private fun SettingsAppearancePreview(fontSizeKey: String) {
-    val bodyStyle =
-        when (fontSizeKey) {
-            "sm" -> SlockType.Body.copy(fontSize = 12.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
-            "lg" -> SlockType.Body.copy(fontSize = 16.sp, lineHeight = 22.sp, color = SlockColor.TextBlack)
-            else -> SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack)
-        }
+    val bodyStyle = slockMessageBodyTextStyle(fontSizeKey)
     Column(
         modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)

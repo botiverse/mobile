@@ -31,6 +31,7 @@ import build.raft.app.data.KuiklyChatLayoutPreferenceEvents
 import build.raft.app.data.KuiklyNotificationPreferenceEvents
 import build.raft.app.data.kuiklyChatLayoutPreferenceRepository
 import build.raft.app.data.kuiklyNotificationPreferenceRepository
+import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.resources.MR
@@ -119,6 +120,7 @@ internal fun rememberStandaloneSettingsEnvironment(
         }
     val dataSource =
         remember(
+            sharedStores,
             authStore,
             networkClient,
             sharedPreferenceStore,
@@ -134,7 +136,15 @@ internal fun rememberStandaloneSettingsEnvironment(
                         sessionStore = authStore,
                         networkClient = networkClient,
                         logger = { message -> bridge.log("settings_standalone_repository $message") },
-                        warningLogger = { message -> bridge.log("settings_standalone_repository_warning $message") }
+                        warningLogger = { message -> bridge.log("settings_standalone_repository_warning $message") },
+                        onAppearanceSnapshot = { ownerId, snapshot ->
+                            messageBodyFontSizeOwnerKey(
+                                sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                                ownerId,
+                            )?.let { ownerKey ->
+                                sharedStores.messageBodyFontSizeStore.acceptAuthoritative(ownerKey, snapshot)
+                            }
+                        },
                     ),
                 serverMembersStore = serverMembersStore,
                 notificationPreferenceRepository = notificationPreferenceRepository,

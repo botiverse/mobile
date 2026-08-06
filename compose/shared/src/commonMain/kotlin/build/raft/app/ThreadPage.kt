@@ -39,6 +39,7 @@ import build.raft.app.data.NetworkSlockTasksApi
 import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
+import build.raft.app.data.RealSettingsRepository
 import build.raft.app.data.RealForwardMessageTargetRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealSavedRepository
@@ -129,6 +130,7 @@ import build.raft.app.data.convertMessageToCanonicalTask
 import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ConversationKind
@@ -604,9 +606,6 @@ internal fun slockComposerImagePickerFilesAreStrictImages(files: List<PlatformFi
                 mimeType = file.mimeType.orEmpty(),
             )
         }
-private val ThreadMessageBodyTextStyle =
-    SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack)
-
 private data class ThreadMembersProjection(
     val membersCount: Int,
     val members: List<KuiklyThreadMemberItem>,
@@ -3778,6 +3777,10 @@ private fun ThreadMessageVisualScreenContent() {
     val interactionProbe = params.optString("interactionProbe")
     val instanceId = params.optString("instanceId")
     val visualSingleMessage = params.optBoolean("visualSingleMessage", false)
+    val messageBodyTextStyle =
+        remember(params.optString("messageBodyFontSize")) {
+            slockMessageBodyTextStyle(params.optString("messageBodyFontSize"))
+        }
     val longPressReadyToken = params.optString("longPressReadyToken")
     val longPressMenuVisibleToken = params.optString("longPressMenuVisibleToken")
     val singleTapOpensThreadEnabled = params.optBoolean("singleTapOpensThreadEnabled", false)
@@ -3836,6 +3839,7 @@ private fun ThreadMessageVisualScreenContent() {
             messages.forEach { selectedMessage ->
                 ThreadMessageCard(
                     message = selectedMessage,
+                    messageBodyTextStyle = messageBodyTextStyle,
                     replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(selectedMessage),
                     highlightedMentions = highlightedMentions,
                     shareSelectionActive = true,
@@ -3905,6 +3909,7 @@ private fun ThreadMessageVisualScreenContent() {
                 }
                 ThreadMessageCard(
                     message = visualMessage,
+                    messageBodyTextStyle = messageBodyTextStyle,
                     replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(visualMessage),
                     highlightedMentions = highlightedMentions,
                     alignOwnMessageRight = false,
@@ -3936,6 +3941,7 @@ private fun ThreadMessageVisualScreenContent() {
     ) {
         ThreadInlineSelectionCompactGroupVisual(
             messages = payload.toThreadTimelineSlice().messages,
+            messageBodyTextStyle = messageBodyTextStyle,
             inlineSelectionEnabled = inlineSelectionToolbarEnabled,
             singleTapOpensThreadEnabled = singleTapOpensThreadEnabled
         )
@@ -4163,6 +4169,7 @@ private fun ThreadMessageVisualScreenContent() {
                 }
                 ThreadMessageCard(
                     message = message,
+                    messageBodyTextStyle = messageBodyTextStyle,
                     replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
                     highlightedMentions = highlightedMentions,
                     inlineReplyParticipantsById = payload.members.associateBy(KuiklyThreadMemberItem::id),
@@ -4248,6 +4255,7 @@ private fun ThreadMessageVisualScreenContent() {
 @Composable
 private fun ThreadInlineSelectionCompactGroupVisual(
     messages: List<KuiklyThreadMessageItem>,
+    messageBodyTextStyle: TextStyle,
     inlineSelectionEnabled: Boolean,
     singleTapOpensThreadEnabled: Boolean
 ) {
@@ -4264,6 +4272,7 @@ private fun ThreadInlineSelectionCompactGroupVisual(
                 val message = messages[index]
                 ThreadMessageCard(
                     message = message,
+                    messageBodyTextStyle = messageBodyTextStyle,
                     messageIndex = index,
                     compactConsecutiveMessages = true,
                     suppressRepeatedAuthor = index in 1..2 || index >= 4,
@@ -5020,6 +5029,17 @@ internal fun SharedThreadRouteContent(
     val pager = LocalActivity.current.getPager() as Pager
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val messageBodyFontSizeState by sharedStores.messageBodyFontSizeStore.state.collectAsState()
+    val messageBodySettingsNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
+    val messageBodySettingsRepository =
+        remember(authStore, messageBodySettingsNetworkClient) {
+            RealSettingsRepository(
+                sessionStore = authStore,
+                networkClient = messageBodySettingsNetworkClient,
+                logger = { message -> bridge.log("thread_message_body_font_repository $message") },
+                warningLogger = { message -> bridge.logWarn("thread_message_body_font_repository $message") },
+            )
+        }
     val createAgentFormStore = remember(sharedStores, storeScope) { sharedStores.createAgentFormStore(storeScope) }
     val attachmentOwnerVersion by ProcessAttachmentAuthScopes.version.collectAsState()
     val attachmentOwner = remember(attachmentOwnerVersion, storeScope.shellInstanceId) {
@@ -5101,6 +5121,26 @@ internal fun SharedThreadRouteContent(
     var currentSession by remember(initialThreadInstanceKey) {
         mutableStateOf<StoredAuthSession?>(null)
     }
+    val messageBodyOwnerKey =
+        remember(currentSession?.user?.id, sharedStores.apiEnvironmentStore.current().apiBaseUrl) {
+            currentSession?.user?.id?.let { accountId ->
+                messageBodyFontSizeOwnerKey(
+                    sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                    accountId,
+                )
+            }
+        }
+    LaunchedEffect(messageBodyOwnerKey, messageBodySettingsRepository) {
+        val ownerKey = messageBodyOwnerKey ?: return@LaunchedEffect
+        sharedStores.messageBodyFontSizeStore.ensureLoaded(ownerKey) {
+            messageBodySettingsRepository.getAppearanceSettings()
+        }
+    }
+    val selectedMessageBodyFontSize = messageBodyFontSizeState.selectedKey(messageBodyOwnerKey)
+    val resolvedMessageBodyTextStyle =
+        remember(selectedMessageBodyFontSize) {
+            slockMessageBodyTextStyle(selectedMessageBodyFontSize)
+        }
     var replyCacheProvenance by remember(initialThreadInstanceKey) {
         mutableStateOf<ReplyCacheProvenance?>(null)
     }
@@ -7857,6 +7897,7 @@ internal fun SharedThreadRouteContent(
             scaffold = movableThreadRouteScaffold,
             threadInstanceKey = threadInstanceKey,
             payload = renderedThread,
+            messageBodyTextStyle = resolvedMessageBodyTextStyle,
             timelineSlice = renderedTimelineSlice,
             accessResolution = renderSlice.accessResolution,
             canonicalAccessResolved = renderSlice.canonicalAccessResolved,
@@ -9415,6 +9456,7 @@ internal fun SharedThreadRouteContent(
             key(message.id, message.body) {
                 ThreadMessageTextSelectionDialog(
                     message = message,
+                    messageBodyTextStyle = resolvedMessageBodyTextStyle,
                     onDismiss = { textSelectionMessage = null }
                 )
             }
@@ -12860,6 +12902,7 @@ private fun ThreadPageContent(
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
+    messageBodyTextStyle: TextStyle,
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution,
     canonicalAccessResolved: Boolean,
@@ -13544,6 +13587,7 @@ private fun ThreadPageContent(
                     ThreadChatTab(
                         threadInstanceKey = threadInstanceKey,
                         renderConfig = timelineRenderConfig,
+                        messageBodyTextStyle = messageBodyTextStyle,
                         timelineSlice = timelineSlice,
                         replyMetadataByParentId = replyMetadataByParentId,
                         composerDraftPersistSlice = composerDraftPersistSlice,
@@ -14741,6 +14785,7 @@ internal fun consumeThreadHeaderScrollToTopRequest(
 private fun ThreadChatTab(
     threadInstanceKey: String,
     renderConfig: ThreadTimelineRenderConfig,
+    messageBodyTextStyle: TextStyle,
     timelineSlice: ThreadTimelineSlice,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
@@ -14826,6 +14871,7 @@ private fun ThreadChatTab(
                 ThreadMessagesList(
                     threadInstanceKey = threadInstanceKey,
                     renderConfig = renderConfig,
+                    messageBodyTextStyle = messageBodyTextStyle,
                     timelineSlice = timelineSlice,
                     replyMetadataByParentId = replyMetadataByParentId,
                     activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
@@ -14898,6 +14944,7 @@ private fun ThreadChatTab(
                 ThreadMessagesList(
                     threadInstanceKey = threadInstanceKey,
                     renderConfig = renderConfig,
+                    messageBodyTextStyle = messageBodyTextStyle,
                     timelineSlice = timelineSlice,
                     replyMetadataByParentId = replyMetadataByParentId,
                     activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
@@ -14961,6 +15008,7 @@ private fun ThreadChatTab(
             ThreadMessagesList(
                 threadInstanceKey = threadInstanceKey,
                 renderConfig = renderConfig,
+                messageBodyTextStyle = messageBodyTextStyle,
                 timelineSlice = timelineSlice,
                 replyMetadataByParentId = replyMetadataByParentId,
                 activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
@@ -15265,6 +15313,7 @@ private const val ThreadOriginListItemIndex = 0
 private fun ThreadMessagesList(
     threadInstanceKey: String,
     renderConfig: ThreadTimelineRenderConfig,
+    messageBodyTextStyle: TextStyle,
     timelineSlice: ThreadTimelineSlice,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     activeReplyDraftParentMessageIds: Set<String>,
@@ -17523,6 +17572,7 @@ private fun ThreadMessagesList(
                                     }
                                 },
                         renderConfig = renderConfig,
+                        messageBodyTextStyle = messageBodyTextStyle,
                         timelineSlice = renderPayload,
                         focusedMessageId = activeFocusedMessageId ?: activeInlineSearchMessageId,
                         linkedTasksProjection = linkedTasksProjection,
@@ -17779,6 +17829,7 @@ private fun ThreadMessagesList(
                                 }
                             ThreadMessageCard(
                                 message = displayMessage,
+                                messageBodyTextStyle = messageBodyTextStyle,
                                 replyMetadata = replyMetadata,
                                 hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id),
                                 actionCard = actionCard,
@@ -19966,6 +20017,7 @@ private fun ThreadMessageGeometryTintBox(tint: Color?, content: @Composable () -
 @Composable
 private fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
+    messageBodyTextStyle: TextStyle,
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
     hasReplyDraft: Boolean = false,
     actionCard: ThreadActionCard? = message.threadActionCard(),
@@ -20420,6 +20472,7 @@ private fun ThreadMessageCard(
                         } else if (richContentEnabled && forwardBundle != null) {
                             ThreadForwardBundleCard(
                                 bundle = forwardBundle,
+                                messageBodyTextStyle = messageBodyTextStyle,
                                 modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
                                 onOpenUrl = onOpenMarkdownUrl,
                                 onOpenAll = { onOpenForwardBundle(message.id) }
@@ -20453,7 +20506,7 @@ private fun ThreadMessageCard(
                                 } else if (showLongMessageToggle && !longMessageExpanded) {
                                     Text(
                                         text = longMessagePlan.collapsedDisplayText,
-                                        style = ThreadMessageBodyTextStyle,
+                                        style = messageBodyTextStyle,
                                         color = SlockColor.TextBlack,
                                         maxLines = ThreadLongMessagePreviewLineLimit,
                                         overflow = TextOverflow.Ellipsis,
@@ -20462,7 +20515,7 @@ private fun ThreadMessageCard(
                                 } else if (inlineSelectionEligible) {
                                     Text(
                                         text = bodyForRender,
-                                        style = ThreadMessageBodyTextStyle,
+                                        style = messageBodyTextStyle,
                                         color = SlockColor.TextBlack,
                                         modifier = Modifier
                                     )
@@ -20489,7 +20542,7 @@ private fun ThreadMessageCard(
                                         SlockMarkdownBody(
                                             body = bodyForRender,
                                             fillWidth = !alignOwnMessageRight,
-                                            textStyle = ThreadMessageBodyTextStyle,
+                                            textStyle = messageBodyTextStyle,
                                             highlightedMentions = highlightedMentions,
                                             isTagValid = isMarkdownTagValid,
                                             resolveTagLabel = resolveMarkdownTagLabel,
@@ -20510,7 +20563,7 @@ private fun ThreadMessageCard(
                                 } else {
                                     Text(
                                         text = bodyForRender,
-                                        style = ThreadMessageBodyTextStyle,
+                                        style = messageBodyTextStyle,
                                         color = SlockColor.TextBlack,
                                         modifier = Modifier
                                     )
@@ -24019,6 +24072,7 @@ private fun ThreadMessageActionMenu(
 @Composable
 private fun ThreadMessageTextSelectionDialog(
     message: KuiklyThreadMessageItem,
+    messageBodyTextStyle: TextStyle,
     onDismiss: () -> Unit
 ) {
     val originalText = message.body
@@ -24066,12 +24120,7 @@ private fun ThreadMessageTextSelectionDialog(
                         Box(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
                             SelectableText(
                                 text = originalText,
-                                style =
-                                    SlockType.Body.copy(
-                                        fontSize = 16.sp,
-                                        lineHeight = 24.sp,
-                                        color = SlockColor.TextBlack
-                                    ),
+                                style = messageBodyTextStyle,
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
@@ -24317,6 +24366,7 @@ private fun ThreadTextReactionGlyph(
 private fun ThreadOriginCard(
     modifier: Modifier = Modifier,
     renderConfig: ThreadTimelineRenderConfig,
+    messageBodyTextStyle: TextStyle,
     timelineSlice: ThreadTimelineSlice,
     focusedMessageId: String? = null,
     linkedTasksProjection: ThreadLinkedTasksProjection = emptyThreadLinkedTasksProjection(),
@@ -24371,7 +24421,7 @@ private fun ThreadOriginCard(
                         text = renderConfig.originPreview?.ifBlank {
                             stringResource(MR.strings.thread_state_original_unavailable)
                         } ?: stringResource(MR.strings.thread_state_original_unavailable),
-                        style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                        style = messageBodyTextStyle,
                         color = SlockColor.TextBlack
                     )
                     renderConfig.originErrorCode?.takeIf { it.isNotBlank() }?.let {
@@ -24400,6 +24450,7 @@ private fun ThreadOriginCard(
                     } else {
                         ThreadMessageCard(
                             message = displayOrigin,
+                            messageBodyTextStyle = messageBodyTextStyle,
                             hasReplyDraft = false,
                             actionCard = originActionCard,
                             highlightedMentions = highlightedMentions,
@@ -25768,6 +25819,7 @@ internal const val ThreadForwardBundleInlinePreviewLimit = 3
 @Composable
 private fun ThreadForwardBundleCard(
     bundle: ForwardMessageBundle,
+    messageBodyTextStyle: TextStyle,
     modifier: Modifier = Modifier,
     onOpenUrl: (String) -> Unit = {},
     onOpenAll: (() -> Unit)? = null
@@ -25854,7 +25906,7 @@ private fun ThreadForwardBundleCard(
                     if (preview.truncated) {
                         Text(
                             text = preview.body,
-                            style = ThreadMessageBodyTextStyle,
+                            style = messageBodyTextStyle,
                             color = SlockColor.TextBlack,
                             maxLines = ThreadForwardBundlePreviewLineLimit,
                             overflow = TextOverflow.Ellipsis
@@ -25862,7 +25914,7 @@ private fun ThreadForwardBundleCard(
                     } else {
                         SlockMarkdownBody(
                             body = preview.body,
-                            textStyle = ThreadMessageBodyTextStyle,
+                            textStyle = messageBodyTextStyle,
                             onOpenUrl = onOpenUrl
                         )
                     }
@@ -26375,8 +26427,37 @@ private fun ThreadForwardBundleScreen() {
         params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val messageBodyFontSizeState by sharedStores.messageBodyFontSizeStore.state.collectAsState()
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
+    val messageBodySettingsRepository =
+        remember(authStore, networkClient) {
+            RealSettingsRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                logger = { message -> bridge.log("forward_bundle_message_body_font_repository $message") },
+                warningLogger = { message -> bridge.logWarn("forward_bundle_message_body_font_repository $message") },
+            )
+        }
+    var messageBodyOwnerKey by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(authStore, messageBodySettingsRepository) {
+        messageBodyOwnerKey =
+            authStore.readSession()?.user?.id?.let { accountId ->
+                messageBodyFontSizeOwnerKey(
+                    sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                    accountId,
+                )
+            }
+        val ownerKey = messageBodyOwnerKey ?: return@LaunchedEffect
+        sharedStores.messageBodyFontSizeStore.ensureLoaded(ownerKey) {
+            messageBodySettingsRepository.getAppearanceSettings()
+        }
+    }
+    val selectedMessageBodyFontSize = messageBodyFontSizeState.selectedKey(messageBodyOwnerKey)
+    val resolvedMessageBodyTextStyle =
+        remember(selectedMessageBodyFontSize) {
+            slockMessageBodyTextStyle(selectedMessageBodyFontSize)
+        }
     val repository =
         remember(sharedStores, authStore, networkClient) {
             RealThreadForwardBundleDetailRepository(
@@ -26437,6 +26518,7 @@ private fun ThreadForwardBundleScreen() {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             ThreadMessageCard(
                                 message = item.toThreadMessageItemForBundlePage(),
+                                messageBodyTextStyle = resolvedMessageBodyTextStyle,
                                 timestampLabel = timestampLabel,
                                 compactTimestampLabel = timestampLabel,
                                 onShowActions = {},
@@ -26535,7 +26617,11 @@ internal fun ThreadForwardBundleVisualScreen() {
     // three-message preview cap and the "View all N" row both render (task #64);
     // bodies keep markdown so rendered ink stays proven (task #63).
     val bundle = remember { threadForwardBundleVisualFixtureBundle() }
-    ThreadForwardBundleCard(bundle = bundle, onOpenAll = {})
+    ThreadForwardBundleCard(
+        bundle = bundle,
+        messageBodyTextStyle = slockMessageBodyTextStyle("md"),
+        onOpenAll = {},
+    )
 }
 
 internal fun threadForwardBundleVisualFixtureBundle(): ForwardMessageBundle =
@@ -28190,6 +28276,7 @@ internal fun ThreadAlignRightVisualScreen() {
                 Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFFFF0000)))
                 ThreadMessageCard(
                     message = message,
+                    messageBodyTextStyle = slockMessageBodyTextStyle("md"),
                     alignOwnMessageRight = true,
                     onShowActions = {},
                     onOpenMember = {},

@@ -924,6 +924,51 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageBodyFontSmall() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message.font-sm",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-font-sm")
+                    .put("visualFixture", "default")
+                    .put("messageBodyFontSize", "sm"),
+            crop = THREAD_MESSAGE_ROW_CROP,
+            requireReactionAtlas = true,
+        )
+    }
+
+    @Test
+    fun captureThreadMessageBodyFontMedium() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message.font-md",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-font-md")
+                    .put("visualFixture", "default")
+                    .put("messageBodyFontSize", "md"),
+            crop = THREAD_MESSAGE_ROW_CROP,
+            requireReactionAtlas = true,
+        )
+    }
+
+    @Test
+    fun captureThreadMessageBodyFontLarge() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message.font-lg",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-font-lg")
+                    .put("visualFixture", "default")
+                    .put("messageBodyFontSize", "lg"),
+            crop = THREAD_MESSAGE_ROW_CROP,
+            requireReactionAtlas = true,
+        )
+    }
+
+    @Test
     fun captureThreadMessageBodyTapOpensThread() {
         captureKmpComponentCase(
             caseId = "components.thread.message-body-tap",
