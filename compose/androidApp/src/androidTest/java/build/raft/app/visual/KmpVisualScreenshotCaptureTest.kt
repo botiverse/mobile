@@ -364,6 +364,18 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // Elegant-register checkbox capture (same content under SlockThemeProvider(elegantTheme)):
+    // rounded 4dp box + #CACACE hairline + #0A0A0A ink fill. Paired against the React elegant
+    // render as components.ui.checkbox.states.elegant.
+    @Test
+    fun captureUiCheckboxStatesElegant() {
+        captureKmpComponentCase(
+            caseId = "components.ui.checkbox.states.elegant",
+            pageName = "compose_ui_checkbox_elegant_visual",
+            crop = UI_CHECKBOX_CROP
+        )
+    }
+
     @Test
     fun captureUiCheckMarkerStates() {
         captureKmpComponentCase(

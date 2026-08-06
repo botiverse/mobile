@@ -857,6 +857,17 @@ internal class ComposeUiCheckboxVisualPage : BasePager() {
     }
 }
 
+// Elegant-register capture of the SAME checkbox content, wrapped in
+// SlockThemeProvider(elegantTheme): softly-rounded 4dp box + #CACACE hairline + #0A0A0A ink
+// fill. Paired against the React elegant render as components.ui.checkbox.states.elegant.
+@Page("compose_ui_checkbox_elegant_visual", supportInLocal = true)
+internal class ComposeUiCheckboxElegantVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { SlockThemeProvider(theme = elegantTheme) { UiCheckboxVisualContent() } }
+    }
+}
+
 @Page("compose_ui_check_marker_visual", supportInLocal = true)
 internal class ComposeUiCheckMarkerVisualPage : BasePager() {
     override fun willInit() {
