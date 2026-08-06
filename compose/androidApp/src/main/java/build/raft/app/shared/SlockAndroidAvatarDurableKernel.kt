@@ -151,20 +151,101 @@ internal class SlockAndroidAvatarDurableKernel(
                     SlockAndroidAvatarOperationStatus.StorageFailure
                 )
             }
+            val candidateSha256 = bytes.slockSha256Hex()
+            val candidateByteLength = bytes.size.toLong()
+            val candidateContentType = contentType.slockNormalizedAvatarContentType()
+            val resolved = loadResolvedStateLocked(fence.key)
+            if (resolved.failed) return@withLock storageFailure()
+            if (resolved.corrupt) return@withLock corruptState()
+            val currentState = resolved.state ?: SlockAndroidAvatarDurableState.idle(fence.key)
+            currentState.candidate?.identity
+                ?.takeIf { identity -> identity.commitIdentity == candidateCommitIdentity }
+                ?.let { activeCandidate ->
+                    if (!activeCandidate.matchesPayload(
+                            sha256 = candidateSha256,
+                            byteLength = candidateByteLength,
+                            contentType = candidateContentType
+                        )
+                    ) {
+                        return@withLock SlockAndroidAvatarOperationResult(
+                            SlockAndroidAvatarOperationStatus.IdentityMismatch
+                        )
+                    }
+                    when (currentState.phase) {
+                        SlockAndroidAvatarDurablePhase.CandidateDurable,
+                        SlockAndroidAvatarDurablePhase.SharedCommitted,
+                        SlockAndroidAvatarDurablePhase.CandidateRenamed,
+                        SlockAndroidAvatarDurablePhase.IndexSwitched,
+                        SlockAndroidAvatarDurablePhase.CommitCleanup ->
+                            when (inspectCandidateSourceLocked(activeCandidate)) {
+                                is EntryInspection.Present ->
+                                    return@withLock SlockAndroidAvatarOperationResult(
+                                        status = SlockAndroidAvatarOperationStatus.AlreadyApplied,
+                                        entry = activeCandidate
+                                    )
+                                EntryInspection.Failed -> return@withLock storageFailure()
+                                EntryInspection.Missing,
+                                EntryInspection.Invalid -> return@withLock cleanupPending()
+                            }
+                        SlockAndroidAvatarDurablePhase.Prepared ->
+                            return@withLock cleanupPending()
+                        SlockAndroidAvatarDurablePhase.RollbackRepointed,
+                        SlockAndroidAvatarDurablePhase.RollbackCleanup ->
+                            return@withLock SlockAndroidAvatarOperationResult(
+                                SlockAndroidAvatarOperationStatus.IdentityMismatch
+                            )
+                        SlockAndroidAvatarDurablePhase.Idle -> return@withLock corruptState()
+                    }
+                }
+            currentState.current?.identity
+                ?.takeIf { identity -> identity.commitIdentity == candidateCommitIdentity }
+                ?.let { committed ->
+                    if (!committed.matchesPayload(
+                            sha256 = candidateSha256,
+                            byteLength = candidateByteLength,
+                            contentType = candidateContentType
+                        )
+                    ) {
+                        return@withLock SlockAndroidAvatarOperationResult(
+                            SlockAndroidAvatarOperationStatus.IdentityMismatch
+                        )
+                    }
+                    when (inspectEntryLocked(committed)) {
+                        is EntryInspection.Present ->
+                            return@withLock SlockAndroidAvatarOperationResult(
+                                status = SlockAndroidAvatarOperationStatus.AlreadyApplied,
+                                entry = committed
+                            )
+                        EntryInspection.Failed -> return@withLock storageFailure()
+                        EntryInspection.Missing,
+                        EntryInspection.Invalid -> {
+                            retireCurrentLocked(
+                                state = currentState,
+                                identity = committed,
+                                reason = SlockAndroidAvatarTombstoneReason.InvalidBytes,
+                                notifyCuts = false
+                            )
+                            return@withLock cleanupPending()
+                        }
+                    }
+                }
+            if (candidateCommitIdentity.commitGeneration <=
+                currentState.commitGenerationHighWater
+            ) {
+                return@withLock SlockAndroidAvatarOperationResult(
+                    SlockAndroidAvatarOperationStatus.IdentityMismatch
+                )
+            }
             if (hasPendingDurabilityLocked(fence.key)) {
                 return@withLock SlockAndroidAvatarOperationResult(
                     SlockAndroidAvatarOperationStatus.Busy
                 )
             }
-            val resolved = loadResolvedStateLocked(fence.key)
-            if (resolved.failed) return@withLock storageFailure()
-            if (resolved.corrupt) return@withLock corruptState()
-            val currentState = resolved.state ?: SlockAndroidAvatarDurableState.idle(fence.key)
             val keyFiles = managedFilesForKeyLocked(fence.key) ?: return@withLock storageFailure()
             val allowedIdleFiles =
                 buildSet {
+                    if (resolved.state != null) add(fence.key.indexPath)
                     if (currentState.current != null) {
-                        add(fence.key.indexPath)
                         add(currentState.current.identity.entryPath)
                     }
                 }
@@ -192,26 +273,11 @@ internal class SlockAndroidAvatarDurableKernel(
                     }
                 }
             }
-            if (currentState.current?.identity?.commitIdentity == candidateCommitIdentity) {
-                return@withLock SlockAndroidAvatarOperationResult(
-                    status = SlockAndroidAvatarOperationStatus.AlreadyApplied,
-                    entry = currentState.current.identity
-                )
-            }
             if (currentState.current?.identity?.commitIdentity != expectedCurrentCommitIdentity) {
                 return@withLock SlockAndroidAvatarOperationResult(
                     SlockAndroidAvatarOperationStatus.IdentityMismatch
                 )
             }
-            if (currentState.current != null &&
-                candidateCommitIdentity.commitGeneration <=
-                currentState.current.identity.commitIdentity.commitGeneration
-            ) {
-                return@withLock SlockAndroidAvatarOperationResult(
-                    SlockAndroidAvatarOperationStatus.IdentityMismatch
-                )
-            }
-
             val txId = nextIdentity()
             val candidateIdentity =
                 SlockAndroidAvatarEntryIdentity(
@@ -220,9 +286,9 @@ internal class SlockAndroidAvatarDurableKernel(
                     txId = txId,
                     commitIdentity = candidateCommitIdentity,
                     fileIdentity = nextIdentity(),
-                    sha256 = bytes.slockSha256Hex(),
-                    byteLength = bytes.size.toLong(),
-                    contentType = contentType.slockNormalizedAvatarContentType()
+                    sha256 = candidateSha256,
+                    byteLength = candidateByteLength,
+                    contentType = candidateContentType
                 )
             val candidate =
                 SlockAndroidAvatarEntryRecord(
@@ -232,6 +298,11 @@ internal class SlockAndroidAvatarDurableKernel(
             val prepared =
                 SlockAndroidAvatarDurableState(
                     key = fence.key,
+                    commitGenerationHighWater =
+                        maxOf(
+                            currentState.commitGenerationHighWater,
+                            candidateCommitIdentity.commitGeneration
+                        ),
                     phase = SlockAndroidAvatarDurablePhase.Prepared,
                     transactionId = txId,
                     capturedEpochs = fence.terminalEpochs,
@@ -813,6 +884,8 @@ internal class SlockAndroidAvatarDurableKernel(
         val tombstone =
             SlockAndroidAvatarDurableState(
                 key = key,
+                commitGenerationHighWater =
+                    resolved.state?.commitGenerationHighWater ?: 0L,
                 phase = SlockAndroidAvatarDurablePhase.RollbackCleanup,
                 transactionId = existingTerminal?.transactionId ?: nextIdentity(),
                 capturedEpochs = existingTerminal?.capturedEpochs ?: epochsForLocked(key),
@@ -840,7 +913,12 @@ internal class SlockAndroidAvatarDurableKernel(
             if (!decodedStore.evictExact(identity)) return false
         }
         if (!cleanupArtifactsLocked(tombstone.cleanupArtifacts)) return false
-        return finishIdleLocked(tombstone.copy(cleanupArtifacts = emptySet()), null, false)
+        return finishIdleLocked(
+            tombstone.copy(cleanupArtifacts = emptySet()),
+            current = null,
+            notifyCuts = false,
+            discardCommitGenerationHighWater = true
+        )
     }
 
     private fun retireCurrentLocked(
@@ -890,6 +968,7 @@ internal class SlockAndroidAvatarDurableKernel(
         val tombstone =
             SlockAndroidAvatarDurableState(
                 key = identity.key,
+                commitGenerationHighWater = state.commitGenerationHighWater,
                 phase = SlockAndroidAvatarDurablePhase.RollbackCleanup,
                 transactionId = nextIdentity(),
                 capturedEpochs = epochsForLocked(identity.key),
@@ -1222,6 +1301,7 @@ internal class SlockAndroidAvatarDurableKernel(
             val tombstone =
                 SlockAndroidAvatarDurableState(
                     key = key,
+                    commitGenerationHighWater = 0L,
                     phase = SlockAndroidAvatarDurablePhase.RollbackCleanup,
                     transactionId = nextIdentity(),
                     capturedEpochs = epochsForLocked(key),
@@ -1302,6 +1382,7 @@ internal class SlockAndroidAvatarDurableKernel(
             val tombstone =
                 SlockAndroidAvatarDurableState(
                     key = state.key,
+                    commitGenerationHighWater = state.commitGenerationHighWater,
                     phase = SlockAndroidAvatarDurablePhase.RollbackCleanup,
                     transactionId = nextIdentity(),
                     capturedEpochs = epochsForLocked(state.key),
@@ -1334,6 +1415,7 @@ internal class SlockAndroidAvatarDurableKernel(
             val tombstone =
                 SlockAndroidAvatarDurableState(
                     key = state.key,
+                    commitGenerationHighWater = state.commitGenerationHighWater,
                     phase = SlockAndroidAvatarDurablePhase.RollbackCleanup,
                     transactionId = nextIdentity(),
                     capturedEpochs = epochsForLocked(state.key),
@@ -1351,7 +1433,10 @@ internal class SlockAndroidAvatarDurableKernel(
             }
             if (hasMoreArtifacts) return cleanupPending()
         }
-        if (state.current == null && !deleteDurablyLocked(state.key.indexPath)) {
+        if (state.current == null &&
+            state.commitGenerationHighWater == 0L &&
+            !deleteDurablyLocked(state.key.indexPath)
+        ) {
             return cleanupPending()
         }
         return SlockAndroidAvatarOperationResult(SlockAndroidAvatarOperationStatus.Applied)
@@ -1413,6 +1498,15 @@ internal class SlockAndroidAvatarDurableKernel(
     private fun inspectEntryLocked(
         identity: SlockAndroidAvatarEntryIdentity
     ): EntryInspection = inspectPathLocked(identity.entryPath, identity)
+
+    private fun SlockAndroidAvatarEntryIdentity.matchesPayload(
+        sha256: String,
+        byteLength: Long,
+        contentType: String
+    ): Boolean =
+        this.sha256 == sha256 &&
+            this.byteLength == byteLength &&
+            this.contentType == contentType
 
     private fun inspectPathLocked(
         path: String,
@@ -1482,13 +1576,21 @@ internal class SlockAndroidAvatarDurableKernel(
     private fun finishIdleLocked(
         cleanupState: SlockAndroidAvatarDurableState,
         current: SlockAndroidAvatarEntryRecord?,
-        notifyCuts: Boolean
+        notifyCuts: Boolean,
+        discardCommitGenerationHighWater: Boolean = false
     ): Boolean {
-        if (current == null) {
+        if (current == null &&
+            (discardCommitGenerationHighWater || cleanupState.commitGenerationHighWater == 0L)
+        ) {
             if (!deleteDurablyLocked(cleanupState.key.indexPath)) return false
             if (!deleteDurablyLocked(cleanupState.key.journalPath)) return false
         } else {
-            val idle = SlockAndroidAvatarDurableState.idle(cleanupState.key, current)
+            val idle =
+                SlockAndroidAvatarDurableState.idle(
+                    key = cleanupState.key,
+                    current = current,
+                    commitGenerationHighWater = cleanupState.commitGenerationHighWater
+                )
             if (!persistJournalThenIndexLocked(idle, cut = null, notifyCuts = false)) return false
             if (!deleteDurablyLocked(cleanupState.key.journalPath)) return false
         }

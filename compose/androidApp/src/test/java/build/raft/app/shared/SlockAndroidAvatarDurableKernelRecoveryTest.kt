@@ -105,7 +105,12 @@ class SlockAndroidAvatarDurableKernelRecoveryTest {
                 SlockAndroidAvatarOperationStatus.Applied,
                 recovered.startupRecovery.status
             )
-            assertNull(recovered.durableStateForTest(key))
+            assertEquals(
+                SlockAndroidAvatarDurablePhase.Idle,
+                recovered.durableStateForTest(key)?.phase
+            )
+            assertNull(recovered.durableStateForTest(key)?.current)
+            assertEquals(1L, recovered.durableStateForTest(key)?.commitGenerationHighWater)
             assertFalse(rig.files.exists(entry.entryPath))
             assertEquals(
                 SlockAndroidAvatarReadResult.Miss(SlockAndroidAvatarReadMissReason.Empty),
@@ -160,7 +165,9 @@ class SlockAndroidAvatarDurableKernelRecoveryTest {
             )
 
         assertEquals(SlockAndroidAvatarOperationStatus.CleanupPending, firstAttempt.status)
-        assertNull(kernel.durableStateForTest(key))
+        assertEquals(SlockAndroidAvatarDurablePhase.Idle, kernel.durableStateForTest(key)?.phase)
+        assertNull(kernel.durableStateForTest(key)?.current)
+        assertEquals(1L, kernel.durableStateForTest(key)?.commitGenerationHighWater)
         assertEquals(
             SlockAndroidAvatarOperationStatus.Applied,
             kernel.stageCandidate(
@@ -506,7 +513,9 @@ class SlockAndroidAvatarDurableKernelRecoveryTest {
         val retired = kernel.invalidateIfCurrent(candidateHit.snapshot)
 
         assertEquals(SlockAndroidAvatarOperationStatus.Applied, retired.status)
-        assertNull(kernel.durableStateForTest(key))
+        assertEquals(SlockAndroidAvatarDurablePhase.Idle, kernel.durableStateForTest(key)?.phase)
+        assertNull(kernel.durableStateForTest(key)?.current)
+        assertEquals(2L, kernel.durableStateForTest(key)?.commitGenerationHighWater)
         assertFalse(rig.files.exists(previous.entryPath))
         assertFalse(rig.files.exists(staged.entry!!.entryPath))
     }
@@ -542,7 +551,49 @@ class SlockAndroidAvatarDurableKernelRecoveryTest {
             kernel.readSnapshot(kernel.acceptedFence(key, 3L), commit)
         )
         assertEquals(SlockAndroidAvatarOperationStatus.Applied, kernel.retryRecovery().status)
-        assertNull(kernel.durableStateForTest(key))
+        assertEquals(SlockAndroidAvatarDurablePhase.Idle, kernel.durableStateForTest(key)?.phase)
+        assertNull(kernel.durableStateForTest(key)?.current)
+        assertEquals(1L, kernel.durableStateForTest(key)?.commitGenerationHighWater)
+    }
+
+    @Test
+    fun retiredCoordinateCannotReplaySameOrDifferentPayloadAfterRestart() {
+        val rig = AvatarKernelTestRig()
+        val kernel = rig.kernel()
+        val key = avatarKey(bytes = "retired-coordinate")
+        val retiredCommit = avatarCommit(1L, "retired-coordinate")
+        kernel.commitCandidate(key, 1L, retiredCommit, "retired-payload".toByteArray())
+        val hit = kernel.readHit(key, 2L, retiredCommit)
+        hit.lease.close()
+        assertEquals(
+            SlockAndroidAvatarOperationStatus.Applied,
+            kernel.invalidateIfCurrent(hit.snapshot).status
+        )
+
+        val restarted = rig.kernel()
+        assertEquals(SlockAndroidAvatarOperationStatus.Applied, restarted.startupRecovery.status)
+        listOf("retired-payload", "different-retired-payload").forEachIndexed { index, payload ->
+            assertEquals(
+                SlockAndroidAvatarOperationStatus.IdentityMismatch,
+                restarted.stageCandidate(
+                    fence = restarted.acceptedFence(key, 3L + index),
+                    expectedCurrentCommitIdentity = null,
+                    candidateCommitIdentity = retiredCommit,
+                    bytes = payload.toByteArray(),
+                    contentType = "image/png"
+                ).status
+            )
+        }
+        assertEquals(
+            SlockAndroidAvatarOperationStatus.Applied,
+            restarted.stageCandidate(
+                fence = restarted.acceptedFence(key, 5L),
+                expectedCurrentCommitIdentity = null,
+                candidateCommitIdentity = avatarCommit(2L, "fresh-after-retirement"),
+                bytes = "fresh-after-retirement".toByteArray(),
+                contentType = "image/png"
+            ).status
+        )
     }
 
     @Test
@@ -578,7 +629,9 @@ class SlockAndroidAvatarDurableKernelRecoveryTest {
         assertEquals(SlockAndroidAvatarOperationStatus.Applied, kernel.retryRecovery().status)
         assertFalse(decoded.containsExact(entry))
         assertFalse(rig.files.exists(entry.entryPath))
-        assertNull(kernel.durableStateForTest(key))
+        assertEquals(SlockAndroidAvatarDurablePhase.Idle, kernel.durableStateForTest(key)?.phase)
+        assertNull(kernel.durableStateForTest(key)?.current)
+        assertEquals(1L, kernel.durableStateForTest(key)?.commitGenerationHighWater)
     }
 
     @Test
@@ -598,7 +651,9 @@ class SlockAndroidAvatarDurableKernelRecoveryTest {
         assertTrue(rig.files.exists(entry.entryPath))
         val recovered = rig.kernel()
         assertEquals(SlockAndroidAvatarOperationStatus.Applied, recovered.startupRecovery.status)
-        assertNull(recovered.durableStateForTest(key))
+        assertEquals(SlockAndroidAvatarDurablePhase.Idle, recovered.durableStateForTest(key)?.phase)
+        assertNull(recovered.durableStateForTest(key)?.current)
+        assertEquals(1L, recovered.durableStateForTest(key)?.commitGenerationHighWater)
         assertFalse(rig.files.exists(entry.entryPath))
         assertEquals(
             SlockAndroidAvatarReadResult.Miss(SlockAndroidAvatarReadMissReason.Empty),
@@ -624,7 +679,7 @@ class SlockAndroidAvatarDurableKernelRecoveryTest {
         val first = kernel.invalidateIfCurrent(hit.snapshot)
 
         assertEquals(SlockAndroidAvatarOperationStatus.CleanupPending, first.status)
-        assertFalse(rig.files.exists(key.indexPath))
+        assertTrue(rig.files.exists(key.indexPath))
         assertFalse(rig.files.exists(key.journalPath))
         val deletesBeforeRetry =
             rig.files.events.count { event ->

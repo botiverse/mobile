@@ -207,6 +207,8 @@ internal enum class SlockAndroidAvatarTombstoneReason {
 internal data class SlockAndroidAvatarDurableState(
     val key: SlockAndroidAvatarOpaqueKey,
     val stateSequence: Long = 0L,
+    /** Highest generation durably reserved for this key; rollback/ordinary retirement never lowers it. */
+    val commitGenerationHighWater: Long,
     val phase: SlockAndroidAvatarDurablePhase,
     val transactionId: String?,
     val capturedEpochs: SlockAndroidAvatarTerminalEpochs?,
@@ -219,12 +221,18 @@ internal data class SlockAndroidAvatarDurableState(
 ) {
     init {
         require(stateSequence >= 0L)
+        require(commitGenerationHighWater >= 0L)
         transactionId?.let { require(it.matches(SlockAndroidAvatarOpaqueComponentPattern)) }
         require(current?.identity?.key == null || current.identity.key == key)
         require(previous?.identity?.key == null || previous.identity.key == key)
         require(candidate?.identity?.key == null || candidate.identity.key == key)
         require(candidate == null || candidate.identity.txId == transactionId)
         require(cleanupEntries.all { it.key == key })
+        require(
+            allEntryIdentities().all { identity ->
+                identity.commitIdentity.commitGeneration <= commitGenerationHighWater
+            }
+        )
         require(cleanupEntries.size <= MAX_CLEANUP_ARTIFACTS)
         require(cleanupArtifacts.size <= MAX_CLEANUP_ARTIFACTS)
         require(cleanupArtifacts.all { path -> key.ownsCleanupArtifactPath(path) })
@@ -273,10 +281,13 @@ internal data class SlockAndroidAvatarDurableState(
 
         fun idle(
             key: SlockAndroidAvatarOpaqueKey,
-            current: SlockAndroidAvatarEntryRecord? = null
+            current: SlockAndroidAvatarEntryRecord? = null,
+            commitGenerationHighWater: Long =
+                current?.identity?.commitIdentity?.commitGeneration ?: 0L
         ): SlockAndroidAvatarDurableState =
             SlockAndroidAvatarDurableState(
                 key = key,
+                commitGenerationHighWater = commitGenerationHighWater,
                 phase = SlockAndroidAvatarDurablePhase.Idle,
                 transactionId = null,
                 capturedEpochs = null,
@@ -346,7 +357,7 @@ internal enum class SlockAndroidAvatarDurableRecordKind {
 
 internal object SlockAndroidAvatarDurableStateCodec {
     private const val Magic = 0x52414654
-    private const val SchemaVersion = 1
+    private const val SchemaVersion = 2
     private const val DigestLength = 32
     private const val MaxRecordBytes = 256 * 1024
 
@@ -362,6 +373,7 @@ internal object SlockAndroidAvatarDurableStateCodec {
                     output.writeUTF(kind.name)
                     output.writeKey(state.key)
                     output.writeLong(state.stateSequence)
+                    output.writeLong(state.commitGenerationHighWater)
                     output.writeUTF(state.phase.name)
                     output.writeNullableString(state.transactionId)
                     output.writeNullableEpochs(state.capturedEpochs)
@@ -396,6 +408,7 @@ internal object SlockAndroidAvatarDurableStateCodec {
                 require(input.readUTF() == expectedKind.name)
                 val key = input.readKey()
                 val stateSequence = input.readLong()
+                val commitGenerationHighWater = input.readLong()
                 val phase = SlockAndroidAvatarDurablePhase.valueOf(input.readUTF())
                 val transactionId = input.readNullableString()
                 val epochs = input.readNullableEpochs()
@@ -414,6 +427,7 @@ internal object SlockAndroidAvatarDurableStateCodec {
                 SlockAndroidAvatarDurableState(
                     key = key,
                     stateSequence = stateSequence,
+                    commitGenerationHighWater = commitGenerationHighWater,
                     phase = phase,
                     transactionId = transactionId,
                     capturedEpochs = epochs,

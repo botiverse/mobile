@@ -81,7 +81,9 @@ class SlockAndroidAvatarDurableKernelTransactionTest {
             SlockAndroidAvatarOperationStatus.Applied,
             kernel.rollbackCandidate(key, firstIdentity).status
         )
-        assertNull(kernel.durableStateForTest(key))
+        assertEquals(SlockAndroidAvatarDurablePhase.Idle, kernel.durableStateForTest(key)?.phase)
+        assertNull(kernel.durableStateForTest(key)?.current)
+        assertEquals(1L, kernel.durableStateForTest(key)?.commitGenerationHighWater)
     }
 
     @Test
@@ -163,7 +165,7 @@ class SlockAndroidAvatarDurableKernelTransactionTest {
                 fence = kernel.acceptedFence(key, 2L),
                 expectedCurrentCommitIdentity = null,
                 candidateCommitIdentity = committed,
-                bytes = "ignored-retry-body".toByteArray(),
+                bytes = "committed".toByteArray(),
                 contentType = "image/png"
             )
 
@@ -172,6 +174,68 @@ class SlockAndroidAvatarDurableKernelTransactionTest {
         val hit = kernel.readHit(key, 3L, committed)
         assertArrayEquals("committed".toByteArray(), hit.snapshot.bytes)
         hit.lease.close()
+    }
+
+    @Test
+    fun committedCoordinateWithDifferentPayloadFailsClosed() {
+        val kernel = AvatarKernelTestRig().kernel()
+        val key = avatarKey()
+        val committed = avatarCommit(1L, "committed-payload-mismatch")
+        val entry = kernel.commitCandidate(key, 1L, committed, "committed".toByteArray())
+
+        val retry =
+            kernel.stageCandidate(
+                fence = kernel.acceptedFence(key, 2L),
+                expectedCurrentCommitIdentity = null,
+                candidateCommitIdentity = committed,
+                bytes = "different".toByteArray(),
+                contentType = "image/png"
+            )
+
+        assertEquals(SlockAndroidAvatarOperationStatus.IdentityMismatch, retry.status)
+        assertEquals(entry, kernel.durableStateForTest(key)?.current?.identity)
+    }
+
+    @Test
+    fun activeCoordinateReplaysOnlyForTheExactSamePayload() {
+        val kernel = AvatarKernelTestRig().kernel()
+        val key = avatarKey()
+        val candidate = avatarCommit(1L, "active-idempotent-stage")
+        val fence = kernel.acceptedFence(key, 1L)
+        val first =
+            kernel.stageCandidate(
+                fence = fence,
+                expectedCurrentCommitIdentity = null,
+                candidateCommitIdentity = candidate,
+                bytes = "active-payload".toByteArray(),
+                contentType = "image/png"
+            )
+
+        val samePayload =
+            kernel.stageCandidate(
+                fence = fence,
+                expectedCurrentCommitIdentity = null,
+                candidateCommitIdentity = candidate,
+                bytes = "active-payload".toByteArray(),
+                contentType = "image/png; charset=binary"
+            )
+        val differentPayload =
+            kernel.stageCandidate(
+                fence = fence,
+                expectedCurrentCommitIdentity = null,
+                candidateCommitIdentity = candidate,
+                bytes = "different-active-payload".toByteArray(),
+                contentType = "image/png"
+            )
+
+        assertEquals(SlockAndroidAvatarOperationStatus.Applied, first.status)
+        assertEquals(SlockAndroidAvatarOperationStatus.AlreadyApplied, samePayload.status)
+        assertEquals(first.entry, samePayload.entry)
+        assertEquals(SlockAndroidAvatarOperationStatus.IdentityMismatch, differentPayload.status)
+        assertEquals(
+            SlockAndroidAvatarDurablePhase.CandidateDurable,
+            kernel.durableStateForTest(key)?.phase
+        )
     }
 
     @Test
@@ -297,6 +361,88 @@ class SlockAndroidAvatarDurableKernelTransactionTest {
             ),
             crashing.readSnapshot(crashing.acceptedFence(key, 4L), candidate)
         )
+    }
+
+    @Test
+    fun sharedCommittedGenerationCannotBeReusedAfterRollbackAndRestart() {
+        listOf(
+            SlockAndroidAvatarDurableCut.SharedCommitted,
+            SlockAndroidAvatarDurableCut.IndexSwitched
+        ).forEach { cut ->
+            val rig = AvatarKernelTestRig()
+            val key = avatarKey(bytes = "burned-generation-$cut")
+            val previous = avatarCommit(1L, "burned-previous-$cut")
+            val burnedCandidate = avatarCommit(2L, "burned-candidate-$cut")
+            rig.kernel().commitCandidate(
+                key,
+                1L,
+                previous,
+                "previous-$cut".toByteArray()
+            )
+            val crashing = rig.kernel(crashAt = cut)
+            val fence = crashing.acceptedFence(key, 2L)
+            crashing.stageCandidate(
+                fence = fence,
+                expectedCurrentCommitIdentity = previous,
+                candidateCommitIdentity = burnedCandidate,
+                bytes = "first-candidate-$cut".toByteArray(),
+                contentType = "image/png"
+            )
+            try {
+                crashing.finalizeCandidate(fence, burnedCandidate)
+                throw AssertionError("expected simulated crash at $cut")
+            } catch (crash: SimulatedAvatarCrash) {
+                assertEquals(cut, crash.cut)
+            }
+
+            assertEquals(
+                SlockAndroidAvatarOperationStatus.Applied,
+                crashing.rollbackCandidate(key, burnedCandidate).status
+            )
+            val restarted = rig.kernel()
+            assertEquals(
+                SlockAndroidAvatarOperationStatus.Applied,
+                restarted.startupRecovery.status
+            )
+            val durable = restarted.durableStateForTest(key)
+            assertEquals(previous, durable?.current?.identity?.commitIdentity)
+            assertEquals(2L, durable?.commitGenerationHighWater)
+
+            val reuse =
+                restarted.stageCandidate(
+                    fence = restarted.acceptedFence(key, 3L),
+                    expectedCurrentCommitIdentity = previous,
+                    candidateCommitIdentity = burnedCandidate,
+                    bytes = "different-reused-bytes-$cut".toByteArray(),
+                    contentType = "image/png"
+                )
+            val samePayloadReuse =
+                restarted.stageCandidate(
+                    fence = restarted.acceptedFence(key, 4L),
+                    expectedCurrentCommitIdentity = previous,
+                    candidateCommitIdentity = burnedCandidate,
+                    bytes = "first-candidate-$cut".toByteArray(),
+                    contentType = "image/png"
+                )
+
+            assertEquals(SlockAndroidAvatarOperationStatus.IdentityMismatch, reuse.status)
+            assertEquals(
+                SlockAndroidAvatarOperationStatus.IdentityMismatch,
+                samePayloadReuse.status
+            )
+            assertEquals(previous, restarted.durableStateForTest(key)?.current?.identity?.commitIdentity)
+            assertFalse(rig.files.exists(key.journalPath))
+            assertEquals(
+                SlockAndroidAvatarOperationStatus.Applied,
+                restarted.stageCandidate(
+                    fence = restarted.acceptedFence(key, 5L),
+                    expectedCurrentCommitIdentity = previous,
+                    candidateCommitIdentity = avatarCommit(3L, "fresh-after-burn-$cut"),
+                    bytes = "fresh-after-burn-$cut".toByteArray(),
+                    contentType = "image/png"
+                ).status
+            )
+        }
     }
 
     @Test
@@ -495,6 +641,17 @@ class SlockAndroidAvatarDurableKernelTransactionTest {
             assertArrayEquals("previous-$cut".toByteArray(), hit.snapshot.bytes)
             hit.lease.close()
             assertEquals(SlockAndroidAvatarDurablePhase.Idle, recovered.durableStateForTest(key)?.phase)
+            assertEquals(2L, recovered.durableStateForTest(key)?.commitGenerationHighWater)
+            assertEquals(
+                SlockAndroidAvatarOperationStatus.IdentityMismatch,
+                recovered.stageCandidate(
+                    fence = recovered.acceptedFence(key, 4L),
+                    expectedCurrentCommitIdentity = previous,
+                    candidateCommitIdentity = candidate,
+                    bytes = "candidate-$cut".toByteArray(),
+                    contentType = "image/png"
+                ).status
+            )
         }
     }
 }

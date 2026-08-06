@@ -560,7 +560,12 @@ class SlockAndroidAvatarDurableKernelPolicyTest {
         assertEquals(SlockAndroidAvatarBudgetStatus.Evicted, result.status)
         assertEquals(6L, result.managedBytes)
         assertEquals(1, result.evictedEntries)
-        assertNull(kernel.durableStateForTest(firstKey))
+        assertEquals(
+            SlockAndroidAvatarDurablePhase.Idle,
+            kernel.durableStateForTest(firstKey)?.phase
+        )
+        assertNull(kernel.durableStateForTest(firstKey)?.current)
+        assertEquals(1L, kernel.durableStateForTest(firstKey)?.commitGenerationHighWater)
         val survivor = kernel.readHit(secondKey, 2L, secondCommit)
         assertArrayEquals(ByteArray(6) { 2 }, survivor.snapshot.bytes)
         survivor.lease.close()
@@ -661,6 +666,7 @@ class SlockAndroidAvatarDurableKernelPolicyTest {
             )
         assertEquals(key, decoded?.key)
         assertEquals(SlockAndroidAvatarDurablePhase.Idle, decoded?.phase)
+        assertEquals(1L, decoded?.commitGenerationHighWater)
 
         val damaged = index.copyOf().also { bytes -> bytes[bytes.lastIndex] = (bytes.last() + 1).toByte() }
 
