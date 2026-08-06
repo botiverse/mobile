@@ -174,7 +174,39 @@ These side effects are never inferred from a generic request to upload.
 None of these TestFlight operations publishes an App Store production
 version. App Store production remains a separate owner-authorized procedure.
 
-## 7. Preserve The Receipt And Merge Back
+## 7. Draft And Approve The Community Announcement
+
+After a platform reaches its owner-approved community delivery boundary and
+has a terminal readback, draft the user-facing community announcements under
+the release:
+
+```text
+change-logs/X.Y.Z/community-announcement.zh-CN.md
+change-logs/X.Y.Z/community-announcement.en.md
+```
+
+Both Chinese and English are required. Additional locales may be added for the
+audience, but each announcement must:
+
+- cover only platforms that have reached the intended community boundary; do
+  not pre-announce an internal TestFlight build or any other unreleased
+  platform;
+- derive every product claim from the approved platform notes and preserve the
+  reviewed section structure instead of inventing a second feature summary;
+- include the supported update path and feedback path where applicable;
+- avoid build coordinates, CI detail, internal task language, and unshipped
+  work;
+- receive explicit release-owner approval before it is posted to a community
+channel. Chinese and English may be posted together or as separate messages,
+but the release receipt must identify the final message receipt for each.
+
+Posting the announcement is a separate communication action, not an implied
+side effect of Hands activation or TestFlight distribution. Record the final
+announcement paths plus their channel/message receipts in the release receipt.
+An unreleased platform gets its own announcement later, after it reaches its
+separately authorized community boundary.
+
+## 8. Preserve The Receipt And Merge Back
 
 Commit a release receipt under `change-logs/X.Y.Z/` containing:
 
