@@ -374,6 +374,27 @@ class AgentRuntimeConfigTest {
         assertEquals("high", live.reasoningEffort)
     }
 
+    @Test
+    fun buildRuntimeConfigPreservesExplicitDefaultAcrossOpenSave() {
+        val initial =
+            RuntimeConfig(
+                runtime = "codex",
+                model = RuntimeModelConfig.Preset("gpt-5.6-sol"),
+                reasoningEffort = null
+            )
+        val saved =
+            buildRuntimeConfig(
+                runtime = initial.runtime,
+                model = (initial.model as RuntimeModelConfig.Preset).id,
+                customModelMode = false,
+                reasoningEffort = initial.reasoningEffort,
+                reasoningSupportedEfforts = listOf("low", "medium", "high", "xhigh", "max", "ultra"),
+                reasoningDefaultEffort = "medium"
+            )
+
+        assertEquals(initial, saved)
+    }
+
     // ── Plan limits ──
 
     @Test

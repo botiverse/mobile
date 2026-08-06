@@ -758,6 +758,33 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
+    fun createSubmitPreservesExplicitDefaultAsNull() {
+        val runtimeConfig =
+            assertNotNull(
+                buildSharedCreateAgentDialogSubmit(
+                    name = "Default Agent",
+                    description = "",
+                    selectedMachineId = "machine-1",
+                    requiredComputer = null,
+                    external = false,
+                    runtime = "codex",
+                    model = "gpt-5.6-sol",
+                    customModelMode = false,
+                    customModelName = "",
+                    providerMode = "default",
+                    providerApiUrl = "",
+                    providerApiKey = TextFieldValue(""),
+                    fastMode = false,
+                    reasoningEffort = null,
+                    envVarEntries = emptyList(),
+                    command = ""
+                ).runtimeConfig
+            )
+
+        assertNull(runtimeConfig.reasoningEffort)
+    }
+
+    @Test
     fun codexMaxReasoningSelectionReachesRuntimeConfig() {
         val request =
             buildSharedCreateAgentDialogSubmit(

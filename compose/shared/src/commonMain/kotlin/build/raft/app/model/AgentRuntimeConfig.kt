@@ -316,6 +316,23 @@ fun reconcileRuntimeReasoningEffort(
     return declaredDefault?.takeIf { it in supported }
 }
 
+fun validateRuntimeReasoningEffort(
+    runtime: String,
+    model: String,
+    current: String?,
+    supportedReasoningEfforts: List<String>? = null,
+    defaultReasoningEffort: String? = null
+): String? {
+    if (current == null || !supportsRuntimeReasoningEffort(runtime)) return null
+    return reconcileRuntimeReasoningEffort(
+        runtime = runtime,
+        model = model,
+        current = current,
+        supportedReasoningEfforts = supportedReasoningEfforts,
+        defaultReasoningEffort = defaultReasoningEffort
+    )
+}
+
 // ── Builder ──
 
 /**
@@ -378,7 +395,7 @@ fun buildRuntimeConfig(
     val effectiveCommand: String? =
         if (supportsRuntimeCommand(effectiveRuntime) && !command.isNullOrBlank()) command.trim() else null
     val effectiveReasoningEffort: String? =
-        reconcileRuntimeReasoningEffort(
+        validateRuntimeReasoningEffort(
             runtime = effectiveRuntime,
             model = effectiveModelId,
             current = reasoningEffort,
