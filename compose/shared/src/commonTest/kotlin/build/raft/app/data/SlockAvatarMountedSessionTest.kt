@@ -125,11 +125,12 @@ class SlockAvatarMountedSessionTest {
     }
 
     @Test
-    fun contentChangeRevokesOldMountAndFlightWithoutReusingValidators() {
+    fun contentChangeRevokesUncommittedFlightAfterItsOnlyMountWasDisposed() {
         val session = SlockAvatarMountedSession()
         val oldKey = avatarKey(contentHex = '1')
         val old = session.mount(oldKey)
         val oldFlight = assertNotNull(session.beginFlight(old))
+        assertTrue(session.dispose(old))
 
         val newKey = avatarKey(contentHex = '2')
         val replacement = session.mount(newKey)
@@ -150,6 +151,24 @@ class SlockAvatarMountedSessionTest {
         assertNull(newFlight.expectedCommitIdentity)
         assertNull(newFlight.validators)
         assertTrue(newFlight.requiresFullCanonicalBody)
+    }
+
+    @Test
+    fun contentChangeRevokesMountOnlySlotBeforeAnyFlightOrMetadataExists() {
+        val session = SlockAvatarMountedSession()
+        val old = session.mount(avatarKey(contentHex = '3'))
+
+        val newKey = avatarKey(contentHex = '4')
+        val replacement = session.mount(newKey)
+
+        assertFalse(session.isCurrent(old))
+        assertNull(session.snapshot(old))
+        assertTrue(session.isCurrent(replacement))
+        val snapshot = assertNotNull(session.snapshot(replacement))
+        assertNull(snapshot.commitIdentity)
+        assertNull(snapshot.validators)
+        assertEquals(0L, snapshot.modelRevision)
+        assertTrue(assertNotNull(session.beginFlight(replacement)).requiresFullCanonicalBody)
     }
 
     @Test
