@@ -12,6 +12,10 @@ import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -26,9 +30,11 @@ import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -258,6 +264,14 @@ private fun AddComputerConnectedStep(
     state: AddComputerDialogState,
     onIntent: (SharedSettingsIntent) -> Unit
 ) {
+    // Caller-local TextFieldValue is the sole editor owner; the durable store
+    // keeps a String projection (task #130 Phase D). Seeded once per mount —
+    // this step is only composed for AddComputerStep.Connected, so the mount
+    // itself is the session boundary and no external event re-seeds it (a seed
+    // keyed on the live store String would reset the caret on every keystroke).
+    var nameValue by remember {
+        mutableStateOf(TextFieldValue(state.name, selection = TextRange(state.name.length)))
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth()
@@ -293,10 +307,13 @@ private fun AddComputerConnectedStep(
         }
         SlockBrutalTextField(
             label = stringResource(MR.strings.settings_computers_label_name),
-            value = state.name,
+            value = nameValue,
             placeholder = state.connectedDetail?.substringBefore(" - ")
                 ?: stringResource(MR.strings.settings_computers_placeholder_name),
-            onValueChange = { onIntent(SharedSettingsIntent.SetAddComputerName(it)) },
+            onValueChange = {
+                nameValue = it
+                onIntent(SharedSettingsIntent.SetAddComputerName(it.text))
+            },
             required = true,
             enabled = !state.saving
         )

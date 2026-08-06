@@ -22,6 +22,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -62,10 +63,12 @@ internal fun SharedInviteHumanDialog(
     onDismiss: () -> Unit,
     onSubmit: (emails: List<String>) -> Unit
 ) {
-    var email1 by remember { mutableStateOf("") }
-    var email2 by remember { mutableStateOf("") }
-    var email3 by remember { mutableStateOf("") }
-    val emails = listOf(email1, email2, email3)
+    // Caller-local TextFieldValue is the sole editor owner for each email box;
+    // the submit path keeps a plain String projection (task #130 Phase D).
+    var email1 by remember { mutableStateOf(TextFieldValue()) }
+    var email2 by remember { mutableStateOf(TextFieldValue()) }
+    var email3 by remember { mutableStateOf(TextFieldValue()) }
+    val emails = listOf(email1.text, email2.text, email3.text)
     val anyFilled = emails.any { it.isNotBlank() }
     val canSubmit = !submitting && anyFilled && !joinLinkLoading
     val copyableJoinLink = inviteHumanJoinUrlCopyPayload(joinLinkUrl)
