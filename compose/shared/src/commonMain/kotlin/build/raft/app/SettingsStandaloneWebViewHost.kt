@@ -422,6 +422,9 @@ private fun StandaloneSettingsWebViewBody(
         onUrlChange = { url ->
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=$url")
         },
+        onLoadCommit = {
+            bridge.log("settings_${spec.surface.diagnosticsName}_webview_load_commit")
+        },
         onLoadFailure = { reason ->
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_load_failure reason=$reason")
         },
@@ -436,6 +439,7 @@ internal fun StandaloneSettingsWebViewContent(
     spec: StandaloneSettingsWebViewSpec,
     modifier: Modifier = Modifier,
     controller: SlockWebViewController = rememberSlockWebViewController(),
+    onLoadCommit: () -> Unit = {},
     onUrlChange: (String) -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
@@ -467,6 +471,7 @@ internal fun StandaloneSettingsWebViewContent(
         injectedJavaScript = injectedJavaScript,
         controller = controller,
         generationKey = hostAuthBinding?.webViewGeneration,
+        onLoadCommit = onLoadCommit,
         onUrlChange = onUrlChange,
         onLoadFailure = onLoadFailure,
         onNavigationStateChange = onNavigationStateChange,
@@ -499,6 +504,7 @@ internal fun SettingsWebViewContent(
     injectedJavaScript: String = "",
     controller: SlockWebViewController = rememberSlockWebViewController(),
     generationKey: Any? = null,
+    onLoadCommit: () -> Unit = {},
     onLoadSuccess: () -> Unit = {},
     onUrlChange: (String) -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
@@ -566,6 +572,11 @@ internal fun SettingsWebViewContent(
                     ephemeral = false,
                     injectedJavaScript = injectedJavaScript,
                     controller = controller,
+                    onLoadCommit = {
+                        loadError = null
+                        contentVisible = true
+                        onLoadCommit()
+                    },
                     onLoadSuccess = {
                         loadError = null
                         contentVisible = true
