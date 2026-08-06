@@ -100,6 +100,22 @@ final class SlockIosOAuthRouteStore: ObservableObject {
         }
     }
 
+    /// Opens the AppShell with identity + intent only. The shared external-share store loads the
+    /// private envelope from the App Group after account/server authority becomes available.
+    func openExternalShare(token: String) {
+        guard SlockExternalShareEnvelopeStorage.isSafeToken(token) else { return }
+        runOnMain { [weak self] in
+            self?.replace(
+                pageName: slockIosOAuthAppShellPage,
+                pageData: [
+                    "pageName": slockIosOAuthAppShellPage,
+                    "intent": "open_share_to_raft",
+                    "externalShareToken": token,
+                ]
+            )
+        }
+    }
+
     private func replaceWithLoginError(_ message: String) {
         replace(
             pageName: slockIosOAuthLoginPage,
