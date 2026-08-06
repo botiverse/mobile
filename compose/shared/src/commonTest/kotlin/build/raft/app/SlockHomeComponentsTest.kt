@@ -325,7 +325,7 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun appUpdateNotificationStaysInNotificationCenter() {
+    fun appUpdateNotificationMovesToDedicatedBanner() {
         val update =
             SlockHomeNotificationItem(
                 id = build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID,
@@ -334,9 +334,10 @@ class SlockHomeComponentsTest {
         val machine = SlockHomeNotificationItem(id = "machine-offline:1", title = "Offline")
         val notifications = listOf(machine, update)
 
-        // Web parity (task #692 / PR #5605): no dedicated top banner — the
-        // app-update entry lives in the same notification center list.
-        assertEquals(listOf(machine, update), notifications.visibleHomeNotifications())
+        // artin 2026-08-06 ruling (task #113): app update keeps its independent
+        // top banner and does not go through the notification center.
+        assertEquals(update, notifications.homeAppUpdateBannerNotification())
+        assertEquals(listOf(machine), notifications.nonAppUpdateHomeNotifications())
     }
 
     @Test

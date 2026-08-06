@@ -2475,6 +2475,27 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeAppUpdateBanner() {
+        captureKmpComponentCase(
+            caseId = "components.home.app-update-banner",
+            pageName = "compose_home_app_update_banner_visual",
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureHomeNotificationTriggerStates() {
+        // Native-only evidence capture (no React baseline): Bell trigger
+        // state matrix — empty-closed, unread-closed, unread-open, narrow,
+        // empty drawer. Bound to the exact in the PR evidence.
+        captureKmpComponentCase(
+            caseId = "components.home.notification-trigger.states",
+            pageName = "compose_home_notification_trigger_states_visual",
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureAppUpdateDetails() {
         captureKmpComponentCase(
             caseId = "screens.app-update.details",
