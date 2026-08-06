@@ -299,6 +299,23 @@ fun supportsRuntimeCommand(runtime: String): Boolean = runtime == "claude"
 
 fun supportsRuntimeReasoningEffort(runtime: String): Boolean = REASONING_EFFORT_RUNTIMES.contains(runtime)
 
+fun reconcileRuntimeReasoningEffort(
+    runtime: String,
+    model: String,
+    current: String?,
+    supportedReasoningEfforts: List<String>? = null,
+    defaultReasoningEffort: String? = null
+): String? {
+    if (!supportsRuntimeReasoningEffort(runtime)) return null
+    val staticModel = RUNTIME_MODELS[runtime].orEmpty().firstOrNull { it.id == model }
+    val declaredSupported = supportedReasoningEfforts ?: staticModel?.supportedReasoningEfforts.orEmpty()
+    val supported = declaredSupported.takeIf { it.isNotEmpty() } ?: BASE_REASONING_EFFORT_IDS.toList()
+    if (current != null && current in supported) return current
+    val declaredDefault =
+        if (supportedReasoningEfforts != null) defaultReasoningEffort else staticModel?.defaultReasoningEffort
+    return declaredDefault?.takeIf { it in supported }
+}
+
 // ── Builder ──
 
 /**
@@ -318,6 +335,8 @@ fun buildRuntimeConfig(
     piProviderApiKey: String? = null,
     fastMode: Boolean = false,
     reasoningEffort: String? = null,
+    reasoningSupportedEfforts: List<String>? = null,
+    reasoningDefaultEffort: String? = null,
     envVars: Map<String, String>? = null,
     command: String? = null
 ): RuntimeConfig {
@@ -351,10 +370,21 @@ fun buildRuntimeConfig(
         } else {
             RuntimeModelConfig.Preset(id = model.ifBlank { getDefaultModel(effectiveRuntime) })
         }
+    val effectiveModelId =
+        when (effectiveModel) {
+            is RuntimeModelConfig.Preset -> effectiveModel.id
+            is RuntimeModelConfig.Custom -> effectiveModel.name
+        }
     val effectiveCommand: String? =
         if (supportsRuntimeCommand(effectiveRuntime) && !command.isNullOrBlank()) command.trim() else null
     val effectiveReasoningEffort: String? =
-        if (supportsRuntimeReasoningEffort(effectiveRuntime)) reasoningEffort else null
+        reconcileRuntimeReasoningEffort(
+            runtime = effectiveRuntime,
+            model = effectiveModelId,
+            current = reasoningEffort,
+            supportedReasoningEfforts = reasoningSupportedEfforts,
+            defaultReasoningEffort = reasoningDefaultEffort
+        )
     return RuntimeConfig(
         version = RUNTIME_CONFIG_VERSION,
         runtime = effectiveRuntime,

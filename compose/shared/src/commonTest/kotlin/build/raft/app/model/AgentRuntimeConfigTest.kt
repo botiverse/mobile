@@ -151,6 +151,41 @@ class AgentRuntimeConfigTest {
         assertFalse(supportsRuntimeReasoningEffort("opencode"))
     }
 
+    @Test
+    fun reasoningReconciliationUsesTargetModelCapabilities() {
+        assertNull(
+            reconcileRuntimeReasoningEffort(
+                runtime = "claude",
+                model = "opus",
+                current = "ultra"
+            )
+        )
+        assertEquals(
+            "high",
+            reconcileRuntimeReasoningEffort(
+                runtime = "claude",
+                model = "opus",
+                current = "high"
+            )
+        )
+        assertEquals(
+            "medium",
+            reconcileRuntimeReasoningEffort(
+                runtime = "codex",
+                model = "gpt-5.6-luna",
+                current = "ultra"
+            )
+        )
+        assertEquals(
+            "ultra",
+            reconcileRuntimeReasoningEffort(
+                runtime = "codex",
+                model = "gpt-5.6-sol",
+                current = "ultra"
+            )
+        )
+    }
+
     // ── buildRuntimeConfig ──
 
     @Test
@@ -298,6 +333,45 @@ class AgentRuntimeConfigTest {
             reasoningEffort = "low"
         )
         assertEquals("low", builtInConfig.reasoningEffort)
+    }
+
+    @Test
+    fun buildRuntimeConfigFailsClosedAgainstTheSubmittedModelCapabilities() {
+        val claude =
+            buildRuntimeConfig(
+                runtime = "claude",
+                model = "opus",
+                customModelMode = false,
+                reasoningEffort = "ultra"
+            )
+        val luna =
+            buildRuntimeConfig(
+                runtime = "codex",
+                model = "gpt-5.6-luna",
+                customModelMode = false,
+                reasoningEffort = "ultra"
+            )
+        val sol =
+            buildRuntimeConfig(
+                runtime = "codex",
+                model = "gpt-5.6-sol",
+                customModelMode = false,
+                reasoningEffort = "ultra"
+            )
+        val live =
+            buildRuntimeConfig(
+                runtime = "codex",
+                model = "machine-codex",
+                customModelMode = false,
+                reasoningEffort = "ultra",
+                reasoningSupportedEfforts = listOf("low", "high", "max"),
+                reasoningDefaultEffort = "high"
+            )
+
+        assertNull(claude.reasoningEffort)
+        assertEquals("medium", luna.reasoningEffort)
+        assertEquals("ultra", sol.reasoningEffort)
+        assertEquals("high", live.reasoningEffort)
     }
 
     // ── Plan limits ──

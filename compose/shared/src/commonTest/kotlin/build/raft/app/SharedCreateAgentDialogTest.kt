@@ -677,6 +677,87 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
+    fun runtimeModelSelectionAtomicallyReconcilesExplicitAndAsyncTargets() {
+        val claude =
+            createAgentRuntimeModelReasoningSelection(
+                runtime = "claude",
+                model = "opus",
+                currentReasoningEffort = "ultra"
+            )
+        val luna =
+            createAgentRuntimeModelReasoningSelection(
+                runtime = "codex",
+                model = "gpt-5.6-luna",
+                currentReasoningEffort = "ultra"
+            )
+        val sol =
+            createAgentRuntimeModelReasoningSelection(
+                runtime = "codex",
+                model = "gpt-5.6-sol",
+                currentReasoningEffort = "ultra"
+            )
+        val live =
+            createAgentRuntimeModelReasoningSelection(
+                runtime = "codex",
+                model = "machine-codex",
+                currentReasoningEffort = "ultra",
+                runtimeModelsOverride =
+                    listOf(
+                        SharedCreateAgentRuntimeModelOption(
+                            id = "machine-codex",
+                            label = "Machine Codex",
+                            supportedReasoningEfforts = listOf("low", "high", "max"),
+                            defaultReasoningEffort = "high"
+                        )
+                    )
+            )
+
+        assertEquals(
+            CreateAgentRuntimeModelReasoningSelection("claude", "opus", null),
+            claude
+        )
+        assertEquals(
+            CreateAgentRuntimeModelReasoningSelection("codex", "gpt-5.6-luna", "medium"),
+            luna
+        )
+        assertEquals(
+            CreateAgentRuntimeModelReasoningSelection("codex", "gpt-5.6-sol", "ultra"),
+            sol
+        )
+        assertEquals(
+            CreateAgentRuntimeModelReasoningSelection("codex", "machine-codex", "high"),
+            live
+        )
+    }
+
+    @Test
+    fun createSubmitFailsClosedWhenReasoningDoesNotBelongToFinalModel() {
+        fun submit(runtime: String, model: String) =
+            buildSharedCreateAgentDialogSubmit(
+                name = "Reasoning Agent",
+                description = "",
+                selectedMachineId = "machine-1",
+                requiredComputer = null,
+                external = false,
+                runtime = runtime,
+                model = model,
+                customModelMode = false,
+                customModelName = "",
+                providerMode = "default",
+                providerApiUrl = "",
+                providerApiKey = TextFieldValue(""),
+                fastMode = false,
+                reasoningEffort = "ultra",
+                envVarEntries = emptyList(),
+                command = ""
+            ).runtimeConfig
+
+        assertNull(assertNotNull(submit("claude", "opus")).reasoningEffort)
+        assertEquals("medium", assertNotNull(submit("codex", "gpt-5.6-luna")).reasoningEffort)
+        assertEquals("ultra", assertNotNull(submit("codex", "gpt-5.6-sol")).reasoningEffort)
+    }
+
+    @Test
     fun codexMaxReasoningSelectionReachesRuntimeConfig() {
         val request =
             buildSharedCreateAgentDialogSubmit(

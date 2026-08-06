@@ -21,6 +21,7 @@ import build.raft.app.model.buildRuntimeConfig
 import build.raft.app.model.getDefaultModel
 import build.raft.app.model.getModelLabel
 import build.raft.app.model.getRuntimeDisplayName
+import build.raft.app.model.reconcileRuntimeReasoningEffort
 import build.raft.app.model.RuntimeModelInfo
 import build.raft.app.model.supportsRuntimeApiUrl
 import build.raft.app.model.supportsRuntimeCommand
@@ -219,7 +220,8 @@ internal fun buildSharedCreateAgentDialogSubmit(
     builtInApiKey: TextFieldValue = TextFieldValue(""),
     builtInBaseUrl: String = "",
     builtInSupportsImageInput: Boolean = false,
-    builtInModel: String = ""
+    builtInModel: String = "",
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList()
 ): SharedCreateAgentDialogSubmit {
     val finalMachineId =
         if (external) null
@@ -237,6 +239,9 @@ internal fun buildSharedCreateAgentDialogSubmit(
                 envVars = createAgentRuntimeEnvVars(envVarEntries)
             )
         } else {
+            val effectiveModel = if (customModelMode) customModelName.trim() else model
+            val reasoningMetadata =
+                createAgentReasoningModelMetadata(runtime, effectiveModel, runtimeModelsOverride)
             buildRuntimeConfig(
                 runtime = runtime,
                 model = model,
@@ -249,6 +254,8 @@ internal fun buildSharedCreateAgentDialogSubmit(
                 piProviderApiKey = piProviderApiKey.text,
                 fastMode = fastMode,
                 reasoningEffort = reasoningEffort,
+                reasoningSupportedEfforts = reasoningMetadata.supportedReasoningEfforts,
+                reasoningDefaultEffort = reasoningMetadata.defaultReasoningEffort,
                 envVars = createAgentRuntimeEnvVars(envVarEntries),
                 command = command.takeIf { supportsRuntimeCommand(runtime) }
             )
@@ -615,12 +622,12 @@ internal fun createAgentReasoningDropdownItems(
             .map { (id, label) -> CreateAgentDropdownItem(id = id, label = label) }
 }
 
-private data class CreateAgentReasoningModelMetadata(
+internal data class CreateAgentReasoningModelMetadata(
     val supportedReasoningEfforts: List<String> = emptyList(),
     val defaultReasoningEffort: String? = null
 )
 
-private fun createAgentReasoningModelMetadata(
+internal fun createAgentReasoningModelMetadata(
     runtime: String,
     model: String,
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption>
@@ -646,11 +653,38 @@ internal fun reconcileCreateAgentReasoningEffort(
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList()
 ): String? {
     val metadata = createAgentReasoningModelMetadata(runtime, model, runtimeModelsOverride)
-    val supported = metadata.supportedReasoningEfforts
-    if (supported.isEmpty()) return current
-    if (current != null && current in supported) return current
-    return metadata.defaultReasoningEffort?.takeIf { it in supported }
+    return reconcileRuntimeReasoningEffort(
+        runtime = runtime,
+        model = model,
+        current = current,
+        supportedReasoningEfforts = metadata.supportedReasoningEfforts,
+        defaultReasoningEffort = metadata.defaultReasoningEffort
+    )
 }
+
+internal data class CreateAgentRuntimeModelReasoningSelection(
+    val runtime: String,
+    val model: String,
+    val reasoningEffort: String?
+)
+
+internal fun createAgentRuntimeModelReasoningSelection(
+    runtime: String,
+    model: String,
+    currentReasoningEffort: String?,
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList()
+): CreateAgentRuntimeModelReasoningSelection =
+    CreateAgentRuntimeModelReasoningSelection(
+        runtime = runtime,
+        model = model,
+        reasoningEffort =
+            reconcileCreateAgentReasoningEffort(
+                runtime = runtime,
+                model = model,
+                current = currentReasoningEffort,
+                runtimeModelsOverride = runtimeModelsOverride
+            )
+    )
 
 private fun List<CreateAgentDropdownItem>.toBrutalSelectOptions(): List<SlockBrutalSelectOption> =
     map { item -> SlockBrutalSelectOption(id = item.id, label = item.label, enabled = item.enabled) }
@@ -926,12 +960,21 @@ internal fun SharedCreateAgentDialog(
         if (!customModelMode) {
             val currentModels = createAgentModelPresetIds(runtime, runtimeModelsOverride)
             if (currentModels.isNotEmpty() && model !in currentModels) {
-                model =
+                val nextModel =
                     createAgentPreferredModelId(
                         runtime = runtime,
                         runtimeModelsOverride = runtimeModelsOverride,
                         runtimeModelsDefault = runtimeModelsCatalog?.defaultModel
                     )
+                val selection =
+                    createAgentRuntimeModelReasoningSelection(
+                        runtime = runtime,
+                        model = nextModel,
+                        currentReasoningEffort = reasoningEffort,
+                        runtimeModelsOverride = runtimeModelsOverride
+                    )
+                model = selection.model
+                reasoningEffort = selection.reasoningEffort
             }
         }
     }
@@ -1179,12 +1222,31 @@ internal fun SharedCreateAgentDialog(
                         if (runtime == "builtin") {
                             BuiltInRuntimeSection(
                                 runtime = runtime,
-                                onRuntimeChange = {
-                                    if (it != runtime) {
+                                onRuntimeChange = { newRuntime ->
+                                    if (newRuntime != runtime) {
                                         builtInApiKey = TextFieldValue("")
                                         builtInSupportsImageInput = false
                                     }
-                                    runtime = it
+                                    val nextCatalog =
+                                        availableSelectedMachineId?.let { machineId ->
+                                            runtimeModelsByMachineAndRuntime[machineId to newRuntime]
+                                        }
+                                    val nextModel =
+                                        createAgentPreferredModelId(
+                                            runtime = newRuntime,
+                                            runtimeModelsOverride = nextCatalog?.models.orEmpty(),
+                                            runtimeModelsDefault = nextCatalog?.defaultModel
+                                        )
+                                    val selection =
+                                        createAgentRuntimeModelReasoningSelection(
+                                            runtime = newRuntime,
+                                            model = nextModel,
+                                            currentReasoningEffort = reasoningEffort,
+                                            runtimeModelsOverride = nextCatalog?.models.orEmpty()
+                                        )
+                                    runtime = selection.runtime
+                                    model = selection.model
+                                    reasoningEffort = selection.reasoningEffort
                                 },
                                 machineRuntimeIds = selectedMachineRuntimeIds,
                                 runtimeAvailabilityError = runtimeAvailabilityError,
@@ -1220,19 +1282,51 @@ internal fun SharedCreateAgentDialog(
                             AdvancedRuntimeSection(
                             runtime = runtime,
                             onRuntimeChange = { newRuntime ->
-                                runtime = newRuntime
+                                val nextCatalog =
+                                    availableSelectedMachineId?.let { machineId ->
+                                        runtimeModelsByMachineAndRuntime[machineId to newRuntime]
+                                    }
+                                val nextModel =
+                                    if (customModelMode) {
+                                        customModelName.trim()
+                                    } else {
+                                        createAgentPreferredModelId(
+                                            runtime = newRuntime,
+                                            runtimeModelsOverride = nextCatalog?.models.orEmpty(),
+                                            runtimeModelsDefault = nextCatalog?.defaultModel
+                                        )
+                                    }
+                                val selection =
+                                    createAgentRuntimeModelReasoningSelection(
+                                        runtime = newRuntime,
+                                        model = nextModel,
+                                        currentReasoningEffort = reasoningEffort,
+                                        runtimeModelsOverride = nextCatalog?.models.orEmpty()
+                                    )
+                                runtime = selection.runtime
                                 if (!customModelMode) {
-                                    model = getDefaultModel(newRuntime)
+                                    model = selection.model
                                 }
+                                reasoningEffort = selection.reasoningEffort
                             },
                             model = model,
-                            onModelChange = { selectedModel ->
-                                model = selectedModel
+                            onModelSelectionChange = { selection ->
+                                model = selection.model
+                                reasoningEffort = selection.reasoningEffort
                                 customModelMode = false
                             },
                             customModelMode = customModelMode,
                             onCustomModelModeChange = { enabled ->
                                 customModelMode = enabled
+                                if (enabled) {
+                                    reasoningEffort =
+                                        reconcileCreateAgentReasoningEffort(
+                                            runtime = runtime,
+                                            model = customModelName.trim(),
+                                            current = reasoningEffort,
+                                            runtimeModelsOverride = emptyList()
+                                        )
+                                }
                             },
                             customModelName = customModelName,
                             onCustomModelNameChange = { customModelName = it },
@@ -1327,7 +1421,8 @@ internal fun SharedCreateAgentDialog(
                                 builtInApiKey = effectiveBuiltInApiKey,
                                 builtInBaseUrl = builtInBaseUrl,
                                 builtInSupportsImageInput = builtInSupportsImageInput,
-                                builtInModel = builtInModel
+                                builtInModel = builtInModel,
+                                runtimeModelsOverride = runtimeModelsOverride
                             )
                         )
                     }
@@ -1670,7 +1765,7 @@ internal fun AdvancedRuntimeSection(
     runtime: String,
     onRuntimeChange: (String) -> Unit,
     model: String,
-    onModelChange: (String) -> Unit,
+    onModelSelectionChange: (CreateAgentRuntimeModelReasoningSelection) -> Unit,
     customModelMode: Boolean,
     onCustomModelModeChange: (Boolean) -> Unit,
     customModelName: String,
@@ -1895,15 +1990,14 @@ internal fun AdvancedRuntimeSection(
                     if (customModelMode) {
                         focusManager.clearFocus(force = true)
                     }
-                    onReasoningEffortChange(
-                        reconcileCreateAgentReasoningEffort(
+                    onModelSelectionChange(
+                        createAgentRuntimeModelReasoningSelection(
                             runtime = runtime,
                             model = item.id,
-                            current = reasoningEffort,
+                            currentReasoningEffort = reasoningEffort,
                             runtimeModelsOverride = runtimeModelsOverride
                         )
                     )
-                    onModelChange(item.id)
                     onCustomModelModeChange(false)
                 }
             }
