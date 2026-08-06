@@ -125,12 +125,11 @@ class SlockAvatarMountedSessionTest {
     }
 
     @Test
-    fun contentChangeRevokesUncommittedFlightAfterItsOnlyMountWasDisposed() {
+    fun contentChangeRevokesActiveFlightBeforeMetadataCommit() {
         val session = SlockAvatarMountedSession()
         val oldKey = avatarKey(contentHex = '1')
         val old = session.mount(oldKey)
         val oldFlight = assertNotNull(session.beginFlight(old))
-        assertTrue(session.dispose(old))
 
         val newKey = avatarKey(contentHex = '2')
         val replacement = session.mount(newKey)
