@@ -388,17 +388,6 @@ private fun SharedTasksLoadedBody(
 }
 
 /**
- * Seed value for a filter-search caller-local editor at a session open, or null to
- * leave the editor untouched. The filter search inputs are the sole owners of their
- * [TextFieldValue] within a session; this is invoked only from a LaunchedEffect
- * keyed on the `openFilterId` session token, so a filter is reseeded from its
- * durable String only when its popover becomes the open session (SetOpenFilter
- * clears the non-active boxes). Returning null for every non-active filter is what
- * stops a stale or echoed durable String from re-injecting into a live editor and
- * clobbering its selection/composition. The seed always places the caret at the end
- * of the durable text; within the session the local editor owns the selection.
- */
-/**
  * Write path for the create-tasks title rows (task #130 Phase D).
  *
  * Replaces only the edited row and reuses every other row's existing
@@ -406,6 +395,15 @@ private fun SharedTasksLoadedBody(
  * never reset another row's selection or in-flight IME composition. Out-of-range
  * indexes are ignored rather than throwing.
  */
+internal fun tasksCreateTitlesUpdated(
+    titles: List<TextFieldValue>,
+    index: Int,
+    next: TextFieldValue
+): List<TextFieldValue> {
+    if (index !in titles.indices) return titles
+    return titles.toMutableList().also { it[index] = next }
+}
+
 /**
  * Write path for appending a create-tasks title row (task #130 Phase D).
  *
@@ -423,15 +421,17 @@ internal fun tasksCreateTitlesAppended(titles: List<TextFieldValue>): List<TextF
 internal fun tasksCreateTitlesSubmission(titles: List<TextFieldValue>): List<String> =
     titles.map { it.text }
 
-internal fun tasksCreateTitlesUpdated(
-    titles: List<TextFieldValue>,
-    index: Int,
-    next: TextFieldValue
-): List<TextFieldValue> {
-    if (index !in titles.indices) return titles
-    return titles.toMutableList().also { it[index] = next }
-}
-
+/**
+ * Seed value for a filter-search caller-local editor at a session open, or null to
+ * leave the editor untouched. The filter search inputs are the sole owners of their
+ * [TextFieldValue] within a session; this is invoked only from a LaunchedEffect
+ * keyed on the `openFilterId` session token, so a filter is reseeded from its
+ * durable String only when its popover becomes the open session (SetOpenFilter
+ * clears the non-active boxes). Returning null for every non-active filter is what
+ * stops a stale or echoed durable String from re-injecting into a live editor and
+ * clobbering its selection/composition. The seed always places the caret at the end
+ * of the durable text; within the session the local editor owns the selection.
+ */
 internal fun slockFilterSearchSessionSeed(
     openFilterId: String?,
     thisFilterId: String,
