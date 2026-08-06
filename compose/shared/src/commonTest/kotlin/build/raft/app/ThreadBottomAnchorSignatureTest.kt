@@ -1345,12 +1345,26 @@ class ThreadBottomAnchorSignatureTest {
 
     @Test
     fun keyboardBottomAnchor_runsWhenInsetChangesAndBottomAutoAnchorAllowed() {
+        // task #990 kill-switch contract: the rise itself no longer anchors —
+        // an open keyboard suppresses every automatic correction. The close
+        // transition is the positive control proving the trigger still lives.
         assertEquals(
-            true,
+            false,
             shouldAnchorThreadComposerLayoutChange(
                 composerLayoutState(
                     previousKeyboardInsetDp = 0f,
                     nextKeyboardInsetDp = 240f,
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 720f
+                )
+            )
+        )
+        assertEquals(
+            true,
+            shouldAnchorThreadComposerLayoutChange(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 240f,
+                    nextKeyboardInsetDp = 0f,
                     previousViewportHeightDp = 720f,
                     nextViewportHeightDp = 720f
                 )
@@ -1407,9 +1421,22 @@ class ThreadBottomAnchorSignatureTest {
 
     @Test
     fun composerLayoutBottomAnchor_runsWhenSuggestionChangesReadyViewportHeight() {
+        // task #990 kill-switch contract: with the keyboard open (the helper's
+        // default insets), a suggestion-driven viewport change no longer
+        // anchors. With the keyboard closed the same change still does.
+        assertFalse(
+            shouldAnchorThreadComposerLayoutChange(
+                composerLayoutState(
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 240f
+                )
+            )
+        )
         assertTrue(
             shouldAnchorThreadComposerLayoutChange(
                 composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 0f,
                     previousViewportHeightDp = 408f,
                     nextViewportHeightDp = 240f
                 )
@@ -1456,7 +1483,10 @@ class ThreadBottomAnchorSignatureTest {
         assertTrue(mixedEpoch.pendingLayoutChange)
         assertFalse(mixedEpoch.anchorFocusedTailAtRenderedBottom)
 
-        val coherentEpoch =
+        // task #990 kill-switch contract: even a coherent epoch does not anchor
+        // while the keyboard is open; the pending change is carried to the
+        // close transition, which performs it.
+        val coherentEpochWhileOpen =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
                     previousKeyboardInsetDp = 0f,
@@ -1468,9 +1498,22 @@ class ThreadBottomAnchorSignatureTest {
                     focusedTailAnchorCanCorrectLayout = true
                 )
             )
-        assertTrue(coherentEpoch.shouldAnchor)
-        assertFalse(coherentEpoch.pendingLayoutChange)
-        assertTrue(coherentEpoch.anchorFocusedTailAtRenderedBottom)
+        assertFalse(coherentEpochWhileOpen.shouldAnchor)
+        val coherentEpochOnClose =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 299.51364f,
+                    nextKeyboardInsetDp = 0f,
+                    previousViewportHeightDp = 315.29318f,
+                    nextViewportHeightDp = 622.84546f,
+                    pendingLayoutChange = true,
+                    viewportEpochCoherent = true,
+                    focusedTailAnchorCanCorrectLayout = true
+                )
+            )
+        assertTrue(coherentEpochOnClose.shouldAnchor)
+        assertFalse(coherentEpochOnClose.pendingLayoutChange)
+        assertTrue(coherentEpochOnClose.anchorFocusedTailAtRenderedBottom)
     }
 
     @Test
@@ -1497,7 +1540,10 @@ class ThreadBottomAnchorSignatureTest {
         // BoxWithConstraints did not change. The only new fact is the Lazy
         // layout viewport catching up; the pending-only retry flow must rerun
         // the decision without ever replaying the mixed one.
-        val layoutOnlyCatchUp =
+        // task #990 kill-switch contract: the Lazy viewport catching up while
+        // the keyboard is still open no longer triggers the retry — the
+        // pending change is held for the close transition, which performs it.
+        val layoutOnlyCatchUpWhileOpen =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
                     previousKeyboardInsetDp = 299.51364f,
@@ -1509,9 +1555,22 @@ class ThreadBottomAnchorSignatureTest {
                     focusedTailAnchorCanCorrectLayout = true
                 )
             )
-        assertTrue(layoutOnlyCatchUp.shouldAnchor)
-        assertFalse(layoutOnlyCatchUp.pendingLayoutChange)
-        assertTrue(layoutOnlyCatchUp.anchorFocusedTailAtRenderedBottom)
+        assertFalse(layoutOnlyCatchUpWhileOpen.shouldAnchor)
+        val catchUpOnClose =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 299.51364f,
+                    nextKeyboardInsetDp = 0f,
+                    previousViewportHeightDp = 622.84546f,
+                    nextViewportHeightDp = 622.84546f,
+                    pendingLayoutChange = mixedEpoch.pendingLayoutChange,
+                    viewportEpochCoherent = true,
+                    focusedTailAnchorCanCorrectLayout = true
+                )
+            )
+        assertTrue(catchUpOnClose.shouldAnchor)
+        assertFalse(catchUpOnClose.pendingLayoutChange)
+        assertTrue(catchUpOnClose.anchorFocusedTailAtRenderedBottom)
     }
 
     @Test
@@ -1734,13 +1793,29 @@ class ThreadBottomAnchorSignatureTest {
                 currentUserScrollGeneration = 0
             )
         )
-        assertTrue(
+        // task #990 kill-switch contract: the settled focused owner's first-IME
+        // correction is exactly the family every white capture implicates — it
+        // no longer runs while the keyboard is open. The close-side control
+        // proves the ownership trigger itself still works.
+        assertFalse(
             shouldAnchorThreadComposerLayoutChange(
                 composerLayoutState(
                     previousKeyboardInsetDp = 0f,
                     nextKeyboardInsetDp = 320f,
                     previousViewportHeightDp = 720f,
                     nextViewportHeightDp = 408f,
+                    allowBottomAutoAnchor = false,
+                    focusedTailAnchorCanCorrectLayout = true
+                )
+            )
+        )
+        assertTrue(
+            shouldAnchorThreadComposerLayoutChange(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 320f,
+                    nextKeyboardInsetDp = 0f,
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 720f,
                     allowBottomAutoAnchor = false,
                     focusedTailAnchorCanCorrectLayout = true
                 )
@@ -1793,6 +1868,10 @@ class ThreadBottomAnchorSignatureTest {
                 currentUserScrollGeneration = 0
             )
         )
+        // task #990 kill-switch contract: even the active focused owner does
+        // not correct while the keyboard is open — its immediate first-IME
+        // correction is suppressed like every other automatic path, and the
+        // close transition performs the correction instead.
         val whileFocused =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
@@ -1805,9 +1884,22 @@ class ThreadBottomAnchorSignatureTest {
                     focusedActiveTailAnchorCanCorrectLayout = true
                 )
             )
-        assertTrue(whileFocused.shouldAnchor)
-        assertFalse(whileFocused.pendingLayoutChange)
-        assertTrue(whileFocused.anchorFocusedTailAtRenderedBottom)
+        assertFalse(whileFocused.shouldAnchor)
+        val onClose =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 320f,
+                    nextKeyboardInsetDp = 0f,
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 720f,
+                    allowBottomAutoAnchor = false,
+                    focusedAnchorOwnsViewport = true,
+                    focusedActiveTailAnchorCanCorrectLayout = true
+                )
+            )
+        assertTrue(onClose.shouldAnchor)
+        assertFalse(onClose.pendingLayoutChange)
+        assertTrue(onClose.anchorFocusedTailAtRenderedBottom)
 
         val loadedLastHistoryFocused =
             resolveThreadComposerLayoutBottomAnchor(
@@ -1889,9 +1981,35 @@ class ThreadBottomAnchorSignatureTest {
 
     @Test
     fun composerLayoutBottomAnchor_runsOncePendingColdEntryBecomesReady() {
+        // task #990 kill-switch contract: with the keyboard open (the helper's
+        // default insets) the cold entry becoming ready does NOT anchor — the
+        // pending change is held. The closed-keyboard arm below keeps the
+        // original single-shot flow as the positive control.
+        val beforeReadyOpen =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 408f,
+                    initialBottomAnchorReady = false
+                )
+            )
+        assertFalse(beforeReadyOpen.shouldAnchor)
+        assertTrue(beforeReadyOpen.pendingLayoutChange)
+        val afterReadyOpen =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 408f,
+                    pendingLayoutChange = beforeReadyOpen.pendingLayoutChange
+                )
+            )
+        assertFalse(afterReadyOpen.shouldAnchor, "no anchor while the keyboard is open")
+
         val beforeReady =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 0f,
                     previousViewportHeightDp = 720f,
                     nextViewportHeightDp = 408f,
                     initialBottomAnchorReady = false
@@ -1903,6 +2021,8 @@ class ThreadBottomAnchorSignatureTest {
         val afterReady =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 0f,
                     previousViewportHeightDp = 408f,
                     nextViewportHeightDp = 408f,
                     pendingLayoutChange = beforeReady.pendingLayoutChange
@@ -1919,6 +2039,8 @@ class ThreadBottomAnchorSignatureTest {
             ),
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 0f,
                     previousViewportHeightDp = 408f,
                     nextViewportHeightDp = 408f,
                     pendingLayoutChange = afterReady.pendingLayoutChange
@@ -1967,7 +2089,61 @@ class ThreadBottomAnchorSignatureTest {
 
     @Test
     fun composerLayoutBottomAnchor_usesRenderedBottomOnlyForFocusedLatestOwner() {
+        // task #990 kill-switch contract: the rise no longer anchors at all, so
+        // the placement-selection contract is asserted on the close transition,
+        // where anchoring still happens.
         val activeLatest =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 320f,
+                    nextKeyboardInsetDp = 0f,
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 720f,
+                    allowBottomAutoAnchor = false,
+                    focusedAnchorOwnsViewport = true,
+                    focusedActiveTailAnchorCanCorrectLayout = true
+                )
+            )
+        val settledLatest =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 320f,
+                    nextKeyboardInsetDp = 0f,
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 720f,
+                    allowBottomAutoAnchor = false,
+                    focusedTailAnchorCanCorrectLayout = true
+                )
+            )
+        val ordinaryFollowingLatest =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 320f,
+                    nextKeyboardInsetDp = 0f,
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 720f
+                )
+            )
+        val historyOrUserOwned =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 320f,
+                    nextKeyboardInsetDp = 0f,
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 720f,
+                    allowBottomAutoAnchor = false,
+                    focusedAnchorOwnsViewport = true
+                )
+            )
+
+        assertTrue(activeLatest.anchorFocusedTailAtRenderedBottom)
+        assertTrue(settledLatest.anchorFocusedTailAtRenderedBottom)
+        assertFalse(ordinaryFollowingLatest.anchorFocusedTailAtRenderedBottom)
+        assertFalse(historyOrUserOwned.anchorFocusedTailAtRenderedBottom)
+
+        // While the keyboard is open the kill-switch suppresses anchoring for
+        // every ownership variant, so no rendered-bottom placement can happen.
+        val activeLatestWhileOpen =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
                     previousKeyboardInsetDp = 0f,
@@ -1979,7 +2155,7 @@ class ThreadBottomAnchorSignatureTest {
                     focusedActiveTailAnchorCanCorrectLayout = true
                 )
             )
-        val settledLatest =
+        val settledLatestWhileOpen =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
                     previousKeyboardInsetDp = 0f,
@@ -1990,31 +2166,10 @@ class ThreadBottomAnchorSignatureTest {
                     focusedTailAnchorCanCorrectLayout = true
                 )
             )
-        val ordinaryFollowingLatest =
-            resolveThreadComposerLayoutBottomAnchor(
-                composerLayoutState(
-                    previousKeyboardInsetDp = 0f,
-                    nextKeyboardInsetDp = 320f,
-                    previousViewportHeightDp = 720f,
-                    nextViewportHeightDp = 408f
-                )
-            )
-        val historyOrUserOwned =
-            resolveThreadComposerLayoutBottomAnchor(
-                composerLayoutState(
-                    previousKeyboardInsetDp = 0f,
-                    nextKeyboardInsetDp = 320f,
-                    previousViewportHeightDp = 720f,
-                    nextViewportHeightDp = 408f,
-                    allowBottomAutoAnchor = false,
-                    focusedAnchorOwnsViewport = true
-                )
-            )
-
-        assertTrue(activeLatest.anchorFocusedTailAtRenderedBottom)
-        assertTrue(settledLatest.anchorFocusedTailAtRenderedBottom)
-        assertFalse(ordinaryFollowingLatest.anchorFocusedTailAtRenderedBottom)
-        assertFalse(historyOrUserOwned.anchorFocusedTailAtRenderedBottom)
+        assertFalse(activeLatestWhileOpen.shouldAnchor)
+        assertFalse(activeLatestWhileOpen.anchorFocusedTailAtRenderedBottom)
+        assertFalse(settledLatestWhileOpen.shouldAnchor)
+        assertFalse(settledLatestWhileOpen.anchorFocusedTailAtRenderedBottom)
     }
 
     @Test
