@@ -1,11 +1,13 @@
 package build.raft.app.data
 
 import build.raft.app.base.BridgeModule
+import build.raft.app.slockSha256Hex
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.random.Random
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.NonCancellable
@@ -47,16 +49,28 @@ internal data class SlockAvatarNativeRequest(
     val retryAtMillis: Long?,
     val eTag: String?,
     val lastModified: String?,
-    val commitGeneration: Long
+    val expectedCommitIdentity: SlockAvatarCommitIdentity?,
+    val committedToCommitIdentity: SlockAvatarCommitIdentity,
+    val expectedModelRevision: Long,
+    val newModelRevision: Long
 ) {
     init {
         require(remoteUrl.startsWith("http://") || remoteUrl.startsWith("https://"))
         require(nativePartitionKey.isSlockAvatarOpaqueKey())
         require(nativeSubjectKey.isSlockAvatarOpaqueKey())
         require(nativeBytesKey.isSlockAvatarOpaqueKey())
-        require(commitGeneration > 0L)
+        require((expectedCommitIdentity == null) == (expectedModelRevision == 0L))
+        require(newModelRevision > expectedModelRevision)
+        require(
+            expectedCommitIdentity == null ||
+                committedToCommitIdentity.commitGeneration > expectedCommitIdentity.commitGeneration
+        )
         require(retryAtMillis == null || retryAtMillis >= 0L)
+        require(expectedCommitIdentity != null || (eTag == null && lastModified == null))
     }
+
+    val commitGeneration: Long
+        get() = committedToCommitIdentity.commitGeneration
 
     @OptIn(ExperimentalEncodingApi::class)
     val imageModel: String
@@ -73,11 +87,18 @@ internal data class SlockAvatarNativeRequest(
             .put("nativeSubjectKey", nativeSubjectKey)
             .put("nativeBytesKey", nativeBytesKey)
             .put("readMode", readMode.wireValue)
-            .put("commitGeneration", commitGeneration.toString())
+            .put("commitGeneration", committedToCommitIdentity.commitGeneration.toString())
+            .put("commitNonce", committedToCommitIdentity.nonce)
+            .put("expectedModelRevision", expectedModelRevision.toString())
+            .put("modelRevision", newModelRevision.toString())
             .also { json ->
                 retryAtMillis?.let { json.put("retryAtMillis", it.toString()) }
                 eTag?.let { json.put("eTag", it) }
                 lastModified?.let { json.put("lastModified", it) }
+                expectedCommitIdentity?.let { expected ->
+                    json.put("expectedCommitGeneration", expected.commitGeneration.toString())
+                    json.put("expectedCommitNonce", expected.nonce)
+                }
             }
 }
 
@@ -125,7 +146,7 @@ internal sealed interface SlockAvatarNativeLoadResult {
     /** Shared suppression was honored while no decodable stale bytes existed. */
     data object Suppressed : SlockAvatarNativeLoadResult
 
-    /** A 2xx candidate is staged under [SlockAvatarNativeRequest.commitGeneration]. */
+    /** A 2xx candidate is staged under [SlockAvatarNativeRequest.committedToCommitIdentity]. */
     data class SuccessfulBytes(
         val sizeBytes: Long,
         val eTag: String?,
@@ -340,15 +361,23 @@ internal class BridgeSlockAvatarNativeCache(
 
 internal data class SlockAvatarCacheRequestToken(
     val key: SlockAvatarCacheKey,
-    val generation: Long
-)
+    val generation: Long,
+    val nonce: String
+) {
+    init {
+        require(generation > 0L)
+        SlockAvatarCommitIdentity(generation, nonce)
+    }
+}
 
 private data class SlockAvatarCacheRequestSlot(
     val owner: SlockAvatarCacheOwner,
     val subject: SlockAvatarCacheSubject
 )
 
-internal class SlockAvatarCacheGenerationAuthority {
+internal class SlockAvatarCacheGenerationAuthority(
+    private val nonceGenerator: () -> String = ::slockAvatarCommitNonce
+) {
     private val lock = SynchronizedObject()
     private var nextGeneration = 0L
     private val selected = mutableMapOf<SlockAvatarCacheRequestSlot, SlockAvatarCacheRequestToken>()
@@ -361,7 +390,9 @@ internal class SlockAvatarCacheGenerationAuthority {
                 token.key == key && completions[token]?.closedForSelection != true
             } ?: run {
                 selected.remove(slot)?.let(completions::remove)
-                SlockAvatarCacheRequestToken(key, ++nextGeneration).also { selected[slot] = it }
+                SlockAvatarCacheRequestToken(key, ++nextGeneration, nonceGenerator()).also {
+                    selected[slot] = it
+                }
             }
         }
 
@@ -547,6 +578,12 @@ internal class SlockAvatarCacheRuntime(
             return SlockAvatarPreparedRender.Legacy(normalizedUrl)
         }
         val (mode, retryAtMillis) = read.decision.toNativeReadMode()
+        val committedToIdentity =
+            SlockAvatarCommitIdentity(
+                commitGeneration = nextAvatarCommitGeneration(read.commitIdentity),
+                nonce = token.nonce
+            )
+        val newModelRevision = nextAvatarModelRevision(read.modelRevision)
         return SlockAvatarPreparedRender.Native(
             token = token,
             request =
@@ -559,7 +596,10 @@ internal class SlockAvatarCacheRuntime(
                     retryAtMillis = retryAtMillis,
                     eTag = read.validators?.eTag,
                     lastModified = read.validators?.lastModified,
-                    commitGeneration = token.generation
+                    expectedCommitIdentity = read.commitIdentity,
+                    committedToCommitIdentity = committedToIdentity,
+                    expectedModelRevision = read.modelRevision,
+                    newModelRevision = newModelRevision
                 ),
             nativeCache = nativeCache
         )
@@ -617,7 +657,15 @@ internal class SlockAvatarCacheRuntime(
             return SlockAvatarCacheCompletionReceipt.NativeUnsupported
         }
         val guard =
-            SlockAvatarCacheCommitGuard(prepared.token.key) {
+            SlockAvatarCacheCommitGuard(
+                key = prepared.token.key,
+                expectedCommit =
+                    SlockAvatarCacheCommitExpectation(
+                        key = prepared.token.key,
+                        commitIdentity = prepared.request.expectedCommitIdentity,
+                        modelRevision = prepared.request.expectedModelRevision
+                    )
+            ) {
                 generationAuthority.isCurrent(prepared.token)
             }
         val previousState =
@@ -637,6 +685,10 @@ internal class SlockAvatarCacheRuntime(
                         coordinator.reportSuccessfulBytes(
                             key = prepared.token.key,
                             sizeBytes = result.sizeBytes,
+                            expectedCommitIdentity = prepared.request.expectedCommitIdentity,
+                            expectedModelRevision = prepared.request.expectedModelRevision,
+                            commitIdentity = prepared.request.committedToCommitIdentity,
+                            modelRevision = prepared.request.newModelRevision,
                             eTag = result.eTag,
                             lastModified = result.lastModified,
                             contentType = result.contentType,
@@ -645,6 +697,8 @@ internal class SlockAvatarCacheRuntime(
                     is SlockAvatarNativeLoadResult.NotModified ->
                         coordinator.reportNotModified(
                             key = prepared.token.key,
+                            expectedCommitIdentity = prepared.request.expectedCommitIdentity,
+                            expectedModelRevision = prepared.request.expectedModelRevision,
                             eTag = result.eTag,
                             lastModified = result.lastModified,
                             guard = guard
@@ -725,6 +779,11 @@ internal class SlockAvatarCacheRuntime(
                 )
         }
     }
+
+    suspend fun seedMountedSession(
+        session: SlockAvatarMountedSession,
+        token: SlockAvatarMountToken
+    ): Boolean = coordinator.seedMountedSession(session, token)
 
     fun captureSessionRetirement(
         environmentId: String,
@@ -819,6 +878,20 @@ internal class SlockAvatarCacheRuntime(
             }
             failed.toClearReceipt()
         }
+}
+
+private fun slockAvatarCommitNonce(): String =
+    slockSha256Hex(Random.Default.nextBytes(ByteArray(32)))
+
+private fun nextAvatarCommitGeneration(expected: SlockAvatarCommitIdentity?): Long {
+    val current = expected?.commitGeneration ?: 0L
+    check(current < Long.MAX_VALUE) { "avatar commit generation exhausted" }
+    return current + 1L
+}
+
+private fun nextAvatarModelRevision(current: Long): Long {
+    check(current < Long.MAX_VALUE) { "avatar model revision exhausted" }
+    return current + 1L
 }
 
 internal fun slockAvatarCacheOwners(

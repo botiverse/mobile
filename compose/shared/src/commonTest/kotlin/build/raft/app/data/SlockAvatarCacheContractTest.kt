@@ -199,6 +199,28 @@ class SlockAvatarCacheContractTest {
     }
 
     @Test
+    fun legacyMetadataWithoutExactCommitIdentityNeverRendersNativeBytes() {
+        val key = key()
+        val legacy =
+            metadata(
+                key,
+                validatedAtMs = 100L,
+                freshUntilMs = 500L,
+                staleUntilMs = 900L
+            ).copy(commitIdentity = null, modelRevision = 0L)
+
+        assertIs<SlockAvatarCacheReadDecision.Fetch>(
+            SlockAvatarCachePolicy.decideRead(
+                key = key,
+                stored = SlockAvatarCacheStoredState(legacy, null),
+                bytesAvailable = true,
+                bytesDecodable = true,
+                nowMs = 200L
+            )
+        )
+    }
+
+    @Test
     fun failuresAreResourceScopedFiniteAndExponentiallyBounded() {
         val key = key()
         val first =
@@ -246,7 +268,9 @@ class SlockAvatarCacheContractTest {
             SlockAvatarCachePolicy.successfulResponse(
                 key,
                 nowMs = 100L,
-                sizeBytes = SlockAvatarCachePolicy.MaxEntryBytes + 1L
+                sizeBytes = SlockAvatarCachePolicy.MaxEntryBytes + 1L,
+                commitIdentity = SlockAvatarCommitIdentity(1L, "1".repeat(64)),
+                modelRevision = 1L
             )
         )
         val stored =
@@ -255,6 +279,8 @@ class SlockAvatarCacheContractTest {
                     key,
                     nowMs = 100L,
                     sizeBytes = 512L,
+                    commitIdentity = SlockAvatarCommitIdentity(1L, "1".repeat(64)),
+                    modelRevision = 1L,
                     eTag = "v1",
                     contentType = "image/webp"
                 )
@@ -289,6 +315,8 @@ class SlockAvatarCacheContractTest {
         freshUntilMs = freshUntilMs,
         staleUntilMs = staleUntilMs,
         sizeBytes = 256L,
-        contentType = "image/webp"
+        contentType = "image/webp",
+        commitIdentity = SlockAvatarCommitIdentity(1L, "a".repeat(64)),
+        modelRevision = 1L
     )
 }

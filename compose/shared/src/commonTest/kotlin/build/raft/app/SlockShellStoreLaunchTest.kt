@@ -95,6 +95,8 @@ class SlockShellStoreLaunchTest {
             "nativeSubjectKey",
             "nativeBytesKey",
             "commitGeneration",
+            "commitNonce",
+            "modelRevision",
             "imageBlob",
             "nativePath"
         ).forEach { key ->

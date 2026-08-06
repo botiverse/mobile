@@ -44,7 +44,10 @@ class SlockAvatarCacheRuntimeTest {
         assertEquals(SlockAvatarNativeReadMode.RenderFresh, request.readMode)
         assertEquals("etag-v1", request.eTag)
         assertEquals("yesterday", request.lastModified)
-        assertTrue(request.commitGeneration > 0L)
+        assertEquals(store.metadataBySlot.getValue(key.slot).commitIdentity, request.expectedCommitIdentity)
+        assertEquals(2L, request.commitGeneration)
+        assertEquals(1L, request.expectedModelRevision)
+        assertEquals(2L, request.newModelRevision)
 
         val wire = request.toJson()
         assertEquals(SLOCK_AVATAR_NATIVE_CACHE_PROTOCOL, wire.optString("protocol"))
@@ -54,6 +57,10 @@ class SlockAvatarCacheRuntimeTest {
         assertTrue(wire.optBoolean("indexedRetirementRequired", false))
         assertEquals(SlockAvatarCachePolicy.MaxEntryBytes.toString(), wire.optString("maxEntryBytes"))
         assertEquals(SlockAvatarCachePolicy.MaxPlatformBytes.toString(), wire.optString("maxManagedBytes"))
+        assertEquals(request.committedToCommitIdentity.nonce, wire.optString("commitNonce"))
+        assertEquals("1", wire.optString("expectedCommitGeneration"))
+        assertEquals("1", wire.optString("expectedModelRevision"))
+        assertEquals("2", wire.optString("modelRevision"))
 
         val serialized = wire.toString()
         listOf(
@@ -66,6 +73,69 @@ class SlockAvatarCacheRuntimeTest {
             "bodyBase64",
             "decodedImage"
         ).forEach { forbidden -> assertFalse(serialized.contains(forbidden)) }
+    }
+
+    @Test
+    fun legacyValidatorRowForcesFullFetchAndOmitsEveryConditionalValidator() = runBlocking {
+        val key = key()
+        val store = FakeMetadataStore()
+        store.metadataBySlot[key.slot] =
+            metadata(key, eTag = "legacy-etag", lastModified = "legacy-last")
+                .copy(commitIdentity = null, modelRevision = 0L)
+        val native = FakeNativeCache().apply {
+            inspection = SlockAvatarNativeInspection.Supported(true, true, managedBytes = 512L)
+        }
+
+        val request =
+            assertIs<SlockAvatarPreparedRender.Native>(
+                runtime(store).prepare(key.subject, RemoteUrl, nativeCache = native)
+            ).request
+
+        assertEquals(SlockAvatarNativeReadMode.Fetch, request.readMode)
+        assertNull(request.expectedCommitIdentity)
+        assertNull(request.eTag)
+        assertNull(request.lastModified)
+        assertEquals(0L, request.expectedModelRevision)
+        assertEquals(1L, request.commitGeneration)
+    }
+
+    @Test
+    fun restartGenerationReuseCannotReplaceDurableCommitIdentityOrNonce() = runBlocking {
+        val key = key()
+        val store = FakeMetadataStore()
+        val firstRuntime =
+            runtime(
+                store,
+                generationAuthority =
+                    SlockAvatarCacheGenerationAuthority { "1".repeat(64) }
+            )
+        val native = FakeNativeCache().apply {
+            awaitBlock = {
+                SlockAvatarNativeLoadResult.SuccessfulBytes(256L, "v1", null, "image/webp")
+            }
+        }
+        val first =
+            assertIs<SlockAvatarPreparedRender.Native>(
+                firstRuntime.prepare(key.subject, RemoteUrl, nativeCache = native)
+            )
+        assertIs<SlockAvatarCacheCompletionReceipt.Accepted>(firstRuntime.observeAndCommit(first))
+
+        val restarted =
+            runtime(
+                store,
+                generationAuthority =
+                    SlockAvatarCacheGenerationAuthority { "2".repeat(64) }
+            )
+        val next =
+            assertIs<SlockAvatarPreparedRender.Native>(
+                restarted.prepare(key.subject, RemoteUrl, nativeCache = native)
+            )
+
+        assertEquals(1L, next.token.generation)
+        assertEquals(first.request.committedToCommitIdentity, next.request.expectedCommitIdentity)
+        assertEquals(2L, next.request.commitGeneration)
+        assertEquals("2".repeat(64), next.request.committedToCommitIdentity.nonce)
+        assertNotEquals(next.token.generation, next.request.commitGeneration)
     }
 
     @Test
@@ -283,6 +353,8 @@ class SlockAvatarCacheRuntimeTest {
         assertEquals(1_024L, stored.sizeBytes)
         assertEquals("etag-v2", stored.eTag)
         assertEquals("today", stored.lastModified)
+        assertEquals(prepared.request.committedToCommitIdentity, stored.commitIdentity)
+        assertEquals(prepared.request.newModelRevision, stored.modelRevision)
         assertEquals(
             listOf("metadata_success", "native_finalize:successful_bytes"),
             events.filter { it.startsWith("metadata_") || it.startsWith("native_finalize") }
@@ -312,7 +384,74 @@ class SlockAvatarCacheRuntimeTest {
         assertEquals(100L, refreshed.fetchedAtMs)
         assertEquals(200L, refreshed.validatedAtMs)
         assertEquals("etag-v2", refreshed.eTag)
+        assertEquals(prepared.request.expectedCommitIdentity, refreshed.commitIdentity)
+        assertEquals(prepared.request.expectedModelRevision, refreshed.modelRevision)
         assertEquals(SlockAvatarNativeFinalizeOutcome.NotModified, native.finalized.single().second)
+    }
+
+    @Test
+    fun notModifiedCannotRefreshAReplacedDurableNonce() = runBlocking {
+        val key = key()
+        val original = metadata(key, eTag = "etag-v1", freshUntilMs = 150L, staleUntilMs = 500L)
+        val store = FakeMetadataStore().apply { metadataBySlot[key.slot] = original }
+        val native = FakeNativeCache().apply {
+            inspection = SlockAvatarNativeInspection.Supported(true, true, managedBytes = 512L)
+            awaitBlock = {
+                store.metadataBySlot[key.slot] =
+                    original.copy(
+                        commitIdentity = SlockAvatarCommitIdentity(1L, "b".repeat(64)),
+                        eTag = "replacement"
+                    )
+                SlockAvatarNativeLoadResult.NotModified("must-not-commit", null)
+            }
+        }
+        val runtime = runtime(store, nowMillis = { 200L })
+        val prepared =
+            assertIs<SlockAvatarPreparedRender.Native>(
+                runtime.prepare(key.subject, RemoteUrl, nativeCache = native)
+            )
+
+        val receipt = assertIs<SlockAvatarCacheCompletionReceipt.Failed>(runtime.observeAndCommit(prepared))
+
+        assertEquals("avatar_cache_metadata_missing", receipt.code)
+        assertEquals("replacement", store.metadataBySlot.getValue(key.slot).eTag)
+        assertEquals(100L, store.metadataBySlot.getValue(key.slot).validatedAtMs)
+        assertEquals(listOf(prepared.request), native.rolledBack)
+        assertTrue(native.finalized.isEmpty())
+    }
+
+    @Test
+    fun successfulBytesCannotOverwriteAReplacedDurableNonce() = runBlocking {
+        val key = key()
+        val original = metadata(key, eTag = "etag-v1")
+        val replacementIdentity = SlockAvatarCommitIdentity(1L, "c".repeat(64))
+        val store = FakeMetadataStore().apply { metadataBySlot[key.slot] = original }
+        val native = FakeNativeCache().apply {
+            inspection = SlockAvatarNativeInspection.Supported(true, true, managedBytes = 512L)
+            awaitBlock = {
+                store.metadataBySlot[key.slot] =
+                    original.copy(commitIdentity = replacementIdentity, eTag = "replacement")
+                SlockAvatarNativeLoadResult.SuccessfulBytes(
+                    sizeBytes = 512L,
+                    eTag = "must-not-commit",
+                    lastModified = null,
+                    contentType = "image/webp"
+                )
+            }
+        }
+        val runtime = runtime(store)
+        val prepared =
+            assertIs<SlockAvatarPreparedRender.Native>(
+                runtime.prepare(key.subject, RemoteUrl, nativeCache = native)
+            )
+
+        assertIs<SlockAvatarCacheCompletionReceipt.RejectedStaleGeneration>(
+            runtime.observeAndCommit(prepared)
+        )
+        assertEquals(replacementIdentity, store.metadataBySlot.getValue(key.slot).commitIdentity)
+        assertEquals("replacement", store.metadataBySlot.getValue(key.slot).eTag)
+        assertEquals(listOf(prepared.request), native.rolledBack)
+        assertTrue(native.finalized.isEmpty())
     }
 
     @Test
@@ -631,6 +770,7 @@ class SlockAvatarCacheRuntimeTest {
         nativeInspectionTimeoutMillis: Long = SLOCK_AVATAR_NATIVE_INSPECTION_TIMEOUT_MILLIS,
         nativeMutationTimeoutMillis: Long = SLOCK_AVATAR_NATIVE_MUTATION_TIMEOUT_MILLIS,
         nativeResultTimeoutMillis: Long = SLOCK_AVATAR_NATIVE_RESULT_TIMEOUT_MILLIS,
+        generationAuthority: SlockAvatarCacheGenerationAuthority = SlockAvatarCacheGenerationAuthority(),
         ownerProvider: suspend (String?) -> SlockAvatarCacheOwner? = { requested ->
             owner(serverId = requested ?: "server-a")
         }
@@ -638,6 +778,7 @@ class SlockAvatarCacheRuntimeTest {
         SlockAvatarCacheRuntime(
             coordinator = SlockAvatarCacheCoordinator(store, nowMillis),
             currentOwner = ownerProvider,
+            generationAuthority = generationAuthority,
             nativeInspectionTimeoutMillis = nativeInspectionTimeoutMillis,
             nativeMutationTimeoutMillis = nativeMutationTimeoutMillis,
             nativeResultTimeoutMillis = nativeResultTimeoutMillis
@@ -673,7 +814,9 @@ class SlockAvatarCacheRuntimeTest {
         freshUntilMs = freshUntilMs,
         staleUntilMs = staleUntilMs,
         sizeBytes = 512L,
-        contentType = "image/webp"
+        contentType = "image/webp",
+        commitIdentity = SlockAvatarCommitIdentity(1L, "a".repeat(64)),
+        modelRevision = 1L
     )
 
     private val SlockAvatarCacheKey.slot: Pair<SlockAvatarCacheOwner, SlockAvatarCacheSubject>
@@ -701,6 +844,16 @@ class SlockAvatarCacheRuntimeTest {
         ): SlockAvatarCacheCommitResult {
             commitSuccessCalls += 1
             if (!guard.allows(metadata.key)) return SlockAvatarCacheCommitResult.RejectedStaleGeneration
+            guard.expectedCommit?.let { expected ->
+                val current = metadataBySlot[metadata.key.owner to metadata.key.subject]
+                if (
+                    current?.key?.let { it != expected.key } == true ||
+                    current?.commitIdentity != expected.commitIdentity ||
+                    (current?.modelRevision ?: 0L) != expected.modelRevision
+                ) {
+                    return SlockAvatarCacheCommitResult.RejectedStaleGeneration
+                }
+            }
             metadataBySlot[metadata.key.owner to metadata.key.subject] = metadata
             failureByKey.keys
                 .filter { it.owner == metadata.key.owner && it.subject == metadata.key.subject }

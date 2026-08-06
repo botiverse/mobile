@@ -14,7 +14,9 @@ internal data class SlockAvatarCacheValidators(
 
 internal data class SlockAvatarCachePreparedRead(
     val decision: SlockAvatarCacheReadDecision,
-    val validators: SlockAvatarCacheValidators?
+    val validators: SlockAvatarCacheValidators?,
+    val commitIdentity: SlockAvatarCommitIdentity?,
+    val modelRevision: Long
 )
 
 /**
@@ -31,7 +33,8 @@ internal class SlockAvatarCacheCoordinator(
         bytesDecodable: Boolean
     ): SlockAvatarCachePreparedRead {
         val stored = store.read(key)
-        val metadata = stored.metadata?.takeIf { it.key == key }
+        val metadata =
+            stored.metadata?.takeIf { it.key == key && it.hasExactCommitIdentity }
         return SlockAvatarCachePreparedRead(
             decision =
                 SlockAvatarCachePolicy.decideRead(
@@ -47,7 +50,9 @@ internal class SlockAvatarCacheCoordinator(
                         eTag = it.eTag,
                         lastModified = it.lastModified
                     )
-                }
+                }?.takeIf { it.eTag != null || it.lastModified != null },
+            commitIdentity = metadata?.commitIdentity,
+            modelRevision = metadata?.modelRevision ?: 0L
         )
     }
 
@@ -64,35 +69,61 @@ internal class SlockAvatarCacheCoordinator(
     suspend fun reportSuccessfulBytes(
         key: SlockAvatarCacheKey,
         sizeBytes: Long,
+        expectedCommitIdentity: SlockAvatarCommitIdentity?,
+        expectedModelRevision: Long,
+        commitIdentity: SlockAvatarCommitIdentity,
+        modelRevision: Long,
         eTag: String?,
         lastModified: String?,
         contentType: String?,
         guard: SlockAvatarCacheCommitGuard
     ): SlockAvatarCacheMutationResult =
-        when (
-            val decision =
-                SlockAvatarCachePolicy.successfulResponse(
-                    key = key,
-                    nowMs = nowMillis(),
-                    sizeBytes = sizeBytes,
-                    eTag = eTag,
-                    lastModified = lastModified,
-                    contentType = contentType
-                )
+        if (
+            guard.expectedCommit !=
+                SlockAvatarCacheCommitExpectation(key, expectedCommitIdentity, expectedModelRevision)
         ) {
-            is SlockAvatarCacheWriteDecision.RejectTooLarge ->
-                SlockAvatarCacheMutationResult.RejectedTooLarge(decision.sizeBytes, decision.maxBytes)
-            is SlockAvatarCacheWriteDecision.Store ->
-                store.commitSuccess(decision.metadata, guard).toMutationResult()
+            SlockAvatarCacheMutationResult.RejectedStaleGeneration
+        } else {
+            when (
+                val decision =
+                    SlockAvatarCachePolicy.successfulResponse(
+                        key = key,
+                        nowMs = nowMillis(),
+                        sizeBytes = sizeBytes,
+                        commitIdentity = commitIdentity,
+                        modelRevision = modelRevision,
+                        eTag = eTag,
+                        lastModified = lastModified,
+                        contentType = contentType
+                    )
+            ) {
+                is SlockAvatarCacheWriteDecision.RejectTooLarge ->
+                    SlockAvatarCacheMutationResult.RejectedTooLarge(decision.sizeBytes, decision.maxBytes)
+                is SlockAvatarCacheWriteDecision.Store ->
+                    store.commitSuccess(decision.metadata, guard).toMutationResult()
+            }
         }
 
     suspend fun reportNotModified(
         key: SlockAvatarCacheKey,
+        expectedCommitIdentity: SlockAvatarCommitIdentity?,
+        expectedModelRevision: Long,
         eTag: String?,
         lastModified: String?,
         guard: SlockAvatarCacheCommitGuard
     ): SlockAvatarCacheMutationResult {
-        val existing = store.read(key).metadata?.takeIf { it.key == key }
+        if (
+            guard.expectedCommit !=
+                SlockAvatarCacheCommitExpectation(key, expectedCommitIdentity, expectedModelRevision)
+        ) {
+            return SlockAvatarCacheMutationResult.RejectedStaleGeneration
+        }
+        val existing = store.read(key).metadata?.takeIf {
+            it.key == key &&
+                expectedCommitIdentity != null &&
+                it.commitIdentity == expectedCommitIdentity &&
+                it.modelRevision == expectedModelRevision
+        }
             ?: return SlockAvatarCacheMutationResult.MissingCurrentMetadata
         val refreshed =
             SlockAvatarCachePolicy.notModified(
@@ -102,6 +133,20 @@ internal class SlockAvatarCacheCoordinator(
                 lastModified = lastModified ?: existing.lastModified
             )
         return store.commitSuccess(refreshed, guard).toMutationResult()
+    }
+
+    /**
+     * Rehydrates only exact durable identity into a process-local mounted session. Legacy or
+     * malformed rows remain a full-body miss and never carry their validators across restart.
+     */
+    suspend fun seedMountedSession(
+        session: SlockAvatarMountedSession,
+        token: SlockAvatarMountToken
+    ): Boolean {
+        val metadata = store.read(token.key).metadata
+            ?.takeIf { it.key == token.key && it.hasExactCommitIdentity }
+            ?: return false
+        return session.seedDurable(token, metadata)
     }
 
     suspend fun reportFailure(

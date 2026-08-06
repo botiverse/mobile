@@ -58,6 +58,7 @@ internal data class SlockAvatarMountedSnapshot(
 ) {
     init {
         require(modelRevision >= 0L)
+        require((commitIdentity == null) == (modelRevision == 0L))
         require(commitIdentity != null || validators == null) {
             "avatar validators require a committed identity"
         }
@@ -83,6 +84,7 @@ internal class SlockAvatarMountedFlight internal constructor(
     init {
         require(requestGeneration > 0L)
         require(expectedModelRevision >= 0L)
+        require((expectedCommitIdentity == null) == (expectedModelRevision == 0L))
         require(expectedCommitIdentity != null || validators == null)
     }
 
@@ -224,6 +226,41 @@ internal class SlockAvatarMountedSession {
         synchronized(lock) {
             if (!isCurrentLocked(token)) return@synchronized null
             snapshotForLocked(token.key)
+        }
+
+    /**
+     * Seeds an exact durable commit after process restart. It may only initialize an untouched
+     * current mount: an active flight or any in-memory commit wins and cannot be overwritten by a
+     * delayed SQL read.
+     */
+    fun seedDurable(
+        token: SlockAvatarMountToken,
+        durable: SlockAvatarCacheMetadata
+    ): Boolean =
+        synchronized(lock) {
+            if (!isCurrentLocked(token) || durable.key != token.key) return@synchronized false
+            val identity = durable.commitIdentity ?: return@synchronized false
+            if (durable.modelRevision <= 0L) return@synchronized false
+            val slot = token.key.mountedSlot()
+            if (activeFlights.containsKey(slot) || metadata.containsKey(slot)) {
+                return@synchronized false
+            }
+            metadata[slot] =
+                SlockAvatarMountedMetadata(
+                    key = token.key,
+                    commitIdentity = identity,
+                    validators =
+                        if (durable.eTag != null || durable.lastModified != null) {
+                            SlockAvatarValidators(
+                                eTag = durable.eTag,
+                                lastModified = durable.lastModified
+                            )
+                        } else {
+                            null
+                        },
+                    modelRevision = durable.modelRevision
+                )
+            true
         }
 
     /**

@@ -223,6 +223,9 @@ CREATE TABLE avatarCacheMetadataEntity (
   staleUntilMs INTEGER NOT NULL,
   sizeBytes INTEGER NOT NULL,
   contentType TEXT,
+  commitGeneration INTEGER,
+  commitNonce TEXT,
+  modelRevision INTEGER,
   PRIMARY KEY (environmentId, accountId, serverId, subjectKind, subjectId, memberKind)
 );
 
@@ -768,8 +771,19 @@ INSERT OR REPLACE INTO avatarCacheMetadataEntity(
   contentKind, contentFingerprint,
   eTag, lastModified,
   fetchedAtMs, validatedAtMs, freshUntilMs, staleUntilMs,
-  sizeBytes, contentType
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+  sizeBytes, contentType,
+  commitGeneration, commitNonce, modelRevision
+) SELECT
+  :environmentId, :accountId, :serverId,
+  :subjectKind, :subjectId, :memberKind,
+  :contentKind, :contentFingerprint,
+  :eTag, :lastModified,
+  :fetchedAtMs, :validatedAtMs, :freshUntilMs, :staleUntilMs,
+  :sizeBytes, :contentType,
+  :commitGeneration, :commitNonce, :modelRevision
+WHERE
+  (:commitGeneration IS NULL AND :commitNonce IS NULL AND :modelRevision IS NULL)
+  OR (:commitGeneration IS NOT NULL AND :commitNonce IS NOT NULL AND :modelRevision IS NOT NULL);
 
 deleteAvatarCacheMetadata:
 DELETE FROM avatarCacheMetadataEntity

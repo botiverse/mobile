@@ -152,6 +152,26 @@ class SlockAvatarCacheMetadataStoreTest {
     }
 
     @Test
+    fun exactCommitCasRejectsSameGenerationWithDifferentNonce() = withStore { store ->
+        val key = key()
+        val current = metadata(key)
+        store.commitSuccess(current, currentGuard(key))
+        val wrongExpected = SlockAvatarCommitIdentity(1L, "b".repeat(64))
+        val candidate =
+            current.copy(
+                commitIdentity = SlockAvatarCommitIdentity(2L, "c".repeat(64)),
+                modelRevision = 2L,
+                eTag = "must-not-commit"
+            )
+
+        assertEquals(
+            SlockAvatarCacheCommitResult.RejectedStaleGeneration,
+            store.commitSuccess(candidate, casGuard(key, wrongExpected, 1L))
+        )
+        assertEquals(current, store.read(key).metadata)
+    }
+
+    @Test
     fun rejectedGuardWritesNothingAndClearOwnerDoesNotCrossPartitions() = withStore { store ->
         val ownerA = owner(accountId = "account-a")
         val ownerB = owner(accountId = "account-b")
@@ -282,10 +302,14 @@ class SlockAvatarCacheMetadataStoreTest {
                 coordinator.reportSuccessfulBytes(
                     key = key,
                     sizeBytes = 512L,
+                    expectedCommitIdentity = null,
+                    expectedModelRevision = 0L,
+                    commitIdentity = SlockAvatarCommitIdentity(1L, "1".repeat(64)),
+                    modelRevision = 1L,
                     eTag = "v1",
                     lastModified = null,
                     contentType = "image/webp",
-                    guard = currentGuard(key)
+                    guard = casGuard(key, null, 0L)
                 )
             )
             assertEquals(key, store.read(key).metadata?.key)
@@ -321,15 +345,107 @@ class SlockAvatarCacheMetadataStoreTest {
                 coordinator.reportSuccessfulBytes(
                     key = key,
                     sizeBytes = 512L,
+                    expectedCommitIdentity = null,
+                    expectedModelRevision = 0L,
+                    commitIdentity = SlockAvatarCommitIdentity(2L, "2".repeat(64)),
+                    modelRevision = 2L,
                     eTag = "v2",
                     lastModified = null,
                     contentType = "image/webp",
-                    guard = currentGuard(key)
+                    guard = casGuard(key, null, 0L)
                 )
             )
             assertEquals("v2", store.read(key).metadata?.eTag)
             assertNull(store.read(key).failure)
         }
+
+    @Test
+    fun databaseRejectsPartialCommitTupleAndMapperFailsClosedForInvalidTuple() = runTest {
+        assertNull(slockAvatarDurableCommitOrNull(1L, null, 1L))
+        assertNull(slockAvatarDurableCommitOrNull(null, "a".repeat(64), 1L))
+        assertNull(slockAvatarDurableCommitOrNull(1L, "a".repeat(64), null))
+        assertNull(slockAvatarDurableCommitOrNull(1L, "not-a-valid-nonce", 1L))
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        try {
+            SlockDatabase.Schema.create(driver).value
+            val database = SlockSqlDatabase(driver)
+            database.queries.upsertAvatarCacheMetadata(
+                environmentId = "https://api.example",
+                accountId = "account-a",
+                serverId = "server-a",
+                subjectKind = "member",
+                subjectId = "member-a",
+                memberKind = "agent",
+                contentKind = "external_url",
+                contentFingerprint = "a".repeat(64),
+                eTag = "legacy",
+                lastModified = null,
+                fetchedAtMs = 100L,
+                validatedAtMs = 100L,
+                freshUntilMs = 200L,
+                staleUntilMs = 300L,
+                sizeBytes = 512L,
+                contentType = "image/webp",
+                commitGeneration = 1L,
+                commitNonce = null,
+                modelRevision = 1L
+            )
+            assertEquals(0L, driver.scalarLong("SELECT COUNT(*) FROM avatarCacheMetadataEntity"))
+
+            driver.execute(
+                null,
+                """
+                INSERT INTO avatarCacheMetadataEntity(
+                  environmentId,accountId,serverId,subjectKind,subjectId,memberKind,
+                  contentKind,contentFingerprint,eTag,lastModified,
+                  fetchedAtMs,validatedAtMs,freshUntilMs,staleUntilMs,sizeBytes,contentType,
+                  commitGeneration,commitNonce,modelRevision
+                ) VALUES (
+                  'https://api.example','account-a','server-a','member','member-a','agent',
+                  'external_url','${key().content.fingerprint}','legacy',NULL,
+                  100,100,200,300,512,'image/webp',1,'not-a-valid-nonce',1
+                )
+                """.trimIndent(),
+                0
+            ).value
+
+            val stored =
+                SqlDelightSlockAvatarCacheMetadataStore(database).read(key()).metadata
+            assertEquals("legacy", stored?.eTag)
+            assertNull(stored?.commitIdentity)
+            assertEquals(0L, stored?.modelRevision)
+        } finally {
+            driver.close()
+        }
+    }
+
+    @Test
+    fun exactIdentitySurvivesStoreRecreationAndSeedsMountedSession() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        try {
+            SlockDatabase.Schema.create(driver).value
+            val database = SlockSqlDatabase(driver)
+            val key = key()
+            val exact = metadata(key)
+            SqlDelightSlockAvatarCacheMetadataStore(database)
+                .commitSuccess(exact, currentGuard(key))
+
+            val recreatedStore = SqlDelightSlockAvatarCacheMetadataStore(database)
+            assertEquals(exact, recreatedStore.read(key).metadata)
+            val session = SlockAvatarMountedSession()
+            val token = session.mount(key)
+
+            assertTrue(
+                SlockAvatarCacheCoordinator(recreatedStore) { 150L }
+                    .seedMountedSession(session, token)
+            )
+            assertEquals(exact.commitIdentity, session.snapshot(token)?.commitIdentity)
+            assertEquals(exact.modelRevision, session.snapshot(token)?.modelRevision)
+            assertEquals(exact.eTag, session.beginFlight(token)?.validators?.eTag)
+        } finally {
+            driver.close()
+        }
+    }
 
     private fun withStore(block: suspend (SqlDelightSlockAvatarCacheMetadataStore) -> Unit) = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
@@ -362,9 +478,20 @@ class SlockAvatarCacheMetadataStoreTest {
             freshUntilMs = 200L,
             staleUntilMs = 300L,
             sizeBytes = 512L,
-            contentType = "image/webp"
+            contentType = "image/webp",
+            commitIdentity = SlockAvatarCommitIdentity(1L, "a".repeat(64)),
+            modelRevision = 1L
         )
 
     private fun currentGuard(key: SlockAvatarCacheKey) =
         SlockAvatarCacheCommitGuard(key) { true }
+
+    private fun casGuard(
+        key: SlockAvatarCacheKey,
+        identity: SlockAvatarCommitIdentity?,
+        modelRevision: Long
+    ) = SlockAvatarCacheCommitGuard(
+        key = key,
+        expectedCommit = SlockAvatarCacheCommitExpectation(key, identity, modelRevision)
+    ) { true }
 }
