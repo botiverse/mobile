@@ -40,7 +40,7 @@ class TasksCreateTitleRowsTest {
         val first = TextFieldValue("keep", selection = TextRange(4))
         val titles = listOf(first)
 
-        val appended = titles + TextFieldValue()
+        val appended = tasksCreateTitlesAppended(titles)
 
         assertSame(first, appended[0])
         assertEquals("", appended[1].text)
@@ -56,6 +56,24 @@ class TasksCreateTitleRowsTest {
     @Test
     fun submitProjectionKeepsRowOrder() {
         val titles = listOf(TextFieldValue("a"), TextFieldValue("b"), TextFieldValue("c"))
-        assertEquals(listOf("a", "b", "c"), titles.map { it.text })
+        assertEquals(listOf("a", "b", "c"), tasksCreateTitlesSubmission(titles))
+    }
+
+    @Test
+    fun submitProjectionDropsSelectionAndComposition() {
+        val titles =
+            listOf(
+                TextFieldValue("draft", selection = TextRange(1, 4), composition = TextRange(0, 5))
+            )
+        assertEquals(listOf("draft"), tasksCreateTitlesSubmission(titles))
+    }
+
+    @Test
+    fun appendedRowStartsEmptyWithCollapsedCaret() {
+        val appended = tasksCreateTitlesAppended(listOf(TextFieldValue("a")))
+        assertEquals(2, appended.size)
+        assertEquals("", appended[1].text)
+        assertEquals(0, appended[1].selection.start)
+        assertEquals(0, appended[1].selection.end)
     }
 }

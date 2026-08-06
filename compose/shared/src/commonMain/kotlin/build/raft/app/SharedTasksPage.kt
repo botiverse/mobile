@@ -406,6 +406,23 @@ private fun SharedTasksLoadedBody(
  * never reset another row's selection or in-flight IME composition. Out-of-range
  * indexes are ignored rather than throwing.
  */
+/**
+ * Write path for appending a create-tasks title row (task #130 Phase D).
+ *
+ * Appends a fresh empty session and reuses every existing row's
+ * [TextFieldValue] instance, so adding a row cannot disturb the selection or
+ * in-flight composition of a row already being edited.
+ */
+internal fun tasksCreateTitlesAppended(titles: List<TextFieldValue>): List<TextFieldValue> =
+    titles + TextFieldValue()
+
+/**
+ * Submit projection for the create-tasks title rows (task #130 Phase D): the
+ * durable request carries plain strings, in row order, and only at submit.
+ */
+internal fun tasksCreateTitlesSubmission(titles: List<TextFieldValue>): List<String> =
+    titles.map { it.text }
+
 internal fun tasksCreateTitlesUpdated(
     titles: List<TextFieldValue>,
     index: Int,
@@ -1697,7 +1714,7 @@ private fun TasksCreateDialog(
                     iconName = SlockLucideIconName.Plus,
                     active = false,
                     enabled = !loading,
-                    onClick = { titles = titles + TextFieldValue() }
+                    onClick = { titles = tasksCreateTitlesAppended(titles) }
                 )
                 errorCode?.takeIf { it.isNotBlank() }?.let { code ->
                     Text(
@@ -1726,7 +1743,7 @@ private fun TasksCreateDialog(
                         iconName = SlockLucideIconName.Check,
                         active = true,
                         enabled = anyNonBlank && !loading,
-                        onClick = { onSubmit(titles.map { it.text }) }
+                        onClick = { onSubmit(tasksCreateTitlesSubmission(titles)) }
                     )
                 }
             }
