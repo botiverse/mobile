@@ -3680,11 +3680,17 @@ private fun HomeNotificationCenter(
                         .background(if (open) SlockColor.SurfaceWhite else Color.Transparent)
                         .border(SlockStroke.Default, if (open) SlockColor.BorderBlack else Color.Transparent)
             ) {
-                SlockLucideIcon(SlockLucideIconName.Bell, Modifier.size(16.dp))
+                // Web parity (task #113 / artin 2026-08-06): the pink dot sits
+                // directly at the Bell icon's top-right corner (web: dot on the
+                // icon wrapper span, `-top-1 -end-1`), not at the button slot
+                // corner. Icon-sized wrapper keeps the same geometry.
+                Box(modifier = Modifier.size(16.dp)) {
+                    SlockLucideIcon(SlockLucideIconName.Bell, Modifier.size(16.dp))
+                    if (hasUnread) {
+                        ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
+                    }
+                }
             }
-        }
-        if (hasUnread) {
-            ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
         }
     }
 }
