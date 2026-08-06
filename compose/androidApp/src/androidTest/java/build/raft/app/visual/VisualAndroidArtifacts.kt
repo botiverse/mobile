@@ -58,6 +58,24 @@ internal object VisualAndroidArtifacts {
             "$caseId.failure.json"
         )
 
+    // Exact-name deletion for supplementary evidence files (render-fail
+    // diagnostics, wg-nightly task #16). Same #461 rule as caseArtifactNames:
+    // callers pass full filenames, never prefixes.
+    fun deleteMirroredFiles(names: List<String>) {
+        if (names.isEmpty()) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver =
+                InstrumentationRegistry.getInstrumentation().targetContext.contentResolver
+            val selection = names.joinToString(" OR ") { "${MediaStore.Downloads.DISPLAY_NAME} = ?" }
+            deleteMatchingMediaStoreDownloads(resolver, selection, names.toTypedArray())
+        }
+        val nameSet = names.toSet()
+        publicOutputDir()
+            .listFiles()
+            ?.filter { file -> file.name in nameSet }
+            ?.forEach { file -> file.delete() }
+    }
+
     fun deleteCaseArtifacts(caseId: String) {
         deleteExistingMediaStoreDownloadsForCase(caseId)
         val names = caseArtifactNames(caseId).toSet()

@@ -3818,7 +3818,10 @@ class KmpVisualScreenshotCaptureTest {
      * capture (rendered on success, last poll on timeout so the caller's own
      * asserts still fail with real detail). The caller owns recycling the
      * returned bitmap; [captureActivityScreenshot] holds no disk state, so the
-     * intermediate polls are recycled here and never persisted.
+     * intermediate polls are recycled here and never persisted. On timeout the
+     * before/last-poll frames plus a bounded view-tree dump ARE persisted as
+     * render-fail evidence (wg-nightly task #16): the caller's assert fires
+     * next and the exception path can no longer reach these pixels.
      */
     private fun captureAfterLongPressRendered(
         label: String,
@@ -3849,6 +3852,19 @@ class KmpVisualScreenshotCaptureTest {
                     "changedRatio=$changedRatio rendered=$ok retried=$retried"
             )
             if (ok || elapsed >= timeoutMs) {
+                if (ok) {
+                    deleteRenderFailDiagnostics(label)
+                } else {
+                    writeRenderFailDiagnostics(
+                        label = label,
+                        before = before,
+                        lastPoll = latest!!,
+                        polls = poll,
+                        elapsedMs = elapsed,
+                        lastChangedRatio = changedRatio,
+                        retried = retried,
+                    )
+                }
                 return latest!!
             }
             if (!retried && elapsed >= retryAtMs) {
@@ -5004,6 +5020,137 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
+    // Failure-path evidence (wg-nightly task #16). When the render-wait gate
+    // gives up, the caller's own assert usually fires next and the
+    // exception/timeout path preserves no pixels — so the run where evidence
+    // matters most used to publish none (nightly 31050654692: eight polls of
+    // changedRatio≈0 could not distinguish "tap coordinates missed the row"
+    // from "row hit but the open was gated elsewhere"). Persist the
+    // before/last-poll frames and a bounded view-tree dump so that distinction
+    // is one artifact read. Best-effort by design: this writer must never
+    // throw over the caller's own (more precise) assertion failure.
+    private fun writeRenderFailDiagnostics(
+        label: String,
+        before: Bitmap,
+        lastPoll: Bitmap,
+        polls: Int,
+        elapsedMs: Long,
+        lastChangedRatio: Float,
+        retried: Boolean,
+    ) {
+        try {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val dir = visualOutputDir(context)
+            dir.mkdirs()
+            val beforeFile = File(dir, "$label.render-fail.before.png")
+            beforeFile.outputStream().use { out ->
+                before.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+            val afterFile = File(dir, "$label.render-fail.after.png")
+            afterFile.outputStream().use { out ->
+                lastPoll.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+            // View bounds answer "what was actually under the gesture point".
+            // The walk is main-thread work; a wedged main degrades to
+            // viewTree=null instead of blocking the shard (runOnMainSyncBounded
+            // throws, caught here).
+            var viewTree: JSONArray? = null
+            var viewTreeNote = "ok"
+            try {
+                onActivityNoIdle { activity ->
+                    viewTree = dumpViewTreeJson(activity.window.decorView.rootView)
+                }
+                if (viewTree == null) viewTreeNote = "no RESUMED activity"
+            } catch (t: Throwable) {
+                viewTreeNote = "view-tree walk unavailable: ${t.message}"
+            }
+            val dm = context.resources.displayMetrics
+            val file = File(dir, "$label.render-fail.json")
+            file.writeText(
+                JSONObject()
+                    .put("provider", "android")
+                    .put("label", label)
+                    .put("status", "render-gate-timeout")
+                    .put("polls", polls)
+                    .put("elapsedMs", elapsedMs)
+                    .put("lastChangedRatio", lastChangedRatio.toDouble())
+                    .put("retriedGesture", retried)
+                    .put("beforeImage", beforeFile.name)
+                    .put("afterImage", afterFile.name)
+                    .put("displayWidthPx", dm.widthPixels)
+                    .put("displayHeightPx", dm.heightPixels)
+                    .put("densityDpi", dm.densityDpi)
+                    .put("viewTreeNote", viewTreeNote)
+                    .put("viewTree", viewTree ?: JSONObject.NULL)
+                    // Attempt/generation let a reader match this evidence to
+                    // the final failure.json when the workflow-level retry ran
+                    // the case more than once (stale-evidence disambiguation).
+                    .put("attempt", visualAttempt())
+                    .put("generation", visualGeneration())
+                    .put("capturedAt", System.currentTimeMillis())
+                    .toString(2) + "\n"
+            )
+            mirrorFileForAdbPull(context, beforeFile)
+            mirrorFileForAdbPull(context, afterFile)
+            mirrorFileForAdbPull(context, file)
+            Log.i(
+                VISUAL_LOG_TAG,
+                "$label render gate timed out; wrote render-fail evidence " +
+                    "(${beforeFile.name}, ${afterFile.name}, ${file.name})"
+            )
+        } catch (t: Throwable) {
+            Log.w(VISUAL_LOG_TAG, "writeRenderFailDiagnostics failed for $label: ${t.message}")
+        }
+    }
+
+    // Exact artifact names only, never a label/caseId prefix match (#461's
+    // lesson: a prefix would delete a longer sibling case's files).
+    private fun renderFailArtifactNames(label: String): List<String> =
+        listOf(
+            "$label.render-fail.before.png",
+            "$label.render-fail.after.png",
+            "$label.render-fail.json",
+        )
+
+    // A green gate erases the stale evidence a prior red attempt left (the
+    // workflow retries whole cases), so a published artifact containing
+    // render-fail files always describes the shard's final state.
+    private fun deleteRenderFailDiagnostics(label: String) {
+        try {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val dir = visualOutputDir(context)
+            val names = renderFailArtifactNames(label)
+            names.forEach { name -> File(dir, name).delete() }
+            VisualAndroidArtifacts.deleteMirroredFiles(names)
+        } catch (t: Throwable) {
+            Log.w(VISUAL_LOG_TAG, "deleteRenderFailDiagnostics failed for $label: ${t.message}")
+        }
+    }
+
+    private fun dumpViewTreeJson(root: View): JSONArray {
+        val out = JSONArray()
+        val loc = IntArray(2)
+        fun walk(view: View, depth: Int) {
+            if (out.length() >= RENDER_FAIL_VIEW_TREE_MAX_NODES) return
+            view.getLocationOnScreen(loc)
+            out.put(
+                JSONObject()
+                    .put("depth", depth)
+                    .put("class", view.javaClass.simpleName)
+                    .put("xPx", loc[0])
+                    .put("yPx", loc[1])
+                    .put("widthPx", view.width)
+                    .put("heightPx", view.height)
+                    .put("visible", view.visibility == View.VISIBLE)
+            )
+            if (view is ViewGroup) {
+                for (i in 0 until view.childCount) walk(view.getChildAt(i), depth + 1)
+            }
+        }
+        walk(root, 0)
+        return out
+    }
+
     private fun visualOutputDir(context: Context): File =
         File(context.filesDir, "visual-testing/android")
 
@@ -5743,6 +5890,11 @@ class KmpVisualScreenshotCaptureTest {
 
         // Cap the diagnostics view-tree walk so it never dominates a capture.
         private const val DIAGNOSTICS_MAX_VIEWS = 2_000
+
+        // Render-fail view-tree dump cap (wg-nightly task #16): enough nodes to
+        // locate what sat under a gesture point, small enough that the JSON
+        // stays readable in a published artifact.
+        private const val RENDER_FAIL_VIEW_TREE_MAX_NODES = 400
 
         // Cap visualStats pixel sampling (task #370). A FULL_VIEWPORT frame is
         // ~3M pixels; hashing every one took 88-150s on degraded CI runners and
