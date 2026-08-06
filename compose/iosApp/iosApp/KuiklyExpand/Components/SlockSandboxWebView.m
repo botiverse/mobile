@@ -1,4 +1,5 @@
 #import "SlockSandboxWebView.h"
+#import "SlockSandboxWebViewNavigationCommit.h"
 
 #import <OpenKuiklyIOSRender/KRComponentDefine.h>
 #import <WebKit/WebKit.h>
@@ -227,9 +228,13 @@ decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
     self.currentLoading = webView.loading;
     [self notifyURLChange:self.currentURL];
     [self notifyNavigationStateForce:NO];
-    if (self.loadCommitCallback) {
-        self.loadCommitCallback(@{});
-    }
+    __weak typeof(self) weakSelf = self;
+    SlockSandboxWebViewPublishNavigationCommit(self.webView, webView, ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (strongSelf.loadCommitCallback) {
+            strongSelf.loadCommitCallback(@{});
+        }
+    });
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {

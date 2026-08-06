@@ -1,46 +1,29 @@
-#import <WebKit/WebKit.h>
 #import <XCTest/XCTest.h>
 
-@interface SlockSandboxWebView : UIView <WKNavigationDelegate>
-@end
+#import "SlockSandboxWebViewNavigationCommit.h"
 
 @interface SlockSandboxWebViewTests : XCTestCase
 @end
 
 @implementation SlockSandboxWebViewTests
 
-- (void)testMainDocumentCommitIsDistinctFromFinish {
-    SlockSandboxWebView *view = [[SlockSandboxWebView alloc] init];
+- (void)testActiveWebViewPublishesCommitExactlyOnce {
+    NSObject *activeWebView = [[NSObject alloc] init];
     __block NSInteger commits = 0;
-    __block NSInteger finishes = 0;
-    [view setValue:[^(__unused NSDictionary *params) {
+    SlockSandboxWebViewPublishNavigationCommit(activeWebView, activeWebView, ^{
         commits += 1;
-    } copy] forKey:@"loadCommitCallback"];
-    [view setValue:[^(__unused NSDictionary *params) {
-        finishes += 1;
-    } copy] forKey:@"loadSuccessCallback"];
-    WKWebView *activeWebView = [view valueForKey:@"webView"];
-
-    [view webView:activeWebView didCommitNavigation:nil];
+    });
 
     XCTAssertEqual(commits, 1);
-    XCTAssertEqual(finishes, 0);
-
-    [view webView:activeWebView didFinishNavigation:nil];
-
-    XCTAssertEqual(commits, 1);
-    XCTAssertEqual(finishes, 1);
 }
 
 - (void)testDetachedWebViewCannotPublishACommit {
-    SlockSandboxWebView *view = [[SlockSandboxWebView alloc] init];
+    NSObject *activeWebView = [[NSObject alloc] init];
+    NSObject *staleWebView = [[NSObject alloc] init];
     __block NSInteger commits = 0;
-    [view setValue:[^(__unused NSDictionary *params) {
+    SlockSandboxWebViewPublishNavigationCommit(activeWebView, staleWebView, ^{
         commits += 1;
-    } copy] forKey:@"loadCommitCallback"];
-    WKWebView *staleWebView = [[WKWebView alloc] initWithFrame:CGRectZero];
-
-    [view webView:staleWebView didCommitNavigation:nil];
+    });
 
     XCTAssertEqual(commits, 0);
 }
