@@ -16480,6 +16480,22 @@ private fun ThreadMessagesList(
         activeFocusedMessageId = targetMessageId
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
+        // task #990 kill-switch: a focus request arriving after the keyboard is
+        // already open never sees a 0->open transition, so the rise-cancel can
+        // never fire for it — the initial anchor itself must not dispatch, and
+        // with no anchored intent the HeightChange replay has no source. The
+        // focus takes effect when the keyboard closes and the user still wants
+        // it, or the user scrolls there themselves.
+        if (
+            suppressFocusAnchorWhileOpen(
+                liveComposerKeyboardInsetDp,
+                targetMessageId,
+                diagnosticsLogger,
+            )
+        ) {
+            activeFocusedMessageId = null
+            return@LaunchedEffect
+        }
         if (focusedAnchorPlacementState.identity != targetIdentity) {
             focusedAnchorPlacementState = resetThreadFocusedAnchorPlacement(targetIdentity)
         }
@@ -16838,6 +16854,14 @@ private fun ThreadMessagesList(
                     initialBottomAnchorReady = true
                     return@LaunchedEffect
                 }
+                // task #990 kill-switch: read the inset live on every retry. A
+                // keyboard that opened mid-loop means the current viewport is
+                // accepted as-is — retrying into a shrinking window is the
+                // trigger every white capture shares.
+                if (suppressInitialBottomRetry(liveComposerKeyboardInsetDp, diagnosticsLogger)) {
+                    initialBottomAnchorReady = true
+                    return@LaunchedEffect
+                }
                 dispatchViewportEvent(
                     LazyViewportEvent.FollowLatest(canOverrideUserDragging = false)
                 )
@@ -16883,6 +16907,12 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         if (!listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
+            // task #990 kill-switch: automatic correction; silent while the
+            // keyboard is open. Read live — this coroutine awaited layout
+            // stability and can outlive the rise.
+            if (suppressAutoBottomHeightChange(liveComposerKeyboardInsetDp, diagnosticsLogger)) {
+                return@LaunchedEffect
+            }
             dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.HeightChange))
         }
     }

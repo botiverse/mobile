@@ -71,3 +71,37 @@ internal fun cancelInflightAnchorOnImeRise(
     }
     return true
 }
+
+/**
+ * The three automatic-correction gates, one per owner, each a production seam
+ * the effect calls and the behaviour test drives. Returns true when the
+ * correction must stay silent; logging happens here so a suppressed correction
+ * is always visible in a capture.
+ */
+internal fun suppressAutoBottomHeightChange(
+    keyboardInsetDp: Float,
+    log: (String) -> Unit,
+): Boolean {
+    if (!threadImeOpenSuppressesProgrammaticViewport(keyboardInsetDp)) return false
+    log("thread_ime_kill_switch result=suppressed_bottom_height_change")
+    return true
+}
+
+internal fun suppressInitialBottomRetry(
+    keyboardInsetDp: Float,
+    log: (String) -> Unit,
+): Boolean {
+    if (!threadImeOpenSuppressesProgrammaticViewport(keyboardInsetDp)) return false
+    log("thread_ime_kill_switch result=suppressed_initial_bottom_retry")
+    return true
+}
+
+internal fun suppressFocusAnchorWhileOpen(
+    keyboardInsetDp: Float,
+    targetMessageId: String,
+    log: (String) -> Unit,
+): Boolean {
+    if (!threadImeOpenSuppressesProgrammaticViewport(keyboardInsetDp)) return false
+    log("thread_ime_kill_switch result=suppressed_focus_anchor messageId=$targetMessageId")
+    return true
+}

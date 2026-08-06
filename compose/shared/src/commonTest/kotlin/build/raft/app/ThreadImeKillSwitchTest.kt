@@ -256,4 +256,75 @@ class ThreadImeKillSwitchTest {
             "the origin correction returns once the keyboard is closed"
         )
     }
+
+    @Test
+    fun anOrdinaryFollowingLatestRiseArmsWithoutTouchingAnything() {
+        // The common case: no focus, the list simply follows latest, and the
+        // keyboard rises. The rise must arm the switch without cancelling or
+        // issuing anything — FollowingLatest is not an anchored correction.
+        var controller = LazyViewportControllerState()
+        controller =
+            reduceLazyViewport(
+                controller,
+                LazyViewportEvent.FollowLatest(canOverrideUserDragging = true)
+            )
+        val pendingBefore = controller.pendingCommand?.id
+        val logs = mutableListOf<String>()
+
+        cancelInflightAnchorOnImeRise(
+            keyboardInsetDp = 299.5f,
+            lastKeyboardInsetDp = 0f,
+            controllerState = controller,
+            dispatch = { controller = reduceLazyViewport(controller, it) },
+            log = { logs += it },
+        )
+
+        assertEquals(
+            pendingBefore,
+            controller.pendingCommand?.id,
+            "a FollowingLatest command must survive an ordinary rise"
+        )
+        assertTrue(logs.single().contains("result=armed"))
+    }
+
+    @Test
+    fun theColdInitialRetryStopsWhenTheKeyboardOpensMidLoop() {
+        val logs = mutableListOf<String>()
+
+        // Closed: the retry proceeds.
+        assertFalse(suppressInitialBottomRetry(0f, { logs += it }))
+        assertTrue(logs.isEmpty())
+
+        // The keyboard opened between retries: the loop must accept the
+        // current viewport and stop, with a receipt saying why.
+        assertTrue(suppressInitialBottomRetry(299.5f, { logs += it }))
+        assertTrue(logs.single().contains("suppressed_initial_bottom_retry"))
+    }
+
+    @Test
+    fun aFocusRequestArrivingWithTheKeyboardAlreadyOpenIssuesNoAnchor() {
+        // Already-open means no 0->open transition will ever occur for this
+        // focus, so the rise-cancel can never fire for it — the anchor must
+        // not be dispatched at all, which also starves the HeightChange
+        // replay of its anchored intent.
+        val logs = mutableListOf<String>()
+
+        assertTrue(suppressFocusAnchorWhileOpen(299.5f, "message-17", { logs += it }))
+        assertTrue(logs.single().contains("suppressed_focus_anchor"))
+        assertTrue(logs.single().contains("message-17"))
+
+        // Keyboard closed: focus anchors dispatch normally.
+        assertFalse(suppressFocusAnchorWhileOpen(0f, "message-17", { logs += it }))
+    }
+
+    @Test
+    fun theAutoBottomHeightChangeStaysSilentWhileOpen() {
+        val logs = mutableListOf<String>()
+
+        assertTrue(suppressAutoBottomHeightChange(299.5f, { logs += it }))
+        assertTrue(logs.single().contains("suppressed_bottom_height_change"))
+
+        assertFalse(suppressAutoBottomHeightChange(0f, { logs += it }))
+        assertEquals(1, logs.size, "no receipt when nothing is suppressed")
+    }
 }
