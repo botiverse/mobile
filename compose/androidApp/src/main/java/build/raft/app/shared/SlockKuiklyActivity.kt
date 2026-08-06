@@ -2358,6 +2358,16 @@ private object SlockKuiklyLogAdapter : IKRLogAdapter {
 
     override fun i(tag: String, msg: String) {
         Log.i(tag, msg)
+        // task #990: the native pending-offset receipts are the only record of
+        // whether a deferred programmatic scroll physically applied. Logcat is
+        // not collected by the Hands feedback bundle — VC1000407's capture came
+        // back without them, which made a white result unjudgeable — so they
+        // are forwarded into the persistent diagnostics ring. The warn channel
+        // is used because the info channel is verbosity-gated off in release
+        // builds, where every device capture happens.
+        if (msg.startsWith("pending_content_offset")) {
+            SlockAppLog.w(tag, msg)
+        }
     }
 
     override fun d(tag: String, msg: String) {
