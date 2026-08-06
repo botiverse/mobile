@@ -17395,15 +17395,33 @@ private fun ThreadMessagesList(
                         "layoutGeneration=$pixelProbeLayoutGeneration->${currentViewportLayoutGenerationState.value} " +
                         "targetMessageId=${pixelProbeTargetMessageId.orEmpty()} " +
                         "pixelCopyResult=${acceptedPixelResult?.optString("pixelCopyResult").orEmpty()} " +
+                        "captureMode=${acceptedPixelResult?.optString("captureMode").orEmpty()} " +
+                        "captureOrder=${acceptedPixelResult?.optString("captureOrder").orEmpty()} " +
+                        "classifier=${acceptedPixelResult?.optString("classifier").orEmpty()} " +
+                        "blankLikeWhitePermille=${acceptedPixelResult?.optString("blankLikeWhitePermille").orEmpty()} " +
+                        "geometryStable=${acceptedPixelResult?.optString("geometryStable").orEmpty()} " +
+                        "sourceRect=${acceptedPixelResult?.optString("sourceLeft").orEmpty()}," +
+                        "${acceptedPixelResult?.optString("sourceTop").orEmpty()}," +
+                        "${acceptedPixelResult?.optString("sourceWidth").orEmpty()}x" +
+                        "${acceptedPixelResult?.optString("sourceHeight").orEmpty()} " +
                         "sampleCount=${acceptedPixelResult?.optString("sampleCount").orEmpty()} " +
                         "nonWhiteCount=${acceptedPixelResult?.optString("nonWhiteCount").orEmpty()} " +
                         "darkCount=${acceptedPixelResult?.optString("darkCount").orEmpty()} " +
                         "whitePermille=${acceptedPixelResult?.optString("whitePermille").orEmpty()} " +
+                        "localSampleCount=${acceptedPixelResult?.optString("localSampleCount").orEmpty()} " +
+                        "localNonWhiteCount=${acceptedPixelResult?.optString("localNonWhiteCount").orEmpty()} " +
+                        "localDarkCount=${acceptedPixelResult?.optString("localDarkCount").orEmpty()} " +
+                        "localWhitePermille=${acceptedPixelResult?.optString("localWhitePermille").orEmpty()} " +
                         "descendants=${acceptedPixelResult?.optString("descendants").orEmpty()} " +
                         "visibleDescendants=${acceptedPixelResult?.optString("visibleDescendants").orEmpty()} " +
                         "attachedDescendants=${acceptedPixelResult?.optString("attachedDescendants").orEmpty()} " +
                         "layoutRequestedDescendants=${acceptedPixelResult?.optString("layoutRequestedDescendants").orEmpty()} " +
-                        "rootChild=${acceptedPixelResult?.optString("rootChild").orEmpty()}"
+                        "viewportIntersectingDescendants=${acceptedPixelResult?.optString("viewportIntersectingDescendants").orEmpty()} " +
+                        "viewportIntersectingLeafDescendants=${acceptedPixelResult?.optString("viewportIntersectingLeafDescendants").orEmpty()} " +
+                        "viewportIntersectingPaintCandidates=${acceptedPixelResult?.optString("viewportIntersectingPaintCandidates").orEmpty()} " +
+                        "viewportIntersectionAreaPx=${acceptedPixelResult?.optString("viewportIntersectionAreaPx").orEmpty()} " +
+                        "rootChild=${acceptedPixelResult?.optString("rootChild").orEmpty()} " +
+                        "viewportDescendantSummary=${acceptedPixelResult?.optString("viewportDescendantSummary").orEmpty()}"
                 )
             }
         )

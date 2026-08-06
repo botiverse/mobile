@@ -3334,164 +3334,31 @@ internal class SlockKuiklyBridgeModule(
                     request.optDouble("height", 0.0).roundToInt()
                             .coerceAtLeast(1)
                             .coerceAtMost(container.height - top)
-            val bitmap =
-                    runCatching { Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888) }
-                            .getOrElse {
-                                deliver(mapOf("status" to "failed", "message" to "Unable to allocate pixel probe"))
-                                return@runOnUiThread
-                            }
-            val handler = Handler(Looper.getMainLooper())
-            val nativeCompleted = AtomicBoolean(false)
-            fun recycleProbeBitmap() {
-                if (!bitmap.isRecycled) bitmap.recycle()
-            }
-            val timeout =
-                    Runnable {
-                        if (nativeCompleted.compareAndSet(false, true)) {
-                            deliver(mapOf("status" to "timeout", "message" to "PixelCopy callback timed out"))
+            captureThreadViewportRenderEvidence(
+                    window = hostActivity.window,
+                    container = container,
+                    request =
+                            ThreadViewportCaptureRequest(
+                                    left = left,
+                                    top = top,
+                                    width = width,
+                                    height = height,
+                                    generation = generation
+                            )
+            ) { result ->
+                val payload =
+                        when (result) {
+                            is ThreadViewportRenderCaptureResult.Success ->
+                                    result.evidence.toBridgePayload()
+                            is ThreadViewportRenderCaptureResult.Failure ->
+                                    result.toBridgePayload()
                         }
-                    }
-            handler.postDelayed(timeout, 2_000L)
-            fun finish(payload: Map<String, Any?>) {
-                if (!nativeCompleted.compareAndSet(false, true)) return
-                handler.removeCallbacks(timeout)
-                recycleProbeBitmap()
                 deliver(payload)
-            }
-            val complete: (Int) -> Unit = complete@{ pixelCopyResult ->
-                if (nativeCompleted.get()) {
-                    // A timeout already returned an infra receipt. PixelCopy is
-                    // now finished, so its bitmap can be released without
-                    // analyzing or publishing stale pixels.
-                    recycleProbeBitmap()
-                    return@complete
-                }
-                if (pixelCopyResult != PixelCopy.SUCCESS) {
-                    finish(
-                            mapOf(
-                                    "status" to "failed",
-                                    "pixelCopyResult" to pixelCopyResult
-                            )
-                    )
-                } else {
-                    val analyzed =
-                            runCatching {
-                                analyzeThreadViewportPixels(
-                                        bitmap = bitmap,
-                                        container = container,
-                                        generation = generation,
-                                        pixelCopyResult = pixelCopyResult
-                                )
-                            }.getOrElse {
-                                mapOf("status" to "failed", "message" to "Unable to analyze pixel probe")
-                            }
-                    finish(analyzed)
-                }
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val locationInWindow = IntArray(2)
-                container.getLocationInWindow(locationInWindow)
-                val sourceRect =
-                        Rect(
-                                locationInWindow[0] + left,
-                                locationInWindow[1] + top,
-                                locationInWindow[0] + left + width,
-                                locationInWindow[1] + top + height
-                        )
-                container.postOnAnimation {
-                    container.postOnAnimation secondFrame@{
-                        if (nativeCompleted.get()) {
-                            recycleProbeBitmap()
-                            return@secondFrame
-                        }
-                        runCatching {
-                            PixelCopy.request(
-                                    hostActivity.window,
-                                    sourceRect,
-                                    bitmap,
-                                    complete,
-                                    handler
-                            )
-                        }.onFailure {
-                            finish(mapOf("status" to "failed", "message" to "PixelCopy request failed"))
-                        }
-                    }
-                }
-            } else {
-                runCatching {
-                    val canvas = Canvas(bitmap)
-                    canvas.drawColor(Color.WHITE)
-                    canvas.translate(-left.toFloat(), -top.toFloat())
-                    container.draw(canvas)
-                }.onSuccess {
-                    complete(PixelCopy.SUCCESS)
-                }.onFailure {
-                    finish(mapOf("status" to "failed", "message" to "Unable to draw pixel probe"))
-                }
             }
             }
         }.onFailure {
             deliver(mapOf("status" to "failed", "message" to "Unable to schedule pixel probe"))
         }
-    }
-
-    private fun analyzeThreadViewportPixels(
-        bitmap: Bitmap,
-        container: ViewGroup,
-        generation: Long,
-        pixelCopyResult: Int
-    ): Map<String, Any> {
-        var sampleCount = 0
-        var nonWhiteCount = 0
-        var darkCount = 0
-        val sampleStep = 4
-        var y = 0
-        while (y < bitmap.height) {
-            var x = 0
-            while (x < bitmap.width) {
-                val pixel = bitmap.getPixel(x, y)
-                val red = Color.red(pixel)
-                val green = Color.green(pixel)
-                val blue = Color.blue(pixel)
-                sampleCount += 1
-                if (red < 248 || green < 248 || blue < 248) nonWhiteCount += 1
-                if (red <= 64 && green <= 64 && blue <= 64) darkCount += 1
-                x += sampleStep
-            }
-            y += sampleStep
-        }
-        var descendants = 0
-        var visibleDescendants = 0
-        var attachedDescendants = 0
-        var layoutRequestedDescendants = 0
-        val pending = ArrayDeque<View>()
-        for (index in 0 until container.childCount) pending.add(container.getChildAt(index))
-        while (pending.isNotEmpty()) {
-            val view = pending.removeFirst()
-            descendants += 1
-            if (view.visibility == View.VISIBLE && view.alpha > 0f) visibleDescendants += 1
-            if (view.isAttachedToWindow) attachedDescendants += 1
-            if (view.isLayoutRequested) layoutRequestedDescendants += 1
-            if (view is ViewGroup) {
-                for (index in 0 until view.childCount) pending.add(view.getChildAt(index))
-            }
-        }
-        val whiteCount = (sampleCount - nonWhiteCount).coerceAtLeast(0)
-        return mapOf(
-                "status" to "ok",
-                "generation" to generation,
-                "pixelCopyResult" to pixelCopyResult,
-                "sampleCount" to sampleCount,
-                "nonWhiteCount" to nonWhiteCount,
-                "darkCount" to darkCount,
-                "whitePermille" to if (sampleCount > 0) whiteCount * 1000 / sampleCount else 1000,
-                "descendants" to descendants,
-                "visibleDescendants" to visibleDescendants,
-                "attachedDescendants" to attachedDescendants,
-                "layoutRequestedDescendants" to layoutRequestedDescendants,
-                "rootChild" to
-                        container.getChildAt(0)?.javaClass?.name.orEmpty()
-        )
     }
 
     private fun captureThreadShareImage(
