@@ -2560,6 +2560,18 @@ internal fun resolveSlockKuiklyImageRoute(
 internal fun isSlockAvatarLegacyTerminalBridgeAction(action: String): Boolean =
         action == "retireOwner" || action == "retireSubject"
 
+internal inline fun <T : AutoCloseable> withSlockAvatarRenderDeliveryLease(
+        lease: T,
+        deliver: (T) -> Unit
+) {
+    // Terminal drain must cover the observable adapter delivery, not only decode/registration.
+    try {
+        deliver(lease)
+    } finally {
+        lease.close()
+    }
+}
+
 private fun String.isSlockSvgImageSource(): Boolean {
     val raw = trimStart()
     val normalized = raw.lowercase(Locale.US)
@@ -2639,31 +2651,31 @@ internal class SlockKuiklyImageAdapter(
                 callback(null)
                 return@executeOnSubThread
             }
-            val drawable =
-                    try {
-                        val decoded =
-                                drawableFromBytes(
-                                        bytes = renderRead.bytes,
-                                        imageLoadOption = imageLoadOption,
-                                        contentType = renderRead.contentType
-                                )
-                        val registered =
-                                decoded != null &&
-                                        renderRead.registerDecoded(
-                                                width = decoded.intrinsicWidth.coerceAtLeast(0),
-                                                height = decoded.intrinsicHeight.coerceAtLeast(0),
-                                                scaleIdentity =
-                                                        "${imageLoadOption.requestWidth}x${imageLoadOption.requestHeight}:" +
-                                                                "${imageLoadOption.needResize}:${imageLoadOption.scaleType.name}"
-                                        )
-                        decoded.takeIf { registered }
-                    } catch (throwable: Throwable) {
-                        recordImageLoadFailure("managed_avatar", imageLoadOption, throwable)
-                        null
-                    } finally {
-                        renderRead.close()
-                    }
-            callback(drawable)
+            withSlockAvatarRenderDeliveryLease(renderRead) { leasedRead ->
+                val drawable =
+                        try {
+                            val decoded =
+                                    drawableFromBytes(
+                                            bytes = leasedRead.bytes,
+                                            imageLoadOption = imageLoadOption,
+                                            contentType = leasedRead.contentType
+                                    )
+                            val registered =
+                                    decoded != null &&
+                                            leasedRead.registerDecoded(
+                                                    width = decoded.intrinsicWidth.coerceAtLeast(0),
+                                                    height = decoded.intrinsicHeight.coerceAtLeast(0),
+                                                    scaleIdentity =
+                                                            "${imageLoadOption.requestWidth}x${imageLoadOption.requestHeight}:" +
+                                                                    "${imageLoadOption.needResize}:${imageLoadOption.scaleType.name}"
+                                            )
+                            decoded.takeIf { registered }
+                        } catch (throwable: Throwable) {
+                            recordImageLoadFailure("managed_avatar", imageLoadOption, throwable)
+                            null
+                        }
+                callback(drawable)
+            }
         }
     }
 
