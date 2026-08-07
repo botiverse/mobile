@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-07T00:03:27.714Z",
+  "generatedAt": "2026-08-07T00:09:30.354Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 74,
-    "pending": 12
+    "ready": 81,
+    "pending": 5
   },
   "cases": [
     {
@@ -268,28 +268,67 @@
     },
     {
       "id": "components.ui.textarea.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ff83ffc0000000200000002003800720000000200100006000000020000000200000002000000e60001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-08-07T00:03:26.100Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-07T00:07:06.430Z",
+      "severity": "low",
+      "summary": [
+        "Layout and content are isomorphic between Android and iOS — same structure, same copy, same helper text and character counter placements, same error state styling (red border, light pink fill, coral error message).",
+        "Typography appears marginally heavier on iOS (san-serif system font rendering) versus Android, particularly in the textarea value and error text.",
+        "Outer card border and textarea borders are visually equivalent in weight and color on both platforms."
+      ],
+      "likelyCauses": [
+        "Minor font weight / font-family differences between Android (Roboto/equivalent) and iOS (San Francisco) system stacks rendering the same tokenized values.",
+        "Subpixel/antialiasing rendering differences between the two native rendering engines, consistent with the ~3.58% pixel mismatch."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "If strict parity is desired, force a single cross-platform font (e.g., Inter) via the typography token so Android and iOS render at identical weight.",
+        "Verify font-weight token for textarea body and error helper is identical across platforms (no implicit bolder weight on iOS).",
+        "Confirm no platform-specific fontFamily override is applied to the Textarea component on iOS."
+      ],
+      "intentional": [
+        "System font substitution (Roboto vs SF Pro) on each platform is the default cross-platform behavior and is acceptable unless strict typographic parity is required.",
+        "Minor subpixel/antialias differences inherent to native rendering are within tolerance (pixelRatio 0.02)."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.035754648195406524
     },
     {
       "id": "components.ui.textarea.states.elegant",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:06780004098cfffe0004000e003c000e3ff0fff607f00fe6000000060000000600300006000000f60000fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
-      "generatedAt": "2026-08-07T00:03:26.137Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-07T00:07:06.438Z",
+      "severity": "medium",
+      "summary": [
+        "First textarea content wraps to two lines on Android ('Capture the Android visual artifact' / 'and compare it with React.') but only the first line renders on iOS — second line is clipped/missing.",
+        "Second textarea (error state), helper text, and counters ('Plain helper text', '62/120', 'Agreement body must be shorter.', '57/40') render identically in text content and color on both sides.",
+        "Textarea borders, corner radius, and error-state pink fill appear visually consistent between Android and iOS.",
+        "Counter and helper-text vertical alignment relative to the textarea edges matches on both sides.",
+        "Typography weight and glyph metrics appear consistent; difference is line wrapping/layout, not font rendering."
+      ],
+      "likelyCauses": [
+        "Textarea height on iOS is fixed (or max-height limited) so the second line of wrapped text overflows and gets clipped instead of expanding the field.",
+        "iOS Kuikly renderer is not honoring the textarea's auto-grow/minLines behavior that Android implements.",
+        "Missing internal vertical padding or incorrect content insets on iOS causing overflow inside the input area.",
+        "Difference in how the two platforms compute TextField intrinsic height given the same maxLength/font."
+      ],
+      "suggestedOwner": "Kuikly iOS Textarea/TextField renderer (TextInput multiline + auto-grow)",
+      "suggestedFixes": [
+        "Ensure the multiline Textarea on iOS grows vertically with content (numberOfLines / auto-grow) or set a sufficient minHeight to fit two wrapped lines.",
+        "Audit Textarea min/max lines and vertical padding on iOS to match Android's two-line rendering for this sample.",
+        "Add a regression visual test for the 'Elegant' textarea state covering both single-line and wrapped (two-line) content.",
+        "Verify the helper/counter row vertical positioning remains stable when the field grows to two lines on iOS.",
+        "If intentional single-line truncation, align the design across platforms so Android is clipped the same way."
+      ],
+      "intentional": [
+        "Helper text, counters, and error label styling intentionally identical across Android and iOS."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.030241962706417658
     },
     {
@@ -323,15 +362,34 @@
     },
     {
       "id": "components.ui.checkbox.states.elegant",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0400080001fc03fe003c007e003c007e01fc03fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-07T00:03:26.154Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-07T00:07:06.447Z",
+      "severity": "low",
+      "summary": [
+        "Checkbox states render isomorphically across Android (1026×396) and iOS (1170×2532) end canvases",
+        "Typography weight, size, color, and inter-row spacing match closely between ends",
+        "Checkbox box geometry, checkmark glyph, and disabled (grey) state are visually equivalent",
+        "No missing elements, clipping, or state-indicator drift observed on the component region",
+        "Pixel mismatch (0.71%) and RGB similarity (96.0%) are within tolerance and consistent with antialiasing/font-hinting differences only"
+      ],
+      "likelyCauses": [
+        "Minor font rendering and antialiasing differences between Android and iOS text rasterizers (likely cause of the ~0.7% pixel mismatch)",
+        "Native checkbox border/checkmark rasterization variance across platforms"
+      ],
+      "suggestedOwner": "kuikly-component-team",
+      "suggestedFixes": [
+        "No action required — divergence is below 2% pixel mismatch threshold and limited to antialiasing artifacts",
+        "If stricter parity is desired, enforce a shared font stack (e.g., SF/Roboto with identical size/weight tokens) and use vector checkbox assets rather than native controls",
+        "Confirm component-bounds crop on iOS aligns with the same rect contract used on Android to keep the comparison region consistent"
+      ],
+      "intentional": [
+        "Checkbox disabled state uses a muted grey fill on both ends as designed",
+        "High pixel-perfect similarity (99.29%) indicates intentional cross-platform parity"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0070708605068794395
     },
     {
@@ -1344,15 +1402,35 @@
     },
     {
       "id": "components.home.titlebar.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:9ffe1ffeffffffff000700070003000380ef00ef0007000700030003e07f407f0007000700030003f0ff40ff807fc87f8003000780f300d7ccf348f780078007ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-      "generatedAt": "2026-08-07T00:03:26.933Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-07T00:07:07.642Z",
+      "severity": "medium",
+      "summary": [
+        "Android side has a beige/cream background fill covering the full viewport, while iOS side has a plain white background — large background-color divergence on the body/page surface.",
+        "iOS version is rendered at a larger viewport (1170×2532) so all components are scaled up; raw component pixel sizes differ but dp-equivalent sizes appear similar.",
+        "iOS shows full text 'Raft Product Design Workspace' without ellipsis in the expanded switcher selected row, whereas Android truncates with 'Raft Product Design Workspa…'.",
+        "Android avatar tiles in the expanded switcher have a more pronounced inner-grid/blue-pixel detail; iOS avatars appear slightly less detailed/smaller relative to the row.",
+        "Top-right corner pill labels read 'ANDROID' (yellow) vs 'iOS' (light yellow) — color of the platform indicator pill differs."
+      ],
+      "likelyCauses": [
+        "Default page background not normalized across platforms — Android Kuikly page uses a beige theme color while iOS uses white.",
+        "Text ellipsis/truncation logic differs between Android and iOS text rendering (different font metrics or maxLines handling).",
+        "Avatar asset or component is rasterized at a fixed pixel size instead of dp, so it scales unevenly with the viewport.",
+        "Platform badge color token resolved differently per platform."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "Normalize the page/scaffold background to a single design token (e.g. surface/background) on both Android and iOS Kuikly renders.",
+        "Align text-truncation and font-metric handling so expanded-switcher row text shows or truncates identically across platforms.",
+        "Switch avatar component to use dp-based sizing with consistent @2x/@3x asset scaling instead of raw pixels.",
+        "Unify the platform-indicator pill color via a shared token.",
+        "Verify titlebar bell/icon vertical-alignment math is identical on both ends after scaling."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.47680729398738875
     },
     {
@@ -1597,41 +1675,106 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc7dfc3df86df83f6c3ffc01ec00cc3ffc3ffc3ffc3ffc3ffc39fc3ffc3ffc3ffc1ffc3ffc31fc3ffc03fc03fc07fc3ffc3ffc3ffc7ffc3ff47f7c3ffc78743ffc000027fc80013ffcdef33ffcffff27fcffff27fcffff3ffcbff82ffc1ff83ffc8ff03ffc0ff03f7c80013800800100008001ffffffff",
-      "generatedAt": "2026-08-07T00:03:27.136Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-07T00:07:08.063Z",
+      "severity": "high",
+      "summary": [
+        "iOS view is vertically compressed: keyboard is visible and dialog only shows down to DESCRIPTION field — RUNTIME, MODEL, REASONING, MODE sections are missing/clipped",
+        "iOS has iOS soft keyboard occupying lower ~40% of screen with predictive bar (\"Bot\"/Both/Bottom), Android shows full dialog with all form fields and Cancel/Create Agent buttons",
+        "iOS Cancel/Create Agent buttons are repositioned to float directly under DESCRIPTION box (due to keyboard push), whereas Android places them at the very bottom under MODE dropdown",
+        "Different scroll/resize behavior between platforms: Android keeps full dialog accessible while iOS appears to be in focused-input state causing the dialog to shrink and clip lower content",
+        "NAME field on iOS appears to have a focus cursor (text caret) visible at end of \"Product-QA-Bot\", indicating active focus driving the keyboard appearance difference"
+      ],
+      "likelyCauses": [
+        "iOS dialog container does not implement keyboard avoidance/resize handling; Android does",
+        "Missing KeyboardAvoidingView equivalent on the iOS Kuikly render side",
+        "ScrollView inside dialog not expanding or scrolling to keep lower fields accessible on iOS",
+        "TextInput focus on iOS does not trigger scroll-into-view for the form"
+      ],
+      "suggestedOwner": "Kuikly iOS renderer / dialog component owner",
+      "suggestedFixes": [
+        "Wrap the Create Agent dialog in a KeyboardAvoidingView (or equivalent) on iOS so the dialog resizes when keyboard appears",
+        "Ensure the inner ScrollView scrolls to focused input and allows reaching RUNTIME/MODEL/REASONING/MODE fields",
+        "Move Cancel/Create Agent action bar to a sticky footer that remains visible above the keyboard on iOS",
+        "Verify the form is tall enough / scrollable so all sections remain reachable when the soft keyboard is shown",
+        "Compare dialog markup with Android implementation to identify missing keyboard-handling bindings"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3582313903403951
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc7dfc3df86df83f6c3ffc01ec00cc3ffc3ffc3ffc3ffc3ffc39fc3ffc3ffc3ffc1ffc3ffc31fc3ffc03fc03fc07fc3ffc3ffc3ffc7ffc3ff47f7c3ffc78743ffc000023fc80012ffcdef33ffcffff2ffcffff3ffcffff3ffcbff83ffc1ff83ffc8ff03ffc0ff03f7c80013800800100008001ffffffff",
-      "generatedAt": "2026-08-07T00:03:27.144Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-07T00:07:08.111Z",
+      "severity": "high",
+      "summary": [
+        "iOS keyboard is open and pushes the form upward, collapsing the visible area so MODEL, Provider description, and bottom Cancel/Create buttons are partially or fully hidden versus Android.",
+        "Cancel and Create Agent buttons on iOS are clustered tightly against the DESCRIPTION field with no vertical breathing room, while on Android they sit well below with proper spacing.",
+        "Form field vertical rhythm differs: iOS shows tighter gaps between COMPUTER, NAME, DESCRIPTION, and RUNTIME, whereas Android uses more generous, consistent spacing.",
+        "Inner modal/dialog content occupies a larger proportion of the viewport on iOS due to keyboard inset adjustment, shifting alignment relative to the outer card frame.",
+        "Hint text '72/3000' beneath DESCRIPTION visible on Android is not visible on iOS (likely scrolled out or clipped by the keyboard)."
+      ],
+      "likelyCauses": [
+        "iOS Kuikly render does not apply the same keyboard-avoiding bottom inset or scroll adjustment that Android applies for the Create Agent dialog.",
+        "Differences in safe-area / keyboard inset handling between Android and iOS Kuikly host shells.",
+        "Possible missing or different scrollContainer behavior on iOS when soft keyboard appears, causing the inner content not to scroll upward enough.",
+        "Cancel/Create button row is positioned with absolute/bottom-anchored logic that breaks under keyboard on iOS but works on Android."
+      ],
+      "suggestedOwner": "kuikly-mobile-shell / members-create-agent-dialog author",
+      "suggestedFixes": [
+        "Ensure the dialog uses a scroll container that scrolls to keep the focused input (or action buttons) visible above the iOS keyboard.",
+        "Apply keyboard-aware bottom inset on iOS equivalent to Android so action buttons remain reachable.",
+        "Normalize vertical gaps between form fields (COMPUTER, NAME, DESCRIPTION, RUNTIME, MODEL) to be identical on both platforms.",
+        "Pin or ensure visibility of the Cancel / Create Agent row independent of scroll position when keyboard is open.",
+        "Verify the character counter under DESCRIPTION (72/3000) remains rendered or scrolls into view on iOS."
+      ],
+      "intentional": [
+        "iOS system keyboard appearance itself is platform-specific and expected.",
+        "Outer card chrome and field styles (borders, label colors, required asterisks) appear consistent and intentional."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3601122723160638
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc7dfc3df86df83f6c3ffc01ec00cc3ffc3ffc3ffc3ffc3ffc39fc3ffc3ffc3ffc1ffc3ffc33fc3ffc03fc03fc07fc3ffc3ffc3ffc7ffc3ff47f7c3ffc78743ffc000023fc80012ffcdef33ffcffff2ffcffff3ffcffff3ffcbff83ffc1ff83ffc8ff03ffc0ff03f7c80013800800100008001ffffffff",
-      "generatedAt": "2026-08-07T00:03:27.148Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-07T00:07:55.211Z",
+      "severity": "high",
+      "summary": [
+        "iOS (right) shows a focused/active Name input state with an iOS software keyboard taking the lower half of the screen, while Android (left) shows the unfocused full form with all fields (Computer, Name, Description, Runtime, Provider, API URL) and footer Cancel/Create Agent buttons stacked at the bottom.",
+        "On iOS the Cancel and Create Agent buttons are floating directly under the Description textarea (overlaying the dimmed rest of the dialog), whereas on Android they sit at the very bottom of the dialog card after the API URL field — buttons are not anchored to the same region.",
+        "iOS visible viewport is compressed because of the keyboard, so lower fields (Runtime, Provider, API URL, helper text) are completely hidden behind the dim backdrop and keyboard, unlike Android which displays the entire scrollable form.",
+        "Dialog card horizontal insets differ: on iOS the dialog has visibly larger left/right padding (more whitespace between dialog edge and form fields) than on Android.",
+        "Cancel/Create Agent button widths and gap differ: iOS buttons appear wider and more spaced apart due to keyboard-driven button row reflow, while Android shows them smaller and tight against each other."
+      ],
+      "likelyCauses": [
+        "iOS end triggered an input focus (likely on the Name field) during capture, automatically invoking the native iOS keyboard and pushing focus-scrolling/resize behavior that Android does not exhibit in the same screenshot moment.",
+        "Kuikly dialog/form container is using a ScrollView/Form whose height does not reserve space for the software keyboard on iOS, or the focus-scroll is offsetting the action buttons instead of pinning them.",
+        "No keyboardAvoidingView / safe-area adjustment applied to the iOS dialog footer, causing the Cancel/Create Agent row to sit relative to the visible area rather than the dialog bottom.",
+        "Layout snapshot taken at a different interaction state on the two platforms (Android idle vs. iOS Name field focused)."
+      ],
+      "suggestedOwner": "Kuikly cross-platform UI / forms team (dialog + keyboard-avoidance owner)",
+      "suggestedFixes": [
+        "Capture both ends in an identical, non-focused state (tap-out before screenshot) so neither keyboard nor focus styling influences the comparison.",
+        "On iOS, wrap the dialog content in a KeyboardAvoidingView (or equivalent Kuikly safe-area insets) so the Cancel/Create Agent row stays anchored to the dialog bottom and all fields remain reachable above the keyboard.",
+        "Verify the dialog card uses consistent horizontal padding on Android and iOS; align inner content insets in the shared form style.",
+        "Ensure the Name input's focused state (caret, border highlight visible on iOS) matches the Android style token, or suppress focus styling differences in screenshots.",
+        "Pin footer action buttons to the dialog footer (not the viewport) so they don't reflow when the keyboard appears."
+      ],
+      "intentional": [
+        "Differences driven solely by the iOS soft keyboard (its presence, layout, and suggestion bar) and by the Name field focus highlight are platform-intentional and should be normalized via keyboard-avoidance rather than visual fixes."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3604154008182444
     },
     {
@@ -1976,7 +2119,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:03:27.325Z",
+      "generatedAt": "2026-08-07T00:09:29.896Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1989,7 +2132,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:03:27.325Z",
+      "generatedAt": "2026-08-07T00:09:29.896Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2002,7 +2145,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:03:27.325Z",
+      "generatedAt": "2026-08-07T00:09:29.896Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2015,7 +2158,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:03:27.325Z",
+      "generatedAt": "2026-08-07T00:09:29.896Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2028,7 +2171,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:03:27.325Z",
+      "generatedAt": "2026-08-07T00:09:29.896Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
