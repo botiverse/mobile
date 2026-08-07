@@ -125,8 +125,11 @@ scripts/check-commit-signoff.sh HEAD^ HEAD
 - Do not merge finished work into shared local `main` as the delivery step.
   If local `main` is ahead, treat it as reconciliation debt and move
   non-equivalent commits to PR branches.
-- Do not push remote `main` directly. Use `gh pr create` / `gh pr merge` or the
-  GitHub PR UI after required checks pass.
+- Do not push remote `main` directly. Use `gh pr create`, then use the
+  repository guarded rebase wrapper after required checks and exact-bound
+  review pass. Squash requires the guarded squash wrapper and a complete
+  validated message file; ordinary merge mode and raw inline squash bodies are
+  forbidden. See `docs/commit-signoff-policy.md`.
 - Do not revert or clean unrelated dirty files. If the canonical checkout is
   dirty, inspect carefully and preserve other agents' changes.
 - Every meaningful progress or completion report must say whether the work is

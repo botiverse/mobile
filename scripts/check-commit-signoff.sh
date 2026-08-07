@@ -6,10 +6,11 @@
 #   scripts/check-commit-signoff.sh <base-sha> <head-sha>
 set -euo pipefail
 
-MAIL_BUILD_EMAIL_RE='[A-Za-z0-9._%+-]+@mail\.build'
-SIGNOFF_RE="^[[:space:]]*Signed-off-by:[[:space:]].*<${MAIL_BUILD_EMAIL_RE}>[[:space:]]*$"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATTESTATIONS_FILE="${COMMIT_SIGNOFF_ATTESTATIONS_FILE:-${SCRIPT_DIR}/commit-signoff-attestations.tsv}"
+MESSAGE_VALIDATOR="${COMMIT_MESSAGE_VALIDATOR:-${SCRIPT_DIR}/validate-commit-message.sh}"
+CHECKER_TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$CHECKER_TMP_DIR"' EXIT
 
 validate_attestation_ledger() {
   [ -e "$ATTESTATIONS_FILE" ] || return 0
@@ -90,13 +91,18 @@ attestation_for_commit() {
 source_range_has_exact_signoffs() {
   local source_parent="$1"
   local source_commit="$2"
-  local commits commit body
+  local commits commit message_file
   git merge-base --is-ancestor "$source_parent" "$source_commit" 2>/dev/null || return 1
   commits="$(git rev-list --reverse "${source_parent}..${source_commit}" 2>/dev/null)"
   [ -n "$commits" ] || return 1
   while IFS= read -r commit; do
-    body="$(git log -1 --format='%B' "$commit")"
-    printf '%s\n' "$body" | git interpret-trailers --parse | grep -qiE "$SIGNOFF_RE" || return 1
+    message_file="${CHECKER_TMP_DIR}/source-range-${commit}.txt"
+    git log -1 --format='%B' "$commit" > "$message_file"
+    if ! "$MESSAGE_VALIDATOR" "$message_file" >/dev/null 2>&1; then
+      rm -f "$message_file"
+      return 1
+    fi
+    rm -f "$message_file"
   done <<< "$commits"
 }
 
@@ -261,8 +267,15 @@ verify_strict_merge_attestation() {
 source_has_exact_signer() {
   local source_commit="$1"
   local signer="$2"
-  git log -1 --format='%B' "$source_commit" |
-    git interpret-trailers --parse |
+  local message_file
+  message_file="${CHECKER_TMP_DIR}/source-signer-${source_commit}.txt"
+  git log -1 --format='%B' "$source_commit" > "$message_file"
+  if ! "$MESSAGE_VALIDATOR" "$message_file" >/dev/null 2>&1; then
+    rm -f "$message_file"
+    return 1
+  fi
+  local result
+  if git interpret-trailers --parse "$message_file" |
     awk -v signer="$signer" '
       {
         key = $0
@@ -277,7 +290,13 @@ source_has_exact_signer() {
         }
       }
       END { exit found ? 0 : 1 }
-    '
+    '; then
+    result=0
+  else
+    result=$?
+  fi
+  rm -f "$message_file"
+  return "$result"
 }
 
 verify_attestation() {
@@ -370,15 +389,16 @@ fail() {
 
 check_commit_message_file() {
   local message_file="${1:?usage: check-commit-signoff.sh --commit-msg <file>}"
+  local validation_error
   if [ ! -f "$message_file" ]; then
     fail "commit sign-off check failed — commit message file does not exist: $message_file"
   fi
 
-  if ! grep -qiE "$SIGNOFF_RE" "$message_file"; then
-    fail "commit sign-off check failed — commit message must contain 'Signed-off-by: <name> <raft-mobile-...@mail.build>'."
+  if ! validation_error="$("$MESSAGE_VALIDATOR" "$message_file" 2>&1)"; then
+    fail "commit sign-off check failed — ${validation_error}"
   fi
 
-  echo "commit sign-off: OK — commit message has Signed-off-by with @mail.build."
+  echo "commit sign-off: OK — commit message has exactly one Git-parsed Signed-off-by trailer with @mail.build."
 }
 
 check_commit_range() {
@@ -393,20 +413,34 @@ check_commit_range() {
 
   validate_attestation_ledger
 
-  local commit body subject attestation
+  local commit subject attestation message_file validation_error
   while IFS= read -r commit; do
-    body="$(git log -1 --format='%B' "$commit")"
     subject="$(git log -1 --format='%s' "$commit")"
-    if ! printf '%s\n' "$body" | grep -qiE "$SIGNOFF_RE"; then
+    message_file="${CHECKER_TMP_DIR}/range-${commit}.txt"
+    git log -1 --format='%B' "$commit" > "$message_file"
+    if validation_error="$("$MESSAGE_VALIDATOR" "$message_file" 2>&1)"; then
+      rm -f "$message_file"
+      continue
+    fi
+
+    if ! grep -qiF 'signed-off-by' "$message_file" &&
+      ! LC_ALL=C grep -Fq '\n' "$message_file" &&
+      ! LC_ALL=C grep -Fq '\r' "$message_file" &&
+      ! LC_ALL=C grep -q $'\r' "$message_file"; then
       if attestation="$(attestation_for_commit "$commit")"; then
         verify_attestation "$commit" "$subject" "$attestation"
       else
+        rm -f "$message_file"
         fail "commit sign-off check failed — ${commit} (${subject}) lacks a Signed-off-by trailer with @mail.build."
       fi
+    else
+      rm -f "$message_file"
+      fail "commit sign-off check failed — ${commit} (${subject}): ${validation_error}"
     fi
+    rm -f "$message_file"
   done < <(git rev-list --reverse "$range")
 
-  echo "commit sign-off: OK — every commit in ${range} has Signed-off-by with @mail.build."
+  echo "commit sign-off: OK — every commit in ${range} has exactly one Git-parsed Signed-off-by trailer with @mail.build or a verified immutable attestation."
 }
 
 case "${1:-}" in
