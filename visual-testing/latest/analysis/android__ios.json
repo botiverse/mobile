@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-07T00:44:22.254Z",
+  "generatedAt": "2026-08-07T22:14:26.940Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 81,
-    "pending": 5
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -458,7 +458,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe43fc87fe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffebffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
       "generatedAt": "2026-08-02T22:45:32.757Z",
       "severity": "low",
       "summary": [
@@ -1142,7 +1142,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05945268089817857
+      "metricMismatch": 0.0594543686960749
     },
     {
       "id": "components.thread.header.states",
@@ -1675,36 +1675,16 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000003ffc7dfc3df86df83f6c3ffc01ec00cc3ffc3ffc3ffc3ffc3ffc39fc3ffc3ffc3ffc1ffc3ffc33fc3ffc03fc03fc07fc3ffc3ffc3ffc7ffc3ff47f7c3ffc78743ffc000027fc80013ffcdef33ffcffff27fcffff27fcffff3ffcbff82ffc1ff83ffc8ff03ffc0ff03f7c80013800800100008001ffffffff",
-      "generatedAt": "2026-08-07T00:07:08.063Z",
-      "severity": "high",
-      "summary": [
-        "iOS view is vertically compressed: keyboard is visible and dialog only shows down to DESCRIPTION field — RUNTIME, MODEL, REASONING, MODE sections are missing/clipped",
-        "iOS has iOS soft keyboard occupying lower ~40% of screen with predictive bar (\"Bot\"/Both/Bottom), Android shows full dialog with all form fields and Cancel/Create Agent buttons",
-        "iOS Cancel/Create Agent buttons are repositioned to float directly under DESCRIPTION box (due to keyboard push), whereas Android places them at the very bottom under MODE dropdown",
-        "Different scroll/resize behavior between platforms: Android keeps full dialog accessible while iOS appears to be in focused-input state causing the dialog to shrink and clip lower content",
-        "NAME field on iOS appears to have a focus cursor (text caret) visible at end of \"Product-QA-Bot\", indicating active focus driving the keyboard appearance difference"
-      ],
-      "likelyCauses": [
-        "iOS dialog container does not implement keyboard avoidance/resize handling; Android does",
-        "Missing KeyboardAvoidingView equivalent on the iOS Kuikly render side",
-        "ScrollView inside dialog not expanding or scrolling to keep lower fields accessible on iOS",
-        "TextInput focus on iOS does not trigger scroll-into-view for the form"
-      ],
-      "suggestedOwner": "Kuikly iOS renderer / dialog component owner",
-      "suggestedFixes": [
-        "Wrap the Create Agent dialog in a KeyboardAvoidingView (or equivalent) on iOS so the dialog resizes when keyboard appears",
-        "Ensure the inner ScrollView scrolls to focused input and allows reaching RUNTIME/MODEL/REASONING/MODE fields",
-        "Move Cancel/Create Agent action bar to a sticky footer that remains visible above the keyboard on iOS",
-        "Verify the form is tall enough / scrollable so all sections remain reachable when the soft keyboard is shown",
-        "Compare dialog markup with Android implementation to identify missing keyboard-handling bindings"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3582313903403951
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000007ffc7ffc7ffc7ffc3ffc7ffc21fc41fc7ffc7ffc7ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc3ffc7ffc7ffc7f7c7ffc7cfc7ffc00007dfcce630000ffff0000ffff0000ffff0000ffff0000bffd0000bffd00008ff100008ff00000ffff00009ffb0000ffffffffffff",
+      "generatedAt": "2026-08-07T22:14:26.161Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.46800374016013824
     },
     {
       "id": "components.members.create-agent.claude-dialog",
@@ -1745,7 +1725,7 @@
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "ready",
-      "imageHash": "p1:ffffffff000000003ffc7dfc3df86df83f6c3ffc01ec00cc3ffc3ffc3ffc3ffc3ffc39fc3ffc3ffc3ffc1ffc3ffc33fc3ffc03fc03fc07fc3ffc3ffc3ffc7ffc3ff47f7c3ffc78743ffc000023fc80012ffcdef33ffcffff2ffcffff3ffcffff3ffcbff83ffc1ff83ffc8ff03ffc0ff03f7c80013800800100008001ffffffff",
+      "imageHash": "p1:ffffffff000000003ffc7dfc3df86df83f6c3ffc01ec00cc3ffc3ffc3ffc3ffc3ffc39fc3ffc3ffc3ffc1ffc3ffc31fc3ffc03fc03fc07fc3ffc3ffc3ffc7ffc3ff47f7c3ffc78743ffc000023fc80012ffcdef33ffcffff2ffcffff3ffcffff3ffcbff83ffc1ff83ffc8ff03ffc0ff03f7c80013800800100008001ffffffff",
       "generatedAt": "2026-08-07T00:07:55.211Z",
       "severity": "high",
       "summary": [
@@ -2119,7 +2099,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:44:21.401Z",
+      "generatedAt": "2026-08-07T22:14:26.415Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2132,7 +2112,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:44:21.401Z",
+      "generatedAt": "2026-08-07T22:14:26.415Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2145,7 +2125,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:44:21.401Z",
+      "generatedAt": "2026-08-07T22:14:26.415Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2158,7 +2138,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:44:21.401Z",
+      "generatedAt": "2026-08-07T22:14:26.415Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2171,7 +2151,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:44:21.401Z",
+      "generatedAt": "2026-08-07T22:14:26.415Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

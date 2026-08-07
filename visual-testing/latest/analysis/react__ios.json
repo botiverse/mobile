@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-07T00:44:15.109Z",
+  "generatedAt": "2026-08-07T22:14:21.271Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 79,
+    "pending": 7
   },
   "cases": [
     {
@@ -464,34 +464,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-07T00:42:03.090Z",
-      "severity": "low",
-      "summary": [
-        "Color row of four status dots matches between React and iOS (green, orange, gray, blue) with consistent sizes and spacing.",
-        "Pink \"Waiting pulse\" dot and label render identically in color, size, and vertical alignment across both platforms.",
-        "Typography of \"Waiting pulse\" label is consistent in weight and size between React and iOS.",
-        "Header label \"Raft UI Status Dot\" and monospace caption text appear identical in font, weight, and spacing.",
-        "Overall component bounds and element positioning match; 0.23% pixel mismatch is within 2% tolerance and consistent with anti-aliasing only."
-      ],
-      "likelyCauses": [
-        "Minor anti-aliasing differences in circle edge rendering between web (Canvas/CanvasKit) and iOS (Core Animation) at different DPI scales.",
-        "Sub-pixel rounding of the dot circle edges when scaled from baseline 342×92 to 1170×2532."
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "No action required — match is within tolerance (RGB 98.0%, pixel-perfect 99.77%, mismatch 0.23%).",
-        "If stricter parity is desired, align dot rendering to use identical anti-aliasing settings or render dots as SVG-backed primitives on iOS.",
-        "Confirm Status Dot component is using shared token-driven size and color values to prevent drift."
-      ],
-      "intentional": [
-        "The two views show the same Status Dot states (success, warning, neutral, info, waiting-pulse) rendered by different platforms; any minor edge softness is expected.",
-        "Canvas size disparity (342×92 vs 1170×2532) is due to baseline element crop vs full device viewport and is not a layout regression."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
+      "generatedAt": "2026-08-07T22:14:18.611Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -551,7 +532,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06209779776130486
+      "metricMismatch": 0.062095097284670775
     },
     {
       "id": "components.ui.spinner.states",
@@ -1002,7 +983,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.08151186184361536
+      "metricMismatch": 0.0812073831031177
     },
     {
       "id": "components.thread.composer.as-task-selected",
@@ -1071,7 +1052,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11039447212432996
+      "metricMismatch": 0.11041168766287246
     },
     {
       "id": "components.thread.composer.channel-suggestions",
@@ -1318,7 +1299,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09249875102955674
+      "metricMismatch": 0.0924548682842522
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1353,7 +1334,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10151294203426908
+      "metricMismatch": 0.10146905928896455
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1388,7 +1369,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1692827534059762
+      "metricMismatch": 0.1692503476863666
     },
     {
       "id": "components.thread.forward-modal",
@@ -1565,12 +1546,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26843244082580575
+      "metricMismatch": 0.2684088116552572
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218100012fc7cfe00fc00fe9e803400879d3c000081cc00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff41ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218100012fc7cfe00fc00fe9e803400879d3c000081cc00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff43ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-02T22:44:21.326Z",
       "severity": "high",
       "summary": [
@@ -1598,12 +1579,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2690062921105575
+      "metricMismatch": 0.2689813127016919
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:1ff83ffc87fc0ffe81fc07fe0000000681f106c680310046800d00fec3fdfffefc31b3ce80310046801d00468ffd1ffefcf1fffe81f1c3ce801103c6801d00c6e3f1003e8031fffe8001f07e80fdf07ebef1fffedc71fffe0001fffedefffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
+      "imageHash": "p1:1ff83ffc87fc0ffe81fc07fe0000000683f106c680310046800d00fec3fdfffefc31b3ce80310046801d00468ffd1ffefcf1fffe81f1c3ce801103c6801d00c6e3f1003e8031fffe8001f07e80fdf07ebef1fffedc71fffe0001fffedefffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
       "generatedAt": "2026-08-02T22:44:22.784Z",
       "severity": "medium",
       "summary": [
@@ -1634,7 +1615,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11127584018579284
+      "metricMismatch": 0.11115938213094612
     },
     {
       "id": "components.home.activity.results",
@@ -1669,7 +1650,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10718934391920176
+      "metricMismatch": 0.10714174801852527
     },
     {
       "id": "components.tasks.panel.states",
@@ -1780,7 +1761,7 @@
     {
       "id": "components.members.create-agent.dialog",
       "status": "ready",
-      "imageHash": "p1:ffffffff000000002df47dfc3bfc6df83ff83ffc002c00cc21fc7ffc3ffc3ffc2ffc39fc3ffc3ffc2ffc1ffc3ffc33fc3ffc03fc27fc07fc3ffc3ffc3ffc7ffc3ffc7f7c3ffc78743ffc00002ffc80013ffcdef32ffcffff3ffcffff3ffcffff3ffcbff87ffc1ff83ffc0ff03ff40ff03f4480010000800100008001ffffffff",
+      "imageHash": "p1:ffffffff000000002df47dfc3bfc6df83ff83ffc002c00cc21fc7ffc3ffc3ffc2ffc39fc3ffc3ffc2ffc1ffc3ffc31fc3ffc03fc27fc07fc3ffc3ffc3ffc7ffc3ffc7f7c3ffc78743ffc00002ffc80013ffcdef32ffcffff3ffcffff3ffcffff3ffcbff87ffc1ff83ffc0ff03ff40ff03f4480010000800100008001ffffffff",
       "generatedAt": "2026-08-07T00:06:39.485Z",
       "severity": "high",
       "summary": [
@@ -1808,7 +1789,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.47794453220993505
+      "metricMismatch": 0.47793440542255705
     },
     {
       "id": "components.members.create-agent.claude-dialog",
@@ -1845,7 +1826,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:44:13.658Z",
+      "generatedAt": "2026-08-07T22:14:20.046Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1957,7 +1938,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7122442986187062
+      "metricMismatch": 0.7120272478092383
     },
     {
       "id": "components.settings.root.page",
@@ -2129,7 +2110,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19767927789254802
+      "metricMismatch": 0.19773531278270617
     },
     {
       "id": "components.settings.notifications.page",
@@ -2237,7 +2218,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:44:14.168Z",
+      "generatedAt": "2026-08-07T22:14:20.434Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2250,7 +2231,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:44:14.168Z",
+      "generatedAt": "2026-08-07T22:14:20.434Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2263,7 +2244,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:44:14.168Z",
+      "generatedAt": "2026-08-07T22:14:20.434Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2276,7 +2257,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:44:14.168Z",
+      "generatedAt": "2026-08-07T22:14:20.434Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2289,7 +2270,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:44:14.168Z",
+      "generatedAt": "2026-08-07T22:14:20.434Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2400,7 +2381,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23615904457136683
+      "metricMismatch": 0.23615938213094612
     },
     {
       "id": "screens.settings.server-danger-modal",

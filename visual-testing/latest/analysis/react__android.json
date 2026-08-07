@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-07T00:44:09.245Z",
+  "generatedAt": "2026-08-07T22:14:16.093Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 85,
-    "pending": 1
+    "ready": 84,
+    "pending": 2
   },
   "cases": [
     {
@@ -550,7 +550,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4149707602339181
+      "metricMismatch": 0.41497942386831277
     },
     {
       "id": "components.ui.spinner.states",
@@ -993,7 +993,7 @@
     {
       "id": "components.thread.composer.pending-mention-actions",
       "status": "ready",
-      "imageHash": "p1:ffffffff03fe03fc000000008001000380000001f03e407dc07e4ffdcffe77f5f7de7e79fc0e7ffdf8047ffdf80e701d800070098001700d80010001bffe000183fe7ffdbffe03fd87dc7ffd87cc0ff984180f9980000001ffff0001fffffffffffffffffffffffffffffffffffffffffffeffff80018001ffffffffffffffff",
+      "imageHash": "p1:ffffffff03fe03fc000000008001000380000001f03e407dc07e4ffdcffe77f5f7de7e79fc0e7ffdfc047ffdfc06701d800070098001700d80010001bffe000183fe7ffdbffe03fd87dc7ffd87cc0ff984180f9980000001ffff0001fffffffffffffffffffffffffffffffffffffffffffeffff80018001ffffffffffffffff",
       "generatedAt": "2026-08-07T00:05:48.816Z",
       "severity": "medium",
       "summary": [
@@ -1024,7 +1024,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.27049248280343263
+      "metricMismatch": 0.27102350384262064
     },
     {
       "id": "components.thread.composer.as-task-selected",
@@ -1092,7 +1092,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.32410554743339826
+      "metricMismatch": 0.32416341780376867
     },
     {
       "id": "components.thread.composer.channel-suggestions",
@@ -1270,7 +1270,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3478026451882661
+      "metricMismatch": 0.3474285337030435
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1342,7 +1342,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4143037496118065
+      "metricMismatch": 0.41425784150902634
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1378,7 +1378,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.42297666788188115
+      "metricMismatch": 0.422930759779101
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1412,7 +1412,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7087502194137265
+      "metricMismatch": 0.7087097122642146
     },
     {
       "id": "components.thread.forward-modal",
@@ -1581,12 +1581,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26766618058087255
+      "metricMismatch": 0.26763174950378743
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218000012fc7cfe00fc00fe9e813c00879d3c000081fc00068000200fdc009fffffff83ff8001403f8003ffff87ffe3ff87ff41ffdfffffff9fffffffc27fffffffffffffd03fffffc3fffffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218000012fc7cfe00fc00fe9e813c00879d3c000081fc00068000200fdc009fffffff83ff8001403f8003ffff87ffe3ff87ff43ffdfffffff9fffffffc27fffffffffffffd03fffffc3fffffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:10:21.330Z",
       "severity": "high",
       "summary": [
@@ -1614,12 +1614,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26826636151280703
+      "metricMismatch": 0.26823091775698416
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fdfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa3fff",
+      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fdfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa7fff",
       "generatedAt": "2026-07-30T04:34:27.469Z",
       "severity": "medium",
       "summary": [
@@ -1651,7 +1651,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19017323775388295
+      "metricMismatch": 0.1899756859292796
     },
     {
       "id": "components.home.activity.results",
@@ -1685,7 +1685,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1861289274560356
+      "metricMismatch": 0.18605504202561363
     },
     {
       "id": "components.tasks.panel.states",
@@ -1795,37 +1795,16 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000024047dfc3bfc7df83ff83e4c000c00fc21fc3ffc3ffc3ffc2ffc39fc3dfc1ffc2ffc1ffc3ffc3ffc3ffc3ffc27fc03fc3ffc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc2ffc07fc3ffc3ffc2ffc3ffc3ffc07fc2ff827fc3ffc3ffc3ffc0ffc3ffc3ffc3ff47ffc3f447f7c0000380000000000ffffffff",
-      "generatedAt": "2026-07-30T04:34:27.646Z",
-      "severity": "medium",
-      "summary": [
-        "Android version shows additional fields (REASONING, MODE) not present in React version, extending the form length",
-        "Model selector shows different default value: React shows 'opus' while Android shows 'GPT-5.6 Sol'",
-        "React displays a 'Models could not be loaded from this Computer' warning with 'Retry model check' link; Android does not show this warning",
-        "React includes a '> MORE' expandable section; Android omits it",
-        "Android adds a refresh/circular-arrow icon next to the MODEL label"
-      ],
-      "likelyCauses": [
-        "Feature drift between web (React) and Android implementations — Android exposes REASONING and MODE fields",
-        "Default model list differs between platforms (different model identifiers available)",
-        "Android implementation lacks the model-load error/empty state UI",
-        "Android does not implement the collapsible 'MORE' section",
-        "Inconsistent select placeholder vs. pre-selected value handling"
-      ],
-      "suggestedOwner": "android-engineering",
-      "suggestedFixes": [
-        "Align field set: hide REASONING/MODE on Android or add equivalent empty/collapsed state on React to match",
-        "Normalize default model options between platforms or use a shared model catalog",
-        "Add the 'Models could not be loaded' empty/error state and retry action to the Android dialog",
-        "Implement the collapsible 'MORE' affordance on Android if additional settings exist",
-        "Standardize select default rendering (placeholder vs pre-selected value) across platforms"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.24709496226083905
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003ffc7ffc7ffc7ffc7ffe7ffc6ffe41fc7dfe7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffe7ffc6ffe7cfc7ffc00007ffe00007ffe00007ffc00007ffe00007ffe00007ffe00007ffe00007ffe00000000000000000000ffffffff",
+      "generatedAt": "2026-08-07T22:14:15.150Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4769855254452411
     },
     {
       "id": "components.members.create-agent.claude-dialog",
@@ -1865,7 +1844,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:44:08.017Z",
+      "generatedAt": "2026-08-07T22:14:14.923Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1979,7 +1958,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.716170454085146
+      "metricMismatch": 0.715950702799044
     },
     {
       "id": "components.settings.root.page",
@@ -2157,7 +2136,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1992870741685907
+      "metricMismatch": 0.19934277149916957
     },
     {
       "id": "components.settings.notifications.page",
@@ -2332,7 +2311,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05980576821809047
+      "metricMismatch": 0.05981218185009651
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2436,7 +2415,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09477221479591147
+      "metricMismatch": 0.09477288991507005
     },
     {
       "id": "screens.members.human.profile",
@@ -2536,7 +2515,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23518045935107545
+      "metricMismatch": 0.23518012179149617
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2602,7 +2581,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1570276528807335
+      "metricMismatch": 0.15702292704662368
     },
     {
       "id": "components.thread.message-row.rich-content",
