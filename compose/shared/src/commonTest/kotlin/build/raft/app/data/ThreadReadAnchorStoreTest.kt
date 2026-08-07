@@ -1,0 +1,70 @@
+package build.raft.app.data
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+
+class ThreadReadAnchorStoreTest {
+    @Test
+    fun ownerIdentityIsolatedAndFrontierOnlyAdvances() {
+        val persistence = InMemorySlockKeyValueStore()
+        val store = KeyValueThreadReadAnchorStore(persistence)
+        val owner = owner(accountId = "account-a", conversationId = "channel-a")
+
+        assertNull(store.read(owner))
+        assertEquals(
+            ThreadReadAnchor(seq = 12L, messageId = "m12"),
+            store.advance(owner, ThreadReadAnchor(seq = 12L, messageId = "m12")),
+        )
+        assertEquals(
+            ThreadReadAnchor(seq = 12L, messageId = "m12"),
+            store.advance(owner, ThreadReadAnchor(seq = 9L, messageId = "m9")),
+        )
+        assertNull(store.read(owner(accountId = "account-b", conversationId = "channel-a")))
+        assertNull(store.read(owner(accountId = "account-a", conversationId = "channel-b")))
+    }
+
+    @Test
+    fun malformedAndNonPositiveRecordsFailClosed() {
+        val store = KeyValueThreadReadAnchorStore(InMemorySlockKeyValueStore())
+        val owner = owner()
+
+        assertNull(store.advance(owner, ThreadReadAnchor(seq = 0L, messageId = "zero")))
+        assertNull(store.advance(owner.copy(serverId = ""), ThreadReadAnchor(seq = 1L, messageId = "m1")))
+        assertNull(store.read(owner))
+    }
+
+    @Test
+    fun unreadProjectionUsesExactAnchorThenFallsBackToFirstUnread() {
+        val messages =
+            listOf(
+                ThreadUnreadAnchorMessage("pending", null),
+                ThreadUnreadAnchorMessage("m10", 10L),
+                ThreadUnreadAnchorMessage("m11", 11L),
+                ThreadUnreadAnchorMessage("m12", 12L),
+            )
+
+        assertEquals(
+            ThreadUnreadJumpProjection(unreadCount = 2, targetMessageId = "m10"),
+            projectThreadUnreadJump(ThreadReadAnchor(10L, "m10"), messages),
+        )
+        assertEquals(
+            ThreadUnreadJumpProjection(unreadCount = 2, targetMessageId = "m11"),
+            projectThreadUnreadJump(ThreadReadAnchor(10L, "deleted"), messages),
+        )
+        assertEquals(
+            ThreadUnreadJumpProjection(unreadCount = 0, targetMessageId = null),
+            projectThreadUnreadJump(ThreadReadAnchor(12L, "m12"), messages),
+        )
+    }
+
+    private fun owner(
+        accountId: String = "account",
+        conversationId: String = "channel",
+    ) = ThreadReadAnchorOwner(
+        environmentId = "https://api.example.test/",
+        accountId = accountId,
+        serverId = "server",
+        conversationId = conversationId,
+    )
+}

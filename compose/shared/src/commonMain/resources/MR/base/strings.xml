@@ -571,6 +571,7 @@
     <string name="thread_video_playback_failed">Video playback failed</string>
     <string name="thread_video_attachment_fallback_name">Video attachment</string>
     <string name="thread_action_back_to_bottom">Back to bottom</string>
+    <string name="thread_action_unread_count">↑ %1$d unread</string>
     <string name="thread_label_saved">Saved</string>
     <string name="thread_state_refreshing_original">Refreshing original message…</string>
     <string name="thread_error_refresh_original">Refresh failed: %1$s</string>
