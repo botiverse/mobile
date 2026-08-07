@@ -5044,7 +5044,12 @@ internal class SharedThreadStore(
                                     payload
                                 }
                             }
-                            .withInitialHomeConversationAccessFallback(currentState.initialHomeAccessCandidate)
+                            .withInitialHomeConversationAccessFallbackUnlessCanonical(
+                                canonicalAccessResolved =
+                                    currentState.canonicalAccessResolved ||
+                                        (resolvingInitialAccess && result is DataResult.Content),
+                                candidate = currentState.initialHomeAccessCandidate,
+                            )
                             .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
                                 homeLookupComplete = currentState.initialHomeAccessLookupComplete,
                                 homeAccessCandidate = currentState.initialHomeAccessCandidate
@@ -8981,6 +8986,22 @@ internal fun KuiklyThreadScreenPayload.withInitialHomeConversationAccessFallback
         composer = composer.copy(enabled = false)
     )
 }
+
+/**
+ * The Home projection is only an initial access candidate. Once a canonical non-reply
+ * conversation fetch has resolved access, a stale pre-join Home row must not override it or turn
+ * a mounted Composer back into a Join footer. Reply threads still need the Home candidate because
+ * their canonical stream response does not attest the parent channel's write authority.
+ */
+internal fun KuiklyThreadScreenPayload.withInitialHomeConversationAccessFallbackUnlessCanonical(
+    canonicalAccessResolved: Boolean,
+    candidate: ConversationAccessCandidate?,
+): KuiklyThreadScreenPayload =
+    if (canonicalAccessResolved && surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) {
+        this
+    } else {
+        withInitialHomeConversationAccessFallback(candidate)
+    }
 
 private fun ThreadAccessResolution.afterRefreshResult(
     result: DataResult<*>,
