@@ -511,6 +511,7 @@ internal data class SlockAvatarSubjectRetirementCapture(
 internal class SlockAvatarCacheRuntime(
     private val coordinator: SlockAvatarCacheCoordinator,
     private val currentOwner: suspend (String?) -> SlockAvatarCacheOwner?,
+    private val mountedBinding: SlockAvatarMountedBinding? = null,
     private val generationAuthority: SlockAvatarCacheGenerationAuthority = SlockAvatarCacheGenerationAuthority(),
     private val nativeInspectionTimeoutMillis: Long = SLOCK_AVATAR_NATIVE_INSPECTION_TIMEOUT_MILLIS,
     private val nativeMutationTimeoutMillis: Long = SLOCK_AVATAR_NATIVE_MUTATION_TIMEOUT_MILLIS,
@@ -814,6 +815,9 @@ internal class SlockAvatarCacheRuntime(
         if (capture.owners.isEmpty()) return@withContext SlockAvatarCacheClearReceipt.Success
         val failed = mutableSetOf<SlockAvatarCacheClearStage>()
         capture.owners.forEach { owner ->
+            if (!mutateMounted { it.retireOwner(owner) }) {
+                failed += SlockAvatarCacheClearStage.Native
+            }
             generationAuthority.revokeOwner(owner)
             if (mutateNative { nativeCache.retireOwner(owner.nativePartitionKey) } != SlockAvatarNativeMutationResult.Accepted) {
                 failed += SlockAvatarCacheClearStage.Native
@@ -829,8 +833,11 @@ internal class SlockAvatarCacheRuntime(
         capture: SlockAvatarSubjectRetirementCapture,
         nativeCache: SlockAvatarNativeCache
     ): SlockAvatarCacheClearReceipt = withContext(NonCancellable) {
-        generationAuthority.revokeSubject(capture.owner, capture.subject)
         val failed = mutableSetOf<SlockAvatarCacheClearStage>()
+        if (!mutateMounted { it.retireSubject(capture.owner, capture.subject) }) {
+            failed += SlockAvatarCacheClearStage.Native
+        }
+        generationAuthority.revokeSubject(capture.owner, capture.subject)
         if (
             mutateNative {
                 nativeCache.retireSubject(
@@ -861,11 +868,23 @@ internal class SlockAvatarCacheRuntime(
             withTimeoutOrNull(nativeMutationTimeoutMillis) { block() }
         }.getOrNull()
 
+    private suspend fun mutateMounted(
+        block: suspend (SlockAvatarMountedBinding) -> Boolean
+    ): Boolean =
+        mountedBinding?.let { binding ->
+            runCatching {
+                withTimeoutOrNull(nativeMutationTimeoutMillis) { block(binding) } ?: false
+            }.getOrDefault(false)
+        } ?: true
+
     /** Settings image clear: native and shared are both attempted, and partial work is never success. */
     suspend fun clearAll(nativeClear: suspend () -> Boolean): SlockAvatarCacheClearReceipt =
         withContext(NonCancellable) {
-            generationAuthority.revokeAll()
             val failed = mutableSetOf<SlockAvatarCacheClearStage>()
+            if (!mutateMounted { it.clearAll() }) {
+                failed += SlockAvatarCacheClearStage.Native
+            }
+            generationAuthority.revokeAll()
             if (
                 runCatching {
                     withTimeoutOrNull(nativeMutationTimeoutMillis) { nativeClear() } ?: false

@@ -1,7 +1,9 @@
 package build.raft.app.data
 
+import build.raft.app.slockSha256Hex
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlin.random.Random
 
 /**
  * Durable native commit coordinate carried through the shared write boundary.
@@ -10,7 +12,7 @@ import kotlinx.atomicfu.locks.synchronized
  * a durable cache database. Under the best-effort C contract, a terminal clear may forget every
  * historical identity; the next namespace starts from a full canonical response.
  */
-internal data class SlockAvatarCommitIdentity(
+data class SlockAvatarCommitIdentity(
     val commitGeneration: Long,
     val nonce: String
 ) {
@@ -76,6 +78,7 @@ internal data class SlockAvatarMountedSnapshot(
 internal class SlockAvatarMountedFlight internal constructor(
     val key: SlockAvatarCacheKey,
     val requestGeneration: Long,
+    val requestNonce: String,
     val expectedCommitIdentity: SlockAvatarCommitIdentity?,
     val validators: SlockAvatarValidators?,
     val expectedModelRevision: Long,
@@ -83,13 +86,14 @@ internal class SlockAvatarMountedFlight internal constructor(
 ) {
     init {
         require(requestGeneration > 0L)
+        require(requestNonce.matches(SlockAvatarCommitNoncePattern))
         require(expectedModelRevision >= 0L)
         require((expectedCommitIdentity == null) == (expectedModelRevision == 0L))
         require(expectedCommitIdentity != null || validators == null)
     }
 
     val requiresFullCanonicalBody: Boolean
-        get() = expectedCommitIdentity == null
+        get() = validators == null
 }
 
 internal enum class SlockAvatarMountedKeepReason {
@@ -176,7 +180,9 @@ internal sealed interface SlockAvatarMountedResolution {
  * cache. Phase 3 may adapt this boundary to the native kernel without moving those responsibilities
  * into shared.
  */
-internal class SlockAvatarMountedSession {
+internal class SlockAvatarMountedSession(
+    private val requestNonceGenerator: () -> String = ::slockAvatarMountedRequestNonce
+) {
     private val lock = SynchronizedObject()
     private var nextMountId = 0L
     private var nextSessionEpoch = 0L
@@ -228,6 +234,20 @@ internal class SlockAvatarMountedSession {
             snapshotForLocked(token.key)
         }
 
+    fun snapshotFor(
+        owner: SlockAvatarCacheOwner,
+        subject: SlockAvatarCacheSubject
+    ): SlockAvatarMountedSnapshot? =
+        synchronized(lock) {
+            val slot = SlockAvatarMountedSlot(owner, subject)
+            val key =
+                metadata[slot]?.key
+                    ?: activeFlights[slot]?.flight?.key
+                    ?: mounts.values.firstOrNull { it.token.key.mountedSlot() == slot }?.token?.key
+                    ?: return@synchronized null
+            snapshotForLocked(key)
+        }
+
     /**
      * Seeds an exact durable commit after process restart. It may only initialize an untouched
      * current mount: an active flight or any in-memory commit wins and cannot be overwritten by a
@@ -263,6 +283,31 @@ internal class SlockAvatarMountedSession {
             true
         }
 
+    /** Seeds exact SQL authority while allowing a missing native body to suppress old validators. */
+    fun seedPrepared(
+        token: SlockAvatarMountToken,
+        commitIdentity: SlockAvatarCommitIdentity?,
+        validators: SlockAvatarValidators?,
+        modelRevision: Long
+    ): Boolean =
+        synchronized(lock) {
+            if (!isCurrentLocked(token) || commitIdentity == null || modelRevision <= 0L) {
+                return@synchronized false
+            }
+            val slot = token.key.mountedSlot()
+            if (activeFlights.containsKey(slot) || metadata.containsKey(slot)) {
+                return@synchronized false
+            }
+            metadata[slot] =
+                SlockAvatarMountedMetadata(
+                    key = token.key,
+                    commitIdentity = commitIdentity,
+                    validators = validators,
+                    modelRevision = modelRevision
+                )
+            true
+        }
+
     /**
      * Joins the current exact flight or creates a new request generation. Validators are emitted
      * only with the exact committed identity they belong to. A missing identity always forces a
@@ -286,6 +331,7 @@ internal class SlockAvatarMountedSession {
             } ?: SlockAvatarMountedFlight(
                 key = token.key,
                 requestGeneration = nextPositiveRequestGeneration(),
+                requestNonce = requestNonceGenerator(),
                 expectedCommitIdentity = current.commitIdentity,
                 validators = current.validators,
                 expectedModelRevision = current.modelRevision,
@@ -297,6 +343,21 @@ internal class SlockAvatarMountedSession {
                         participantMountIds = linkedSetOf(token.mountId)
                     )
             }
+        }
+
+    fun isFlightCurrent(flight: SlockAvatarMountedFlight): Boolean =
+        synchronized(lock) {
+            val slot = flight.key.mountedSlot()
+            val active = activeFlights[slot] ?: return@synchronized false
+            if (active.flight !== flight || epochsForLocked(slot) != flight.terminalEpochs) {
+                return@synchronized false
+            }
+            val current = snapshotForLocked(flight.key)
+            current.commitIdentity == flight.expectedCommitIdentity &&
+                current.modelRevision == flight.expectedModelRevision &&
+                active.participantMountIds.any { mountId ->
+                    mounts[mountId]?.token?.let(::isCurrentLocked) == true
+                }
         }
 
     fun resolve(
@@ -513,5 +574,8 @@ private data class SlockAvatarMountedActiveFlight(
 
 private fun SlockAvatarCacheKey.mountedSlot(): SlockAvatarMountedSlot =
     SlockAvatarMountedSlot(owner, subject)
+
+private fun slockAvatarMountedRequestNonce(): String =
+    slockSha256Hex(Random.Default.nextBytes(ByteArray(32)))
 
 private val SlockAvatarCommitNoncePattern = Regex("[0-9a-f]{64}")

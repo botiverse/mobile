@@ -52,6 +52,22 @@ sealed interface SharedBinaryConditionalDownloadResult {
     }
 }
 
+/**
+ * Typed HTTP failure for [SharedBinaryDownloader.downloadConditional].
+ *
+ * Ordinary [SharedBinaryDownloader.download] and [SharedBinaryDownloader.fetchBytes] retain their
+ * existing exception contract. The status is exposed only so mounted avatar policy can distinguish
+ * authoritative 404/410 retirement from temporary HTTP failures without parsing diagnostics text.
+ */
+class SharedBinaryConditionalHttpException internal constructor(
+    val statusCode: Int,
+    message: String
+) : IllegalStateException(message) {
+    init {
+        require(statusCode in 100..599 && statusCode !in 200..299 && statusCode != 304)
+    }
+}
+
 fun interface BinaryDownloadDiagnosticsLogger {
     fun record(tag: String, message: String)
 }
@@ -183,9 +199,10 @@ object SharedBinaryDownloader {
                                     "message=$safeErrorMessage $urlSummary"
                             )
                             continuation.resumeWithException(
-                                IllegalStateException(
-                                    "$failurePrefix: HTTP ${status ?: 0}" +
-                                        safeErrorMessage.takeUnless { it == "none" }?.let { " ($it)" }.orEmpty()
+                                sharedBinaryConditionalFailure(
+                                    statusCode = status,
+                                    failurePrefix = failurePrefix,
+                                    safeErrorMessage = safeErrorMessage
                                 )
                             )
                         } else {
@@ -347,6 +364,20 @@ internal fun sharedBinaryConditionalResult(
             )
         else -> null
     }
+}
+
+internal fun sharedBinaryConditionalFailure(
+    statusCode: Int?,
+    failurePrefix: String,
+    safeErrorMessage: String
+): IllegalStateException {
+    val message =
+        "$failurePrefix: HTTP ${statusCode ?: 0}" +
+            safeErrorMessage.takeUnless { it == "none" }?.let { " ($it)" }.orEmpty()
+    return statusCode
+        ?.takeIf { it in 100..599 && it !in 200..299 && it != 304 }
+        ?.let { SharedBinaryConditionalHttpException(it, message) }
+        ?: IllegalStateException(message)
 }
 
 private fun Map<String, List<String>>.firstHeaderValue(name: String): String? =

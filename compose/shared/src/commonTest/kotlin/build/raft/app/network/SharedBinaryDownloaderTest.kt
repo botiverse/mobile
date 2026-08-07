@@ -96,4 +96,35 @@ class SharedBinaryDownloaderTest {
         assertNull(sharedBinaryConditionalResult(302, emptyMap()))
         assertNull(sharedBinaryConditionalResult(404, emptyMap()))
     }
+
+    @Test
+    fun conditionalHttpFailureCarriesStatusWithoutChangingMessage() {
+        listOf(404, 410, 401, 403, 429, 500).forEach { status ->
+            val failure =
+                assertIs<SharedBinaryConditionalHttpException>(
+                    sharedBinaryConditionalFailure(
+                        statusCode = status,
+                        failurePrefix = "Conditional download failed",
+                        safeErrorMessage = "none"
+                    )
+                )
+            assertEquals(status, failure.statusCode)
+            assertEquals("Conditional download failed: HTTP $status", failure.message)
+        }
+    }
+
+    @Test
+    fun conditionalTransportFailureRetainsUntypedIllegalStateContract() {
+        listOf<Int?>(null, 0).forEach { status ->
+            val failure =
+                sharedBinaryConditionalFailure(
+                    statusCode = status,
+                    failurePrefix = "Conditional download failed",
+                    safeErrorMessage = "timeout"
+                )
+
+            assertEquals(IllegalStateException::class, failure::class)
+            assertEquals("Conditional download failed: HTTP ${status ?: 0} (timeout)", failure.message)
+        }
+    }
 }
