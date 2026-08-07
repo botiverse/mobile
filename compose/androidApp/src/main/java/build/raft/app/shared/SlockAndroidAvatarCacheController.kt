@@ -97,7 +97,14 @@ internal class SlockAndroidAvatarCacheController internal constructor(
     private val stagingRoot: File,
     private val startupStagingRecovered: Boolean,
     private val contentInspector: SlockAndroidAvatarContentInspector =
-        DefaultSlockAndroidAvatarContentInspector
+        DefaultSlockAndroidAvatarContentInspector,
+    private val deleteTransportFile: (File) -> Boolean = { file ->
+        !file.exists() || file.delete()
+    },
+    private val deleteTransportTree: (File) -> Boolean = { root ->
+        !root.exists() || (root.deleteRecursively() && !root.exists())
+    },
+    private val terminalAdmissionObserver: (SlockAndroidAvatarTerminalScope) -> Unit = {}
 ) : SlockAvatarMountedNativeProvider {
     private enum class OperationPhase {
         Open,
@@ -119,7 +126,8 @@ internal class SlockAndroidAvatarCacheController internal constructor(
         var phase: OperationPhase = OperationPhase.Open,
         var sizeBytes: Long = 0L,
         var staged: SlockAvatarNativeStagedCandidate? = null,
-        var reservation: SlockAvatarNativeReservation? = null
+        var reservation: SlockAvatarNativeReservation? = null,
+        var transportCleanupPending: Boolean = false
     )
 
     private val lock = ReentrantLock(true)
@@ -137,17 +145,20 @@ internal class SlockAndroidAvatarCacheController internal constructor(
         withContext(Dispatchers.IO) { inspectBlocking(slot) }
 
     private fun inspectBlocking(slot: SlockAvatarNativeSlot): SlockAvatarMountedNativeInspection {
-        if (!kernelReady) return SlockAvatarMountedNativeInspection(false, false, false)
+        // Once this provider is installed, the managed protocol is recognized. Runtime recovery,
+        // admission, and storage failures must stay supported-but-unavailable: shared reserves
+        // supported=false exclusively for a genuinely absent method/provider and otherwise would
+        // reopen the ordinary raw-URL loader as a second byte authority.
+        if (!kernelReady) return SlockAvatarMountedNativeInspection(true, false, false)
         val key = slot.toAndroidKey()
         if (!acquireRenderAdmission(key)) {
-            return SlockAvatarMountedNativeInspection(false, false, false)
+            return SlockAvatarMountedNativeInspection(true, false, false)
         }
         return try {
             val current = kernel.readCurrent(key)
             val snapshot = current.snapshot
             if (current.status != SlockAndroidAvatarCurrentReadStatus.Available || snapshot == null) {
-                val supported = current.status == SlockAndroidAvatarCurrentReadStatus.Empty
-                SlockAvatarMountedNativeInspection(supported, false, false)
+                SlockAvatarMountedNativeInspection(true, false, false)
             } else {
                 val decodable = contentInspector.inspect(snapshot.bytes) != null
                 if (!decodable) {
@@ -171,6 +182,12 @@ internal class SlockAndroidAvatarCacheController internal constructor(
             if (key in retiringKeys || retiringScopes.any(key::matches)) {
                 return@withLock SlockAvatarNativeStageOpen.AdmissionClosed
             }
+            operations.values
+                .filter { operation -> operation.key == key && operation.transportCleanupPending }
+                .forEach { operation -> operation.closeAndDelete() }
+            operations.entries.removeAll { (_, operation) ->
+                operation.key == key && operation.isFullyTerminal()
+            }
             operations[fence.requestNonce]?.let { existing ->
                 if (existing.sharedFence != fence) return@withLock SlockAvatarNativeStageOpen.AdmissionClosed
                 return@withLock if (existing.phase == OperationPhase.Open) {
@@ -182,25 +199,9 @@ internal class SlockAndroidAvatarCacheController internal constructor(
             val conflicting =
                 operations.values.firstOrNull { operation ->
                     operation.key == key &&
-                        operation.phase !in
-                            setOf(
-                                OperationPhase.Finalized,
-                                OperationPhase.RolledBack,
-                                OperationPhase.Aborted,
-                                OperationPhase.Revoked
-                            )
+                        !operation.isFullyTerminal()
                 }
             if (conflicting != null) return@withLock SlockAvatarNativeStageOpen.BusyCleanup
-            operations.entries.removeAll { (_, operation) ->
-                operation.key == key &&
-                    operation.phase in
-                        setOf(
-                            OperationPhase.Finalized,
-                            OperationPhase.RolledBack,
-                            OperationPhase.Aborted,
-                            OperationPhase.Revoked
-                        )
-            }
             val generation = (requestGenerations[key] ?: 0L).nextRequestGenerationOrNull()
                 ?: return@withLock SlockAvatarNativeStageOpen.StorageFailure
             val request = kernel.beginRequest(key, generation)
@@ -286,7 +287,11 @@ internal class SlockAndroidAvatarCacheController internal constructor(
                 return@withLock SlockAvatarNativeOperationResult.ExpectedIdentityMismatch
             }
             if (operation.phase == OperationPhase.Bound || operation.phase == OperationPhase.Finalized) {
-                return@withLock SlockAvatarNativeOperationResult.Accepted
+                return@withLock if (operation.closeAndDelete()) {
+                    SlockAvatarNativeOperationResult.Accepted
+                } else {
+                    SlockAvatarNativeOperationResult.BusyCleanup
+                }
             }
             if (operation.phase != OperationPhase.Reserved) {
                 return@withLock if (operation.phase in terminalOperationPhases) {
@@ -310,7 +315,9 @@ internal class SlockAndroidAvatarCacheController internal constructor(
             val mapped = result.status.toSharedOperationResult(notFoundIsAccepted = false)
             if (mapped == SlockAvatarNativeOperationResult.Accepted) {
                 operation.phase = OperationPhase.Bound
-                operation.closeAndDelete()
+                if (!operation.closeAndDelete()) {
+                    return@withLock SlockAvatarNativeOperationResult.BusyCleanup
+                }
             }
             mapped
             }
@@ -329,9 +336,12 @@ internal class SlockAndroidAvatarCacheController internal constructor(
             if (operation.phase in setOf(OperationPhase.Bound, OperationPhase.Finalized)) {
                 return@withLock SlockAvatarNativeOperationResult.BusyCleanup
             }
-            operation.closeAndDelete()
             operation.phase = OperationPhase.Aborted
-            SlockAvatarNativeOperationResult.Accepted
+            if (operation.closeAndDelete()) {
+                SlockAvatarNativeOperationResult.Accepted
+            } else {
+                SlockAvatarNativeOperationResult.BusyCleanup
+            }
             }
         }
 
@@ -395,7 +405,11 @@ internal class SlockAndroidAvatarCacheController internal constructor(
                     OperationPhase.Revoked
                 )
             ) {
-                return@withLock SlockAvatarNativeOperationResult.Accepted
+                return@withLock if (operation.closeAndDelete()) {
+                    SlockAvatarNativeOperationResult.Accepted
+                } else {
+                    SlockAvatarNativeOperationResult.BusyCleanup
+                }
             }
             val result =
                 when (operation.phase) {
@@ -416,8 +430,10 @@ internal class SlockAndroidAvatarCacheController internal constructor(
                 }
             val mapped = result.status.toSharedOperationResult(notFoundIsAccepted = true)
             if (mapped == SlockAvatarNativeOperationResult.Accepted) {
-                operation.closeAndDelete()
                 operation.phase = OperationPhase.RolledBack
+                if (!operation.closeAndDelete()) {
+                    return@withLock SlockAvatarNativeOperationResult.BusyCleanup
+                }
             }
             mapped
             }
@@ -500,24 +516,24 @@ internal class SlockAndroidAvatarCacheController internal constructor(
         scope: SlockAndroidAvatarTerminalScope
     ): SlockAvatarNativeOperationResult {
         val boundReservations = mutableListOf<Pair<SlockAndroidAvatarOpaqueKey, SlockAvatarNativeReservation>>()
-        val matchingStageFiles = mutableListOf<File>()
+        val matchingOperations = mutableListOf<Operation>()
         lock.withLock {
             if (!kernelReady) return SlockAvatarNativeOperationResult.StorageFailure
             retiringScopes += scope
+            terminalAdmissionObserver(scope)
             operations.values.filter { it.key.matches(scope) }.forEach { operation ->
                 operation.reservation?.takeIf { operation.phase == OperationPhase.Bound }?.let { reservation ->
                     boundReservations += operation.key to reservation
                 }
-                matchingStageFiles += operation.file
-                operation.closeAndDelete()
                 operation.phase = OperationPhase.Revoked
+                operation.closeAndDelete()
+                matchingOperations += operation
             }
             while (activeRenders.any { (key, count) -> count > 0 && key.matches(scope) }) {
                 try {
                     renderDrained.await()
                 } catch (_: InterruptedException) {
                     Thread.currentThread().interrupt()
-                    retiringScopes -= scope
                     return SlockAvatarNativeOperationResult.StorageFailure
                 }
             }
@@ -533,16 +549,25 @@ internal class SlockAndroidAvatarCacheController internal constructor(
                 is SlockAndroidAvatarTerminalScope.Subject ->
                     kernel.retireSubject(scope.partitionKey, scope.ownerKey, scope.subjectKey)
             }
-        val tempZero =
-            matchingStageFiles.all { file -> !file.exists() || file.delete() } &&
-                (scope !is SlockAndroidAvatarTerminalScope.All ||
-                    !stagingRoot.exists() ||
-                    stagingRoot.deleteRecursively())
+        val trackedTempZero =
+            lock.withLock {
+                matchingOperations.all { operation ->
+                    operation.closeAndDelete() && operation.file.isPhysicallyZero()
+                }
+            }
+        val rootZero =
+            scope !is SlockAndroidAvatarTerminalScope.All ||
+                (trackedTempZero && stagingRoot.deleteTreeAndVerify())
+        val tempZero = trackedTempZero && rootZero
         lock.withLock {
-            retiringScopes -= scope
             if (terminal.status == SlockAndroidAvatarTerminalStatus.Complete && tempZero) {
                 operations.entries.removeAll { (_, operation) -> operation.key.matches(scope) }
                 requestGenerations.keys.removeAll { key -> key.matches(scope) }
+                retiringScopes -= scope
+            } else {
+                // Keep admission closed until a later terminal retry verifies both managed and
+                // transport staging physical zero.
+                retiringScopes += scope
             }
         }
         return when {
@@ -558,19 +583,20 @@ internal class SlockAndroidAvatarCacheController internal constructor(
         key: SlockAndroidAvatarOpaqueKey,
         expectedCommitIdentity: SlockAndroidAvatarCommitIdentity?
     ): SlockAvatarNativeOperationResult {
+        val matchingOperations = mutableListOf<Operation>()
         lock.withLock {
             if (!kernelReady) return SlockAvatarNativeOperationResult.StorageFailure
             retiringKeys += key
             operations.values.filter { it.key == key }.forEach { operation ->
-                operation.closeAndDelete()
                 operation.phase = OperationPhase.Revoked
+                operation.closeAndDelete()
+                matchingOperations += operation
             }
             while ((activeRenders[key] ?: 0) > 0) {
                 try {
                     renderDrained.await()
                 } catch (_: InterruptedException) {
                     Thread.currentThread().interrupt()
-                    retiringKeys -= key
                     return SlockAvatarNativeOperationResult.StorageFailure
                 }
             }
@@ -579,13 +605,21 @@ internal class SlockAndroidAvatarCacheController internal constructor(
             kernel.retireCurrentExact(key, expectedCommitIdentity)
                 .status
                 .toSharedOperationResult(notFoundIsAccepted = true)
+        val tempZero =
+            lock.withLock {
+                matchingOperations.all { operation ->
+                    operation.closeAndDelete() && operation.file.isPhysicallyZero()
+                }
+            }
         lock.withLock {
-            retiringKeys -= key
-            if (result == SlockAvatarNativeOperationResult.Accepted) {
+            if (result == SlockAvatarNativeOperationResult.Accepted && tempZero) {
                 operations.entries.removeAll { (_, operation) -> operation.key == key }
+                retiringKeys -= key
+            } else {
+                retiringKeys += key
             }
         }
-        return result
+        return if (!tempZero) SlockAvatarNativeOperationResult.BusyCleanup else result
     }
 
     private fun acquireRenderAdmission(key: SlockAndroidAvatarOpaqueKey): Boolean =
@@ -631,15 +665,15 @@ internal class SlockAndroidAvatarCacheController internal constructor(
                 if (operation.phase != OperationPhase.Open || bytes.isEmpty()) return@withLock false
                 val nextSize = operation.sizeBytes + bytes.size.toLong()
                 if (nextSize > SLOCK_ANDROID_AVATAR_MAX_ENTRY_BYTES) {
-                    operation.closeAndDelete()
                     operation.phase = OperationPhase.Aborted
+                    operation.closeAndDelete()
                     return@withLock false
                 }
                 val output =
                     operation.output ?: run {
                         if ((!stagingRoot.exists() && !stagingRoot.mkdirs()) ||
                             !stagingRoot.isDirectory ||
-                            (operation.file.exists() && !operation.file.delete())
+                            !operation.closeAndDelete()
                         ) {
                             operation.phase = OperationPhase.Aborted
                             return@withLock false
@@ -648,13 +682,14 @@ internal class SlockAndroidAvatarCacheController internal constructor(
                             ?.also { operation.output = it }
                             ?: run {
                                 operation.phase = OperationPhase.Aborted
+                                operation.closeAndDelete()
                                 return@withLock false
                             }
                     }
                 val wrote = runCatching { output.write(bytes); true }.getOrDefault(false)
                 if (!wrote) {
-                    operation.closeAndDelete()
                     operation.phase = OperationPhase.Aborted
+                    operation.closeAndDelete()
                     return@withLock false
                 }
                 operation.sizeBytes = nextSize
@@ -678,8 +713,8 @@ internal class SlockAndroidAvatarCacheController internal constructor(
                     }
                 }
                 if (operation.sizeBytes <= 0L) {
-                    operation.closeAndDelete()
                     operation.phase = OperationPhase.Aborted
+                    operation.closeAndDelete()
                     return@withLock SlockAvatarNativeStageFinish.InvalidContent
                 }
                 val closed =
@@ -691,16 +726,16 @@ internal class SlockAndroidAvatarCacheController internal constructor(
                         true
                     }.getOrDefault(false)
                 if (!closed) {
-                    operation.closeAndDelete()
                     operation.phase = OperationPhase.Aborted
+                    operation.closeAndDelete()
                     return@withLock SlockAvatarNativeStageFinish.StorageFailure
                 }
                 val bytes = runCatching { operation.file.readBytes() }.getOrNull()
                     ?.takeIf { it.size.toLong() == operation.sizeBytes }
                 val contentType = bytes?.let(contentInspector::inspect)
                 if (contentType == null) {
-                    operation.closeAndDelete()
                     operation.phase = OperationPhase.Aborted
+                    operation.closeAndDelete()
                     return@withLock SlockAvatarNativeStageFinish.InvalidContent
                 }
                 val staged =
@@ -718,16 +753,42 @@ internal class SlockAndroidAvatarCacheController internal constructor(
             lock.withLock {
                 val operation = operations[requestNonce] ?: return
                 if (operation.phase in setOf(OperationPhase.Bound, OperationPhase.Finalized)) return
-                operation.closeAndDelete()
                 operation.phase = OperationPhase.Aborted
+                operation.closeAndDelete()
             }
         }
     }
 
-    private fun Operation.closeAndDelete() {
-        runCatching { output?.close() }
-        output = null
-        runCatching { if (file.exists()) file.delete() }
+    private fun Operation.closeAndDelete(): Boolean {
+        val currentOutput = output
+        if (currentOutput != null) {
+            val closed = runCatching { currentOutput.close(); true }.getOrDefault(false)
+            if (!closed) {
+                transportCleanupPending = true
+                return false
+            }
+            output = null
+        }
+        val deleted =
+            runCatching {
+                if (!file.exists()) true else deleteTransportFile(file)
+            }.getOrDefault(false)
+        val zero = file.isPhysicallyZero()
+        // A false/throwing delete is not a best-effort detail. Preserve the operation as cleanup
+        // authority so bind/abort/rollback/terminal callers return BusyCleanup and can retry.
+        transportCleanupPending = !(deleted && zero)
+        return !transportCleanupPending
+    }
+
+    private fun Operation.isFullyTerminal(): Boolean =
+        phase in terminalOperationPhases && !transportCleanupPending && file.isPhysicallyZero()
+
+    private fun File.isPhysicallyZero(): Boolean =
+        runCatching { !exists() }.getOrDefault(false)
+
+    private fun File.deleteTreeAndVerify(): Boolean {
+        val deleted = runCatching { deleteTransportTree(this) }.getOrDefault(false)
+        return deleted && runCatching { !exists() }.getOrDefault(false)
     }
 
     companion object {
