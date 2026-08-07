@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-07T00:09:26.482Z",
+  "generatedAt": "2026-08-07T00:39:04.569Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 78,
+    "pending": 8
   },
   "cases": [
     {
@@ -464,30 +464,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-02T22:43:36.015Z",
-      "severity": "low",
-      "summary": [
-        "Both renderings show the same Raft UI Status Dot states (green, orange, gray, blue, and pink \"Waiting pulse\" dot with label) with matching colors, order, spacing, and typography.",
-        "The iOS badge reads \"IOS\" while the React badge reads \"REACT\" — expected platform identifier difference.",
-        "Overall layout and component proportions are visually consistent; pixel mismatch (0.23%) is negligible and within tolerance."
-      ],
-      "likelyCauses": [
-        "Platform label hard-coded differently per platform (expected).",
-        "Minor antialiasing/font-rendering differences between web and iOS native renderers."
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "No action required — differences are within tolerance and platform badges are intentional.",
-        "If stricter parity is desired, normalize the platform badge label casing/style across docs."
-      ],
-      "intentional": [
-        "Different platform identifier badge text (\"REACT\" vs \"IOS\")."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-08-07T00:39:01.706Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -998,7 +983,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0812073831031177
+      "metricMismatch": 0.08151186184361536
     },
     {
       "id": "components.thread.composer.as-task-selected",
@@ -1353,35 +1338,15 @@
     },
     {
       "id": "components.thread.message-share.selection",
-      "status": "ready",
-      "imageHash": "p1:07fc07fcfffe7ffe801e0146c0024002f0fe7002f1fe7f7e83fe01fe80024002f8fe7002fffe4006fffe0000fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe7ffe7ffe00007ffe00000000fffe1fff",
-      "generatedAt": "2026-08-03T22:23:44.568Z",
-      "severity": "high",
-      "summary": [
-        "Selection action bar (yellow bar) is missing on the iOS side",
-        "iOS action bar position differs: React places bar pinned to bottom, iOS renders it inline below message list",
-        "iOS action bar shows 5 actions (X, All, Forward, Copy, Download) while React shows 4 (Cancel, Send, Copy, More)",
-        "React includes reaction chip (👍 2 +) under the first message; iOS omits reactions entirely",
-        "iOS shows truncated preview text (\"Keeps visua…\") in message metadata line; React shows full last name \"K\""
-      ],
-      "likelyCauses": [
-        "iOS view does not render the selection toolbar at the expected portal/footer position",
-        "iOS message item omits the reactions row in selection mode",
-        "iOS metadata layout uses a truncation policy React does not, causing cropped author preview text",
-        "iOS action bar uses platform-native context menu items (Copy, Download) not present in React web spec"
-      ],
-      "suggestedOwner": "ios-engineering",
-      "suggestedFixes": [
-        "Render the yellow selection action bar pinned to the bottom on iOS to match React's bottom-anchored toolbar",
-        "Add the reaction chip row (count + add-reaction button) to iOS message rows when in selection mode",
-        "Disable or widen the truncation on the author metadata line so names like \"Keeps visua…\" display in full",
-        "Align the action set to the React spec: Cancel, Forward, Copy, More — drop iOS-only All/Download unless intended",
-        "Verify the action bar background color and yellow fill match exactly between platforms (current iOS tint appears slightly different)"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:07fc07fcfffe7ffe801e01dec0024002f0fe7002f1fe7ffe83fe03fe80024002f8fe7002fffe4006fffe0000fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe0000fffe00000000fffe1fff",
+      "generatedAt": "2026-08-07T00:39:02.821Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.1692827534059762
     },
     {
@@ -1774,7 +1739,7 @@
     {
       "id": "components.members.create-agent.dialog",
       "status": "ready",
-      "imageHash": "p1:ffffffff000000002df47dfc3bfc6df83ff83ffc002c00cc21fc7ffc3ffc3ffc2ffc39fc3ffc3ffc2ffc1ffc3ffc31fc3ffc03fc27fc07fc3ffc3ffc3ffc7ffc3ffc7f7c3ffc78743ffc00002ffc80013ffcdef32ffcffff3ffcffff3ffcffff3ffcbff87ffc1ff83ffc0ff03ff40ff03f4480010000800100008001ffffffff",
+      "imageHash": "p1:ffffffff000000002df47dfc3bfc6df83ff83ffc002c00cc21fc7ffc3ffc3ffc2ffc39fc3ffc3ffc2ffc1ffc3ffc33fc3ffc03fc27fc07fc3ffc3ffc3ffc7ffc3ffc7f7c3ffc78743ffc00002ffc80013ffcdef32ffcffff3ffcffff3ffcffff3ffcbff87ffc1ff83ffc0ff03ff40ff03f4480010000800100008001ffffffff",
       "generatedAt": "2026-08-07T00:06:39.485Z",
       "severity": "high",
       "summary": [
@@ -1839,7 +1804,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:09:25.767Z",
+      "generatedAt": "2026-08-07T00:39:03.125Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2123,7 +2088,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19769649343109064
+      "metricMismatch": 0.19767927789254802
     },
     {
       "id": "components.settings.notifications.page",
@@ -2231,7 +2196,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:09:26.049Z",
+      "generatedAt": "2026-08-07T00:39:03.672Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2244,7 +2209,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:09:26.049Z",
+      "generatedAt": "2026-08-07T00:39:03.672Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2257,7 +2222,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:09:26.049Z",
+      "generatedAt": "2026-08-07T00:39:03.672Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2270,7 +2235,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:09:26.049Z",
+      "generatedAt": "2026-08-07T00:39:03.672Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2283,7 +2248,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:09:26.049Z",
+      "generatedAt": "2026-08-07T00:39:03.672Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2394,7 +2359,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2361600572501047
+      "metricMismatch": 0.23615904457136683
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2457,7 +2422,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1932926911599897
+      "metricMismatch": 0.19329100336209337
     },
     {
       "id": "components.thread.message-row.rich-content",

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-07T00:09:23.248Z",
+  "generatedAt": "2026-08-07T00:38:58.944Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -993,7 +993,7 @@
     {
       "id": "components.thread.composer.pending-mention-actions",
       "status": "ready",
-      "imageHash": "p1:ffffffff03fe03fc000000008001000380000001f03e407dc07e4ffdcffe77f5f7de7e79fc0e7ffdfc047ffdfc06701d800070098001700d80010001bffe000183fe7ffdbffe03fd87dc7ffd87cc0ff984180f9980000001ffff0001fffffffffffffffffffffffffffffffffffffffffffeffff80018001ffffffffffffffff",
+      "imageHash": "p1:ffffffff03fe03fc000000008001000380000001f03e407dc07e4ffdcffe77f5f7de7e79fc0e7ffdf8047ffdf80e701d800070098001700d80010001bffe000183fe7ffdbffe03fd87dc7ffd87cc0ff984180f9980000001ffff0001fffffffffffffffffffffffffffffffffffffffffffeffff80018001ffffffffffffffff",
       "generatedAt": "2026-08-07T00:05:48.816Z",
       "severity": "medium",
       "summary": [
@@ -1024,7 +1024,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.27102350384262064
+      "metricMismatch": 0.27049248280343263
     },
     {
       "id": "components.thread.composer.as-task-selected",
@@ -1865,7 +1865,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:09:22.479Z",
+      "generatedAt": "2026-08-07T00:38:57.806Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2157,7 +2157,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19930125167091994
+      "metricMismatch": 0.1992870741685907
     },
     {
       "id": "components.settings.notifications.page",
@@ -2267,7 +2267,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e2817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80781802ffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80781802ffffffff",
       "generatedAt": "2026-07-26T05:05:16.996Z",
       "severity": "high",
       "summary": [
@@ -2436,7 +2436,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09477288991507005
+      "metricMismatch": 0.09477221479591147
     },
     {
       "id": "screens.members.human.profile",
@@ -2536,7 +2536,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23518079691065474
+      "metricMismatch": 0.23518045935107545
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2574,7 +2574,7 @@
     {
       "id": "screens.home.loading",
       "status": "ready",
-      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfff8ffe9ffefffe9ffec3fe9ffebffe9ffebffedfffbffec3ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffe93fefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
+      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfff8ffe9ffefffe9ffec3fe9ffebffe9ffebffedfffbffec3ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffebbfefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
       "generatedAt": "2026-07-13T22:11:37.533Z",
       "severity": "medium",
       "summary": [
@@ -2602,7 +2602,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.15702697776157493
+      "metricMismatch": 0.1570276528807335
     },
     {
       "id": "components.thread.message-row.rich-content",
