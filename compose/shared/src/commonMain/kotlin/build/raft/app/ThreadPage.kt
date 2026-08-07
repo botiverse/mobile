@@ -14381,6 +14381,16 @@ private fun ThreadComposerRoute(
     onKeyboardHeightChange: (Float) -> Unit
 ) {
     val composerDraftState by composerDraftViewModel.state.collectAsState()
+    val expectedDraftKey = remember(surface) { surface.threadComposerDraftKey() }
+    if (
+        !threadComposerEditorReadyToMount(
+            composerInstanceId = baseComposerState.instanceId,
+            expectedDraftKey = expectedDraftKey,
+            draftState = composerDraftState,
+        )
+    ) {
+        return
+    }
     val composerState =
         remember(baseComposerState, composerDraftState, renderedPayload.canSend, resolvedAuxiliaryThreadId) {
             baseComposerState.withThreadComposerDraftState(
@@ -14408,6 +14418,23 @@ private fun ThreadComposerRoute(
         contentPaddingBottom = 0.dp
     )
 }
+
+/**
+ * A restored draft is read synchronously by the persistence slice during Start, but Start itself
+ * is dispatched from a launch effect. Mounting the native editor before that transition lets its
+ * initial empty callback race the restored String projection and can leave native placeholder
+ * drawing on top of restored text. Keep the editor unmounted until the store owns the exact
+ * conversation draft session; later programmatic edits continue through editor commands.
+ */
+internal fun threadComposerEditorReadyToMount(
+    composerInstanceId: String,
+    expectedDraftKey: String?,
+    draftState: SharedThreadComposerDraftState,
+): Boolean =
+    composerInstanceId.isNotBlank() &&
+        expectedDraftKey != null &&
+        draftState.instanceId == composerInstanceId &&
+        draftState.draftKey == expectedDraftKey
 
 @Composable
 private fun ThreadComposerContentWithSuggestions(
