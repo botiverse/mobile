@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-07T00:39:13.607Z",
+  "generatedAt": "2026-08-07T00:44:25.531Z",
   "runId": "3969d98a-20260807003506",
   "commit": "3969d98a-20260807003506",
   "commitSubject": "fix(visual): thread reply metadata through the compact inline-selection fixture host (#2012)",
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 78,
-        "pending": 8
+        "ready": 80,
+        "pending": 6
       }
     },
     {

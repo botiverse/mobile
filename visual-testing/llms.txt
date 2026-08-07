@@ -1,6 +1,6 @@
 # Raft Visual Testing
 
-Generated: 2026-08-07 00:39:13 UTC
+Generated: 2026-08-07 00:44:25 UTC
 Latest run: 3969d98a-20260807003506
 Latest commit: 3969d98a-20260807003506
 Commit subject: fix(visual): thread reply metadata through the compact inline-selection fixture host (#2012)

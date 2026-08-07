@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-07T00:39:04.569Z",
+  "generatedAt": "2026-08-07T00:44:15.109Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 78,
-    "pending": 8
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -464,15 +464,34 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-07T00:39:01.706Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-07T00:42:03.090Z",
+      "severity": "low",
+      "summary": [
+        "Color row of four status dots matches between React and iOS (green, orange, gray, blue) with consistent sizes and spacing.",
+        "Pink \"Waiting pulse\" dot and label render identically in color, size, and vertical alignment across both platforms.",
+        "Typography of \"Waiting pulse\" label is consistent in weight and size between React and iOS.",
+        "Header label \"Raft UI Status Dot\" and monospace caption text appear identical in font, weight, and spacing.",
+        "Overall component bounds and element positioning match; 0.23% pixel mismatch is within 2% tolerance and consistent with anti-aliasing only."
+      ],
+      "likelyCauses": [
+        "Minor anti-aliasing differences in circle edge rendering between web (Canvas/CanvasKit) and iOS (Core Animation) at different DPI scales.",
+        "Sub-pixel rounding of the dot circle edges when scaled from baseline 342×92 to 1170×2532."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "No action required — match is within tolerance (RGB 98.0%, pixel-perfect 99.77%, mismatch 0.23%).",
+        "If stricter parity is desired, align dot rendering to use identical anti-aliasing settings or render dots as SVG-backed primitives on iOS.",
+        "Confirm Status Dot component is using shared token-driven size and color values to prevent drift."
+      ],
+      "intentional": [
+        "The two views show the same Status Dot states (success, warning, neutral, info, waiting-pulse) rendered by different platforms; any minor edge softness is expected.",
+        "Canvas size disparity (342×92 vs 1170×2532) is due to baseline element crop vs full device viewport and is not a layout regression."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -1338,15 +1357,37 @@
     },
     {
       "id": "components.thread.message-share.selection",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc07fcfffe7ffe801e01dec0024002f0fe7002f1fe7ffe83fe03fe80024002f8fe7002fffe4006fffe0000fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe0000fffe00000000fffe1fff",
-      "generatedAt": "2026-08-07T00:39:02.821Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-07T00:42:04.007Z",
+      "severity": "high",
+      "summary": [
+        "Action bar contains different button set: React shows Cancel/Forward/copy/more, iOS shows X/All/Forward/copy/download",
+        "iOS has an additional 'All' select-all button absent in React",
+        "iOS includes a download button; React shows a 'more' (⋯) overflow instead",
+        "iOS action bar sits inline (mid-content, below messages) while React pins it to bottom",
+        "Selection checkboxes/icons differ: React uses circular yellow check, iOS uses square yellow check"
+      ],
+      "likelyCauses": [
+        "iOS implementation diverged from shared design tokens for the multi-select action bar",
+        "iOS action bar uses an absolute/inline placement rather than the docked bottom-sheet pattern",
+        "iOS lacks reaction affordances under messages",
+        "Selection affordance shapes (circle vs square) were customized per-platform instead of using shared icon set"
+      ],
+      "suggestedOwner": "iOS engineer (Thread / Message components)",
+      "suggestedFixes": [
+        "Align iOS action bar buttons to match React set (Cancel/Forward/copy/more) or intentionally document the deviation",
+        "Remove or justify the extra 'All' and download buttons on iOS",
+        "Move iOS action bar to a bottom-docked position to match React",
+        "Replace circular selection check with square check (or align React to square) for cross-platform consistency",
+        "Add missing reaction (👍) and add-reaction (+) affordances to iOS message rows"
+      ],
+      "intentional": [
+        "Different message content and timestamps appear to be test fixtures rather than a UI regression"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1692827534059762
     },
     {
@@ -1804,7 +1845,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:39:03.125Z",
+      "generatedAt": "2026-08-07T00:44:13.658Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2196,7 +2237,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:39:03.672Z",
+      "generatedAt": "2026-08-07T00:44:14.168Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2209,7 +2250,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:39:03.672Z",
+      "generatedAt": "2026-08-07T00:44:14.168Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2222,7 +2263,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:39:03.672Z",
+      "generatedAt": "2026-08-07T00:44:14.168Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2235,7 +2276,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:39:03.672Z",
+      "generatedAt": "2026-08-07T00:44:14.168Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2248,7 +2289,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T00:39:03.672Z",
+      "generatedAt": "2026-08-07T00:44:14.168Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

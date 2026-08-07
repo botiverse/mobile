@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>3969d98a-20260807003506</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-07T00:39:13.607Z" data-timestamp="2026-08-07T00:39:13.607Z" title="2026-08-07T00:39:13.607Z">2026-08-07 00:39:13 UTC</time></p>
+    <p class="runMeta"><code>3969d98a-20260807003506</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-07T00:44:25.531Z" data-timestamp="2026-08-07T00:44:25.531Z" title="2026-08-07T00:44:25.531Z">2026-08-07 00:44:25 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 13</span>
       <span class="pill">Different 55</span>
       <span class="pill">Missing 6</span>
-      <span class="pill">AI 78/86 ready</span>
+      <span class="pill">AI 80/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1028,7 +1028,12 @@
       <p><code>RGB 98.0%</code><br/><code>Pixel 99.77%</code><br/><code>Mismatch 0.23%</code><br/><code>Raw 1026×276 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.77% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×92 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · design-system</summary>
+    <ul><li>Color row of four status dots matches between React and iOS (green, orange, gray, blue) with consistent sizes and spacing.</li><li>Pink &quot;Waiting pulse&quot; dot and label render identically in color, size, and vertical alignment across both platforms.</li><li>Typography of &quot;Waiting pulse&quot; label is consistent in weight and size between React and iOS.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No action required — match is within tolerance (RGB 98.0%, pixel-perfect 99.77%, mismatch 0.23%).</li><li>If stricter parity is desired, align dot rendering to use identical anti-aliasing settings or render dots as SVG-backed primitives on iOS.</li><li>Confirm Status Dot component is using shared token-driven size and color values to prevent drift.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.status-dot.states.png" data-current-src="ios/components.ui.status-dot.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -2760,7 +2765,12 @@
       <p><code>RGB 92.5%</code><br/><code>Pixel 83.07%</code><br/><code>Mismatch 16.93%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-with-portal 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS engineer (Thread / Message components)</summary>
+    <ul><li>Action bar contains different button set: React shows Cancel/Forward/copy/more, iOS shows X/All/Forward/copy/download</li><li>iOS has an additional 'All' select-all button absent in React</li><li>iOS includes a download button; React shows a 'more' (⋯) overflow instead</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align iOS action bar buttons to match React set (Cancel/Forward/copy/more) or intentionally document the deviation</li><li>Remove or justify the extra 'All' and download buttons on iOS</li><li>Move iOS action bar to a bottom-docked position to match React</li><li>Replace circular selection check with square check (or align React to square) for cross-platform consistency</li><li>Add missing reaction (👍) and add-reaction (+) affordances to iOS message rows</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-share.selection.png" data-current-src="ios/components.thread.message-share.selection.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">

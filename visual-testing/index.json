@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-07T00:39:13.607Z",
+  "generatedAt": "2026-08-07T00:44:25.531Z",
   "latestRunId": "3969d98a-20260807003506",
   "latest": {
     "runId": "3969d98a-20260807003506",
     "commit": "3969d98a-20260807003506",
     "commitSubject": "fix(visual): thread reply metadata through the compact inline-selection fixture host (#2012)",
-    "generatedAt": "2026-08-07T00:39:13.607Z",
+    "generatedAt": "2026-08-07T00:44:25.531Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -129,7 +129,7 @@
       "runId": "3969d98a-20260807003506",
       "commit": "3969d98a-20260807003506",
       "commitSubject": "fix(visual): thread reply metadata through the compact inline-selection fixture host (#2012)",
-      "generatedAt": "2026-08-07T00:39:13.607Z",
+      "generatedAt": "2026-08-07T00:44:25.531Z",
       "baseline": "react",
       "current": "android",
       "summary": {
