@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>2fd1febb-20260807221101</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-07T22:14:30.209Z" data-timestamp="2026-08-07T22:14:30.209Z" title="2026-08-07T22:14:30.209Z">2026-08-07 22:14:30 UTC</time></p>
+    <p class="runMeta"><code>2fd1febb-20260807221101</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-07T22:18:36.605Z" data-timestamp="2026-08-07T22:18:36.605Z" title="2026-08-07T22:18:36.605Z">2026-08-07 22:18:36 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 85</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 84/86 ready</span>
+      <span class="pill">AI 85/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -4118,7 +4118,12 @@
       <p><code>RGB 72.5%</code><br/><code>Pixel 52.30%</code><br/><code>Mismatch 47.70%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android</summary>
+    <ul><li>Android renders only the top portion of the Create Agent dialog (through DESCRIPTION field); React shows the full form including RUNTIME, MODEL, error message, and More section</li><li>Cancel and Create Agent buttons appear mid-form on Android (clipped), whereas React shows them at the bottom after all fields</li><li>Create Agent button color differs: React shows a pink/disabled state, Android shows a grey/disabled state</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Ensure Android capture scrolls dialog to top OR include full modal height so RUNTIME/MODEL/buttons are visible</li><li>Align Cancel/Create Agent disabled state colors with React baseline (pink)</li><li>Match vertical padding and field heights to React spec</li><li>Use modal-viewport crop contract on Android side to match React baseline</li><li>Verify the form's bottom action bar is part of the modal sheet, not a sticky overlay that gets cropped</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.dialog.png" data-current-src="android/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

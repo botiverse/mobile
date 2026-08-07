@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-07T22:14:16.093Z",
+  "generatedAt": "2026-08-07T22:18:28.124Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 84,
-    "pending": 2
+    "ready": 85,
+    "pending": 1
   },
   "cases": [
     {
@@ -1795,15 +1795,35 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc7ffc7ffc7ffc7ffe7ffc6ffe41fc7dfe7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffe7ffc6ffe7cfc7ffc00007ffe00007ffe00007ffc00007ffe00007ffe00007ffe00007ffe00007ffe00000000000000000000ffffffff",
-      "generatedAt": "2026-08-07T22:14:15.150Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-07T22:16:50.367Z",
+      "severity": "high",
+      "summary": [
+        "Android renders only the top portion of the Create Agent dialog (through DESCRIPTION field); React shows the full form including RUNTIME, MODEL, error message, and More section",
+        "Cancel and Create Agent buttons appear mid-form on Android (clipped), whereas React shows them at the bottom after all fields",
+        "Create Agent button color differs: React shows a pink/disabled state, Android shows a grey/disabled state",
+        "Android form is vertically compressed/zoomed differently—fields appear taller and more widely spaced, suggesting different scroll position or scale",
+        "Agent limit banner and COMPUTER/NAME/DESCRIPTION fields exist on both but with different vertical spacing"
+      ],
+      "likelyCauses": [
+        "Android capture scrolled the dialog to top so lower fields are clipped at viewport",
+        "Different modal sizing/scroll behavior between React and Android implementations",
+        "Possible crop mismatch: baseline crops to modal-viewport while current crops to viewport-bounds, hiding bottom of Android dialog",
+        "Disabled button color theming not aligned across platforms (pink vs grey)"
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Ensure Android capture scrolls dialog to top OR include full modal height so RUNTIME/MODEL/buttons are visible",
+        "Align Cancel/Create Agent disabled state colors with React baseline (pink)",
+        "Match vertical padding and field heights to React spec",
+        "Use modal-viewport crop contract on Android side to match React baseline",
+        "Verify the form's bottom action bar is part of the modal sheet, not a sticky overlay that gets cropped"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.4769855254452411
     },
     {
@@ -1844,7 +1864,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:14:14.923Z",
+      "generatedAt": "2026-08-07T22:18:27.406Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

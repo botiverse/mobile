@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-07 22:14:30 UTC
+Generated: 2026-08-07 22:18:36 UTC
 Latest run: 2fd1febb-20260807221101
 Latest commit: 2fd1febb-20260807221101
 Commit subject: fix(ci): guard merge commit trailers
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 86, same 0, pass 0, basic-pass 0, different 85, missing 1
-AI analysis: ready 84 / total 86, pending 2
+AI analysis: ready 85 / total 86, pending 1
 Visual coverage matrix: active 95 / total 114, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

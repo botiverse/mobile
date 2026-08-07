@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-07T22:14:30.209Z",
+  "generatedAt": "2026-08-07T22:18:36.605Z",
   "latestRunId": "2fd1febb-20260807221101",
   "latest": {
     "runId": "2fd1febb-20260807221101",
     "commit": "2fd1febb-20260807221101",
     "commitSubject": "fix(ci): guard merge commit trailers",
-    "generatedAt": "2026-08-07T22:14:30.209Z",
+    "generatedAt": "2026-08-07T22:18:36.605Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 86,
-      "ready": 84,
-      "pending": 2
+      "ready": 85,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "2fd1febb-20260807221101",
       "commit": "2fd1febb-20260807221101",
       "commitSubject": "fix(ci): guard merge commit trailers",
-      "generatedAt": "2026-08-07T22:14:30.209Z",
+      "generatedAt": "2026-08-07T22:18:36.605Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 84,
-        "pending": 2
+        "ready": 85,
+        "pending": 1
       },
       "comparisons": [
         "react__android",

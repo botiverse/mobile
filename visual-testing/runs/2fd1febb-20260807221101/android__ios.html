@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>2fd1febb-20260807221101</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-07T22:14:30.209Z" data-timestamp="2026-08-07T22:14:30.209Z" title="2026-08-07T22:14:30.209Z">2026-08-07 22:14:30 UTC</time></p>
+    <p class="runMeta"><code>2fd1febb-20260807221101</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-07T22:18:36.605Z" data-timestamp="2026-08-07T22:18:36.605Z" title="2026-08-07T22:18:36.605Z">2026-08-07 22:18:36 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <a href="react__ios.html">React vs iOS</a> · <strong>Android vs iOS</strong></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 23</span>
       <span class="pill">Different 42</span>
       <span class="pill">Missing 5</span>
-      <span class="pill">AI 80/86 ready</span>
+      <span class="pill">AI 81/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -4120,7 +4120,12 @@
       <p><code>RGB 78.3%</code><br/><code>Pixel 53.20%</code><br/><code>Mismatch 46.80%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · ui-mobile-platform</summary>
+    <ul><li>iOS shows the system soft keyboard occupying the lower ~45% of the viewport, while Android does not (no IME shown), drastically changing the visible dialog area</li><li>Dialog on iOS is shifted upward and compressed because the IME pushes content; Android dialog sits in normal position with full height visible</li><li>Character count indicator '72/3000' is visible on Android (bottom-right of Description), missing on iOS</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize capture state: dismiss IME on both platforms before snapshot, or capture both with and without IME explicitly</li><li>Apply consistent KeyboardAvoidingView / safeArea bottom padding on iOS so dialog content (incl. character counter and action buttons) reflows the same way as Android</li><li>Ensure description textarea character counter '72/3000' renders identically on both platforms (check visibility/clipping when IME is up)</li><li>Fix dialog height/width to be intrinsic-based or max-height constrained so IME inset does not visually compress the form on iOS</li><li>Lock initial focus state (no field focused) in test fixtures used by Slock visual diffs</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.members.create-agent.dialog.png" data-current-src="ios/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-07T22:14:21.271Z",
+  "generatedAt": "2026-08-07T22:18:31.122Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 79,
-    "pending": 7
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -464,15 +464,32 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-07T22:14:18.611Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-07T22:16:57.790Z",
+      "severity": "low",
+      "summary": [
+        "Status dot colors and shapes match between React and iOS renders.",
+        "Text label \"Waiting pulse\" is present and aligned consistently in both renders.",
+        "No missing elements or clipping observed.",
+        "Minor difference in raw canvas size (baseline cropped to component bounds vs full iOS canvas) accounts for empty space on iOS side.",
+        "Pixel mismatch ratio is only 0.23%, well within tolerance."
+      ],
+      "likelyCauses": [
+        "Baseline crop is element-bounded while iOS capture is full-screen, producing large empty region on right.",
+        "Negligible sub-pixel/antialiasing differences in dot rendering."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Apply consistent component-bounds cropping to iOS capture to align comparison regions.",
+        "Confirm dot pulse animation is not active in snapshot (would cause expected variance)."
+      ],
+      "intentional": [
+        "Differences in canvas size due to differing crop contracts between platforms."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -1826,7 +1843,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:14:20.046Z",
+      "generatedAt": "2026-08-07T22:18:30.469Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2218,7 +2235,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:14:20.434Z",
+      "generatedAt": "2026-08-07T22:18:30.745Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2231,7 +2248,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:14:20.434Z",
+      "generatedAt": "2026-08-07T22:18:30.745Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2244,7 +2261,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:14:20.434Z",
+      "generatedAt": "2026-08-07T22:18:30.745Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2257,7 +2274,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:14:20.434Z",
+      "generatedAt": "2026-08-07T22:18:30.745Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2270,7 +2287,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:14:20.434Z",
+      "generatedAt": "2026-08-07T22:18:30.745Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

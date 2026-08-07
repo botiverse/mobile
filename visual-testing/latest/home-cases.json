@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-07T22:14:30.209Z",
+  "generatedAt": "2026-08-07T22:18:36.605Z",
   "runId": "2fd1febb-20260807221101",
   "cases": [
     {
@@ -5414,17 +5414,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-07T22:14:21.928Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-07T22:16:57.790Z",
+            "severity": "low",
+            "summary": [
+              "Status dot colors and shapes match between React and iOS renders.",
+              "Text label \"Waiting pulse\" is present and aligned consistently in both renders.",
+              "No missing elements or clipping observed.",
+              "Minor difference in raw canvas size (baseline cropped to component bounds vs full iOS canvas) accounts for empty space on iOS side.",
+              "Pixel mismatch ratio is only 0.23%, well within tolerance."
+            ],
+            "likelyCauses": [
+              "Baseline crop is element-bounded while iOS capture is full-screen, producing large empty region on right.",
+              "Negligible sub-pixel/antialiasing differences in dot rendering."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "Apply consistent component-bounds cropping to iOS capture to align comparison regions.",
+              "Confirm dot pulse animation is not active in snapshot (would cause expected variance)."
+            ],
+            "intentional": [
+              "Differences in canvas size due to differing crop contracts between platforms."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -5495,17 +5509,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-07T22:14:21.928Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-07T22:16:57.790Z",
+            "severity": "low",
+            "summary": [
+              "Status dot colors and shapes match between React and iOS renders.",
+              "Text label \"Waiting pulse\" is present and aligned consistently in both renders.",
+              "No missing elements or clipping observed.",
+              "Minor difference in raw canvas size (baseline cropped to component bounds vs full iOS canvas) accounts for empty space on iOS side.",
+              "Pixel mismatch ratio is only 0.23%, well within tolerance."
+            ],
+            "likelyCauses": [
+              "Baseline crop is element-bounded while iOS capture is full-screen, producing large empty region on right.",
+              "Negligible sub-pixel/antialiasing differences in dot rendering."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "Apply consistent component-bounds cropping to iOS capture to align comparison regions.",
+              "Confirm dot pulse animation is not active in snapshot (would cause expected variance)."
+            ],
+            "intentional": [
+              "Differences in canvas size due to differing crop contracts between platforms."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -20156,17 +20184,34 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-07T22:14:17.028Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-07T22:16:50.367Z",
+        "severity": "high",
+        "summary": [
+          "Android renders only the top portion of the Create Agent dialog (through DESCRIPTION field); React shows the full form including RUNTIME, MODEL, error message, and More section",
+          "Cancel and Create Agent buttons appear mid-form on Android (clipped), whereas React shows them at the bottom after all fields",
+          "Create Agent button color differs: React shows a pink/disabled state, Android shows a grey/disabled state",
+          "Android form is vertically compressed/zoomed differently—fields appear taller and more widely spaced, suggesting different scroll position or scale",
+          "Agent limit banner and COMPUTER/NAME/DESCRIPTION fields exist on both but with different vertical spacing"
+        ],
+        "likelyCauses": [
+          "Android capture scrolled the dialog to top so lower fields are clipped at viewport",
+          "Different modal sizing/scroll behavior between React and Android implementations",
+          "Possible crop mismatch: baseline crops to modal-viewport while current crops to viewport-bounds, hiding bottom of Android dialog",
+          "Disabled button color theming not aligned across platforms (pink vs grey)"
+        ],
+        "suggestedOwner": "android",
+        "suggestedFixes": [
+          "Ensure Android capture scrolls dialog to top OR include full modal height so RUNTIME/MODEL/buttons are visible",
+          "Align Cancel/Create Agent disabled state colors with React baseline (pink)",
+          "Match vertical padding and field heights to React spec",
+          "Use modal-viewport crop contract on Android side to match React baseline",
+          "Verify the form's bottom action bar is part of the modal sheet, not a sticky overlay that gets cropped"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -20253,17 +20298,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-07T22:14:17.028Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-07T22:16:50.367Z",
+            "severity": "high",
+            "summary": [
+              "Android renders only the top portion of the Create Agent dialog (through DESCRIPTION field); React shows the full form including RUNTIME, MODEL, error message, and More section",
+              "Cancel and Create Agent buttons appear mid-form on Android (clipped), whereas React shows them at the bottom after all fields",
+              "Create Agent button color differs: React shows a pink/disabled state, Android shows a grey/disabled state",
+              "Android form is vertically compressed/zoomed differently—fields appear taller and more widely spaced, suggesting different scroll position or scale",
+              "Agent limit banner and COMPUTER/NAME/DESCRIPTION fields exist on both but with different vertical spacing"
+            ],
+            "likelyCauses": [
+              "Android capture scrolled the dialog to top so lower fields are clipped at viewport",
+              "Different modal sizing/scroll behavior between React and Android implementations",
+              "Possible crop mismatch: baseline crops to modal-viewport while current crops to viewport-bounds, hiding bottom of Android dialog",
+              "Disabled button color theming not aligned across platforms (pink vs grey)"
+            ],
+            "suggestedOwner": "android",
+            "suggestedFixes": [
+              "Ensure Android capture scrolls dialog to top OR include full modal height so RUNTIME/MODEL/buttons are visible",
+              "Align Cancel/Create Agent disabled state colors with React baseline (pink)",
+              "Match vertical padding and field heights to React spec",
+              "Use modal-viewport crop contract on Android side to match React baseline",
+              "Verify the form's bottom action bar is part of the modal sheet, not a sticky overlay that gets cropped"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -20336,17 +20398,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-07T22:14:29.039Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-07T22:17:03.692Z",
+            "severity": "high",
+            "summary": [
+              "iOS shows the system soft keyboard occupying the lower ~45% of the viewport, while Android does not (no IME shown), drastically changing the visible dialog area",
+              "Dialog on iOS is shifted upward and compressed because the IME pushes content; Android dialog sits in normal position with full height visible",
+              "Character count indicator '72/3000' is visible on Android (bottom-right of Description), missing on iOS",
+              "iOS dialog appears narrower horizontally and the description textarea is visibly shorter/cropped due to IME taking space",
+              "Action buttons (Cancel / Create Agent) on iOS are pushed up and partially overlap the Description field area, while on Android they sit below with proper spacing"
+            ],
+            "likelyCauses": [
+              "iOS test capture was taken while the soft keyboard is active (focused Name input), Android was captured without IME",
+              "No consistent screenshot timing / focus state between platforms — visual diff captured in different interaction states",
+              "Layout does not reserve IME inset on iOS (no KeyboardAvoidingView / safeArea padding for keyboard)",
+              "android:windowSoftInputMode vs iOS keyboard avoidance behavior not normalized across Kuikly renderers"
+            ],
+            "suggestedOwner": "ui-mobile-platform",
+            "suggestedFixes": [
+              "Normalize capture state: dismiss IME on both platforms before snapshot, or capture both with and without IME explicitly",
+              "Apply consistent KeyboardAvoidingView / safeArea bottom padding on iOS so dialog content (incl. character counter and action buttons) reflows the same way as Android",
+              "Ensure description textarea character counter '72/3000' renders identically on both platforms (check visibility/clipping when IME is up)",
+              "Fix dialog height/width to be intrinsic-based or max-height constrained so IME inset does not visually compress the form on iOS",
+              "Lock initial focus state (no field focused) in test fixtures used by Slock visual diffs"
+            ],
+            "intentional": [
+              "Platform-native system keyboard appearance on iOS is expected behavior"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -20423,17 +20504,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-07T22:14:29.039Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-07T22:17:03.692Z",
+            "severity": "high",
+            "summary": [
+              "iOS shows the system soft keyboard occupying the lower ~45% of the viewport, while Android does not (no IME shown), drastically changing the visible dialog area",
+              "Dialog on iOS is shifted upward and compressed because the IME pushes content; Android dialog sits in normal position with full height visible",
+              "Character count indicator '72/3000' is visible on Android (bottom-right of Description), missing on iOS",
+              "iOS dialog appears narrower horizontally and the description textarea is visibly shorter/cropped due to IME taking space",
+              "Action buttons (Cancel / Create Agent) on iOS are pushed up and partially overlap the Description field area, while on Android they sit below with proper spacing"
+            ],
+            "likelyCauses": [
+              "iOS test capture was taken while the soft keyboard is active (focused Name input), Android was captured without IME",
+              "No consistent screenshot timing / focus state between platforms — visual diff captured in different interaction states",
+              "Layout does not reserve IME inset on iOS (no KeyboardAvoidingView / safeArea padding for keyboard)",
+              "android:windowSoftInputMode vs iOS keyboard avoidance behavior not normalized across Kuikly renderers"
+            ],
+            "suggestedOwner": "ui-mobile-platform",
+            "suggestedFixes": [
+              "Normalize capture state: dismiss IME on both platforms before snapshot, or capture both with and without IME explicitly",
+              "Apply consistent KeyboardAvoidingView / safeArea bottom padding on iOS so dialog content (incl. character counter and action buttons) reflows the same way as Android",
+              "Ensure description textarea character counter '72/3000' renders identically on both platforms (check visibility/clipping when IME is up)",
+              "Fix dialog height/width to be intrinsic-based or max-height constrained so IME inset does not visually compress the form on iOS",
+              "Lock initial focus state (no field focused) in test fixtures used by Slock visual diffs"
+            ],
+            "intentional": [
+              "Platform-native system keyboard appearance on iOS is expected behavior"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20853,7 +20953,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-07T22:14:16.108Z",
+        "generatedAt": "2026-08-07T22:18:28.131Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20914,7 +21014,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:16.108Z",
+            "generatedAt": "2026-08-07T22:18:28.131Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20936,7 +21036,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:21.283Z",
+            "generatedAt": "2026-08-07T22:18:31.129Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -21013,7 +21113,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:21.283Z",
+            "generatedAt": "2026-08-07T22:18:31.129Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25513,7 +25613,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:21.283Z",
+            "generatedAt": "2026-08-07T22:18:31.129Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25535,7 +25635,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:26.952Z",
+            "generatedAt": "2026-08-07T22:18:34.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25560,7 +25660,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:21.283Z",
+            "generatedAt": "2026-08-07T22:18:31.129Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25583,7 +25683,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:26.952Z",
+            "generatedAt": "2026-08-07T22:18:34.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25783,7 +25883,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:21.284Z",
+            "generatedAt": "2026-08-07T22:18:31.129Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25805,7 +25905,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:26.952Z",
+            "generatedAt": "2026-08-07T22:18:34.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25830,7 +25930,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:21.284Z",
+            "generatedAt": "2026-08-07T22:18:31.129Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25853,7 +25953,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:26.952Z",
+            "generatedAt": "2026-08-07T22:18:34.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26053,7 +26153,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:21.284Z",
+            "generatedAt": "2026-08-07T22:18:31.129Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26075,7 +26175,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:26.952Z",
+            "generatedAt": "2026-08-07T22:18:34.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26100,7 +26200,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:21.284Z",
+            "generatedAt": "2026-08-07T22:18:31.129Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26123,7 +26223,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:26.952Z",
+            "generatedAt": "2026-08-07T22:18:34.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26319,7 +26419,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:21.284Z",
+            "generatedAt": "2026-08-07T22:18:31.129Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26341,7 +26441,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:26.952Z",
+            "generatedAt": "2026-08-07T22:18:34.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26366,7 +26466,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:21.284Z",
+            "generatedAt": "2026-08-07T22:18:31.129Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26389,7 +26489,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:26.952Z",
+            "generatedAt": "2026-08-07T22:18:34.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26585,7 +26685,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:21.284Z",
+            "generatedAt": "2026-08-07T22:18:31.129Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26607,7 +26707,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:26.952Z",
+            "generatedAt": "2026-08-07T22:18:34.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26632,7 +26732,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:21.284Z",
+            "generatedAt": "2026-08-07T22:18:31.129Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26655,7 +26755,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-07T22:14:26.952Z",
+            "generatedAt": "2026-08-07T22:18:34.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

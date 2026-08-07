@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-07T22:14:26.940Z",
+  "generatedAt": "2026-08-07T22:18:34.682Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 81,
+    "pending": 5
   },
   "cases": [
     {
@@ -1675,15 +1675,37 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000007ffc7ffc7ffc7ffc3ffc7ffc21fc41fc7ffc7ffc7ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc3ffc7ffc7ffc7f7c7ffc7cfc7ffc00007dfcce630000ffff0000ffff0000ffff0000ffff0000bffd0000bffd00008ff100008ff00000ffff00009ffb0000ffffffffffff",
-      "generatedAt": "2026-08-07T22:14:26.161Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-07T22:17:03.692Z",
+      "severity": "high",
+      "summary": [
+        "iOS shows the system soft keyboard occupying the lower ~45% of the viewport, while Android does not (no IME shown), drastically changing the visible dialog area",
+        "Dialog on iOS is shifted upward and compressed because the IME pushes content; Android dialog sits in normal position with full height visible",
+        "Character count indicator '72/3000' is visible on Android (bottom-right of Description), missing on iOS",
+        "iOS dialog appears narrower horizontally and the description textarea is visibly shorter/cropped due to IME taking space",
+        "Action buttons (Cancel / Create Agent) on iOS are pushed up and partially overlap the Description field area, while on Android they sit below with proper spacing"
+      ],
+      "likelyCauses": [
+        "iOS test capture was taken while the soft keyboard is active (focused Name input), Android was captured without IME",
+        "No consistent screenshot timing / focus state between platforms — visual diff captured in different interaction states",
+        "Layout does not reserve IME inset on iOS (no KeyboardAvoidingView / safeArea padding for keyboard)",
+        "android:windowSoftInputMode vs iOS keyboard avoidance behavior not normalized across Kuikly renderers"
+      ],
+      "suggestedOwner": "ui-mobile-platform",
+      "suggestedFixes": [
+        "Normalize capture state: dismiss IME on both platforms before snapshot, or capture both with and without IME explicitly",
+        "Apply consistent KeyboardAvoidingView / safeArea bottom padding on iOS so dialog content (incl. character counter and action buttons) reflows the same way as Android",
+        "Ensure description textarea character counter '72/3000' renders identically on both platforms (check visibility/clipping when IME is up)",
+        "Fix dialog height/width to be intrinsic-based or max-height constrained so IME inset does not visually compress the form on iOS",
+        "Lock initial focus state (no field focused) in test fixtures used by Slock visual diffs"
+      ],
+      "intentional": [
+        "Platform-native system keyboard appearance on iOS is expected behavior"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.46800374016013824
     },
     {
@@ -2099,7 +2121,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:14:26.415Z",
+      "generatedAt": "2026-08-07T22:18:34.287Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2112,7 +2134,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:14:26.415Z",
+      "generatedAt": "2026-08-07T22:18:34.287Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2125,7 +2147,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:14:26.415Z",
+      "generatedAt": "2026-08-07T22:18:34.287Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2138,7 +2160,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:14:26.415Z",
+      "generatedAt": "2026-08-07T22:18:34.287Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2151,7 +2173,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:14:26.415Z",
+      "generatedAt": "2026-08-07T22:18:34.287Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
