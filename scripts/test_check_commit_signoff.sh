@@ -31,6 +31,13 @@ git -C "$fixture_repo" merge -q --squash signed-source
 git -C "$fixture_repo" commit -q -m "fix: immutable squash without trailer"
 squash_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
 
+git -C "$fixture_repo" switch -q -c literal-squash "$base_commit"
+git -C "$fixture_repo" merge -q --squash signed-source
+git -C "$fixture_repo" commit -q \
+  -m "fix: escaped squash\\n\\nSigned-off-by: Sign-off Test <${signer}>"
+literal_squash_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+git -C "$fixture_repo" switch -q main
+
 git -C "$fixture_repo" switch -q -c other-source "$base_commit"
 printf 'different payload\n' > "${fixture_repo}/payload.txt"
 git -C "$fixture_repo" add payload.txt
@@ -116,14 +123,12 @@ git -C "$fixture_repo" commit -q -m "merge: immutable merge with extra payload"
 tampered_merge_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
 
 git -C "$fixture_repo" tag -a non-commit-source "$source_commit" -m "test tag object"
-non_commit_source="$(git -C "$fixture_repo" rev-parse non-commit-source^{tag})"
+non_commit_source="$(git -C "$fixture_repo" rev-parse 'non-commit-source^{tag}')"
 
 git -C "$fixture_repo" switch -q main
 printf 'conflict base\n' > "${fixture_repo}/conflict.txt"
 git -C "$fixture_repo" add conflict.txt
 git -C "$fixture_repo" commit -q -m "test: signed conflict base" -m "Signed-off-by: Sign-off Test <${signer}>"
-conflict_root_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
-
 git -C "$fixture_repo" switch -q -c conflict-source
 printf 'source side\n' > "${fixture_repo}/conflict.txt"
 git -C "$fixture_repo" add conflict.txt
@@ -167,6 +172,11 @@ run_repository_checker() {
   )
 }
 
+run_commit_message_checker() {
+  local message_file="$1"
+  "$checker" --commit-msg "$message_file"
+}
+
 expect_pass() {
   local label="$1"
   shift
@@ -192,6 +202,22 @@ expect_fail() {
 missing_ledger="${tmp_dir}/missing.tsv"
 expect_pass "ordinary signed commit" run_checker "$missing_ledger" "$base_commit" "$source_commit"
 expect_fail "unsigned unlisted squash" run_checker "$missing_ledger" "$base_commit" "$squash_commit"
+
+printf '%s\n' \
+  "fix: escaped squash\\n\\nSigned-off-by: Sign-off Test <${signer}>" \
+  > "${tmp_dir}/literal-message.txt"
+expect_fail "commit-msg hook rejects literal escaped newline" \
+  run_commit_message_checker "${tmp_dir}/literal-message.txt"
+grep -Fq "merge command escaped newlines; use body file" "$output"
+
+expect_fail "commit range rejects literal escaped newline" \
+  run_checker "$missing_ledger" "$base_commit" "$literal_squash_commit"
+grep -Fq "merge command escaped newlines; use body file" "$output"
+
+printf '%s\t%s\t%s\n' "$literal_squash_commit" "$source_commit" "$signer" > "$ledger"
+expect_fail "attestation cannot mask malformed literal escaped newline" \
+  run_checker "$ledger" "$base_commit" "$literal_squash_commit"
+grep -Fq "merge command escaped newlines; use body file" "$output"
 
 printf '%s\t%s\t%s\n' "$squash_commit" "$source_commit" "$signer" > "$ledger"
 expect_pass "tree-identical exact attestation" run_checker "$ledger" "$base_commit" "$squash_commit"
@@ -315,18 +341,24 @@ expect_fail "conflicted merge is not attestable" run_checker "$ledger" "$conflic
 printf '%s\t%s\t%s\n' "$octopus_commit" "$merge_source_commit" "$signer" > "$ledger"
 expect_fail "octopus merge is not attestable" run_checker "$ledger" "$merge_base_commit" "$octopus_commit"
 
-for attested_commit in \
+for malformed_attested_commit in \
   7fdeb172ad03f484e64f66fe618b21d5b9a89250 \
-  93295966bb3bc5ce945d2fc3e7dbd9b8ed1c6803 \
-  63d87164e03bbc576b6ce5f8dcfdce4b8d291439; do
-  attested_parent="$(git -C "$repo_root" rev-parse "${attested_commit}^")"
-  expect_pass "repository attestation ${attested_commit}" \
-    run_repository_checker "$attested_parent" "$attested_commit"
+  8d1eb30929bdde9e53c73c3eea4e9e112e9dde93; do
+  attested_parent="$(git -C "$repo_root" rev-parse "${malformed_attested_commit}^")"
+  expect_fail "repository attestation cannot mask malformed ${malformed_attested_commit}" \
+    run_repository_checker "$attested_parent" "$malformed_attested_commit"
+  grep -Fq "merge command escaped newlines; use body file" "$output"
 done
 
-attested_parent="$(git -C "$repo_root" rev-parse "8d1eb30929bdde9e53c73c3eea4e9e112e9dde93^")"
-expect_pass "repository advanced-base attestation 8d1eb30929bdde9e53c73c3eea4e9e112e9dde93" \
-  run_repository_checker "$attested_parent" 8d1eb30929bdde9e53c73c3eea4e9e112e9dde93
+attested_commit=93295966bb3bc5ce945d2fc3e7dbd9b8ed1c6803
+attested_parent="$(git -C "$repo_root" rev-parse "${attested_commit}^")"
+expect_pass "repository attestation ${attested_commit}" \
+  run_repository_checker "$attested_parent" "$attested_commit"
+
+attested_parent="$(git -C "$repo_root" rev-parse "63d87164e03bbc576b6ce5f8dcfdce4b8d291439^")"
+expect_fail "repository attestation cannot mask duplicate source trailer history" \
+  run_repository_checker "$attested_parent" 63d87164e03bbc576b6ce5f8dcfdce4b8d291439
+grep -Fq "found 3" "$output"
 
 attested_parent="$(git -C "$repo_root" rev-parse "1c13ae1631e038f1c71c36f4e5b18d263f2f4777^1")"
 expect_pass "repository strict merge attestation 1c13ae1631e038f1c71c36f4e5b18d263f2f4777" \

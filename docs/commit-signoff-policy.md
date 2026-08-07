@@ -64,7 +64,10 @@ Run this once per clone or worktree:
 scripts/install_git_hooks.sh
 ```
 
-The hook rejects commit messages that do not include a `Signed-off-by:` trailer with a `@mail.build` email. CI also runs `scripts/check-commit-signoff.sh` over the commit range for pushes and pull requests.
+The hook and CI use `git interpret-trailers` through the repository validator.
+Each commit must contain exactly one well-formed `Signed-off-by:` trailer with a
+`@mail.build` email. Literal `\\n` or `\\r` bytes, missing trailers, duplicate
+trailers, malformed trailers, and other email domains fail closed.
 
 ## Immutable Shipped History
 
@@ -93,6 +96,11 @@ duplicates, missing source objects, signer mismatches, and tree mismatches fail
 closed. This mechanism is not an alternative to `git commit -s` for new work;
 ledger additions require independent review and a signed commit.
 
+The ledger is considered only when an immutable commit genuinely has no
+`Signed-off-by` text. It cannot waive or hide a malformed, duplicate,
+wrong-domain, or escaped-newline trailer. Those messages remain invalid even if
+an older ledger row names the commit.
+
 For a squash created after the base branch advanced, the ledger uses five
 fields: immutable squash, reviewed signed head, exact signer, reviewed source
 parent, and immutable parent. The checker requires every commit in the reviewed
@@ -102,24 +110,46 @@ zero-context stable patch-id and normalized diff SHA-256 to match; and
 `git merge-tree --write-tree` of immutable parent plus reviewed head to be clean
 and exactly equal the immutable squash tree. Any mismatch fails closed.
 
-## Guarded Squash Merge
+## Guarded Merge
 
-Both Mobile and Slock configure GitHub squash bodies as `COMMIT_MESSAGES`.
-The repository wrapper is the only allowed merge path. It forces squash mode so
-GitHub preserves source commit trailers with real newlines:
+Fully DCO-signed pull requests default to guarded rebase merge. Rebase keeps
+each already validated source commit and its real trailer bytes:
 
 ```bash
-scripts/guarded-squash-merge.sh botiverse/mobile <pr-number> <reviewed-full-sha>
+scripts/guarded-rebase-merge.sh \
+  botiverse/mobile <pr-number> <reviewed-full-sha>
 ```
 
-The wrapper keeps `--match-head-commit`, verifies the repository still uses
-`COMMIT_MESSAGES`, and intentionally accepts no custom subject or body. Keep
-parent/tree/patch/CI/authorization receipts in the PR and Raft task thread. Do
-not pass strings containing `\\n` to `gh pr merge --body`; shell quoting and gh
-preserve those bytes literally, so a visual `Signed-off-by` substring is not a
-Git trailer. Do not use the GitHub Merge button or `gh pr merge --merge`; a
-two-parent GitHub merge commit does not preserve source trailers and turns the
-next main-push DCO check red.
+The shared preflight fresh-reads the repository policy and pull request, checks
+that the reviewed full SHA is still the live non-draft head, fetches every
+source commit message, and requires each message to pass the exact trailer
+validator before invoking the merge API. It also requires rebase and guarded
+squash modes to be enabled and ordinary merge commits to be disabled.
+
+Use squash only when the delivery contract specifically requires one landed
+commit. Prepare the complete final commit message as an LF-only file (or pass it
+on stdin with `-`), including subject, blank line, body, and the single trailer:
+
+```bash
+scripts/guarded-squash-merge.sh \
+  botiverse/mobile <pr-number> <reviewed-full-sha> <message-file>
+```
+
+The squash wrapper validates the exact complete message file that will be
+split into `--subject` and `--body-file`; it never creates or validates a
+separate surrogate string. It reconstructs the message byte-for-byte before
+running the same source-commit preflight. Do not use
+`gh pr merge --squash --body ...`: shell quoting and GitHub CLI preserve a
+visual `\\n` as literal bytes, so `\\n\\nSigned-off-by:` is not a Git trailer.
+The repository policy scanner rejects inline squash bodies and any ordinary
+`--merge` command in production scripts and workflows.
+
+Do not use `gh pr merge --merge` or the GitHub Merge button. Ordinary merge
+commits remain disabled unless a future repository-owned path can construct and
+validate a signed merge commit before writing the protected branch. Changing
+GitHub repository settings is a separate owner/admin operation after the
+source exact, independent review, and Hosted checks pass; these scripts do not
+mutate settings.
 
 ## PR-only Main Integration
 
@@ -133,8 +163,10 @@ Use this flow:
 3. Validate the touched area locally.
 4. Run `scripts/check-commit-signoff.sh <base> HEAD` for the PR range.
 5. Push the topic branch and open a PR.
-6. Wait for required GitHub checks and owner/reviewer approval, then merge only
-   with `scripts/guarded-squash-merge.sh` and the reviewed full head SHA.
+6. Wait for the required GitHub checks and exact-bound independent review.
+7. Use `scripts/guarded-rebase-merge.sh` with the reviewed full head SHA by
+   default. Use guarded squash only with an explicitly reviewed complete
+   message file when the delivery contract requires one landed commit.
 
 Do not directly merge finished work into a shared local `main` as the delivery
 step, and do not run `git push origin main`. If local `main` is already ahead,
