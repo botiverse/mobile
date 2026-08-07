@@ -10,6 +10,71 @@ import org.junit.Test
 
 class SlockAndroidAvatarDurableKernelTransactionTest {
     @Test
+    fun reservationAfterDurableRollbackAndRestartAdvancesBeyondRecoveredHighWater() {
+        val rig = AvatarKernelTestRig()
+        val key = avatarKey()
+        val current = avatarCommit(1L, "reservation-current")
+        val firstKernel = rig.kernel()
+        firstKernel.commitCandidate(key, 1L, current, "current".toByteArray())
+        val firstFence = firstKernel.acceptedFence(key, 2L)
+        val firstReservation =
+            firstKernel.reserveCandidateIdentity(firstFence, current)
+
+        assertEquals(SlockAndroidAvatarOperationStatus.Applied, firstReservation.status)
+        assertEquals(2L, firstReservation.commitIdentity?.commitGeneration)
+        val staged =
+            firstKernel.stageCandidate(
+                fence = firstFence,
+                expectedCurrentCommitIdentity = current,
+                candidateCommitIdentity = firstReservation.commitIdentity!!,
+                bytes = "candidate".toByteArray(),
+                contentType = "image/png"
+            )
+        assertEquals(SlockAndroidAvatarOperationStatus.Applied, staged.status)
+        assertEquals(
+            SlockAndroidAvatarOperationStatus.Applied,
+            firstKernel.rollbackCandidate(key, firstReservation.commitIdentity).status
+        )
+        assertEquals(2L, firstKernel.durableStateForTest(key)?.commitGenerationHighWater)
+
+        val restarted = rig.kernel()
+        val secondReservation =
+            restarted.reserveCandidateIdentity(restarted.acceptedFence(key, 1L), current)
+
+        assertEquals(SlockAndroidAvatarOperationStatus.Applied, secondReservation.status)
+        assertEquals(3L, secondReservation.commitIdentity?.commitGeneration)
+        assertNotEquals(firstReservation.commitIdentity?.nonce, secondReservation.commitIdentity?.nonce)
+    }
+
+    @Test
+    fun currentReadAndExactRetirementUseTheCommittedNativeIdentity() {
+        val kernel = AvatarKernelTestRig().kernel()
+        val key = avatarKey()
+        val committed = avatarCommit(4L, "current-read")
+        val bytes = "render-fresh".toByteArray()
+        kernel.commitCandidate(key, 1L, committed, bytes)
+
+        val read = kernel.readCurrent(key)
+
+        assertEquals(SlockAndroidAvatarCurrentReadStatus.Available, read.status)
+        assertArrayEquals(bytes, read.snapshot?.bytes)
+        assertEquals(committed, read.snapshot?.entryIdentity?.commitIdentity)
+        assertEquals(
+            SlockAndroidAvatarOperationStatus.IdentityMismatch,
+            kernel.retireCurrentExact(key, avatarCommit(5L, "wrong-exact")).status
+        )
+        assertEquals(
+            SlockAndroidAvatarOperationStatus.Applied,
+            kernel.retireCurrentExact(key, committed).status
+        )
+        assertEquals(SlockAndroidAvatarCurrentReadStatus.Empty, kernel.readCurrent(key).status)
+        assertEquals(
+            SlockAndroidAvatarOperationStatus.AlreadyApplied,
+            kernel.retireCurrentExact(key, committed).status
+        )
+    }
+
+    @Test
     fun committedEntryRequiresExactDurableCommitIdentity() {
         val rig = AvatarKernelTestRig()
         val kernel = rig.kernel()

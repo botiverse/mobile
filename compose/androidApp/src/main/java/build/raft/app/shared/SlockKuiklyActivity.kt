@@ -111,6 +111,8 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.data.SlockAndroidSqlDatabaseContext
+import build.raft.app.data.SlockAvatarMountedRenderDescriptor
+import build.raft.app.data.parseSlockAvatarMountedRenderModel
 import build.raft.app.network.SharedBinaryDownloader
 import build.raft.app.network.AttachmentDownloadObserver
 import build.raft.app.network.AttachmentDownloadProgress
@@ -2248,6 +2250,7 @@ internal object SlockKuiklyAdapters {
         installAndroidAppScopePlatformFileResolver(context)
         installAndroidAppScopeEventBus(context)
         SlockAndroidSqlDatabaseContext.init(context)
+        SlockAndroidAvatarCacheProcess.install(context.applicationContext)
         SharedBinaryDownloader.setDiagnosticsLogger { tag, message ->
             SlockAppLog.record(tag, message)
         }
@@ -2518,7 +2521,55 @@ internal fun isSlockRenderableLocalImageSource(source: String): Boolean =
         source.startsWith("file://", ignoreCase = true) ||
                 source.startsWith("content://", ignoreCase = true)
 
-private class SlockKuiklyImageAdapter(
+internal sealed interface SlockKuiklyImageRoute {
+    val diagnosticsToken: String
+
+    data class ManagedAvatar(
+            val descriptor: SlockAvatarMountedRenderDescriptor
+    ) : SlockKuiklyImageRoute {
+        override val diagnosticsToken: String = "managed_avatar"
+    }
+
+    data object Svg : SlockKuiklyImageRoute { override val diagnosticsToken = "svg" }
+    data object Base64 : SlockKuiklyImageRoute { override val diagnosticsToken = "base64" }
+    data object Assets : SlockKuiklyImageRoute { override val diagnosticsToken = "assets" }
+    data object Local : SlockKuiklyImageRoute { override val diagnosticsToken = "local" }
+    data object Network : SlockKuiklyImageRoute { override val diagnosticsToken = "network" }
+    data object Unsupported : SlockKuiklyImageRoute { override val diagnosticsToken = "unsupported" }
+}
+
+internal fun resolveSlockKuiklyImageRoute(
+        source: String,
+        isBase64: Boolean,
+        isAssets: Boolean,
+        isLocal: Boolean,
+        isWebUrl: Boolean
+): SlockKuiklyImageRoute =
+        parseSlockAvatarMountedRenderModel(source)?.let { descriptor ->
+            SlockKuiklyImageRoute.ManagedAvatar(descriptor)
+        }
+                ?: when {
+                    source.isSlockSvgImageSource() -> SlockKuiklyImageRoute.Svg
+                    isBase64 -> SlockKuiklyImageRoute.Base64
+                    isAssets -> SlockKuiklyImageRoute.Assets
+                    isLocal -> SlockKuiklyImageRoute.Local
+                    isWebUrl -> SlockKuiklyImageRoute.Network
+                    else -> SlockKuiklyImageRoute.Unsupported
+                }
+
+internal fun isSlockAvatarLegacyTerminalBridgeAction(action: String): Boolean =
+        action == "retireOwner" || action == "retireSubject"
+
+private fun String.isSlockSvgImageSource(): Boolean {
+    val raw = trimStart()
+    val normalized = raw.lowercase(Locale.US)
+    val path = normalized.substringBefore("?").substringBefore("#")
+    return raw.startsWith("<svg", ignoreCase = true) ||
+            normalized.startsWith("data:image/svg+xml") ||
+            path.endsWith(".svg")
+}
+
+internal class SlockKuiklyImageAdapter(
         private val context: Context
 ) : IKRImageAdapter {
     private companion object {
@@ -2540,19 +2591,33 @@ private class SlockKuiklyImageAdapter(
             imageLoadOption: HRImageLoadOption,
             callback: (drawable: Drawable?) -> Unit
     ) {
-        val sourceKind = imageLoadOption.slockSourceKind()
+        val route =
+                resolveSlockKuiklyImageRoute(
+                        source = imageLoadOption.src,
+                        isBase64 = imageLoadOption.isBase64(),
+                        isAssets = imageLoadOption.isAssets(),
+                        isLocal = imageLoadOption.isLocalUri(),
+                        isWebUrl = imageLoadOption.isWebUrl()
+                )
         SlockAppLog.record(
                 "SlockImageLoad",
-                "source=$sourceKind status=request requestWidth=${imageLoadOption.requestWidth} " +
-                        "requestHeight=${imageLoadOption.requestHeight} ${binaryDownloadUrlDiagnostics(imageLoadOption.src)}"
+                "source=${route.diagnosticsToken} status=request requestWidth=${imageLoadOption.requestWidth} " +
+                        "requestHeight=${imageLoadOption.requestHeight} " +
+                        if (route is SlockKuiklyImageRoute.ManagedAvatar) {
+                            "managedModelHash=${imageLoadOption.src.hashCode().toString(16)}"
+                        } else {
+                            binaryDownloadUrlDiagnostics(imageLoadOption.src)
+                        }
         )
-        when {
-            imageLoadOption.isSvgSource() -> loadSvg(imageLoadOption, callback)
-            imageLoadOption.isBase64() -> loadFromBase64(imageLoadOption, callback)
-            imageLoadOption.isAssets() -> loadFromAssets(imageLoadOption, callback)
-            imageLoadOption.isLocalUri() -> loadFromLocalUri(imageLoadOption, callback)
-            imageLoadOption.isWebUrl() -> loadFromNetwork(imageLoadOption, callback)
-            else -> {
+        when (route) {
+            is SlockKuiklyImageRoute.ManagedAvatar ->
+                loadMountedAvatar(route.descriptor, imageLoadOption, callback)
+            SlockKuiklyImageRoute.Svg -> loadSvg(imageLoadOption, callback)
+            SlockKuiklyImageRoute.Base64 -> loadFromBase64(imageLoadOption, callback)
+            SlockKuiklyImageRoute.Assets -> loadFromAssets(imageLoadOption, callback)
+            SlockKuiklyImageRoute.Local -> loadFromLocalUri(imageLoadOption, callback)
+            SlockKuiklyImageRoute.Network -> loadFromNetwork(imageLoadOption, callback)
+            SlockKuiklyImageRoute.Unsupported -> {
                 SlockAppLog.record(
                         "SlockImageLoad",
                         "source=unsupported status=failed requestWidth=${imageLoadOption.requestWidth} " +
@@ -2560,6 +2625,45 @@ private class SlockKuiklyImageAdapter(
                 )
                 callback(null)
             }
+        }
+    }
+
+    private fun loadMountedAvatar(
+            descriptor: SlockAvatarMountedRenderDescriptor,
+            imageLoadOption: HRImageLoadOption,
+            callback: (drawable: Drawable?) -> Unit
+    ) {
+        SlockKuiklyThreadAdapter.executeOnSubThread {
+            val renderRead = SlockAndroidAvatarCacheProcess.currentOrNull()?.beginRender(descriptor)
+            if (renderRead == null) {
+                callback(null)
+                return@executeOnSubThread
+            }
+            val drawable =
+                    try {
+                        val decoded =
+                                drawableFromBytes(
+                                        bytes = renderRead.bytes,
+                                        imageLoadOption = imageLoadOption,
+                                        contentType = renderRead.contentType
+                                )
+                        val registered =
+                                decoded != null &&
+                                        renderRead.registerDecoded(
+                                                width = decoded.intrinsicWidth.coerceAtLeast(0),
+                                                height = decoded.intrinsicHeight.coerceAtLeast(0),
+                                                scaleIdentity =
+                                                        "${imageLoadOption.requestWidth}x${imageLoadOption.requestHeight}:" +
+                                                                "${imageLoadOption.needResize}:${imageLoadOption.scaleType.name}"
+                                        )
+                        decoded.takeIf { registered }
+                    } catch (throwable: Throwable) {
+                        recordImageLoadFailure("managed_avatar", imageLoadOption, throwable)
+                        null
+                    } finally {
+                        renderRead.close()
+                    }
+            callback(drawable)
         }
     }
 
@@ -2956,12 +3060,7 @@ private class SlockKuiklyImageAdapter(
     }
 
     private fun HRImageLoadOption.isSvgSource(): Boolean {
-        val raw = src.trimStart()
-        val normalized = raw.lowercase(Locale.US)
-        val path = normalized.substringBefore("?").substringBefore("#")
-        return raw.startsWith("<svg", ignoreCase = true) ||
-                normalized.startsWith("data:image/svg+xml") ||
-                path.endsWith(".svg")
+        return src.isSlockSvgImageSource()
     }
 
     private fun HRImageLoadOption.isContentUri(): Boolean {
@@ -2971,16 +3070,6 @@ private class SlockKuiklyImageAdapter(
     private fun HRImageLoadOption.isLocalUri(): Boolean {
         return isSlockRenderableLocalImageSource(src)
     }
-
-    private fun HRImageLoadOption.slockSourceKind(): String =
-            when {
-                isSvgSource() -> "svg"
-                isBase64() -> "base64"
-                isAssets() -> "assets"
-                isLocalUri() -> "local"
-                isWebUrl() -> "network"
-                else -> "unsupported"
-            }
 
     private fun ByteArray.looksLikeSvg(contentType: String?): Boolean {
         if (contentType?.contains("svg", ignoreCase = true) == true) {
@@ -3127,6 +3216,10 @@ internal class SlockKuiklyBridgeModule(
             }
             "settingsCapability" -> {
                 settingsCapability(params, callback)
+                null
+            }
+            "avatarCacheCapability" -> {
+                avatarCacheCapability(params, callback)
                 null
             }
             "threadAttachmentUpload" -> {
@@ -3837,6 +3930,77 @@ internal class SlockKuiklyBridgeModule(
         cacheDir.listFiles()
                 ?.filter { file -> now - file.lastModified() > THREAD_SHARE_IMAGE_CACHE_MAX_AGE_MS }
                 ?.forEach { file -> runCatching { file.delete() } }
+    }
+
+    /**
+     * Legacy bridge support is intentionally terminal-only. Mounted production transport and
+     * inspection use SlockAvatarMountedNativeProviderRegistry directly; reviving the old
+     * inspect/await/finalize actions here would create a second downloader/byte authority.
+     */
+    private fun avatarCacheCapability(params: String?, callback: KuiklyRenderCallback?) {
+        val request = runCatching { JSONObject(params ?: "{}") }.getOrNull()
+        val action = request?.optString("action").orEmpty()
+        val controller = SlockAndroidAvatarCacheProcess.currentOrNull()
+        if (request?.optString("protocol") != "slock_avatar_cache_v1" ||
+                controller == null ||
+                !isSlockAvatarLegacyTerminalBridgeAction(action)
+        ) {
+            callback?.invoke(mapOf("status" to "unsupported"))
+            return
+        }
+        val nativePartitionKey = request.optString("nativePartitionKey")
+        val nativeSubjectKey = request.optString("nativeSubjectKey")
+        if (!nativePartitionKey.matches(SlockAndroidAvatarOpaqueComponentPattern) ||
+                (action == "retireSubject" &&
+                        !nativeSubjectKey.matches(SlockAndroidAvatarOpaqueComponentPattern))
+        ) {
+            callback?.invoke(mapOf("status" to "error", "code" to "avatar_cache_key_invalid"))
+            return
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            val result =
+                    if (action == "retireOwner") {
+                        controller.retireOwner(nativePartitionKey)
+                    } else {
+                        controller.retireLegacySubject(nativePartitionKey, nativeSubjectKey)
+                    }
+            val managedBytes = controller.managedBytes()
+            val response =
+                    if (result == build.raft.app.data.SlockAvatarNativeOperationResult.Accepted &&
+                            managedBytes != null
+                    ) {
+                        mapOf(
+                                "status" to "ok",
+                                "managedSet" to "typed_avatar_only",
+                                "managedIndex" to "opaque_partition_subject_bytes_v1",
+                                "budgetScope" to "avatar_only",
+                                "indexedRetirement" to true,
+                                "managedBytes" to managedBytes.toString()
+                        )
+                    } else {
+                        mapOf(
+                                "status" to "error",
+                                "code" to
+                                        when (result) {
+                                            build.raft.app.data.SlockAvatarNativeOperationResult.Stale ->
+                                                "avatar_cache_stale"
+                                            build.raft.app.data.SlockAvatarNativeOperationResult.AdmissionClosed ->
+                                                "avatar_cache_admission_closed"
+                                            build.raft.app.data.SlockAvatarNativeOperationResult.ExpectedIdentityMismatch ->
+                                                "avatar_cache_identity_mismatch"
+                                            build.raft.app.data.SlockAvatarNativeOperationResult.BusyCleanup ->
+                                                "avatar_cache_cleanup_pending"
+                                            build.raft.app.data.SlockAvatarNativeOperationResult.StorageFailure ->
+                                                "avatar_cache_storage_failure"
+                                            build.raft.app.data.SlockAvatarNativeOperationResult.Unsupported ->
+                                                "avatar_cache_unsupported"
+                                            build.raft.app.data.SlockAvatarNativeOperationResult.Accepted ->
+                                                "avatar_cache_managed_bytes_unavailable"
+                                        }
+                        )
+                    }
+            callback?.invoke(response)
+        }
     }
 
     private fun settingsCapability(params: String?, callback: KuiklyRenderCallback?) {

@@ -53,6 +53,15 @@ internal data class SlockAndroidAvatarOperationResult(
     val entry: SlockAndroidAvatarEntryIdentity? = null
 )
 
+internal data class SlockAndroidAvatarIdentityReservationResult(
+    val status: SlockAndroidAvatarOperationStatus,
+    val commitIdentity: SlockAndroidAvatarCommitIdentity? = null
+) {
+    init {
+        require((status == SlockAndroidAvatarOperationStatus.Applied) == (commitIdentity != null))
+    }
+}
+
 internal enum class SlockAndroidAvatarRequestStatus {
     Accepted,
     Stale,
@@ -123,6 +132,28 @@ internal sealed interface SlockAndroidAvatarReadResult {
     ) : SlockAndroidAvatarReadResult
 
     data class Miss(val reason: SlockAndroidAvatarReadMissReason) : SlockAndroidAvatarReadResult
+}
+
+internal enum class SlockAndroidAvatarCurrentReadStatus {
+    Available,
+    Empty,
+    AdmissionClosed,
+    RecoveryPending,
+    StorageFailure
+}
+
+internal data class SlockAndroidAvatarCurrentReadSnapshot(
+    val entryIdentity: SlockAndroidAvatarEntryIdentity,
+    val bytes: ByteArray
+)
+
+internal data class SlockAndroidAvatarCurrentReadResult(
+    val status: SlockAndroidAvatarCurrentReadStatus,
+    val snapshot: SlockAndroidAvatarCurrentReadSnapshot? = null
+) {
+    init {
+        require((status == SlockAndroidAvatarCurrentReadStatus.Available) == (snapshot != null))
+    }
 }
 
 internal data class SlockAndroidAvatarDecodedVariant(
