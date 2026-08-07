@@ -69,6 +69,16 @@ class SlockRelativeTimeConsumerTest {
     }
 
     @Test
+    fun headerTimestampUsesRenderedLabelWidthInsteadOfMetadataGutter() {
+        // task #1014: a reserved full-width slot starves the sender subtitle
+        // and paints a blank band left of the time in the message header row.
+        val layout = threadMessageHeaderTimestampLayoutSpec()
+
+        assertFalse(layout.reserveFullMetadataGutter)
+        assertEquals(ThreadRelativeTimestampSlotWidthDp, layout.maxWidthDp)
+    }
+
+    @Test
     fun parseableRelativeTimestampTogglesToLocalAbsoluteAndBack() {
         val context =
             SlockTimeContext(

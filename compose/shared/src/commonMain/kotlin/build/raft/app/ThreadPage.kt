@@ -363,6 +363,16 @@ internal fun threadSystemMessageTimestampLayoutSpec(): ThreadSystemMessageTimest
         maxWidthDp = ThreadRelativeTimestampSlotWidthDp
     )
 
+// The header and forward-bundle timestamps size to the rendered label instead
+// of reserving the whole relative-time slot: a reserved gutter starves the
+// sender subtitle's flexible width and leaves a blank band left of the time
+// (task #1014), while the slot constant still bounds the widest live label.
+internal fun threadMessageHeaderTimestampLayoutSpec(): ThreadSystemMessageTimestampLayoutSpec =
+    ThreadSystemMessageTimestampLayoutSpec(
+        reserveFullMetadataGutter = false,
+        maxWidthDp = ThreadRelativeTimestampSlotWidthDp
+    )
+
 private val ThreadInlineSelectionToolbarGap = 6.dp
 private val ThreadInlineSelectionToolbarWidth = 328.dp
 private val ThreadInlineSelectionReactionRowHeight = 44.dp
@@ -24561,10 +24571,17 @@ private fun ThreadMessageTimestampLabel(
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         textAlign = TextAlign.End,
-        modifier = Modifier.width(ThreadRelativeTimestampSlotWidthDp.dp),
+        modifier = threadMessageHeaderTimestampLayoutSpec().toTimestampModifier(),
         onToggle = onToggle
     )
 }
+
+private fun ThreadSystemMessageTimestampLayoutSpec.toTimestampModifier(): Modifier =
+    if (reserveFullMetadataGutter) {
+        Modifier.width(maxWidthDp.dp)
+    } else {
+        Modifier.widthIn(max = maxWidthDp.dp).wrapContentWidth()
+    }
 
 @Composable
 private fun ThreadMessageAvatarSlot(
@@ -25906,7 +25923,7 @@ private fun ThreadForwardBundleCard(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.End,
-                            modifier = Modifier.width(ThreadRelativeTimestampSlotWidthDp.dp)
+                            modifier = threadMessageHeaderTimestampLayoutSpec().toTimestampModifier()
                         )
                     }
                 }
