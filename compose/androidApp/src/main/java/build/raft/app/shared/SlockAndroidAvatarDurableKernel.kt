@@ -129,6 +129,85 @@ internal class SlockAndroidAvatarDurableKernel(
             )
         }
 
+    /**
+     * Mints the next native commit identity for one admitted request without persisting a second
+     * reservation ledger. The controller owns same-fence response-loss idempotence in memory; the
+     * generation becomes durable only when [stageCandidate] records the candidate. Consequently a
+     * process death before staging may re-reserve, while rollback after a durable stage always
+     * advances beyond the recovered high-water mark.
+     */
+    fun reserveCandidateIdentity(
+        fence: SlockAndroidAvatarRequestFence,
+        expectedCurrentCommitIdentity: SlockAndroidAvatarCommitIdentity?
+    ): SlockAndroidAvatarIdentityReservationResult =
+        lock.withLock {
+            if (!isFenceCurrentLocked(fence)) {
+                return@withLock SlockAndroidAvatarIdentityReservationResult(
+                    staleOrClosedResult(fence.key).status
+                )
+            }
+            val resolved = loadResolvedStateLocked(fence.key)
+            if (resolved.failed) {
+                return@withLock SlockAndroidAvatarIdentityReservationResult(
+                    SlockAndroidAvatarOperationStatus.StorageFailure
+                )
+            }
+            if (resolved.corrupt) {
+                return@withLock SlockAndroidAvatarIdentityReservationResult(
+                    SlockAndroidAvatarOperationStatus.CorruptState
+                )
+            }
+            val state = resolved.state ?: SlockAndroidAvatarDurableState.idle(fence.key)
+            if (state.phase != SlockAndroidAvatarDurablePhase.Idle ||
+                files.exists(fence.key.journalPath) ||
+                hasPendingDurabilityLocked(fence.key)
+            ) {
+                return@withLock SlockAndroidAvatarIdentityReservationResult(
+                    SlockAndroidAvatarOperationStatus.Busy
+                )
+            }
+            val currentIdentity = state.current?.identity
+            if (currentIdentity?.commitIdentity != expectedCurrentCommitIdentity) {
+                return@withLock SlockAndroidAvatarIdentityReservationResult(
+                    SlockAndroidAvatarOperationStatus.IdentityMismatch
+                )
+            }
+            currentIdentity?.let { current ->
+                when (inspectEntryLocked(current)) {
+                    is EntryInspection.Present -> Unit
+                    EntryInspection.Failed ->
+                        return@withLock SlockAndroidAvatarIdentityReservationResult(
+                            SlockAndroidAvatarOperationStatus.StorageFailure
+                        )
+                    EntryInspection.Missing,
+                    EntryInspection.Invalid -> {
+                        retireCurrentLocked(
+                            state = state,
+                            identity = current,
+                            reason = SlockAndroidAvatarTombstoneReason.InvalidBytes,
+                            notifyCuts = false
+                        )
+                        return@withLock SlockAndroidAvatarIdentityReservationResult(
+                            SlockAndroidAvatarOperationStatus.CleanupPending
+                        )
+                    }
+                }
+            }
+            if (state.commitGenerationHighWater == Long.MAX_VALUE) {
+                return@withLock SlockAndroidAvatarIdentityReservationResult(
+                    SlockAndroidAvatarOperationStatus.StorageFailure
+                )
+            }
+            SlockAndroidAvatarIdentityReservationResult(
+                status = SlockAndroidAvatarOperationStatus.Applied,
+                commitIdentity =
+                    SlockAndroidAvatarCommitIdentity(
+                        commitGeneration = state.commitGenerationHighWater + 1L,
+                        nonce = nextIdentity()
+                    )
+            )
+        }
+
     fun acquireLease(
         fence: SlockAndroidAvatarRequestFence,
         kind: SlockAndroidAvatarLeaseKind
@@ -437,6 +516,84 @@ internal class SlockAndroidAvatarDurableKernel(
             continueRollbackLocked(state, notifyCuts = true)
         }
 
+    /**
+     * Exact current-entry read used by the Android adapter/controller. The controller surrounds
+     * this copy with its own render-delivery lease so terminal retirement cannot complete until
+     * decode/callback preparation releases it; bytes never cross into shared state.
+     */
+    fun readCurrent(
+        key: SlockAndroidAvatarOpaqueKey
+    ): SlockAndroidAvatarCurrentReadResult =
+        lock.withLock {
+            if (recoveryAdmissionBlocked || closedScopes.any(key::matches)) {
+                return@withLock SlockAndroidAvatarCurrentReadResult(
+                    SlockAndroidAvatarCurrentReadStatus.AdmissionClosed
+                )
+            }
+            val resolved = loadResolvedStateLocked(key)
+            if (resolved.failed) {
+                return@withLock SlockAndroidAvatarCurrentReadResult(
+                    SlockAndroidAvatarCurrentReadStatus.StorageFailure
+                )
+            }
+            if (resolved.corrupt) {
+                return@withLock SlockAndroidAvatarCurrentReadResult(
+                    SlockAndroidAvatarCurrentReadStatus.RecoveryPending
+                )
+            }
+            val state = resolved.state
+                ?: return@withLock SlockAndroidAvatarCurrentReadResult(
+                    SlockAndroidAvatarCurrentReadStatus.Empty
+                )
+            val current = state.current
+                ?: return@withLock SlockAndroidAvatarCurrentReadResult(
+                    SlockAndroidAvatarCurrentReadStatus.Empty
+                )
+            val bytes =
+                when (val inspection = inspectEntryLocked(current.identity)) {
+                    is EntryInspection.Present -> inspection.bytes
+                    EntryInspection.Failed ->
+                        return@withLock SlockAndroidAvatarCurrentReadResult(
+                            SlockAndroidAvatarCurrentReadStatus.StorageFailure
+                        )
+                    EntryInspection.Missing,
+                    EntryInspection.Invalid -> {
+                        retireCurrentLocked(
+                            state = state,
+                            identity = current.identity,
+                            reason = SlockAndroidAvatarTombstoneReason.InvalidBytes,
+                            notifyCuts = false
+                        )
+                        return@withLock SlockAndroidAvatarCurrentReadResult(
+                            SlockAndroidAvatarCurrentReadStatus.Empty
+                        )
+                    }
+                }
+            val touched = current.copy(lastAccessOrdinal = nextAccessOrdinalLocked())
+            persistCurrentTouchLocked(
+                state.copy(
+                    current = touched,
+                    previous =
+                        state.previous?.let { previous ->
+                            if (previous.identity == current.identity) touched else previous
+                        },
+                    candidate =
+                        state.candidate?.let { candidate ->
+                            if (candidate.identity == current.identity) touched else candidate
+                        }
+                ),
+                state
+            )
+            SlockAndroidAvatarCurrentReadResult(
+                status = SlockAndroidAvatarCurrentReadStatus.Available,
+                snapshot =
+                    SlockAndroidAvatarCurrentReadSnapshot(
+                        entryIdentity = current.identity,
+                        bytes = bytes
+                    )
+            )
+        }
+
     fun readSnapshot(
         fence: SlockAndroidAvatarRequestFence,
         expectedCommitIdentity: SlockAndroidAvatarCommitIdentity?
@@ -548,6 +705,26 @@ internal class SlockAndroidAvatarDurableKernel(
             )
         }
 
+    fun registerDecodedCurrent(
+        entryIdentity: SlockAndroidAvatarEntryIdentity,
+        variant: SlockAndroidAvatarDecodedVariant
+    ): Boolean =
+        lock.withLock {
+            if (recoveryAdmissionBlocked || closedScopes.any(entryIdentity.key::matches)) {
+                return@withLock false
+            }
+            val resolved = loadResolvedStateLocked(entryIdentity.key)
+            if (resolved.failed || resolved.corrupt || resolved.state?.current?.identity != entryIdentity) {
+                return@withLock false
+            }
+            decodedStore.register(
+                SlockAndroidAvatarDecodedIdentity(
+                    entryIdentity = entryIdentity,
+                    variant = variant
+                )
+            )
+        }
+
     fun invalidateIfCurrent(
         snapshot: SlockAndroidAvatarReadSnapshot,
         reason: SlockAndroidAvatarTombstoneReason =
@@ -574,6 +751,45 @@ internal class SlockAndroidAvatarDurableKernel(
                 )
             }
             retireCurrentLocked(state, snapshot.entryIdentity, reason, notifyCuts = true)
+        }
+
+    fun retireCurrentExact(
+        key: SlockAndroidAvatarOpaqueKey,
+        expectedCommitIdentity: SlockAndroidAvatarCommitIdentity?
+    ): SlockAndroidAvatarOperationResult =
+        lock.withLock {
+            if (recoveryAdmissionBlocked || closedScopes.any(key::matches)) {
+                return@withLock SlockAndroidAvatarOperationResult(
+                    SlockAndroidAvatarOperationStatus.AdmissionClosed
+                )
+            }
+            val resolved = loadResolvedStateLocked(key)
+            if (resolved.failed) return@withLock storageFailure()
+            if (resolved.corrupt) return@withLock corruptState()
+            val state = resolved.state
+                ?: return@withLock SlockAndroidAvatarOperationResult(
+                    SlockAndroidAvatarOperationStatus.AlreadyApplied
+                )
+            if (state.phase != SlockAndroidAvatarDurablePhase.Idle) {
+                return@withLock SlockAndroidAvatarOperationResult(
+                    SlockAndroidAvatarOperationStatus.Busy
+                )
+            }
+            val current = state.current
+                ?: return@withLock SlockAndroidAvatarOperationResult(
+                    SlockAndroidAvatarOperationStatus.AlreadyApplied
+                )
+            if (expectedCommitIdentity != null && current.identity.commitIdentity != expectedCommitIdentity) {
+                return@withLock SlockAndroidAvatarOperationResult(
+                    SlockAndroidAvatarOperationStatus.IdentityMismatch
+                )
+            }
+            retireCurrentLocked(
+                state = state,
+                identity = current.identity,
+                reason = SlockAndroidAvatarTombstoneReason.AuthoritativeRetirement,
+                notifyCuts = true
+            )
         }
 
     /**
