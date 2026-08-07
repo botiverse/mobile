@@ -44,4 +44,20 @@ class ThreadBackToBottomPolicyTest {
             )
         )
     }
+
+    @Test
+    fun unreadJumpSettlementYieldsToANewerUserGesture() {
+        assertTrue(
+            shouldCompleteThreadUnreadJump(
+                clickUserScrollGeneration = 4,
+                currentUserScrollGeneration = 4,
+            )
+        )
+        assertFalse(
+            shouldCompleteThreadUnreadJump(
+                clickUserScrollGeneration = 4,
+                currentUserScrollGeneration = 5,
+            )
+        )
+    }
 }

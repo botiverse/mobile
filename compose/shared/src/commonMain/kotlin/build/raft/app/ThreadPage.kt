@@ -51,6 +51,12 @@ import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.ThreadApiResult
+import build.raft.app.data.KeyValueThreadReadAnchorStore
+import build.raft.app.data.ThreadReadAnchor
+import build.raft.app.data.ThreadReadAnchorOwner
+import build.raft.app.data.ThreadReadAnchorStore
+import build.raft.app.data.ThreadUnreadAnchorMessage
+import build.raft.app.data.projectThreadUnreadJump
 import build.raft.app.data.SlockAgentsApiClient
 import build.raft.app.data.SlockAgentsNetworkApi
 import build.raft.app.data.KuiklyRealtimeEvents
@@ -5096,6 +5102,26 @@ internal fun SharedThreadRouteContent(
     var currentSession by remember(initialThreadInstanceKey) {
         mutableStateOf<StoredAuthSession?>(null)
     }
+    val threadReadAnchorStore = remember {
+        KeyValueThreadReadAnchorStore(slockSharedPreferenceStore())
+    }
+    val threadReadAnchorOwner =
+        remember(
+            currentSession?.user?.id,
+            currentSession?.currentServerId,
+            threadTimelineKey,
+            sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+        ) {
+            val accountId = currentSession?.user?.id.orEmpty()
+            val serverId = currentSession?.currentServerId.orEmpty()
+            val conversationId = threadTimelineKey.orEmpty()
+            ThreadReadAnchorOwner(
+                environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                accountId = accountId,
+                serverId = serverId,
+                conversationId = conversationId,
+            ).normalizedOrNull()
+        }
     var replyCacheProvenance by remember(initialThreadInstanceKey) {
         mutableStateOf<ReplyCacheProvenance?>(null)
     }
@@ -5401,6 +5427,7 @@ internal fun SharedThreadRouteContent(
     var threadHostForeground by remember(threadInstanceKey, storeScope.shellInstanceId) {
         mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
     }
+    var threadReadAnchorSessionGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
     var threadPointerSessionKey by remember(threadInstanceKey, storeScope.shellInstanceId) {
         mutableStateOf(0)
     }
@@ -5449,6 +5476,7 @@ internal fun SharedThreadRouteContent(
 
     fun applyThreadVisibleResumePlan(plan: ThreadVisibleResumePlan) {
         threadPointerSessionKey = nextThreadPointerSessionKey(threadPointerSessionKey)
+        threadReadAnchorSessionGeneration += 1L
         if (plan.refreshVisibleConversation) {
             threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
         }
@@ -8050,6 +8078,14 @@ internal fun SharedThreadRouteContent(
                             SharedThreadIntent.FocusMessage(
                                 messageId = sourceMessageId,
                                 switchToTab = KuiklyThreadTab.Chat.wireValue
+                            )
+                        )
+                    }
+                    action == "focusUnreadAnchor" && !itemId.isNullOrBlank() -> {
+                        threadViewModel.dispatch(
+                            SharedThreadIntent.FocusMessage(
+                                messageId = itemId,
+                                switchToTab = KuiklyThreadTab.Chat.wireValue,
                             )
                         )
                     }
@@ -13524,6 +13560,11 @@ private fun ThreadPageContent(
                 KuiklyThreadTab.Chat ->
                     ThreadChatTab(
                         threadInstanceKey = threadInstanceKey,
+                        readAnchorOwner = threadReadAnchorOwner,
+                        readAnchorStore = threadReadAnchorStore,
+                        readAnchorSessionGeneration = threadReadAnchorSessionGeneration,
+                        routeActive = active,
+                        hostForeground = threadHostForeground,
                         renderConfig = timelineRenderConfig,
                         timelineSlice = timelineSlice,
                         replyMetadataByParentId = replyMetadataByParentId,
@@ -14721,6 +14762,11 @@ internal fun consumeThreadHeaderScrollToTopRequest(
 @Composable
 private fun ThreadChatTab(
     threadInstanceKey: String,
+    readAnchorOwner: ThreadReadAnchorOwner?,
+    readAnchorStore: ThreadReadAnchorStore,
+    readAnchorSessionGeneration: Long,
+    routeActive: Boolean,
+    hostForeground: Boolean,
     renderConfig: ThreadTimelineRenderConfig,
     timelineSlice: ThreadTimelineSlice,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
@@ -14806,6 +14852,11 @@ private fun ThreadChatTab(
             if (timelineSlice.originStatus != "none") {
                 ThreadMessagesList(
                     threadInstanceKey = threadInstanceKey,
+                    readAnchorOwner = readAnchorOwner,
+                    readAnchorStore = readAnchorStore,
+                    readAnchorSessionGeneration = readAnchorSessionGeneration,
+                    routeActive = routeActive,
+                    hostForeground = hostForeground,
                     renderConfig = renderConfig,
                     timelineSlice = timelineSlice,
                     replyMetadataByParentId = replyMetadataByParentId,
@@ -14878,6 +14929,11 @@ private fun ThreadChatTab(
             if (timelineSlice.originStatus != "none") {
                 ThreadMessagesList(
                     threadInstanceKey = threadInstanceKey,
+                    readAnchorOwner = readAnchorOwner,
+                    readAnchorStore = readAnchorStore,
+                    readAnchorSessionGeneration = readAnchorSessionGeneration,
+                    routeActive = routeActive,
+                    hostForeground = hostForeground,
                     renderConfig = renderConfig,
                     timelineSlice = timelineSlice,
                     replyMetadataByParentId = replyMetadataByParentId,
@@ -14941,6 +14997,11 @@ private fun ThreadChatTab(
         else ->
             ThreadMessagesList(
                 threadInstanceKey = threadInstanceKey,
+                readAnchorOwner = readAnchorOwner,
+                readAnchorStore = readAnchorStore,
+                readAnchorSessionGeneration = readAnchorSessionGeneration,
+                routeActive = routeActive,
+                hostForeground = hostForeground,
                 renderConfig = renderConfig,
                 timelineSlice = timelineSlice,
                 replyMetadataByParentId = replyMetadataByParentId,
@@ -15245,6 +15306,11 @@ private const val ThreadOriginListItemIndex = 0
 @Composable
 private fun ThreadMessagesList(
     threadInstanceKey: String,
+    readAnchorOwner: ThreadReadAnchorOwner?,
+    readAnchorStore: ThreadReadAnchorStore,
+    readAnchorSessionGeneration: Long,
+    routeActive: Boolean,
+    hostForeground: Boolean,
     renderConfig: ThreadTimelineRenderConfig,
     timelineSlice: ThreadTimelineSlice,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
@@ -15394,6 +15460,62 @@ private fun ThreadMessagesList(
         initialFirstVisibleItemIndex =
             threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
     )
+    var frozenReadAnchor by remember(threadInstanceKey, readAnchorOwner, readAnchorSessionGeneration) {
+        mutableStateOf(readAnchorOwner?.let(readAnchorStore::read))
+    }
+    var latestVisibleReadAnchor by remember(threadInstanceKey, readAnchorOwner) {
+        mutableStateOf<ThreadReadAnchor?>(null)
+    }
+    LaunchedEffect(threadInstanceKey, readAnchorOwner, readAnchorSessionGeneration) {
+        frozenReadAnchor = readAnchorOwner?.let(readAnchorStore::read)
+    }
+    LaunchedEffect(
+        threadInstanceKey,
+        readAnchorOwner,
+        renderPayload.messages,
+        renderPayload.originMessage,
+    ) {
+        snapshotFlow {
+            renderPayload.visibleThreadReadAnchor(
+                listState.layoutInfo.visibleItemsInfo.map { item -> item.index }
+            )
+        }.collect { anchor ->
+            if (anchor != null) {
+                val current = latestVisibleReadAnchor
+                if (current == null || anchor.seq > current.seq) {
+                    latestVisibleReadAnchor = anchor
+                }
+            }
+        }
+    }
+    LaunchedEffect(routeActive, hostForeground, readAnchorOwner, latestVisibleReadAnchor) {
+        if (!routeActive || !hostForeground) {
+            val owner = readAnchorOwner ?: return@LaunchedEffect
+            val anchor = latestVisibleReadAnchor ?: return@LaunchedEffect
+            readAnchorStore.advance(owner, anchor)
+        }
+    }
+    val latestReadAnchorOwner by rememberUpdatedState(readAnchorOwner)
+    val latestReadAnchorFrontier by rememberUpdatedState(latestVisibleReadAnchor)
+    DisposableEffect(threadInstanceKey, readAnchorStore) {
+        onDispose {
+            val owner = latestReadAnchorOwner
+            val anchor = latestReadAnchorFrontier
+            if (owner != null && anchor != null) {
+                readAnchorStore.advance(owner, anchor)
+            }
+        }
+    }
+    val unreadJumpProjection =
+        remember(frozenReadAnchor, renderPayload.messages) {
+            projectThreadUnreadJump(
+                anchor = frozenReadAnchor,
+                messages =
+                    renderPayload.messages.map { message ->
+                        ThreadUnreadAnchorMessage(id = message.id, seq = message.seq)
+                    },
+            )
+        }
     var viewportControllerState by remember(threadInstanceKey) {
         mutableStateOf(LazyViewportControllerState())
     }
@@ -15507,6 +15629,9 @@ private fun ThreadMessagesList(
         mutableStateOf(false)
     }
     var backToBottomInteractionGuardActive by remember(threadInstanceKey) {
+        mutableStateOf(false)
+    }
+    var unreadJumpInteractionGuardActive by remember(threadInstanceKey, readAnchorSessionGeneration) {
         mutableStateOf(false)
     }
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
@@ -17958,6 +18083,79 @@ private fun ThreadMessagesList(
                     .zIndex(ThreadInlineSearchBarZIndex)
             )
         }
+        val shouldShowUnreadJumpButton =
+            routeActive &&
+                hostForeground &&
+                unreadJumpProjection.unreadCount > 0 &&
+                unreadJumpProjection.targetMessageId != null &&
+                !inlineSearchVisible
+        if (
+            !shareSelectionCaptureActive &&
+            (shouldShowUnreadJumpButton || unreadJumpInteractionGuardActive)
+        ) {
+            ThreadUnreadJumpButton(
+                unreadCount = unreadJumpProjection.unreadCount,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = SlockSpacing.Md)
+                    .zIndex(ThreadUnreadJumpButtonZIndex),
+                onClick = onClick@{
+                    if (unreadJumpInteractionGuardActive) return@onClick
+                    val targetMessageId = unreadJumpProjection.targetMessageId ?: return@onClick
+                    val targetIndex =
+                        renderPayload.threadViewportListItemIndex(
+                            LazyViewportAnchorTarget.Message(targetMessageId)
+                        )
+                    unreadJumpInteractionGuardActive = true
+                    allowBottomAutoAnchor = false
+                    initialBottomAnchorReady = true
+                    focusedAnchorIdentityForViewportReplacement(
+                        pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
+                        sessionIdentity = focusedAnchorSessionIdentity,
+                    )?.let { retiredIdentity ->
+                        scrollInterruptedFocusedMessageAnchorIdentity = retiredIdentity
+                        activeFocusedMessageId = null
+                    }
+                    diagnosticsLogger(
+                        "thread_unread_jump_click count=${unreadJumpProjection.unreadCount} " +
+                            "anchorSeq=${frozenReadAnchor?.seq} target=$targetMessageId targetIndex=$targetIndex"
+                    )
+                    coroutineScope.launch {
+                        var consumed = false
+                        try {
+                            if (targetIndex >= 0 && listState.canScrollToThreadItem(targetIndex)) {
+                                userScrollGeneration.value += 1
+                                val clickUserScrollGeneration = userScrollGeneration.value
+                                dispatchViewportEvent(
+                                    LazyViewportEvent.Anchor(
+                                        target = LazyViewportAnchorTarget.Message(targetMessageId),
+                                        offset = 0,
+                                        layoutGeneration = viewportLayoutGeneration,
+                                        fallback = LazyViewportAnchorFallback.Free,
+                                    )
+                                )
+                                viewportControllerState.pendingCommand?.id?.let { commandId ->
+                                    awaitViewportCommandSettlement(commandId)
+                                }
+                                consumed =
+                                    shouldCompleteThreadUnreadJump(
+                                        clickUserScrollGeneration = clickUserScrollGeneration,
+                                        currentUserScrollGeneration = userScrollGeneration.value,
+                                    )
+                            } else {
+                                frozenReadAnchor?.messageId?.let { anchorMessageId ->
+                                    onThreadEvent("focusUnreadAnchor", anchorMessageId, null, null)
+                                }
+                            }
+                        } finally {
+                            withContext(NonCancellable) {
+                                delay(ThreadBackToBottomReleaseGuardMillis)
+                                if (consumed) frozenReadAnchor = null
+                                unreadJumpInteractionGuardActive = false
+                            }
+                        }
+                    }
+                },
+            )
+        }
         val shouldShowBackToBottomButton =
             shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
@@ -19207,6 +19405,11 @@ internal fun shouldCompleteThreadBackToBottom(
 ): Boolean =
     canonicalTailLoaded && clickUserScrollGeneration == currentUserScrollGeneration
 
+internal fun shouldCompleteThreadUnreadJump(
+    clickUserScrollGeneration: Int,
+    currentUserScrollGeneration: Int,
+): Boolean = clickUserScrollGeneration == currentUserScrollGeneration
+
 internal fun shouldKeepThreadBackToBottomOverlayMounted(
     shouldShowButton: Boolean,
     interactionGuardActive: Boolean
@@ -19378,6 +19581,22 @@ private fun LazyListState.threadFirstVisibleMessageAnchor(
         offset = item.offset,
         userScrollGeneration = userScrollGeneration
     )
+}
+
+internal fun ThreadTimelineSlice.visibleThreadReadAnchor(
+    visibleListItemIndexes: List<Int>,
+): ThreadReadAnchor? {
+    if (visibleListItemIndexes.isEmpty()) return null
+    val firstMessageIndex = firstMessageListItemIndex()
+    return visibleListItemIndexes
+        .asSequence()
+        .mapNotNull { listIndex -> messages.getOrNull(listIndex - firstMessageIndex) }
+        .mapNotNull { message ->
+            message.seq?.takeIf { seq -> seq > 0L }?.let { seq ->
+                ThreadReadAnchor(seq = seq, messageId = message.id)
+            }
+        }
+        .maxByOrNull { anchor -> anchor.seq }
 }
 
 private fun LazyListState.isThreadOlderAutoLoadThreshold(
@@ -19714,7 +19933,26 @@ private fun ThreadBackToBottomButton(
     )
 }
 
+@Composable
+private fun ThreadUnreadJumpButton(
+    unreadCount: Int,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    SlockBrutalActionButton(
+        label = stringResource(MR.strings.thread_action_unread_count, unreadCount),
+        onClick = onClick,
+        modifier = modifier.slockNativeDispatchCapture(),
+        backgroundColor = SlockColor.BrandYellow,
+        minWidth = 0.dp,
+        minHeight = 30.dp,
+        shadowOffset = 4.dp,
+        textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+    )
+}
+
 private const val ThreadBackToBottomReleaseGuardMillis = 64L
+private const val ThreadUnreadJumpButtonZIndex = 5f
 private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
