@@ -563,7 +563,12 @@ internal class SlockAndroidAvatarCacheController internal constructor(
             if (terminal.status == SlockAndroidAvatarTerminalStatus.Complete && tempZero) {
                 operations.entries.removeAll { (_, operation) -> operation.key.matches(scope) }
                 requestGenerations.keys.removeAll { key -> key.matches(scope) }
-                retiringScopes -= scope
+                // A successful wider terminal proves physical zero for its full contained domain,
+                // so it also owns convergence of cleanup debt left by earlier narrower attempts.
+                // Mirroring the kernel's terminal-scope containment prevents a healed owner/global
+                // clear from leaving controller-only subject/key admission tombstones behind.
+                retiringScopes.removeAll { pending -> scope.containsControllerHold(pending) }
+                retiringKeys.removeAll { key -> key.matches(scope) }
             } else {
                 // Keep admission closed until a later terminal retry verifies both managed and
                 // transport staging physical zero.
@@ -612,7 +617,15 @@ internal class SlockAndroidAvatarCacheController internal constructor(
                 }
             }
         lock.withLock {
-            if (result == SlockAvatarNativeOperationResult.Accepted && tempZero) {
+            val cleanupDebtResolved =
+                tempZero &&
+                    when (result) {
+                        SlockAvatarNativeOperationResult.Accepted,
+                        SlockAvatarNativeOperationResult.ExpectedIdentityMismatch,
+                        SlockAvatarNativeOperationResult.Stale -> true
+                        else -> false
+                    }
+            if (cleanupDebtResolved) {
                 operations.entries.removeAll { (_, operation) -> operation.key == key }
                 retiringKeys -= key
             } else {
@@ -638,6 +651,22 @@ internal class SlockAndroidAvatarCacheController internal constructor(
             renderDrained.signalAll()
         }
     }
+
+    private fun SlockAndroidAvatarTerminalScope.containsControllerHold(
+        candidate: SlockAndroidAvatarTerminalScope
+    ): Boolean =
+        when (this) {
+            SlockAndroidAvatarTerminalScope.All -> true
+            is SlockAndroidAvatarTerminalScope.Owner ->
+                when (candidate) {
+                    SlockAndroidAvatarTerminalScope.All -> false
+                    is SlockAndroidAvatarTerminalScope.Owner ->
+                        partitionKey == candidate.partitionKey && ownerKey == candidate.ownerKey
+                    is SlockAndroidAvatarTerminalScope.Subject ->
+                        partitionKey == candidate.partitionKey && ownerKey == candidate.ownerKey
+                }
+            is SlockAndroidAvatarTerminalScope.Subject -> this == candidate
+        }
 
     private fun registerDecoded(
         key: SlockAndroidAvatarOpaqueKey,

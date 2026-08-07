@@ -13,6 +13,7 @@ import build.raft.app.data.SlockAvatarNativeStageOpen
 import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
@@ -274,12 +275,20 @@ class SlockAndroidAvatarCacheControllerTest {
     }
 
     @Test
-    fun deliveryLeaseCoversCallbackReturnAndCallbackThrowStillReleases() = runBlocking {
+    fun callbackFirstKeepsTerminalIncompleteUntilReturnAndCallbackThrowStillReleases() = runBlocking {
+        val rig = AvatarKernelTestRig()
         val terminalAdmitted = CountDownLatch(1)
+        val physicalZero = CountDownLatch(1)
         val controller =
             controller(
-                AvatarKernelTestRig(),
-                terminalAdmissionObserver = { terminalAdmitted.countDown() }
+                rig,
+                terminalAdmissionObserver = { terminalAdmitted.countDown() },
+                terminalObserver =
+                    SlockAndroidAvatarTerminalObserver { _, cut ->
+                        if (cut == SlockAndroidAvatarTerminalCut.PhysicalZero) {
+                            physicalZero.countDown()
+                        }
+                    }
             )
         val slot = avatarSlot()
         val committed = commit(controller, avatarFence(slot, "callback-commit"), 1L, "callback")
@@ -296,20 +305,30 @@ class SlockAndroidAvatarCacheControllerTest {
             }.apply { start() }
         assertTrue(callbackEntered.await(2, TimeUnit.SECONDS))
         val terminalResult = AtomicReference<SlockAvatarNativeOperationResult>()
-        val terminal =
-            Thread {
+        val terminalCompleted = CountDownLatch(1)
+        Thread {
+            try {
                 terminalResult.set(runBlocking { controller.clearAll() })
-            }.apply { start() }
+            } finally {
+                terminalCompleted.countDown()
+            }
+        }.start()
         assertTrue(terminalAdmitted.await(2, TimeUnit.SECONDS))
-        assertTrue("terminal must wait through callback return", terminal.isAlive)
+        assertFalse(
+            "terminal future must stay incomplete while callback(drawable) is blocked",
+            terminalCompleted.await(250, TimeUnit.MILLISECONDS)
+        )
+        assertEquals("physical zero cannot precede callback return", 1L, physicalZero.count)
+        assertTrue("managed bytes must remain until callback return", rig.files.paths().isNotEmpty())
 
         releaseCallback.countDown()
         delivery.join(2_000L)
-        terminal.join(2_000L)
+        assertTrue(terminalCompleted.await(2, TimeUnit.SECONDS))
+        assertTrue(physicalZero.await(2, TimeUnit.SECONDS))
 
         assertFalse(delivery.isAlive)
-        assertFalse(terminal.isAlive)
         assertEquals(SlockAvatarNativeOperationResult.Accepted, terminalResult.get())
+        assertTrue(rig.files.paths().isEmpty())
 
         val throwingController = controller(AvatarKernelTestRig())
         val throwingSlot = avatarSlot(bytes = "throwing-callback-bytes")
@@ -333,6 +352,54 @@ class SlockAndroidAvatarCacheControllerTest {
         }
         assertEquals(expected, observed)
         assertEquals(SlockAvatarNativeOperationResult.Accepted, throwingController.clearAll())
+    }
+
+    @Test
+    fun terminalFirstPhysicalZeroPreventsLateDrawableCallback() = runBlocking {
+        val rig = AvatarKernelTestRig()
+        val physicalZero = CountDownLatch(1)
+        val controller =
+            controller(
+                rig,
+                terminalObserver =
+                    SlockAndroidAvatarTerminalObserver { _, cut ->
+                        if (cut == SlockAndroidAvatarTerminalCut.PhysicalZero) {
+                            physicalZero.countDown()
+                        }
+                    }
+            )
+        val slot = avatarSlot(bytes = "terminal-first-bytes")
+        val committed = commit(controller, avatarFence(slot, "terminal-first-commit"), 1L, "old")
+        val descriptor = SlockAvatarMountedRenderDescriptor(slot, committed.commitIdentity, 1L)
+        val allowLateDelivery = CountDownLatch(1)
+        val lateDeliveryCompleted = CountDownLatch(1)
+        val lateRead = AtomicReference<SlockAndroidAvatarCacheController.SlockAndroidAvatarRenderRead?>()
+        val drawableCallbacks = AtomicInteger(0)
+        val lateDeliveryFailure = AtomicReference<Throwable?>()
+        Thread {
+            try {
+                check(allowLateDelivery.await(2, TimeUnit.SECONDS))
+                controller.beginRender(descriptor).also(lateRead::set)?.let { read ->
+                    withSlockAvatarRenderDeliveryLease(read) {
+                        drawableCallbacks.incrementAndGet()
+                    }
+                }
+            } catch (throwable: Throwable) {
+                lateDeliveryFailure.set(throwable)
+            } finally {
+                lateDeliveryCompleted.countDown()
+            }
+        }.start()
+
+        assertEquals(SlockAvatarNativeOperationResult.Accepted, controller.clearAll())
+        assertTrue(physicalZero.await(2, TimeUnit.SECONDS))
+        assertTrue(rig.files.paths().isEmpty())
+
+        allowLateDelivery.countDown()
+        assertTrue(lateDeliveryCompleted.await(2, TimeUnit.SECONDS))
+        assertNull(lateDeliveryFailure.get())
+        assertNull(lateRead.get())
+        assertEquals("retired drawable must never reach the callback", 0, drawableCallbacks.get())
     }
 
     @Test
@@ -511,6 +578,106 @@ class SlockAndroidAvatarCacheControllerTest {
         )
     }
 
+    @Test
+    fun staleExactMismatchWithoutCleanupReopensTheKey() = runBlocking {
+        val controller = controller(AvatarKernelTestRig())
+        val slot = avatarSlot(bytes = "stale-exact-bytes")
+        val committed = commit(controller, avatarFence(slot, "stale-exact-commit"), 1L, "current")
+        val staleIdentity =
+            SlockAvatarCommitIdentity(
+                committed.commitIdentity.commitGeneration,
+                avatarOpaque("stale-exact-nonce")
+            )
+
+        assertEquals(
+            SlockAvatarNativeOperationResult.ExpectedIdentityMismatch,
+            controller.retireExact(slot, staleIdentity)
+        )
+        val reopened =
+            controller.beginStage(
+                avatarFence(
+                    slot = slot,
+                    nonceSeed = "stale-exact-reopened",
+                    expected = committed.commitIdentity,
+                    expectedRevision = 1L
+                )
+            )
+        assertTrue(reopened is SlockAvatarNativeStageOpen.Opened)
+        (reopened as SlockAvatarNativeStageOpen.Opened).sink.abort()
+    }
+
+    @Test
+    fun successfulGlobalTerminalClearsAContainedExactCleanupHold() = runBlocking {
+        val deletion = ControlledTransportDeletion()
+        val controller = controller(AvatarKernelTestRig(), deleteTransportFile = deletion::delete)
+        val slot = avatarSlot(bytes = "exact-then-global-bytes")
+        val sink =
+            (controller.beginStage(avatarFence(slot, "exact-then-global"))
+                as SlockAvatarNativeStageOpen.Opened).sink
+        assertTrue(sink.write("partial".toByteArray()))
+
+        deletion.mode = ControlledTransportDeletion.Mode.ReturnFalse
+        assertEquals(SlockAvatarNativeOperationResult.BusyCleanup, controller.retireExact(slot, null))
+        assertEquals(
+            SlockAvatarNativeStageOpen.AdmissionClosed,
+            controller.beginStage(avatarFence(slot, "exact-before-global"))
+        )
+
+        deletion.mode = ControlledTransportDeletion.Mode.Delete
+        assertEquals(SlockAvatarNativeOperationResult.Accepted, controller.clearAll())
+        val reopened = controller.beginStage(avatarFence(slot, "exact-after-global"))
+        assertTrue(reopened is SlockAvatarNativeStageOpen.Opened)
+        (reopened as SlockAvatarNativeStageOpen.Opened).sink.abort()
+    }
+
+    @Test
+    fun successfulOwnerTerminalClearsContainedSubjectAndKeyCleanupHolds() = runBlocking {
+        val deletion = ControlledTransportDeletion()
+        val controller = controller(AvatarKernelTestRig(), deleteTransportFile = deletion::delete)
+        val slot = avatarSlot(bytes = "subject-then-owner-bytes")
+        val sink =
+            (controller.beginStage(avatarFence(slot, "subject-then-owner"))
+                as SlockAvatarNativeStageOpen.Opened).sink
+        assertTrue(sink.write("partial".toByteArray()))
+
+        deletion.mode = ControlledTransportDeletion.Mode.ReturnFalse
+        assertEquals(SlockAvatarNativeOperationResult.BusyCleanup, controller.retireSubject(slot))
+        deletion.mode = ControlledTransportDeletion.Mode.Delete
+        assertEquals(
+            SlockAvatarNativeOperationResult.Accepted,
+            controller.retireOwner(slot.nativePartitionKey)
+        )
+
+        val reopened = controller.beginStage(avatarFence(slot, "subject-after-owner"))
+        assertTrue(reopened is SlockAvatarNativeStageOpen.Opened)
+        (reopened as SlockAvatarNativeStageOpen.Opened).sink.abort()
+    }
+
+    @Test
+    fun failedWiderTerminalKeepsContainedHoldsUntilSuccessfulGlobalRetry() = runBlocking {
+        val deletion = ControlledTransportDeletion()
+        val controller = controller(AvatarKernelTestRig(), deleteTransportFile = deletion::delete)
+        val slot = avatarSlot(bytes = "subject-global-retry-bytes")
+        val sink =
+            (controller.beginStage(avatarFence(slot, "subject-global-retry"))
+                as SlockAvatarNativeStageOpen.Opened).sink
+        assertTrue(sink.write("partial".toByteArray()))
+
+        deletion.mode = ControlledTransportDeletion.Mode.Throw
+        assertEquals(SlockAvatarNativeOperationResult.BusyCleanup, controller.retireSubject(slot))
+        assertEquals(SlockAvatarNativeOperationResult.BusyCleanup, controller.clearAll())
+        assertEquals(
+            SlockAvatarNativeStageOpen.AdmissionClosed,
+            controller.beginStage(avatarFence(slot, "subject-global-still-closed"))
+        )
+
+        deletion.mode = ControlledTransportDeletion.Mode.Delete
+        assertEquals(SlockAvatarNativeOperationResult.Accepted, controller.clearAll())
+        val reopened = controller.beginStage(avatarFence(slot, "subject-global-reopened"))
+        assertTrue(reopened is SlockAvatarNativeStageOpen.Opened)
+        (reopened as SlockAvatarNativeStageOpen.Opened).sink.abort()
+    }
+
     private suspend fun commit(
         controller: SlockAndroidAvatarCacheController,
         fence: SlockAvatarNativeStageFence,
@@ -546,10 +713,12 @@ class SlockAndroidAvatarCacheControllerTest {
         deleteTransportFile: (java.io.File) -> Boolean = { file ->
             !file.exists() || file.delete()
         },
-        terminalAdmissionObserver: (SlockAndroidAvatarTerminalScope) -> Unit = {}
+        terminalAdmissionObserver: (SlockAndroidAvatarTerminalScope) -> Unit = {},
+        terminalObserver: SlockAndroidAvatarTerminalObserver =
+            SlockAndroidAvatarTerminalObserver { _, _ -> }
     ): SlockAndroidAvatarCacheController =
         SlockAndroidAvatarCacheController(
-            kernel = rig.kernel(),
+            kernel = rig.kernel(terminalObserver = terminalObserver),
             stagingRoot = staging,
             startupStagingRecovered = true,
             contentInspector = SlockAndroidAvatarContentInspector { "image/png" },
