@@ -65,6 +65,9 @@ jobs:
       - name: Validate iOS Kotlin/Native optimizer contract
         run: scripts/ci/test_ios_native_optimizer_contract.sh
 
+      - name: Validate iOS Hands release notes contract
+        run: scripts/ci/test_ios_hands_release_contract.sh
+
       - name: Validate OHOS attachment-open diagnostic production wiring
         run: node compose/ohosApp/scripts/test_attachment_open_diagnostics_source_contract.mjs
 

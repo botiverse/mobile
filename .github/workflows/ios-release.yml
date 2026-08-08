@@ -28,6 +28,10 @@ on:
         required: false
         type: string
         default: ""
+      release_notes_version:
+        description: "Mobile release-notes directory version (for example 1.9.1)"
+        required: true
+        type: string
       hands_channel:
         description: "Hands channel: main | preview | nightly | debug"
         required: true
@@ -86,6 +90,7 @@ jobs:
       version_suffix: ${{ steps.p.outputs.version_suffix }}
       version_name: ${{ steps.p.outputs.version_name }}
       version_code: ${{ steps.p.outputs.version_code }}
+      release_notes_version: ${{ steps.p.outputs.release_notes_version }}
       hands_channel: ${{ steps.p.outputs.hands_channel }}
       export_method: ${{ steps.p.outputs.export_method }}
       release_mode: ${{ steps.p.outputs.release_mode }}
@@ -100,6 +105,11 @@ jobs:
           PATCH="${{ inputs.version_patch }}"
           BUILD="${{ inputs.version_build }}"
           SUFFIX="${{ inputs.version_suffix }}"
+          RELEASE_NOTES_VERSION="${{ inputs.release_notes_version }}"
+          if [[ ! "${RELEASE_NOTES_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "release_notes_version must be an X.Y.Z version" >&2
+            exit 1
+          fi
           VERSION_CODE=$((MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + BUILD))
           if [ -n "$SUFFIX" ]; then
             VERSION_NAME="${MAJOR}.${MINOR}.${PATCH}-${SUFFIX}"
@@ -114,6 +124,7 @@ jobs:
             echo "version_suffix=${SUFFIX}"
             echo "version_name=${VERSION_NAME}"
             echo "version_code=${VERSION_CODE}"
+            echo "release_notes_version=${RELEASE_NOTES_VERSION}"
             echo "hands_channel=${{ inputs.hands_channel }}"
             echo "export_method=${{ inputs.export_method }}"
             echo "release_mode=${{ inputs.release_mode }}"
@@ -514,20 +525,28 @@ jobs:
         shell: bash
         env:
           SLOCK_RELEASE_CHANGELOG_FILE: ${{ github.workspace }}/changelog.txt
-          SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR: ${{ github.workspace }}/change-logs/${{ needs.resolve.outputs.version_name }}/ios
-          SLOCK_RELEASE_CHANGELOG_LEGACY_DIR: ${{ github.workspace }}/change-logs/${{ needs.resolve.outputs.version_name }}
+          SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR: ${{ github.workspace }}/change-logs/${{ needs.resolve.outputs.release_notes_version }}/ios
+          SLOCK_RELEASE_CHANGELOG_LEGACY_DIR: ${{ github.workspace }}/change-logs/${{ needs.resolve.outputs.release_notes_version }}
         run: |
           set -euo pipefail
-          if [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/zh-CN.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/en.md" ]; then
+          if [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/zh-CN.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/en.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/ja.md" ]; then
             export SLOCK_RELEASE_CHANGELOG_ZH_FILE="${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/zh-CN.md"
             export SLOCK_RELEASE_CHANGELOG_EN_FILE="${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/en.md"
-            echo "Using reviewed iOS changelog from change-logs/${{ needs.resolve.outputs.version_name }}/ios/"
-          elif [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/zh-CN.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/en.md" ]; then
+            export SLOCK_RELEASE_CHANGELOG_JA_FILE="${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/ja.md"
+            echo "Using reviewed iOS changelog from change-logs/${{ needs.resolve.outputs.release_notes_version }}/ios/"
+          elif find "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}" -maxdepth 1 -type f \( -name 'zh-CN.md' -o -name 'en.md' -o -name 'ja.md' \) -print -quit 2>/dev/null | grep -q .; then
+            echo "Reviewed iOS changelog is incomplete; zh-CN.md, en.md, and ja.md are all required." >&2
+            exit 1
+          elif [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/zh-CN.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/en.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/ja.md" ]; then
             export SLOCK_RELEASE_CHANGELOG_ZH_FILE="${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/zh-CN.md"
             export SLOCK_RELEASE_CHANGELOG_EN_FILE="${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/en.md"
-            echo "Using legacy reviewed changelog from change-logs/${{ needs.resolve.outputs.version_name }}/"
+            export SLOCK_RELEASE_CHANGELOG_JA_FILE="${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/ja.md"
+            echo "Using legacy reviewed changelog from change-logs/${{ needs.resolve.outputs.release_notes_version }}/"
+          elif find "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}" -maxdepth 1 -type f \( -name 'zh-CN.md' -o -name 'en.md' -o -name 'ja.md' \) -print -quit 2>/dev/null | grep -q .; then
+            echo "Legacy reviewed iOS changelog is incomplete; zh-CN.md, en.md, and ja.md are all required." >&2
+            exit 1
           else
-            unset SLOCK_RELEASE_CHANGELOG_ZH_FILE SLOCK_RELEASE_CHANGELOG_EN_FILE
+            unset SLOCK_RELEASE_CHANGELOG_ZH_FILE SLOCK_RELEASE_CHANGELOG_EN_FILE SLOCK_RELEASE_CHANGELOG_JA_FILE
             echo "Reviewed iOS changelog not found; falling back to generated git history."
           fi
           IPA="$(find dist/ios -type f -name '*.ipa' | sort | head -n 1)"
@@ -555,6 +574,7 @@ jobs:
             echo "|---|---|"
             echo "| **Hands channel** | \`${{ needs.resolve.outputs.hands_channel }}\` |"
             echo "| **Release mode** | \`${{ needs.resolve.outputs.release_mode }}\` |"
+            echo "| **Release notes version** | \`${{ needs.resolve.outputs.release_notes_version }}\` |"
             echo "| **Release id** | \`${{ steps.publish-hands-release.outputs.release_id || '(none)' }}\` |"
             echo "| **IPA sha256** | \`${{ needs.build_ios_release.outputs.ipa_sha256 }}\` |"
             echo "| **dSYM sha256** | \`${{ needs.build_ios_release.outputs.dsym_sha256 }}\` |"
