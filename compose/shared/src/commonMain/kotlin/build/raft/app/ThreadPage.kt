@@ -398,7 +398,11 @@ internal data class ThreadMessageMetadataSlotLayout(
     val timestampVisible: Boolean
 )
 
-internal fun threadInlineSelectionBodyEligible(body: String): Boolean {
+internal fun threadInlineSelectionBodyEligible(body: String): Boolean = body.isNotBlank()
+
+// Rich bodies remain inside the same SelectionContainer; this predicate only
+// decides whether an eligible body may bypass Markdown for the plain Text path.
+internal fun threadInlineSelectionUsesPlainTextRenderer(body: String): Boolean {
     if (body.isBlank() || body != body.trim()) return false
     if (body.any { it == '\n' || it == '\r' || it == '\t' }) return false
     if (body.any { it in ThreadInlineSelectionMarkdownTriggerChars }) return false
@@ -456,6 +460,56 @@ internal data class ThreadInlineSelectionToolbarPlacement(
     val xPx: Int,
     val yPx: Int,
     val belowSelection: Boolean
+)
+
+internal enum class ThreadInlineSelectionPhase {
+    Idle,
+    Selecting,
+    Settled
+}
+
+internal data class ThreadInlineSelectionLifecycle(
+    val phase: ThreadInlineSelectionPhase = ThreadInlineSelectionPhase.Idle,
+    val settledFrame: SelectionFrame = SelectionFrame.Zero
+)
+
+internal fun threadInlineSelectionLifecycleAfterStart(
+    lifecycle: ThreadInlineSelectionLifecycle
+): ThreadInlineSelectionLifecycle =
+    lifecycle.copy(phase = ThreadInlineSelectionPhase.Selecting)
+
+internal fun threadInlineSelectionLifecycleAfterChange(
+    lifecycle: ThreadInlineSelectionLifecycle
+): ThreadInlineSelectionLifecycle =
+    lifecycle.copy(phase = ThreadInlineSelectionPhase.Selecting)
+
+internal fun threadInlineSelectionLifecycleAfterEnd(
+    lifecycle: ThreadInlineSelectionLifecycle,
+    frame: SelectionFrame
+): ThreadInlineSelectionLifecycle =
+    if (frame == SelectionFrame.Zero) {
+        ThreadInlineSelectionLifecycle()
+    } else {
+        lifecycle.copy(
+            phase = ThreadInlineSelectionPhase.Settled,
+            settledFrame = frame
+        )
+    }
+
+internal fun threadInlineSelectionLifecycleAfterCancel(): ThreadInlineSelectionLifecycle =
+    ThreadInlineSelectionLifecycle()
+
+internal fun threadInlineSelectionToolbarVisible(
+    lifecycle: ThreadInlineSelectionLifecycle
+): Boolean =
+    lifecycle.phase == ThreadInlineSelectionPhase.Settled &&
+        lifecycle.settledFrame != SelectionFrame.Zero
+
+internal data class ThreadInlineSelectionRootBounds(
+    val xInRootPx: Float = 0f,
+    val yInRootPx: Float = 0f,
+    val widthPx: Int = 0,
+    val heightPx: Int = 0
 )
 
 internal enum class ThreadInlineSelectionTool {
@@ -519,47 +573,122 @@ internal data class ThreadInlineSelectionActionAvailability(
 }
 
 internal fun threadInlineSelectionToolbarPlacement(
-    cardWidthPx: Int,
-    selectionContainerXInCardPx: Float,
-    selectionContainerYInCardPx: Float,
+    rootBounds: ThreadInlineSelectionRootBounds,
+    selectionContainerXInRootPx: Float,
+    selectionContainerYInRootPx: Float,
     selectionFrame: SelectionFrame,
     toolbarWidthPx: Int,
     toolbarHeightPx: Int,
     gapPx: Int
 ): ThreadInlineSelectionToolbarPlacement {
     val selectionCenterX =
-        selectionContainerXInCardPx + selectionFrame.x + selectionFrame.width / 2f
-    val maxX = (cardWidthPx - toolbarWidthPx).coerceAtLeast(0)
+        selectionContainerXInRootPx - rootBounds.xInRootPx +
+            selectionFrame.x + selectionFrame.width / 2f
+    val maxX = (rootBounds.widthPx - toolbarWidthPx).coerceAtLeast(0)
     val x = (selectionCenterX - toolbarWidthPx / 2f).roundToInt().coerceIn(0, maxX)
-    val selectionTop = selectionContainerYInCardPx + selectionFrame.y
+    val selectionTop =
+        selectionContainerYInRootPx - rootBounds.yInRootPx + selectionFrame.y
     val aboveY = (selectionTop - toolbarHeightPx - gapPx).roundToInt()
-    val belowSelection = aboveY < 0
-    val y =
-        if (belowSelection) {
-            (selectionTop + selectionFrame.height + gapPx).roundToInt().coerceAtLeast(0)
-        } else {
-            aboveY
-        }
+    val belowY = (selectionTop + selectionFrame.height + gapPx).roundToInt()
+    val maxY = (rootBounds.heightPx - toolbarHeightPx).coerceAtLeast(0)
+    val belowSelection = aboveY < 0 && belowY <= maxY
+    val y = (if (belowSelection) belowY else aboveY).coerceIn(0, maxY)
     return ThreadInlineSelectionToolbarPlacement(xPx = x, yPx = y, belowSelection = belowSelection)
 }
 
 private class ThreadInlineSelectionController(
     val selectionState: SelectionContainerState
 ) {
-    var active by mutableStateOf(false)
-    var frame by mutableStateOf(SelectionFrame.Zero)
+    var lifecycle by mutableStateOf(ThreadInlineSelectionLifecycle())
+        private set
     var containerRootPosition by mutableStateOf(Offset.Zero)
-    var cardRootPosition by mutableStateOf(Offset.Zero)
-    var cardWidthPx by mutableStateOf(0)
     var toolbarSize by mutableStateOf(IntSize(0, 0))
     var actionMenuAnchor by mutableStateOf<SlockPopoverAnchor?>(null)
 
-    fun clear() {
-        selectionState.clearSelection()
-        active = false
-        frame = SelectionFrame.Zero
+    val active: Boolean
+        get() = lifecycle.phase != ThreadInlineSelectionPhase.Idle
+
+    fun beginSelection() {
+        lifecycle = threadInlineSelectionLifecycleAfterStart(lifecycle)
+    }
+
+    fun continueSelection() {
+        lifecycle = threadInlineSelectionLifecycleAfterChange(lifecycle)
+    }
+
+    fun settleSelection(frame: SelectionFrame) {
+        lifecycle = threadInlineSelectionLifecycleAfterEnd(lifecycle, frame)
+    }
+
+    fun cancelSelection() {
+        lifecycle = threadInlineSelectionLifecycleAfterCancel()
         actionMenuAnchor = null
     }
+
+    fun clear() {
+        selectionState.clearSelection()
+        cancelSelection()
+    }
+}
+
+private data class ThreadInlineSelectionOverlayRequest(
+    val messageId: String,
+    val controller: ThreadInlineSelectionController,
+    val availability: ThreadInlineSelectionActionAvailability,
+    val onReact: (String) -> Unit,
+    val onCopy: () -> Unit,
+    val onReply: () -> Unit,
+    val onForward: () -> Unit,
+    val onSave: () -> Unit,
+    val onTranslate: () -> Unit,
+    val onSelect: () -> Unit,
+    val onMore: () -> Unit
+)
+
+private class ThreadInlineSelectionOverlayCoordinator {
+    var request by mutableStateOf<ThreadInlineSelectionOverlayRequest?>(null)
+        private set
+    var rootBounds by mutableStateOf(ThreadInlineSelectionRootBounds())
+        private set
+
+    fun updateRootBounds(coordinates: LayoutCoordinates) {
+        val position = coordinates.positionInRoot()
+        rootBounds =
+            ThreadInlineSelectionRootBounds(
+                xInRootPx = position.x,
+                yInRootPx = position.y,
+                widthPx = coordinates.size.width,
+                heightPx = coordinates.size.height
+            )
+    }
+
+    fun update(messageId: String, next: ThreadInlineSelectionOverlayRequest?) {
+        if (next == null) {
+            if (request?.messageId == messageId) request = null
+            return
+        }
+        request
+            ?.controller
+            ?.takeIf { previousController -> previousController !== next.controller }
+            ?.clear()
+        request = next
+    }
+
+    fun clear() {
+        request?.controller?.clear()
+        request = null
+    }
+}
+
+@Composable
+private fun rememberThreadInlineSelectionOverlayCoordinator(
+    ownerKey: Any
+): ThreadInlineSelectionOverlayCoordinator {
+    val coordinator = remember(ownerKey) { ThreadInlineSelectionOverlayCoordinator() }
+    DisposableEffect(coordinator) {
+        onDispose(coordinator::clear)
+    }
+    return coordinator
 }
 
 private data class ThreadInlineSelectionGestureCallbacks(
@@ -4103,6 +4232,10 @@ private fun ThreadMessageVisualScreenContent() {
                 null
             }
         }
+    val inlineSelectionOverlayCoordinator =
+        rememberThreadInlineSelectionOverlayCoordinator(
+            "thread-message-visual:$visualFixture:$instanceId"
+        )
     CompositionLocalProvider(
         LocalSlockMessagePermalinkLabelResolver provides visualMessagePermalinkLabelResolver,
         LocalSlockMarkdownRenderConfig provides
@@ -4110,7 +4243,12 @@ private fun ThreadMessageVisualScreenContent() {
         LocalSlockTimeContextProvider provides (visualTimeContextProvider ?: inheritedTimeContextProvider),
         LocalThreadInlineReplyTimestampReporter provides inlineReplyTimestampReporter,
     ) {
-        Box {
+        Box(
+            modifier =
+                Modifier.onGloballyPositioned(
+                    inlineSelectionOverlayCoordinator::updateRootBounds
+                )
+        ) {
             Column(
                 modifier =
                     Modifier
@@ -4230,6 +4368,7 @@ private fun ThreadMessageVisualScreenContent() {
                     },
                     onOpenMarkdownUrl = { openedVisualMarkdownUrlCount += 1 },
                     inlineSelectionEnabled = inlineSelectionToolbarEnabled,
+                    onInlineSelectionOverlayChanged = inlineSelectionOverlayCoordinator::update,
                     onInlineSelectionReact = {},
                     onInlineSelectionCopy = {},
                     onInlineSelectionReply = { openedVisualThreadMessageId = message.id },
@@ -4273,6 +4412,7 @@ private fun ThreadMessageVisualScreenContent() {
                             }
                 )
             }
+            ThreadInlineSelectionRootOverlay(inlineSelectionOverlayCoordinator)
         }
     }
 }
@@ -4286,7 +4426,15 @@ private fun ThreadInlineSelectionCompactGroupVisual(
     singleTapOpensThreadEnabled: Boolean
 ) {
     var openedMessageId by remember { mutableStateOf<String?>(null) }
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    val inlineSelectionOverlayCoordinator =
+        rememberThreadInlineSelectionOverlayCoordinator("thread-inline-selection-compact-group")
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+                .onGloballyPositioned(inlineSelectionOverlayCoordinator::updateRootBounds)
+    ) {
         LazyColumn(
             modifier =
                 Modifier
@@ -4319,10 +4467,12 @@ private fun ThreadInlineSelectionCompactGroupVisual(
                     onOpenMarkdownTag = { _, _ -> },
                     onOpenMarkdownUrl = {},
                     inlineSelectionEnabled = inlineSelectionEnabled,
+                    onInlineSelectionOverlayChanged = inlineSelectionOverlayCoordinator::update,
                     outerPadding = 0.dp
                 )
             }
         }
+        ThreadInlineSelectionRootOverlay(inlineSelectionOverlayCoordinator)
         if (openedMessageId != null) {
             Box(
                 modifier =
@@ -15699,6 +15849,8 @@ private fun ThreadMessagesList(
         }
     var actionMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf<SlockPopoverAnchor?>(null) }
+    val inlineSelectionOverlayCoordinator =
+        rememberThreadInlineSelectionOverlayCoordinator(threadInstanceKey)
     // task #569: long-press on a reaction chip shows who reacted.
     var reactionDetails by remember(threadInstanceKey) { mutableStateOf<ThreadReactionDetailsRequest?>(null) }
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
@@ -17679,7 +17831,10 @@ private fun ThreadMessagesList(
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .onGloballyPositioned(viewportPixelProbeBounds::update)
+                    .onGloballyPositioned { coordinates ->
+                        viewportPixelProbeBounds.update(coordinates)
+                        inlineSelectionOverlayCoordinator.updateRootBounds(coordinates)
+                    }
         ) {
             LaunchedEffect(threadInstanceKey, maxHeight) {
                 measuredThreadViewportHeightDp = maxHeight.value
@@ -18139,6 +18294,8 @@ private fun ThreadMessagesList(
                                     )
                                 },
                                 inlineSelectionEnabled = inlineSelectionToolbarEnabled,
+                                onInlineSelectionOverlayChanged =
+                                    inlineSelectionOverlayCoordinator::update,
                                 inlineSelectionActionAvailability =
                                     ThreadInlineSelectionActionAvailability(
                                         reactions = writeActionsEnabled && renderPayload.showReactionActions,
@@ -18209,6 +18366,7 @@ private fun ThreadMessagesList(
                 )
             }
         }
+        ThreadInlineSelectionRootOverlay(inlineSelectionOverlayCoordinator)
         if (inlineSearchVisible) {
             ThreadInlineSearchBar(
                 query = inlineSearchQuery,
@@ -20412,6 +20570,7 @@ private fun ThreadMessageCard(
     inlineSelectionEnabled: Boolean = false,
     inlineSelectionActionAvailability: ThreadInlineSelectionActionAvailability =
         ThreadInlineSelectionActionAvailability(),
+    onInlineSelectionOverlayChanged: (String, ThreadInlineSelectionOverlayRequest?) -> Unit = { _, _ -> },
     onInlineSelectionReact: (String) -> Unit = {},
     onInlineSelectionCopy: () -> Unit = {},
     onInlineSelectionReply: () -> Unit = {},
@@ -20558,22 +20717,74 @@ private fun ThreadMessageCard(
                     messageId = message.id
                 )
         )
-    val inlineSelectionGapPx = with(LocalDensity.current) { ThreadInlineSelectionToolbarGap.roundToPx() }
-    val inlineSelectionToolbarPlacement =
+    val latestInlineSelectionOverlayChanged by
+        rememberUpdatedState(onInlineSelectionOverlayChanged)
+    if (inlineSelectionController != null) {
+        DisposableEffect(message.id, inlineSelectionController) {
+            onDispose {
+                inlineSelectionController.clear()
+                latestInlineSelectionOverlayChanged(message.id, null)
+            }
+        }
+    }
+    val clearInlineSelection: () -> Unit = {
+        inlineSelectionController?.clear()
+        onInlineSelectionOverlayChanged(message.id, null)
+    }
+    val inlineSelectionOverlayRequest =
         inlineSelectionController?.let { controller ->
-            threadInlineSelectionToolbarPlacement(
-                cardWidthPx = controller.cardWidthPx,
-                selectionContainerXInCardPx =
-                    controller.containerRootPosition.x - controller.cardRootPosition.x,
-                selectionContainerYInCardPx =
-                    controller.containerRootPosition.y - controller.cardRootPosition.y,
-                selectionFrame = controller.frame,
-                toolbarWidthPx = controller.toolbarSize.width,
-                toolbarHeightPx = controller.toolbarSize.height,
-                gapPx = inlineSelectionGapPx
+            ThreadInlineSelectionOverlayRequest(
+                messageId = message.id,
+                controller = controller,
+                availability = inlineSelectionActionAvailability,
+                onReact = { reaction ->
+                    tapMovementGate.rejectChildAction("inline_selection_reaction")
+                    onInlineSelectionReact(reaction)
+                    clearInlineSelection()
+                },
+                onCopy = {
+                    tapMovementGate.rejectChildAction("inline_selection_copy")
+                    onInlineSelectionCopy()
+                    clearInlineSelection()
+                },
+                onReply = {
+                    tapMovementGate.rejectChildAction("inline_selection_reply")
+                    clearInlineSelection()
+                    onInlineSelectionReply()
+                },
+                onForward = {
+                    tapMovementGate.rejectChildAction("inline_selection_forward")
+                    clearInlineSelection()
+                    onInlineSelectionForward()
+                },
+                onSave = {
+                    tapMovementGate.rejectChildAction("inline_selection_save")
+                    clearInlineSelection()
+                    onInlineSelectionSave()
+                },
+                onTranslate = {
+                    tapMovementGate.rejectChildAction("inline_selection_translate")
+                    clearInlineSelection()
+                    onInlineSelectionTranslate()
+                },
+                onSelect = {
+                    tapMovementGate.rejectChildAction("inline_selection_select")
+                    clearInlineSelection()
+                    onInlineSelectionSelect()
+                },
+                onMore = {
+                    tapMovementGate.rejectChildAction("inline_selection_more")
+                    val anchor = controller.actionMenuAnchor
+                    clearInlineSelection()
+                    anchor?.let(onInlineSelectionMore)
+                }
             )
-        } ?: ThreadInlineSelectionToolbarPlacement(xPx = 0, yPx = 0, belowSelection = false)
-    val clearInlineSelection: () -> Unit = { inlineSelectionController?.clear() }
+        }
+    val publishInlineSelectionOverlay: () -> Unit = {
+        inlineSelectionOverlayRequest?.let { request ->
+            onInlineSelectionOverlayChanged(message.id, request)
+        }
+    }
     val showSavedBadge =
         shouldShowThreadMessageSavedBadge(
             showSaveAction = showSaveAction,
@@ -20631,16 +20842,6 @@ private fun ThreadMessageCard(
             Modifier
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
-                .then(
-                    if (inlineSelectionEligible) {
-                        Modifier.onGloballyPositioned { coordinates ->
-                            inlineSelectionController?.cardRootPosition = coordinates.positionInRoot()
-                            inlineSelectionController?.cardWidthPx = coordinates.size.width
-                        }
-                    } else {
-                        Modifier
-                    }
-                )
                 .then(
                     if (threadMessageUsesFullRowLongPressActions(shareSelectionActive)) {
                         Modifier.threadMessageLongPressActions(
@@ -20832,73 +21033,76 @@ private fun ThreadMessageCard(
                                 // Row child, so sending → sent removes only
                                 // left-side width and the End edge cannot move.
                                 val messageBodyBlock: @Composable () -> Unit = {
-                                if (translation?.pendingPlaceholder == true) {
-                                    ThreadMessageTranslationPendingPlaceholder()
-                                } else if (showLongMessageToggle && !longMessageExpanded) {
-                                    Text(
-                                        text = longMessagePlan.collapsedDisplayText,
-                                        style = messageBodyTextStyle,
-                                        color = SlockColor.TextBlack,
-                                        maxLines = ThreadLongMessagePreviewLineLimit,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier
-                                    )
-                                } else if (inlineSelectionEligible) {
-                                    Text(
-                                        text = bodyForRender,
-                                        style = messageBodyTextStyle,
-                                        color = SlockColor.TextBlack,
-                                        modifier = Modifier
-                                    )
-                                } else if (richContentEnabled) {
-                                    val markdownRenderSignature =
-                                        remember(message.id, bodyForRender) {
-                                            if (bodyForRender == message.body) {
-                                                message.threadMarkdownRenderSignature()
-                                            } else {
-                                                message.copy(body = bodyForRender).threadMarkdownRenderSignature()
+                                    if (translation?.pendingPlaceholder == true) {
+                                        ThreadMessageTranslationPendingPlaceholder()
+                                    } else if (showLongMessageToggle && !longMessageExpanded) {
+                                        Text(
+                                            text = longMessagePlan.collapsedDisplayText,
+                                            style = messageBodyTextStyle,
+                                            color = SlockColor.TextBlack,
+                                            maxLines = ThreadLongMessagePreviewLineLimit,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier
+                                        )
+                                    } else if (
+                                        inlineSelectionEligible &&
+                                        threadInlineSelectionUsesPlainTextRenderer(bodyForRender)
+                                    ) {
+                                        Text(
+                                            text = bodyForRender,
+                                            style = messageBodyTextStyle,
+                                            color = SlockColor.TextBlack,
+                                            modifier = Modifier
+                                        )
+                                    } else if (richContentEnabled) {
+                                        val markdownRenderSignature =
+                                            remember(message.id, bodyForRender) {
+                                                if (bodyForRender == message.body) {
+                                                    message.threadMarkdownRenderSignature()
+                                                } else {
+                                                    message.copy(body = bodyForRender).threadMarkdownRenderSignature()
+                                                }
                                             }
+                                        LaunchedEffect(markdownRenderSignature) {
+                                            diagnosticsLogger(
+                                                "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
+                                                    "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
+                                                    "sourceBodyLen=${renderedBody.length} " +
+                                                    "collapsed=${showLongMessageToggle && !longMessageExpanded} " +
+                                                    "bodyHash=${bodyForRender.hashCode().toString(16)} " +
+                                                    "context=$markdownTagContextSignature"
+                                            )
                                         }
-                                    LaunchedEffect(markdownRenderSignature) {
-                                        diagnosticsLogger(
-                                            "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
-                                                "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
-                                                "sourceBodyLen=${renderedBody.length} " +
-                                                "collapsed=${showLongMessageToggle && !longMessageExpanded} " +
-                                                "bodyHash=${bodyForRender.hashCode().toString(16)} " +
-                                                "context=$markdownTagContextSignature"
+                                        key(markdownRenderSignature) {
+                                            SlockMarkdownBody(
+                                                body = bodyForRender,
+                                                fillWidth = !alignOwnMessageRight,
+                                                textStyle = messageBodyTextStyle,
+                                                highlightedMentions = highlightedMentions,
+                                                isTagValid = isMarkdownTagValid,
+                                                resolveTagLabel = resolveMarkdownTagLabel,
+                                                inlineContentScope = markdownRenderSignature.inlineContentScope,
+                                                activeTagKey = activeMarkdownTagKey,
+                                                onOpenTagAction = { tag, actionId ->
+                                                    tapMovementGate.rejectChildAction("markdown_tag")
+                                                    onOpenMarkdownTag(tag, actionId)
+                                                },
+                                                onOpenUrl = { url ->
+                                                    tapMovementGate.rejectChildAction("markdown_url")
+                                                    onOpenMarkdownUrl(url)
+                                                },
+                                                performanceKey = messagePerformanceKey,
+                                                performanceLogger = diagnosticsLogger
+                                            )
+                                        }
+                                    } else {
+                                        Text(
+                                            text = bodyForRender,
+                                            style = messageBodyTextStyle,
+                                            color = SlockColor.TextBlack,
+                                            modifier = Modifier
                                         )
                                     }
-                                    key(markdownRenderSignature) {
-                                        SlockMarkdownBody(
-                                            body = bodyForRender,
-                                            fillWidth = !alignOwnMessageRight,
-                                            textStyle = messageBodyTextStyle,
-                                            highlightedMentions = highlightedMentions,
-                                            isTagValid = isMarkdownTagValid,
-                                            resolveTagLabel = resolveMarkdownTagLabel,
-                                            inlineContentScope = markdownRenderSignature.inlineContentScope,
-                                            activeTagKey = activeMarkdownTagKey,
-                                            onOpenTagAction = { tag, actionId ->
-                                                tapMovementGate.rejectChildAction("markdown_tag")
-                                                onOpenMarkdownTag(tag, actionId)
-                                            },
-                                            onOpenUrl = { url ->
-                                                tapMovementGate.rejectChildAction("markdown_url")
-                                                onOpenMarkdownUrl(url)
-                                            },
-                                            performanceKey = messagePerformanceKey,
-                                            performanceLogger = diagnosticsLogger
-                                        )
-                                    }
-                                } else {
-                                    Text(
-                                        text = bodyForRender,
-                                        style = messageBodyTextStyle,
-                                        color = SlockColor.TextBlack,
-                                        modifier = Modifier
-                                    )
-                                }
                                 }
                                 val selectableMessageBodyBlock: @Composable () -> Unit = {
                                     if (inlineSelectionEligible) {
@@ -20953,22 +21157,21 @@ private fun ThreadMessageCard(
                                                                 Modifier
                                                             }
                                                         ),
-                                                onSelectStart = { frame ->
-                                                    controller.frame = frame
-                                                    controller.active = true
+                                                onSelectStart = {
+                                                    controller.beginSelection()
+                                                    publishInlineSelectionOverlay()
                                                 },
-                                                onSelectChange = { frame ->
-                                                    controller.frame = frame
-                                                    controller.active = true
+                                                onSelectChange = {
+                                                    controller.continueSelection()
+                                                    publishInlineSelectionOverlay()
                                                 },
                                                 onSelectEnd = { frame ->
-                                                    controller.frame = frame
-                                                    controller.active = true
+                                                    controller.settleSelection(frame)
+                                                    publishInlineSelectionOverlay()
                                                 },
                                                 onSelectCancel = {
-                                                    controller.frame = SelectionFrame.Zero
-                                                    controller.active = false
-                                                    controller.actionMenuAnchor = null
+                                                    controller.cancelSelection()
+                                                    onInlineSelectionOverlayChanged(message.id, null)
                                                 }
                                             ) {
                                                 messageBodyBlock()
@@ -21122,64 +21325,47 @@ private fun ThreadMessageCard(
                 }
             }
         }
-        if (inlineSelectionController?.active == true && inlineSelectionController.frame != SelectionFrame.Zero) {
-            ThreadInlineSelectionToolbar(
-                placement = inlineSelectionToolbarPlacement,
-                onMeasured = { size -> inlineSelectionController.toolbarSize = size },
-                availability =
-                    inlineSelectionActionAvailability.copy(
-                        more =
-                            inlineSelectionActionAvailability.more &&
-                                inlineSelectionController.actionMenuAnchor != null
-                    ),
-                onReact = { reaction ->
-                    tapMovementGate.rejectChildAction("inline_selection_reaction")
-                    onInlineSelectionReact(reaction)
-                    clearInlineSelection()
-                },
-                onCopy = {
-                    tapMovementGate.rejectChildAction("inline_selection_copy")
-                    onInlineSelectionCopy()
-                    clearInlineSelection()
-                },
-                onReply = {
-                    tapMovementGate.rejectChildAction("inline_selection_reply")
-                    clearInlineSelection()
-                    onInlineSelectionReply()
-                },
-                onForward = {
-                    tapMovementGate.rejectChildAction("inline_selection_forward")
-                    clearInlineSelection()
-                    onInlineSelectionForward()
-                },
-                onSave = {
-                    tapMovementGate.rejectChildAction("inline_selection_save")
-                    clearInlineSelection()
-                    onInlineSelectionSave()
-                },
-                onTranslate = {
-                    tapMovementGate.rejectChildAction("inline_selection_translate")
-                    clearInlineSelection()
-                    onInlineSelectionTranslate()
-                },
-                onSelect = {
-                    tapMovementGate.rejectChildAction("inline_selection_select")
-                    clearInlineSelection()
-                    onInlineSelectionSelect()
-                },
-                onMore = {
-                    tapMovementGate.rejectChildAction("inline_selection_more")
-                    val anchor = inlineSelectionController.actionMenuAnchor
-                    clearInlineSelection()
-                    anchor?.let(onInlineSelectionMore)
-                }
-            )
-        }
         ThreadMessagePressRipple(
             pressed = pressed,
             origin = pressRippleOrigin
         )
     }
+}
+
+@Composable
+private fun ThreadInlineSelectionRootOverlay(
+    coordinator: ThreadInlineSelectionOverlayCoordinator
+) {
+    val request = coordinator.request ?: return
+    val controller = request.controller
+    if (!threadInlineSelectionToolbarVisible(controller.lifecycle)) return
+    val gapPx = with(LocalDensity.current) { ThreadInlineSelectionToolbarGap.roundToPx() }
+    val placement =
+        threadInlineSelectionToolbarPlacement(
+            rootBounds = coordinator.rootBounds,
+            selectionContainerXInRootPx = controller.containerRootPosition.x,
+            selectionContainerYInRootPx = controller.containerRootPosition.y,
+            selectionFrame = controller.lifecycle.settledFrame,
+            toolbarWidthPx = controller.toolbarSize.width,
+            toolbarHeightPx = controller.toolbarSize.height,
+            gapPx = gapPx
+        )
+    ThreadInlineSelectionToolbar(
+        placement = placement,
+        onMeasured = { size -> controller.toolbarSize = size },
+        availability =
+            request.availability.copy(
+                more = request.availability.more && controller.actionMenuAnchor != null
+            ),
+        onReact = request.onReact,
+        onCopy = request.onCopy,
+        onReply = request.onReply,
+        onForward = request.onForward,
+        onSave = request.onSave,
+        onTranslate = request.onTranslate,
+        onSelect = request.onSelect,
+        onMore = request.onMore
+    )
 }
 
 @Composable
