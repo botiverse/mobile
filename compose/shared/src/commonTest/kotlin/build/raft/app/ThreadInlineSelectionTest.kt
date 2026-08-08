@@ -125,9 +125,9 @@ class ThreadInlineSelectionTest {
         assertEquals(
             ThreadInlineSelectionToolbarPlacement(xPx = 20, yPx = 104, belowSelection = false),
             threadInlineSelectionToolbarPlacement(
-                cardWidthPx = 300,
-                selectionContainerXInCardPx = 20f,
-                selectionContainerYInCardPx = 100f,
+                rootBounds = ThreadInlineSelectionRootBounds(widthPx = 300, heightPx = 400),
+                selectionContainerXInRootPx = 20f,
+                selectionContainerYInRootPx = 100f,
                 selectionFrame = SelectionFrame(x = 10f, y = 40f, width = 100f, height = 20f),
                 toolbarWidthPx = 120,
                 toolbarHeightPx = 30,
@@ -137,13 +137,13 @@ class ThreadInlineSelectionTest {
     }
 
     @Test
-    fun toolbarFallsBelowAndClampsInsideCardAtTopEdge() {
+    fun toolbarFallsBelowAndClampsInsideThreadRootAtTopEdge() {
         assertEquals(
             ThreadInlineSelectionToolbarPlacement(xPx = 0, yPx = 30, belowSelection = true),
             threadInlineSelectionToolbarPlacement(
-                cardWidthPx = 180,
-                selectionContainerXInCardPx = 10f,
-                selectionContainerYInCardPx = 4f,
+                rootBounds = ThreadInlineSelectionRootBounds(widthPx = 180, heightPx = 300),
+                selectionContainerXInRootPx = 10f,
+                selectionContainerYInRootPx = 4f,
                 selectionFrame = SelectionFrame(x = 0f, y = 0f, width = 20f, height = 20f),
                 toolbarWidthPx = 140,
                 toolbarHeightPx = 30,
@@ -153,18 +153,73 @@ class ThreadInlineSelectionTest {
     }
 
     @Test
-    fun toolbarClampsAtRightCardEdge() {
+    fun toolbarClampsAtRightThreadRootEdge() {
         assertEquals(
             100,
             threadInlineSelectionToolbarPlacement(
-                cardWidthPx = 200,
-                selectionContainerXInCardPx = 180f,
-                selectionContainerYInCardPx = 100f,
+                rootBounds = ThreadInlineSelectionRootBounds(widthPx = 200, heightPx = 300),
+                selectionContainerXInRootPx = 180f,
+                selectionContainerYInRootPx = 100f,
                 selectionFrame = SelectionFrame(x = 10f, y = 20f, width = 20f, height = 20f),
                 toolbarWidthPx = 100,
                 toolbarHeightPx = 30,
                 gapPx = 6
             ).xPx
+        )
+    }
+
+    @Test
+    fun dragLifecycleHidesToolbarAndFreezesPlacementUntilSelectionEnds() {
+        val firstSettledFrame = SelectionFrame(x = 12f, y = 40f, width = 80f, height = 20f)
+        val finalSettledFrame = SelectionFrame(x = 24f, y = 64f, width = 120f, height = 24f)
+        val settled =
+            threadInlineSelectionLifecycleAfterEnd(
+                threadInlineSelectionLifecycleAfterStart(ThreadInlineSelectionLifecycle()),
+                firstSettledFrame
+            )
+
+        assertTrue(threadInlineSelectionToolbarVisible(settled))
+
+        val restarted = threadInlineSelectionLifecycleAfterStart(settled)
+        val moving = threadInlineSelectionLifecycleAfterChange(restarted)
+        assertEquals(ThreadInlineSelectionPhase.Selecting, moving.phase)
+        assertEquals(firstSettledFrame, moving.settledFrame)
+        assertFalse(threadInlineSelectionToolbarVisible(moving))
+
+        val ended = threadInlineSelectionLifecycleAfterEnd(moving, finalSettledFrame)
+        assertEquals(ThreadInlineSelectionPhase.Settled, ended.phase)
+        assertEquals(finalSettledFrame, ended.settledFrame)
+        assertTrue(threadInlineSelectionToolbarVisible(ended))
+        assertFalse(
+            threadInlineSelectionToolbarVisible(threadInlineSelectionLifecycleAfterCancel())
+        )
+    }
+
+    @Test
+    fun toolbarPlacementUsesThreadRootInsteadOfClampingInsideSelectedMessageRow() {
+        val placement =
+            threadInlineSelectionToolbarPlacement(
+                rootBounds =
+                    ThreadInlineSelectionRootBounds(
+                        xInRootPx = 0f,
+                        yInRootPx = 80f,
+                        widthPx = 390,
+                        heightPx = 600
+                    ),
+                selectionContainerXInRootPx = 32f,
+                selectionContainerYInRootPx = 360f,
+                selectionFrame = SelectionFrame(x = 0f, y = 10f, width = 180f, height = 22f),
+                toolbarWidthPx = 240,
+                toolbarHeightPx = 96,
+                gapPx = 6
+            )
+
+        // The selected row starts near y=340 in root coordinates. A row-owned
+        // overlay would have clamped to y=0 within that row; the thread-root
+        // overlay may occupy the inter-row area above it at root y=188.
+        assertEquals(
+            ThreadInlineSelectionToolbarPlacement(xPx = 2, yPx = 188, belowSelection = false),
+            placement
         )
     }
 
