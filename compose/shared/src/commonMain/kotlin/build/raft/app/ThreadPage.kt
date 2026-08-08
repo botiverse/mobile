@@ -474,9 +474,13 @@ internal data class ThreadInlineSelectionLifecycle(
 )
 
 internal fun threadInlineSelectionLifecycleAfterStart(
-    lifecycle: ThreadInlineSelectionLifecycle
+    lifecycle: ThreadInlineSelectionLifecycle,
+    frame: SelectionFrame
 ): ThreadInlineSelectionLifecycle =
-    lifecycle.copy(phase = ThreadInlineSelectionPhase.Selecting)
+    // Kuikly emits selectStart after the initial selection frame is stable.
+    // Programmatic createSelectionAll emits no matching selectEnd, so hiding
+    // here would leave the toolbar permanently absent until a handle is moved.
+    threadInlineSelectionLifecycleAfterEnd(lifecycle, frame)
 
 internal fun threadInlineSelectionLifecycleAfterChange(
     lifecycle: ThreadInlineSelectionLifecycle
@@ -608,8 +612,8 @@ private class ThreadInlineSelectionController(
     val active: Boolean
         get() = lifecycle.phase != ThreadInlineSelectionPhase.Idle
 
-    fun beginSelection() {
-        lifecycle = threadInlineSelectionLifecycleAfterStart(lifecycle)
+    fun startSelection(frame: SelectionFrame) {
+        lifecycle = threadInlineSelectionLifecycleAfterStart(lifecycle, frame)
     }
 
     fun continueSelection() {
@@ -21157,8 +21161,8 @@ private fun ThreadMessageCard(
                                                                 Modifier
                                                             }
                                                         ),
-                                                onSelectStart = {
-                                                    controller.beginSelection()
+                                                onSelectStart = { frame ->
+                                                    controller.startSelection(frame)
                                                     publishInlineSelectionOverlay()
                                                 },
                                                 onSelectChange = {

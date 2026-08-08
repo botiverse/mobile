@@ -182,19 +182,40 @@ class ThreadInlineSelectionTest {
     }
 
     @Test
-    fun dragLifecycleHidesToolbarAndFreezesPlacementUntilSelectionEnds() {
+    fun selectionStartShowsToolbarWithoutWaitingForAnEndEvent() {
+        val firstSettledFrame = SelectionFrame(x = 12f, y = 40f, width = 80f, height = 20f)
+        val started =
+            threadInlineSelectionLifecycleAfterStart(
+                ThreadInlineSelectionLifecycle(),
+                firstSettledFrame
+            )
+
+        assertEquals(ThreadInlineSelectionPhase.Settled, started.phase)
+        assertEquals(firstSettledFrame, started.settledFrame)
+        assertTrue(threadInlineSelectionToolbarVisible(started))
+        assertFalse(
+            threadInlineSelectionToolbarVisible(
+                threadInlineSelectionLifecycleAfterStart(
+                    ThreadInlineSelectionLifecycle(),
+                    SelectionFrame.Zero
+                )
+            )
+        )
+    }
+
+    @Test
+    fun handleChangeHidesToolbarAndFreezesPlacementUntilSelectionEnds() {
         val firstSettledFrame = SelectionFrame(x = 12f, y = 40f, width = 80f, height = 20f)
         val finalSettledFrame = SelectionFrame(x = 24f, y = 64f, width = 120f, height = 24f)
         val settled =
-            threadInlineSelectionLifecycleAfterEnd(
-                threadInlineSelectionLifecycleAfterStart(ThreadInlineSelectionLifecycle()),
+            threadInlineSelectionLifecycleAfterStart(
+                ThreadInlineSelectionLifecycle(),
                 firstSettledFrame
             )
 
         assertTrue(threadInlineSelectionToolbarVisible(settled))
 
-        val restarted = threadInlineSelectionLifecycleAfterStart(settled)
-        val moving = threadInlineSelectionLifecycleAfterChange(restarted)
+        val moving = threadInlineSelectionLifecycleAfterChange(settled)
         assertEquals(ThreadInlineSelectionPhase.Selecting, moving.phase)
         assertEquals(firstSettledFrame, moving.settledFrame)
         assertFalse(threadInlineSelectionToolbarVisible(moving))
