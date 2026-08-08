@@ -843,6 +843,29 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun bottomTabContentInsetClearsEveryRendererHost() {
+        val bottomSafeArea = 18.dp
+        val floatingHostClearance = slockFloatingDockBottomTabBarHostHeight(bottomSafeArea)
+
+        assertEquals(
+            floatingHostClearance,
+            slockAppBottomTabBarContentInset(SlockAppTabBarRenderer.AndroidFloating, bottomSafeArea)
+        )
+        assertEquals(
+            floatingHostClearance,
+            slockAppBottomTabBarContentInset(SlockAppTabBarRenderer.IosLiquidGlass, bottomSafeArea)
+        )
+        assertEquals(
+            floatingHostClearance,
+            slockAppBottomTabBarContentInset(SlockAppTabBarRenderer.OhosHdsImmersive, bottomSafeArea)
+        )
+        assertEquals(
+            slockSharedBottomTabBarContentInset(bottomSafeArea),
+            slockAppBottomTabBarContentInset(SlockAppTabBarRenderer.SharedCompose, bottomSafeArea)
+        )
+    }
+
+    @Test
     fun createAgentDialogRegistersGlobalHostRoute() {
         assertTrue(SharedCreateAgentDialogHostRoute.isNotBlank())
         assertTrue(SharedCreateAgentDialogHostRoute != SlockUnifiedDialogGenericHostRoute)
