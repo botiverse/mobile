@@ -28,7 +28,14 @@ class NetworkKmmRecoveryDiagnosticsTest {
                         freshRetry = true,
                         freshRetryResult = "success",
                         noResponseHeadersDurationMs = 7_123.0,
-                        staleH2ConcurrentRequestCount = 2
+                        staleH2ConcurrentRequestCount = 2,
+                        curlCompletionInfoVersion = 1,
+                        curlNameLookupTimingAvailable = true,
+                        curlConnectTimingAvailable = true,
+                        curlPreTransferTimingAvailable = true,
+                        curlStartTransferTimingAvailable = true,
+                        curlTotalTimingAvailable = false,
+                        curlTlsTimingState = "reused_connection"
                     )
             )
 
@@ -45,5 +52,34 @@ class NetworkKmmRecoveryDiagnosticsTest {
         assertContains(diagnostics, "freshRetryResult=success")
         assertContains(diagnostics, "noResponseHeadersDurationMs=7123")
         assertContains(diagnostics, "staleH2ConcurrentRequestCount=2")
+        assertContains(diagnostics, "curlCompletionInfoVersion=1")
+        assertContains(diagnostics, "curlNameLookupTimingAvailable=true")
+        assertContains(diagnostics, "curlConnectTimingAvailable=true")
+        assertContains(diagnostics, "curlPreTransferTimingAvailable=true")
+        assertContains(diagnostics, "curlStartTransferTimingAvailable=true")
+        assertContains(diagnostics, "curlTotalTimingAvailable=false")
+        assertContains(diagnostics, "curlTlsTimingState=reused_connection")
+    }
+
+    @Test
+    fun curlCompletionFieldsRenderAsNoneWhenNativeArtifactLacksThem() {
+        val response =
+            NetworkResponse(
+                request = NetworkRequest(),
+                statusCode = 200,
+                headers = emptyMap(),
+                body = NetworkResponseBody(),
+                timing = VBTransportElapseStatistics()
+            )
+
+        val diagnostics = response.networkKmmDiagnostics()
+
+        assertContains(diagnostics, "curlCompletionInfoVersion=none")
+        assertContains(diagnostics, "curlNameLookupTimingAvailable=none")
+        assertContains(diagnostics, "curlConnectTimingAvailable=none")
+        assertContains(diagnostics, "curlPreTransferTimingAvailable=none")
+        assertContains(diagnostics, "curlStartTransferTimingAvailable=none")
+        assertContains(diagnostics, "curlTotalTimingAvailable=none")
+        assertContains(diagnostics, "curlTlsTimingState=none")
     }
 }
