@@ -105,10 +105,23 @@ internal fun slockOhosHdsDockBlockerSideMargin(): Dp = SlockOhosHdsDockSideMargi
 
 @Composable
 internal fun slockAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
-    return when (slockAppTabBarRenderer()) {
-        // Native floating docks are overlays. Content should keep filling the screen behind them.
+    return slockAppBottomTabBarContentInset(
+        renderer = slockAppTabBarRenderer(),
+        bottomSafeArea = bottomSafeArea
+    )
+}
+
+internal fun slockAppBottomTabBarContentInset(
+    renderer: SlockAppTabBarRenderer,
+    bottomSafeArea: Dp
+): Dp {
+    return when (renderer) {
+        // Native floating docks remain overlays so backgrounds can paint
+        // edge-to-edge, but scrollable trailing content must reserve the full
+        // host band. Otherwise the final row settles under the native bar and
+        // its tap target is intercepted by the tab surface.
         SlockAppTabBarRenderer.OhosHdsImmersive,
-        SlockAppTabBarRenderer.IosLiquidGlass -> bottomSafeArea + SlockSpacing.Lg
+        SlockAppTabBarRenderer.IosLiquidGlass,
         SlockAppTabBarRenderer.AndroidFloating ->
             slockFloatingDockBottomTabBarHostHeight(bottomSafeArea)
         SlockAppTabBarRenderer.SharedCompose -> slockSharedBottomTabBarContentInset(bottomSafeArea)
