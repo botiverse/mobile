@@ -2,7 +2,7 @@ source 'https://cdn.cocoapods.org/'
 
 target 'iosApp' do
   use_frameworks!
-  platform :ios, '14.1'
+  platform :ios, '15.0'
 
   ENV['KUIKLY_VERSION'] ||= '2.21.0'
   pod 'OpenKuiklyIOSRender', :path => '../../third_party/kuikly-ui'
