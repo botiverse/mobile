@@ -478,7 +478,14 @@ internal fun NetworkResponse.networkKmmDiagnostics(): String {
         "freshRetry=${timing.freshRetry} " +
         "freshRetryResult=${timing.freshRetryResult?.toSafeDiagnosticsToken() ?: "none"} " +
         "noResponseHeadersDurationMs=${timing.noResponseHeadersDurationMs.toLong()} " +
-        "staleH2ConcurrentRequestCount=${timing.staleH2ConcurrentRequestCount}"
+        "staleH2ConcurrentRequestCount=${timing.staleH2ConcurrentRequestCount} " +
+        "curlCompletionInfoVersion=${timing.curlCompletionInfoVersion ?: "none"} " +
+        "curlNameLookupTimingAvailable=${timing.curlNameLookupTimingAvailable ?: "none"} " +
+        "curlConnectTimingAvailable=${timing.curlConnectTimingAvailable ?: "none"} " +
+        "curlPreTransferTimingAvailable=${timing.curlPreTransferTimingAvailable ?: "none"} " +
+        "curlStartTransferTimingAvailable=${timing.curlStartTransferTimingAvailable ?: "none"} " +
+        "curlTotalTimingAvailable=${timing.curlTotalTimingAvailable ?: "none"} " +
+        "curlTlsTimingState=${timing.curlTlsTimingState?.toSafeDiagnosticsToken() ?: "none"}"
 }
 
 internal fun String.sanitizeMultipartFileName(): String =
