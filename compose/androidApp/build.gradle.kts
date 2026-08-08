@@ -765,7 +765,7 @@ dependencies {
 
     // Kuikly Compose shared module
     implementation(project(":shared"))
-    runtimeOnly("com.tencent.kuiklybase:network-android-curl-runtime:0.1.0-raft.29")
+    runtimeOnly("com.tencent.kuiklybase:network-android-curl-runtime:0.1.0-raft.32")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.media3.exoplayer)
