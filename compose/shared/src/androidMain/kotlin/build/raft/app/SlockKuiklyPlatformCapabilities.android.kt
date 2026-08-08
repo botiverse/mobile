@@ -10,6 +10,10 @@ internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = true
 
 internal actual fun slockPlatformConsumesSnapshotsFromKuikly(): Boolean = true
 
+internal actual fun slockPlatformThreadImeProgrammaticViewportPolicy():
+    ThreadImeProgrammaticViewportPolicy =
+    ThreadImeProgrammaticViewportPolicy.SuppressWhileImeOpen
+
 internal actual fun slockPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode =
     AppShellChildPagePrewarmMode.Canary
 
