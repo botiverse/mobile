@@ -23,7 +23,7 @@ class ThreadInlineSelectionTest {
     }
 
     @Test
-    fun eligibilityAcceptsOnlyPlainStandaloneMessageBodies() {
+    fun eligibilityAcceptsPlainAndRichStandaloneMessageBodies() {
         assertTrue(
             threadInlineSelectionEligible(
                 body = "Long press this plain message.",
@@ -38,13 +38,26 @@ class ThreadInlineSelectionTest {
         )
         assertTrue(threadInlineSelectionBodyEligible("纯文本消息可以原位全选。"))
         assertTrue(threadInlineSelectionBodyEligible("プレーンテキストを選択します。"))
+        assertTrue(threadInlineSelectionBodyEligible("Open [docs](https://example.com)"))
+        assertTrue(threadInlineSelectionBodyEligible("First line\nSecond line"))
+        assertTrue(threadInlineSelectionBodyEligible("1. Ordered item"))
+        assertTrue(eligibleForBody("Open [docs](https://example.com)"))
+        assertTrue(eligibleForBody("First line\nSecond line"))
+        assertTrue(eligibleForBody("1. Ordered item"))
     }
 
     @Test
-    fun eligibilityRejectsMarkdownAndNonBodySurfaces() {
-        assertFalse(threadInlineSelectionBodyEligible("Open [docs](https://example.com)"))
-        assertFalse(threadInlineSelectionBodyEligible("First line\nSecond line"))
-        assertFalse(threadInlineSelectionBodyEligible("1. Ordered item"))
+    fun richBodiesKeepTheirRendererWhilePlainBodiesUseTheSelectionFastPath() {
+        assertTrue(threadInlineSelectionUsesPlainTextRenderer("Plain body"))
+        assertFalse(threadInlineSelectionUsesPlainTextRenderer("Open [docs](https://example.com)"))
+        assertFalse(threadInlineSelectionUsesPlainTextRenderer("First line\nSecond line"))
+        assertFalse(threadInlineSelectionUsesPlainTextRenderer("1. Ordered item"))
+        assertFalse(threadInlineSelectionUsesPlainTextRenderer(" padded body "))
+    }
+
+    @Test
+    fun eligibilityRejectsBlankAndNonBodySurfaces() {
+        assertFalse(threadInlineSelectionBodyEligible("   \n"))
         assertFalse(
             threadInlineSelectionEligible(
                 body = "Plain body",
@@ -237,5 +250,17 @@ class ThreadInlineSelectionTest {
             hasLocalSendState = false,
             translationPending = false,
             longMessageCollapsed = longMessageCollapsed
+        )
+
+    private fun eligibleForBody(body: String): Boolean =
+        threadInlineSelectionEligible(
+            body = body,
+            hasAttachments = false,
+            hasActionCard = false,
+            hasForwardBundle = false,
+            hasCommentReference = false,
+            hasLocalSendState = false,
+            translationPending = false,
+            longMessageCollapsed = false
         )
 }

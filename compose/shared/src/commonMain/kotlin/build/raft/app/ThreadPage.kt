@@ -398,7 +398,11 @@ internal data class ThreadMessageMetadataSlotLayout(
     val timestampVisible: Boolean
 )
 
-internal fun threadInlineSelectionBodyEligible(body: String): Boolean {
+internal fun threadInlineSelectionBodyEligible(body: String): Boolean = body.isNotBlank()
+
+// Rich bodies remain inside the same SelectionContainer; this predicate only
+// decides whether an eligible body may bypass Markdown for the plain Text path.
+internal fun threadInlineSelectionUsesPlainTextRenderer(body: String): Boolean {
     if (body.isBlank() || body != body.trim()) return false
     if (body.any { it == '\n' || it == '\r' || it == '\t' }) return false
     if (body.any { it in ThreadInlineSelectionMarkdownTriggerChars }) return false
@@ -20994,73 +20998,76 @@ private fun ThreadMessageCard(
                                 // Row child, so sending → sent removes only
                                 // left-side width and the End edge cannot move.
                                 val messageBodyBlock: @Composable () -> Unit = {
-                                if (translation?.pendingPlaceholder == true) {
-                                    ThreadMessageTranslationPendingPlaceholder()
-                                } else if (showLongMessageToggle && !longMessageExpanded) {
-                                    Text(
-                                        text = longMessagePlan.collapsedDisplayText,
-                                        style = messageBodyTextStyle,
-                                        color = SlockColor.TextBlack,
-                                        maxLines = ThreadLongMessagePreviewLineLimit,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier
-                                    )
-                                } else if (inlineSelectionEligible) {
-                                    Text(
-                                        text = bodyForRender,
-                                        style = messageBodyTextStyle,
-                                        color = SlockColor.TextBlack,
-                                        modifier = Modifier
-                                    )
-                                } else if (richContentEnabled) {
-                                    val markdownRenderSignature =
-                                        remember(message.id, bodyForRender) {
-                                            if (bodyForRender == message.body) {
-                                                message.threadMarkdownRenderSignature()
-                                            } else {
-                                                message.copy(body = bodyForRender).threadMarkdownRenderSignature()
+                                    if (translation?.pendingPlaceholder == true) {
+                                        ThreadMessageTranslationPendingPlaceholder()
+                                    } else if (showLongMessageToggle && !longMessageExpanded) {
+                                        Text(
+                                            text = longMessagePlan.collapsedDisplayText,
+                                            style = messageBodyTextStyle,
+                                            color = SlockColor.TextBlack,
+                                            maxLines = ThreadLongMessagePreviewLineLimit,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier
+                                        )
+                                    } else if (
+                                        inlineSelectionEligible &&
+                                        threadInlineSelectionUsesPlainTextRenderer(bodyForRender)
+                                    ) {
+                                        Text(
+                                            text = bodyForRender,
+                                            style = messageBodyTextStyle,
+                                            color = SlockColor.TextBlack,
+                                            modifier = Modifier
+                                        )
+                                    } else if (richContentEnabled) {
+                                        val markdownRenderSignature =
+                                            remember(message.id, bodyForRender) {
+                                                if (bodyForRender == message.body) {
+                                                    message.threadMarkdownRenderSignature()
+                                                } else {
+                                                    message.copy(body = bodyForRender).threadMarkdownRenderSignature()
+                                                }
                                             }
+                                        LaunchedEffect(markdownRenderSignature) {
+                                            diagnosticsLogger(
+                                                "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
+                                                    "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
+                                                    "sourceBodyLen=${renderedBody.length} " +
+                                                    "collapsed=${showLongMessageToggle && !longMessageExpanded} " +
+                                                    "bodyHash=${bodyForRender.hashCode().toString(16)} " +
+                                                    "context=$markdownTagContextSignature"
+                                            )
                                         }
-                                    LaunchedEffect(markdownRenderSignature) {
-                                        diagnosticsLogger(
-                                            "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
-                                                "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
-                                                "sourceBodyLen=${renderedBody.length} " +
-                                                "collapsed=${showLongMessageToggle && !longMessageExpanded} " +
-                                                "bodyHash=${bodyForRender.hashCode().toString(16)} " +
-                                                "context=$markdownTagContextSignature"
+                                        key(markdownRenderSignature) {
+                                            SlockMarkdownBody(
+                                                body = bodyForRender,
+                                                fillWidth = !alignOwnMessageRight,
+                                                textStyle = messageBodyTextStyle,
+                                                highlightedMentions = highlightedMentions,
+                                                isTagValid = isMarkdownTagValid,
+                                                resolveTagLabel = resolveMarkdownTagLabel,
+                                                inlineContentScope = markdownRenderSignature.inlineContentScope,
+                                                activeTagKey = activeMarkdownTagKey,
+                                                onOpenTagAction = { tag, actionId ->
+                                                    tapMovementGate.rejectChildAction("markdown_tag")
+                                                    onOpenMarkdownTag(tag, actionId)
+                                                },
+                                                onOpenUrl = { url ->
+                                                    tapMovementGate.rejectChildAction("markdown_url")
+                                                    onOpenMarkdownUrl(url)
+                                                },
+                                                performanceKey = messagePerformanceKey,
+                                                performanceLogger = diagnosticsLogger
+                                            )
+                                        }
+                                    } else {
+                                        Text(
+                                            text = bodyForRender,
+                                            style = messageBodyTextStyle,
+                                            color = SlockColor.TextBlack,
+                                            modifier = Modifier
                                         )
                                     }
-                                    key(markdownRenderSignature) {
-                                        SlockMarkdownBody(
-                                            body = bodyForRender,
-                                            fillWidth = !alignOwnMessageRight,
-                                            textStyle = messageBodyTextStyle,
-                                            highlightedMentions = highlightedMentions,
-                                            isTagValid = isMarkdownTagValid,
-                                            resolveTagLabel = resolveMarkdownTagLabel,
-                                            inlineContentScope = markdownRenderSignature.inlineContentScope,
-                                            activeTagKey = activeMarkdownTagKey,
-                                            onOpenTagAction = { tag, actionId ->
-                                                tapMovementGate.rejectChildAction("markdown_tag")
-                                                onOpenMarkdownTag(tag, actionId)
-                                            },
-                                            onOpenUrl = { url ->
-                                                tapMovementGate.rejectChildAction("markdown_url")
-                                                onOpenMarkdownUrl(url)
-                                            },
-                                            performanceKey = messagePerformanceKey,
-                                            performanceLogger = diagnosticsLogger
-                                        )
-                                    }
-                                } else {
-                                    Text(
-                                        text = bodyForRender,
-                                        style = messageBodyTextStyle,
-                                        color = SlockColor.TextBlack,
-                                        modifier = Modifier
-                                    )
-                                }
                                 }
                                 val selectableMessageBodyBlock: @Composable () -> Unit = {
                                     if (inlineSelectionEligible) {
