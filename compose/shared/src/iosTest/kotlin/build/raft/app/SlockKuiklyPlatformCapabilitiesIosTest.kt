@@ -15,6 +15,14 @@ class SlockKuiklyPlatformCapabilitiesIosTest {
     }
 
     @Test
+    fun threadImeRestoresAutomaticViewportCorrection() {
+        assertEquals(
+            ThreadImeProgrammaticViewportPolicy.AllowWhileImeOpen,
+            slockPlatformThreadImeProgrammaticViewportPolicy(),
+        )
+    }
+
+    @Test
     fun liquidGlassDefaultIsRuntimeGatedAcrossRouteRebuilds() {
         assertEquals("sharedCompose", slockIosAppTabBarRendererForMajorVersion(18L))
         assertEquals("sharedCompose", slockIosAppTabBarRendererForMajorVersion(25L))

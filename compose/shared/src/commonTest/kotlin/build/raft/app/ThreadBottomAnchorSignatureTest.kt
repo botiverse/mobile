@@ -2332,11 +2332,14 @@ class ThreadBottomAnchorSignatureTest {
         viewportEpochCoherent: Boolean = true,
         focusedAnchorOwnsViewport: Boolean = false,
         focusedActiveTailAnchorCanCorrectLayout: Boolean = false,
-        focusedTailAnchorCanCorrectLayout: Boolean = false
+        focusedTailAnchorCanCorrectLayout: Boolean = false,
+        imeProgrammaticViewportPolicy: ThreadImeProgrammaticViewportPolicy =
+            ThreadImeProgrammaticViewportPolicy.SuppressWhileImeOpen,
     ): ThreadComposerLayoutBottomAnchorState =
         ThreadComposerLayoutBottomAnchorState(
             previousKeyboardInsetDp = previousKeyboardInsetDp,
             nextKeyboardInsetDp = nextKeyboardInsetDp,
+            imeProgrammaticViewportPolicy = imeProgrammaticViewportPolicy,
             previousViewportHeightDp = previousViewportHeightDp,
             nextViewportHeightDp = nextViewportHeightDp,
             pendingLayoutChange = pendingLayoutChange,

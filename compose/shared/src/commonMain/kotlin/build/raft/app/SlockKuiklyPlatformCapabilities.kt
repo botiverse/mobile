@@ -6,6 +6,18 @@ internal expect fun slockPlatformUsesNativeLucideIconRotation(): Boolean
 
 internal expect fun slockPlatformConsumesSnapshotsFromKuikly(): Boolean
 
+/**
+ * Platform policy for the task #990 emergency Thread/IME viewport kill-switch.
+ *
+ * Android keeps the stop-loss because every captured white-screen cycle is on
+ * that renderer. iOS restores the ordinary automatic correction path for
+ * Hands 8f33b1f3, where the cross-platform stop-loss left the final message
+ * behind the keyboard. OHOS remains on the existing stop-loss until it has its
+ * own product evidence; task #1015 does not broaden that release decision.
+ */
+internal expect fun slockPlatformThreadImeProgrammaticViewportPolicy():
+    ThreadImeProgrammaticViewportPolicy
+
 // The common idle pipeline is shared by every platform. OHOS enables the full
 // measured prewarm set; Android/iOS run a one-controller canary until their
 // cold-tab CPU/frame/memory evidence justifies enabling the complete set.
