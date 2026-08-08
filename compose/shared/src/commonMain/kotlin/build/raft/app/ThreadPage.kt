@@ -15502,6 +15502,8 @@ private fun ThreadMessagesList(
         }
         return
     }
+    val imeProgrammaticViewportPolicy =
+        slockPlatformThreadImeProgrammaticViewportPolicy()
     val translationState =
         translationStore?.state?.collectAsState()?.value ?: SharedMessageTranslationState()
     if (translationStore != null) {
@@ -16539,7 +16541,13 @@ private fun ThreadMessagesList(
                     // task #990 kill-switch: this collector runs for the life
                     // of the thread, so the inset must be read live at each
                     // decision — same seam as the stability-path correction.
-                    if (suppressAutoBottomHeightChange(liveComposerKeyboardInsetDp, diagnosticsLogger)) {
+                    if (
+                        suppressAutoBottomHeightChange(
+                            keyboardInsetDp = liveComposerKeyboardInsetDp,
+                            policy = imeProgrammaticViewportPolicy,
+                            log = diagnosticsLogger,
+                        )
+                    ) {
                         return@collect
                     }
                     dispatchViewportEvent(
@@ -16732,19 +16740,20 @@ private fun ThreadMessagesList(
         activeFocusedMessageId = targetMessageId
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
-        // task #990 kill-switch: a focus request arriving after the keyboard is
-        // already open never sees a 0->open transition, so the rise-cancel can
-        // never fire for it — the initial anchor itself must not dispatch, and
-        // with no anchored intent the HeightChange replay has no source. This
-        // is a deliberate safe degradation: the request is DROPPED, not
-        // deferred — the inset is not among this effect's keys, so closing the
-        // keyboard does not rerun it. The user scrolls to the message
-        // themselves, or re-triggers the focus after closing the keyboard.
+        // task #990 kill-switch: on stop-loss platforms, a focus request
+        // arriving after the keyboard is already open never sees a 0->open
+        // transition, so the rise-cancel can never fire for it — the initial
+        // anchor itself must not dispatch, and with no anchored intent the
+        // HeightChange replay has no source. This is a deliberate safe
+        // degradation: the request is DROPPED, not deferred — the inset is not
+        // among this effect's keys, so closing the keyboard does not rerun it.
+        // Platforms that keep ordinary correction skip this gate.
         if (
             suppressFocusAnchorWhileOpen(
-                liveComposerKeyboardInsetDp,
-                targetMessageId,
-                diagnosticsLogger,
+                keyboardInsetDp = liveComposerKeyboardInsetDp,
+                targetMessageId = targetMessageId,
+                policy = imeProgrammaticViewportPolicy,
+                log = diagnosticsLogger,
             )
         ) {
             activeFocusedMessageId = null
@@ -16817,7 +16826,10 @@ private fun ThreadMessagesList(
             val action =
                 focusedAnchorSessionAction(
                     keyboardOpen =
-                        threadImeOpenSuppressesProgrammaticViewport(liveComposerKeyboardInsetDp),
+                        threadImeOpenSuppressesProgrammaticViewport(
+                            keyboardInsetDp = liveComposerKeyboardInsetDp,
+                            policy = imeProgrammaticViewportPolicy,
+                        ),
                     userInteracting =
                         focusedAnchorSessionUserOverrideActive(
                             startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
@@ -16932,7 +16944,10 @@ private fun ThreadMessagesList(
                 startUserScrollGeneration = startUserScrollGeneration,
                 currentUserScrollGeneration = userScrollGeneration.value,
                 keyboardOpen =
-                    threadImeOpenSuppressesProgrammaticViewport(liveComposerKeyboardInsetDp)
+                    threadImeOpenSuppressesProgrammaticViewport(
+                        keyboardInsetDp = liveComposerKeyboardInsetDp,
+                        policy = imeProgrammaticViewportPolicy,
+                    )
             )
         ) {
             return@LaunchedEffect
@@ -16951,7 +16966,10 @@ private fun ThreadMessagesList(
                 startUserScrollGeneration = startUserScrollGeneration,
                 currentUserScrollGeneration = userScrollGeneration.value,
                 keyboardOpen =
-                    threadImeOpenSuppressesProgrammaticViewport(liveComposerKeyboardInsetDp)
+                    threadImeOpenSuppressesProgrammaticViewport(
+                        keyboardInsetDp = liveComposerKeyboardInsetDp,
+                        policy = imeProgrammaticViewportPolicy,
+                    )
             ) ||
             listState.isScrollInProgress ||
             !listState.canScrollToThreadItem(targetIndex)
@@ -17108,11 +17126,17 @@ private fun ThreadMessagesList(
                     initialBottomAnchorReady = true
                     return@LaunchedEffect
                 }
-                // task #990 kill-switch: read the inset live on every retry. A
-                // keyboard that opened mid-loop means the current viewport is
-                // accepted as-is — retrying into a shrinking window is the
-                // trigger every white capture shares.
-                if (suppressInitialBottomRetry(liveComposerKeyboardInsetDp, diagnosticsLogger)) {
+                // task #990 kill-switch: stop-loss platforms read the inset
+                // live on every retry. A keyboard that opened mid-loop means
+                // the current viewport is accepted as-is — retrying into a
+                // shrinking window is the trigger every white capture shares.
+                if (
+                    suppressInitialBottomRetry(
+                        keyboardInsetDp = liveComposerKeyboardInsetDp,
+                        policy = imeProgrammaticViewportPolicy,
+                        log = diagnosticsLogger,
+                    )
+                ) {
                     initialBottomAnchorReady = true
                     return@LaunchedEffect
                 }
@@ -17161,10 +17185,16 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         if (!listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
-            // task #990 kill-switch: automatic correction; silent while the
-            // keyboard is open. Read live — this coroutine awaited layout
-            // stability and can outlive the rise.
-            if (suppressAutoBottomHeightChange(liveComposerKeyboardInsetDp, diagnosticsLogger)) {
+            // task #990 kill-switch: on stop-loss platforms automatic
+            // correction stays silent while the keyboard is open. Read live —
+            // this coroutine awaited layout stability and can outlive the rise.
+            if (
+                suppressAutoBottomHeightChange(
+                    keyboardInsetDp = liveComposerKeyboardInsetDp,
+                    policy = imeProgrammaticViewportPolicy,
+                    log = diagnosticsLogger,
+                )
+            ) {
                 return@LaunchedEffect
             }
             dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.HeightChange))
@@ -17251,16 +17281,17 @@ private fun ThreadMessagesList(
             allowBottomAutoAnchor = false
             return@LaunchedEffect
         }
-        // task #990 kill-switch: the moment the keyboard starts to rise, an
-        // in-flight programmatic anchor is cancelled rather than allowed to
-        // finish into the shrinking window; the gates below then keep every
-        // correction path silent while it stays open. The cancel itself lives
-        // in a shared seam so the behaviour test executes this code, not a
-        // copy of it.
+        // task #990 kill-switch: on stop-loss platforms, the moment the
+        // keyboard starts to rise an in-flight programmatic anchor is cancelled
+        // rather than allowed to finish into the shrinking window; the gates
+        // below then keep every correction path silent while it stays open.
+        // The cancel itself lives in a shared seam so the behaviour test
+        // executes this code, not a copy of it.
         cancelInflightAnchorOnImeRise(
             keyboardInsetDp = composerKeyboardInsetDp,
             lastKeyboardInsetDp = lastComposerKeyboardInsetDp,
             controllerState = viewportControllerState,
+            policy = imeProgrammaticViewportPolicy,
             dispatch = { dispatchViewportEvent(it) },
             log = { diagnosticsLogger(it) },
         )
@@ -17411,6 +17442,7 @@ private fun ThreadMessagesList(
             ThreadComposerLayoutBottomAnchorState(
                 previousKeyboardInsetDp = lastComposerKeyboardInsetDp,
                 nextKeyboardInsetDp = composerKeyboardInsetDp,
+                imeProgrammaticViewportPolicy = imeProgrammaticViewportPolicy,
                 previousViewportHeightDp = lastThreadViewportHeightDp,
                 nextViewportHeightDp = measuredThreadViewportHeightDp,
                 pendingLayoutChange = pendingComposerLayoutBottomAnchor,
@@ -19313,6 +19345,7 @@ internal fun resolveThreadFocusedTailFit(
 internal data class ThreadComposerLayoutBottomAnchorState(
     val previousKeyboardInsetDp: Float,
     val nextKeyboardInsetDp: Float,
+    val imeProgrammaticViewportPolicy: ThreadImeProgrammaticViewportPolicy,
     val previousViewportHeightDp: Float,
     val nextViewportHeightDp: Float,
     val pendingLayoutChange: Boolean,
@@ -19336,11 +19369,13 @@ internal fun threadComposerLayoutChanged(state: ThreadComposerLayoutBottomAnchor
 internal fun shouldAnchorThreadComposerLayoutChange(
     state: ThreadComposerLayoutBottomAnchorState
 ): Boolean =
-    // task #990 kill-switch: while the keyboard is open no composer-side
-    // programmatic correction may move the viewport. The close transition
-    // (nextKeyboardInsetDp == 0) keeps its existing behaviour, so the layout
-    // restores normally once the keyboard goes away.
-    !threadImeOpenSuppressesProgrammaticViewport(state.nextKeyboardInsetDp) &&
+    // task #990 kill-switch: while the keyboard is open, stop-loss platforms
+    // prevent composer-side programmatic correction from moving the viewport.
+    // Platforms with ordinary correction enabled keep the existing path.
+    !threadImeOpenSuppressesProgrammaticViewport(
+        keyboardInsetDp = state.nextKeyboardInsetDp,
+        policy = state.imeProgrammaticViewportPolicy,
+    ) &&
         state.viewportEpochCoherent &&
         (threadComposerLayoutChanged(state) || state.pendingLayoutChange) &&
         state.initialBottomAnchorReady &&
