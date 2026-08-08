@@ -1,8 +1,8 @@
 package build.raft.app
 
 /**
- * task #990 — emergency mitigation: no programmatic viewport movement while the
- * keyboard is open.
+ * task #990 — emergency mitigation: on stop-loss platforms, no programmatic
+ * viewport movement while the keyboard is open.
  *
  * Every capture of the white screen shows it during keyboard-driven viewport
  * shrink, in cycles where the app programmatically repositions the list. The
@@ -21,12 +21,24 @@ package build.raft.app
  * message sitting imperfectly — possibly behind the keyboard — until the user
  * flicks it into place. That is a legible state; a white page is not.
  *
- * What this is not: a root-cause fix. It is a kill-switch for the triggering
- * action while the draw-layer investigation continues, and it makes no claim
- * beyond that.
+ * What this is not: a root-cause fix. It is a platform-scoped kill-switch for
+ * the triggering action while the draw-layer investigation continues, and it
+ * makes no claim beyond that. Android retains the stop-loss. iOS restores the
+ * ordinary correction path because applying the stop-loss there caused the
+ * user-visible Hands 8f33b1f3 regression. OHOS stays unchanged until it has
+ * its own product evidence.
  */
-internal fun threadImeOpenSuppressesProgrammaticViewport(keyboardInsetDp: Float): Boolean =
-    keyboardInsetDp > 0f
+internal enum class ThreadImeProgrammaticViewportPolicy {
+    SuppressWhileImeOpen,
+    AllowWhileImeOpen,
+}
+
+internal fun threadImeOpenSuppressesProgrammaticViewport(
+    keyboardInsetDp: Float,
+    policy: ThreadImeProgrammaticViewportPolicy,
+): Boolean =
+    policy == ThreadImeProgrammaticViewportPolicy.SuppressWhileImeOpen &&
+        keyboardInsetDp > 0f
 
 /**
  * Cancels an in-flight programmatic anchor at the moment the keyboard starts
@@ -46,13 +58,14 @@ internal fun cancelInflightAnchorOnImeRise(
     keyboardInsetDp: Float,
     lastKeyboardInsetDp: Float,
     controllerState: LazyViewportControllerState,
+    policy: ThreadImeProgrammaticViewportPolicy,
     dispatch: (LazyViewportEvent) -> Unit,
     log: (String) -> Unit,
 ): Boolean {
-    if (!threadImeOpenSuppressesProgrammaticViewport(keyboardInsetDp)) {
+    if (!threadImeOpenSuppressesProgrammaticViewport(keyboardInsetDp, policy)) {
         return false
     }
-    if (threadImeOpenSuppressesProgrammaticViewport(lastKeyboardInsetDp)) {
+    if (threadImeOpenSuppressesProgrammaticViewport(lastKeyboardInsetDp, policy)) {
         return false
     }
     val inflight = controllerState.pendingCommand?.id
@@ -80,18 +93,20 @@ internal fun cancelInflightAnchorOnImeRise(
  */
 internal fun suppressAutoBottomHeightChange(
     keyboardInsetDp: Float,
+    policy: ThreadImeProgrammaticViewportPolicy,
     log: (String) -> Unit,
 ): Boolean {
-    if (!threadImeOpenSuppressesProgrammaticViewport(keyboardInsetDp)) return false
+    if (!threadImeOpenSuppressesProgrammaticViewport(keyboardInsetDp, policy)) return false
     log("thread_ime_kill_switch result=suppressed_bottom_height_change")
     return true
 }
 
 internal fun suppressInitialBottomRetry(
     keyboardInsetDp: Float,
+    policy: ThreadImeProgrammaticViewportPolicy,
     log: (String) -> Unit,
 ): Boolean {
-    if (!threadImeOpenSuppressesProgrammaticViewport(keyboardInsetDp)) return false
+    if (!threadImeOpenSuppressesProgrammaticViewport(keyboardInsetDp, policy)) return false
     log("thread_ime_kill_switch result=suppressed_initial_bottom_retry")
     return true
 }
@@ -99,9 +114,10 @@ internal fun suppressInitialBottomRetry(
 internal fun suppressFocusAnchorWhileOpen(
     keyboardInsetDp: Float,
     targetMessageId: String,
+    policy: ThreadImeProgrammaticViewportPolicy,
     log: (String) -> Unit,
 ): Boolean {
-    if (!threadImeOpenSuppressesProgrammaticViewport(keyboardInsetDp)) return false
+    if (!threadImeOpenSuppressesProgrammaticViewport(keyboardInsetDp, policy)) return false
     log("thread_ime_kill_switch result=suppressed_focus_anchor messageId=$targetMessageId")
     return true
 }
