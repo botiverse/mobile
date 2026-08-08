@@ -47,16 +47,25 @@ pluginManagement {
                 )
                 includeModule("com.tencent.kuiklybase", "resource-generator")
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
-                includeModuleByRegex("com\\.tencent\\.kuiklybase", "network.*")
-                includeModule(
-                    "com.tencent.kuiklybase.network.ohos-runtime",
-                    "com.tencent.kuiklybase.network.ohos-runtime.gradle.plugin"
-                )
             }
             credentials {
                 val (user, token) = githubPackagesCredentials()
                 username = user
                 password = token
+            }
+        }
+    }
+
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsNetwork() {
+        maven {
+            name = "RaftArtifactsNetwork"
+            url = uri("https://maven.artifacts.botiverse.dev")
+            content {
+                includeModuleByRegex("com\\.tencent\\.kuiklybase", "network.*")
+                includeModule(
+                    "com.tencent.kuiklybase.network.ohos-runtime",
+                    "com.tencent.kuiklybase.network.ohos-runtime.gradle.plugin"
+                )
             }
         }
     }
@@ -173,6 +182,7 @@ pluginManagement {
         google()
         gradlePluginPortal()
         mavenCentral()
+        raftArtifactsNetwork()
         githubPackagesKuiklyBase()
         mavenLocal()
         // eazytec 404s the KBA artifacts it was meant to mirror (verified: both
@@ -228,12 +238,7 @@ dependencyResolutionManagement {
             content {
                 includeModule("com.tencent.kuiklybase", "resource-core")
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
-                includeModuleByRegex("com\\.tencent\\.kuiklybase", "network.*")
                 includeModuleByRegex("build\\.raft\\.kuiklybase", "datetime.*")
-                includeModule(
-                    "com.tencent.kuiklybase.network.ohos-runtime",
-                    "com.tencent.kuiklybase.network.ohos-runtime.gradle.plugin"
-                )
             }
             credentials {
                 val (user, token) = githubPackagesCredentials()
@@ -243,7 +248,22 @@ dependencyResolutionManagement {
         }
     }
 
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsNetwork() {
+        maven {
+            name = "RaftArtifactsNetwork"
+            url = uri("https://maven.artifacts.botiverse.dev")
+            content {
+                includeModuleByRegex("com\\.tencent\\.kuiklybase", "network.*")
+                includeModule(
+                    "com.tencent.kuiklybase.network.ohos-runtime",
+                    "com.tencent.kuiklybase.network.ohos-runtime.gradle.plugin"
+                )
+            }
+        }
+    }
+
     repositories {
+        raftArtifactsNetwork()
         githubPackagesKuiklyBase()
         google()
         mavenCentral()
