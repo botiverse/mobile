@@ -66,6 +66,7 @@ gh workflow run ios-release.yml \
   -f version_patch=<ios-patch> \
   -f version_build=<ios-build-component> \
   -f version_suffix= \
+  -f release_notes_version=X.Y.Z \
   -f hands_channel=main \
   -f export_method=app-store-connect \
   -f release_mode=draft \
