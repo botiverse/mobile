@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-09 22:10:05 UTC
+Generated: 2026-08-09 22:14:00 UTC
 Latest run: dfa0cfbd-20260809220800
 Latest commit: dfa0cfbd-20260809220800
 Commit subject: fix(composer): keep suggestion underlay interactive (#2048)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 86, same 0, pass 0, basic-pass 0, different 85, missing 1
-AI analysis: ready 80 / total 86, pending 6
+AI analysis: ready 85 / total 86, pending 1
 Visual coverage matrix: active 95 / total 114, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

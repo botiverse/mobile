@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-09T22:10:05.274Z",
+  "generatedAt": "2026-08-09T22:14:00.769Z",
   "runId": "dfa0cfbd-20260809220800",
   "commit": "dfa0cfbd-20260809220800",
   "commitSubject": "fix(composer): keep suggestion underlay interactive (#2048)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 80,
-        "pending": 6
+        "ready": 85,
+        "pending": 1
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 78,
-        "pending": 8
+        "ready": 80,
+        "pending": 6
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 78,
-        "pending": 8
+        "ready": 81,
+        "pending": 5
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 85,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 114,

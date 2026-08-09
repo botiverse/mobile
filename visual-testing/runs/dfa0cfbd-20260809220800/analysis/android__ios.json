@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-09T22:10:03.570Z",
+  "generatedAt": "2026-08-09T22:13:58.993Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 78,
-    "pending": 8
+    "ready": 81,
+    "pending": 5
   },
   "cases": [
     {
@@ -1179,15 +1179,35 @@
     },
     {
       "id": "components.thread.message.row",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0004000007a81ffe00020002400200024000c0020000c7fefffeeffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
-      "generatedAt": "2026-08-09T22:10:02.717Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-09T22:12:31.721Z",
+      "severity": "medium",
+      "summary": [
+        "Activity chip text truncated: Android shows 'ANDROID' (full label) while iOS shows 'iOS' (shortened to 3 characters rendering as 'IDS' or '105' due to clipping).",
+        "Top-right badge label content differs: Android 'ANDROID' badge vs iOS 'IOS' badge — apparent clipping/cropping on iOS badge.",
+        "Message body text wrapping differs: iOS renders the message body on two lines with 'and queued React' wrapping to a new line, while Android fits it on a single line after the hashtag.",
+        "Reaction/emoji row visibility: iOS displays a thumbs-up '1' reaction button and a '+' add-reaction button below the message; Android shows these elements partially clipped/cut off at the bottom of the crop bounds.",
+        "Timestamp/metadata line on iOS shows ellipsis truncation ('Keeps visual testing...') whereas Android displays the full subtitle text without truncation."
+      ],
+      "likelyCauses": [
+        "iOS crop rectangle not applied (currentRawSize is full canvas 1170x2532 while baseline uses component-bounds crop), so the iOS render is being compared at a different scale/region.",
+        "Different text container widths on iOS cause premature line wrapping of the message body and metadata subtitle.",
+        "iOS native clipping/sizing on the activity badge widget truncates the 'IOS' label to 'IDS' or '105' due to fixed-width container not matching label content.",
+        "Reaction button row layout extends below the Android crop rect but is fully visible on iOS full-canvas capture, indicating the row's vertical position differs between platforms."
+      ],
+      "suggestedOwner": "ui-engineering",
+      "suggestedFixes": [
+        "Apply consistent component-bounds crop on both Android and iOS captures before diffing so the comparison region matches.",
+        "Increase the activity badge container width or use auto-sizing text so 'iOS' label is not truncated on the iOS platform.",
+        "Normalize the message row's inner text wrapper width to prevent the body text from wrapping earlier on iOS.",
+        "Ensure the metadata subtitle line uses maxLines + ellipsis consistently across platforms, or increase its container width on iOS.",
+        "Verify the reaction button row's vertical offset/bottom padding is identical between Android and iOS renders so it does not fall outside the crop bounds."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.03962746924832228
     },
     {
@@ -1656,15 +1676,38 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc7dfc3df86df83f6c3ffc01ec00cc3ffc3ffc3ffc3ffc3ffc39fc3ffc3ffc3ffc1ffc3ffc31fc3ffc03fc03fc07fc3ffc3ffc3ffc7ffc3ff47f7c3ffc78743ffc000027fc80013ffcdef33ffcffff27fcffff27fcffff3ffcbff82ffc1ff83ffc8ff03ffc0ff03f7c80013800800100008001ffffffff",
-      "generatedAt": "2026-08-09T22:10:03.031Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-09T22:12:32.067Z",
+      "severity": "high",
+      "summary": [
+        "iOS viewport shows an on-screen keyboard that occludes ~45% of the dialog (Runtime, Model, Reasoning, Mode fields are hidden); Android view shows the full dialog with all fields visible.",
+        "Dialog footer (Cancel / Create Agent buttons) is duplicated in viewport: iOS renders Cancel/Create Agent buttons inline below the Description field, while Android shows them at the bottom after Mode field — iOS positions them much higher due to keyboard.",
+        "Visible dialog content area is significantly shorter on iOS because the keyboard claim resizes/overlays the dialog; the dialog bottom edge sits much higher on iOS than Android.",
+        "Cancel and Create Agent buttons appear partially clipped or pressed (inset shadow/active state) on iOS, suggesting focus/keyboard-active interaction state.",
+        "Description field on iOS is noticeably taller (more rows visible) compared to Android where it sits as a more compact 2-line area."
+      ],
+      "likelyCauses": [
+        "iOS software keyboard is open in the captured frame, while Android keyboard is dismissed — state divergence between captures rather than a layout bug per se.",
+        "Dialog layout does not scroll properly or does not compress to accommodate keyboard inset on iOS.",
+        "Cancel button has keyboard-focus/active visual style on iOS not present on Android.",
+        "Form field auto-grow behavior on iOS (Description textarea expands with content) differs from Android."
+      ],
+      "suggestedOwner": "mobile-platform",
+      "suggestedFixes": [
+        "Dismiss the soft keyboard before capturing the iOS screenshot, or capture in a non-focused state for fair comparison.",
+        "Ensure the dialog scroll view extends behind the keyboard and the keyboard accessory / safe-area inset is accounted for so lower fields remain reachable.",
+        "Normalize button active/focus styling across platforms so Cancel does not render with a pressed/inset shadow on iOS.",
+        "Match Description textarea minimum height between iOS and Android.",
+        "Re-capture both sides with identical form state (no field focused, keyboard hidden) to isolate real layout differences from input-state differences."
+      ],
+      "intentional": [
+        "Keyboard appearance itself is platform-expected behavior on iOS.",
+        "iOS safe-area / inset handling for keyboard is generally intentional, but should not hide critical form fields."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3582313903403951
     },
     {
@@ -1978,15 +2021,38 @@
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe3ffe9fffdfff81ff81ffffffffff9fffdfff8000000180000001c7ffc7ffffffffff81f9c1f1fffbfffb8bffcbffc1fbc1f1ffffffff81fb80fbfff9fff1ffffffffc07fc07bfffbfff1ffffffffd0ffc1ffdfffdfffffffffffffffcfff800000008000800080008001800103fdbffeffff80010001800007fcffffffff",
-      "generatedAt": "2026-08-09T22:10:03.279Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-09T22:12:32.304Z",
+      "severity": "medium",
+      "summary": [
+        "Toggle/check icon stroke weight on 'Message notifications' is thicker on iOS (right) than Android (left) when enabled (green fill).",
+        "'Notifications allowed' green banner card spans a slightly larger area on iOS, with the inner chevron positioned marginally further right.",
+        "Section headers ('SYSTEM', 'ON THIS DEVICE', 'WORKSPACE') appear with a heavier/bolder typographic weight on iOS.",
+        "Horizontal divider under the page title sits lower and appears heavier (thicker stroke) on iOS.",
+        "'All messages' yellow selected card on iOS shows the check icon in a heavier/bold stroke vs. the lighter Android version, and the card's right edge extends further (slight right-side shadow/offset visible on Android only)."
+      ],
+      "likelyCauses": [
+        "Platform-specific icon component (check/toggle) rendering different stroke weights on iOS vs Android.",
+        "System font weight / divider thickness not normalized across platforms (Kuikly defaulting to platform bold).",
+        "Card border or shadow style applied inconsistently between Android and iOS Kuikly renderers.",
+        "Slight DPI/scale differences (1170×2532 iOS vs 390×844 Android) exaggerating small stroke weight deltas."
+      ],
+      "suggestedOwner": "ui-engineering",
+      "suggestedFixes": [
+        "Normalize toggle and check icon stroke widths via a shared design token applied across iOS and Android Kuikly components.",
+        "Align section header typography weight and divider thickness via platform-agnostic style tokens.",
+        "Audit the selected-state card (e.g., 'All messages') to ensure consistent border and shadow behavior across platforms.",
+        "Add a visual regression snapshot baseline per platform with tolerance for sub-pixel stroke differences to reduce false-positive diffs.",
+        "Verify the 'Notifications allowed' and 'Send a test notification' icons for consistent sizing and positioning across both renderers."
+      ],
+      "intentional": [
+        "Platform-default typographic weight differences may be acceptable if aligned with native conventions.",
+        "Slight scale differences from differing device pixel ratios (1170×2532 vs 390×844) are expected."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.11046772255303061
     },
     {
@@ -2059,7 +2125,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:10:03.200Z",
+      "generatedAt": "2026-08-09T22:13:58.589Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2072,7 +2138,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:10:03.200Z",
+      "generatedAt": "2026-08-09T22:13:58.589Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2085,7 +2151,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:10:03.200Z",
+      "generatedAt": "2026-08-09T22:13:58.589Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2098,7 +2164,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:10:03.200Z",
+      "generatedAt": "2026-08-09T22:13:58.589Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2111,7 +2177,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:10:03.200Z",
+      "generatedAt": "2026-08-09T22:13:58.589Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

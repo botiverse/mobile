@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>dfa0cfbd-20260809220800</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-09T22:10:05.274Z" data-timestamp="2026-08-09T22:10:05.274Z" title="2026-08-09T22:10:05.274Z">2026-08-09 22:10:05 UTC</time></p>
+    <p class="runMeta"><code>dfa0cfbd-20260809220800</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-09T22:14:00.769Z" data-timestamp="2026-08-09T22:14:00.769Z" title="2026-08-09T22:14:00.769Z">2026-08-09 22:14:00 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 85</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 80/86 ready</span>
+      <span class="pill">AI 85/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -2189,7 +2189,12 @@
       <p><code>RGB 82.1%</code><br/><code>Pixel 68.63%</code><br/><code>Mismatch 31.37%</code><br/><code>Raw 1026×960 / 1026×960</code><br/><code>Canvas 1026×960</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×320 / component-bounds 342×320</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-composer</summary>
+    <ul><li>Different highlighted/selected row: React highlights 'artin' as the first suggestion; Android highlights 'Cindy' as the first suggestion</li><li>Different first 'In This Channel' suggestion: React shows '@artin' (person icon, purple); Android shows 'Cindy Keeps visual testing releas…' (robot avatar)</li><li>Row content order differs between sections — React shows 'artin' then 'Cindy' in 'In This Channel', Android shows 'Cindy' then 'Product UX…'</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align the suggestion fixture/list order and highlighted item so React and Android render identical first suggestion</li><li>Match row height/padding tokens (vertical spacing) between platforms to prevent section overflow</li><li>Verify avatar assets/fallbacks are consistent — replace robot placeholder avatars with the expected person icons on Android</li><li>Reduce spacing between 'IN THIS CHANNEL' and 'NOT IN THIS CHANNEL' section headers on Android so the second row is not clipped</li><li>Ensure crop/clipping contract accounts for the actual component height given Android's larger row sizing (increase capture height or reduce inner padding)</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.member-suggestions.png" data-current-src="android/components.thread.composer.member-suggestions.png" data-overlay-width="1026" data-overlay-height="960">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2248,7 +2253,12 @@
       <p><code>RGB 85.9%</code><br/><code>Pixel 73.78%</code><br/><code>Mismatch 26.22%</code><br/><code>Raw 1026×960 / 1026×960</code><br/><code>Canvas 1026×960</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×320 / component-bounds 342×320</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android</summary>
+    <ul><li>Android version is vertically more compact: suggestion list starts higher and rows have tighter vertical spacing than React baseline</li><li>Channel name/description spacing differs — Android shows reduced gap between '#design' label and 'Product and UI decisions' description</li><li>Overall list panel height is shorter on Android while containing same three items, indicating reduced row padding or line-height</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Increase vertical padding on each channel suggestion row to match React baseline spacing</li><li>Match the gap between the channel name and description text to the React implementation</li><li>Verify font size/weight/line-height tokens for channel descriptions against the design spec</li><li>Adjust the overall list container height/padding so the three rows occupy the same vertical space as React</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.channel-suggestions.png" data-current-src="android/components.thread.composer.channel-suggestions.png" data-overlay-width="1026" data-overlay-height="960">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2819,7 +2829,12 @@
       <p><code>RGB 93.8%</code><br/><code>Pixel 88.95%</code><br/><code>Mismatch 11.05%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · android-messaging</summary>
+    <ul><li>Different header titles: React shows 'Select destinations' with subtitle '2 selected from #design', Android shows 'Forward' with subtitle '2 messages selected'</li><li>React has a 'Select multiple' button in the top-right header; Android omits this action</li><li>React search input shows a magnifying-glass icon prefix; Android search input has no icon prefix</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Confirm the header label, subtitle wording, and presence of the 'Select multiple' action are intentionally per-platform</li><li>If parity with React is desired for the destination list, consider adding the '#' prefix and removing the per-row chevron on Android</li><li>Audit copy for the subtitle ('2 selected from #design' vs '2 messages selected') to ensure consistent messaging intent</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.forward-modal.png" data-current-src="android/components.thread.forward-modal.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4103,7 +4118,12 @@
       <p><code>RGB 84.4%</code><br/><code>Pixel 75.29%</code><br/><code>Mismatch 24.71%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-eng</summary>
+    <ul><li>Android renders two additional form sections (Reasoning, Mode) below Model that are absent on React baseline.</li><li>Android shows Runtime preselected to 'Codex CLI' with Model 'GPT-5.6 Sol', whereas React shows Runtime as empty 'Select…' placeholder with Model 'opus'.</li><li>Android displays a refresh/reset icon next to the MODEL label that is not present on React.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Hide or align Reasoning and Mode fields on Android to match React spec, or add them to the React baseline if intentional.</li><li>Sync default Runtime selection ('Select…') and Model options ('opus') between platforms; suppress the reset icon on Android.</li><li>Render the 'Models could not be loaded' retry block on Android when applicable; remove Android-only refresh glyph.</li><li>Restore the '&gt; MORE' disclosure in the Android variant when limit is reached.</li><li>Unify Create Agent button color/state logic so it reflects enablement consistently (pink enabled vs gray disabled).</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.dialog.png" data-current-src="android/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4901,7 +4921,12 @@
       <p><code>RGB 86.9%</code><br/><code>Pixel 72.65%</code><br/><code>Mismatch 27.35%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · mobile-android</summary>
+    <ul><li>Android renders a fundamentally different notifications settings layout: SYSTEM permission card, ON THIS DEVICE toggles list, WORKSPACE radio cards — React shows a single PUSH NOTIFICATIONS card with web-push copy and a Save button.</li><li>React has PUSH NOTIFICATIONS section with 'DMs, direct mentions, and followed thread replies' card, 'Enable Push Notifications' (disabled/pink) and 'Save' (disabled/pink) buttons plus a 'Mute this server' checkbox — none of these controls exist on Android.</li><li>Android shows a 'Send a test notification' row with a 'Ready' state and paper-plane icon that is absent on React.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Decide on a unified Notifications settings information architecture and apply it to both React and Android; align section names (SYSTEM vs PUSH NOTIFICATIONS) and content order.</li><li>Add Mute-this-server and Save controls to Android if the product intends parity; otherwise document the divergence as intentional and update the visual-test baseline.</li><li>Match toggle/checkbox visual styles (off/disabled states, accent colors) across platforms, or update design tokens so both use the same primary green, warning yellow, and disabled pink.</li><li>Add a Send-a-test-notification row to the React baseline, or remove it from Android, to keep the two screens comparable.</li><li>Re-run slock comparison after fixes using element-bounds crop on both sides for accurate diffing.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.notifications.page.png" data-current-src="android/components.settings.notifications.page.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

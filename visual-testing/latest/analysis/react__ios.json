@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-09T22:10:00.376Z",
+  "generatedAt": "2026-08-09T22:13:55.258Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 78,
-    "pending": 8
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -1390,15 +1390,36 @@
     },
     {
       "id": "components.thread.forward-modal",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffc00e003fe004000fe0000000000000000000000000ffe5ffe000083fe000082fe00008ffe000087fe00009ffe0ffc807ef0020ffefffe01fefffe81fefffe7ffefffe87fefffe004efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-08-09T22:09:59.631Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-09T22:12:22.958Z",
+      "severity": "low",
+      "summary": [
+        "React (left) shows a two-step Forward flow with 'Select destinations' header, '2 selected from #design' subtitle, 'Select multiple' action button, and a flat Recent list of selectable targets (@artin, @Cindy, #android-artifacts, #design) without secondary descriptors.",
+        "iOS (right) shows a single combined Forward modal with '2 messages selected' subtitle, a 'Destinations' section header, and richer destination rows that include icon + title + descriptor ('Product and UI decisions', 'Direct message', 'Public channel', 'Joint channel', 'Keeps visual testing release notes aligned') plus a trailing chevron indicator.",
+        "Search field differs: React includes a leading magnifier icon and 'Search targets' placeholder; iOS uses plain 'Search' placeholder with no visible leading icon.",
+        "Row chrome differs: React uses heavier outlined borders on every row; iOS uses lighter separators and a yellow-tinted highlight border on the focused 'design' row to indicate selection.",
+        "Header action differs: React shows a 'Select multiple' pill button on the right; iOS has no equivalent action and relies on tap-to-toggle."
+      ],
+      "likelyCauses": [
+        "Intentional mobile UX divergence: iOS keeps the destination picker inline as a single screen while web splits it into search-then-preview steps.",
+        "Different platform list-item conventions (iOS chevron + subtitle vs. web flat rows).",
+        "Different selection-state presentation (iOS highlighted cell vs. web outlined selectable rows).",
+        "Different copy/header treatment between platforms (Select destinations / 2 selected from #design vs. Forward / 2 messages selected)."
+      ],
+      "suggestedOwner": "ios",
+      "suggestedFixes": [
+        "No fix required if the two-step vs. single-step flow is the documented intentional divergence — confirm in the component contract and add a comment in the screenshot baseline.",
+        "If parity is desired outside the known divergence, align header subtitle wording ('2 messages selected') and consider adding a 'Select multiple' toggle to the iOS header for consistency with web.",
+        "If parity is desired, standardize row chrome: add consistent subtitle descriptors on the web 'Recent' rows and chevron affordance, or remove them from iOS.",
+        "If parity is desired, unify search field treatment (icon + placeholder text) across both platforms."
+      ],
+      "intentional": [
+        "Single combined Forward modal on iOS vs. two-step (search → preview) on React is a documented platform-difference; both implementations are correct for their platform and should not be aligned."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1114236912815112
     },
     {
@@ -1821,7 +1842,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:09:59.792Z",
+      "generatedAt": "2026-08-09T22:13:54.643Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2109,15 +2130,34 @@
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe9fff1fff81ff01fe9cfe1ffe80ff8ff3807c000080600000806087fbbffc81ffbffc81f1bffcff19a01c81ff807c81f1807cffff81fc80f1e274f3f1fff0fffebfe0803b80007fd1ffff7ffeffff00fdffff5dfdffff7fffffff8fffffff0000ffff0000ffff0000ffff0000ffff23feffff0000fffe0000ffffffff",
-      "generatedAt": "2026-08-09T22:10:00.071Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-09T22:12:23.441Z",
+      "severity": "high",
+      "summary": [
+        "Completely different layout and content: React shows a single PUSH NOTIFICATIONS section with web-push messaging, unavailable badge, and mute controls; iOS shows SYSTEM/ON THIS DEVICE/WORKSPACE sections with native toggles and radio selections",
+        "iOS has 5 toggle rows (Message notifications, Background realtime, Offline computer alerts, Foreground message banners, Send a test notification) absent from React",
+        "React uses pink/disabled 'Enable Push Notifications' and 'Save' buttons; iOS uses green 'Notifications allowed' status banner and yellow 'All messages' selected radio card",
+        "React page is cropped at 390×844 with a large empty area; iOS uses full 1170×2532 canvas with much denser content",
+        "Header section title is identical but React shows bell icon next to 'PUSH NOTIFICATIONS' label while iOS uses plain text section headers with different casing (uppercase vs none)"
+      ],
+      "likelyCauses": [
+        "Baseline (React) image is cropped/scrolled to a partial view while current (iOS) shows the complete page, causing apparent content mismatch",
+        "React and iOS implementations have divergent notification settings UIs (web push model vs native permission model)",
+        "Cross-platform divergence in feature mapping: iOS exposes per-device toggles and workspace notification scope, React uses single web-push enable flow"
+      ],
+      "suggestedOwner": "mobile-platform",
+      "suggestedFixes": [
+        "Re-capture React baseline to show the full notifications page (scroll to top, include all sections) so cropping does not inflate mismatch",
+        "Align notification settings structure across platforms: add iOS-style toggle rows (background realtime, offline alerts, foreground banners) to React or hide on web",
+        "Standardize section headers, label casing, and status badge colors (Unavailable yellow, Allowed green) across platforms",
+        "Ensure the 'Mute this server' control and 'Enable Push Notifications' CTA have iOS equivalents or are intentionally web-only",
+        "Add a 'Workspace' notification scope selector (All messages / Only mentions / Nothing) to the React settings page or document it as iOS-only"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.27287978828263193
     },
     {
@@ -2190,7 +2230,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:10:00.017Z",
+      "generatedAt": "2026-08-09T22:13:54.900Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2203,7 +2243,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:10:00.017Z",
+      "generatedAt": "2026-08-09T22:13:54.900Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2216,7 +2256,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:10:00.017Z",
+      "generatedAt": "2026-08-09T22:13:54.900Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2229,7 +2269,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:10:00.017Z",
+      "generatedAt": "2026-08-09T22:13:54.900Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2242,7 +2282,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:10:00.017Z",
+      "generatedAt": "2026-08-09T22:13:54.900Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

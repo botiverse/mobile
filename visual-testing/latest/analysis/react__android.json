@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-09T22:09:57.619Z",
+  "generatedAt": "2026-08-09T22:13:52.335Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 85,
+    "pending": 1
   },
   "cases": [
     {
@@ -1061,28 +1061,68 @@
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffeffff03fe03fcffffffffcc01ffff81fcffffb3feffffbe0400018000f7ff80003c0bbffc000187fc000187fc7fff800003ff80fe27fffffc0001bffc01ff97fcfffffffe3fffbffc21ff80003fff80000000bffc0001bffc3ffdbffc3ffd87d80ff987c80f9184180ff180000001ffffffff80008000ffffffffffffffff",
-      "generatedAt": "2026-08-09T22:09:56.680Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-09T22:12:45.688Z",
+      "severity": "high",
+      "summary": [
+        "Different highlighted/selected row: React highlights 'artin' as the first suggestion; Android highlights 'Cindy' as the first suggestion",
+        "Different first 'In This Channel' suggestion: React shows '@artin' (person icon, purple); Android shows 'Cindy Keeps visual testing releas…' (robot avatar)",
+        "Row content order differs between sections — React shows 'artin' then 'Cindy' in 'In This Channel', Android shows 'Cindy' then 'Product UX…'",
+        "Row vertical spacing differs — Android rows are visibly taller, causing the 'NOT IN THIS CHANNEL' section to shift down and crop the second row ('Product UX De…') at the bottom edge",
+        "Right-side metadata handle is cropped/truncated differently: React shows full '@Product-UX-Designe…', Android shows full '@Android-Develop…' but first section's handle '@artin' is not rendered on Android"
+      ],
+      "likelyCauses": [
+        "Android member-suggestion data source/list ordering is not synchronized with React (different fixture data or different sort order)",
+        "Default highlighted/selected suggestion differs — Android may be defaulting to first result rather than matching React's selection state",
+        "Row line-height / vertical padding values differ between platforms (Android uses larger row height)",
+        "Avatar glyph rendering differs — Android uses bot/robot placeholder avatars where React uses person icons",
+        "Section header spacing (gap between 'IN THIS CHANNEL' and 'NOT IN THIS CHANNEL' groups) is larger on Android"
+      ],
+      "suggestedOwner": "android-composer",
+      "suggestedFixes": [
+        "Align the suggestion fixture/list order and highlighted item so React and Android render identical first suggestion",
+        "Match row height/padding tokens (vertical spacing) between platforms to prevent section overflow",
+        "Verify avatar assets/fallbacks are consistent — replace robot placeholder avatars with the expected person icons on Android",
+        "Reduce spacing between 'IN THIS CHANNEL' and 'NOT IN THIS CHANNEL' section headers on Android so the second row is not clipped",
+        "Ensure crop/clipping contract accounts for the actual component height given Android's larger row sizing (increase capture height or reduce inner padding)"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3137183235867447
     },
     {
       "id": "components.thread.composer.channel-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffeffff03fe03fcffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8000ffff8000ffff80000001800000019ffc000187fc3ffbfffe0fff80fc3fff80fc3fff800001ff80000000bffc0001bffc7ffdfffc7ffd87d80ff987c80f9184180ff180000001ffffffff80008000ffffffffffffffff",
-      "generatedAt": "2026-08-09T22:09:56.685Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-09T22:12:11.938Z",
+      "severity": "medium",
+      "summary": [
+        "Android version is vertically more compact: suggestion list starts higher and rows have tighter vertical spacing than React baseline",
+        "Channel name/description spacing differs — Android shows reduced gap between '#design' label and 'Product and UI decisions' description",
+        "Overall list panel height is shorter on Android while containing same three items, indicating reduced row padding or line-height",
+        "Bottom composer bar (attachment icons, As Task, send button) appears at similar relative position but with tighter spacing on Android",
+        "Description text ('Product and UI decisions', etc.) renders with slightly different font metrics on Android — appears lighter/smaller"
+      ],
+      "likelyCauses": [
+        "Android implementation uses different default line-height and vertical padding values for list rows",
+        "Typography stack on Android differs from web React (different font, weight, or size)",
+        "Missing or reduced margin/padding tokens between channel name and description on Android",
+        "Row container has less vertical inset compared to React design spec"
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Increase vertical padding on each channel suggestion row to match React baseline spacing",
+        "Match the gap between the channel name and description text to the React implementation",
+        "Verify font size/weight/line-height tokens for channel descriptions against the design spec",
+        "Adjust the overall list container height/padding so the three rows occupy the same vertical space as React"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.26222892300194933
     },
     {
@@ -1372,15 +1412,35 @@
     },
     {
       "id": "components.thread.forward-modal",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffc00e003fe004000fe0000000000000000000000000ffe5ffe000083fe00008efe00008ffe000087fe00009ffe0ffc807ef0021ffefffe01fefffe01fefffe5ffefffe87fefffe024efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-08-09T22:09:56.806Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-09T22:12:12.148Z",
+      "severity": "low",
+      "summary": [
+        "Different header titles: React shows 'Select destinations' with subtitle '2 selected from #design', Android shows 'Forward' with subtitle '2 messages selected'",
+        "React has a 'Select multiple' button in the top-right header; Android omits this action",
+        "React search input shows a magnifying-glass icon prefix; Android search input has no icon prefix",
+        "React list rows render only the primary name (e.g., '@artin', '# design'); Android rows include a secondary description line ('Product and UI decisions', 'Direct message', 'Public channel', 'Joint channel', 'Keeps visual testing release notes aligned')",
+        "Android rows include a right-aligned chevron (`>`) indicating drill-in navigation; React rows have no chevron"
+      ],
+      "likelyCauses": [
+        "Platform-specific forward flow design (single modal with drill-in vs two-step target selection) intentionally divergent per spec",
+        "Android row component renders subtitle + chevron as part of the unified destination picker pattern",
+        "Different label/copy conventions between the React and Android forward modals"
+      ],
+      "suggestedOwner": "android-messaging",
+      "suggestedFixes": [
+        "Confirm the header label, subtitle wording, and presence of the 'Select multiple' action are intentionally per-platform",
+        "If parity with React is desired for the destination list, consider adding the '#' prefix and removing the per-row chevron on Android",
+        "Audit copy for the subtitle ('2 selected from #design' vs '2 messages selected') to ensure consistent messaging intent"
+      ],
+      "intentional": [
+        "Single combined Forward modal with inline destination list and drill-in chevrons on Android vs two-step React flow (platform-difference)",
+        "Header copy divergence ('Select destinations' vs 'Forward'; '2 selected from #design' vs '2 messages selected') tied to platform flow choice"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.11052915839645694
     },
     {
@@ -1730,15 +1790,35 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff0000000024047dfc3bfc7df83ff83e4c000c00fc21fc3ffc3ffc3ffc2ffc39fc3dfc1ffc2ffc1ffc3ffc3ffc3ffc3ffc27fc03fc3ffc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc2ffc07fc3ffc3ffc2ffc3ffc3ffc07fc2ff827fc3ffc3ffc3ffc0ffc3ffc3ffc3ff47ffc3f447f7c0000380000000000ffffffff",
-      "generatedAt": "2026-08-09T22:09:57.039Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-09T22:12:12.477Z",
+      "severity": "medium",
+      "summary": [
+        "Android renders two additional form sections (Reasoning, Mode) below Model that are absent on React baseline.",
+        "Android shows Runtime preselected to 'Codex CLI' with Model 'GPT-5.6 Sol', whereas React shows Runtime as empty 'Select…' placeholder with Model 'opus'.",
+        "Android displays a refresh/reset icon next to the MODEL label that is not present on React.",
+        "Android hides the error/info message 'Models could not be loaded from this Computer. Retry model check' that React shows under Model.",
+        "React includes a '> MORE' disclosure row near the bottom; Android omits it."
+      ],
+      "likelyCauses": [
+        "Android implementation expanded the form with extra Reasoning and Mode fields not in React spec.",
+        "Runtime and Model default values diverge between platforms, producing different pre-selection and downstream options.",
+        "Android omits the models-load error fallback and the 'More' expansion that React renders conditionally.",
+        "Primary action styling (color/state) not synchronized with the limit-reached banner condition."
+      ],
+      "suggestedOwner": "android-eng",
+      "suggestedFixes": [
+        "Hide or align Reasoning and Mode fields on Android to match React spec, or add them to the React baseline if intentional.",
+        "Sync default Runtime selection ('Select…') and Model options ('opus') between platforms; suppress the reset icon on Android.",
+        "Render the 'Models could not be loaded' retry block on Android when applicable; remove Android-only refresh glyph.",
+        "Restore the '> MORE' disclosure in the Android variant when limit is reached.",
+        "Unify Create Agent button color/state logic so it reflects enablement consistently (pink enabled vs gray disabled)."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.24709496226083905
     },
     {
@@ -1779,7 +1859,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:09:56.962Z",
+      "generatedAt": "2026-08-09T22:13:51.647Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2075,15 +2155,38 @@
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffc9fff1fff81ff01ff9cfe1ffe80ff8903807c000080600000806087fbbffcc1ffbffc81f1bffcff19a01c81ff807c81f1807cffff81fc80f9e274d3f1fff0fffebfe0803b80017fd1ffff7ffeffff00ffffff5dfdffff7fffffff8fffffff0000ffff0000ffff0000ffff0000ffff3ffeffff0000fffe0000ffffffff",
-      "generatedAt": "2026-08-09T22:09:57.224Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-09T22:12:12.907Z",
+      "severity": "high",
+      "summary": [
+        "Android renders a fundamentally different notifications settings layout: SYSTEM permission card, ON THIS DEVICE toggles list, WORKSPACE radio cards — React shows a single PUSH NOTIFICATIONS card with web-push copy and a Save button.",
+        "React has PUSH NOTIFICATIONS section with 'DMs, direct mentions, and followed thread replies' card, 'Enable Push Notifications' (disabled/pink) and 'Save' (disabled/pink) buttons plus a 'Mute this server' checkbox — none of these controls exist on Android.",
+        "Android shows a 'Send a test notification' row with a 'Ready' state and paper-plane icon that is absent on React.",
+        "Toggle/radio state indicators differ: Android uses platform toggle switches (one on/green for Message notifications, others off) and radio dots for workspace options; React uses a checkbox plus disabled buttons.",
+        "Section ordering and grouping diverge: React groups push-notification config into one card; Android splits into System permission, device toggles, and workspace selection."
+      ],
+      "likelyCauses": [
+        "Android implementation built the Notifications settings screen independently from the React/web specification rather than reusing the same screen contract.",
+        "Platform-specific notification APIs (system permission, background channels, FCM test send) drove a different UX on Android that was not back-ported to web.",
+        "Feature parity gap: Mute-this-server, web-push availability messaging, and Save flow exist only on web; Android omits them.",
+        "Visual-test baseline assumes a single PUSH NOTIFICATIONS card; Android ships multiple sections (SYSTEM / ON THIS DEVICE / WORKSPACE), causing the 27% pixel mismatch."
+      ],
+      "suggestedOwner": "mobile-android",
+      "suggestedFixes": [
+        "Decide on a unified Notifications settings information architecture and apply it to both React and Android; align section names (SYSTEM vs PUSH NOTIFICATIONS) and content order.",
+        "Add Mute-this-server and Save controls to Android if the product intends parity; otherwise document the divergence as intentional and update the visual-test baseline.",
+        "Match toggle/checkbox visual styles (off/disabled states, accent colors) across platforms, or update design tokens so both use the same primary green, warning yellow, and disabled pink.",
+        "Add a Send-a-test-notification row to the React baseline, or remove it from Android, to keep the two screens comparable.",
+        "Re-run slock comparison after fixes using element-bounds crop on both sides for accurate diffing."
+      ],
+      "intentional": [
+        "Android's SYSTEM permission card and ON THIS DEVICE toggle list may be intentionally platform-specific because Android exposes OS-level notification settings that web does not.",
+        "The WORKSPACE 'All messages' / 'Only mentions' radio selection on Android may replace the web 'DMs, direct mentions, and followed thread replies' wording by design."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2735343163068281
     },
     {

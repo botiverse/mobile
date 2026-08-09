@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-09T22:10:05.274Z",
+  "generatedAt": "2026-08-09T22:14:00.769Z",
   "latestRunId": "dfa0cfbd-20260809220800",
   "latest": {
     "runId": "dfa0cfbd-20260809220800",
     "commit": "dfa0cfbd-20260809220800",
     "commitSubject": "fix(composer): keep suggestion underlay interactive (#2048)",
-    "generatedAt": "2026-08-09T22:10:05.274Z",
+    "generatedAt": "2026-08-09T22:14:00.769Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 86,
-      "ready": 80,
-      "pending": 6
+      "ready": 85,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "dfa0cfbd-20260809220800",
       "commit": "dfa0cfbd-20260809220800",
       "commitSubject": "fix(composer): keep suggestion underlay interactive (#2048)",
-      "generatedAt": "2026-08-09T22:10:05.274Z",
+      "generatedAt": "2026-08-09T22:14:00.769Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 80,
-        "pending": 6
+        "ready": 85,
+        "pending": 1
       },
       "comparisons": [
         "react__android",
