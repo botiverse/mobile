@@ -742,6 +742,52 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun composerImageAnnotationDraftPreservesUnlimitedUnicodeAndImageIsolation() {
+        val longUnicodeDraft = "prefix-" + "界".repeat(81) + "-🙂‍🚀-끝"
+        assertTrue(longUnicodeDraft.length > 80)
+
+        val firstImageDraft =
+            SlockFilePreviewAnnotationDraft(imageUrl = "image-a")
+                .updated(imageUrl = "image-a", nextText = longUnicodeDraft)
+
+        assertEquals(longUnicodeDraft, firstImageDraft.text)
+
+        val secondImageDraft =
+            firstImageDraft.updated(
+                imageUrl = "image-b",
+                nextText = "second image 🙂",
+            )
+
+        assertEquals("image-b", secondImageDraft.imageUrl)
+        assertEquals("second image 🙂", secondImageDraft.text)
+        assertEquals(longUnicodeDraft, firstImageDraft.text)
+        assertEquals(
+            SlockFilePreviewAnnotationDraft(imageUrl = "image-b"),
+            secondImageDraft.cleared(),
+        )
+    }
+
+    @Test
+    fun composerImageAnnotationSubmissionTrimsOuterWhitespaceWithoutTruncating() {
+        val submittedText = "批注" + "界".repeat(81) + "🙂‍🚀"
+        val draft =
+            SlockFilePreviewAnnotationDraft(imageUrl = "image-a")
+                .updated(imageUrl = "image-a", nextText = "  $submittedText  ")
+
+        val committed =
+            slockComposerImageAddTextDraft(
+                content = SlockComposerImageEditorContent(),
+                draft = draft.text,
+                position = Offset(44f, 55f),
+                annotationId = 9,
+            )
+
+        assertEquals(submittedText, committed.textAnnotations.single().text)
+        assertTrue(committed.textAnnotations.single().text.length > 80)
+        assertEquals("  $submittedText  ", draft.text)
+    }
+
+    @Test
     fun composerImagePendingTextDraftIsCommittedBeforeDoneCaptureContent() {
         val committed =
             slockComposerImageAddTextDraft(
