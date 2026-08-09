@@ -39,7 +39,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Assume.assumeTrue
 import org.junit.BeforeClass
-import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -1168,15 +1167,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    // Quarantined (issue #2010): message-row long-press selection is
-    // deterministically broken since the 08-05 nightly (suspect PR #1960
-    // gesture-authority rewrite; dm-pin-menu long-press stays healthy, so the
-    // gesture mechanism itself is fine). The red is a REAL product regression
-    // documented in the issue — keeping the case red only blocks the other
-    // cases' nightly publish. Un-quarantine in the product fix PR; the
-    // enumerator excludes @Ignore'd methods (#1838), so shard census stays
-    // consistent.
-    @Ignore("quarantined: message-row long-press selection regression, issue #2010")
     fun captureThreadInlineSelectionCompactLast() {
         captureThreadInlineSelectionCompactTarget(
             caseId = "components.thread.inline-selection-compact-last",
