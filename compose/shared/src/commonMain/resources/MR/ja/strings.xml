@@ -1570,6 +1570,8 @@
     <string name="settings_notifications_message_detail">Raft がバックグラウンドにあるとき、新しい未読メッセージのシステム通知を表示します。</string>
     <string name="settings_notifications_background_realtime_title">バックグラウンドのリアルタイム接続</string>
     <string name="settings_notifications_background_realtime_detail">バックグラウンドでもリアルタイム接続を維持します。Android が長時間のセッションを一時停止する場合があります。</string>
+    <string name="settings_notifications_offline_computers_title">オフラインのコンピューター通知</string>
+    <string name="settings_notifications_offline_computers_detail">登録済みのコンピューターがオフラインのとき、ホームに通知を表示します。デフォルトではオフです。</string>
     <string name="settings_notifications_test_title">テスト通知を送信</string>
     <string name="settings_notifications_test_detail">このデバイスを確認するため、ローカルのテスト通知を送信します。</string>
     <string name="settings_notifications_test_sent_detail">テスト通知を送信しました。</string>

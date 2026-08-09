@@ -5,6 +5,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 private const val NOTIFICATION_PREFERENCE_EVENT = "slock.notificationPreferenceChanged"
 private const val KEY_ENABLED = "enabled"
 private const val KEY_FOREGROUND_KEEP_ALIVE_ENABLED = "foregroundKeepAliveEnabled"
+private const val KEY_OFFLINE_COMPUTER_ALERTS_ENABLED = "offlineComputerAlertsEnabled"
 private const val KEY_SOURCE = "source"
 
 class KuiklyNotificationPreferenceEvents(
@@ -15,10 +16,12 @@ class KuiklyNotificationPreferenceEvents(
         eventBus.observe(NOTIFICATION_PREFERENCE_EVENT) { data ->
             val enabled = data?.optBoolean(KEY_ENABLED) ?: return@observe
             val foregroundKeepAliveEnabled = data.optBoolean(KEY_FOREGROUND_KEEP_ALIVE_ENABLED)
+            val offlineComputerAlertsEnabled = data.optBoolean(KEY_OFFLINE_COMPUTER_ALERTS_ENABLED)
             onChanged(
                 NotificationPreferenceSnapshot(
                     enabled = enabled,
-                    foregroundKeepAliveEnabled = foregroundKeepAliveEnabled
+                    foregroundKeepAliveEnabled = foregroundKeepAliveEnabled,
+                    offlineComputerAlertsEnabled = offlineComputerAlertsEnabled,
                 )
             )
         }
@@ -33,6 +36,7 @@ class KuiklyNotificationPreferenceEvents(
             JSONObject()
                 .put(KEY_ENABLED, snapshot.enabled)
                 .put(KEY_FOREGROUND_KEEP_ALIVE_ENABLED, snapshot.foregroundKeepAliveEnabled)
+                .put(KEY_OFFLINE_COMPUTER_ALERTS_ENABLED, snapshot.offlineComputerAlertsEnabled)
                 .put(KEY_SOURCE, source)
         )
     }
@@ -66,6 +70,12 @@ private class NotifyingNotificationPreferenceRepository(
 
     override suspend fun setForegroundKeepAliveEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
         val snapshot = delegate.setForegroundKeepAliveEnabled(enabled)
+        events.postPreferenceChanged(snapshot)
+        return snapshot
+    }
+
+    override suspend fun setOfflineComputerAlertsEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
+        val snapshot = delegate.setOfflineComputerAlertsEnabled(enabled)
         events.postPreferenceChanged(snapshot)
         return snapshot
     }

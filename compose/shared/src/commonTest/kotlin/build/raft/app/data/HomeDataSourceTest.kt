@@ -120,6 +120,7 @@ class HomeDataSourceTest {
                             error("unused")
                     },
                 computersApi = computersApi,
+                notificationPreferenceRepository = notificationPreferences(offlineComputerAlertsEnabled = true),
                 parseHome = { _, session ->
                     DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
                 }
@@ -129,6 +130,62 @@ class HomeDataSourceTest {
 
         val notifications = (result as DataResult.Content).data
         assertEquals(listOf("machine-offline:machine-1"), notifications.map { it.id })
+    }
+
+    @Test
+    fun offlineComputerAlertsDefaultOffWithoutSuppressingOutdatedAlerts() = runBlocking {
+        val machinesBody =
+            """
+            {
+              "latestDaemonVersion": "0.63.7",
+              "machines": [
+                {
+                  "id": "machine-offline",
+                  "name": "Offline computer",
+                  "status": "offline",
+                  "statusVersion": 1
+                },
+                {
+                  "id": "machine-outdated",
+                  "name": "Outdated computer",
+                  "status": "online",
+                  "statusVersion": 1,
+                  "daemonVersion": "0.62.0"
+                }
+              ]
+            }
+            """.trimIndent()
+
+        suspend fun notifications(offlineComputerAlertsEnabled: Boolean?): List<SharedHomeNotification> {
+            val source =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = "admin")),
+                    api = FakeHomeApi(),
+                    computersApi =
+                        ConcurrentComputersApi(
+                            announcementsStarted = CompletableDeferred(Unit),
+                            bodyText = machinesBody,
+                        ),
+                    notificationPreferenceRepository =
+                        offlineComputerAlertsEnabled?.let(::notificationPreferences),
+                    parseHome = { _, session ->
+                        DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                    },
+                )
+            return (source.loadNotifications() as DataResult.Content).data
+        }
+
+        assertEquals(
+            listOf("machine-outdated:0.63.7:machine-outdated"),
+            notifications(offlineComputerAlertsEnabled = null).map { it.id },
+        )
+        assertEquals(
+            listOf(
+                "machine-offline:machine-offline",
+                "machine-outdated:0.63.7:machine-outdated",
+            ),
+            notifications(offlineComputerAlertsEnabled = true).map { it.id },
+        )
     }
 
     @Test
@@ -859,8 +916,41 @@ class HomeDataSourceTest {
             error("unused")
     }
 
+    private fun notificationPreferences(
+        offlineComputerAlertsEnabled: Boolean
+    ): NotificationPreferenceRepository =
+        object : NotificationPreferenceRepository {
+            override suspend fun getNotificationPreference(): NotificationPreferenceSnapshot =
+                NotificationPreferenceSnapshot(
+                    enabled = true,
+                    offlineComputerAlertsEnabled = offlineComputerAlertsEnabled,
+                )
+
+            override suspend fun setNotificationEnabled(enabled: Boolean): NotificationPreferenceSnapshot =
+                error("unused")
+
+            override suspend fun setForegroundKeepAliveEnabled(enabled: Boolean): NotificationPreferenceSnapshot =
+                error("unused")
+
+            override suspend fun setOfflineComputerAlertsEnabled(enabled: Boolean): NotificationPreferenceSnapshot =
+                error("unused")
+        }
+
     private class ConcurrentComputersApi(
-        private val announcementsStarted: CompletableDeferred<Unit>
+        private val announcementsStarted: CompletableDeferred<Unit>,
+        private val bodyText: String =
+            """
+            {
+              "machines": [
+                {
+                  "id": "machine-1",
+                  "name": "OranixSlockTest",
+                  "status": "offline",
+                  "statusVersion": 1
+                }
+              ]
+            }
+            """.trimIndent(),
     ) : SlockComputersApi {
         val machinesStarted = CompletableDeferred<Unit>()
 
@@ -869,19 +959,7 @@ class HomeDataSourceTest {
             announcementsStarted.await()
             return HomeNetworkResponse(
                 code = 200,
-                bodyText =
-                    """
-                    {
-                      "machines": [
-                        {
-                          "id": "machine-1",
-                          "name": "OranixSlockTest",
-                          "status": "offline",
-                          "statusVersion": 1
-                        }
-                      ]
-                    }
-                    """.trimIndent()
+                bodyText = bodyText,
             )
         }
 
