@@ -7,6 +7,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Rect
 import android.os.Build
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
@@ -20,6 +21,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -29,8 +31,8 @@ class ThreadComposerSuggestionPopoverConnectedTest {
     @Test
     fun openSuggestionsKeepTheEditorAndImageActionInteractive() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val device = UiDevice.getInstance(instrumentation)
         val context = instrumentation.targetContext
+        clearInteractionFailureEvidence(instrumentation)
         val intent =
             Intent(context, SlockKuiklyActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.THREAD_COMPOSER_VISUAL)
@@ -44,73 +46,102 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
-            scenario.onActivity { activity ->
-                activity.hideSystemBarsForSuggestionTest()
-                val editor = requireNotNull(activity.window.decorView.findComposerEditText())
-                assertTrue("composer should accept focus", editor.requestFocus())
-                editor.setSelection(editor.text.length)
-            }
-            requireNotNull(device.wait(Until.findObject(By.text(InteractionCandidateLabel)), CandidateWaitMs)) {
-                "Channel suggestion should be visible before interaction checks"
-            }
+            try {
+                scenario.onActivity { activity ->
+                    activity.hideSystemBarsForSuggestionTest()
+                    val editor = requireNotNull(activity.window.decorView.findComposerEditText())
+                    assertTrue("composer should accept focus", editor.requestFocus())
+                    editor.setSelection(editor.text.length)
+                }
+                waitUntil("interaction fixture composer should expose its seeded channel trigger") {
+                    scenario.composerText() == "#"
+                }
+                val initialPanelUnderlayRatio =
+                    waitForInteractionPanelUnderlayRatio(
+                        scenario = scenario,
+                        instrumentation = instrumentation,
+                        visible = true
+                    )
 
-            val editorBounds = scenario.composerEditTextBounds()
-            tapPx(instrumentation, editorBounds.centerX().toFloat(), editorBounds.centerY().toFloat())
-            waitUntil("tapping the editor while suggestions are open must preserve focus") {
-                scenario.composerHasFocus()
-            }
-            val editorFocusedAfterTap = scenario.composerHasFocus()
-            assertTrue(
-                "editor tap should not dismiss the active suggestion panel",
-                device.hasObject(By.text(InteractionCandidateLabel))
-            )
+                val editorBounds = scenario.composerEditTextBounds()
+                tapPx(instrumentation, editorBounds.centerX().toFloat(), editorBounds.centerY().toFloat())
+                waitUntil("tapping the editor while suggestions are open must preserve focus") {
+                    scenario.composerHasFocus()
+                }
+                val editorFocusedAfterTap = scenario.composerHasFocus()
+                val editorTapPanelUnderlayRatio =
+                    waitForInteractionPanelUnderlayRatio(
+                        scenario = scenario,
+                        instrumentation = instrumentation,
+                        visible = true
+                    )
 
-            scenario.onActivity { activity ->
-                val editor = requireNotNull(activity.window.decorView.findComposerEditText())
-                val inputConnection = requireNotNull(editor.onCreateInputConnection(EditorInfo()))
-                assertTrue("focused editor should accept another character", inputConnection.commitText("d", 1))
-            }
-            waitUntil("typing should continue to update the composer under the open suggestions") {
-                scenario.composerText() == "#d"
-            }
-            requireNotNull(device.wait(Until.findObject(By.text(InteractionCandidateLabel)), CandidateWaitMs)) {
-                "Matching channel suggestion should remain available after continued typing"
-            }
+                scenario.onActivity { activity ->
+                    val editor = requireNotNull(activity.window.decorView.findComposerEditText())
+                    val inputConnection = requireNotNull(editor.onCreateInputConnection(EditorInfo()))
+                    assertTrue("focused editor should accept another character", inputConnection.commitText("d", 1))
+                }
+                waitUntil("typing should continue to update the composer under the open suggestions") {
+                    scenario.composerText() == "#d"
+                }
+                val typedPanelUnderlayRatio =
+                    waitForInteractionPanelUnderlayRatio(
+                        scenario = scenario,
+                        instrumentation = instrumentation,
+                        visible = true
+                    )
 
-            val density = context.resources.displayMetrics.density
-            tapPx(
-                instrumentation = instrumentation,
-                x = editorBounds.left + InteractionImageButtonCenterXDp * density,
-                y = editorBounds.bottom + InteractionToolbarCenterBelowEditorDp * density
-            )
-            val imageActionReceived =
-                device.wait(Until.hasObject(By.text(InteractionActionMarker)), CandidateTapWaitMs)
-            assertTrue(
-                "image action did not receive the tap while suggestions were open",
-                imageActionReceived
-            )
-            assertTrue(
-                "composer toolbar interaction should not be mistaken for a true outside tap",
-                device.hasObject(By.text(InteractionCandidateLabel))
-            )
+                val density = context.resources.displayMetrics.density
+                tapPx(
+                    instrumentation = instrumentation,
+                    x = editorBounds.left + InteractionImageButtonCenterXDp * density,
+                    y = editorBounds.bottom + InteractionToolbarCenterBelowEditorDp * density
+                )
+                val imageActionGreenRatio =
+                    waitForInteractionActionGreenRatio(
+                        scenario = scenario,
+                        instrumentation = instrumentation
+                    )
+                val imageActionReceived = imageActionGreenRatio >= InteractionActionGreenMinRatio
+                val imageTapPanelUnderlayRatio =
+                    waitForInteractionPanelUnderlayRatio(
+                        scenario = scenario,
+                        instrumentation = instrumentation,
+                        visible = true
+                    )
 
-            tapPx(
-                instrumentation = instrumentation,
-                x = context.resources.displayMetrics.widthPixels / 2f,
-                y = InteractionOutsideTapYDp * density
-            )
-            waitUntil("a true outside tap should clear composer focus") {
-                !scenario.composerHasFocus()
+                tapPx(
+                    instrumentation = instrumentation,
+                    x = context.resources.displayMetrics.widthPixels / 2f,
+                    y = InteractionOutsideTapYDp * density
+                )
+                waitUntil("a true outside tap should clear composer focus") {
+                    !scenario.composerHasFocus()
+                }
+                val outsidePanelUnderlayRatio =
+                    waitForInteractionPanelUnderlayRatio(
+                        scenario = scenario,
+                        instrumentation = instrumentation,
+                        visible = false
+                    )
+                val outsideDismissed = outsidePanelUnderlayRatio >= InteractionPanelDismissedMinUnderlayRatio
+                println(
+                    "THREAD_COMPOSER_SUGGESTION_INTERACTION_PASS " +
+                        "editorFocusedAfterTap=$editorFocusedAfterTap " +
+                        "text=${scenario.composerText()} imageAction=$imageActionReceived " +
+                        "outsideDismissed=$outsideDismissed " +
+                        "panelRatios=$initialPanelUnderlayRatio,$editorTapPanelUnderlayRatio," +
+                        "$typedPanelUnderlayRatio,$imageTapPanelUnderlayRatio,$outsidePanelUnderlayRatio " +
+                        "actionGreenRatio=$imageActionGreenRatio"
+                )
+            } catch (failure: Throwable) {
+                captureInteractionFailureEvidence(
+                    scenario = scenario,
+                    instrumentation = instrumentation,
+                    failure = failure
+                )
+                throw failure
             }
-            val outsideDismissed =
-                device.wait(Until.gone(By.text(InteractionCandidateLabel)), CandidateTapWaitMs)
-            assertTrue("true outside tap did not dismiss the active suggestion panel", outsideDismissed)
-            println(
-                "THREAD_COMPOSER_SUGGESTION_INTERACTION_PASS " +
-                    "editorFocusedAfterTap=$editorFocusedAfterTap " +
-                    "text=${scenario.composerText()} imageAction=$imageActionReceived " +
-                    "outsideDismissed=$outsideDismissed"
-            )
         }
     }
 
@@ -405,6 +436,132 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         return count
     }
 
+    private fun waitForInteractionPanelUnderlayRatio(
+        scenario: ActivityScenario<SlockKuiklyActivity>,
+        instrumentation: Instrumentation,
+        visible: Boolean
+    ): Double =
+        waitForColorRatio(
+            scenario = scenario,
+            instrumentation = instrumentation,
+            target = UnderlayCyan,
+            regionDp = PanelRegionDp,
+            description = if (visible) "suggestion panel visible" else "suggestion panel dismissed"
+        ) { ratio ->
+            if (visible) {
+                ratio in InteractionPanelVisibleMinUnderlayRatio..InteractionPanelVisibleMaxUnderlayRatio
+            } else {
+                ratio >= InteractionPanelDismissedMinUnderlayRatio
+            }
+        }
+
+    private fun captureInteractionFailureEvidence(
+        scenario: ActivityScenario<SlockKuiklyActivity>,
+        instrumentation: Instrumentation,
+        failure: Throwable
+    ) {
+        val filesDir = instrumentation.targetContext.filesDir
+        val prefix = InteractionFailureEvidencePrefix
+        runCatching {
+            val bitmap = captureActivityBitmap(scenario)
+            File(filesDir, "$prefix-root.png").outputStream().use { output ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+            }
+            bitmap.recycle()
+        }.onFailure { evidenceFailure ->
+            println("THREAD_COMPOSER_SUGGESTION_EVIDENCE_WARN kind=root error=${evidenceFailure.message}")
+        }
+        runCatching {
+            val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            File(filesDir, "$prefix-screen.png").outputStream().use { output ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+            }
+            bitmap.recycle()
+        }.onFailure { evidenceFailure ->
+            println("THREAD_COMPOSER_SUGGESTION_EVIDENCE_WARN kind=screen error=${evidenceFailure.message}")
+        }
+        runCatching {
+            UiDevice.getInstance(instrumentation).dumpWindowHierarchy(File(filesDir, "$prefix-hierarchy.xml"))
+        }.onFailure { evidenceFailure ->
+            println("THREAD_COMPOSER_SUGGESTION_EVIDENCE_WARN kind=hierarchy error=${evidenceFailure.message}")
+        }
+        writeInteractionShellEvidence(instrumentation, "dumpsys window", File(filesDir, "$prefix-window.txt"))
+        writeInteractionShellEvidence(instrumentation, "dumpsys activity activities", File(filesDir, "$prefix-activity.txt"))
+        writeInteractionShellEvidence(instrumentation, "logcat -d -v threadtime -t 2000", File(filesDir, "$prefix-logcat.txt"))
+        runCatching {
+            File(filesDir, "$prefix-failure.txt").writeText(
+                buildString {
+                    appendLine("failure=${failure.javaClass.name}: ${failure.message}")
+                    appendLine("composerText=${runCatching { scenario.composerText() }.getOrNull()}")
+                    appendLine("composerFocused=${runCatching { scenario.composerHasFocus() }.getOrNull()}")
+                    append(failure.stackTraceToString())
+                }
+            )
+        }.onFailure { evidenceFailure ->
+            println("THREAD_COMPOSER_SUGGESTION_EVIDENCE_WARN kind=failure error=${evidenceFailure.message}")
+        }
+        println("THREAD_COMPOSER_SUGGESTION_FAILURE_EVIDENCE prefix=$prefix")
+    }
+
+    private fun clearInteractionFailureEvidence(instrumentation: Instrumentation) {
+        val filesDir = instrumentation.targetContext.filesDir
+        InteractionFailureEvidenceSuffixes.forEach { suffix ->
+            File(filesDir, "$InteractionFailureEvidencePrefix-$suffix").delete()
+        }
+    }
+
+    private fun writeInteractionShellEvidence(
+        instrumentation: Instrumentation,
+        command: String,
+        outputFile: File
+    ) {
+        runCatching {
+            val descriptor = instrumentation.uiAutomation.executeShellCommand(command)
+            ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { input ->
+                outputFile.outputStream().use { output -> input.copyTo(output) }
+            }
+        }.onFailure { evidenceFailure ->
+            println("THREAD_COMPOSER_SUGGESTION_EVIDENCE_WARN command=$command error=${evidenceFailure.message}")
+        }
+    }
+
+    private fun waitForInteractionActionGreenRatio(
+        scenario: ActivityScenario<SlockKuiklyActivity>,
+        instrumentation: Instrumentation
+    ): Double =
+        waitForColorRatio(
+            scenario = scenario,
+            instrumentation = instrumentation,
+            target = InteractionActionGreen,
+            regionDp = StatusRegionDp,
+            description = "image action marker"
+        ) { ratio ->
+            ratio >= InteractionActionGreenMinRatio
+        }
+
+    private fun waitForColorRatio(
+        scenario: ActivityScenario<SlockKuiklyActivity>,
+        instrumentation: Instrumentation,
+        target: Int,
+        regionDp: DpRegion,
+        description: String,
+        accepted: (Double) -> Boolean
+    ): Double {
+        val deadline = SystemClock.uptimeMillis() + InteractionVisualWaitMs
+        var lastRatio = Double.NaN
+        while (SystemClock.uptimeMillis() < deadline) {
+            instrumentation.waitForIdleSync()
+            val bitmap = captureActivityBitmap(scenario)
+            val region = regionDp.toPixelRegion(instrumentation, bitmap.width, bitmap.height)
+            val area = ((region.right - region.left) * (region.bottom - region.top)).coerceAtLeast(1)
+            lastRatio = bitmap.countNearColor(target, region).toDouble() / area.toDouble()
+            bitmap.recycle()
+            if (accepted(lastRatio)) return lastRatio
+            SystemClock.sleep(InteractionVisualPollMs)
+        }
+        throw AssertionError("Timed out waiting for $description; lastColorRatio=$lastRatio")
+    }
+
     private fun Int.isNear(target: Int, tolerance: Int): Boolean =
         abs(Color.red(this) - Color.red(target)) <= tolerance &&
             abs(Color.green(this) - Color.green(target)) <= tolerance &&
@@ -545,17 +702,33 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         private const val MaxUnderlayPixelIncreaseDuringDrag = 600
         private const val MinUncoveredUnderlayPixels = 20_000
         private const val MaxLeakPixels = 100
+        private const val InteractionVisualWaitMs = 8_000L
+        private const val InteractionVisualPollMs = 100L
+        private const val InteractionPanelVisibleMinUnderlayRatio = 0.05
+        private const val InteractionPanelVisibleMaxUnderlayRatio = 0.88
+        private const val InteractionPanelDismissedMinUnderlayRatio = 0.92
+        private const val InteractionActionGreenMinRatio = 0.30
+        private const val InteractionFailureEvidencePrefix = "thread-composer-suggestion-interaction-failure"
+        private val InteractionFailureEvidenceSuffixes =
+            listOf(
+                "root.png",
+                "screen.png",
+                "hierarchy.xml",
+                "window.txt",
+                "activity.txt",
+                "logcat.txt",
+                "failure.txt"
+            )
         private val PanelRegionDp = DpRegion(left = 34f, top = 8f, right = 352f, bottom = 216f)
         private val ComposerInputRegionDp = DpRegion(left = 42f, top = 228f, right = 330f, bottom = 278f)
         private val StatusRegionDp = DpRegion(left = 0f, top = 720f, right = 412f, bottom = 915f)
         private val UnderlayCyan = Color.rgb(34, 211, 238)
         private val LeakRed = Color.rgb(239, 68, 68)
+        private val InteractionActionGreen = Color.rgb(34, 197, 94)
         private const val RepositionOracleFixture = "member_suggestions_reposition_oracle"
         private const val CandidateLabel = "Scrollable candidate 1"
         private const val RepositionShiftDp = 120f
         private const val InteractionOracleFixture = "suggestion_interaction_hit_test_oracle"
-        private const val InteractionCandidateLabel = "design"
-        private const val InteractionActionMarker = "ATTACH_IMAGE_RECEIVED"
         private const val InteractionImageButtonCenterXDp = 13f
         private const val InteractionToolbarCenterBelowEditorDp = 21f
         private const val InteractionOutsideTapYDp = 20f
