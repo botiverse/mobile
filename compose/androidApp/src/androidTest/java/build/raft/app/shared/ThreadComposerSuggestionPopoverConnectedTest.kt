@@ -33,6 +33,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         clearInteractionFailureEvidence(instrumentation)
+        instrumentation.confirmImmersiveEducationDismissedForSuggestionTest()
         val intent =
             Intent(context, SlockKuiklyActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.THREAD_COMPOSER_VISUAL)
@@ -509,6 +510,19 @@ class ThreadComposerSuggestionPopoverConnectedTest {
             File(filesDir, "$InteractionFailureEvidencePrefix-$suffix").delete()
         }
     }
+
+    private fun Instrumentation.confirmImmersiveEducationDismissedForSuggestionTest() {
+        executeShellCommandText("settings put secure immersive_mode_confirmations confirmed")
+        val current = executeShellCommandText("settings get secure immersive_mode_confirmations").trim()
+        check(current == "confirmed") {
+            "Failed to suppress the immersive-mode education overlay; current=$current"
+        }
+    }
+
+    private fun Instrumentation.executeShellCommandText(command: String): String =
+        ParcelFileDescriptor.AutoCloseInputStream(uiAutomation.executeShellCommand(command)).use { input ->
+            input.bufferedReader().readText()
+        }
 
     private fun writeInteractionShellEvidence(
         instrumentation: Instrumentation,
