@@ -63,6 +63,7 @@ import build.raft.app.data.MOBILE_ACTION_NEW_DESIGN_SETTINGS
 import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
 import build.raft.app.data.MOBILE_ACTION_THREAD_ROW_AFFORDANCES
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
+import build.raft.app.data.MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS
 import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
 import build.raft.app.data.MOBILE_ACTION_PERMISSION
 import build.raft.app.data.MOBILE_ACTION_SERVER_MUTE
@@ -113,6 +114,8 @@ import build.raft.app.data.SERVER_ACTION_SYSTEM_CHANNEL_HIDE
 import build.raft.app.data.SERVER_ACTION_SIDEBAR_ORDER
 import build.raft.app.data.SERVER_ACTION_TRANSLATION_TOGGLE
 import build.raft.app.data.NotificationPreferenceSnapshot
+import build.raft.app.data.KeyValueNotificationPreferenceStore
+import build.raft.app.data.PersistentNotificationPreferenceRepository
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
 import build.raft.app.data.ChatLayoutPreferenceSnapshotRuntimeAuthority
 import build.raft.app.data.ConversationForwardGestureRuntimeAuthority
@@ -2937,6 +2940,13 @@ internal fun SlockAppShellContent(
                 openUrlHandler = { url -> linkNavigator.open(url) }
             )
         }
+    val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
+    val notificationPreferenceRepository =
+        remember(sharedPreferenceStore) {
+            PersistentNotificationPreferenceRepository(
+                KeyValueNotificationPreferenceStore(sharedPreferenceStore)
+            )
+        }
     val memberRepository =
         remember(shellAuthStore, appShellNetworkClient) {
             RealMemberRepository(
@@ -2946,7 +2956,12 @@ internal fun SlockAppShellContent(
             )
         }
     val homeDataSource =
-        remember(memberRepository, appShellServerMembersStore, settingsCapabilities) {
+        remember(
+            memberRepository,
+            appShellServerMembersStore,
+            settingsCapabilities,
+            notificationPreferenceRepository,
+        ) {
             SharedHomeDataSource(
                 sessionStore = shellAuthStore,
                 api = NetworkSlockHomeApi(appShellNetworkClient),
@@ -2961,6 +2976,7 @@ internal fun SlockAppShellContent(
                         is DataResult.NoPermission -> result
                     }
                 },
+                notificationPreferenceRepository = notificationPreferenceRepository,
                 memberRepository = memberRepository,
                 serverMembersStore = appShellServerMembersStore,
                 parseHome = { payload, session ->
@@ -3038,7 +3054,6 @@ internal fun SlockAppShellContent(
                 diagnosticsLogger = slockLogger("SlockTasks", "shared_tasks")
             )
         }
-    val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
     val composerDraftPersistSlice = sharedStores.composerDraftPersistSlice
     val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
     val draftProjection =
@@ -6253,6 +6268,9 @@ internal fun SettingsNativeDetailScreen() {
         val subscription =
             notificationEvents.addPreferenceListener { snapshot ->
                 notificationPreferenceSnapshot = snapshot
+                sharedStores
+                    .sharedHomeStore(environment.storeScope)
+                    ?.dispatch(SharedHomeIntent.RefreshNotifications)
             }
         onDispose { subscription.close() }
     }
@@ -6679,6 +6697,10 @@ private fun SettingsNativeDetailPageContent(
                         settingsState.actionState?.inProgress == true &&
                             settingsState.actionState.action in
                             setOf(MOBILE_ACTION_FOREGROUND_KEEP_ALIVE, MOBILE_ACTION_SERVER_MUTE),
+                    offlineComputerAlertsBusy =
+                        settingsState.actionState?.inProgress == true &&
+                            settingsState.actionState.action in
+                            setOf(MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS, MOBILE_ACTION_SERVER_MUTE),
                     foregroundMessageBannersBusy =
                         settingsState.actionState?.inProgress == true &&
                             settingsState.actionState.action in
@@ -6694,6 +6716,9 @@ private fun SettingsNativeDetailPageContent(
                         if (enabled) {
                             onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission)
                         }
+                    },
+                    onOfflineComputerAlertsChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetOfflineComputerAlertsPreference(enabled))
                     },
                     onForegroundMessageBannersChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetForegroundMessageBanners(enabled))
@@ -8823,9 +8848,11 @@ private fun SettingsNotificationsContent(
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
     preferenceBusy: Boolean,
     foregroundKeepAliveBusy: Boolean,
+    offlineComputerAlertsBusy: Boolean,
     foregroundMessageBannersBusy: Boolean,
     onNotificationPreferenceChange: (Boolean) -> Unit,
     onForegroundKeepAlivePreferenceChange: (Boolean) -> Unit,
+    onOfflineComputerAlertsChange: (Boolean) -> Unit,
     onForegroundMessageBannersChange: (Boolean) -> Unit,
     onServerNotificationModeChange: (String) -> Unit,
     onPushPreviewModeChange: (String) -> Unit,
@@ -8888,9 +8915,11 @@ private fun SettingsNotificationsContent(
                         notificationPreferenceSnapshot = notificationPreferenceSnapshot,
                         preferenceBusy = preferenceBusy,
                         foregroundKeepAliveBusy = foregroundKeepAliveBusy,
+                        offlineComputerAlertsBusy = offlineComputerAlertsBusy,
                         foregroundMessageBannersBusy = foregroundMessageBannersBusy,
                         onNotificationPreferenceChange = onNotificationPreferenceChange,
                         onForegroundKeepAlivePreferenceChange = onForegroundKeepAlivePreferenceChange,
+                        onOfflineComputerAlertsChange = onOfflineComputerAlertsChange,
                         onForegroundMessageBannersChange = onForegroundMessageBannersChange,
                         onPermission = onPermission,
                         onSettings = onSettings,
@@ -8934,9 +8963,11 @@ private fun SettingsPushStatusCard(
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
     preferenceBusy: Boolean,
     foregroundKeepAliveBusy: Boolean,
+    offlineComputerAlertsBusy: Boolean,
     foregroundMessageBannersBusy: Boolean,
     onNotificationPreferenceChange: (Boolean) -> Unit,
     onForegroundKeepAlivePreferenceChange: (Boolean) -> Unit,
+    onOfflineComputerAlertsChange: (Boolean) -> Unit,
     onForegroundMessageBannersChange: (Boolean) -> Unit,
     onPermission: () -> Unit,
     onSettings: () -> Unit,
@@ -8981,6 +9012,14 @@ private fun SettingsPushStatusCard(
             )
             SettingsNotificationDivider()
             SettingsNotificationToggleRow(
+                title = stringResource(MR.strings.settings_notifications_offline_computers_title),
+                detail = stringResource(MR.strings.settings_notifications_offline_computers_detail),
+                checked = notificationPreferenceSnapshot.offlineComputerAlertsEnabled,
+                enabled = !offlineComputerAlertsBusy,
+                onCheckedChange = onOfflineComputerAlertsChange
+            )
+            SettingsNotificationDivider()
+            SettingsNotificationToggleRow(
                 title = stringResource(MR.strings.settings_foreground_banners_title),
                 detail = stringResource(MR.strings.settings_foreground_banners_detail),
                 checked = snapshot.foregroundMessageBanners.enabled,
@@ -8998,6 +9037,7 @@ private fun SettingsPushStatusCard(
             if (actionState?.action in setOf(
                     MOBILE_ACTION_NOTIFICATION_PREFERENCE,
                     MOBILE_ACTION_FOREGROUND_KEEP_ALIVE,
+                    MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS,
                     MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
                 ) && actionState?.errorCode != null
             ) {
@@ -22185,9 +22225,11 @@ private fun SettingsVisualNotificationsContent() {
         notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
         preferenceBusy = false,
         foregroundKeepAliveBusy = false,
+        offlineComputerAlertsBusy = false,
         foregroundMessageBannersBusy = false,
         onNotificationPreferenceChange = {},
         onForegroundKeepAlivePreferenceChange = {},
+        onOfflineComputerAlertsChange = {},
         onForegroundMessageBannersChange = {},
         onServerNotificationModeChange = {},
         onPushPreviewModeChange = {},

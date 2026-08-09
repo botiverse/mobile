@@ -25,6 +25,7 @@ class SystemNotificationsTest {
 
         assertTrue(snapshot.enabled)
         assertFalse(snapshot.foregroundKeepAliveEnabled)
+        assertFalse(snapshot.offlineComputerAlertsEnabled)
     }
 
     @Test
@@ -62,6 +63,27 @@ class SystemNotificationsTest {
         assertFalse(disabled.foregroundKeepAliveEnabled)
         assertFalse(restoredDisabled.foregroundKeepAliveEnabled)
         assertTrue(restoredDisabled.enabled)
+    }
+
+    @Test
+    fun offlineComputerAlertsDefaultOffForExistingInstallsAndPersistSelectedState() = runBlocking {
+        val repository = PersistentNotificationPreferenceRepository(
+            KeyValueNotificationPreferenceStore(InMemorySlockKeyValueStore())
+        )
+
+        val initial = repository.getNotificationPreference()
+        val enabled = repository.setOfflineComputerAlertsEnabled(true)
+        val restoredEnabled = repository.getNotificationPreference()
+        val disabled = repository.setOfflineComputerAlertsEnabled(false)
+        val restoredDisabled = repository.getNotificationPreference()
+
+        assertFalse(initial.offlineComputerAlertsEnabled)
+        assertTrue(enabled.offlineComputerAlertsEnabled)
+        assertTrue(restoredEnabled.offlineComputerAlertsEnabled)
+        assertFalse(disabled.offlineComputerAlertsEnabled)
+        assertFalse(restoredDisabled.offlineComputerAlertsEnabled)
+        assertTrue(restoredDisabled.enabled)
+        assertFalse(restoredDisabled.foregroundKeepAliveEnabled)
     }
 
     @Test

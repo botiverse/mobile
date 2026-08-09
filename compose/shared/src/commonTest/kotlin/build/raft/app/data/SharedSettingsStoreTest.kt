@@ -846,6 +846,7 @@ class SharedSettingsStoreTest {
 
         store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
         store.accept(SharedSettingsIntent.SetNotificationPreference(true))
+        store.accept(SharedSettingsIntent.SetOfflineComputerAlertsPreference(true))
         store.accept(SharedSettingsIntent.SetLocale("zh-Hans"))
         store.accept(SharedSettingsIntent.SetMessageAlignment("right"))
         store.accept(SharedSettingsIntent.SetLinkOpenMode("in_app"))
@@ -866,6 +867,7 @@ class SharedSettingsStoreTest {
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals(true, notificationRepository.enabled)
+        assertEquals(true, notificationRepository.offlineComputerAlertsEnabled)
         assertEquals(AppLocale.SimplifiedChinese, localeRepository.current)
         assertEquals(MyMessageAlignmentPreference.Right, chatLayoutRepository.alignment)
         assertEquals(LinkOpenMode.InAppBrowser, linkOpenPreferenceRepository.mode)
@@ -3947,12 +3949,14 @@ class SharedSettingsStoreTest {
 
     private class FakeNotificationPreferenceRepository(
         var enabled: Boolean = false,
-        var foregroundKeepAliveEnabled: Boolean = false
+        var foregroundKeepAliveEnabled: Boolean = false,
+        var offlineComputerAlertsEnabled: Boolean = false,
     ) : NotificationPreferenceRepository {
         override suspend fun getNotificationPreference(): NotificationPreferenceSnapshot =
             NotificationPreferenceSnapshot(
                 enabled = enabled,
-                foregroundKeepAliveEnabled = foregroundKeepAliveEnabled
+                foregroundKeepAliveEnabled = foregroundKeepAliveEnabled,
+                offlineComputerAlertsEnabled = offlineComputerAlertsEnabled,
             )
 
         override suspend fun setNotificationEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
@@ -3962,6 +3966,11 @@ class SharedSettingsStoreTest {
 
         override suspend fun setForegroundKeepAliveEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
             foregroundKeepAliveEnabled = enabled
+            return getNotificationPreference()
+        }
+
+        override suspend fun setOfflineComputerAlertsEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
+            offlineComputerAlertsEnabled = enabled
             return getNotificationPreference()
         }
     }

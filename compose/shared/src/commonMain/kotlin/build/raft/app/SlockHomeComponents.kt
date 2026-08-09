@@ -23,6 +23,9 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.ScreenError
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.SharedHomeDataSource
+import build.raft.app.data.KeyValueNotificationPreferenceStore
+import build.raft.app.data.PersistentNotificationPreferenceRepository
+import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockAvatarCacheSubject
@@ -635,14 +638,21 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         bridge.log("home_render instanceId=${payload.instanceId} channels=${payload.channels.size} dms=${payload.directMessages.size}")
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val notificationPreferenceRepository =
+        remember {
+            PersistentNotificationPreferenceRepository(
+                KeyValueNotificationPreferenceStore(slockSharedPreferenceStore())
+            )
+        }
     val standaloneHomeStore =
-        remember(sharedStores) {
+        remember(sharedStores, notificationPreferenceRepository) {
             val homeDataSource =
                 SharedHomeDataSource(
                     sessionStore = sharedStores.authStore,
                     api = NetworkSlockHomeApi(sharedStores.networkClient),
                     announcementsApi = NetworkSlockAnnouncementsRemindersApi(sharedStores.networkClient),
                     computersApi = SlockComputersNetworkApi(sharedStores.networkClient),
+                    notificationPreferenceRepository = notificationPreferenceRepository,
                     serverMembersStore = sharedStores.serverMembersStore,
                     parseHome = { networkPayload, session ->
                         parseSlockHome(networkPayload, session) { message -> bridge.log(message) }

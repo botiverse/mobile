@@ -7,19 +7,24 @@ import build.raft.app.toKuiklySurfaceKind
 
 data class NotificationPreferenceSnapshot(
     val enabled: Boolean,
-    val foregroundKeepAliveEnabled: Boolean = false
+    val foregroundKeepAliveEnabled: Boolean = false,
+    val offlineComputerAlertsEnabled: Boolean = false,
 )
 
 const val NOTIFICATION_ENABLED_PREFERENCE_KEY = "notifications:enabled"
 const val NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY = "notifications:foreground_keep_alive_enabled"
+const val NOTIFICATION_OFFLINE_COMPUTER_ALERTS_ENABLED_PREFERENCE_KEY = "notifications:offline_computer_alerts_enabled"
 
 interface NotificationPreferenceStore {
     fun readNotificationEnabledSync(): Boolean
     fun readForegroundKeepAliveEnabledSync(): Boolean
+    fun readOfflineComputerAlertsEnabledSync(): Boolean
     suspend fun readNotificationEnabled(): Boolean
     suspend fun readForegroundKeepAliveEnabled(): Boolean
+    suspend fun readOfflineComputerAlertsEnabled(): Boolean
     suspend fun saveNotificationEnabled(enabled: Boolean)
     suspend fun saveForegroundKeepAliveEnabled(enabled: Boolean)
+    suspend fun saveOfflineComputerAlertsEnabled(enabled: Boolean)
 }
 
 class KeyValueNotificationPreferenceStore(
@@ -31,11 +36,17 @@ class KeyValueNotificationPreferenceStore(
     override fun readForegroundKeepAliveEnabledSync(): Boolean =
         store.getBoolean(KEY_FOREGROUND_KEEP_ALIVE_ENABLED, defaultValue = false)
 
+    override fun readOfflineComputerAlertsEnabledSync(): Boolean =
+        store.getBoolean(KEY_OFFLINE_COMPUTER_ALERTS_ENABLED, defaultValue = false)
+
     override suspend fun readNotificationEnabled(): Boolean =
         readNotificationEnabledSync()
 
     override suspend fun readForegroundKeepAliveEnabled(): Boolean =
         readForegroundKeepAliveEnabledSync()
+
+    override suspend fun readOfflineComputerAlertsEnabled(): Boolean =
+        readOfflineComputerAlertsEnabledSync()
 
     override suspend fun saveNotificationEnabled(enabled: Boolean) {
         store.putBoolean(KEY_NOTIFICATION_ENABLED, enabled)
@@ -45,9 +56,15 @@ class KeyValueNotificationPreferenceStore(
         store.putBoolean(KEY_FOREGROUND_KEEP_ALIVE_ENABLED, enabled)
     }
 
+    override suspend fun saveOfflineComputerAlertsEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_OFFLINE_COMPUTER_ALERTS_ENABLED, enabled)
+    }
+
     private companion object {
         const val KEY_NOTIFICATION_ENABLED = NOTIFICATION_ENABLED_PREFERENCE_KEY
         const val KEY_FOREGROUND_KEEP_ALIVE_ENABLED = NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
+        const val KEY_OFFLINE_COMPUTER_ALERTS_ENABLED =
+            NOTIFICATION_OFFLINE_COMPUTER_ALERTS_ENABLED_PREFERENCE_KEY
     }
 }
 
@@ -55,6 +72,7 @@ interface NotificationPreferenceRepository {
     suspend fun getNotificationPreference(): NotificationPreferenceSnapshot
     suspend fun setNotificationEnabled(enabled: Boolean): NotificationPreferenceSnapshot
     suspend fun setForegroundKeepAliveEnabled(enabled: Boolean): NotificationPreferenceSnapshot
+    suspend fun setOfflineComputerAlertsEnabled(enabled: Boolean): NotificationPreferenceSnapshot
 }
 
 class PersistentNotificationPreferenceRepository(
@@ -63,7 +81,8 @@ class PersistentNotificationPreferenceRepository(
     override suspend fun getNotificationPreference(): NotificationPreferenceSnapshot =
         NotificationPreferenceSnapshot(
             enabled = store.readNotificationEnabled(),
-            foregroundKeepAliveEnabled = store.readForegroundKeepAliveEnabled()
+            foregroundKeepAliveEnabled = store.readForegroundKeepAliveEnabled(),
+            offlineComputerAlertsEnabled = store.readOfflineComputerAlertsEnabled(),
         )
 
     override suspend fun setNotificationEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
@@ -73,6 +92,11 @@ class PersistentNotificationPreferenceRepository(
 
     override suspend fun setForegroundKeepAliveEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
         store.saveForegroundKeepAliveEnabled(enabled)
+        return getNotificationPreference()
+    }
+
+    override suspend fun setOfflineComputerAlertsEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
+        store.saveOfflineComputerAlertsEnabled(enabled)
         return getNotificationPreference()
     }
 }

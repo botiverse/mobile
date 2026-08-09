@@ -48,6 +48,7 @@ class SharedHomeDataSource(
     announcementsApi: SlockAnnouncementsRemindersApi? = null,
     computersApi: SlockComputersApi? = null,
     private val appUpdateStatusProvider: (suspend () -> DataResult<SharedSettingsUpdateCheckSnapshot>)? = null,
+    private val notificationPreferenceRepository: NotificationPreferenceRepository? = null,
     private val memberRepository: MemberRepository? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
     private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>,
@@ -222,8 +223,17 @@ class SharedHomeDataSource(
                 ?.permissions
                 ?.canManageMachines == true
         if (!canManageMachines) return DataResult.Content(emptyList())
+        val offlineComputerAlertsEnabled =
+            notificationPreferenceRepository
+                ?.getNotificationPreference()
+                ?.offlineComputerAlertsEnabled == true
         return when (val result = client.machines(serverId)) {
-            is DataResult.Content -> DataResult.Content(result.data.toSharedHomeMachineNotifications())
+            is DataResult.Content ->
+                DataResult.Content(
+                    result.data.toSharedHomeMachineNotifications(
+                        offlineComputerAlertsEnabled = offlineComputerAlertsEnabled
+                    )
+                )
             is DataResult.Empty -> DataResult.Content(emptyList())
             is DataResult.Error -> DataResult.Error(result.error)
             is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
@@ -368,10 +378,12 @@ private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionDesc():
         }
     }
 
-private fun ComputerListSummary.toSharedHomeMachineNotifications(): List<SharedHomeNotification> {
+private fun ComputerListSummary.toSharedHomeMachineNotifications(
+    offlineComputerAlertsEnabled: Boolean
+): List<SharedHomeNotification> {
     val notifications = mutableListOf<SharedHomeNotification>()
     val offlineMachines = machines.filter { it.status == ComputerStatus.Offline }
-    if (offlineMachines.isNotEmpty()) {
+    if (offlineComputerAlertsEnabled && offlineMachines.isNotEmpty()) {
         val sortedIds = offlineMachines.map { it.id }.sorted()
         val names = offlineMachines.joinToString(", ") { it.name }
         val verb = if (offlineMachines.size == 1) "is offline" else "are offline"

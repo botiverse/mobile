@@ -3573,7 +3573,8 @@ class SharedHomeStoreTest {
         announcementsApi: SlockAnnouncementsRemindersApi? = null,
         computersApi: SlockComputersApi? = null,
         sessionStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-        appUpdateStatusProvider: (suspend () -> DataResult<SharedSettingsUpdateCheckSnapshot>)? = null
+        appUpdateStatusProvider: (suspend () -> DataResult<SharedSettingsUpdateCheckSnapshot>)? = null,
+        offlineComputerAlertsEnabled: Boolean = true,
     ): SharedHomeDataSource =
         SharedHomeDataSource(
             sessionStore = sessionStore,
@@ -3581,6 +3582,23 @@ class SharedHomeStoreTest {
             announcementsApi = announcementsApi,
             computersApi = computersApi,
             appUpdateStatusProvider = appUpdateStatusProvider,
+            notificationPreferenceRepository =
+                object : NotificationPreferenceRepository {
+                    override suspend fun getNotificationPreference(): NotificationPreferenceSnapshot =
+                        NotificationPreferenceSnapshot(
+                            enabled = true,
+                            offlineComputerAlertsEnabled = offlineComputerAlertsEnabled,
+                        )
+
+                    override suspend fun setNotificationEnabled(enabled: Boolean): NotificationPreferenceSnapshot =
+                        error("unused")
+
+                    override suspend fun setForegroundKeepAliveEnabled(enabled: Boolean): NotificationPreferenceSnapshot =
+                        error("unused")
+
+                    override suspend fun setOfflineComputerAlertsEnabled(enabled: Boolean): NotificationPreferenceSnapshot =
+                        error("unused")
+                },
             parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
         )
 

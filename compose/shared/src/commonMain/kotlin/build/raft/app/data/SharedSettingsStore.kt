@@ -465,6 +465,7 @@ sealed interface SharedSettingsIntent {
     data class RequestServerConfirmation(val action: String, val itemId: String? = null) : SharedSettingsIntent
     data class SetNotificationPreference(val enabled: Boolean) : SharedSettingsIntent
     data class SetForegroundKeepAlivePreference(val enabled: Boolean) : SharedSettingsIntent
+    data class SetOfflineComputerAlertsPreference(val enabled: Boolean) : SharedSettingsIntent
     data class SetServerMute(val enabled: Boolean) : SharedSettingsIntent
     data class SetServerNotificationMode(val mode: String) : SharedSettingsIntent
     data class SetPushPreviewMode(val mode: String) : SharedSettingsIntent
@@ -1065,6 +1066,14 @@ class SharedSettingsDataSource(
             notificationPreferenceRepository
                 ?: return DataResult.Error(ScreenError("settings_notification_preference_unavailable", retryable = false))
         repository.setForegroundKeepAliveEnabled(enabled)
+        return loadMobile()
+    }
+
+    suspend fun setOfflineComputerAlertsPreference(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            notificationPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_notification_preference_unavailable", retryable = false))
+        repository.setOfflineComputerAlertsEnabled(enabled)
         return loadMobile()
     }
 
@@ -2347,6 +2356,15 @@ class SharedSettingsStore(
                     )
                 dataSource.setForegroundKeepAlivePreference(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_FOREGROUND_KEEP_ALIVE)
+            }
+            is SharedSettingsIntent.SetOfflineComputerAlertsPreference -> {
+                if (serverNotificationModeMutation != null) return
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS, inProgress = true)
+                    )
+                dataSource.setOfflineComputerAlertsPreference(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS)
             }
             is SharedSettingsIntent.SetServerMute -> {
                 if (serverNotificationModeMutation != null) return
@@ -3677,6 +3695,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.RequestServerConfirmation,
             is SharedSettingsIntent.SetNotificationPreference,
             is SharedSettingsIntent.SetForegroundKeepAlivePreference,
+            is SharedSettingsIntent.SetOfflineComputerAlertsPreference,
             is SharedSettingsIntent.SetServerMute,
             is SharedSettingsIntent.SetServerNotificationMode,
             is SharedSettingsIntent.SetPushPreviewMode,
@@ -3884,6 +3903,7 @@ private fun SharedSettingsState.hasContent(destination: SharedSettingsDestinatio
 
 internal const val MOBILE_ACTION_NOTIFICATION_PREFERENCE = "notificationPreference"
 internal const val MOBILE_ACTION_FOREGROUND_KEEP_ALIVE = "foregroundKeepAlive"
+internal const val MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS = "offlineComputerAlerts"
 internal const val MOBILE_ACTION_SERVER_MUTE = "serverMute"
 internal const val MOBILE_ACTION_PUSH_PREVIEW_MODE = "pushPreviewMode"
 internal const val MOBILE_ACTION_PERMISSION = "notificationPermission"

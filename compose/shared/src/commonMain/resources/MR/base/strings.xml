@@ -1570,6 +1570,8 @@
     <string name="settings_notifications_message_detail">Show a system notification for new unread messages while Raft is in the background.</string>
     <string name="settings_notifications_background_realtime_title">Background realtime</string>
     <string name="settings_notifications_background_realtime_detail">Keep realtime connected in the background. Android may still pause long-running sessions.</string>
+    <string name="settings_notifications_offline_computers_title">Offline computer alerts</string>
+    <string name="settings_notifications_offline_computers_detail">Show a Home alert when a registered computer is offline. Off by default.</string>
     <string name="settings_notifications_test_title">Send a test notification</string>
     <string name="settings_notifications_test_detail">Post a local test notification to verify this device.</string>
     <string name="settings_notifications_test_sent_detail">A test notification was posted.</string>
