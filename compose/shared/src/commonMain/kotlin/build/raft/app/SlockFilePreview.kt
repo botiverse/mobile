@@ -1991,6 +1991,27 @@ internal data class SlockComposerImageTextAnnotation(
     val position: Offset
 )
 
+/**
+ * Caller-local text draft for one image-editor identity.
+ *
+ * Kuikly's String TextField contract expects the newest text to be fed back unchanged. Keep the
+ * image identity beside the text so a stale editor callback cannot carry one image's draft into
+ * another image, and deliberately avoid applying a hidden length transform at this write edge.
+ */
+internal data class SlockFilePreviewAnnotationDraft(
+    val imageUrl: String?,
+    val text: String = "",
+) {
+    fun updated(imageUrl: String?, nextText: String): SlockFilePreviewAnnotationDraft =
+        if (imageUrl == this.imageUrl) {
+            copy(text = nextText)
+        } else {
+            SlockFilePreviewAnnotationDraft(imageUrl = imageUrl, text = nextText)
+        }
+
+    fun cleared(): SlockFilePreviewAnnotationDraft = copy(text = "")
+}
+
 internal data class SlockComposerImageStroke(
     val points: List<Offset>,
     val color: Color = Color(0xFFFF3B30),
@@ -2154,7 +2175,9 @@ private fun SlockFilePreviewComposerImageEditor(
     var eraseGestureOrigin by remember(payload.imageUrl) { mutableStateOf<SlockComposerImageEditorContent?>(null) }
     var textGestureOrigin by remember(payload.imageUrl) { mutableStateOf<SlockComposerImageEditorContent?>(null) }
     var activeTextAnnotationId by remember(payload.imageUrl) { mutableStateOf<Int?>(null) }
-    var textDraft by remember(payload.imageUrl) { mutableStateOf("") }
+    var textDraft by remember(payload.imageUrl) {
+        mutableStateOf(SlockFilePreviewAnnotationDraft(imageUrl = payload.imageUrl))
+    }
     var textPosition by remember(payload.imageUrl) { mutableStateOf(Offset(32f, 32f)) }
     var editorCanvasSize by remember(payload.imageUrl) { mutableStateOf(IntSize(0, 0)) }
     val textAnnotationSizes = remember(payload.imageUrl) { mutableStateMapOf<Int, IntSize>() }
@@ -2230,7 +2253,7 @@ private fun SlockFilePreviewComposerImageEditor(
         )
     }
     fun addTextAnnotation(): Boolean {
-        val nextText = textDraft.trim()
+        val nextText = textDraft.text.trim()
         if (nextText.isBlank()) return false
         val nextContent =
             slockComposerImageAddTextDraft(
@@ -2253,7 +2276,7 @@ private fun SlockFilePreviewComposerImageEditor(
             state.history.apply(nextContent)
         )
         nextTextAnnotationId += 1
-        textDraft = ""
+        textDraft = textDraft.cleared()
         return true
     }
     fun requestDone() {
@@ -2669,8 +2692,10 @@ private fun SlockFilePreviewComposerImageEditor(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextField(
-                        value = textDraft,
-                        onValueChange = { textDraft = it.take(80) },
+                        value = textDraft.text,
+                        onValueChange = { nextText ->
+                            textDraft = textDraft.updated(payload.imageUrl, nextText)
+                        },
                         placeholder = stringResource(MR.strings.file_preview_placeholder_tap_to_add_text),
                         placeholderColor = SlockColor.TextMutedGray,
                         autoFocus = true,
@@ -2691,7 +2716,7 @@ private fun SlockFilePreviewComposerImageEditor(
                         iconName = SlockLucideIconName.Check,
                         contentDescription = stringResource(MR.strings.common_add),
                         onClick = { addTextAnnotation() },
-                        enabled = !saving && textDraft.isNotBlank(),
+                        enabled = !saving && textDraft.text.isNotBlank(),
                         backgroundColor = SlockColor.BrandYellow,
                         shadowOffset = 2.dp
                     )
