@@ -7,6 +7,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Rect
 import android.os.Build
+import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.view.MotionEvent
@@ -126,7 +127,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                         visible = false
                     )
                 val outsideDismissed = outsidePanelUnderlayRatio >= InteractionPanelDismissedMinUnderlayRatio
-                println(
+                val receipt =
                     "THREAD_COMPOSER_SUGGESTION_INTERACTION_PASS " +
                         "editorFocusedAfterTap=$editorFocusedAfterTap " +
                         "text=${scenario.composerText()} imageAction=$imageActionReceived " +
@@ -134,7 +135,11 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                         "panelRatios=$initialPanelUnderlayRatio,$editorTapPanelUnderlayRatio," +
                         "$typedPanelUnderlayRatio,$imageTapPanelUnderlayRatio,$outsidePanelUnderlayRatio " +
                         "actionGreenRatio=$imageActionGreenRatio"
+                instrumentation.sendStatus(
+                    0,
+                    Bundle().apply { putString("composerSuggestionInteraction", receipt) }
                 )
+                println(receipt)
             } catch (failure: Throwable) {
                 captureInteractionFailureEvidence(
                     scenario = scenario,
