@@ -59,6 +59,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
             waitUntil("tapping the editor while suggestions are open must preserve focus") {
                 scenario.composerHasFocus()
             }
+            val editorFocusedAfterTap = scenario.composerHasFocus()
             assertTrue(
                 "editor tap should not dismiss the active suggestion panel",
                 device.hasObject(By.text(InteractionCandidateLabel))
@@ -82,9 +83,16 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                 x = editorBounds.left + InteractionImageButtonCenterXDp * density,
                 y = editorBounds.bottom + InteractionToolbarCenterBelowEditorDp * density
             )
+            val imageActionReceived =
+                device.wait(Until.hasObject(By.text(InteractionActionMarker)), CandidateTapWaitMs)
             assertTrue(
                 "image action did not receive the tap while suggestions were open",
-                device.wait(Until.hasObject(By.text(InteractionActionMarker)), CandidateTapWaitMs)
+                imageActionReceived
+            )
+            println(
+                "THREAD_COMPOSER_SUGGESTION_INTERACTION_PASS " +
+                    "editorFocusedAfterTap=$editorFocusedAfterTap " +
+                    "text=${scenario.composerText()} imageAction=$imageActionReceived"
             )
         }
     }
