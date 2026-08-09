@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-07T22:18:34.682Z",
+  "generatedAt": "2026-08-09T22:10:03.570Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 81,
-    "pending": 5
+    "ready": 78,
+    "pending": 8
   },
   "cases": [
     {
@@ -1047,7 +1047,7 @@
     {
       "id": "components.thread.composer.channel-suggestions",
       "status": "ready",
-      "imageHash": "p1:03f807fc7ffdfffefffdfffefffdfffefffdfffe00010002000100020ff92ffa00010002200900020fb10fb200010002600dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "imageHash": "p1:03f807fc7ffdfffefffdfffefffdfffefffdfffe00010002000100020ff92ffa00010002000900020fb10fb200010002600dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
       "generatedAt": "2026-08-02T22:45:55.933Z",
       "severity": "low",
       "summary": [
@@ -1142,7 +1142,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0594543686960749
+      "metricMismatch": 0.0594516682194407
     },
     {
       "id": "components.thread.header.states",
@@ -1179,35 +1179,16 @@
     },
     {
       "id": "components.thread.message.row",
-      "status": "ready",
-      "imageHash": "p1:0000000007c61ffe00060002400200024000c0020000c7fefffeeffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
-      "generatedAt": "2026-08-02T22:46:01.942Z",
-      "severity": "medium",
-      "summary": [
-        "Reaction bar (👍 1 and + button) visible on iOS but missing/clipped on Android baseline",
-        "Android baseline appears cropped at bottom — reactions row is partially or fully cut off by the 108px component-bounds crop",
-        "Crop rect on baseline (374×108) under-captures content height; iOS full render shows extra ~32px reaction row",
-        "Avatar online indicator (yellow dot) position identical on both; no other structural divergence",
-        "Typography, color, and spacing of name/timestamp/message/chip are visually isomorphic across ends"
-      ],
-      "likelyCauses": [
-        "Baseline crop mode 'component-bounds' with height 108 was too short to include the reaction footer",
-        "Possible iOS-only render of reactions due to a platform-conditional component or data binding",
-        "Manual rect contract may have been computed before reactions were laid out"
-      ],
-      "suggestedOwner": "ui-engineering (Thread message row component owner)",
-      "suggestedFixes": [
-        "Recompute baseline crop rect to include the full row including reaction bar (extend height to ~140px)",
-        "Verify reactions footer is not conditionally rendered only on iOS — check platform-specific branching in ThreadMessageRow",
-        "Re-run Slock capture with auto-bounds or a rect tall enough to cover the reaction row",
-        "Confirm reaction bar height (~32px) is consistent across Android and iOS renderers",
-        "Cross-check data: ensure '👍 1' count is populated in the Android test fixture"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.03924737716206905
+      "status": "pending",
+      "imageHash": "p1:0004000007a81ffe00020002400200024000c0020000c7fefffeeffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "generatedAt": "2026-08-09T22:10:02.717Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.03962746924832228
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1245,7 +1226,7 @@
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fc01fcfffe7ffe87ee07fe80020002e0026002e7fe67fe803e001e801e001e809e001ea7de27de81de019e87de07de87de07de81de01dea3de239e83de03de83de03de83de03de83de039e81de2bde801e001ec03e003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fffa3fff",
+      "imageHash": "p1:01fc01fcfffe7ffe87fe07ee80020002e0026002e7fe67fe803e001e801e001e809e001ea7de27de81de019e87de07de87de07de81de01dea3de239e83de03de83de03de83de03de83de039e81de2bde801e001ec03e003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fffa3fff",
       "generatedAt": "2026-08-02T22:46:03.192Z",
       "severity": "medium",
       "summary": [
@@ -1273,12 +1254,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3692324570286656
+      "metricMismatch": 0.3701725604569206
     },
     {
       "id": "components.thread.message-menu.task",
       "status": "ready",
-      "imageHash": "p1:01fc01fefffe7ffe87fe07fe80020006e0426006e0fe60fec03e403e801f001e809f009ea7df27de81df01de87df07de87df07de81df01dea3df23de83df03de83df03dea3df03de83df039e83df03de801f001edc3e003efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00006002fffe3fff",
+      "imageHash": "p1:01fc01fefffe7ffe87ff07fe80020002e0426006e0fe60fec03e403e801f001e809f009ea7df27de81df01de87df07de87df07de81df01dea3df23de83df03de83df03dea3df03de83df039e83df03de801f001edc3e003efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00006002fffe3fff",
       "generatedAt": "2026-08-02T22:46:05.396Z",
       "severity": "high",
       "summary": [
@@ -1306,12 +1287,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3715065959141789
+      "metricMismatch": 0.37244534910411686
     },
     {
       "id": "components.thread.message-share.selection",
       "status": "ready",
-      "imageHash": "p1:07fc07fcfffe7ffe81fe81fec0024002f0267002fffe7ffe83fe83fec0024002f8027002f0064006800100008001000080020000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fff83fff",
+      "imageHash": "p1:07fc07fcfffe7ffe81fe81fec0024002f0267002fffe7ffe83fe83fec0024002f8027002f0064006800100008001000080020000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fff81fff",
       "generatedAt": "2026-08-02T22:46:06.375Z",
       "severity": "medium",
       "summary": [
@@ -1339,7 +1320,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6437267927789254
+      "metricMismatch": 0.6439181890603691
     },
     {
       "id": "components.thread.forward-modal",
@@ -1675,38 +1656,16 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000007ffc7ffc7ffc7ffc3ffc7ffc21fc41fc7ffc7ffc7ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc3ffc7ffc7ffc7f7c7ffc7cfc7ffc00007dfcce630000ffff0000ffff0000ffff0000ffff0000bffd0000bffd00008ff100008ff00000ffff00009ffb0000ffffffffffff",
-      "generatedAt": "2026-08-07T22:17:03.692Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows the system soft keyboard occupying the lower ~45% of the viewport, while Android does not (no IME shown), drastically changing the visible dialog area",
-        "Dialog on iOS is shifted upward and compressed because the IME pushes content; Android dialog sits in normal position with full height visible",
-        "Character count indicator '72/3000' is visible on Android (bottom-right of Description), missing on iOS",
-        "iOS dialog appears narrower horizontally and the description textarea is visibly shorter/cropped due to IME taking space",
-        "Action buttons (Cancel / Create Agent) on iOS are pushed up and partially overlap the Description field area, while on Android they sit below with proper spacing"
-      ],
-      "likelyCauses": [
-        "iOS test capture was taken while the soft keyboard is active (focused Name input), Android was captured without IME",
-        "No consistent screenshot timing / focus state between platforms — visual diff captured in different interaction states",
-        "Layout does not reserve IME inset on iOS (no KeyboardAvoidingView / safeArea padding for keyboard)",
-        "android:windowSoftInputMode vs iOS keyboard avoidance behavior not normalized across Kuikly renderers"
-      ],
-      "suggestedOwner": "ui-mobile-platform",
-      "suggestedFixes": [
-        "Normalize capture state: dismiss IME on both platforms before snapshot, or capture both with and without IME explicitly",
-        "Apply consistent KeyboardAvoidingView / safeArea bottom padding on iOS so dialog content (incl. character counter and action buttons) reflows the same way as Android",
-        "Ensure description textarea character counter '72/3000' renders identically on both platforms (check visibility/clipping when IME is up)",
-        "Fix dialog height/width to be intrinsic-based or max-height constrained so IME inset does not visually compress the form on iOS",
-        "Lock initial focus state (no field focused) in test fixtures used by Slock visual diffs"
-      ],
-      "intentional": [
-        "Platform-native system keyboard appearance on iOS is expected behavior"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.46800374016013824
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003ffc7dfc3df86df83f6c3ffc01ec00cc3ffc3ffc3ffc3ffc3ffc39fc3ffc3ffc3ffc1ffc3ffc31fc3ffc03fc03fc07fc3ffc3ffc3ffc7ffc3ff47f7c3ffc78743ffc000027fc80013ffcdef33ffcffff27fcffff27fcffff3ffcbff82ffc1ff83ffc8ff03ffc0ff03f7c80013800800100008001ffffffff",
+      "generatedAt": "2026-08-09T22:10:03.031Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3582313903403951
     },
     {
       "id": "components.members.create-agent.claude-dialog",
@@ -2019,37 +1978,16 @@
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffe9fffdfff81ff81ffffffffff9fffdfff8000000180000001c7ffc7ffffffffff81f9c1f1fffbfffb8bffcbffc1fbc1f1ffffffff807fc07ffffbfff3ffffffffddffd9fffdffddfdffffffffffffffff80008001800080008000800080018001bffeffff8001800187fd07fdbffeffffa3ffe1fdffff0400ffffffff",
-      "generatedAt": "2026-08-03T22:24:02.204Z",
-      "severity": "low",
-      "summary": [
-        "Back arrow icon container appears slightly larger on iOS (right) than Android (left).",
-        "Vertical spacing inside the green 'Notifications allowed' banner card appears marginally greater on iOS.",
-        "Toggle (switch) track widths and thumb proportions look nearly identical but the iOS toggles sit marginally higher relative to their row text baseline.",
-        "'Send a test notification' arrow icon size/position differs subtly: iOS arrow is slightly smaller and shifted upward vs Android.",
-        "Section divider lines and overall card layouts are isomorphic; no missing elements, clipping, color, or state differences observed."
-      ],
-      "likelyCauses": [
-        "Minor icon asset padding differences between Android and iOS icon glyphs in Kuikly's cross-platform renderer.",
-        "Small differences in default touch-target/padding metrics used by platform-specific list/row implementations."
-      ],
-      "suggestedOwner": "kuikly-cross-platform",
-      "suggestedFixes": [
-        "Normalize the back-arrow icon container size to a shared dp value on both platforms.",
-        "Align row vertical padding and switch top alignment to a shared spacing token.",
-        "Equalize the 'Send a test notification' trailing arrow icon size and baseline offset.",
-        "Confirm the green banner card uses identical internal padding on Android and iOS.",
-        "Re-run Slock comparison after applying token-level fixes to verify pixel-perfect similarity."
-      ],
-      "intentional": [
-        "Color coding (green SYSTEM banner, yellow selected WORKSPACE card, green ON toggle) is consistent across both ends and likely intentional.",
-        "Toggle state indicators (on/off) match between Android and iOS."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.10945234333859921
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffe9fffdfff81ff81ffffffffff9fffdfff8000000180000001c7ffc7ffffffffff81f9c1f1fffbfffb8bffcbffc1fbc1f1ffffffff81fb80fbfff9fff1ffffffffc07fc07bfffbfff1ffffffffd0ffc1ffdfffdfffffffffffffffcfff800000008000800080008001800103fdbffeffff80010001800007fcffffffff",
+      "generatedAt": "2026-08-09T22:10:03.279Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11046772255303061
     },
     {
       "id": "screens.auth.login.signing",
@@ -2121,7 +2059,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:18:34.287Z",
+      "generatedAt": "2026-08-09T22:10:03.200Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2134,7 +2072,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:18:34.287Z",
+      "generatedAt": "2026-08-09T22:10:03.200Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2147,7 +2085,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:18:34.287Z",
+      "generatedAt": "2026-08-09T22:10:03.200Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2160,7 +2098,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:18:34.287Z",
+      "generatedAt": "2026-08-09T22:10:03.200Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2173,7 +2111,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:18:34.287Z",
+      "generatedAt": "2026-08-09T22:10:03.200Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2276,7 +2214,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0911883447428471
+      "metricMismatch": 0.09118699450453005
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2370,7 +2308,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.03661272464590004
+      "metricMismatch": 0.03739316239316237
     },
     {
       "id": "components.thread.message-row.long-inline-code",
@@ -2404,12 +2342,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2813478078880922
+      "metricMismatch": 0.2823287560254385
     },
     {
       "id": "components.thread.message-row.md-link-ref",
       "status": "ready",
-      "imageHash": "p1:03fc03fc7ffe7ffe83e603f680000000e0006000e0026002e0026002e0026002e1fe61fee1fe61fefffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffefffe7ffe00000000fff81fff",
+      "imageHash": "p1:03fc03fc7ffe7ffe83f203f280000000e0026000e0026002e0026002e0026002e1fe61fee1fe61fefffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffefffe7ffe00000000fff81fff",
       "generatedAt": "2026-08-02T22:46:49.213Z",
       "severity": "low",
       "summary": [
@@ -2435,7 +2373,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7229432494835338
+      "metricMismatch": 0.723906306963179
     },
     {
       "id": "components.thread.message-row.md-latest-release",
@@ -2471,12 +2409,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7172128380659186
+      "metricMismatch": 0.7181627307219725
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
       "status": "ready",
-      "imageHash": "p1:01e00ffcfff7fffe83341bfe803401fef0d786fef01780fef81780fef01780fef01780fef03781fef01780fef01780fef01780fef01780fef03781fef0f789fef09781fef3f783fef07780fef01781fef03781fef017c0fef81781fef07780fef01780fef017807ef0778dfef01780fef1d781fef01781fe701381fefffe7fff",
+      "imageHash": "p1:01e00ffcfff7fffe83741bfe803401fef0d786fef01780fef81780fef01780fef01780fef03781fef01780fef01780fef01780fef01780fef03781fef0f789fef09781fef3f783fef07780fef01781fef03781fef017c0fef81781fef07780fef01780fef017807ef0778dfef01780fef1d781fef01781fe701381fefffe7fff",
       "generatedAt": "2026-08-02T22:46:51.663Z",
       "severity": "medium",
       "summary": [
@@ -2505,12 +2443,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.12327270763289722
+      "metricMismatch": 0.12362309447617503
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
       "status": "ready",
-      "imageHash": "p1:00e007fcfff3fffe823411fe821400fef03704fee1d700fee01703fef057807ef00700fee017007ee00780fef01700fee01700fee01700fee01701fee03700fee0173ffee7f7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffe00020000fffc1fff",
+      "imageHash": "p1:00e007fcfff3fffe821410fe821400fef03704fee1d700fee01703fef057807ef00700fee017007ee00780fef01700fee01700fee01700fee01701fee03700fee0173ffee7f7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffe00020000fffc1fff",
       "generatedAt": "2026-08-02T22:46:53.466Z",
       "severity": "high",
       "summary": [
@@ -2539,12 +2477,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.34945112812411394
+      "metricMismatch": 0.34979611401412347
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
       "status": "ready",
-      "imageHash": "p1:01fc01fc7ffe7ffe80060016801e001ee0026002e60266027ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
+      "imageHash": "p1:01fc01fc7ffe7ffe801a0012801e001ee0026002e60266027ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
       "generatedAt": "2026-08-02T22:46:55.601Z",
       "severity": "high",
       "summary": [
@@ -2572,12 +2510,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.8474760670258301
+      "metricMismatch": 0.8484219089669327
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
       "status": "ready",
-      "imageHash": "p1:03fc03fcfffe7ffe8006002680020002e00e600ee0006002e0066000e0066000e00e6006e00e6002e0026002e002680aec6e7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fff83fff",
+      "imageHash": "p1:03fc03fcfffe7ffe8016002680020002e00e600ee0006002e0066000e0066000e00e6006e00e6002e0026002e002680aec6e7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fff83fff",
       "generatedAt": "2026-08-02T22:46:56.039Z",
       "severity": "high",
       "summary": [
@@ -2604,7 +2542,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.64774273909345
+      "metricMismatch": 0.6486511119212541
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
@@ -2641,7 +2579,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3947475729466251
+      "metricMismatch": 0.39508513252589084
     }
   ]
 }

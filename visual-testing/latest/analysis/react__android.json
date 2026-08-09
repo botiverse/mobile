@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-07T22:18:28.124Z",
+  "generatedAt": "2026-08-09T22:09:57.619Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 85,
-    "pending": 1
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -486,7 +486,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04021174110800352
+      "metricMismatch": 0.04018349012628186
     },
     {
       "id": "components.ui.progress-bar.states",
@@ -1061,73 +1061,29 @@
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "ready",
+      "status": "pending",
       "imageHash": "p1:fffeffff03fe03fcffffffffcc01ffff81fcffffb3feffffbe0400018000f7ff80003c0bbffc000187fc000187fc7fff800003ff80fe27fffffc0001bffc01ff97fcfffffffe3fffbffc21ff80003fff80000000bffc0001bffc3ffdbffc3ffd87d80ff987c80f9184180ff180000001ffffffff80008000ffffffffffffffff",
-      "generatedAt": "2026-08-07T00:05:53.344Z",
-      "severity": "high",
-      "summary": [
-        "React highlights the first row in yellow ('artin') with no presence status indicator; Android highlights a different row ('Cindy') with the presence icon visible inline.",
-        "React shows a presence/status dot next to 'Cindy' inside the suggestions list; Android renders a placeholder/avatar glyph in place of the presence indicator.",
-        "React renders the 'Not in this channel' section members with 'x' demotion glyphs (avatar grayed); Android uses avatar placeholders and a different label 'Android Dev…'.",
-        "List row vertical rhythm and row heights differ — Android rows are taller with larger vertical padding between avatar/handle and secondary text.",
-        "Composer toolbar (attach, paperclip, 'As Task' checkbox, pink send button) is vertically offset higher on Android, causing a visible gap to the suggestions card above."
-      ],
-      "likelyCauses": [
-        "Android crop rect offset (x=24) shifts the captured region relative to React's element-bounds crop, producing apparent horizontal misalignment.",
-        "Android implementation is selecting/highlighting the wrong suggestion row (state-driven selection index differs).",
-        "Avatar and presence state components were not ported — Android falls back to a generic placeholder glyph instead of the colored presence dot.",
-        "Inconsistent design-token mapping for typography (label font weight/size) and row padding between web and Android themes."
-      ],
-      "suggestedOwner": "android-eng",
-      "suggestedFixes": [
-        "Re-crop Android using element-bounds (or match React's offset of x=0) so both panels align on the same coordinate origin before diffing.",
-        "Verify the selected-member index passed to the suggestions list on Android matches the React source-of-truth (first user, 'artin').",
-        "Implement the presence dot component on Android and wire it to the same member.status field used in React.",
-        "Map the 'IN THIS CHANNEL' / 'NOT IN THIS CHANNEL' header typography to the shared design tokens (weight 600, size 14) used by React.",
-        "Normalize suggestion row height and vertical padding to the React spec (~56dp) so handle/secondary text align consistently."
-      ],
-      "intentional": [
-        "Differences in default avatar glyphs and member handle strings ('Android Dev…' vs 'Product UX De…') are test-fixture data and not a real product divergence."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.32416341780376867
+      "generatedAt": "2026-08-09T22:09:56.680Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3137183235867447
     },
     {
       "id": "components.thread.composer.channel-suggestions",
-      "status": "ready",
+      "status": "pending",
       "imageHash": "p1:fffeffff03fe03fcffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8000ffff8000ffff80000001800000019ffc000187fc3ffbfffe0fff80fc3fff80fc3fff800001ff80000000bffc0001bffc7ffdfffc7ffd87d80ff987c80f9184180ff180000001ffffffff80008000ffffffffffffffff",
-      "generatedAt": "2026-08-07T00:05:53.792Z",
-      "severity": "medium",
-      "summary": [
-        "Channel suggestions list on Android is horizontally offset to the right (crop x=24) versus the React baseline which starts at x=0",
-        "Android version is missing the bottom drop-shadow/elevation layer beneath both the suggestions popover and the composer footer",
-        "Spacing between the '#' icon column and the channel-name text is slightly wider on Android",
-        "Row vertical padding appears marginally tighter on Android, causing the three suggestion rows to occupy less height",
-        "Outer container/popover border is positioned slightly further right on Android, indicating an unintended horizontal translate rather than a true margin difference"
-      ],
-      "likelyCauses": [
-        "Android render applied a 24dp horizontal offset (likely an unexpected left padding, translation, or anchor alignment on the popup)",
-        "Box-shadow/elevation styling not implemented on Android for this popover surface",
-        "Compose Row arrangement uses different Arrangement.spacedBy or default padding values than the React flex/gap definition",
-        "Component contract was captured with a manual-rect that intentionally shifted the crop, but the underlying render also appears shifted"
-      ],
-      "suggestedOwner": "android-platform",
-      "suggestedFixes": [
-        "Remove the unexpected 24px horizontal offset on the channel-suggestions popup so its left edge aligns with the composer/footer left edge",
-        "Add elevation/shadow to the suggestion popover and composer footer on Android to match the React drop-shadow",
-        "Tighten the gap between the '#' icon and the channel name on Android to match React's spacing",
-        "Verify Row vertical padding so all three suggestion rows match the React row height",
-        "Re-capture the Android baseline with element-bounds crop mode (matching React) to eliminate the manual rect shift"
-      ],
-      "intentional": [
-        "The cropped rect on the Android side uses 'manual-rect' mode at x=24 — confirm with design whether this offset is intentional padding or a rendering bug"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.27270142949967513
+      "generatedAt": "2026-08-09T22:09:56.685Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.26222892300194933
     },
     {
       "id": "components.thread.composer.image-preview",
@@ -1241,7 +1197,7 @@
     {
       "id": "components.thread.message.row",
       "status": "ready",
-      "imageHash": "p1:ffffffff00000000bffcbffc0ffe1ffc1fff1fffffffffffffffffffffffffff1fff1fff010f03c707ff07ff1fff3fff00033fff000300071fff0007ffffeeffc000c07fe000c003fffec003e01fc07fc007e0ffc003efffc007cfffe01fffffffffffff0000000000000000fffffffffffffffffff81fffffffffffffffffff",
+      "imageHash": "p1:ffffffff00000000bffcbffc0ffe1ffc1fff1fffffffffffffffffffffffffff1fff1fff010f03a307ff07ff1fff3fff00033fff000300071fff0007ffffeeffc000c07fe000c003fffec003e01fc07fc007e0ffc003efffc007cfffe01fffffffffffff0000000000000000fffffffffffffffffff81fffffffffffffffffff",
       "generatedAt": "2026-08-02T22:01:52.486Z",
       "severity": "high",
       "summary": [
@@ -1270,7 +1226,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3474285337030435
+      "metricMismatch": 0.34864164521027263
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1310,7 +1266,7 @@
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80007ffe800e07ee800000022000e002803ce7fefc1e403efc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff01defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
+      "imageHash": "p1:01fe01fc80007ffe800e07fe800000022000e002803ce7fefc1e403efc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff01defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
       "generatedAt": "2026-07-26T22:12:50.062Z",
       "severity": "high",
       "summary": [
@@ -1342,12 +1298,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41425784150902634
+      "metricMismatch": 0.4143881395066229
     },
     {
       "id": "components.thread.message-menu.task",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80087ffe800207ee800000022000e0028034e0fefc1e403efc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff03defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
+      "imageHash": "p1:01fe01fc80087ffe800207fe800000022000e0028034e0fefc1e403efc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff03defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
       "generatedAt": "2026-08-07T00:05:55.873Z",
       "severity": "high",
       "summary": [
@@ -1378,12 +1334,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.422930759779101
+      "metricMismatch": 0.42307861087481946
     },
     {
       "id": "components.thread.message-share.selection",
       "status": "ready",
-      "imageHash": "p1:07fc07fcfffe7ffe801e0146c0024002f0fe7006f1fe7ffe83fe03fe80024002f8fe7002fffe4006fffe0001fffe0001fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe00000000fffe1fff",
+      "imageHash": "p1:07fc07fcfffe7ffe801e017ac0024002f0fe7006f1fe7ffe83fe03fe80024002f8fe7002fffe4006fffe0001fffe0001fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe00000000fffe1fff",
       "generatedAt": "2026-08-02T22:01:52.568Z",
       "severity": "high",
       "summary": [
@@ -1412,41 +1368,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7087097122642146
+      "metricMismatch": 0.7089034714627132
     },
     {
       "id": "components.thread.forward-modal",
-      "status": "ready",
-      "imageHash": "p1:bffeffff0000ffff00009fff0000bfff0000fffd2ff8dfff3ffcffff29fc97ff0ffcdfff07fc9fff07fc9fff07fcffff00fc9fff3ffcdfff3ffcffff3ffc9fff3ffcffff3ffc9fff3ffc9fff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff0000ffff3ff0ffff0000ffff0000ffff0000ffff0000ffffffffffff",
-      "generatedAt": "2026-08-07T00:05:57.176Z",
-      "severity": "medium",
-      "summary": [
-        "React shows a bottom-anchored modal sheet with search targets and a forwarded-message preview pane; Android shows a full-screen destination picker with a top app bar and inline destination rows.",
-        "React title 'FORWARD' uses uppercase bold with an 'X' close icon in the top-right; Android uses title-case 'Forward' with a back-arrow icon on the left.",
-        "React contains a 'FORWARDED 2 messages / from #design' preview block with author/timestamp/message body; Android has no message preview.",
-        "React has a 'Select a target, then add an optional [send]' composer field at the bottom; Android has no composer field.",
-        "React list rows are compact text-only rows ('@artin', '@Cindy', '# android-artifacts'); Android rows include leading colored avatars, primary name, secondary subtitle, and a trailing chevron — visually taller and denser."
-      ],
-      "likelyCauses": [
-        "Different information architecture between platforms (two-step compose vs single destination list) treated as intentional product divergence.",
-        "Android renderer reusing a generic full-screen list/scaffold instead of a modal sheet component.",
-        "Missing forwarded-message preview card and composer input on Android implementation."
-      ],
-      "suggestedOwner": "android-feature-owner",
-      "suggestedFixes": [
-        "Confirm whether Android truly should omit the forwarded preview and composer, or whether they were dropped accidentally and should be reintroduced under the destinations list.",
-        "Wrap the destinations list in a true modal sheet with scrim and rounded top edges to match the React modal affordance.",
-        "Align row dimensions (height, avatar, chevron) with the platform's list-item spec; remove chevrons if the row is meant to be selectable inline rather than navigable.",
-        "Standardize title-case vs uppercase and back-vs-close icon usage across platforms unless intentionally divergent.",
-        "Keep the documented intentional flow divergence (single-step vs two-step) and capture it in the design-system diff log."
-      ],
-      "intentional": [
-        "Single combined Forward modal with inline destination list on Android vs React's two-step (search then preview/compose) flow — intentional platform difference, do not align."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.39930023899218214
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffc00e003fe004000fe0000000000000000000000000ffe5ffe000083fe00008efe00008ffe000087fe00009ffe0ffc807ef0021ffefffe01fefffe01fefffe5ffefffe87fefffe024efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
+      "generatedAt": "2026-08-09T22:09:56.806Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11052915839645694
     },
     {
       "id": "components.thread.comment-anchor",
@@ -1581,12 +1516,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26763174950378743
+      "metricMismatch": 0.26766820593834817
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218000012fc7cfe00fc00fe9e813c00879d3c000081fc00068000200fdc009fffffff83ff8001403f8003ffff87ffe3ff87ff43ffdfffffff9fffffffc27fffffffffffffd03fffffc3fffffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218000012fc7cfe00fc00fe9e813c00879d3c000081fc00068000200fdc009fffffff83ff8001403f8003ffff87ffe3ff87ff41ffdfffffff9fffffffc27fffffffffffffd03fffffc3fffffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:10:21.330Z",
       "severity": "high",
       "summary": [
@@ -1614,7 +1549,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26823091775698416
+      "metricMismatch": 0.268270074668179
     },
     {
       "id": "components.home.saved.results",
@@ -1651,7 +1586,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1899756859292796
+      "metricMismatch": 0.19025917541763604
     },
     {
       "id": "components.home.activity.results",
@@ -1685,7 +1620,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18605504202561363
+      "metricMismatch": 0.18612945146618043
     },
     {
       "id": "components.tasks.panel.states",
@@ -1795,36 +1730,16 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000003ffc7ffc7ffc7ffc7ffe7ffc6ffe41fc7dfe7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffe7ffc6ffe7cfc7ffc00007ffe00007ffe00007ffc00007ffe00007ffe00007ffe00007ffe00007ffe00000000000000000000ffffffff",
-      "generatedAt": "2026-08-07T22:16:50.367Z",
-      "severity": "high",
-      "summary": [
-        "Android renders only the top portion of the Create Agent dialog (through DESCRIPTION field); React shows the full form including RUNTIME, MODEL, error message, and More section",
-        "Cancel and Create Agent buttons appear mid-form on Android (clipped), whereas React shows them at the bottom after all fields",
-        "Create Agent button color differs: React shows a pink/disabled state, Android shows a grey/disabled state",
-        "Android form is vertically compressed/zoomed differently—fields appear taller and more widely spaced, suggesting different scroll position or scale",
-        "Agent limit banner and COMPUTER/NAME/DESCRIPTION fields exist on both but with different vertical spacing"
-      ],
-      "likelyCauses": [
-        "Android capture scrolled the dialog to top so lower fields are clipped at viewport",
-        "Different modal sizing/scroll behavior between React and Android implementations",
-        "Possible crop mismatch: baseline crops to modal-viewport while current crops to viewport-bounds, hiding bottom of Android dialog",
-        "Disabled button color theming not aligned across platforms (pink vs grey)"
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Ensure Android capture scrolls dialog to top OR include full modal height so RUNTIME/MODEL/buttons are visible",
-        "Align Cancel/Create Agent disabled state colors with React baseline (pink)",
-        "Match vertical padding and field heights to React spec",
-        "Use modal-viewport crop contract on Android side to match React baseline",
-        "Verify the form's bottom action bar is part of the modal sheet, not a sticky overlay that gets cropped"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.4769855254452411
+      "status": "pending",
+      "imageHash": "p1:ffffffff0000000024047dfc3bfc7df83ff83e4c000c00fc21fc3ffc3ffc3ffc2ffc39fc3dfc1ffc2ffc1ffc3ffc3ffc3ffc3ffc27fc03fc3ffc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc2ffc07fc3ffc3ffc2ffc3ffc3ffc07fc2ff827fc3ffc3ffc3ffc0ffc3ffc3ffc3ff47ffc3f447f7c0000380000000000ffffffff",
+      "generatedAt": "2026-08-09T22:09:57.039Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.24709496226083905
     },
     {
       "id": "components.members.create-agent.claude-dialog",
@@ -1864,7 +1779,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:18:27.406Z",
+      "generatedAt": "2026-08-09T22:09:56.962Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2156,43 +2071,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19934277149916957
+      "metricMismatch": 0.19933838322463915
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffc9fff1fff81ff01ff9cfe1ffe80ff8903807c000080600000806087fbbffcc1ffbffc81f1bffcff19a01c81ff807c81f1807cffff81fc807fe274d1d1fff0cffbbfe080fe800041fdffff7fffffffdfffffff0000ffff0000ffff0000ffff0000ffff23feffff0000ffff0400ffff2ffeffff0000fffe7ffaffffffff",
-      "generatedAt": "2026-08-03T22:23:28.555Z",
-      "severity": "high",
-      "summary": [
-        "Completely different page layouts: React shows a single PUSH NOTIFICATIONS section with web push config, Android shows SYSTEM + ON THIS DEVICE + WORKSPACE sections",
-        "React page is dominated by an UNAVAILABLE state with pink 'Enable Push Notifications' button and 'Mute this server' toggle + Save button; Android has no equivalent controls",
-        "Android shows a green 'Notifications allowed' permission banner with chevron and system-level toggles (Message notifications, Background realtime, Foreground message banners, Send a test notification) absent on React",
-        "Android has a WORKSPACE radio selector (All messages selected in yellow, Only mentions, Nothing) which has no React counterpart",
-        "Section headings differ in case: React uses uppercase 'PUSH NOTIFICATIONS' while Android uses uppercase 'SYSTEM', 'ON THIS DEVICE', 'WORKSPACE'"
-      ],
-      "likelyCauses": [
-        "React and Android were implemented as separate notification settings surfaces instead of sharing a common design contract",
-        "Platform divergence: Android uses OS-level notification permissions and per-device toggles, while React relies on browser web push API",
-        "No cross-platform notification settings spec or shared design tokens were authored before implementation",
-        "Missing parity items: workspace-level notification scope (All/Only mentions/Nothing) not ported to web, and web push status UI not ported to Android"
-      ],
-      "suggestedOwner": "design-system / notifications squad (cross-platform settings)",
-      "suggestedFixes": [
-        "Define a shared notification settings spec reconciling OS-level toggles, web push availability, mute-server, and workspace scope across platforms",
-        "Add 'Workspace scope' (All messages / Only mentions / Nothing) as a radio group on React parity and as a consistent visual block on Android",
-        "Port the 'Mute this server' + 'Save' affordance to Android if server-level muting is supported, or remove from React if Android-only",
-        "Add an explicit 'Notifications unavailable' panel on Android mirroring React's PUSH NOTIFICATIONS UNAVAILABLE state when system permission is not granted",
-        "Unify section heading style (case, weight, spacing) and ensure 'Notifications' header + back button are pixel-aligned across platforms"
-      ],
-      "intentional": [
-        "Different sectioning (SYSTEM / ON THIS DEVICE / WORKSPACE) on Android reflects native notification capabilities not applicable to web",
-        "Green 'Notifications allowed' status banner is Android system-permission specific and has no web equivalent"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2730077233631736
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffc9fff1fff81ff01ff9cfe1ffe80ff8903807c000080600000806087fbbffcc1ffbffc81f1bffcff19a01c81ff807c81f1807cffff81fc80f9e274d3f1fff0fffebfe0803b80017fd1ffff7ffeffff00ffffff5dfdffff7fffffff8fffffff0000ffff0000ffff0000ffff0000ffff3ffeffff0000fffe0000ffffffff",
+      "generatedAt": "2026-08-09T22:09:57.224Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2735343163068281
     },
     {
       "id": "screens.auth.login.signing",
@@ -2266,7 +2158,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80781802ffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e2817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80781802ffffffff",
       "generatedAt": "2026-07-26T05:05:16.996Z",
       "severity": "high",
       "summary": [
@@ -2331,7 +2223,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05981218185009651
+      "metricMismatch": 0.05974973332793243
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2535,7 +2427,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23518012179149617
+      "metricMismatch": 0.23518045935107545
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2573,7 +2465,7 @@
     {
       "id": "screens.home.loading",
       "status": "ready",
-      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfff8ffe9ffefffe9ffec3fe9ffebffe9ffebffedfffbffec3ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffebbfefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
+      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfff8ffe9ffefffe9ffec3fe9ffebffe9ffebffedfffbffec3ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffe93fefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
       "generatedAt": "2026-07-13T22:11:37.533Z",
       "severity": "medium",
       "summary": [
@@ -2601,7 +2493,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.15702292704662368
+      "metricMismatch": 0.1570225894870445
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2635,12 +2527,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23230936431132354
+      "metricMismatch": 0.23230853972683163
     },
     {
       "id": "components.thread.message-row.long-inline-code",
       "status": "ready",
-      "imageHash": "p1:07fe07fc0ffe7ffe001f07fee000801ec201e166c001e007e01ee03fc000e00bc043e403c012e006e203e006e003e01ee07fe042ffffe00fc002e033c002e75fffffe3ffffffe00effffe00effffe00fffffe0ffffffe503ffffe033ffffe003ffffe003ffffe7b3ffffe22effffe01fffffe00fffffe743ffffc000ffff7fff",
+      "imageHash": "p1:07fe07fc0ffe7ffe001f07ffe000801ec201e166c001e007e01ee03fc000e00bc043e403c012e006e203e006e003e01ee07fe042ffffe00fc002e033c002e75fffffe3ffffffe00effffe00effffe00fffffe0ffffffe503ffffe033ffffe003ffffe003ffffe7b3ffffe22effffe01fffffe00fffffe743ffffc000ffff7fff",
       "generatedAt": "2026-08-07T00:06:08.801Z",
       "severity": "high",
       "summary": [
@@ -2668,12 +2560,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3200500263296472
+      "metricMismatch": 0.3202458108856213
     },
     {
       "id": "components.thread.message-row.md-link-ref",
       "status": "ready",
-      "imageHash": "p1:03fc03fc07fe7ffe000207f6c0020000c0026002c0026002c0026002c1fe6002410241febefee1fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
+      "imageHash": "p1:03fc03fc07fe7ffe000207f2c0020000c0026002c0026002c0026002c1fe6002410241febefee1fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
       "generatedAt": "2026-08-07T00:06:12.010Z",
       "severity": "low",
       "summary": [
@@ -2706,7 +2598,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7712952836175585
+      "metricMismatch": 0.7716028003942697
     },
     {
       "id": "components.thread.message-row.md-latest-release",
@@ -2742,12 +2634,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7579738323814154
+      "metricMismatch": 0.7581226961558716
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
       "status": "ready",
-      "imageHash": "p1:207c007c83fe7ffe8002814ef00e8006f0a6f032f800f802f800fc02f800f802f802f806f802f806f80af806f80af806f83ef806fffef802f1fef80efffff83efffff826fffff9fefffff81efffff806fffff806fffff806fffffc02fffff80afffff802fffff806fffff81efffff806fffff8f6fffff802ffff7802ffff3fff",
+      "imageHash": "p1:207c007c83fe7ffe800281cef00e8006f0a6f032f800f802f800fc02f800f802f802f806f802f806f80af806f80af806f83ef806fffef802f1fef80efffff83efffff826fffff9fefffff81efffff806fffff806fffff806fffffc02fffff80afffff802fffff806fffff81efffff806fffff8f6fffff802ffff7802ffff3fff",
       "generatedAt": "2026-08-07T00:06:14.692Z",
       "severity": "high",
       "summary": [
@@ -2778,12 +2670,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.20999412646332083
+      "metricMismatch": 0.21024527079029454
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
       "status": "ready",
-      "imageHash": "p1:207c007c03fe7ffe80068106f04e8106f002f14ef002f0f6f002f006f000f03ef000f002f002f002f006f002f006f006f0007006707ef006fffff002fffff01efffff002fffff3fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe3fff",
+      "imageHash": "p1:207c007c03fe7ffe80068186f04e8106f002f14ef002f0f6f002f006f000f03ef000f002f002f002f006f002f006f006f0007006707ef006fffff002fffff01efffff002fffff3fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe7fff",
       "generatedAt": "2026-08-07T00:06:15.117Z",
       "severity": "high",
       "summary": [
@@ -2812,12 +2704,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.5439932960667557
+      "metricMismatch": 0.5443274800502289
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
       "status": "ready",
-      "imageHash": "p1:01fc01fc039e6ffe003e0006400e001e400660020130e402fffffffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffefffffffeffff0000fff81fff",
+      "imageHash": "p1:01fc01fc039e6ffe003e0012400e001e400660020130e402fffffffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffefffffffeffff0000fff81fff",
       "generatedAt": "2026-08-07T00:06:15.721Z",
       "severity": "high",
       "summary": [
@@ -2844,12 +2736,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.8715440650274774
+      "metricMismatch": 0.8717395120238722
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
       "status": "ready",
-      "imageHash": "p1:03fc03fc07fe7ffe00010006c0010002c000600ec0006000c0046006c00e6006e002600ec002600ee0ce60020030e002ffffec6efffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe1fff",
+      "imageHash": "p1:03fc03fc07fe7ffe00010016c0010002c000600ec0006000c0046006c00e6006e002600ec002600ee0ce60020030e002ffffec6efffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe1fff",
       "generatedAt": "2026-08-07T00:07:32.588Z",
       "severity": "high",
       "summary": [
@@ -2878,12 +2770,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6952333211811885
+      "metricMismatch": 0.6953838727535411
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
       "status": "ready",
-      "imageHash": "p1:003c003c03fe7ffe8000816ef0028006f0007002f00277fef0027006f0007002f0007002f000700273fe7002fffef002fffff006fffff3fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff40fff",
+      "imageHash": "p1:003c003c03fe7ffe800080eef0028006f0007002f00277fef0027006f0007002f0007002f000700273fe7002fffef002fffff006fffff3fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff40fff",
       "generatedAt": "2026-08-07T00:06:19.771Z",
       "severity": "high",
       "summary": [
@@ -2912,7 +2804,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6375840523352372
+      "metricMismatch": 0.6374665816016527
     }
   ]
 }

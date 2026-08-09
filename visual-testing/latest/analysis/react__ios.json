@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-07T22:18:31.122Z",
+  "generatedAt": "2026-08-09T22:10:00.376Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 78,
+    "pending": 8
   },
   "cases": [
     {
@@ -1069,12 +1069,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11041168766287246
+      "metricMismatch": 0.10914212608525409
     },
     {
       "id": "components.thread.composer.channel-suggestions",
       "status": "ready",
-      "imageHash": "p1:03f807fcfffdfffefffdfffefffdfffe0001fffe0001000207f9000200092ffa00010003300900020f910fb200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "imageHash": "p1:03f807fcfffdfffefffdfffefffdfffe0001fffe0001000207f9000200292ffa00010003300900020f910fb200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
       "generatedAt": "2026-08-07T00:06:32.688Z",
       "severity": "medium",
       "summary": [
@@ -1107,7 +1107,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09285588906441988
+      "metricMismatch": 0.09158025141437465
     },
     {
       "id": "components.thread.composer.image-preview",
@@ -1244,7 +1244,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.040523689931272866
+      "metricMismatch": 0.04085517343811185
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1286,7 +1286,7 @@
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80007ffe800e07fe800000022000e002803ce7fefc1e001efc0e001efc00001efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff2bdefffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fffa3fff",
+      "imageHash": "p1:01fe01fc80007ffe800e07ee800000022000e002803ce7fefc1e001efc0e001efc00001efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff2bdefffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fffa3fff",
       "generatedAt": "2026-08-02T22:44:06.053Z",
       "severity": "medium",
       "summary": [
@@ -1316,12 +1316,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0924548682842522
+      "metricMismatch": 0.09264491432737876
     },
     {
       "id": "components.thread.message-menu.task",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80087ffe800207fe800000022000e0028034e0fefc1e001efc0e001efc00001efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff03defffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
+      "imageHash": "p1:01fe01fc80087ffe800207ee800000022000e0028034e0fefc1e001efc0e001efc00001efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff03defffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
       "generatedAt": "2026-08-07T00:06:34.101Z",
       "severity": "high",
       "summary": [
@@ -1351,12 +1351,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10146905928896455
+      "metricMismatch": 0.10168003402600556
     },
     {
       "id": "components.thread.message-share.selection",
       "status": "ready",
-      "imageHash": "p1:07fc07fcfffe7ffe801e01dec0024002f0fe7002f1fe7ffe83fe03fe80024002f8fe7002fffe4006fffe0000fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe0000fffe00000000fffe1fff",
+      "imageHash": "p1:07fc07fcfffe7ffe801e01f2c0024002f0fe7002f1fe7ffe83fe03fe80024002f8fe7002fffe4006fffe0000fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe0000fffe00000000fffe1fff",
       "generatedAt": "2026-08-07T00:42:04.007Z",
       "severity": "high",
       "summary": [
@@ -1386,42 +1386,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1692503476863666
+      "metricMismatch": 0.16948832718974904
     },
     {
       "id": "components.thread.forward-modal",
-      "status": "ready",
-      "imageHash": "p1:bffeffff0000ffff000097ff0000bfff0000fffd2ff8dfff3ffcffff29fc97ff0ffcdfff07fc9fff07fc9fff07fcffff00fc9eff3ffcdfff3ffcffff3ffc9fff3ffcffff3ffc9fff3ffc9fff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff0000ffff3ff0ffff0000ffff0000ffff0000ffff0000ffffffffffff",
-      "generatedAt": "2026-08-07T00:06:37.595Z",
-      "severity": "medium",
-      "summary": [
-        "iOS uses an inline destination list (channels + DMs) with a leading back arrow and '2 messages selected' subtitle, while React shows a two-step flow: a target picker followed by a separate preview/compose screen with a Cancel button and send icon.",
-        "React renders an inline 'FORWARDED 2 messages / from #design' preview block with two message entries (author · timestamp + body); iOS has no preview/compose step and shows no forwarded-message preview in this screen.",
-        "React modal header uses an 'X' close glyph inside a square button at the top-right; iOS uses a left-pointing back-arrow icon button at the top-left.",
-        "React search input has a leading magnifier icon and 'Search targets' placeholder; iOS search field has no icon and reads 'Search' with a thicker black border.",
-        "iOS destination rows use square yellow icon tiles (channel icons, lock, joint glyph) and trailing '>' chevrons; React target rows use square lavender person glyphs with '@' handle text only and no chevron."
-      ],
-      "likelyCauses": [
-        "Platform-specific flow divergence: iOS implements single-step destination selection while React uses two-step search-then-compose.",
-        "Different header/close affordances per platform conventions (X vs back arrow).",
-        "No shared design tokens for input borders, icon backgrounds, or row selection indicators across platforms."
-      ],
-      "suggestedOwner": "design-systems",
-      "suggestedFixes": [
-        "Align modal anatomy across platforms: same header layout pattern (close/back + title + subtitle) and shared spacing tokens.",
-        "Standardize search input border weight and placeholder/icon treatment.",
-        "Use consistent avatar/icon tile shape and selection-state treatment on destination rows.",
-        "Decide on whether to surface a selected target indicator (badge or check) on iOS to match React's selection affordance.",
-        "If the two-step flow is intentional for React only, document the divergence in the component spec so it is not flagged as a regression."
-      ],
-      "intentional": [
-        "Forward flow divergence: iOS single-modal with inline destination list vs React two-step (search targets → separate preview/compose) — intentional platform difference.",
-        "iOS uses a back-arrow close affordance instead of an 'X' close button — intentional platform convention."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.397564845195177
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffc00e003fe004000fe0000000000000000000000000ffe5ffe000083fe000082fe00008ffe000087fe00009ffe0ffc807ef0020ffefffe01fefffe81fefffe7ffefffe87fefffe004efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
+      "generatedAt": "2026-08-09T22:09:59.631Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1114236912815112
     },
     {
       "id": "components.thread.comment-anchor",
@@ -1563,12 +1541,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2684088116552572
+      "metricMismatch": 0.2684307530279094
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218100012fc7cfe00fc00fe9e803400879d3c000081cc00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff43ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218100012fc7cfe00fc00fe9e803400879d3c000081cc00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff41ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-02T22:44:21.326Z",
       "severity": "high",
       "summary": [
@@ -1596,12 +1574,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2689813127016919
+      "metricMismatch": 0.269010680385088
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:1ff83ffc87fc0ffe81fc07fe0000000683f106c680310046800d00fec3fdfffefc31b3ce80310046801d00468ffd1ffefcf1fffe81f1c3ce801103c6801d00c6e3f1003e8031fffe8001f07e80fdf07ebef1fffedc71fffe0001fffedefffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
+      "imageHash": "p1:1ff83ffc87fc0ffe81fc07fe0000000681f106c680310046800d00fec3fdfffefc31b3ce80310046801d00468ffd1ffefcf1fffe81f1c3ce801103c6801d00c6e3f1003e8031fffe8001f07e80fdf07ebef1fffedc71fffe0001fffedefffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
       "generatedAt": "2026-08-02T22:44:22.784Z",
       "severity": "medium",
       "summary": [
@@ -1632,7 +1610,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11115938213094612
+      "metricMismatch": 0.11134672769743859
     },
     {
       "id": "components.home.activity.results",
@@ -1667,7 +1645,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10714174801852527
+      "metricMismatch": 0.10718968147878105
     },
     {
       "id": "components.tasks.panel.states",
@@ -1843,7 +1821,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:18:30.469Z",
+      "generatedAt": "2026-08-09T22:09:59.792Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2127,43 +2105,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19773531278270617
+      "metricMismatch": 0.19773058694859647
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff1fff81ff01fe9cfe1ffe80ff8ff3807c000080600000806087fbbffc81ffbffc81f1bffcff19a01c81ff807c81f1807cffff81fc807be274ffd1fff0cfffbfe080fe800001fdffff7fffffffdfffffff0000ffff0000ffff0000ffff0000ffff3ffeffff0000ffff0000ffff3ffeffff0000fffe0000ffffffff",
-      "generatedAt": "2026-08-03T22:23:48.712Z",
-      "severity": "high",
-      "summary": [
-        "Completely different page structure and content between React (left) and iOS (right) implementations",
-        "React shows a single 'PUSH NOTIFICATIONS' card with DMs/mentions/threads info, 'UNAVAILABLE' badge, 'Enable Push Notifications' button, and 'Mute this server' with Save",
-        "iOS shows 'SYSTEM' permission card with green success indicator, 'ON THIS DEVICE' section with three toggles (Message notifications, Background realtime, Foreground message banners), and 'WORKSPACE' section with radio-button options (All messages, Only mentions, Nothing)",
-        "Different typography: React uses medium-weight heading, iOS uses heavier/bolder heading in 'Notifications allowed' card",
-        "Color differences: React shows pink/red 'UNAVAILABLE' and 'Enable Push Notifications' buttons; iOS shows green success banner and yellow selected radio card"
-      ],
-      "likelyCauses": [
-        "iOS implementation rebuilt the notifications settings page with platform-native UX patterns (system permission card, native toggles, radio-button workspace selector) instead of mirroring the React web design",
-        "Different information architecture: web groups by capability (push availability + mute), iOS groups by scope (system permission + device toggles + workspace selection)",
-        "Platform-specific component choices: iOS uses iOS-style toggles, radios, and system permission banner that have no direct React counterpart",
-        "No shared design spec or cross-platform parity effort for this screen"
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Decide whether parity is required: if yes, align section structure (PUSH NOTIFICATIONS / SYSTEM / ON THIS DEVICE / WORKSPACE) and add missing controls to both platforms",
-        "Add 'Mute this server' with Save button to iOS, and add 'Message notifications', 'Background realtime', 'Foreground message banners' toggles plus workspace radio selector to React",
-        "Match typography weights and sizes for the page title ('Notifications') across both implementations",
-        "Standardize back-arrow icon stroke weight and size",
-        "Unify header/section label styling (uppercase tracking, weight, color)"
-      ],
-      "intentional": [
-        "The 'SYSTEM' permission card with green success state may be intentional iOS UX surfacing OS-level notification authorization",
-        "Native toggle controls and workspace radio selector may reflect deliberate platform-native patterns on iOS"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2725672081122318
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffe9fff1fff81ff01fe9cfe1ffe80ff8ff3807c000080600000806087fbbffc81ffbffc81f1bffcff19a01c81ff807c81f1807cffff81fc80f1e274f3f1fff0fffebfe0803b80007fd1ffff7ffeffff00fdffff5dfdffff7fffffff8fffffff0000ffff0000ffff0000ffff0000ffff23feffff0000fffe0000ffffffff",
+      "generatedAt": "2026-08-09T22:10:00.071Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.27287978828263193
     },
     {
       "id": "screens.auth.login.signing",
@@ -2235,7 +2190,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:18:30.745Z",
+      "generatedAt": "2026-08-09T22:10:00.017Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2248,7 +2203,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:18:30.745Z",
+      "generatedAt": "2026-08-09T22:10:00.017Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2261,7 +2216,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:18:30.745Z",
+      "generatedAt": "2026-08-09T22:10:00.017Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2274,7 +2229,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:18:30.745Z",
+      "generatedAt": "2026-08-09T22:10:00.017Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2287,7 +2242,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-07T22:18:30.745Z",
+      "generatedAt": "2026-08-09T22:10:00.017Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2398,7 +2353,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23615938213094612
+      "metricMismatch": 0.2361597196905254
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2461,7 +2416,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19329100336209337
+      "metricMismatch": 0.19329201604083124
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2495,7 +2450,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09582033728953165
+      "metricMismatch": 0.09603468762236533
     },
     {
       "id": "components.thread.message-row.long-inline-code",
@@ -2528,12 +2483,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3804495618476661
+      "metricMismatch": 0.38067167605082297
     },
     {
       "id": "components.thread.message-row.md-link-ref",
       "status": "ready",
-      "imageHash": "p1:03fc03fc03fe7ffe000000e6c0020000c0006000c00260004002600241fe4002010041febe00e1fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
+      "imageHash": "p1:03fc03fc03fe7ffe000000a2c0020000c0006000c00260004002600241fe4002010041febe00e1fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
       "generatedAt": "2026-08-07T00:06:49.290Z",
       "severity": "low",
       "summary": [
@@ -2562,7 +2517,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.07559444241908697
+      "metricMismatch": 0.07599276272262057
     },
     {
       "id": "components.thread.message-row.md-latest-release",
@@ -2597,7 +2552,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.08384979948960991
+      "metricMismatch": 0.0860996340854161
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
@@ -2634,7 +2589,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.14259326771175107
+      "metricMismatch": 0.1427168145177624
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
@@ -2667,7 +2622,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0903994680061031
+      "metricMismatch": 0.09063981042654023
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
@@ -2701,12 +2656,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.043077665707997426
+      "metricMismatch": 0.043278851217239844
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
       "status": "ready",
-      "imageHash": "p1:03fc03fc07fe7ffe00000006c0000002c000600ec0006000c0046000c00e6000c0026006c0026002e0ce60020000e802fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffa1fff",
+      "imageHash": "p1:03fc03fc07fe7ffe00000002c0000002c000600ec0006000c0046000c00e6000c0026006c0026002e0ce60020000e802fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffa1fff",
       "generatedAt": "2026-08-07T00:06:59.368Z",
       "severity": "high",
       "summary": [
@@ -2735,12 +2690,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.13333974696533935
+      "metricMismatch": 0.1334906360972712
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
       "status": "ready",
-      "imageHash": "p1:00e007fc07f3fffe00040ffee01400fee003007ee0033ffee00300fee00300fee003007ee00300fe66d300fe981700feffff00feffff3ffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff80fff",
+      "imageHash": "p1:00e007fc07f3fffe00040dfee01400fee003007ee0033ffee00300fee00300fee003007ee00300fe66d300fe981700feffff00feffff3ffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
       "generatedAt": "2026-08-07T00:06:59.589Z",
       "severity": "medium",
       "summary": [
@@ -2769,7 +2724,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06675071900190388
+      "metricMismatch": 0.06667578077530689
     }
   ]
 }
