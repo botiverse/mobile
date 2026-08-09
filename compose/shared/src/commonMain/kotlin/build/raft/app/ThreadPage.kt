@@ -7892,6 +7892,85 @@ internal fun SharedThreadRouteContent(
         sendPendingLocalMessage(localMessageId, pendingContext, startedFromComposer = true)
         return true
     }
+    fun handleComposerSendRequest(request: ThreadComposerSendRequest): ThreadComposerSendAdmission {
+        if (externalShareSendRequested) {
+            bridge.log("external_share_send_duplicate_drop reason=upload_chain_active")
+            return ThreadComposerSendAdmission.Deferred
+        }
+        // Reconcile the explicit native tap-time snapshot before any host gate reads the draft.
+        // This closes the window where UIKit already displays a final character while its normal
+        // text-change callback is still queued for Compose.
+        composerDraftViewModel.dispatch(
+            SharedThreadComposerDraftIntent.Change(
+                seedText = request.value.text,
+                seedAsTask = request.asTask,
+            )
+        )
+        val currentDraftState = composerDraftViewModel.state.value
+        bridge.log(
+            "thread_composer_send_snapshot session=${request.editorSessionId} " +
+                "textLen=${request.value.text.length} textBlank=${request.value.text.isBlank()} " +
+                "asTask=${request.asTask}"
+        )
+        val queuedExternalAttachments =
+            currentDraftState.uploadedAttachments.filter { attachment ->
+                attachment.source == "external_share" &&
+                    attachment.status == "queued" &&
+                    attachment.id !in currentDraftState.removedAttachmentIds
+            }
+        val externalShareSources = currentDraftState.externalShareSources
+        if (externalShareSources.isNotEmpty()) {
+            externalShareSendRequested = true
+            coroutineScope.launch {
+                val expected = dataSource.captureExternalShareSendAuthority()
+                val authorityMatches =
+                    expected != null &&
+                        externalShareSources.all { source ->
+                            source.accountId == expected.accountId &&
+                                source.serverId == expected.serverId
+                        }
+                if (!authorityMatches) {
+                    externalShareSendRequested = false
+                    externalShareExpectedAuthority = null
+                    bridge.logWarn("external_share_send_rejected reason=authority_changed")
+                    bridge.toast(genericThreadErrorLabel)
+                    return@launch
+                }
+                externalShareExpectedAuthority = expected
+                if (queuedExternalAttachments.isNotEmpty()) {
+                    val files =
+                        queuedExternalAttachments.mapNotNull { attachment ->
+                            attachmentUploadFilesByLocalId[attachment.id]
+                        }
+                    if (files.size != queuedExternalAttachments.size) {
+                        externalShareSendRequested = false
+                        externalShareExpectedAuthority = null
+                        bridge.logWarn("external_share_send_rejected reason=missing_file_ref")
+                        bridge.toast(attachmentRetryUnavailableLabel)
+                        return@launch
+                    }
+                    uploadComposerAttachmentFiles(files)
+                } else {
+                    val stillCurrent = dataSource.matchesExternalShareSendAuthority(expected)
+                    externalShareSendRequested = false
+                    externalShareExpectedAuthority = null
+                    if (stillCurrent) {
+                        performComposerSend()
+                    } else {
+                        bridge.logWarn(
+                            "external_share_send_rejected reason=auth_generation_changed_before_send"
+                        )
+                    }
+                }
+            }
+            return ThreadComposerSendAdmission.Deferred
+        }
+        return if (performComposerSend()) {
+            ThreadComposerSendAdmission.Started
+        } else {
+            ThreadComposerSendAdmission.Rejected
+        }
+    }
     LaunchedEffect(composerDraftViewModel, threadInstanceKey) {
         composerDraftViewModel.state.collect { draftState ->
             if (!externalShareSendRequested) return@collect
@@ -9333,6 +9412,13 @@ internal fun SharedThreadRouteContent(
                 }
                 }
             }),
+            onComposerSendRequest = sendRequest@ { request ->
+                if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled, "send")) {
+                    bridge.log("thread_composer_action_blocked action=send reason=read_only_access_fallback")
+                    return@sendRequest ThreadComposerSendAdmission.Rejected
+                }
+                handleComposerSendRequest(request)
+            },
             onComposerEvent = { action, value, asTask, attachmentId ->
                 if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled, action)) {
                     bridge.log("thread_composer_action_blocked action=$action reason=read_only_access_fallback")
@@ -9358,6 +9444,13 @@ internal fun SharedThreadRouteContent(
                             "stateTextLen=${currentDraftState.seedText.length} stateTextBlank=${currentDraftState.seedText.isBlank()} " +
                             "stateAsTask=${currentDraftState.seedAsTask} draftKey=${currentDraftState.draftKey.orEmpty()}"
                     )
+                }
+                "sendSnapshotUnavailable" -> {
+                    bridge.logWarn(
+                        "thread_composer_send_snapshot_unavailable " +
+                            "instanceId=$composerInstanceId reason=${value.orEmpty()}"
+                    )
+                    bridge.toast(genericThreadErrorLabel)
                 }
                 "staleEditorCommandIgnored" -> {
                     bridge.log(
@@ -9405,64 +9498,13 @@ internal fun SharedThreadRouteContent(
                     )
                 }
                 "send" -> {
-                    if (externalShareSendRequested) {
-                        bridge.log("external_share_send_duplicate_drop reason=upload_chain_active")
-                        return@ThreadPageContent
-                    }
-                    val queuedExternalAttachments =
-                        currentDraftState.uploadedAttachments.filter { attachment ->
-                            attachment.source == "external_share" &&
-                                attachment.status == "queued" &&
-                                attachment.id !in currentDraftState.removedAttachmentIds
-                        }
-                    val externalShareSources = currentDraftState.externalShareSources
-                    if (externalShareSources.isNotEmpty()) {
-                        externalShareSendRequested = true
-                        coroutineScope.launch {
-                            val expected = dataSource.captureExternalShareSendAuthority()
-                            val authorityMatches =
-                                expected != null &&
-                                    externalShareSources.all { source ->
-                                        source.accountId == expected.accountId &&
-                                            source.serverId == expected.serverId
-                                    }
-                            if (!authorityMatches) {
-                                externalShareSendRequested = false
-                                externalShareExpectedAuthority = null
-                                bridge.logWarn("external_share_send_rejected reason=authority_changed")
-                                bridge.toast(genericThreadErrorLabel)
-                                return@launch
-                            }
-                            externalShareExpectedAuthority = expected
-                            if (queuedExternalAttachments.isNotEmpty()) {
-                                val files =
-                                    queuedExternalAttachments.mapNotNull { attachment ->
-                                        attachmentUploadFilesByLocalId[attachment.id]
-                                    }
-                                if (files.size != queuedExternalAttachments.size) {
-                                    externalShareSendRequested = false
-                                    externalShareExpectedAuthority = null
-                                    bridge.logWarn("external_share_send_rejected reason=missing_file_ref")
-                                    bridge.toast(attachmentRetryUnavailableLabel)
-                                    return@launch
-                                }
-                                uploadComposerAttachmentFiles(files)
-                            } else {
-                                val stillCurrent = dataSource.matchesExternalShareSendAuthority(expected)
-                                externalShareSendRequested = false
-                                externalShareExpectedAuthority = null
-                                if (stillCurrent) {
-                                    performComposerSend()
-                                } else {
-                                    bridge.logWarn(
-                                        "external_share_send_rejected reason=auth_generation_changed_before_send"
-                                    )
-                                }
-                            }
-                        }
-                        return@ThreadPageContent
-                    }
-                    performComposerSend()
+                    handleComposerSendRequest(
+                        ThreadComposerSendRequest(
+                            editorSessionId = 0L,
+                            value = TextFieldValue(value ?: currentDraftState.seedText),
+                            asTask = asTask ?: currentDraftState.seedAsTask,
+                        )
+                    )
                 }
                 "dismissMention" -> {
                     value?.takeIf { it.isNotBlank() }?.let { resolutionId ->
@@ -13190,6 +13232,7 @@ private fun ThreadPageContent(
     onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onClearChannelProfileUpdateStatus: () -> Unit = {},
     onThreadEvent: ThreadEventHandler,
+    onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 ) {
     val inlineReplyParticipantsById =
@@ -14142,6 +14185,7 @@ private fun ThreadPageContent(
                                 channelSuggestionsFlow = channelSuggestionsFlow,
                                 agentStatusResolver = agentStatusResolver,
                                 onEvent = onComposerEvent,
+                                onSendRequest = onComposerSendRequest,
                                 insertMentionRequest = insertMentionRequest,
                                 onInsertMentionConsumed = { request ->
                                     if (insertMentionRequest?.nonce == request.nonce) {
@@ -14653,6 +14697,7 @@ private fun ThreadComposerRoute(
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
     agentStatusResolver: SlockAgentStatusResolver,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
@@ -14688,6 +14733,7 @@ private fun ThreadComposerRoute(
         channelSuggestionsFlow = channelSuggestionsFlow,
         agentStatusResolver = agentStatusResolver,
         onEvent = onEvent,
+        onSendRequest = onSendRequest,
         insertMentionRequest = insertMentionRequest,
         onInsertMentionConsumed = onInsertMentionConsumed,
         onSuggestionDemandChanged = onSuggestionDemandChanged,
@@ -14726,6 +14772,7 @@ private fun ThreadComposerContentWithSuggestions(
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
     agentStatusResolver: SlockAgentStatusResolver,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
@@ -14814,6 +14861,7 @@ private fun ThreadComposerContentWithSuggestions(
         surface = surface,
         state = renderedState,
         onEvent = onEvent,
+        onSendRequest = onSendRequest,
         onKeyboardHeightChange = onKeyboardHeightChange,
         contentPaddingTop = contentPaddingTop,
         contentPaddingBottom = contentPaddingBottom,

@@ -102,6 +102,7 @@ private const val ThreadComposerAttachmentFileTileWidthDp = 128
 private const val ThreadComposerAttachmentRowGapDp = 8
 private const val ThreadComposerMentionActionNoticeDurationMillis = 1800L
 private const val ThreadComposerSuggestionQueryDebounceMillis = 24L
+private const val ThreadComposerNativeSnapshotTimeoutMillis = 1_000L
 private val ThreadComposerAttachmentTileSize = 64.dp
 private val ThreadComposerAttachmentCloseSize = 22.dp
 private val ThreadComposerDisabledSendBackground = Color(0xFFFFD8E5)
@@ -462,6 +463,75 @@ internal class ThreadComposerControlledEditorOwner(
         asTask = if (command.kind == ThreadComposerEditorCommandKind.Clear) false else command.asTask
         handledCommandId = command.id
         return ThreadComposerEditorCommandOutcome.Applied
+    }
+}
+
+internal data class ThreadComposerSendRequest(
+    val editorSessionId: Long,
+    val value: TextFieldValue,
+    val asTask: Boolean,
+)
+
+internal enum class ThreadComposerSendAdmission {
+    Started,
+    Deferred,
+    Rejected,
+}
+
+/**
+ * Owns the one in-flight native snapshot request. A timeout or unavailable editor consumes the
+ * same opaque token as success, so a late callback cannot be mistaken for a later Send attempt.
+ */
+internal class ThreadComposerSendSnapshotGate {
+    var pendingToken: Any? by mutableStateOf(null)
+        private set
+
+    val isPending: Boolean
+        get() = pendingToken != null
+
+    fun begin(): Any {
+        check(!isPending)
+        return Any().also { pendingToken = it }
+    }
+
+    fun finish(token: Any): Boolean {
+        if (pendingToken !== token) return false
+        pendingToken = null
+        return true
+    }
+}
+
+/**
+ * Fences the one native callback that may already be queued for the same editing state captured
+ * at Send. A genuinely newer edit has different text and must keep the existing stale-Clear
+ * protection, so it is accepted and retires this fence immediately.
+ */
+internal class ThreadComposerSubmittedEchoFence {
+    private var submitted: ThreadComposerSendRequest? = null
+
+    fun begin(request: ThreadComposerSendRequest) {
+        submitted = request
+    }
+
+    fun finishAdmission(admission: ThreadComposerSendAdmission) {
+        if (admission != ThreadComposerSendAdmission.Started) submitted = null
+    }
+
+    fun shouldIgnore(
+        sourceSessionId: Long,
+        next: TextFieldValue,
+    ): Boolean {
+        val baseline = submitted ?: return false
+        if (baseline.editorSessionId != sourceSessionId) {
+            submitted = null
+            return false
+        }
+        if (baseline.value.text == next.text) {
+            submitted = null
+            return true
+        }
+        submitted = null
+        return false
     }
 }
 
@@ -1502,6 +1572,7 @@ internal enum class ThreadComposerSuggestionDemand {
 internal fun ThreadComposerContent(
     payload: KuiklyThreadComposerPayload,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onSendRequest: ((ThreadComposerSendRequest) -> ThreadComposerSendAdmission)? = null,
     onKeyboardHeightChange: (Float) -> Unit = {},
     contentPaddingTop: Dp = ThreadComposerStandaloneTopPadding,
     contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding,
@@ -1522,6 +1593,7 @@ internal fun ThreadComposerContent(
             ),
         state = payload.toThreadComposerUiState(),
         onEvent = onEvent,
+        onSendRequest = onSendRequest,
         onKeyboardHeightChange = onKeyboardHeightChange,
         contentPaddingTop = contentPaddingTop,
         contentPaddingBottom = contentPaddingBottom,
@@ -1542,6 +1614,7 @@ internal fun ThreadComposerContent(
     surface: ThreadComposerSurface,
     state: ThreadComposerUiState,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onSendRequest: ((ThreadComposerSendRequest) -> ThreadComposerSendAdmission)? = null,
     onKeyboardHeightChange: (Float) -> Unit = {},
     contentPaddingTop: Dp = ThreadComposerStandaloneTopPadding,
     contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding,
@@ -1575,6 +1648,7 @@ internal fun ThreadComposerContent(
         editorAsTask = editorOwner.asTask,
         onEditorAsTaskChange = editorOwner::acceptAsTask,
         onEvent = onEvent,
+        onSendRequest = onSendRequest,
         onKeyboardHeightChange = onKeyboardHeightChange,
         contentPaddingTop = contentPaddingTop,
         contentPaddingBottom = contentPaddingBottom,
@@ -1602,6 +1676,7 @@ internal fun ThreadComposerContentLeaf(
     editorAsTask: Boolean,
     onEditorAsTaskChange: (Long, Boolean) -> Boolean,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onSendRequest: ((ThreadComposerSendRequest) -> ThreadComposerSendAdmission)? = null,
     onKeyboardHeightChange: (Float) -> Unit = {},
     contentPaddingTop: Dp = ThreadComposerStandaloneTopPadding,
     contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding,
@@ -1623,6 +1698,12 @@ internal fun ThreadComposerContentLeaf(
     val fieldValue = editorValue
     val text = fieldValue.text
     val asTask = editorAsTask
+    val nativeEditingStateReader =
+        remember(state.instanceId, editorSessionId) { SlockTextFieldNativeEditingStateReader() }
+    val sendSnapshotGate =
+        remember(state.instanceId, editorSessionId) { ThreadComposerSendSnapshotGate() }
+    val submittedEchoFence = remember(state.instanceId) { ThreadComposerSubmittedEchoFence() }
+    val currentOnEvent by rememberUpdatedState(onEvent)
     var focused by remember(state.instanceId) { mutableStateOf(state.suggestionsOpen) }
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
     var handledEditorSessionId by remember(state.instanceId) { mutableStateOf(editorSessionId) }
@@ -1642,6 +1723,14 @@ internal fun ThreadComposerContentLeaf(
                 initialSuggestionsEnabled = state.suggestionsEnabled
             )
         }
+    val pendingSendSnapshotToken = sendSnapshotGate.pendingToken
+    LaunchedEffect(state.instanceId, editorSessionId, pendingSendSnapshotToken) {
+        val requestToken = pendingSendSnapshotToken ?: return@LaunchedEffect
+        delay(ThreadComposerNativeSnapshotTimeoutMillis)
+        if (sendSnapshotGate.finish(requestToken)) {
+            currentOnEvent("sendSnapshotUnavailable", "timeout", null, null)
+        }
+    }
     SideEffect {
         suggestionSelectionDispatcher.updateDraft(
             text = fieldValue.text,
@@ -1877,6 +1966,7 @@ internal fun ThreadComposerContentLeaf(
     val composerEnabled = state.enabled && surface.sendChannelId != null
     val canSend =
         composerEnabled &&
+            !sendSnapshotGate.isPending &&
             state.composerMode != "sending" &&
             state.composerMode != "uploading" &&
             state.composerMode != "no_permission" &&
@@ -1970,8 +2060,41 @@ internal fun ThreadComposerContentLeaf(
     }
 
     fun sendComposerMessage() {
-        // The host send handler owns the authoritative typed Clear command.
-        onEvent("send", null, null, null)
+        if (sendSnapshotGate.isPending) return
+        val sourceSessionId = editorSessionId
+        val requestToken = sendSnapshotGate.begin()
+        nativeEditingStateReader.readCurrentValue { readResult ->
+            if (!sendSnapshotGate.finish(requestToken)) return@readCurrentValue
+            if (!isEditorSessionActive(sourceSessionId)) return@readCurrentValue
+            val nativeValue =
+                when (readResult) {
+                    is SlockTextFieldNativeEditingStateReadResult.Available -> readResult.value
+                    SlockTextFieldNativeEditingStateReadResult.Unavailable -> {
+                        onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)
+                        return@readCurrentValue
+                    }
+                }
+            if (!onEditorValueChange(sourceSessionId, nativeValue)) return@readCurrentValue
+            suggestionSelectionDispatcher.updateDraft(
+                text = nativeValue.text,
+                selectionStart = nativeValue.selection.start,
+                selectionEnd = nativeValue.selection.end,
+            )
+            val request =
+                ThreadComposerSendRequest(
+                    editorSessionId = sourceSessionId,
+                    value = nativeValue,
+                    asTask = asTask,
+                )
+            submittedEchoFence.begin(request)
+            val admission =
+                onSendRequest?.invoke(request)
+                    ?: run {
+                        onEvent("send", nativeValue.text, asTask, null)
+                        ThreadComposerSendAdmission.Rejected
+                    }
+            submittedEchoFence.finishAdmission(admission)
+        }
     }
 
     fun handleKeyboardSend() {
@@ -2204,6 +2327,9 @@ internal fun ThreadComposerContentLeaf(
                             placeholder = localizedThreadComposerPlaceholder(state.placeholder),
                             autoFocus = shouldAutoFocus,
                             onValueChange = onValueChange@ { next ->
+                                if (submittedEchoFence.shouldIgnore(sourceSessionId, next)) {
+                                    return@onValueChange
+                                }
                                 if (!onEditorValueChange(sourceSessionId, next)) return@onValueChange
                                 val textChanged = next.text != fieldValue.text
                                 suggestionSelectionDispatcher.updateDraft(
@@ -2264,6 +2390,7 @@ internal fun ThreadComposerContentLeaf(
                             placeholderColor = SlockColor.TextMutedGray,
                             cursorBrush = SolidColor(SlockColor.TextBlack),
                             systemNewlineAction = true,
+                            nativeEditingStateReader = nativeEditingStateReader,
                             // React mobile uses a one-line textarea; keep the toolbar as the touch target.
                             focusRequester = composerFocusRequester,
                             modifier = Modifier

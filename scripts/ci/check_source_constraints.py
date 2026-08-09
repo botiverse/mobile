@@ -24,6 +24,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 THREAD_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt"
 BASIC_WIDGET = "compose/shared/src/commonMain/kotlin/build/raft/app/BasicWidget.kt"
+THREAD_COMPOSER_PAGE = (
+    "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt"
+)
 HOME_COMPONENTS = "compose/shared/src/commonMain/kotlin/build/raft/app/SlockHomeComponents.kt"
 SHARED_TASKS_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/SharedTasksPage.kt"
 SHARED_INBOX_PANEL = "compose/shared/src/commonMain/kotlin/build/raft/app/SharedInboxPanel.kt"
@@ -421,6 +424,60 @@ def check_composer_retirement_uses_bounded_waits(connected_test: str) -> None:
         )
 
 
+def check_composer_native_send_snapshot_wiring(
+    basic_widget: str,
+    composer_page: str,
+) -> None:
+    """Incident: task #127 (Send snapshot was wired to CoreTextField's outer Box).
+
+    Kuikly splits ordinary modifiers onto an outer Box, while getTextInputState belongs to the
+    nested AutoHeightTextAreaView. Pin both that production traversal and the bounded opaque-token
+    timeout; pure snapshot/gate tests alone cannot prove either production callsite is connected.
+    """
+    text_field_start = basic_widget.find("internal fun TextField(")
+    text_field_end = basic_widget.find(
+        "private const val SLOCK_SYSTEM_NEWLINE_ACTION_PROP",
+        text_field_start,
+    )
+    if text_field_start < 0 or text_field_end < 0:
+        raise Violation("task #127 anchor missing: shared TextField region is not auditable")
+    text_field = basic_widget[text_field_start:text_field_end]
+    basic_required = (
+        "is AutoHeightTextAreaView -> this",
+        "is ViewContainer<*, *> ->",
+        "templateChildren().firstNotNullOfOrNull",
+        "val nativeEditorRoot = this",
+        "nativeEditorRoot.findSlockNativeTextEditor()",
+        "nativeEditor.getTextInputState(callback)",
+    )
+    for token in basic_required:
+        if token not in basic_widget and token not in text_field:
+            raise Violation(
+                f"task #127 regression: native Send snapshot lost inner-editor wiring {token!r}"
+            )
+    if "nativeEditorRoot.renderView" in text_field:
+        raise Violation(
+            "task #127 regression: Send snapshot calls CoreTextField's outer Box renderView; "
+            "resolve and call AutoHeightTextAreaView instead"
+        )
+
+    composer_required = (
+        "internal class ThreadComposerSendSnapshotGate",
+        "if (pendingToken !== token) return false",
+        "val pendingSendSnapshotToken = sendSnapshotGate.pendingToken",
+        "delay(ThreadComposerNativeSnapshotTimeoutMillis)",
+        'currentOnEvent("sendSnapshotUnavailable", "timeout", null, null)',
+        "val requestToken = sendSnapshotGate.begin()",
+        "if (!sendSnapshotGate.finish(requestToken)) return@readCurrentValue",
+        'onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)',
+    )
+    for token in composer_required:
+        if token not in composer_page:
+            raise Violation(
+                f"task #127 regression: native Send snapshot lost bounded fail-safe {token!r}"
+            )
+
+
 def check_native_apple_authentication_services(
     host: str,
     shared: str,
@@ -562,6 +619,10 @@ def run(root: Path) -> None:
     check_system_selectable_text_dialog(thread_page)
     check_thread_ime_tail_pixel_probe_scope(thread_page)
     check_composer_retirement_uses_bounded_waits(read(COMPOSER_IME_CONNECTED_TEST))
+    check_composer_native_send_snapshot_wiring(
+        basic_widget=read(BASIC_WIDGET),
+        composer_page=read(THREAD_COMPOSER_PAGE),
+    )
     check_no_layout_direction_flip(
         {
             THREAD_PAGE: thread_page,
@@ -584,6 +645,63 @@ def run(root: Path) -> None:
 
 def self_test() -> None:
     """Every checker must reject its violation shape and accept the good shape."""
+    good_snapshot_basic_widget = """
+internal fun DeclarativeBaseView<*, *>.findSlockNativeTextEditor() = when (this) {
+    is AutoHeightTextAreaView -> this
+    is ViewContainer<*, *> -> templateChildren().firstNotNullOfOrNull { child -> child }
+    else -> null
+}
+internal fun TextField() {
+    Modifier.nativeRef {
+        val nativeEditorRoot = this
+        val nativeEditor = nativeEditorRoot.findSlockNativeTextEditor()
+        nativeEditor.getTextInputState(callback)
+    }
+}
+private const val SLOCK_SYSTEM_NEWLINE_ACTION_PROP = "slockSystemNewlineAction"
+"""
+    good_snapshot_composer_page = """
+internal class ThreadComposerSendSnapshotGate {
+    fun finish(token: Any): Boolean {
+        if (pendingToken !== token) return false
+        return true
+    }
+}
+val pendingSendSnapshotToken = sendSnapshotGate.pendingToken
+delay(ThreadComposerNativeSnapshotTimeoutMillis)
+currentOnEvent("sendSnapshotUnavailable", "timeout", null, null)
+val requestToken = sendSnapshotGate.begin()
+if (!sendSnapshotGate.finish(requestToken)) return@readCurrentValue
+onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)
+"""
+    check_composer_native_send_snapshot_wiring(
+        good_snapshot_basic_widget,
+        good_snapshot_composer_page,
+    )
+    for source_name, token in (
+        ("basic", "is AutoHeightTextAreaView -> this"),
+        ("basic", "nativeEditorRoot.findSlockNativeTextEditor()"),
+        ("basic", "nativeEditor.getTextInputState(callback)"),
+        ("composer", "if (pendingToken !== token) return false"),
+        ("composer", "delay(ThreadComposerNativeSnapshotTimeoutMillis)"),
+        ("composer", 'currentOnEvent("sendSnapshotUnavailable", "timeout", null, null)'),
+        ("composer", "if (!sendSnapshotGate.finish(requestToken)) return@readCurrentValue"),
+    ):
+        bad_basic = good_snapshot_basic_widget
+        bad_composer = good_snapshot_composer_page
+        if source_name == "basic":
+            bad_basic = bad_basic.replace(token, "removed", 1)
+        else:
+            bad_composer = bad_composer.replace(token, "removed", 1)
+        try:
+            check_composer_native_send_snapshot_wiring(bad_basic, bad_composer)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(
+                f"self-test: task #127 native snapshot checker accepted missing {token!r}"
+            )
+
     good_gesture_sources: dict[str, str] = {}
     for path, start_token, end_token, surface in GESTURE_OWNER_REGIONS:
         good_gesture_sources[path] = (
@@ -965,7 +1083,10 @@ def main(argv: list[str]) -> int:
     except Violation as violation:
         print(f"source-constraint violation: {violation}", file=sys.stderr)
         return 1
-    print("source constraints hold (tasks #800/#803/#361/#161/#924/#82/#183/#76/#991 structural faces)")
+    print(
+        "source constraints hold "
+        "(tasks #800/#803/#361/#161/#924/#82/#183/#76/#127/#991 structural faces)"
+    )
     return 0
 
 

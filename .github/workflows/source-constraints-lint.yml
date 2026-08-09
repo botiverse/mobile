@@ -2,7 +2,7 @@ name: Source constraints lint
 
 # Incident-born static constraints as an explicit gate (test-discipline
 # announcement, #all 2026-07-25): tasks #800 / #803 / #361 / #161 / #924 /
-# #82 / #183 structural faces.
+# #82 / #183 / #127 structural faces.
 # Behavior stays proven by behavior tests; this only blocks silent structural
 # regressions a refactor could reintroduce.
 
@@ -10,6 +10,8 @@ on:
   pull_request:
     paths:
       - "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/BasicWidget.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/BridgeAuth.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/AuthDataSource.kt"
