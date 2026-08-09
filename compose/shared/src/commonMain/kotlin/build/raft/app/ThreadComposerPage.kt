@@ -126,9 +126,14 @@ private const val ThreadComposerVisualSuggestionAnchorOffset = 216f
 private const val ThreadComposerVisualSuggestionRepositionOffset = 336f
 private const val ThreadComposerSuggestionScrollOracleFixture = "member_suggestions_scroll_oracle"
 private const val ThreadComposerSuggestionRepositionOracleFixture = "member_suggestions_reposition_oracle"
+private const val ThreadComposerSuggestionInteractionOracleFixture = "suggestion_interaction_hit_test_oracle"
 private const val ThreadComposerSuggestionRepositionDelayMillis = 8_000L
 private val ThreadComposerSuggestionScrollOracleUnderlay = Color(0xFF22D3EE)
 private val ThreadComposerSuggestionScrollOracleLeak = Color(0xFFEF4444)
+private val ThreadComposerSuggestionInteractionOracleSuccess = Color(0xFF22C55E)
+private const val ThreadComposerSuggestionInteractionOracleMarker = "ATTACH_IMAGE_RECEIVED"
+internal val ThreadComposerSuggestionOutsidePointerMode =
+    SlockFloatingOverlayOutsidePointerMode.PassThrough
 private const val ThreadComposerVisualPreviewUri =
     "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20128%20128%22%3E%3Crect%20width%3D%22128%22%20height%3D%22128%22%20fill%3D%22%23FDE047%22%2F%3E%3Ccircle%20cx%3D%2288%22%20cy%3D%2240%22%20r%3D%2220%22%20fill%3D%22%23F472B6%22%2F%3E%3Cpath%20d%3D%22M16%20104L48%2068l22%2024%2018-16%2024%2028H16z%22%20fill%3D%22%23000000%22%2F%3E%3C%2Fsvg%3E"
 private val threadComposerJson = Json { ignoreUnknownKeys = true }
@@ -188,7 +193,11 @@ internal fun ThreadComposerSuggestionPortalHost(
         verticalOffset = popoverGapPx,
         verticalOffsetAbove = popoverGapPx,
         verticalPlacement = SlockFloatingVerticalPlacement.Above,
-        dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis
+        dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis,
+        // Suggestions are part of the active composer, not a modal menu. The shared focus host
+        // already dismisses them when a real outside target takes focus; a full-screen dismiss
+        // barrier would instead consume taps meant for the editor and attachment controls.
+        outsidePointerMode = ThreadComposerSuggestionOutsidePointerMode
     ) {
         Box(
             modifier =
@@ -1053,10 +1062,15 @@ internal fun ThreadComposerScreen() {
     }
     val suggestionPortal = remember(payload.instanceId) { ThreadComposerSuggestionPortalState() }
     var suggestionScrollOracleLeak by remember(payload.instanceId) { mutableStateOf(false) }
+    var suggestionInteractionOracleActionReceived by remember(payload.instanceId) { mutableStateOf(false) }
     var suggestionRepositioned by remember(payload.instanceId) { mutableStateOf(false) }
     val suggestionScrollOracleEnabled =
         visualFixture == ThreadComposerSuggestionScrollOracleFixture ||
             visualFixture == ThreadComposerSuggestionRepositionOracleFixture
+    val suggestionInteractionOracleEnabled =
+        visualFixture == ThreadComposerSuggestionInteractionOracleFixture
+    val suggestionUnderlayOracleEnabled =
+        suggestionScrollOracleEnabled || suggestionInteractionOracleEnabled
     val suggestionRepositionOracleEnabled = visualFixture == ThreadComposerSuggestionRepositionOracleFixture
     LaunchedEffect(payload.instanceId, suggestionRepositionOracleEnabled) {
         suggestionRepositioned = false
@@ -1070,7 +1084,7 @@ internal fun ThreadComposerScreen() {
             modifier = focusDismissModifier.fillMaxSize().background(SlockColor.SurfaceWhite),
             contentAlignment = Alignment.TopCenter
         ) {
-            if (suggestionScrollOracleEnabled) {
+            if (suggestionUnderlayOracleEnabled) {
                 Box(
                     modifier =
                         Modifier
@@ -1094,13 +1108,23 @@ internal fun ThreadComposerScreen() {
                             .fillMaxWidth()
                             .height(96.dp)
                             .background(
-                                if (suggestionScrollOracleLeak) {
-                                    ThreadComposerSuggestionScrollOracleLeak
-                                } else {
-                                    SlockColor.SurfaceWhite
+                                when {
+                                    suggestionScrollOracleLeak -> ThreadComposerSuggestionScrollOracleLeak
+                                    suggestionInteractionOracleActionReceived ->
+                                        ThreadComposerSuggestionInteractionOracleSuccess
+                                    else -> SlockColor.SurfaceWhite
                                 }
-                            )
-                )
+                            ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (suggestionInteractionOracleActionReceived) {
+                        Text(
+                            text = ThreadComposerSuggestionInteractionOracleMarker,
+                            style = SlockType.Caption,
+                            color = SlockColor.TextBlack
+                        )
+                    }
+                }
             }
             CompositionLocalProvider(LocalThreadComposerSuggestionPortal provides suggestionPortal) {
                 Box(
@@ -1130,6 +1154,12 @@ internal fun ThreadComposerScreen() {
                             payload = payload,
                             attachmentPreviewEnabled = false,
                             onEvent = { action, _, _, attachmentId ->
+                                if (
+                                    suggestionInteractionOracleEnabled &&
+                                    action == "attachImage"
+                                ) {
+                                    suggestionInteractionOracleActionReceived = true
+                                }
                                 bridge.log(
                                     "thread_composer_visual_event instanceId=${payload.instanceId} action=$action attachmentId=${attachmentId.orEmpty()}"
                                 )
@@ -1326,6 +1356,8 @@ private fun threadComposerVisualFixture(
                     )
             )
         "member_suggestions" -> base.copy(seedText = "@", suggestionsOpen = true)
+        ThreadComposerSuggestionInteractionOracleFixture ->
+            base.copy(seedText = "#", suggestionsOpen = true)
         ThreadComposerSuggestionScrollOracleFixture,
         ThreadComposerSuggestionRepositionOracleFixture ->
             base.copy(

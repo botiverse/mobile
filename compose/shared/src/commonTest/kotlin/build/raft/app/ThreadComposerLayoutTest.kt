@@ -15,6 +15,12 @@ import kotlin.test.assertTrue
 
 class ThreadComposerLayoutTest {
     @Test
+    fun suggestionPortalLeavesTheComposerAndToolbarHitPathUncovered() {
+        assertFalse(ThreadComposerSuggestionOutsidePointerMode.installsOutsideDismissBarrier)
+        assertTrue(SlockFloatingOverlayOutsidePointerMode.Dismiss.installsOutsideDismissBarrier)
+    }
+
+    @Test
     fun suggestionPortalOnlyClearsItsCurrentOwner() {
         val owner = Any()
         val otherOwner = Any()

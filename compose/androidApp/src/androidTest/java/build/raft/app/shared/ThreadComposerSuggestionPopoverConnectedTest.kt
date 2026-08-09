@@ -27,6 +27,69 @@ import kotlin.math.abs
 
 class ThreadComposerSuggestionPopoverConnectedTest {
     @Test
+    fun openSuggestionsKeepTheEditorAndImageActionInteractive() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val device = UiDevice.getInstance(instrumentation)
+        val context = instrumentation.targetContext
+        val intent =
+            Intent(context, SlockKuiklyActivity::class.java)
+                .putExtra("pageName", SlockKuiklyPages.THREAD_COMPOSER_VISUAL)
+                .putExtra(
+                    "pageData",
+                    JSONObject()
+                        .put("instanceId", "composer-suggestion-interaction-oracle")
+                        .put("visualFixture", InteractionOracleFixture)
+                        .toString()
+                )
+                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+
+        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+            scenario.onActivity { activity ->
+                activity.hideSystemBarsForSuggestionTest()
+                val editor = requireNotNull(activity.window.decorView.findComposerEditText())
+                assertTrue("composer should accept focus", editor.requestFocus())
+                editor.setSelection(editor.text.length)
+            }
+            requireNotNull(device.wait(Until.findObject(By.text(InteractionCandidateLabel)), CandidateWaitMs)) {
+                "Channel suggestion should be visible before interaction checks"
+            }
+
+            val editorBounds = scenario.composerEditTextBounds()
+            tapPx(instrumentation, editorBounds.centerX().toFloat(), editorBounds.centerY().toFloat())
+            waitUntil("tapping the editor while suggestions are open must preserve focus") {
+                scenario.composerHasFocus()
+            }
+            assertTrue(
+                "editor tap should not dismiss the active suggestion panel",
+                device.hasObject(By.text(InteractionCandidateLabel))
+            )
+
+            scenario.onActivity { activity ->
+                val editor = requireNotNull(activity.window.decorView.findComposerEditText())
+                val inputConnection = requireNotNull(editor.onCreateInputConnection(EditorInfo()))
+                assertTrue("focused editor should accept another character", inputConnection.commitText("d", 1))
+            }
+            waitUntil("typing should continue to update the composer under the open suggestions") {
+                scenario.composerText() == "#d"
+            }
+            requireNotNull(device.wait(Until.findObject(By.text(InteractionCandidateLabel)), CandidateWaitMs)) {
+                "Matching channel suggestion should remain available after continued typing"
+            }
+
+            val density = context.resources.displayMetrics.density
+            tapPx(
+                instrumentation = instrumentation,
+                x = editorBounds.left + InteractionImageButtonCenterXDp * density,
+                y = editorBounds.bottom + InteractionToolbarCenterBelowEditorDp * density
+            )
+            assertTrue(
+                "image action did not receive the tap while suggestions were open",
+                device.wait(Until.hasObject(By.text(InteractionActionMarker)), CandidateTapWaitMs)
+            )
+        }
+    }
+
+    @Test
     fun lateTypedMemberAndChannelCandidatesUseCurrentComposerDraft() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val device = UiDevice.getInstance(instrumentation)
@@ -249,8 +312,10 @@ class ThreadComposerSuggestionPopoverConnectedTest {
 
     private fun tapDp(instrumentation: Instrumentation, xDp: Float, yDp: Float) {
         val density = instrumentation.targetContext.resources.displayMetrics.density
-        val x = xDp * density
-        val y = yDp * density
+        tapPx(instrumentation, xDp * density, yDp * density)
+    }
+
+    private fun tapPx(instrumentation: Instrumentation, x: Float, y: Float) {
         val downTime = SystemClock.uptimeMillis()
         instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0))
         instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime + TapDurationMs, MotionEvent.ACTION_UP, x, y, 0))
@@ -369,6 +434,23 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         return value
     }
 
+    private fun ActivityScenario<SlockKuiklyActivity>.composerHasFocus(): Boolean {
+        var focused = false
+        onActivity { activity -> focused = activity.window.decorView.findComposerEditText()?.hasFocus() == true }
+        return focused
+    }
+
+    private fun ActivityScenario<SlockKuiklyActivity>.composerEditTextBounds(): Rect {
+        var bounds: Rect? = null
+        onActivity { activity ->
+            val editor = requireNotNull(activity.window.decorView.findComposerEditText())
+            val location = IntArray(2)
+            editor.getLocationOnScreen(location)
+            bounds = Rect(location[0], location[1], location[0] + editor.width, location[1] + editor.height)
+        }
+        return requireNotNull(bounds)
+    }
+
     private fun View.findComposerEditText(): EditText? {
         if (this is EditText) return this
         if (this is ViewGroup) {
@@ -446,5 +528,10 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         private const val RepositionOracleFixture = "member_suggestions_reposition_oracle"
         private const val CandidateLabel = "Scrollable candidate 1"
         private const val RepositionShiftDp = 120f
+        private const val InteractionOracleFixture = "suggestion_interaction_hit_test_oracle"
+        private const val InteractionCandidateLabel = "design"
+        private const val InteractionActionMarker = "ATTACH_IMAGE_RECEIVED"
+        private const val InteractionImageButtonCenterXDp = 13f
+        private const val InteractionToolbarCenterBelowEditorDp = 21f
     }
 }
