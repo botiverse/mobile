@@ -99,12 +99,15 @@ import com.tencent.kuikly.compose.ui.unit.max
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.ui.window.Dialog
 import com.tencent.kuikly.compose.ui.window.DialogProperties
-import com.tencent.kuikly.core.views.TextInputState
 import com.tencent.kuikly.core.base.BorderStyle
+import com.tencent.kuikly.core.base.DeclarativeBaseView
+import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.base.event.EventHandlerFn
 import com.tencent.kuikly.core.module.RouterModule
+import com.tencent.kuikly.core.views.AutoHeightTextAreaView
 import com.tencent.kuikly.core.views.KeyboardParams
 import com.tencent.kuikly.core.views.ModalView
+import com.tencent.kuikly.core.views.TextInputState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -1316,8 +1319,6 @@ internal fun slockTextFieldResolvedTextStyle(textStyle: TextStyle): TextStyle =
 
 internal fun slockTextFieldSingleLine(maxLines: Int): Boolean = maxLines == 1
 
-private const val SLOCK_GET_TEXT_INPUT_STATE_METHOD = "getTextInputState"
-
 internal fun TextInputState.toSlockTextFieldValue(): TextFieldValue {
     val boundedSelectionStart = selectionStart.coerceIn(0, text.length)
     val boundedSelectionEnd = selectionEnd.coerceIn(0, text.length)
@@ -1340,6 +1341,22 @@ internal fun TextInputState.toSlockTextFieldValue(): TextFieldValue {
     )
 }
 
+internal sealed class SlockTextFieldNativeEditingStateReadResult {
+    data class Available(val value: TextFieldValue) : SlockTextFieldNativeEditingStateReadResult()
+
+    data object Unavailable : SlockTextFieldNativeEditingStateReadResult()
+}
+
+private fun DeclarativeBaseView<*, *>.findSlockNativeTextEditor(): AutoHeightTextAreaView? =
+    when (this) {
+        is AutoHeightTextAreaView -> this
+        is ViewContainer<*, *> ->
+            templateChildren().firstNotNullOfOrNull { child ->
+                child.findSlockNativeTextEditor()
+            }
+        else -> null
+    }
+
 /**
  * Reads the native editor's current text/selection/composition state at an action boundary.
  *
@@ -1348,9 +1365,9 @@ internal fun TextInputState.toSlockTextFieldValue(): TextFieldValue {
  * assuming the last rendered [TextFieldValue] is the value currently on screen.
  */
 internal class SlockTextFieldNativeEditingStateReader {
-    private data class Binding(
+    private class Binding(
         val owner: Any,
-        val read: ((TextInputState?) -> Unit) -> Unit,
+        var read: ((TextInputState?) -> Unit) -> Unit,
     )
 
     private var binding: Binding? = null
@@ -1359,7 +1376,14 @@ internal class SlockTextFieldNativeEditingStateReader {
         owner: Any,
         read: ((TextInputState?) -> Unit) -> Unit,
     ) {
-        binding = Binding(owner = owner, read = read)
+        val activeBinding = binding
+        if (activeBinding?.owner === owner) {
+            // Modifier.nativeRef may refresh its callback during recomposition. Preserve the
+            // binding identity so an in-flight native read is not invalidated by that refresh.
+            activeBinding.read = read
+        } else {
+            binding = Binding(owner = owner, read = read)
+        }
     }
 
     internal fun unbind(owner: Any) {
@@ -1367,20 +1391,21 @@ internal class SlockTextFieldNativeEditingStateReader {
     }
 
     fun readCurrentValue(
-        fallback: TextFieldValue,
-        onResult: (TextFieldValue) -> Unit,
+        onResult: (SlockTextFieldNativeEditingStateReadResult) -> Unit,
     ) {
         val activeBinding = binding
         if (activeBinding == null) {
-            onResult(fallback)
+            onResult(SlockTextFieldNativeEditingStateReadResult.Unavailable)
             return
         }
         activeBinding.read { nativeState ->
             onResult(
-                if (binding === activeBinding) {
-                    nativeState?.toSlockTextFieldValue() ?: fallback
+                if (binding === activeBinding && nativeState != null) {
+                    SlockTextFieldNativeEditingStateReadResult.Available(
+                        nativeState.toSlockTextFieldValue()
+                    )
                 } else {
-                    fallback
+                    SlockTextFieldNativeEditingStateReadResult.Unavailable
                 }
             )
         }
@@ -1590,20 +1615,16 @@ internal fun TextField(
         .then(
             if (nativeEditingStateReader != null) {
                 Modifier.nativeRef {
-                    val nativeEditor = this
+                    val nativeEditorRoot = this
                     nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
-                        nativeEditor.performTaskWhenRenderViewDidLoad {
-                            val renderView = nativeEditor.renderView
-                            if (renderView == null) {
-                                callback(null)
-                            } else {
-                                renderView.callMethod(
-                                    methodName = SLOCK_GET_TEXT_INPUT_STATE_METHOD,
-                                    callback = { payload ->
-                                        callback(payload?.let { TextInputState.decode(it) })
-                                    },
-                                )
-                            }
+                        // CoreTextField splits non-prop/event modifiers onto its outer Box. Resolve
+                        // the actual AutoHeightTextAreaView at read time; calling the Box silently
+                        // drops getTextInputState because that native view has no such method.
+                        val nativeEditor = nativeEditorRoot.findSlockNativeTextEditor()
+                        if (nativeEditor == null) {
+                            callback(null)
+                        } else {
+                            nativeEditor.getTextInputState(callback)
                         }
                     }
                 }

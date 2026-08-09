@@ -9445,6 +9445,13 @@ internal fun SharedThreadRouteContent(
                             "stateAsTask=${currentDraftState.seedAsTask} draftKey=${currentDraftState.draftKey.orEmpty()}"
                     )
                 }
+                "sendSnapshotUnavailable" -> {
+                    bridge.logWarn(
+                        "thread_composer_send_snapshot_unavailable " +
+                            "instanceId=$composerInstanceId reason=${value.orEmpty()}"
+                    )
+                    bridge.toast(genericThreadErrorLabel)
+                }
                 "staleEditorCommandIgnored" -> {
                     bridge.log(
                         "thread_composer_editor_command_ignored instanceId=$composerInstanceId " +

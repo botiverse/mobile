@@ -299,11 +299,10 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
-    fun nativeEditingStateReaderReturnsExactBoundedEditingStateAndFallsBackAfterUnbind() {
+    fun nativeEditingStateReaderReturnsExactBoundedEditingStateAndFailsClosedAfterUnbind() {
         val reader = SlockTextFieldNativeEditingStateReader()
         val bindingOwner = Any()
-        val fallback = TextFieldValue("pleas", selection = TextRange(5))
-        var result: TextFieldValue? = null
+        var result: SlockTextFieldNativeEditingStateReadResult? = null
         reader.bind(bindingOwner) { callback ->
             callback(
                 TextInputState(
@@ -316,16 +315,56 @@ class ThreadComposerPayloadTest {
             )
         }
 
-        reader.readCurrentValue(fallback) { result = it }
+        reader.readCurrentValue { result = it }
 
-        assertEquals("please", result?.text)
-        assertEquals(TextRange(6), result?.selection)
-        assertEquals(TextRange(2, 6), result?.composition)
+        val available = result as SlockTextFieldNativeEditingStateReadResult.Available
+        assertEquals("please", available.value.text)
+        assertEquals(TextRange(6), available.value.selection)
+        assertEquals(TextRange(2, 6), available.value.composition)
 
         reader.unbind(bindingOwner)
         result = null
-        reader.readCurrentValue(fallback) { result = it }
-        assertSame(fallback, result)
+        reader.readCurrentValue { result = it }
+        assertSame(SlockTextFieldNativeEditingStateReadResult.Unavailable, result)
+    }
+
+    @Test
+    fun nativeEditingStateReaderKeepsInFlightReadAcrossSameOwnerRefRefresh() {
+        val reader = SlockTextFieldNativeEditingStateReader()
+        val bindingOwner = Any()
+        var pendingNativeCallback: ((TextInputState?) -> Unit)? = null
+        var result: SlockTextFieldNativeEditingStateReadResult? = null
+        reader.bind(bindingOwner) { callback -> pendingNativeCallback = callback }
+        reader.readCurrentValue { result = it }
+
+        reader.bind(bindingOwner) { callback -> callback(null) }
+        pendingNativeCallback?.invoke(
+            TextInputState(
+                text = "please",
+                selectionStart = 6,
+                selectionEnd = 6,
+                compositionStart = TextInputState.NO_COMPOSITION,
+                compositionEnd = TextInputState.NO_COMPOSITION,
+            )
+        )
+
+        val available = result as SlockTextFieldNativeEditingStateReadResult.Available
+        assertEquals("please", available.value.text)
+    }
+
+    @Test
+    fun sendSnapshotGateUnlocksOnTimeoutAndRejectsItsLateCallbackDuringRetry() {
+        val gate = ThreadComposerSendSnapshotGate()
+        val timedOut = gate.begin()
+        assertTrue(gate.isPending)
+        assertTrue(gate.finish(timedOut))
+        assertFalse(gate.isPending)
+
+        val retry = gate.begin()
+        assertFalse(gate.finish(timedOut))
+        assertSame(retry, gate.pendingToken)
+        assertTrue(gate.finish(retry))
+        assertFalse(gate.isPending)
     }
 
     @Test
