@@ -15,13 +15,21 @@ import kotlin.test.assertTrue
 
 class ThreadComposerLayoutTest {
     @Test
-    fun suggestionPortalOnlyClearsItsCurrentOwner() {
-        val owner = Any()
-        val otherOwner = Any()
+    fun suggestionPortalLeavesTheComposerAndToolbarHitPathUncovered() {
+        assertFalse(ThreadComposerSuggestionOutsidePointerMode.installsOutsideDismissBarrier)
+        assertTrue(SlockFloatingOverlayOutsidePointerMode.Dismiss.installsOutsideDismissBarrier)
+    }
+
+    @Test
+    fun suggestionFocusLossFencesStalePortalShowUntilEditingResumes() {
+        val owner = ThreadComposerSuggestionPortalOwner()
+        val otherOwner = ThreadComposerSuggestionPortalOwner()
         val anchorRef = SlockLiveRootAnchorRef(owner)
-        val presentation =
+        val generationOne = 0L
+        val presentationOne =
             ThreadComposerSuggestionPresentation(
                 owner = owner,
+                generation = generationOne,
                 anchorResolver = anchorRef.resolver(SlockPopoverLocalPoint.Exact(Offset.Zero)),
                 selectionContext =
                     requireNotNull(
@@ -48,12 +56,78 @@ class ThreadComposerLayoutTest {
             )
         val portal = ThreadComposerSuggestionPortalState()
 
-        portal.show(presentation)
-        portal.clear(otherOwner)
-        assertSame(presentation, portal.presentation)
+        portal.show(presentationOne)
+        portal.clear(otherOwner, generationOne)
+        assertSame(presentationOne, portal.presentation)
 
-        portal.clear(owner)
+        var focused = true
+        dismissThreadComposerSuggestionsForFocusLoss(
+            portalState = portal,
+            owner = owner,
+            generation = generationOne,
+            onFocusedChanged = { focused = it }
+        )
+
+        assertFalse(focused)
         assertNull(portal.presentation)
+
+        // A final native value callback and an already-composed SideEffect may both arrive after
+        // blur. Neither may reactivate or republish the retired generation.
+        continueThreadComposerSuggestionsForEditing(
+            portalState = portal,
+            owner = owner,
+            generation = generationOne,
+            onFocusedChanged = { focused = it }
+        )
+        portal.show(presentationOne)
+        assertFalse(focused)
+        assertNull(portal.presentation)
+
+        val generationTwo =
+            resumeThreadComposerSuggestionsForEditing(
+                portalState = portal,
+                owner = owner,
+                generation = generationOne,
+                onFocusedChanged = { focused = it }
+            )
+        val presentationTwo = presentationOne.copy(generation = generationTwo)
+
+        // Even after refocus, a delayed publication or clear from the retired composition cannot
+        // replace or remove the newly activated generation.
+        portal.show(presentationOne)
+        assertNull(portal.presentation)
+        portal.show(presentationTwo)
+        portal.clear(owner, generationOne)
+        portal.suspendForFocusLoss(otherOwner, generationOne)
+
+        assertTrue(focused)
+        assertSame(presentationTwo, portal.presentation)
+
+        // Committing a raw token hides the current panel without blurring the native editor.
+        // Its next real value change may continue editing, but the old generation stays retired.
+        val generationThree =
+            hideThreadComposerSuggestionsForEditingContinuation(
+                portalState = portal,
+                owner = owner,
+                generation = generationTwo,
+                onFocusedChanged = { focused = it }
+            )
+        portal.show(presentationTwo)
+
+        assertFalse(focused)
+        assertNull(portal.presentation)
+
+        continueThreadComposerSuggestionsForEditing(
+            portalState = portal,
+            owner = owner,
+            generation = generationThree,
+            onFocusedChanged = { focused = it }
+        )
+        val presentationThree = presentationOne.copy(generation = generationThree)
+        portal.show(presentationThree)
+
+        assertTrue(focused)
+        assertSame(presentationThree, portal.presentation)
     }
 
     @Test

@@ -38,6 +38,17 @@ internal enum class SlockFloatingVerticalPlacement {
     Auto
 }
 
+internal enum class SlockFloatingOverlayOutsidePointerMode {
+    /** Consume an outside gesture and dismiss without activating the covered control. */
+    Dismiss,
+
+    /** Leave outside coordinates unhittable in this overlay so lower siblings receive them. */
+    PassThrough
+}
+
+internal val SlockFloatingOverlayOutsidePointerMode.installsOutsideDismissBarrier: Boolean
+    get() = this == SlockFloatingOverlayOutsidePointerMode.Dismiss
+
 @Composable
 internal fun SlockModalAnchoredPopover(
     anchor: SlockPopoverAnchor,
@@ -87,6 +98,8 @@ internal fun SlockAnchoredPopover(
     // long-press menus don't run off the screen's right edge.
     horizontalAutoFlip: Boolean = false,
     dismissActivationDelayMillis: Long = SlockFloatingOverlayDismissActivationDelayMillis,
+    outsidePointerMode: SlockFloatingOverlayOutsidePointerMode =
+        SlockFloatingOverlayOutsidePointerMode.Dismiss,
     content: @Composable () -> Unit
 ) {
     anchor.renderInOverlay(
@@ -100,6 +113,7 @@ internal fun SlockAnchoredPopover(
         verticalPlacement = verticalPlacement,
         horizontalAutoFlip = horizontalAutoFlip,
         dismissActivationDelayMillis = dismissActivationDelayMillis,
+        outsidePointerMode = outsidePointerMode,
         content = content
     )
 }
@@ -115,6 +129,11 @@ internal fun SlockFloatingOverlayHost(
     // land on the trigger pre-mount (toggling) or inside the window (eaten), which
     // reads as "the popover won't close".
     dismissActivationDelayMillis: Long = SlockFloatingOverlayDismissActivationDelayMillis,
+    // Suggestion/autocomplete surfaces remain part of the focused editor experience. They use a
+    // pass-through host so the editor toolbar stays interactive, while modal menus keep the
+    // default full-screen dismiss barrier.
+    outsidePointerMode: SlockFloatingOverlayOutsidePointerMode =
+        SlockFloatingOverlayOutsidePointerMode.Dismiss,
     content: @Composable (SlockFloatingOverlayLayout) -> Unit
 ) {
     // #223 fix: keep `origin` and `size` in PIXELS (the same unit as the
@@ -160,10 +179,12 @@ internal fun SlockFloatingOverlayHost(
             },
         contentAlignment = Alignment.TopStart
     ) {
-        SlockFloatingOverlayDismissBarrier(
-            dismissClickableActive = dismissClickableActive,
-            onDismiss = onDismiss
-        )
+        if (outsidePointerMode.installsOutsideDismissBarrier) {
+            SlockFloatingOverlayDismissBarrier(
+                dismissClickableActive = dismissClickableActive,
+                onDismiss = onDismiss
+            )
+        }
         content(overlayLayout)
     }
 }

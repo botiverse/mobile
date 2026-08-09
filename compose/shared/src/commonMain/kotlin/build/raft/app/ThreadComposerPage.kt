@@ -126,28 +126,145 @@ private const val ThreadComposerVisualSuggestionAnchorOffset = 216f
 private const val ThreadComposerVisualSuggestionRepositionOffset = 336f
 private const val ThreadComposerSuggestionScrollOracleFixture = "member_suggestions_scroll_oracle"
 private const val ThreadComposerSuggestionRepositionOracleFixture = "member_suggestions_reposition_oracle"
+private const val ThreadComposerSuggestionInteractionOracleFixture = "suggestion_interaction_hit_test_oracle"
 private const val ThreadComposerSuggestionRepositionDelayMillis = 8_000L
 private val ThreadComposerSuggestionScrollOracleUnderlay = Color(0xFF22D3EE)
 private val ThreadComposerSuggestionScrollOracleLeak = Color(0xFFEF4444)
+private val ThreadComposerSuggestionInteractionOracleSuccess = Color(0xFF22C55E)
+private const val ThreadComposerSuggestionInteractionOracleMarker = "ATTACH_IMAGE_RECEIVED"
+internal val ThreadComposerSuggestionOutsidePointerMode =
+    SlockFloatingOverlayOutsidePointerMode.PassThrough
 private const val ThreadComposerVisualPreviewUri =
     "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20128%20128%22%3E%3Crect%20width%3D%22128%22%20height%3D%22128%22%20fill%3D%22%23FDE047%22%2F%3E%3Ccircle%20cx%3D%2288%22%20cy%3D%2240%22%20r%3D%2220%22%20fill%3D%22%23F472B6%22%2F%3E%3Cpath%20d%3D%22M16%20104L48%2068l22%2024%2018-16%2024%2028H16z%22%20fill%3D%22%23000000%22%2F%3E%3C%2Fsvg%3E"
 private val threadComposerJson = Json { ignoreUnknownKeys = true }
+
+internal class ThreadComposerSuggestionPortalOwner {
+    private var generation: Long = 0L
+    private var active: Boolean = true
+
+    fun suspendForFocusLoss(expectedGeneration: Long): Boolean {
+        if (generation != expectedGeneration) return false
+        active = false
+        return true
+    }
+
+    fun resumeForEditing(expectedGeneration: Long): Long {
+        generation = maxOf(generation, expectedGeneration) + 1L
+        active = true
+        return generation
+    }
+
+    fun accepts(expectedGeneration: Long): Boolean =
+        active && generation == expectedGeneration
+
+    fun release() {
+        generation += 1L
+        active = false
+    }
+}
 
 internal class ThreadComposerSuggestionPortalState {
     var presentation by mutableStateOf<ThreadComposerSuggestionPresentation?>(null)
         private set
 
     fun show(next: ThreadComposerSuggestionPresentation) {
+        if (!next.owner.accepts(next.generation)) return
         if (presentation != next) presentation = next
     }
 
-    fun clear(owner: Any) {
+    fun clear(owner: ThreadComposerSuggestionPortalOwner, generation: Long) {
+        if (!owner.accepts(generation)) return
+        clearPresentation(owner)
+    }
+
+    fun suspendForFocusLoss(owner: ThreadComposerSuggestionPortalOwner, generation: Long) {
+        if (!owner.suspendForFocusLoss(generation)) return
+        clearPresentation(owner)
+    }
+
+    fun resumeForEditing(owner: ThreadComposerSuggestionPortalOwner, generation: Long): Long =
+        owner.resumeForEditing(generation)
+
+    fun retireForEditingContinuation(owner: ThreadComposerSuggestionPortalOwner, generation: Long): Long {
+        val nextGeneration = resumeForEditing(owner, generation)
+        clearPresentation(owner)
+        return nextGeneration
+    }
+
+    fun acceptsEditingContinuation(owner: ThreadComposerSuggestionPortalOwner, generation: Long): Boolean =
+        owner.accepts(generation)
+
+    fun release(owner: ThreadComposerSuggestionPortalOwner) {
+        owner.release()
+        clearPresentation(owner)
+    }
+
+    private fun clearPresentation(owner: ThreadComposerSuggestionPortalOwner) {
         if (presentation?.owner === owner) presentation = null
     }
 }
 
+/**
+ * Retires both suggestion visibility owners in the same focus-loss callback.
+ *
+ * iOS can publish the native editor blur before the child composition that owns `focused`
+ * reaches its next SideEffect. Suspending this exact owner generation clears the lifted portal
+ * and rejects delayed publication from the retired composition.
+ */
+internal fun dismissThreadComposerSuggestionsForFocusLoss(
+    portalState: ThreadComposerSuggestionPortalState?,
+    owner: ThreadComposerSuggestionPortalOwner,
+    generation: Long,
+    onFocusedChanged: (Boolean) -> Unit
+) {
+    if (portalState == null) {
+        owner.suspendForFocusLoss(generation)
+    } else {
+        portalState.suspendForFocusLoss(owner, generation)
+    }
+    onFocusedChanged(false)
+}
+
+internal fun resumeThreadComposerSuggestionsForEditing(
+    portalState: ThreadComposerSuggestionPortalState?,
+    owner: ThreadComposerSuggestionPortalOwner,
+    generation: Long,
+    onFocusedChanged: (Boolean) -> Unit
+): Long {
+    val nextGeneration =
+        portalState?.resumeForEditing(owner, generation) ?: owner.resumeForEditing(generation)
+    onFocusedChanged(true)
+    return nextGeneration
+}
+
+internal fun continueThreadComposerSuggestionsForEditing(
+    portalState: ThreadComposerSuggestionPortalState?,
+    owner: ThreadComposerSuggestionPortalOwner,
+    generation: Long,
+    onFocusedChanged: (Boolean) -> Unit
+) {
+    val accepted =
+        portalState?.acceptsEditingContinuation(owner, generation) ?: owner.accepts(generation)
+    if (accepted) {
+        onFocusedChanged(true)
+    }
+}
+
+internal fun hideThreadComposerSuggestionsForEditingContinuation(
+    portalState: ThreadComposerSuggestionPortalState?,
+    owner: ThreadComposerSuggestionPortalOwner,
+    generation: Long,
+    onFocusedChanged: (Boolean) -> Unit
+): Long {
+    val nextGeneration =
+        portalState?.retireForEditingContinuation(owner, generation) ?: owner.resumeForEditing(generation)
+    onFocusedChanged(false)
+    return nextGeneration
+}
+
 internal data class ThreadComposerSuggestionPresentation(
-    val owner: Any,
+    val owner: ThreadComposerSuggestionPortalOwner,
+    val generation: Long,
     val anchorResolver: SlockPopoverAnchorResolver,
     val selectionContext: ThreadComposerSuggestionSelectionContext,
     val contentSize: Size,
@@ -188,7 +305,11 @@ internal fun ThreadComposerSuggestionPortalHost(
         verticalOffset = popoverGapPx,
         verticalOffsetAbove = popoverGapPx,
         verticalPlacement = SlockFloatingVerticalPlacement.Above,
-        dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis
+        dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis,
+        // Suggestions are part of the active composer, not a modal menu. The shared focus host
+        // already dismisses them when a real outside target takes focus; a full-screen dismiss
+        // barrier would instead consume taps meant for the editor and attachment controls.
+        outsidePointerMode = ThreadComposerSuggestionOutsidePointerMode
     ) {
         Box(
             modifier =
@@ -1053,10 +1174,15 @@ internal fun ThreadComposerScreen() {
     }
     val suggestionPortal = remember(payload.instanceId) { ThreadComposerSuggestionPortalState() }
     var suggestionScrollOracleLeak by remember(payload.instanceId) { mutableStateOf(false) }
+    var suggestionInteractionOracleActionReceived by remember(payload.instanceId) { mutableStateOf(false) }
     var suggestionRepositioned by remember(payload.instanceId) { mutableStateOf(false) }
     val suggestionScrollOracleEnabled =
         visualFixture == ThreadComposerSuggestionScrollOracleFixture ||
             visualFixture == ThreadComposerSuggestionRepositionOracleFixture
+    val suggestionInteractionOracleEnabled =
+        visualFixture == ThreadComposerSuggestionInteractionOracleFixture
+    val suggestionUnderlayOracleEnabled =
+        suggestionScrollOracleEnabled || suggestionInteractionOracleEnabled
     val suggestionRepositionOracleEnabled = visualFixture == ThreadComposerSuggestionRepositionOracleFixture
     LaunchedEffect(payload.instanceId, suggestionRepositionOracleEnabled) {
         suggestionRepositioned = false
@@ -1070,7 +1196,7 @@ internal fun ThreadComposerScreen() {
             modifier = focusDismissModifier.fillMaxSize().background(SlockColor.SurfaceWhite),
             contentAlignment = Alignment.TopCenter
         ) {
-            if (suggestionScrollOracleEnabled) {
+            if (suggestionUnderlayOracleEnabled) {
                 Box(
                     modifier =
                         Modifier
@@ -1094,13 +1220,23 @@ internal fun ThreadComposerScreen() {
                             .fillMaxWidth()
                             .height(96.dp)
                             .background(
-                                if (suggestionScrollOracleLeak) {
-                                    ThreadComposerSuggestionScrollOracleLeak
-                                } else {
-                                    SlockColor.SurfaceWhite
+                                when {
+                                    suggestionScrollOracleLeak -> ThreadComposerSuggestionScrollOracleLeak
+                                    suggestionInteractionOracleActionReceived ->
+                                        ThreadComposerSuggestionInteractionOracleSuccess
+                                    else -> SlockColor.SurfaceWhite
                                 }
-                            )
-                )
+                            ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (suggestionInteractionOracleActionReceived) {
+                        Text(
+                            text = ThreadComposerSuggestionInteractionOracleMarker,
+                            style = SlockType.Caption,
+                            color = SlockColor.TextBlack
+                        )
+                    }
+                }
             }
             CompositionLocalProvider(LocalThreadComposerSuggestionPortal provides suggestionPortal) {
                 Box(
@@ -1130,6 +1266,12 @@ internal fun ThreadComposerScreen() {
                             payload = payload,
                             attachmentPreviewEnabled = false,
                             onEvent = { action, _, _, attachmentId ->
+                                if (
+                                    suggestionInteractionOracleEnabled &&
+                                    action == "attachImage"
+                                ) {
+                                    suggestionInteractionOracleActionReceived = true
+                                }
                                 bridge.log(
                                     "thread_composer_visual_event instanceId=${payload.instanceId} action=$action attachmentId=${attachmentId.orEmpty()}"
                                 )
@@ -1326,6 +1468,8 @@ private fun threadComposerVisualFixture(
                     )
             )
         "member_suggestions" -> base.copy(seedText = "@", suggestionsOpen = true)
+        ThreadComposerSuggestionInteractionOracleFixture ->
+            base.copy(seedText = "#", suggestionsOpen = true)
         ThreadComposerSuggestionScrollOracleFixture,
         ThreadComposerSuggestionRepositionOracleFixture ->
             base.copy(
@@ -1713,7 +1857,8 @@ internal fun ThreadComposerContentLeaf(
     val focusManager = LocalFocusManager.current
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
     val suggestionPortal = LocalThreadComposerSuggestionPortal.current
-    val suggestionPortalOwner = remember(state.instanceId) { Any() }
+    val suggestionPortalOwner = remember(state.instanceId) { ThreadComposerSuggestionPortalOwner() }
+    var suggestionPortalGeneration by remember(state.instanceId, suggestionPortalOwner) { mutableStateOf(0L) }
     val suggestionSelectionDispatcher =
         remember(state.instanceId) {
             ThreadComposerSuggestionSelectionDispatcher(
@@ -1760,7 +1905,13 @@ internal fun ThreadComposerContentLeaf(
             handledFocusRequestNonce = state.focusRequestNonce
         }
         if (focusRestorePlan.requestFocus) {
-            focused = true
+            suggestionPortalGeneration =
+                resumeThreadComposerSuggestionsForEditing(
+                    portalState = suggestionPortal,
+                    owner = suggestionPortalOwner,
+                    generation = suggestionPortalGeneration,
+                    onFocusedChanged = { focused = it }
+                )
             composerFocusRequester.requestFocus()
             // Session retirement transfers the focused editor without overriding a newer user
             // decision to hide the IME. Only preserve a keyboard that is still visibly open at
@@ -1997,7 +2148,13 @@ internal fun ThreadComposerContentLeaf(
             selectionStart = nextFieldValue.selection.start,
             selectionEnd = nextFieldValue.selection.end
         )
-        focused = true
+        suggestionPortalGeneration =
+            resumeThreadComposerSuggestionsForEditing(
+                portalState = suggestionPortal,
+                owner = suggestionPortalOwner,
+                generation = suggestionPortalGeneration,
+                onFocusedChanged = { focused = it }
+            )
         emitChange(nextText = edit.text)
         return true
     }
@@ -2054,7 +2211,13 @@ internal fun ThreadComposerContentLeaf(
                 selectionStart = nextFieldValue.selection.start,
                 selectionEnd = nextFieldValue.selection.end
             )
-            focused = false
+            suggestionPortalGeneration =
+                hideThreadComposerSuggestionsForEditingContinuation(
+                    portalState = suggestionPortal,
+                    owner = suggestionPortalOwner,
+                    generation = suggestionPortalGeneration,
+                    onFocusedChanged = { focused = it }
+                )
             emitChange(nextText = edit.text)
         }
     }
@@ -2157,7 +2320,12 @@ internal fun ThreadComposerContentLeaf(
         }
     val density = LocalDensity.current
     val currentDismissSuggestions by rememberUpdatedState<() -> Unit> {
-        focused = false
+        dismissThreadComposerSuggestionsForFocusLoss(
+            portalState = suggestionPortal,
+            owner = suggestionPortalOwner,
+            generation = suggestionPortalGeneration,
+            onFocusedChanged = { focused = it }
+        )
         focusManager.clearFocus(force = true)
     }
     val dismissSuggestionPopover =
@@ -2185,6 +2353,7 @@ internal fun ThreadComposerContentLeaf(
         ) {
             ThreadComposerSuggestionPresentation(
                 owner = suggestionPortalOwner,
+                generation = suggestionPortalGeneration,
                 anchorResolver = suggestionAnchorResolver,
                 selectionContext = suggestionSelectionContext,
                 contentSize =
@@ -2225,13 +2394,13 @@ internal fun ThreadComposerContentLeaf(
             }
         )
         if (suggestionPresentation == null) {
-            suggestionPortal?.clear(suggestionPortalOwner)
+            suggestionPortal?.clear(suggestionPortalOwner, suggestionPortalGeneration)
         } else {
             suggestionPortal?.show(suggestionPresentation)
         }
     }
     DisposableEffect(suggestionPortal, suggestionPortalOwner) {
-        onDispose { suggestionPortal?.clear(suggestionPortalOwner) }
+        onDispose { suggestionPortal?.release(suggestionPortalOwner) }
     }
 
     val hostPaddingBottom =
@@ -2337,7 +2506,12 @@ internal fun ThreadComposerContentLeaf(
                                     selectionStart = next.selection.start,
                                     selectionEnd = next.selection.end
                                 )
-                                focused = true
+                                continueThreadComposerSuggestionsForEditing(
+                                    portalState = suggestionPortal,
+                                    owner = suggestionPortalOwner,
+                                    generation = suggestionPortalGeneration,
+                                    onFocusedChanged = { focused = it }
+                                )
                                 if (textChanged) {
                                     emitChange(nextText = next.text)
                                 }
@@ -2347,7 +2521,13 @@ internal fun ThreadComposerContentLeaf(
                                     sourceSessionId = sourceSessionId,
                                     isActiveSession = isEditorSessionActive,
                                 ) {
-                                    focused = true
+                                    suggestionPortalGeneration =
+                                        resumeThreadComposerSuggestionsForEditing(
+                                            portalState = suggestionPortal,
+                                            owner = suggestionPortalOwner,
+                                            generation = suggestionPortalGeneration,
+                                            onFocusedChanged = { focused = it }
+                                        )
                                     if (shouldAutoFocus) {
                                         handledFocusRequestNonce = state.focusRequestNonce
                                     }
@@ -2358,7 +2538,12 @@ internal fun ThreadComposerContentLeaf(
                                     sourceSessionId = sourceSessionId,
                                     isActiveSession = isEditorSessionActive,
                                 ) {
-                                    focused = false
+                                    dismissThreadComposerSuggestionsForFocusLoss(
+                                        portalState = suggestionPortal,
+                                        owner = suggestionPortalOwner,
+                                        generation = suggestionPortalGeneration,
+                                        onFocusedChanged = { focused = it }
+                                    )
                                     if (dismissKeyboardOnBlur) {
                                         softwareKeyboardController?.hide()
                                     }

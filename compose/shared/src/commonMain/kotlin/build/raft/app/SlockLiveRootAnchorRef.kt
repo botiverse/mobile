@@ -62,12 +62,14 @@ internal class SlockPopoverAnchor private constructor(
         verticalPlacement: SlockFloatingVerticalPlacement,
         horizontalAutoFlip: Boolean,
         dismissActivationDelayMillis: Long,
+        outsidePointerMode: SlockFloatingOverlayOutsidePointerMode,
         content: @Composable () -> Unit
     ) {
         SlockFloatingOverlayHost(
             onDismiss = onDismiss,
             modifier = modifier,
-            dismissActivationDelayMillis = dismissActivationDelayMillis
+            dismissActivationDelayMillis = dismissActivationDelayMillis,
+            outsidePointerMode = outsidePointerMode
         ) { overlayLayout ->
             val popoverOffset =
                 overlayLayout.positionContent(
