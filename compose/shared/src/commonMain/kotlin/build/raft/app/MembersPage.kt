@@ -55,6 +55,7 @@ import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.MemberRepository
 import build.raft.app.data.OpenDirectMessageResult
+import build.raft.app.data.OpenedDirectMessageAuthority
 import build.raft.app.data.SharedAgentDetailActions
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedAgentDetailLoadStatus
@@ -83,6 +84,7 @@ import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedCreateAgentFormStore
+import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.CREATE_AGENT_BUILTIN_RUNTIME_ID
 import build.raft.app.data.buildBuiltInRuntimeConfig
 import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_FAILED
@@ -1965,6 +1967,7 @@ private class MemberDetailRouteProvider(
     val createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator,
     val createAgentFormStore: SharedCreateAgentFormStore,
     val conversationIdentityProvider: build.raft.app.data.SharedConversationIdentityProvider?,
+    val sharedHomeStore: SharedHomeStore?,
     val storeScope: SlockShellStoreScope,
     val agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null
 ) {
@@ -2323,12 +2326,29 @@ private class MemberDetailRouteProvider(
             priority = DataRequestPriority.Foreground
         )
 
-    suspend fun openDirectMessage(member: MemberProfile): DataResult<OpenDirectMessageResult> =
-        when (member.kind) {
-            MemberKind.Agent -> channelRepository.openAgentDirectMessage(member.id)
-            MemberKind.Human -> channelRepository.openUserDirectMessage(member.id)
-            MemberKind.System -> DataResult.Empty(EmptyReason.NoMembers)
+    suspend fun openDirectMessage(member: MemberProfile): DataResult<OpenDirectMessageResult> {
+        val authority =
+            authStore.readSession()?.let { session ->
+                val serverId = session.currentServerId ?: return@let null
+                OpenedDirectMessageAuthority(
+                    serverId = ServerId(serverId),
+                    accountId = MemberId(session.user.id)
+                )
+            }
+        val result =
+            when (member.kind) {
+                MemberKind.Agent -> channelRepository.openAgentDirectMessage(member.id)
+                MemberKind.Human -> channelRepository.openUserDirectMessage(member.id)
+                MemberKind.System -> DataResult.Empty(EmptyReason.NoMembers)
+            }
+        if (result is DataResult.Content && authority != null) {
+            sharedHomeStore?.supplementOpenedDirectMessage(
+                authority = authority,
+                conversation = result.data.conversation
+            )
         }
+        return result
+    }
 
     suspend fun uploadAgentAvatar(
         serverId: ServerId,
@@ -2528,6 +2548,7 @@ private fun rememberMemberDetailRouteProvider(
         createAgentCoordinator,
         createAgentFormStore,
         sharedStores.conversationIdentityProvider(storeScope),
+        sharedStores.sharedHomeStore(storeScope),
         storeScope,
         agentsApiClient
     ) {
@@ -2547,6 +2568,7 @@ private fun rememberMemberDetailRouteProvider(
             createAgentCoordinator = createAgentCoordinator,
             createAgentFormStore = createAgentFormStore,
             conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
+            sharedHomeStore = sharedStores.sharedHomeStore(storeScope),
             storeScope = storeScope,
             agentsApiClient = agentsApiClient
         )

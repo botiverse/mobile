@@ -58,8 +58,14 @@ internal enum class SharedConversationIdentitySupplementSource(val precedence: I
     Search(20),
     Saved(30),
     Tasks(40),
-    ForegroundBanner(50)
+    ForegroundBanner(50),
+    DirectMessageOpen(60)
 }
+
+internal data class OpenedDirectMessageAuthority(
+    val serverId: ServerId,
+    val accountId: MemberId
+)
 
 private data class HomeNotificationAuthority(
     val accountId: String?,
@@ -332,6 +338,59 @@ internal class SharedHomeStore(
             .getOrPut(serverKey) { linkedMapOf() }[source] =
             items.toSharedConversationDirectoryState(serverId, logger = diagnosticsLogger)
         publishConversationIdentity(serverKey)
+    }
+
+    /**
+     * Publish the canonical row returned by POST /channels/dm before navigating to Thread.
+     *
+     * A newly created empty DM is not necessarily present in the current Home snapshot yet. The
+     * route deliberately carries identity only, so Thread needs this repository-owned directory
+     * candidate to render the peer header until Home refreshes. Home remains last-writer authority
+     * in [publishConversationIdentity], and an auth/server change rejects the captured response.
+     */
+    suspend fun supplementOpenedDirectMessage(
+        authority: OpenedDirectMessageAuthority,
+        conversation: HomeDirectMessageRow
+    ): Boolean {
+        val currentSession = authStore.readSession()
+        if (
+            currentSession == null ||
+            currentSession.user.id != authority.accountId.value ||
+            currentSession.currentServerId != authority.serverId.value
+        ) {
+            diagnosticsLogger(
+                "conversation_directory_dm_open_drop reason=authority_changed " +
+                    "serverId=${authority.serverId.value} accountMatched=${currentSession?.user?.id == authority.accountId.value}"
+            )
+            return false
+        }
+        val projection = conversation.toSharedConversationDirectoryProjection(authority.serverId)
+        if (
+            projection == null ||
+            projection.conversationKind != ConversationKind.DirectMessage ||
+            projection.peerIdentity == null
+        ) {
+            diagnosticsLogger(
+                "conversation_directory_dm_open_drop reason=invalid_projection " +
+                    "serverId=${authority.serverId.value} channelId=${conversation.channelId.value}"
+            )
+            return false
+        }
+
+        val serverKey = authority.serverId.value
+        val sources = supplementalConversationIdentityStates.getOrPut(serverKey) { linkedMapOf() }
+        val existing = sources[SharedConversationIdentitySupplementSource.DirectMessageOpen]
+        sources[SharedConversationIdentitySupplementSource.DirectMessageOpen] =
+            listOfNotNull(
+                existing,
+                listOf(projection).toSharedConversationDirectoryState(logger = diagnosticsLogger)
+            ).mergedSharedConversationDirectoryState(logger = diagnosticsLogger)
+        publishConversationIdentity(serverKey)
+        diagnosticsLogger(
+            "conversation_directory_dm_open_accept " +
+                "serverId=$serverKey channelId=${projection.canonicalChannelId}"
+        )
+        return true
     }
 
     override fun observeServer(serverId: ServerId): Flow<SharedConversationDirectoryState> =
