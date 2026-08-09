@@ -151,6 +151,22 @@ internal class ThreadComposerSuggestionPortalState {
     }
 }
 
+/**
+ * Retires both suggestion visibility owners in the same focus-loss callback.
+ *
+ * iOS can publish the native editor blur before the child composition that owns `focused`
+ * reaches its next SideEffect. Clearing the lifted portal here keeps that transient surface from
+ * rendering a stale presentation while the editor and keyboard are already unfocused.
+ */
+internal fun dismissThreadComposerSuggestionsForFocusLoss(
+    portalState: ThreadComposerSuggestionPortalState?,
+    owner: Any,
+    onFocusedChanged: (Boolean) -> Unit
+) {
+    onFocusedChanged(false)
+    portalState?.clear(owner)
+}
+
 internal data class ThreadComposerSuggestionPresentation(
     val owner: Any,
     val anchorResolver: SlockPopoverAnchorResolver,
@@ -2189,7 +2205,11 @@ internal fun ThreadComposerContentLeaf(
         }
     val density = LocalDensity.current
     val currentDismissSuggestions by rememberUpdatedState<() -> Unit> {
-        focused = false
+        dismissThreadComposerSuggestionsForFocusLoss(
+            portalState = suggestionPortal,
+            owner = suggestionPortalOwner,
+            onFocusedChanged = { focused = it }
+        )
         focusManager.clearFocus(force = true)
     }
     val dismissSuggestionPopover =
@@ -2390,7 +2410,11 @@ internal fun ThreadComposerContentLeaf(
                                     sourceSessionId = sourceSessionId,
                                     isActiveSession = isEditorSessionActive,
                                 ) {
-                                    focused = false
+                                    dismissThreadComposerSuggestionsForFocusLoss(
+                                        portalState = suggestionPortal,
+                                        owner = suggestionPortalOwner,
+                                        onFocusedChanged = { focused = it }
+                                    )
                                     if (dismissKeyboardOnBlur) {
                                         softwareKeyboardController?.hide()
                                     }

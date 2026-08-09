@@ -21,7 +21,7 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
-    fun suggestionPortalOnlyClearsItsCurrentOwner() {
+    fun suggestionFocusLossSynchronouslyClearsOnlyItsCurrentPortalOwner() {
         val owner = Any()
         val otherOwner = Any()
         val anchorRef = SlockLiveRootAnchorRef(owner)
@@ -58,7 +58,14 @@ class ThreadComposerLayoutTest {
         portal.clear(otherOwner)
         assertSame(presentation, portal.presentation)
 
-        portal.clear(owner)
+        var focused = true
+        dismissThreadComposerSuggestionsForFocusLoss(
+            portalState = portal,
+            owner = owner,
+            onFocusedChanged = { focused = it }
+        )
+
+        assertFalse(focused)
         assertNull(portal.presentation)
     }
 
