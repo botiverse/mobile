@@ -85,6 +85,7 @@ import com.tencent.kuikly.compose.ui.semantics.onClick
 import com.tencent.kuikly.compose.ui.semantics.role
 import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.text.TextLayoutResult
+import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
@@ -98,6 +99,7 @@ import com.tencent.kuikly.compose.ui.unit.max
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.ui.window.Dialog
 import com.tencent.kuikly.compose.ui.window.DialogProperties
+import com.tencent.kuikly.core.views.TextInputState
 import com.tencent.kuikly.core.base.BorderStyle
 import com.tencent.kuikly.core.base.event.EventHandlerFn
 import com.tencent.kuikly.core.module.RouterModule
@@ -1314,6 +1316,77 @@ internal fun slockTextFieldResolvedTextStyle(textStyle: TextStyle): TextStyle =
 
 internal fun slockTextFieldSingleLine(maxLines: Int): Boolean = maxLines == 1
 
+private const val SLOCK_GET_TEXT_INPUT_STATE_METHOD = "getTextInputState"
+
+internal fun TextInputState.toSlockTextFieldValue(): TextFieldValue {
+    val boundedSelectionStart = selectionStart.coerceIn(0, text.length)
+    val boundedSelectionEnd = selectionEnd.coerceIn(0, text.length)
+    val boundedComposition =
+        if (
+            compositionStart != TextInputState.NO_COMPOSITION &&
+            compositionEnd != TextInputState.NO_COMPOSITION
+        ) {
+            TextRange(
+                compositionStart.coerceIn(0, text.length),
+                compositionEnd.coerceIn(0, text.length),
+            )
+        } else {
+            null
+        }
+    return TextFieldValue(
+        text = text,
+        selection = TextRange(boundedSelectionStart, boundedSelectionEnd),
+        composition = boundedComposition,
+    )
+}
+
+/**
+ * Reads the native editor's current text/selection/composition state at an action boundary.
+ *
+ * Native UIKit/Android/OHOS editing can already be visible while its ordinary change callback is
+ * still queued for Compose. Callers such as Send therefore need an explicit barrier instead of
+ * assuming the last rendered [TextFieldValue] is the value currently on screen.
+ */
+internal class SlockTextFieldNativeEditingStateReader {
+    private data class Binding(
+        val owner: Any,
+        val read: ((TextInputState?) -> Unit) -> Unit,
+    )
+
+    private var binding: Binding? = null
+
+    internal fun bind(
+        owner: Any,
+        read: ((TextInputState?) -> Unit) -> Unit,
+    ) {
+        binding = Binding(owner = owner, read = read)
+    }
+
+    internal fun unbind(owner: Any) {
+        if (binding?.owner === owner) binding = null
+    }
+
+    fun readCurrentValue(
+        fallback: TextFieldValue,
+        onResult: (TextFieldValue) -> Unit,
+    ) {
+        val activeBinding = binding
+        if (activeBinding == null) {
+            onResult(fallback)
+            return
+        }
+        activeBinding.read { nativeState ->
+            onResult(
+                if (binding === activeBinding) {
+                    nativeState?.toSlockTextFieldValue() ?: fallback
+                } else {
+                    fallback
+                }
+            )
+        }
+    }
+}
+
 /**
  * Receives native keyboard-height events from text editors hosted by a keyboard-aware dialog.
  *
@@ -1462,12 +1535,14 @@ internal fun TextField(
     systemNewlineAction: Boolean = false,
     participatesInGlobalFocusDismiss: Boolean = true,
     visualTransformation: VisualTransformation = VisualTransformation.None,
-    contentAlignment: Alignment = Alignment.CenterStart
+    contentAlignment: Alignment = Alignment.CenterStart,
+    nativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
 ) {
     var lastFocus by remember { mutableStateOf(false) }
     val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
     val focusOwner = remember { Any() }
     val focusOwnerAnchor = remember { SlockInputFocusOwnerAnchor() }
+    val nativeEditingStateBindingOwner = remember { Any() }
 
     val currentOnBlur by rememberUpdatedState(onBlur)
     val currentOnFocus by rememberUpdatedState(onFocus)
@@ -1481,6 +1556,9 @@ internal fun TextField(
                 focusOwnerRegistry?.remove(focusOwner)
             }
         }
+    }
+    DisposableEffect(nativeEditingStateReader, nativeEditingStateBindingOwner) {
+        onDispose { nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner) }
     }
 
     val updatedModifier = modifier
@@ -1509,6 +1587,30 @@ internal fun TextField(
                 lastFocus = false
             }
         }
+        .then(
+            if (nativeEditingStateReader != null) {
+                Modifier.nativeRef {
+                    val nativeEditor = this
+                    nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
+                        nativeEditor.performTaskWhenRenderViewDidLoad {
+                            val renderView = nativeEditor.renderView
+                            if (renderView == null) {
+                                callback(null)
+                            } else {
+                                renderView.callMethod(
+                                    methodName = SLOCK_GET_TEXT_INPUT_STATE_METHOD,
+                                    callback = { payload ->
+                                        callback(payload?.let { TextInputState.decode(it) })
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Modifier
+            }
+        )
     val resolvedTextStyle = slockTextFieldResolvedTextStyle(textStyle)
     BasicTextField(
         modifier = updatedModifier,

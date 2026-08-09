@@ -2,6 +2,7 @@ package build.raft.app
 
 import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
+import com.tencent.kuikly.core.views.TextInputState
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -210,6 +211,121 @@ class ThreadComposerPayloadTest {
                 command = delayedClear.copy(expectedAsTask = false),
             )
         )
+    }
+
+    @Test
+    fun nativeSendSnapshotUsesVisibleTextAndDropsItsDelayedEchoBeforeClear() {
+        val owner = ThreadComposerControlledEditorOwner(seedText = "pleas", seedAsTask = false)
+        val session = owner.editorSessionId
+        val visibleNativeValue = TextFieldValue("please", selection = TextRange(6))
+        val fence = ThreadComposerSubmittedEchoFence()
+
+        assertTrue(owner.acceptEditorValue(session, visibleNativeValue))
+        val request =
+            ThreadComposerSendRequest(
+                editorSessionId = session,
+                value = visibleNativeValue,
+                asTask = false,
+            )
+        fence.begin(request)
+        fence.finishAdmission(ThreadComposerSendAdmission.Started)
+
+        assertEquals("please", request.value.text)
+        assertTrue(fence.shouldIgnore(session, visibleNativeValue.copy()))
+        assertFalse(fence.shouldIgnore(session, visibleNativeValue.copy()))
+        assertEquals(
+            ThreadComposerEditorCommandOutcome.Applied,
+            owner.apply(
+                ThreadComposerEditorCommand(
+                    id = 1,
+                    kind = ThreadComposerEditorCommandKind.Clear,
+                    expectedText = request.value.text,
+                    expectedAsTask = request.asTask,
+                )
+            ),
+        )
+        assertEquals("", owner.value.text)
+    }
+
+    @Test
+    fun nativeSendSnapshotStillPreservesGenuinePostSubmitTyping() {
+        val owner = ThreadComposerControlledEditorOwner(seedText = "please", seedAsTask = false)
+        val session = owner.editorSessionId
+        val submitted = TextFieldValue("please", selection = TextRange(6))
+        val newer = TextFieldValue("next draft", selection = TextRange(10))
+        val fence = ThreadComposerSubmittedEchoFence()
+        val request = ThreadComposerSendRequest(session, submitted, asTask = false)
+
+        fence.begin(request)
+        fence.finishAdmission(ThreadComposerSendAdmission.Started)
+        assertFalse(fence.shouldIgnore(session, newer))
+        assertTrue(owner.acceptEditorValue(session, newer))
+        assertEquals(
+            ThreadComposerEditorCommandOutcome.Stale,
+            owner.apply(
+                ThreadComposerEditorCommand(
+                    id = 1,
+                    kind = ThreadComposerEditorCommandKind.Clear,
+                    expectedText = submitted.text,
+                    expectedAsTask = false,
+                )
+            ),
+        )
+        assertSame(newer, owner.value)
+    }
+
+    @Test
+    fun rejectedOrDeferredSendDoesNotFenceLaterEditorCallbacks() {
+        listOf(ThreadComposerSendAdmission.Rejected, ThreadComposerSendAdmission.Deferred).forEach { admission ->
+            val fence = ThreadComposerSubmittedEchoFence()
+            val value = TextFieldValue("please", selection = TextRange(6))
+            fence.begin(ThreadComposerSendRequest(1L, value, asTask = false))
+
+            fence.finishAdmission(admission)
+
+            assertFalse(fence.shouldIgnore(1L, value.copy()), "admission=$admission")
+        }
+    }
+
+    @Test
+    fun submittedEchoFenceRetiresWhenClearReplacesTheEditorSession() {
+        val fence = ThreadComposerSubmittedEchoFence()
+        val submitted = TextFieldValue("please", selection = TextRange(6))
+        fence.begin(ThreadComposerSendRequest(1L, submitted, asTask = false))
+        fence.finishAdmission(ThreadComposerSendAdmission.Started)
+
+        assertFalse(fence.shouldIgnore(2L, submitted.copy()))
+        assertFalse(fence.shouldIgnore(1L, submitted.copy()))
+    }
+
+    @Test
+    fun nativeEditingStateReaderReturnsExactBoundedEditingStateAndFallsBackAfterUnbind() {
+        val reader = SlockTextFieldNativeEditingStateReader()
+        val bindingOwner = Any()
+        val fallback = TextFieldValue("pleas", selection = TextRange(5))
+        var result: TextFieldValue? = null
+        reader.bind(bindingOwner) { callback ->
+            callback(
+                TextInputState(
+                    text = "please",
+                    selectionStart = 99,
+                    selectionEnd = 99,
+                    compositionStart = 2,
+                    compositionEnd = 99,
+                )
+            )
+        }
+
+        reader.readCurrentValue(fallback) { result = it }
+
+        assertEquals("please", result?.text)
+        assertEquals(TextRange(6), result?.selection)
+        assertEquals(TextRange(2, 6), result?.composition)
+
+        reader.unbind(bindingOwner)
+        result = null
+        reader.readCurrentValue(fallback) { result = it }
+        assertSame(fallback, result)
     }
 
     @Test
