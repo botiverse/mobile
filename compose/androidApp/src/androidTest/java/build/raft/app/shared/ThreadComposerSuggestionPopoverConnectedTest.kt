@@ -89,10 +89,27 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                 "image action did not receive the tap while suggestions were open",
                 imageActionReceived
             )
+            assertTrue(
+                "composer toolbar interaction should not be mistaken for a true outside tap",
+                device.hasObject(By.text(InteractionCandidateLabel))
+            )
+
+            tapPx(
+                instrumentation = instrumentation,
+                x = context.resources.displayMetrics.widthPixels / 2f,
+                y = InteractionOutsideTapYDp * density
+            )
+            waitUntil("a true outside tap should clear composer focus") {
+                !scenario.composerHasFocus()
+            }
+            val outsideDismissed =
+                device.wait(Until.gone(By.text(InteractionCandidateLabel)), CandidateTapWaitMs)
+            assertTrue("true outside tap did not dismiss the active suggestion panel", outsideDismissed)
             println(
                 "THREAD_COMPOSER_SUGGESTION_INTERACTION_PASS " +
                     "editorFocusedAfterTap=$editorFocusedAfterTap " +
-                    "text=${scenario.composerText()} imageAction=$imageActionReceived"
+                    "text=${scenario.composerText()} imageAction=$imageActionReceived " +
+                    "outsideDismissed=$outsideDismissed"
             )
         }
     }
@@ -541,5 +558,6 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         private const val InteractionActionMarker = "ATTACH_IMAGE_RECEIVED"
         private const val InteractionImageButtonCenterXDp = 13f
         private const val InteractionToolbarCenterBelowEditorDp = 21f
+        private const val InteractionOutsideTapYDp = 20f
     }
 }
