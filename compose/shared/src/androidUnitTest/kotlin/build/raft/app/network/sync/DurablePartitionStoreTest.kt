@@ -233,8 +233,10 @@ class DurablePartitionStoreTest {
     fun directStoreMismatchFailsBeforeAnySql() = runBlocking {
         val counting = SqlCountingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY))
         build.raft.app.shared.data.local.SlockDatabase.Schema.create(counting).value
-        counting.statementCount = 0
         val database = SlockSqlDatabase(counting)
+        // Database construction now forces lazy SQLDelight initialization. This assertion is
+        // scoped to the rejected store mutation, so reset the witness after bootstrap.
+        counting.statementCount = 0
         val declaredScope = scope(scopeId = "channel-a")
         val mismatchedFact = row("mismatched", 1L, scope(scopeId = "channel-b"))
 

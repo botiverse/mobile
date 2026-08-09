@@ -11,6 +11,20 @@ import kotlinx.coroutines.runBlocking
 internal class SlockSqlDatabase(
     private val driver: SqlDriver
 ) {
+    init {
+        // Version compatibility is checked by the platform read-only preflight before this class
+        // is constructed. NativeSqliteDriver still creates its pools lazily, so force one query
+        // while the AppShell provider is being created. SQLDelight then owns new-database creation
+        // and forward migration synchronously instead of surfacing failures from a Store coroutine.
+        driver.executeQuery<Unit>(
+            identifier = null,
+            sql = "PRAGMA user_version",
+            mapper = { QueryResult.Value(Unit) },
+            parameters = 0,
+            binders = null,
+        )
+    }
+
     private val database: SlockDatabase = SlockDatabase(driver)
     val queries: SlockDatabaseQueries = database.slockDatabaseQueries
 
