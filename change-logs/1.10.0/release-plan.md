@@ -79,7 +79,7 @@ checks/review before it can become `accepted`.
 
 | Hold | Owner | Current fact | Lift condition |
 | --- | --- | --- | --- |
-| iOS Kuikly rich-text selector crash | iOS/Kuikly root-cause task #131 | Root cause is the focusable `KRRichTextView` missing the shared accessibility dispatcher; old real-renderer fixture is RED and the source patch is GREEN, but official 1000015 still crashes and no successor carrier is admitted | Final reviewed Kuikly exact, Mobile carrier binding, then authorized physical same-path PASS |
+| iOS Kuikly rich-text selector crash | iOS/Kuikly root-cause task #131 | Kuikly PR #129 exact `7fe6e3a6fecfa5ebe9a57585cec9dc8bec760138` fixes the missing shared accessibility dispatcher and has exact Hosted plus independent review PASS; it remains Draft/unlanded, official 1000015 still crashes, and no successor carrier is admitted | Land reviewed PR #129, bind the landed Kuikly exact into a Mobile carrier, then obtain authorized physical same-path PASS |
 | Android white viewport family | Thread/Android diagnostic lane | Existing production family remains product RED; diagnostics PR #1992 is not a fix | Causal source fix plus clean physical-device product matrix |
 | Share-to-Raft release acceptance | iOS native lane | Source proposal exists, full authorized product matrix incomplete | Exact accepted PR plus named physical matrix and privacy review |
 
