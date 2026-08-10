@@ -1,6 +1,8 @@
 import Foundation
 
 enum SlockExternalShareContract {
+    private static let supportedHostLaunchSchemes = Set(["raft", "raft-debug"])
+
     static let appGroupIdentifier = "group.build.raft.app.external-share"
     static let rootDirectoryName = "ExternalShareInbox"
     static let envelopeFileName = "envelope.json"
@@ -17,8 +19,7 @@ enum SlockExternalShareContract {
         guard SlockExternalShareEnvelopeStorage.isSafeToken(token) else {
             throw SlockExternalShareStorageError.rejected("external_share_token_invalid")
         }
-        let scheme = configuredScheme?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard let scheme, ["raft", "raft-alpha", "raft-beta", "raft-debug"].contains(scheme) else {
+        guard let scheme = normalizedHostLaunchScheme(configuredScheme) else {
             throw SlockExternalShareStorageError.rejected("external_share_launch_scheme_invalid")
         }
         var components = URLComponents()
@@ -29,6 +30,27 @@ enum SlockExternalShareContract {
             throw SlockExternalShareStorageError.rejected("external_share_launch_url_invalid")
         }
         return url
+    }
+
+    static func hostLaunchToken(from url: URL, configuredScheme: String?) -> String? {
+        guard
+            let expectedScheme = normalizedHostLaunchScheme(configuredScheme),
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+            components.scheme?.lowercased() == expectedScheme,
+            components.host?.lowercased() == "external-share",
+            components.path.isEmpty || components.path == "/",
+            components.queryItems?.count == 1,
+            components.queryItems?.first?.name == "token",
+            let token = components.queryItems?.first?.value,
+            SlockExternalShareEnvelopeStorage.isSafeToken(token)
+        else { return nil }
+        return token
+    }
+
+    private static func normalizedHostLaunchScheme(_ configuredScheme: String?) -> String? {
+        let scheme = configuredScheme?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let scheme, supportedHostLaunchSchemes.contains(scheme) else { return nil }
+        return scheme
     }
 }
 
