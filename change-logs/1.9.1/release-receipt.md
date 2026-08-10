@@ -173,7 +173,7 @@ Other reviewed release-only changes, notes, minimum-iOS update, and iOS
 release-note contract are preserved.
 
 - Superseded merge-back attempt: PR #2052 (`CLOSED`, unmerged)
-- Merge-back PR: pending signed content-integration successor
+- Merge-back PR: #2053
 - Landed main exact: pending protected merge
 
 Repository closeout is not complete until the merge-back PR has terminal exact
