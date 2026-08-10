@@ -147,9 +147,12 @@ that receiver. The causal defect is that `KRRichTextView` participates as a
 focusable text view but omits the shared accessibility dispatcher. A real
 renderer fixture now proves the old class has no method and terminates RED,
 while the source patch installs the method and survives focus plus announce.
-The patch's final CI/review and an authorized physical carrier are still
-pending, so this source-level root cause does not change the 1000015 product
-RED status.
+Kuikly PR #129 exact
+`7fe6e3a6fecfa5ebe9a57585cec9dc8bec760138` passed Hosted matrix
+`31360627555` and independent review task #133 with zero blockers. It remains
+OPEN/Draft and is not landed or bound into a Mobile carrier. An authorized
+physical successor carrier is also still pending, so this completed source
+gate does not change the 1000015 product RED status.
 
 The earlier source-equivalent Simulator IME matrix remains valid only for its
 own keyboard behavior. It cannot override the physical crash evidence.
