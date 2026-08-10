@@ -5973,6 +5973,8 @@ internal fun SharedThreadRouteContent(
         mutableStateOf<Map<String, PlatformFile>>(emptyMap())
     }
     var externalShareSendRequested by remember(threadInstanceKey) { mutableStateOf(false) }
+    val pendingMentionActionBatchRequestGate =
+        remember(threadInstanceKey) { PendingMentionActionBatchRequestGate() }
     var externalShareExpectedAuthority by remember(threadInstanceKey) {
         mutableStateOf<build.raft.app.data.SlockExpectedAuthBinding?>(null)
     }
@@ -6047,6 +6049,32 @@ internal fun SharedThreadRouteContent(
     val unableToOpenTaskNumberTemplate =
         stringResource(MR.strings.thread_error_open_task_number, ThreadLocalizedFeedbackPlaceholder)
     val genericThreadErrorLabel = stringResource(MR.strings.common_error)
+    val pendingMentionActionBatchStrings =
+        PendingMentionActionBatchStrings(
+            resultTemplate =
+                stringResource(
+                    MR.strings.thread_composer_mention_batch_result,
+                    "__RAFT_ADDED__",
+                    "__RAFT_TOTAL__",
+                    "__RAFT_ERROR__"
+                ),
+            missing = stringResource(MR.strings.thread_composer_mention_batch_error_missing),
+            deliveryUnavailable = stringResource(MR.strings.thread_composer_mention_batch_error_delivery_unavailable),
+            dropped = stringResource(MR.strings.thread_composer_mention_batch_error_dropped),
+            senderLacksChannelAccess = stringResource(MR.strings.thread_composer_mention_batch_error_sender_access),
+            targetLacksReadAccess = stringResource(MR.strings.thread_composer_mention_batch_error_target_access),
+            addNotAllowedForSurface = stringResource(MR.strings.thread_composer_mention_batch_error_surface),
+            addRequiresHumanAuthority = stringResource(MR.strings.thread_composer_mention_batch_error_human_authority),
+            addRequiresMemberManagementAuthority =
+                stringResource(MR.strings.thread_composer_mention_batch_error_member_authority),
+            noPermission = stringResource(MR.strings.thread_composer_mention_batch_error_permission),
+            targetAlreadyMember = stringResource(MR.strings.thread_composer_mention_batch_error_already_member),
+            targetUnavailable = stringResource(MR.strings.thread_composer_mention_batch_error_target_unavailable),
+            stale = stringResource(MR.strings.thread_composer_mention_batch_error_stale),
+            expired = stringResource(MR.strings.thread_composer_mention_batch_error_expired),
+            ambiguous = stringResource(MR.strings.thread_composer_mention_batch_error_ambiguous),
+            generic = stringResource(MR.strings.thread_composer_mention_batch_error_generic)
+        )
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val attachmentPickerUnavailableLabel = stringResource(MR.strings.thread_error_attachment_picker)
     val fileSourceUnavailableLabel = stringResource(MR.strings.thread_error_file_source)
@@ -9513,6 +9541,51 @@ internal fun SharedThreadRouteContent(
                 }
                 "dismissMentionNotice" -> {
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.ClearMentionActionNotice)
+                }
+                "addAllMentions" -> {
+                    if (!pendingMentionActionBatchRequestGate.tryBegin()) return@ThreadPageContent
+                    val eligibleActions =
+                        eligiblePendingMentionActionBatch(
+                            actions = currentDraftState.pendingMentionActions,
+                            actionStates = currentDraftState.mentionActionStates,
+                            removingIds = currentDraftState.removingMentionActionIds,
+                            executingIds = currentDraftState.executingMentionActionIds
+                        )
+                    if (eligibleActions.size < 2) {
+                        pendingMentionActionBatchRequestGate.finish()
+                        return@ThreadPageContent
+                    }
+                    val resolutionIds = eligibleActions.map { it.resolutionId.trim() }
+                    composerDraftViewModel.dispatch(
+                        SharedThreadComposerDraftIntent.BeginMentionActionBatch(resolutionIds)
+                    )
+                    coroutineScope.launch {
+                        try {
+                            val results =
+                                runCatchingPreservingCancellation {
+                                    dataSource.executePendingMentionActions(
+                                        action = "add",
+                                        resolutionIds = resolutionIds
+                                    )
+                                }.getOrNull()
+                                    .let { result ->
+                                        (result as? ThreadApiResult.Success)?.data.orEmpty()
+                                    }
+                            val outcome = pendingMentionActionBatchOutcome(resolutionIds, results)
+                            composerDraftViewModel.dispatch(
+                                SharedThreadComposerDraftIntent.FinishMentionActionBatch(
+                                    requestedIds = outcome.requestedIds,
+                                    deliveredIds = outcome.deliveredIds,
+                                    notice = outcome.localizedNotice(pendingMentionActionBatchStrings)
+                                )
+                            )
+                            if (outcome.deliveredIds.isNotEmpty()) {
+                                refreshComposerMemberSuggestionsAfterMembershipMutation()
+                            }
+                        } finally {
+                            pendingMentionActionBatchRequestGate.finish()
+                        }
+                    }
                 }
                 "inviteMention", "notifyMention" -> {
                     val resolutionId = value?.takeIf { it.isNotBlank() } ?: return@ThreadPageContent

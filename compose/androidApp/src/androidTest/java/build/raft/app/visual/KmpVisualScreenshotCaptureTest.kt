@@ -750,6 +750,59 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadComposerPendingMentionBatch() {
+        captureKmpComponentCase(
+            caseId = "components.thread.composer.pending-mention-batch",
+            pageName = "compose_thread_composer_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer-pending-mention-batch")
+                    .put("visualFixture", "pending_mention_actions_batch"),
+            crop = THREAD_COMPOSER_PENDING_MENTION_ACTIONS_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadComposerPendingMentionBatchExecuting() {
+        captureKmpComponentCase(
+            caseId = "components.thread.composer.pending-mention-batch-executing",
+            pageName = "compose_thread_composer_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer-pending-mention-batch-executing")
+                    .put("visualFixture", "pending_mention_actions_batch_executing"),
+            crop = THREAD_COMPOSER_PENDING_MENTION_ACTIONS_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadComposerPendingMentionBatchPartial() {
+        captureKmpComponentCase(
+            caseId = "components.thread.composer.pending-mention-batch-partial",
+            pageName = "compose_thread_composer_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer-pending-mention-batch-partial")
+                    .put("visualFixture", "pending_mention_actions_batch_partial"),
+            crop = THREAD_COMPOSER_PENDING_MENTION_ACTIONS_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadComposerPendingMentionBatchDetails() {
+        captureKmpComponentCase(
+            caseId = "components.thread.composer.pending-mention-batch-details",
+            pageName = "compose_thread_composer_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer-pending-mention-batch-details")
+                    .put("visualFixture", "pending_mention_actions_batch_details"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000
+        )
+    }
+
+    @Test
     fun captureThreadComposerAsTaskSelected() {
         captureKmpComponentCase(
             caseId = "components.thread.composer.as-task-selected",

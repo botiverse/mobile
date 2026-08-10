@@ -34,10 +34,12 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.ColumnScope
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
@@ -50,6 +52,7 @@ import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.material3.ModalBottomSheet
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
@@ -61,6 +64,8 @@ import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.platform.LocalSoftwareKeyboardController
+import com.tencent.kuikly.compose.ui.semantics.contentDescription
+import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
@@ -128,6 +133,9 @@ private const val ThreadComposerSuggestionScrollOracleFixture = "member_suggesti
 private const val ThreadComposerSuggestionRepositionOracleFixture = "member_suggestions_reposition_oracle"
 private const val ThreadComposerSuggestionInteractionOracleFixture = "suggestion_interaction_hit_test_oracle"
 private const val ThreadComposerSuggestionRepositionDelayMillis = 8_000L
+private const val ThreadComposerMentionBatchDetailsVisualFixture = "pending_mention_actions_batch_details"
+private const val ThreadComposerMentionBatchPartialNoticeVisualMarker =
+    "__visual_pending_mention_batch_partial_notice__"
 private val ThreadComposerSuggestionScrollOracleUnderlay = Color(0xFF22D3EE)
 private val ThreadComposerSuggestionScrollOracleLeak = Color(0xFFEF4444)
 private val ThreadComposerSuggestionInteractionOracleSuccess = Color(0xFF22C55E)
@@ -1264,6 +1272,8 @@ internal fun ThreadComposerScreen() {
                     ) {
                         ThreadComposerContent(
                             payload = payload,
+                            initialMentionActionDetailsVisible =
+                                visualFixture == ThreadComposerMentionBatchDetailsVisualFixture,
                             attachmentPreviewEnabled = false,
                             onEvent = { action, _, _, attachmentId ->
                                 if (
@@ -1467,6 +1477,63 @@ private fun threadComposerVisualFixture(
                         )
                     )
             )
+        "pending_mention_actions_batch",
+        ThreadComposerMentionBatchDetailsVisualFixture,
+        "pending_mention_actions_batch_executing",
+        "pending_mention_actions_batch_partial" -> {
+            val actions =
+                listOf(
+                    KuiklyPendingMentionActionItem(
+                        resolutionId = "visual-pending-mention-alex",
+                        messageId = "visual-pending-mention-message",
+                        channelId = "visual-design",
+                        channelName = "design",
+                        targetType = "user",
+                        targetHandle = "Alex",
+                        targetAvatarUrl = "pixel:human",
+                        reason = "target_not_in_channel",
+                        availableActions = listOf("add", "notify")
+                    ),
+                    KuiklyPendingMentionActionItem(
+                        resolutionId = "visual-pending-mention-bryn",
+                        messageId = "visual-pending-mention-message",
+                        channelId = "visual-design",
+                        channelName = "design",
+                        targetType = "agent",
+                        targetHandle = "Bryn",
+                        targetAvatarUrl = "pixel:robot",
+                        reason = "target_not_in_channel",
+                        availableActions = listOf("add", "notify")
+                    ),
+                    KuiklyPendingMentionActionItem(
+                        resolutionId = "visual-pending-mention-casey",
+                        messageId = "visual-pending-mention-message",
+                        channelId = "visual-design",
+                        channelName = "design",
+                        targetType = "user",
+                        targetHandle = "Casey",
+                        targetAvatarUrl = "pixel:human",
+                        reason = "target_not_in_channel",
+                        availableActions = listOf("add", "notify")
+                    )
+                )
+            when (fixture) {
+                "pending_mention_actions_batch_executing" ->
+                    base.copy(
+                        seedText = "",
+                        pendingMentionActions = actions,
+                        executingMentionActionIds = actions.map { it.resolutionId },
+                        executingMentionActionStates = actions.associate { it.resolutionId to "added" }
+                    )
+                "pending_mention_actions_batch_partial" ->
+                    base.copy(
+                        seedText = "",
+                        pendingMentionActions = actions.drop(1),
+                        mentionActionNotice = ThreadComposerMentionBatchPartialNoticeVisualMarker
+                    )
+                else -> base.copy(seedText = "", pendingMentionActions = actions)
+            }
+        }
         "member_suggestions" -> base.copy(seedText = "@", suggestionsOpen = true)
         ThreadComposerSuggestionInteractionOracleFixture ->
             base.copy(seedText = "#", suggestionsOpen = true)
@@ -1728,7 +1795,8 @@ internal fun ThreadComposerContent(
     attachmentPreviewEnabled: Boolean,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
-    onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {}
+    onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
+    initialMentionActionDetailsVisible: Boolean = false
 ) {
     ThreadComposerContent(
         surface =
@@ -1749,7 +1817,8 @@ internal fun ThreadComposerContent(
         attachmentPreviewEnabled = attachmentPreviewEnabled,
         insertMentionRequest = insertMentionRequest,
         onInsertMentionConsumed = onInsertMentionConsumed,
-        onSuggestionDemandChanged = onSuggestionDemandChanged
+        onSuggestionDemandChanged = onSuggestionDemandChanged,
+        initialMentionActionDetailsVisible = initialMentionActionDetailsVisible
     )
 }
 
@@ -1771,7 +1840,8 @@ internal fun ThreadComposerContent(
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
-    onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {}
+    onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
+    initialMentionActionDetailsVisible: Boolean = false
 ) {
     val editorOwner = remember(state.instanceId) {
         ThreadComposerControlledEditorOwner(state.seedText, state.seedAsTask)
@@ -1806,6 +1876,7 @@ internal fun ThreadComposerContent(
         insertMentionRequest = insertMentionRequest,
         onInsertMentionConsumed = onInsertMentionConsumed,
         onSuggestionDemandChanged = onSuggestionDemandChanged,
+        initialMentionActionDetailsVisible = initialMentionActionDetailsVisible,
     )
 }
 
@@ -1834,6 +1905,7 @@ internal fun ThreadComposerContentLeaf(
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
+    initialMentionActionDetailsVisible: Boolean = false,
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
@@ -2452,7 +2524,18 @@ internal fun ThreadComposerContentLeaf(
                 }
             }
             state.mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
-                MentionActionNotice(notice)
+                MentionActionNotice(
+                    if (notice == ThreadComposerMentionBatchPartialNoticeVisualMarker) {
+                        stringResource(
+                            MR.strings.thread_composer_mention_batch_result,
+                            1,
+                            3,
+                            stringResource(MR.strings.thread_composer_mention_batch_error_member_authority)
+                        )
+                    } else {
+                        notice
+                    }
+                )
             }
             if (state.pendingMentionActions.isNotEmpty()) {
                 PendingMentionActionBanner(
@@ -2465,7 +2548,13 @@ internal fun ThreadComposerContentLeaf(
                     executingStates = state.executingMentionActionStates,
                     onInvite = { resolutionId -> onEvent("inviteMention", resolutionId, null, null) },
                     onNotify = { resolutionId -> onEvent("notifyMention", resolutionId, null, null) },
-                    onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) }
+                    onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) },
+                    onAddAll = { onEvent("addAllMentions", null, null, null) },
+                    initialDetailsVisible = initialMentionActionDetailsVisible,
+                    onOpenDetails = {
+                        currentDismissSuggestions()
+                        softwareKeyboardController?.hide()
+                    }
                 )
             }
             Box(
@@ -3430,22 +3519,283 @@ private fun PendingMentionActionBanner(
     executingStates: Map<String, String>,
     onInvite: (String) -> Unit,
     onNotify: (String) -> Unit,
-    onDismiss: (String) -> Unit
+    onDismiss: (String) -> Unit,
+    onAddAll: () -> Unit,
+    initialDetailsVisible: Boolean,
+    onOpenDetails: () -> Unit
 ) {
+    var detailsVisible by remember { mutableStateOf(initialDetailsVisible && actions.size >= 2) }
+    val visibleActions =
+        actions
+            .filterNot { it.resolutionId.trim() in removingIds }
+            .map(KuiklyPendingMentionActionItem::withNormalizedResolutionId)
+            .distinctBy(KuiklyPendingMentionActionItem::resolutionId)
+    val displayedActions =
+        visibleActions.ifEmpty {
+            actions.take(1).map(KuiklyPendingMentionActionItem::withNormalizedResolutionId)
+        }
+    val eligibleActions =
+        eligiblePendingMentionActionBatch(
+            actions = displayedActions,
+            actionStates = actionStates,
+            removingIds = removingIds,
+            executingIds = executingIds
+        )
+    val batchExecutingIds =
+        displayedActions
+            .map { it.resolutionId }
+            .distinct()
+            .filter { resolutionId ->
+                resolutionId in executingIds && executingStates[resolutionId] == "added"
+            }
+    val batchExecuting = batchExecutingIds.size >= 2
+    LaunchedEffect(displayedActions.size, detailsVisible) {
+        if (detailsVisible && displayedActions.isEmpty()) detailsVisible = false
+    }
     Box(modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp)) {
         Box(modifier = Modifier.matchParentSize().offset(x = 2f, y = 2f).background(SlockColor.ShadowBlack))
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 172.dp)
                     .background(SlockColor.SurfaceCream)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Keep mention actions one-by-one so follow-up rows do not clip controls above the composer.
-            actions.take(1).forEach { action ->
+            if (displayedActions.size == 1) {
+                val action = displayedActions.single()
+                PendingMentionActionRow(
+                    action = action,
+                    targetSuggestion = action.matchingTargetSuggestion(memberSuggestions),
+                    channelLabel = action.channelName.toComposerChannelMentionLabel() ?: channelLabel,
+                    executing = action.resolutionId in executingIds,
+                    localState = actionStates[action.resolutionId],
+                    removing = action.resolutionId in removingIds,
+                    executingState = executingStates[action.resolutionId],
+                    onInvite = { onInvite(action.resolutionId) },
+                    onNotify = { onNotify(action.resolutionId) },
+                    onDismiss = { onDismiss(action.resolutionId) }
+                )
+            } else {
+                PendingMentionActionBatchSummary(
+                    actions = displayedActions,
+                    memberSuggestions = memberSuggestions,
+                    channelLabel = channelLabel,
+                    addAllVisible = eligibleActions.size >= 2 || batchExecuting,
+                    batchExecuting = batchExecuting,
+                    onAddAll = onAddAll,
+                    onView = {
+                        onOpenDetails()
+                        detailsVisible = true
+                    }
+                )
+            }
+        }
+    }
+    ModalBottomSheet(
+        visible = detailsVisible,
+        onDismissRequest = { detailsVisible = false },
+        modifier = Modifier.fillMaxHeight(0.6f),
+        containerColor = SlockColor.SurfaceCream,
+        dismissOnDrag = true
+    ) {
+        PendingMentionActionDetailsSheet(
+            actions = displayedActions,
+            memberSuggestions = memberSuggestions,
+            channelLabel = channelLabel,
+            actionStates = actionStates,
+            removingIds = removingIds,
+            executingIds = executingIds,
+            executingStates = executingStates,
+            eligibleCount = eligibleActions.size,
+            batchExecuting = batchExecuting,
+            onInvite = onInvite,
+            onNotify = onNotify,
+            onDismiss = onDismiss,
+            onAddAll = onAddAll,
+            onClose = { detailsVisible = false }
+        )
+    }
+}
+
+private fun KuiklyPendingMentionActionItem.withNormalizedResolutionId(): KuiklyPendingMentionActionItem {
+    val normalized = resolutionId.trim()
+    return if (normalized == resolutionId) this else copy(resolutionId = normalized)
+}
+
+@Composable
+private fun PendingMentionActionBatchSummary(
+    actions: List<KuiklyPendingMentionActionItem>,
+    memberSuggestions: List<KuiklyComposerMemberItem>,
+    channelLabel: String,
+    addAllVisible: Boolean,
+    batchExecuting: Boolean,
+    onAddAll: () -> Unit,
+    onView: () -> Unit
+) {
+    val summary = localizedPendingMentionBatchSummary(actions.size, channelLabel)
+    val overflowCount = (actions.size - 2).coerceAtLeast(0)
+    val visibleNames = actions.take(2).joinToString(separator = " · ") { it.targetLabel() }
+    val namesLabel =
+        if (overflowCount > 0) {
+            "$visibleNames · ${stringResource(MR.strings.thread_composer_mention_batch_more, overflowCount)}"
+        } else {
+            visibleNames
+        }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        PendingMentionActionAvatarStack(
+            actions = actions,
+            memberSuggestions = memberSuggestions,
+            contentDescription = stringResource(MR.strings.thread_composer_mention_batch_avatar_description, actions.size)
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = summary,
+                style = SlockType.Button.copy(fontSize = 12.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = namesLabel,
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (addAllVisible) {
+            ComposerTextChip(
+                text =
+                    if (batchExecuting) {
+                        stringResource(MR.strings.thread_composer_mention_batch_adding)
+                    } else {
+                        stringResource(MR.strings.thread_composer_mention_batch_add_all)
+                    },
+                variant = ComposerTextChipVariant.Pink,
+                enabled = !batchExecuting,
+                loading = batchExecuting,
+                leadingIcon = SlockLucideIconName.UserPlus,
+                onClick = onAddAll
+            )
+        }
+        ComposerTextChip(
+            text = stringResource(MR.strings.thread_composer_mention_batch_view),
+            variant = ComposerTextChipVariant.White,
+            enabled = true,
+            leadingIcon = SlockLucideIconName.Users,
+            onClick = onView
+        )
+    }
+}
+
+@Composable
+private fun PendingMentionActionAvatarStack(
+    actions: List<KuiklyPendingMentionActionItem>,
+    memberSuggestions: List<KuiklyComposerMemberItem>,
+    contentDescription: String
+) {
+    Row(
+        modifier = Modifier.semantics { this.contentDescription = contentDescription },
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        actions.take(2).forEach { action ->
+            val suggestion = action.matchingTargetSuggestion(memberSuggestions)
+            SlockAvatar(
+                avatarWireValue = action.targetAvatarWireValue() ?: suggestion?.avatarWireValue,
+                label = suggestion?.avatarLabel?.takeIf(String::isNotBlank) ?: action.targetInitial(),
+                avatarSize = 24.dp,
+                borderWidth = SlockStroke.Default
+            )
+        }
+        val overflowCount = (actions.size - 2).coerceAtLeast(0)
+        if (overflowCount > 0) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(24.dp)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(MR.strings.thread_composer_mention_batch_more, overflowCount),
+                    style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 11.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.PendingMentionActionDetailsSheet(
+    actions: List<KuiklyPendingMentionActionItem>,
+    memberSuggestions: List<KuiklyComposerMemberItem>,
+    channelLabel: String,
+    actionStates: Map<String, String>,
+    removingIds: Set<String>,
+    executingIds: Set<String>,
+    executingStates: Map<String, String>,
+    eligibleCount: Int,
+    batchExecuting: Boolean,
+    onInvite: (String) -> Unit,
+    onNotify: (String) -> Unit,
+    onDismiss: (String) -> Unit,
+    onAddAll: () -> Unit,
+    onClose: () -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = localizedPendingMentionBatchSummary(actions.size, channelLabel),
+            modifier = Modifier.weight(1f),
+            style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        SlockBrutalIconButton(
+            iconName = SlockLucideIconName.X,
+            onClick = onClose,
+            contentDescription = stringResource(MR.strings.common_close),
+            size = 30.dp,
+            iconSize = 14.dp,
+            shadowOffset = 2.dp
+        )
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        items(actions.size, key = { actions[it].resolutionId }) { index ->
+            val action = actions[index]
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 10.dp)
+            ) {
                 PendingMentionActionRow(
                     action = action,
                     targetSuggestion = action.matchingTargetSuggestion(memberSuggestions),
@@ -3461,7 +3811,49 @@ private fun PendingMentionActionBanner(
             }
         }
     }
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (eligibleCount >= 2 || batchExecuting) {
+            SlockBrutalActionButton(
+                label =
+                    if (batchExecuting) {
+                        stringResource(MR.strings.thread_composer_mention_batch_adding)
+                    } else {
+                        stringResource(MR.strings.thread_composer_mention_batch_add_all)
+                    },
+                onClick = onAddAll,
+                enabled = !batchExecuting,
+                minWidth = 0.dp,
+                minHeight = 34.dp,
+                leadingIcon = if (batchExecuting) SlockLucideIconName.LoaderCircle else SlockLucideIconName.UserPlus,
+                backgroundColor = SlockColor.AccentPink,
+                shadowOffset = 2.dp
+            )
+        }
+        SlockBrutalActionButton(
+            label = stringResource(MR.strings.common_done),
+            onClick = onClose,
+            minWidth = 0.dp,
+            minHeight = 34.dp,
+            shadowOffset = 2.dp
+        )
+    }
 }
+
+@Composable
+private fun localizedPendingMentionBatchSummary(count: Int, channelLabel: String): String =
+    if (count == 1) {
+        stringResource(MR.strings.thread_composer_mention_batch_summary_one, channelLabel)
+    } else {
+        stringResource(MR.strings.thread_composer_mention_batch_summary_many, count, channelLabel)
+    }
 
 @Composable
 private fun PendingMentionActionRow(
