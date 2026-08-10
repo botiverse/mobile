@@ -47,6 +47,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowInsets
+import android.view.WindowInsetsAnimation
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.view.ViewTreeObserver
@@ -506,6 +507,7 @@ open class SlockKuiklyActivity :
     override fun onCreate(savedInstanceState: Bundle?) {
         prepareHomeColdStartSplashIfNeeded()
         super.onCreate(savedInstanceState)
+        installHuaweiAndroid12InsetsAnimationWorkaroundIfNeeded()
         pendingAttachmentSaveAs =
                 savedInstanceState
                     ?.getBundle(ATTACHMENT_SAVE_AS_STATE_KEY)
@@ -523,6 +525,39 @@ open class SlockKuiklyActivity :
         } else {
             attachKuiklyHost()
         }
+    }
+
+    private fun installHuaweiAndroid12InsetsAnimationWorkaroundIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        if (
+            !shouldUseMainThreadInsetsAnimationRunner(
+                manufacturer = Build.MANUFACTURER,
+                model = Build.MODEL,
+                sdkInt = Build.VERSION.SDK_INT,
+            )
+        ) {
+            return
+        }
+
+        // Keep this callback installed through ViewRoot teardown. On Android 12 its presence makes
+        // InsetsController select the main-thread runner instead of InsetsAnimationThread, whose
+        // asynchronous cancellation can leave a queued Surface transaction behind destroySurface.
+        window.decorView.setWindowInsetsAnimationCallback(
+            object : WindowInsetsAnimation.Callback(
+                WindowInsetsAnimation.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE
+            ) {
+                override fun onProgress(
+                    insets: WindowInsets,
+                    runningAnimations: MutableList<WindowInsetsAnimation>,
+                ): WindowInsets = insets
+            }
+        )
+        SlockAppLog.w(
+            "SlockWindowInsets",
+            "main_thread_insets_animation_runner_enabled " +
+                "manufacturer=${Build.MANUFACTURER} model=${Build.MODEL} " +
+                "sdk=${Build.VERSION.SDK_INT}",
+        )
     }
 
     private fun attachKuiklyHostAfterHoldFirstDraw() {
