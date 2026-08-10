@@ -1142,6 +1142,7 @@ internal fun ThreadComposerScreen() {
     var payloadText by remember { mutableStateOf(params.optString("payload")) }
     var instanceId by remember { mutableStateOf(params.optString("instanceId")) }
     var visualFixture by remember { mutableStateOf(params.optString("visualFixture")) }
+    val visualMentionDrawerStartsClosed = params.optBoolean("visualMentionDrawerStartsClosed", false)
     androidx.compose.runtime.DisposableEffect(pager) {
         val observer =
             object : IPagerEventObserver {
@@ -1273,8 +1274,9 @@ internal fun ThreadComposerScreen() {
                         ThreadComposerContent(
                             payload = payload,
                             initialMentionActionDetailsVisible =
-                                visualFixture == ThreadComposerMentionBatchDetailsVisualFixture ||
-                                    visualFixture == "pending_mention_actions_batch_partial",
+                                !visualMentionDrawerStartsClosed &&
+                                    (visualFixture == ThreadComposerMentionBatchDetailsVisualFixture ||
+                                        visualFixture == "pending_mention_actions_batch_partial"),
                             attachmentPreviewEnabled = false,
                             onEvent = { action, _, _, attachmentId ->
                                 if (
