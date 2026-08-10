@@ -44,6 +44,13 @@ must remain separate for the exact being reviewed.
 5. Release notes come from reviewed versioned files, not commit subjects.
 6. A repository closeout may record an open product defect. It must not rename
    a source, packaging, or merge-back PASS into a product PASS.
+7. Private fork dependencies used by a carrier come from an immutable Raft
+   Artifacts release set. Record the exact version, source commit/tree/tag,
+   complete manifest, and per-artifact bytes and SHA-256. A missing manifest,
+   incomplete platform set, hash mismatch, version range, `latest`, or silent
+   fallback to a gitlink, `mavenLocal`, local pod, HAR, or source build blocks
+   the candidate. A source checkout may remain as a provenance anchor, but it
+   is not a production dependency fallback.
 
 ## 1. Open The Release Plan
 
@@ -141,6 +148,14 @@ production train.
 
 Start from a clean checkout equal to `origin/release-X.Y.Z`. Record branch,
 carrier source exact, tree, required PRs, and terminal exact-source checks.
+
+Before dispatch, resolve every private fork dependency from an empty cache
+using only the plan's exact Raft Artifacts manifest. Require the resolved
+Android/KMP, Apple, OHOS, plugin, and renderer set selected by the plan to be
+complete and byte-identical to that manifest. Record the dependency release
+version, source exact, manifest digest, and resolved artifact digests in the
+candidate receipt. Publishing the dependency set and consuming it are separate
+gates; neither is inferred from a source merge.
 
 Android:
 
