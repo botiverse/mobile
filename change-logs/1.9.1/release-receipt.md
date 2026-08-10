@@ -127,8 +127,7 @@ call and the immediate dispatch still failed. Therefore:
 
 - the old claim that 1000015 stopped this crash family is void;
 - the release-only guard is product-invalid containment, not a root-cause fix;
-- root-cause task #131 must explain receiver creation, tag/handler lookup,
-  selector generation, and Objective-C resolution/forwarding/isa behavior;
+- task #131 owns the causal source successor and exact new-carrier proof;
 - no rollout expansion or product PASS is implied by this receipt.
 
 Task #132 then read the same official renderer's Objective-C metadata. The
@@ -139,6 +138,18 @@ The selector is only an optional protocol declaration with no IMP on
 `KRRichTextView`. This excludes static category pollution and the DEBUG
 inspector as causes, but does not close task #131's live forwarding, dynamic
 resolution, tag binding, or receiver-lifetime investigation.
+
+Task #131 subsequently traced the concrete call chain: Compose `BasicText`
+creates a KNode backed by `RichTextView`; `FocusableNode.onFocusEvent` calls
+`accessibilityFocus()` on that KNode; iOS maps it to the same correctly bound
+`KRRichTextView`; the handler then sends the shared three-argument view call to
+that receiver. The causal defect is that `KRRichTextView` participates as a
+focusable text view but omits the shared accessibility dispatcher. A real
+renderer fixture now proves the old class has no method and terminates RED,
+while the source patch installs the method and survives focus plus announce.
+The patch's final CI/review and an authorized physical carrier are still
+pending, so this source-level root cause does not change the 1000015 product
+RED status.
 
 The earlier source-equivalent Simulator IME matrix remains valid only for its
 own keyboard behavior. It cannot override the physical crash evidence.
