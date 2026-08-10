@@ -787,7 +787,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-pending-mention-batch-partial")
                     .put("visualFixture", "pending_mention_actions_batch_partial")
-                    .put("visualMentionDrawerStartsClosed", true),
+                    .put("androidVisualMentionDrawerStartsClosed", true),
             crop = THREAD_COMPOSER_MODAL_VIEWPORT_CROP,
             settleMs = 2_000,
             beforeScreenshot = ::openPendingMentionDrawer,
@@ -804,7 +804,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-pending-mention-batch-details")
                     .put("visualFixture", "pending_mention_actions_batch_details")
-                    .put("visualMentionDrawerStartsClosed", true),
+                    .put("androidVisualMentionDrawerStartsClosed", true),
             crop = THREAD_COMPOSER_MODAL_VIEWPORT_CROP,
             settleMs = 2_000,
             beforeScreenshot = ::openPendingMentionDrawer,

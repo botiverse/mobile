@@ -1142,7 +1142,7 @@ internal fun ThreadComposerScreen() {
     var payloadText by remember { mutableStateOf(params.optString("payload")) }
     var instanceId by remember { mutableStateOf(params.optString("instanceId")) }
     var visualFixture by remember { mutableStateOf(params.optString("visualFixture")) }
-    val visualMentionDrawerStartsClosed = params.optBoolean("visualMentionDrawerStartsClosed", false)
+    val visualMentionDrawerStartsClosed = params.optBoolean("androidVisualMentionDrawerStartsClosed", false)
     androidx.compose.runtime.DisposableEffect(pager) {
         val observer =
             object : IPagerEventObserver {
