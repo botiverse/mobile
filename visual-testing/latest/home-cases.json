@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-10T22:13:30.860Z",
+  "generatedAt": "2026-08-10T22:17:57.979Z",
   "runId": "7f91c208-20260810221045",
   "cases": [
     {
@@ -5414,17 +5414,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-10T22:13:25.823Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-10T22:15:51.421Z",
+            "severity": "low",
+            "summary": [
+              "iOS canvas uses full device viewport (1170×2532) while React baseline is tightly cropped to component bounds (342×92) — the actual status dot components render identically at the top-left of each canvas",
+              "All four status dot colors (green, orange, gray, blue) and the pink 'Waiting pulse' dot match in color, size, and horizontal spacing between iOS and React",
+              "The 'Waiting pulse' label text appears slightly lighter in weight on iOS compared to the React baseline, though spacing between dot and label is consistent",
+              "Pink 'Waiting pulse' dot appears marginally smaller on iOS, suggesting a minor dot-size token difference"
+            ],
+            "likelyCauses": [
+              "Test harness captured full device screen instead of cropping to component bounds for iOS",
+              "Slight font weight or dot-size token mismatch between platform design token implementations"
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "Apply the same component-bounds crop strategy to the iOS capture so comparison canvases match",
+              "Align font-weight and dot dimension tokens between iOS and React implementations",
+              "Verify iOS StatusDot size token matches React (e.g., pulse dot diameter)",
+              "Re-run comparison with normalized crop rects to confirm remaining pixel-perfect similarity"
+            ],
+            "intentional": [
+              "Full-viewport capture on iOS may be intentional to verify component placement within safe areas"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -5495,17 +5510,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-10T22:13:25.823Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-10T22:15:51.421Z",
+            "severity": "low",
+            "summary": [
+              "iOS canvas uses full device viewport (1170×2532) while React baseline is tightly cropped to component bounds (342×92) — the actual status dot components render identically at the top-left of each canvas",
+              "All four status dot colors (green, orange, gray, blue) and the pink 'Waiting pulse' dot match in color, size, and horizontal spacing between iOS and React",
+              "The 'Waiting pulse' label text appears slightly lighter in weight on iOS compared to the React baseline, though spacing between dot and label is consistent",
+              "Pink 'Waiting pulse' dot appears marginally smaller on iOS, suggesting a minor dot-size token difference"
+            ],
+            "likelyCauses": [
+              "Test harness captured full device screen instead of cropping to component bounds for iOS",
+              "Slight font weight or dot-size token mismatch between platform design token implementations"
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "Apply the same component-bounds crop strategy to the iOS capture so comparison canvases match",
+              "Align font-weight and dot dimension tokens between iOS and React implementations",
+              "Verify iOS StatusDot size token matches React (e.g., pulse dot diameter)",
+              "Re-run comparison with normalized crop rects to confirm remaining pixel-perfect similarity"
+            ],
+            "intentional": [
+              "Full-viewport capture on iOS may be intentional to verify component placement within safe areas"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -12766,17 +12796,35 @@
         "currentHeight": 810
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-10T22:13:22.590Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-10T22:15:45.578Z",
+        "severity": "medium",
+        "summary": [
+          "React shows an error banner ('The upload size limit could not be checked. Try again in a moment.'); Android version does not display this error state.",
+          "Android displays an actual image preview thumbnail (yellow image with pink circle/mountain graphics) with a circular close (X) button overlay; React version is missing the preview image and its dismiss affordance.",
+          "Layout dimensions differ: Android canvas is taller (342×270 vs 342×210), indicating the image-preview thumbnail block is taller/positioned higher on Android.",
+          "Header resolution metadata matches (1026×630 vs 1026×810) but the two states represent fundamentally different composer states (error vs. preview with image)."
+        ],
+        "likelyCauses": [
+          "Android implementation renders the image preview thumbnail in the loading/selected state while React snapshot was captured during an error/limit-check failure state.",
+          "State-condition divergence: React triggers the 'upload size limit could not be checked' error banner under conditions that the Android build does not, or vice versa.",
+          "Missing preview image and close button on React suggests the image attachment is not rendered during the loading phase in the web build.",
+          "Crop rect mismatch (auto element-bounds vs manual 342×270) on Android may be capturing extra UI not present in the React baseline."
+        ],
+        "suggestedOwner": "android-composer",
+        "suggestedFixes": [
+          "Sync state machine so both platforms render the same composer state (error vs. preview-with-image) under identical triggers.",
+          "Ensure React renders the image-preview thumbnail and close (X) button while the image is selected/uploading, matching Android.",
+          "Add the 'upload size limit could not be checked' error banner to the Android composer for parity.",
+          "Re-baseline React snapshot in the preview-with-image state (not the error state) so visual diffs compare equivalent conditions.",
+          "Re-crop Android snapshot using auto element-bounds mode instead of manual rect to avoid extra whitespace inflating the canvas."
+        ],
+        "intentional": [
+          "Differences may reflect intentionally divergent platform states (error fallback on web vs. preview on Android) that need product confirmation before treating as regressions."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -12863,17 +12911,35 @@
             "currentHeight": 810
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-10T22:13:22.590Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-10T22:15:45.578Z",
+            "severity": "medium",
+            "summary": [
+              "React shows an error banner ('The upload size limit could not be checked. Try again in a moment.'); Android version does not display this error state.",
+              "Android displays an actual image preview thumbnail (yellow image with pink circle/mountain graphics) with a circular close (X) button overlay; React version is missing the preview image and its dismiss affordance.",
+              "Layout dimensions differ: Android canvas is taller (342×270 vs 342×210), indicating the image-preview thumbnail block is taller/positioned higher on Android.",
+              "Header resolution metadata matches (1026×630 vs 1026×810) but the two states represent fundamentally different composer states (error vs. preview with image)."
+            ],
+            "likelyCauses": [
+              "Android implementation renders the image preview thumbnail in the loading/selected state while React snapshot was captured during an error/limit-check failure state.",
+              "State-condition divergence: React triggers the 'upload size limit could not be checked' error banner under conditions that the Android build does not, or vice versa.",
+              "Missing preview image and close button on React suggests the image attachment is not rendered during the loading phase in the web build.",
+              "Crop rect mismatch (auto element-bounds vs manual 342×270) on Android may be capturing extra UI not present in the React baseline."
+            ],
+            "suggestedOwner": "android-composer",
+            "suggestedFixes": [
+              "Sync state machine so both platforms render the same composer state (error vs. preview-with-image) under identical triggers.",
+              "Ensure React renders the image-preview thumbnail and close (X) button while the image is selected/uploading, matching Android.",
+              "Add the 'upload size limit could not be checked' error banner to the Android composer for parity.",
+              "Re-baseline React snapshot in the preview-with-image state (not the error state) so visual diffs compare equivalent conditions.",
+              "Re-crop Android snapshot using auto element-bounds mode instead of manual rect to avoid extra whitespace inflating the canvas."
+            ],
+            "intentional": [
+              "Differences may reflect intentionally divergent platform states (error fallback on web vs. preview on Android) that need product confirmation before treating as regressions."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -12896,17 +12962,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-10T22:13:26.266Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-10T22:15:52.039Z",
+            "severity": "medium",
+            "summary": [
+              "React baseline shows an error banner ('The upload size limit could not be checked. Try again in a moment.') above the image preview; iOS rendering is missing this error/banner block entirely.",
+              "iOS image preview thumbnail has a circular close (X) button overlay on its top-right corner; the React version has no close button on the thumbnail.",
+              "iOS image thumbnail is noticeably smaller (appears ~80px square) compared to the React thumbnail (~110px square), and its position is offset upward with more whitespace below.",
+              "The bottom composer row ('Uploading the design crop for review.' with action icons, 'As Task' checkbox, and pink send button) sits lower and with greater vertical separation from the thumbnail on iOS than on React.",
+              "Send button (pink rounded square) on iOS is slightly smaller and has tighter padding relative to its row bounds compared to React."
+            ],
+            "likelyCauses": [
+              "React baseline was captured in an error/upload-size-check failure state, while iOS was rendered without the error banner component mounted.",
+              "iOS implementation includes a thumbnail close affordance that the React web component does not expose.",
+              "Inconsistent sizing/layout constants for the image thumbnail between platforms (different fixed dimensions or aspect-ratio rules).",
+              "Vertical spacing tokens between thumbnail row and composer row differ between React and iOS implementations."
+            ],
+            "suggestedOwner": "mobile-ios",
+            "suggestedFixes": [
+              "Decide whether the upload-size-check error banner should render on iOS too; if yes, mount it above the preview with matching copy, background tint, and padding. If intentionally web-only, align baseline captures to the no-error state to avoid spurious diffs.",
+              "Add or remove the thumbnail close (X) button on the React preview to match iOS (or vice versa) and ensure hit-target spacing is consistent.",
+              "Unify the image thumbnail dimensions and aspect ratio across platforms; verify the same fixed size or max-width token is used.",
+              "Align vertical spacing between the thumbnail row and the composer/upload row using a shared layout token.",
+              "Standardize the send button size and internal padding so both platforms render the pink CTA with identical proportions."
+            ],
+            "intentional": [
+              "iOS-specific thumbnail close (X) affordance for touch dismissal may be an intentional platform UX choice.",
+              "Different default thumbnail size on iOS could reflect HIG guidance for tap targets, though should still be token-driven."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -12982,17 +13068,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-10T22:13:26.266Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-10T22:15:52.039Z",
+            "severity": "medium",
+            "summary": [
+              "React baseline shows an error banner ('The upload size limit could not be checked. Try again in a moment.') above the image preview; iOS rendering is missing this error/banner block entirely.",
+              "iOS image preview thumbnail has a circular close (X) button overlay on its top-right corner; the React version has no close button on the thumbnail.",
+              "iOS image thumbnail is noticeably smaller (appears ~80px square) compared to the React thumbnail (~110px square), and its position is offset upward with more whitespace below.",
+              "The bottom composer row ('Uploading the design crop for review.' with action icons, 'As Task' checkbox, and pink send button) sits lower and with greater vertical separation from the thumbnail on iOS than on React.",
+              "Send button (pink rounded square) on iOS is slightly smaller and has tighter padding relative to its row bounds compared to React."
+            ],
+            "likelyCauses": [
+              "React baseline was captured in an error/upload-size-check failure state, while iOS was rendered without the error banner component mounted.",
+              "iOS implementation includes a thumbnail close affordance that the React web component does not expose.",
+              "Inconsistent sizing/layout constants for the image thumbnail between platforms (different fixed dimensions or aspect-ratio rules).",
+              "Vertical spacing tokens between thumbnail row and composer row differ between React and iOS implementations."
+            ],
+            "suggestedOwner": "mobile-ios",
+            "suggestedFixes": [
+              "Decide whether the upload-size-check error banner should render on iOS too; if yes, mount it above the preview with matching copy, background tint, and padding. If intentionally web-only, align baseline captures to the no-error state to avoid spurious diffs.",
+              "Add or remove the thumbnail close (X) button on the React preview to match iOS (or vice versa) and ensure hit-target spacing is consistent.",
+              "Unify the image thumbnail dimensions and aspect ratio across platforms; verify the same fixed size or max-width token is used.",
+              "Align vertical spacing between the thumbnail row and the composer/upload row using a shared layout token.",
+              "Standardize the send button size and internal padding so both platforms render the pink CTA with identical proportions."
+            ],
+            "intentional": [
+              "iOS-specific thumbnail close (X) affordance for touch dismissal may be an intentional platform UX choice.",
+              "Different default thumbnail size on iOS could reflect HIG guidance for tap targets, though should still be token-driven."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -15622,17 +15728,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-10T22:13:26.444Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-10T22:15:52.332Z",
+            "severity": "high",
+            "summary": [
+              "iOS bottom action bar is pinned to the top of the list (just under messages) while React pins it to the bottom of the viewport — different sticky/portal placement.",
+              "React shows a yellow circular check-circle indicator next to each message; iOS shows a yellow square check-box indicator — shape and bounding box differ.",
+              "iOS action bar contains: ×, ✓ All, Forward, copy, download buttons (5 actions). React action bar contains: × Cancel, send/forward, copy, overflow (more) — different action set and labels.",
+              "iOS message items have no reaction chip below text, no avatar/image, no reaction count row; React shows a thumbs-up reaction ('2') and a QR-style avatar tile for the first message.",
+              "iOS action bar sits above message bodies but below the top metadata header; React action bar sits at viewport bottom, far below message bodies."
+            ],
+            "likelyCauses": [
+              "Independent implementation of the selection action bar in iOS without reusing the shared design tokens/spec used by React.",
+              "Selection state indicator component (check circle vs checkbox) was implemented as a different primitive in iOS.",
+              "Action bar placement is portal-positioned in React (bottom of screen) but in-flow (after messages) in iOS.",
+              "Reaction/avatar rendering differs because iOS message list variant omits the attachment/reaction footer block."
+            ],
+            "suggestedOwner": "mobile-ios / cross-platform design-system",
+            "suggestedFixes": [
+              "Align the iOS selection action bar with the React one: pin to the bottom of the viewport (outside the scroll list) and match the button set/ordering (Cancel, Forward, Copy, More) — add 'All' only if spec requires it.",
+              "Replace the iOS yellow checkbox with the same circular selected indicator (filled yellow circle with check) used in React, at the same size and gutter.",
+              "Render reactions and avatars in iOS message items to match React, or explicitly hide via a shared prop if intentional.",
+              "Share the action bar styling (height, corner radius, yellow fill, button spacing) between React and iOS by promoting it to a shared component spec.",
+              "Add a visual regression snapshot covering the selection state to catch portal/placement regressions on iOS."
+            ],
+            "intentional": [
+              "iOS uses a different message dataset (Cindy/Keeps visual test, artin/Generate message) — likely fixture variation, not a UI bug.",
+              "iOS omits the second-line reaction row — may be intentional if iOS message cell variant doesn't render reactions."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -15708,17 +15834,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-10T22:13:26.444Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-10T22:15:52.332Z",
+            "severity": "high",
+            "summary": [
+              "iOS bottom action bar is pinned to the top of the list (just under messages) while React pins it to the bottom of the viewport — different sticky/portal placement.",
+              "React shows a yellow circular check-circle indicator next to each message; iOS shows a yellow square check-box indicator — shape and bounding box differ.",
+              "iOS action bar contains: ×, ✓ All, Forward, copy, download buttons (5 actions). React action bar contains: × Cancel, send/forward, copy, overflow (more) — different action set and labels.",
+              "iOS message items have no reaction chip below text, no avatar/image, no reaction count row; React shows a thumbs-up reaction ('2') and a QR-style avatar tile for the first message.",
+              "iOS action bar sits above message bodies but below the top metadata header; React action bar sits at viewport bottom, far below message bodies."
+            ],
+            "likelyCauses": [
+              "Independent implementation of the selection action bar in iOS without reusing the shared design tokens/spec used by React.",
+              "Selection state indicator component (check circle vs checkbox) was implemented as a different primitive in iOS.",
+              "Action bar placement is portal-positioned in React (bottom of screen) but in-flow (after messages) in iOS.",
+              "Reaction/avatar rendering differs because iOS message list variant omits the attachment/reaction footer block."
+            ],
+            "suggestedOwner": "mobile-ios / cross-platform design-system",
+            "suggestedFixes": [
+              "Align the iOS selection action bar with the React one: pin to the bottom of the viewport (outside the scroll list) and match the button set/ordering (Cancel, Forward, Copy, More) — add 'All' only if spec requires it.",
+              "Replace the iOS yellow checkbox with the same circular selected indicator (filled yellow circle with check) used in React, at the same size and gutter.",
+              "Render reactions and avatars in iOS message items to match React, or explicitly hide via a shared prop if intentional.",
+              "Share the action bar styling (height, corner radius, yellow fill, button spacing) between React and iOS by promoting it to a shared component spec.",
+              "Add a visual regression snapshot covering the selection state to catch portal/placement regressions on iOS."
+            ],
+            "intentional": [
+              "iOS uses a different message dataset (Cindy/Keeps visual test, artin/Generate message) — likely fixture variation, not a UI bug.",
+              "iOS omits the second-line reaction row — may be intentional if iOS message cell variant doesn't render reactions."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -20803,7 +20949,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-10T22:13:22.343Z",
+        "generatedAt": "2026-08-10T22:17:48.215Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20864,7 +21010,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:22.343Z",
+            "generatedAt": "2026-08-10T22:17:48.215Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20886,7 +21032,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:25.473Z",
+            "generatedAt": "2026-08-10T22:17:51.714Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20963,7 +21109,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:25.473Z",
+            "generatedAt": "2026-08-10T22:17:51.714Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25459,7 +25605,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:25.473Z",
+            "generatedAt": "2026-08-10T22:17:51.714Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25481,7 +25627,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:29.075Z",
+            "generatedAt": "2026-08-10T22:17:55.829Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25506,7 +25652,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:25.473Z",
+            "generatedAt": "2026-08-10T22:17:51.714Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25529,7 +25675,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:29.075Z",
+            "generatedAt": "2026-08-10T22:17:55.829Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25729,7 +25875,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:25.473Z",
+            "generatedAt": "2026-08-10T22:17:51.714Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25751,7 +25897,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:29.075Z",
+            "generatedAt": "2026-08-10T22:17:55.829Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25776,7 +25922,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:25.473Z",
+            "generatedAt": "2026-08-10T22:17:51.714Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25799,7 +25945,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:29.075Z",
+            "generatedAt": "2026-08-10T22:17:55.829Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25999,7 +26145,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:25.473Z",
+            "generatedAt": "2026-08-10T22:17:51.714Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26021,7 +26167,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:29.075Z",
+            "generatedAt": "2026-08-10T22:17:55.829Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26046,7 +26192,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:25.473Z",
+            "generatedAt": "2026-08-10T22:17:51.714Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26069,7 +26215,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:29.075Z",
+            "generatedAt": "2026-08-10T22:17:55.829Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26265,7 +26411,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:25.473Z",
+            "generatedAt": "2026-08-10T22:17:51.714Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26287,7 +26433,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:29.075Z",
+            "generatedAt": "2026-08-10T22:17:55.829Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26312,7 +26458,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:25.473Z",
+            "generatedAt": "2026-08-10T22:17:51.714Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26335,7 +26481,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:29.075Z",
+            "generatedAt": "2026-08-10T22:17:55.829Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26531,7 +26677,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:25.473Z",
+            "generatedAt": "2026-08-10T22:17:51.714Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26553,7 +26699,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:29.075Z",
+            "generatedAt": "2026-08-10T22:17:55.829Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26578,7 +26724,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:25.473Z",
+            "generatedAt": "2026-08-10T22:17:51.714Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26601,7 +26747,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-10T22:13:29.075Z",
+            "generatedAt": "2026-08-10T22:17:55.829Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

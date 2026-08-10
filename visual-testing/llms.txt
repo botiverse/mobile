@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-10 22:13:30 UTC
+Generated: 2026-08-10 22:17:57 UTC
 Latest run: 7f91c208-20260810221045
 Latest commit: 7f91c208-20260810221045
 Commit subject: fix(android): keep affected Huawei insets animation on main (#2058)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 86, same 0, pass 0, basic-pass 0, different 85, missing 1
-AI analysis: ready 84 / total 86, pending 2
+AI analysis: ready 85 / total 86, pending 1
 Visual coverage matrix: active 95 / total 114, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

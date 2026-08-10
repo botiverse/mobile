@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>7f91c208-20260810221045</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-10T22:13:30.860Z" data-timestamp="2026-08-10T22:13:30.860Z" title="2026-08-10T22:13:30.860Z">2026-08-10 22:13:30 UTC</time></p>
+    <p class="runMeta"><code>7f91c208-20260810221045</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-10T22:17:57.979Z" data-timestamp="2026-08-10T22:17:57.979Z" title="2026-08-10T22:17:57.979Z">2026-08-10 22:17:57 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 85</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 84/86 ready</span>
+      <span class="pill">AI 85/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -2317,7 +2317,12 @@
       <p><code>RGB 84.7%</code><br/><code>Pixel 70.56%</code><br/><code>Mismatch 29.44%</code><br/><code>Raw 1026×630 / 1026×810</code><br/><code>Canvas 1026×810</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×210 / component-bounds 342×270</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-composer</summary>
+    <ul><li>React shows an error banner ('The upload size limit could not be checked. Try again in a moment.'); Android version does not display this error state.</li><li>Android displays an actual image preview thumbnail (yellow image with pink circle/mountain graphics) with a circular close (X) button overlay; React version is missing the preview image and its dismiss affordance.</li><li>Layout dimensions differ: Android canvas is taller (342×270 vs 342×210), indicating the image-preview thumbnail block is taller/positioned higher on Android.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Sync state machine so both platforms render the same composer state (error vs. preview-with-image) under identical triggers.</li><li>Ensure React renders the image-preview thumbnail and close (X) button while the image is selected/uploading, matching Android.</li><li>Add the 'upload size limit could not be checked' error banner to the Android composer for parity.</li><li>Re-baseline React snapshot in the preview-with-image state (not the error state) so visual diffs compare equivalent conditions.</li><li>Re-crop Android snapshot using auto element-bounds mode instead of manual rect to avoid extra whitespace inflating the canvas.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.image-preview.png" data-current-src="android/components.thread.composer.image-preview.png" data-overlay-width="1026" data-overlay-height="810">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

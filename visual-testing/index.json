@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-10T22:13:30.860Z",
+  "generatedAt": "2026-08-10T22:17:57.979Z",
   "latestRunId": "7f91c208-20260810221045",
   "latest": {
     "runId": "7f91c208-20260810221045",
     "commit": "7f91c208-20260810221045",
     "commitSubject": "fix(android): keep affected Huawei insets animation on main (#2058)",
-    "generatedAt": "2026-08-10T22:13:30.860Z",
+    "generatedAt": "2026-08-10T22:17:57.979Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 86,
-      "ready": 84,
-      "pending": 2
+      "ready": 85,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "7f91c208-20260810221045",
       "commit": "7f91c208-20260810221045",
       "commitSubject": "fix(android): keep affected Huawei insets animation on main (#2058)",
-      "generatedAt": "2026-08-10T22:13:30.860Z",
+      "generatedAt": "2026-08-10T22:17:57.979Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 84,
-        "pending": 2
+        "ready": 85,
+        "pending": 1
       },
       "comparisons": [
         "react__android",

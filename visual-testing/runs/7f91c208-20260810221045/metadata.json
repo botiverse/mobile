@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-10T22:13:30.860Z",
+  "generatedAt": "2026-08-10T22:17:57.979Z",
   "runId": "7f91c208-20260810221045",
   "commit": "7f91c208-20260810221045",
   "commitSubject": "fix(android): keep affected Huawei insets animation on main (#2058)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 84,
-        "pending": 2
+        "ready": 85,
+        "pending": 1
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 77,
-        "pending": 9
+        "ready": 80,
+        "pending": 6
       }
     },
     {
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 86,
-    "ready": 84,
-    "pending": 2
+    "ready": 85,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 114,

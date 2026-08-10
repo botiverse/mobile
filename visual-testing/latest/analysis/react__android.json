@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-10T22:13:22.335Z",
+  "generatedAt": "2026-08-10T22:17:48.204Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 84,
-    "pending": 2
+    "ready": 85,
+    "pending": 1
   },
   "cases": [
     {
@@ -1127,15 +1127,36 @@
     },
     {
       "id": "components.thread.composer.image-preview",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffefffd07fc07fc000000000000000080000fff80000fff80000fff83fc0fff80000fff80010fffa004000380002001801000018ff83efd87c00ff187d80f8180000ff180000001fffff007fffffffffffffffffffffffffffeffff0000fffffffffffffffffffffffffffffffffffffffffffeffff8001fff81fffffffffff",
-      "generatedAt": "2026-08-10T22:13:21.264Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-10T22:15:45.578Z",
+      "severity": "medium",
+      "summary": [
+        "React shows an error banner ('The upload size limit could not be checked. Try again in a moment.'); Android version does not display this error state.",
+        "Android displays an actual image preview thumbnail (yellow image with pink circle/mountain graphics) with a circular close (X) button overlay; React version is missing the preview image and its dismiss affordance.",
+        "Layout dimensions differ: Android canvas is taller (342×270 vs 342×210), indicating the image-preview thumbnail block is taller/positioned higher on Android.",
+        "Header resolution metadata matches (1026×630 vs 1026×810) but the two states represent fundamentally different composer states (error vs. preview with image)."
+      ],
+      "likelyCauses": [
+        "Android implementation renders the image preview thumbnail in the loading/selected state while React snapshot was captured during an error/limit-check failure state.",
+        "State-condition divergence: React triggers the 'upload size limit could not be checked' error banner under conditions that the Android build does not, or vice versa.",
+        "Missing preview image and close button on React suggests the image attachment is not rendered during the loading phase in the web build.",
+        "Crop rect mismatch (auto element-bounds vs manual 342×270) on Android may be capturing extra UI not present in the React baseline."
+      ],
+      "suggestedOwner": "android-composer",
+      "suggestedFixes": [
+        "Sync state machine so both platforms render the same composer state (error vs. preview-with-image) under identical triggers.",
+        "Ensure React renders the image-preview thumbnail and close (X) button while the image is selected/uploading, matching Android.",
+        "Add the 'upload size limit could not be checked' error banner to the Android composer for parity.",
+        "Re-baseline React snapshot in the preview-with-image state (not the error state) so visual diffs compare equivalent conditions.",
+        "Re-crop Android snapshot using auto element-bounds mode instead of manual rect to avoid extra whitespace inflating the canvas."
+      ],
+      "intentional": [
+        "Differences may reflect intentionally divergent platform states (error fallback on web vs. preview on Android) that need product confirmation before treating as regressions."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2944083459678002
     },
     {
@@ -1836,7 +1857,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-10T22:13:21.568Z",
+      "generatedAt": "2026-08-10T22:17:47.347Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
