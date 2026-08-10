@@ -157,7 +157,7 @@ carrier identity above remains immutable; task #131 owns the causal successor.
 Other reviewed release-only changes, notes, minimum-iOS update, and iOS
 release-note contract are preserved.
 
-- Merge-back PR: pending creation from this integration candidate
+- Merge-back PR: #2052
 - Landed main exact: pending protected merge
 
 Repository closeout is not complete until the merge-back PR has terminal exact
