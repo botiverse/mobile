@@ -14,7 +14,7 @@ final class SlockExternalShareEnvelopeStorageTests: XCTestCase {
     }
 
     func testHostLaunchURLRejectsMissingOrUnknownScheme() {
-        for scheme in [nil, "", "https"] as [String?] {
+        for scheme in [nil, "", "https", "raft-alpha", "raft-beta", "raft-dev"] as [String?] {
             XCTAssertThrowsError(
                 try SlockExternalShareContract.hostLaunchURL(
                     token: "opaque-token_1234567890",
@@ -27,6 +27,44 @@ final class SlockExternalShareEnvelopeStorageTests: XCTestCase {
                 )
             }
         }
+    }
+
+    func testHostLaunchAcceptsOnlyMatchingBuildVariantScheme() throws {
+        let token = "opaque-token_1234567890"
+        let debugURL = try SlockExternalShareContract.hostLaunchURL(
+            token: token,
+            configuredScheme: "raft-debug"
+        )
+        let releaseURL = try SlockExternalShareContract.hostLaunchURL(
+            token: token,
+            configuredScheme: "raft"
+        )
+
+        XCTAssertEqual(
+            SlockExternalShareContract.hostLaunchToken(from: debugURL, configuredScheme: "raft-debug"),
+            token
+        )
+        XCTAssertNil(SlockExternalShareContract.hostLaunchToken(from: debugURL, configuredScheme: "raft"))
+        XCTAssertEqual(
+            SlockExternalShareContract.hostLaunchToken(from: releaseURL, configuredScheme: "raft"),
+            token
+        )
+        XCTAssertNil(SlockExternalShareContract.hostLaunchToken(from: releaseURL, configuredScheme: "raft-debug"))
+    }
+
+    func testHostLaunchRejectsUnsupportedConfiguredSchemeAndMalformedRoute() throws {
+        let validURL = try XCTUnwrap(URL(string: "raft-debug://external-share?token=opaque-token_1234567890"))
+        for scheme in [nil, "", "raft-alpha", "raft-beta", "raft-dev", "https"] as [String?] {
+            XCTAssertNil(SlockExternalShareContract.hostLaunchToken(from: validURL, configuredScheme: scheme))
+        }
+        XCTAssertNil(SlockExternalShareContract.hostLaunchToken(
+            from: try XCTUnwrap(URL(string: "raft-debug://oauth/callback?token=opaque-token_1234567890")),
+            configuredScheme: "raft-debug"
+        ))
+        XCTAssertNil(SlockExternalShareContract.hostLaunchToken(
+            from: try XCTUnwrap(URL(string: "raft-debug://external-share?token=opaque-token_1234567890&extra=1")),
+            configuredScheme: "raft-debug"
+        ))
     }
 
     private var root: URL!
