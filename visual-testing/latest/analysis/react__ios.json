@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-09T22:13:55.258Z",
+  "generatedAt": "2026-08-10T22:13:25.467Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 77,
+    "pending": 9
   },
   "cases": [
     {
@@ -464,32 +464,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-07T22:16:57.790Z",
-      "severity": "low",
-      "summary": [
-        "Status dot colors and shapes match between React and iOS renders.",
-        "Text label \"Waiting pulse\" is present and aligned consistently in both renders.",
-        "No missing elements or clipping observed.",
-        "Minor difference in raw canvas size (baseline cropped to component bounds vs full iOS canvas) accounts for empty space on iOS side.",
-        "Pixel mismatch ratio is only 0.23%, well within tolerance."
-      ],
-      "likelyCauses": [
-        "Baseline crop is element-bounded while iOS capture is full-screen, producing large empty region on right.",
-        "Negligible sub-pixel/antialiasing differences in dot rendering."
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "Apply consistent component-bounds cropping to iOS capture to align comparison regions.",
-        "Confirm dot pulse animation is not active in snapshot (would cause expected variance)."
-      ],
-      "intentional": [
-        "Differences in canvas size due to differing crop contracts between platforms."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-08-10T22:13:23.964Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -523,7 +506,7 @@
     {
       "id": "components.ui.skeleton.states",
       "status": "ready",
-      "imageHash": "p1:0000200000fc01fe00fc01fe0000000600000006003c007e00003ffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "imageHash": "p1:0000200000fc01fe01fc01fe0000000600000006107c007e00003ffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
       "generatedAt": "2026-08-02T22:43:37.527Z",
       "severity": "low",
       "summary": [
@@ -549,7 +532,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062095097284670775
+      "metricMismatch": 0.06209779776130486
     },
     {
       "id": "components.ui.spinner.states",
@@ -1111,37 +1094,16 @@
     },
     {
       "id": "components.thread.composer.image-preview",
-      "status": "ready",
-      "imageHash": "p1:00000000000100020ffd4ffe0ff90ff20001000206910f02000100027ffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-08-07T00:06:32.905Z",
-      "severity": "medium",
-      "summary": [
-        "Image preview thumbnail is missing/empty on iOS but shows a yellow placeholder with pink circle and black mountain icon on React",
-        "iOS renders an X close button in the top-right of the thumbnail area that is absent on React",
-        "Both sides render the text 'Uploading the design crop for review.' but at different relative scale due to viewport size difference",
-        "Action button area (image-add, paperclip, 'As Task' label, pink send button) is visually consistent in structure but icon stroke weights differ slightly between platforms",
-        "Overall component bounds/scale differ because iOS viewport (1170x2532) is much larger than React's (342x210), inflating all UI proportionally"
-      ],
-      "likelyCauses": [
-        "iOS thread composer does not load or render the image preview thumbnail content (placeholder image asset missing)",
-        "Close (X) overlay on thumbnail is an iOS-only affordance not present in the React baseline",
-        "Canvas element-bounds comparison is being applied to the full iOS screenshot rather than a cropped component, inflating mismatch"
-      ],
-      "suggestedOwner": "iOS / Mobile",
-      "suggestedFixes": [
-        "Ensure iOS image preview component renders the placeholder thumbnail (yellow with sun/mountain icon) when no image is loaded",
-        "Decide whether the X remove button on the image preview should also exist on React, or remove it from iOS for parity",
-        "Update Slock baseline crop to target the same element-bounds region on iOS so visual diff is scoped to the composer component",
-        "Verify icon stroke weights and spacing on iOS action buttons match React baseline (image-add, paperclip, send)",
-        "Normalize the comparison render scale so viewport size differences do not inflate pixel mismatch ratio"
-      ],
-      "intentional": [
-        "iOS viewport is intentionally larger than React, which inherently changes proportional sizing of all composer elements"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.04133214512361427
+      "status": "pending",
+      "imageHash": "p1:03f800000001000200014ffe00010ffa0001000200010f0200010002fffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-08-10T22:13:24.444Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.07983689121129878
     },
     {
       "id": "components.thread.files.list",
@@ -1355,37 +1317,15 @@
     },
     {
       "id": "components.thread.message-share.selection",
-      "status": "ready",
-      "imageHash": "p1:07fc07fcfffe7ffe801e01f2c0024002f0fe7002f1fe7ffe83fe03fe80024002f8fe7002fffe4006fffe0000fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe0000fffe00000000fffe1fff",
-      "generatedAt": "2026-08-07T00:42:04.007Z",
-      "severity": "high",
-      "summary": [
-        "Action bar contains different button set: React shows Cancel/Forward/copy/more, iOS shows X/All/Forward/copy/download",
-        "iOS has an additional 'All' select-all button absent in React",
-        "iOS includes a download button; React shows a 'more' (⋯) overflow instead",
-        "iOS action bar sits inline (mid-content, below messages) while React pins it to bottom",
-        "Selection checkboxes/icons differ: React uses circular yellow check, iOS uses square yellow check"
-      ],
-      "likelyCauses": [
-        "iOS implementation diverged from shared design tokens for the multi-select action bar",
-        "iOS action bar uses an absolute/inline placement rather than the docked bottom-sheet pattern",
-        "iOS lacks reaction affordances under messages",
-        "Selection affordance shapes (circle vs square) were customized per-platform instead of using shared icon set"
-      ],
-      "suggestedOwner": "iOS engineer (Thread / Message components)",
-      "suggestedFixes": [
-        "Align iOS action bar buttons to match React set (Cancel/Forward/copy/more) or intentionally document the deviation",
-        "Remove or justify the extra 'All' and download buttons on iOS",
-        "Move iOS action bar to a bottom-docked position to match React",
-        "Replace circular selection check with square check (or align React to square) for cross-platform consistency",
-        "Add missing reaction (👍) and add-reaction (+) affordances to iOS message rows"
-      ],
-      "intentional": [
-        "Different message content and timestamps appear to be test fixtures rather than a UI regression"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:07fc07fcfffe7ffe801e0122c0024002f0fe7002f1fe7f7e83fe01fe80024002f8fe7002fffe4006fffe0000fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe7ffe7ffe00007ffe00000000fffe1fff",
+      "generatedAt": "2026-08-10T22:13:24.619Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.16948832718974904
     },
     {
@@ -1562,7 +1502,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2684307530279094
+      "metricMismatch": 0.26843750421949475
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1595,7 +1535,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.269010680385088
+      "metricMismatch": 0.2690214822916245
     },
     {
       "id": "components.home.saved.results",
@@ -1631,7 +1571,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11134672769743859
+      "metricMismatch": 0.11137407002335908
     },
     {
       "id": "components.home.activity.results",
@@ -1666,7 +1606,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10718968147878105
+      "metricMismatch": 0.10722445011544535
     },
     {
       "id": "components.tasks.panel.states",
@@ -1842,7 +1782,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:13:54.643Z",
+      "generatedAt": "2026-08-10T22:13:24.811Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2126,7 +2066,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19773058694859647
+      "metricMismatch": 0.19773666302102322
     },
     {
       "id": "components.settings.notifications.page",
@@ -2230,7 +2170,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:13:54.900Z",
+      "generatedAt": "2026-08-10T22:13:25.079Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2243,7 +2183,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:13:54.900Z",
+      "generatedAt": "2026-08-10T22:13:25.079Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2256,7 +2196,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:13:54.900Z",
+      "generatedAt": "2026-08-10T22:13:25.079Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2269,7 +2209,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:13:54.900Z",
+      "generatedAt": "2026-08-10T22:13:25.079Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2282,7 +2222,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:13:54.900Z",
+      "generatedAt": "2026-08-10T22:13:25.079Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2393,7 +2333,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2361597196905254
+      "metricMismatch": 0.2361600572501047
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2456,12 +2396,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19329201604083124
+      "metricMismatch": 0.19329100336209337
     },
     {
       "id": "components.thread.message-row.rich-content",
       "status": "ready",
-      "imageHash": "p1:03f807fc07fcfffe00000002e0000002e005c002c005c006e03dc006e07dc0fee1bdc0fee07dfffee03dc17efffdc07ec005f7fec005c07e0ffdc0fe8001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "imageHash": "p1:03f807fc07fcfffe00000002e0000002e005c002c005c006e07dc006e07dc0fee1bdc0fee07dfffee03dc17efffdc07ec005f7fec005c07e0ffdc0fe8001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
       "generatedAt": "2026-08-07T00:06:47.757Z",
       "severity": "high",
       "summary": [
@@ -2490,7 +2430,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09603468762236533
+      "metricMismatch": 0.0961724119307058
     },
     {
       "id": "components.thread.message-row.long-inline-code",
@@ -2592,7 +2532,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0860996340854161
+      "metricMismatch": 0.08400338909817584
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
@@ -2662,7 +2602,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09063981042654023
+      "metricMismatch": 0.09063947286696106
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",

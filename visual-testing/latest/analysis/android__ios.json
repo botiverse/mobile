@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-09T22:13:58.993Z",
+  "generatedAt": "2026-08-10T22:13:29.069Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -1142,7 +1142,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0594516682194407
+      "metricMismatch": 0.0594543686960749
     },
     {
       "id": "components.thread.header.states",
@@ -1307,7 +1307,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.37244534910411686
+      "metricMismatch": 0.37244636178285473
     },
     {
       "id": "components.thread.message-share.selection",
@@ -2125,7 +2125,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:13:58.589Z",
+      "generatedAt": "2026-08-10T22:13:28.719Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2138,7 +2138,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:13:58.589Z",
+      "generatedAt": "2026-08-10T22:13:28.719Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2151,7 +2151,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:13:58.589Z",
+      "generatedAt": "2026-08-10T22:13:28.719Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2164,7 +2164,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:13:58.589Z",
+      "generatedAt": "2026-08-10T22:13:28.719Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2177,7 +2177,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:13:58.589Z",
+      "generatedAt": "2026-08-10T22:13:28.719Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2280,7 +2280,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09118699450453005
+      "metricMismatch": 0.0911883447428471
     },
     {
       "id": "screens.settings.server-danger-modal",

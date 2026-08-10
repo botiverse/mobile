@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-09T22:13:52.335Z",
+  "generatedAt": "2026-08-10T22:13:22.335Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 85,
-    "pending": 1
+    "ready": 84,
+    "pending": 2
   },
   "cases": [
     {
@@ -486,7 +486,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04018349012628186
+      "metricMismatch": 0.04021174110800352
     },
     {
       "id": "components.ui.progress-bar.states",
@@ -524,7 +524,7 @@
     {
       "id": "components.ui.skeleton.states",
       "status": "ready",
-      "imageHash": "p1:000000017ffc7ffc1ffc1ffc1ffe1ffefffefffefffefffefffefffe80fe80fe94fe00fe9ffe17fe83fe83fefffefffefffefffe80008000800080008000800080008000800080008000800080008000fffefffe9ffe9ffe9ffe9ffe003e003e003e003e9ffe9ffe0000000000000000fffffffffff00ffffff81fffffffffff",
+      "imageHash": "p1:000000017ffc7ffc1ffc1ffc1ffe1ffefffefffefffefffefffefffe80fe80fe9cfe00fe9ffe17fe83fe83fefffefffefffefffe80008000800080008000800080008000800080008000800080008000fffefffe9ffe9ffe9ffe9ffe003e003e003e003e9ffe9ffe0000000000000000fffffffffff00ffffff81fffffffffff",
       "generatedAt": "2026-07-11T22:10:05.920Z",
       "severity": "low",
       "summary": [
@@ -1127,39 +1127,16 @@
     },
     {
       "id": "components.thread.composer.image-preview",
-      "status": "ready",
-      "imageHash": "p1:fffefffc07fc07fc00000000000000008fff0fff8fff0fff8fff0fff8fff0fff8fff0fff8fff0fff800100038000200180000001800036fd8ff80ff187c00f8187c80fb1800000018000f007fffefffffffefffffffefffffffeffff0000ffffffffffffffffffffffffffffffffffffffff0000ffff0000fff81fffffffffff",
-      "generatedAt": "2026-08-07T00:05:55.482Z",
-      "severity": "medium",
-      "summary": [
-        "Android preview shows a circular close (X) button overlay on the top-right of the image thumbnail; React has none.",
-        "Android component bounds are taller (270px) than React (210px), with extra empty whitespace at the bottom.",
-        "Text 'Uploading the design crop for review.' renders at a noticeably smaller font size on Android.",
-        "Text 'As Task' on Android uses a smaller font and lighter weight than React.",
-        "Attachment and send icons on Android appear smaller and more tightly spaced than on React."
-      ],
-      "likelyCauses": [
-        "Android implementation adds a remove/close affordance on the image preview that React lacks, or React's close button is absent.",
-        "Android composer preview container has a fixed/minimum height larger than React's, producing vertical overflow.",
-        "Typography scale/sp tokens differ between platforms; Android uses smaller body and label sizes.",
-        "Icon component sizing tokens are not aligned across platforms."
-      ],
-      "suggestedOwner": "android-composer",
-      "suggestedFixes": [
-        "Decide intent: either add the close (X) button to the React composer image preview, or remove it from Android for parity.",
-        "Match the React composer container height (or remove fixed min-height) so Android doesn't render extra empty space below the preview.",
-        "Align Android text styles for the upload caption and 'As Task' label to the React type scale (size and weight).",
-        "Normalize icon button sizes and spacing between the attachment row and send button across platforms.",
-        "Re-snapshot the Android crop using element-bounds after fixing height to avoid manual-rect artifacts."
-      ],
-      "intentional": [
-        "Platform-specific remove control on attachment could be intentional on Android; confirm with design.",
-        "Slight typographic differences may be acceptable if Android follows its own type ramp."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.12943590113830528
+      "status": "pending",
+      "imageHash": "p1:fffefffd07fc07fc000000000000000080000fff80000fff80000fff83fc0fff80000fff80010fffa004000380002001801000018ff83efd87c00ff187d80f8180000ff180000001fffff007fffffffffffffffffffffffffffeffff0000fffffffffffffffffffffffffffffffffffffffffffeffff8001fff81fffffffffff",
+      "generatedAt": "2026-08-10T22:13:21.264Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2944083459678002
     },
     {
       "id": "components.thread.files.list",
@@ -1408,7 +1385,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7089034714627132
+      "metricMismatch": 0.7089041465818717
     },
     {
       "id": "components.thread.forward-modal",
@@ -1576,7 +1553,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26766820593834817
+      "metricMismatch": 0.26768069564278096
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1609,7 +1586,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.268270074668179
+      "metricMismatch": 0.26828830288545924
     },
     {
       "id": "components.home.saved.results",
@@ -1646,7 +1623,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19025917541763604
+      "metricMismatch": 0.19033044079733386
     },
     {
       "id": "components.home.activity.results",
@@ -1680,7 +1657,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18612945146618043
+      "metricMismatch": 0.18618342451109848
     },
     {
       "id": "components.tasks.panel.states",
@@ -1859,7 +1836,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-09T22:13:51.647Z",
+      "generatedAt": "2026-08-10T22:13:21.568Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2151,7 +2128,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19933838322463915
+      "metricMismatch": 0.19934513441622448
     },
     {
       "id": "components.settings.notifications.page",
@@ -2261,7 +2238,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e2817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80781802ffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80781802ffffffff",
       "generatedAt": "2026-07-26T05:05:16.996Z",
       "severity": "high",
       "summary": [
@@ -2326,7 +2303,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05974973332793243
+      "metricMismatch": 0.05978652732207235
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2530,7 +2507,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23518045935107545
+      "metricMismatch": 0.2351794466723377
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2568,7 +2545,7 @@
     {
       "id": "screens.home.loading",
       "status": "ready",
-      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfff8ffe9ffefffe9ffec3fe9ffebffe9ffebffedfffbffec3ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffe93fefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
+      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfff8ffe9ffefffe9ffec3fe9ffebffe9ffebffedfffbffec3ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffebbfefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
       "generatedAt": "2026-07-13T22:11:37.533Z",
       "severity": "medium",
       "summary": [
@@ -2596,12 +2573,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1570225894870445
+      "metricMismatch": 0.15702292704662368
     },
     {
       "id": "components.thread.message-row.rich-content",
       "status": "ready",
-      "imageHash": "p1:07fc07fc03fe03fcfffefffe07fefffe000083fe00008702e0028000e002f000e002e000e002e006e006e000e03ee000e03ee000f07ef3fee03ee3fefffefffefffef03ee0fefffefffefffef07ef0fee03efffefffefffefffef01efffefffee1fefffee002f3fee002f3fefffee03efffee07e00000e00ffff0ffffffeffff",
+      "imageHash": "p1:07fc07fc03fe03fcfffefffe07fefffe000083fe00008702e0028000e002f000e002e000e002e006e006e000e03ee000e03ee000f07ef3fee03ee3fefffefffefffef03ee0fefffefffefffef07ef0fee03efffefffefffefffef01efffefffee1fefffee002f3fee002f3fefffee03efffee07e00000e00ffff1ffffffeffff",
       "generatedAt": "2026-08-07T00:06:08.727Z",
       "severity": "high",
       "summary": [
@@ -2630,7 +2607,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23230853972683163
+      "metricMismatch": 0.2326515668754514
     },
     {
       "id": "components.thread.message-row.long-inline-code",
@@ -2807,7 +2784,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.5443274800502289
+      "metricMismatch": 0.54432697371086
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
