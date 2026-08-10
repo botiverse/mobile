@@ -20,6 +20,8 @@
     <string>$(MARKETING_VERSION)</string>
     <key>CFBundleVersion</key>
     <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>SlockHostLaunchScheme</key>
+    <string>$(SLOCK_HOST_LAUNCH_SCHEME)</string>
     <key>NSExtension</key>
     <dict>
         <key>NSExtensionAttributes</key>
