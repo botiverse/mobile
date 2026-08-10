@@ -1143,6 +1143,9 @@ open class SlockKuiklyActivity :
     override fun performanceMonitorTypes(): List<KRMonitorType> =
             SlockKuiklyPerformanceDiagnostics.monitorTypes
 
+    override fun syncSendEvent(event: String): Boolean =
+        shouldSynchronouslyFenceSlockKuiklyHostEvent(event) || super.syncSendEvent(event)
+
     override fun onGetLaunchData(data: KRLaunchData) {
         SlockKuiklyPerformanceDiagnostics.recordLaunch("activity", pageName, data)
     }

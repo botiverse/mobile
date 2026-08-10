@@ -1,12 +1,55 @@
 package build.raft.app.shared
 
 import android.view.View
+import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegatorDelegate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SlockKuiklyPageRenderViewTest {
+
+    @Test
+    fun hostDisappearEventIsSynchronousBeforeSurfaceTeardown() {
+        assertTrue(
+            shouldSynchronouslyFenceSlockKuiklyHostEvent(
+                SLOCK_KUIKLY_VIEW_DID_DISAPPEAR_EVENT
+            )
+        )
+    }
+
+    @Test
+    fun unrelatedHostEventsKeepTheirExistingDeliveryPolicy() {
+        listOf("viewDidAppear", "rootViewSizeDidChanged", "onBackPressed").forEach { event ->
+            assertFalse(
+                "event=$event",
+                shouldSynchronouslyFenceSlockKuiklyHostEvent(event)
+            )
+        }
+    }
+
+    @Test
+    fun childRendererInheritsTheParentLifecycleFence() {
+        val parentSpecificFence = "parentSpecificFence"
+        val parentDelegate =
+            object : KuiklyRenderViewBaseDelegatorDelegate {
+                override fun syncSendEvent(event: String): Boolean =
+                    event == parentSpecificFence
+            }
+
+        assertTrue(
+            shouldSynchronouslyFenceSlockKuiklyChildEvent(
+                parentDelegate,
+                parentSpecificFence
+            )
+        )
+        assertFalse(
+            shouldSynchronouslyFenceSlockKuiklyChildEvent(
+                parentDelegate,
+                SLOCK_KUIKLY_VIEW_DID_DISAPPEAR_EVENT
+            )
+        )
+    }
 
     @Test
     fun childRootSizeChangeIsIgnoredUntilChildIsAttached() {

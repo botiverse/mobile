@@ -73,6 +73,9 @@ internal class SlockKuiklyPageRenderView(
             override fun syncRenderingWhenPageAppear(): Boolean =
                 parentDelegate.syncRenderingWhenPageAppear()
 
+            override fun syncSendEvent(event: String): Boolean =
+                shouldSynchronouslyFenceSlockKuiklyChildEvent(parentDelegate, event)
+
             override fun enablePreloadClass(): Boolean =
                 parentDelegate.enablePreloadClass()
 
@@ -417,8 +420,12 @@ internal interface SlockKuiklyChildPageLoadListener {
 
 private class SlockKuiklyChildRenderView(
     context: Context,
-    delegate: KuiklyRenderViewBaseDelegatorDelegate
+    private val delegate: KuiklyRenderViewBaseDelegatorDelegate
 ) : KuiklyBaseView(context, delegate) {
+    // KuiklyBaseView does not forward this policy to its constructor delegate.
+    override fun syncSendEvent(event: String): Boolean =
+        shouldSynchronouslyFenceSlockKuiklyChildEvent(delegate, event)
+
     fun updateRootViewSize(widthPx: Int, heightPx: Int, data: Map<String, Any>) {
         getChildAt(0)?.layoutParams = FrameLayout.LayoutParams(widthPx, heightPx)
         sendEvent(SlockKuiklyPageRenderView.EVENT_ROOT_VIEW_SIZE_DID_CHANGED, data)
