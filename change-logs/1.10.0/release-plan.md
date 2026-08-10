@@ -13,6 +13,21 @@ This file reserves capacity and makes missing evidence visible. It does not
 authorize a merge, branch cut, build, rollout, activation, TestFlight action,
 App Store action, or announcement.
 
+## Dependency Carrier Policy
+
+- The next Kuikly line is `staging3`; `staging2` is retained only for shipped
+  carrier archaeology and explicitly approved old-train maintenance.
+- Mobile must consume the selected staging3 release through one immutable
+  Raft Artifacts exact version and complete release manifest. The source
+  gitlink may document provenance but may not supply production build bytes.
+- Empty-cache Android/KMP, Apple, and OHOS resolution must match every planned
+  manifest path, size, and SHA-256. Missing or partial coordinates block the
+  train; `latest`, version ranges, and silent gitlink/`mavenLocal`/pod/HAR/source
+  fallback are forbidden.
+- Kuikly task #93 still owns the complete publication graph. A staging3 source
+  landing is not consumable until its new release set is published, read back,
+  and independently admitted by Mobile.
+
 ## Calendar
 
 The release owner must replace every `TBD` before branch creation.
@@ -79,7 +94,7 @@ checks/review before it can become `accepted`.
 
 | Hold | Owner | Current fact | Lift condition |
 | --- | --- | --- | --- |
-| iOS Kuikly rich-text selector crash | iOS/Kuikly root-cause task #131 | Kuikly PR #129 exact `7fe6e3a6fecfa5ebe9a57585cec9dc8bec760138` fixes the missing shared accessibility dispatcher and has exact Hosted plus independent review PASS; it remains Draft/unlanded, official 1000015 still crashes, and no successor carrier is admitted | Land reviewed PR #129, bind the landed Kuikly exact into a Mobile carrier, then obtain authorized physical same-path PASS |
+| iOS Kuikly rich-text selector crash | iOS/Kuikly root-cause task #131 | Kuikly PR #129 exact `7fe6e3a6fecfa5ebe9a57585cec9dc8bec760138` proves the staging2 root fix and has exact Hosted plus independent review PASS; it remains Draft/unlanded, official 1000015 still crashes, and the next carrier must use staging3 plus Raft Artifacts | Review and land a staging3-equivalent successor, publish and clean-cache admit its complete immutable Raft Artifacts set, bind that exact set into Mobile, then obtain authorized physical same-path PASS |
 | Android white viewport family | Thread/Android diagnostic lane | Existing production family remains product RED; diagnostics PR #1992 is not a fix | Causal source fix plus clean physical-device product matrix |
 | Share-to-Raft release acceptance | iOS native lane | Source proposal exists, full authorized product matrix incomplete | Exact accepted PR plus named physical matrix and privacy review |
 
@@ -106,6 +121,8 @@ again as 1.10 features:
 - [ ] Every accepted proposal is merged into main with terminal exact checks
       and independent review.
 - [ ] Dependencies and live holds have owners and lift conditions.
+- [ ] Every private fork dependency resolves Raft-only from an exact complete
+      manifest with source and byte provenance; zero local/source fallback.
 - [ ] Removed items record the reason and next train.
 - [ ] Android/iOS/OHOS acceptance matrices are named and resourced.
 - [ ] `release-1.10.0` branch point is a reviewed 40-character main exact.

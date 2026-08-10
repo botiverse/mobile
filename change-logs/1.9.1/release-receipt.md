@@ -154,6 +154,13 @@ OPEN/Draft and is not landed or bound into a Mobile carrier. An authorized
 physical successor carrier is also still pending, so this completed source
 gate does not change the 1000015 product RED status.
 
+The next release will not consume PR #129's staging2 head directly. The
+release owner designated staging3 as the successor line and Raft Artifacts as
+the production dependency source. A fresh staging3-equivalent patch, complete
+immutable artifact manifest, clean-cache Mobile consumption, and physical
+carrier proof are therefore all new gates; none inherit PR #129's exact-head
+verdict.
+
 The earlier source-equivalent Simulator IME matrix remains valid only for its
 own keyboard behavior. It cannot override the physical crash evidence.
 
