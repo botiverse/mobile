@@ -1,46 +1,148 @@
-# Mobile Paired Release SOP
+# Mobile Release Train SOP
 
-Use this procedure when Android and iOS are shipped from one Mobile candidate.
-Platform-specific build and signing rules remain in
+Use this procedure when Mobile ships Android and iOS from one release train.
+Platform-specific signing and build rules remain in
 [Android Release SOP](android-release-sop.md) and
 [iOS Hands Release Practices](ios-hands-release-practices-2026-07-09.md).
-This document defines the shared ordering, authority, and receipt contract.
+This document owns scope selection, branch policy, cross-platform ordering,
+authorization boundaries, receipts, and merge-back.
 
-## Invariants
+The operating model is **fixed date and quality, variable scope**. A feature
+that misses the evidence cutoff leaves the train; the train does not lower its
+quality gate or silently move its date to keep that feature.
 
-1. Freeze one full 40-character source commit from `release-X.Y.Z`. Android
-   and iOS artifacts must both report that exact source.
-2. CI may build, sign, upload, create Hands drafts, and create review shares.
-   It must not activate a Hands release without a fresh owner instruction.
-3. A release-branch change invalidates all artifacts, hashes, runtime results,
-   notes readback, and approvals tied to the previous source. Rebuild both
-   platforms with strictly higher build coordinates.
-4. Hands activation, TestFlight upload, TestFlight group distribution, Beta
-   App Review, tester notification, and App Store production are separate
-   mutations. Authorization for one does not imply another.
-5. Release notes are reviewed files, not raw commit subjects. The exact notes
-   read back from each active release must be committed under `change-logs/`.
+## Roles
 
-## 1. Record The Candidate
+- **Release owner** sets the date, delivery intent, scope, and exceptions.
+- **Release operator** maintains the plan, freezes exact source, builds drafts,
+  verifies bytes, executes only authorized mutations, and writes the receipt.
+- **Feature owner** supplies a scoped PR, changeset, tests, review, dependencies,
+  rollout plan, and targeted product evidence.
+- **Independent reviewer** audits the exact source or receipt without inheriting
+  the feature owner's correctness judgment.
 
-Before dispatching, record:
+One person may hold multiple roles, but source author and independent reviewer
+must remain separate for the exact being reviewed.
 
-- release branch and exact source commit;
-- immutable carrier ref retained for audit;
-- selected release PRs and terminal exact-head Hosted run;
-- Android version name, versionCode, and Hands channel;
-- iOS marketing version, build number, export method, and Hands channel;
-- intended Hands scope, normally `full:all`;
-- the owner-approved publication boundary.
+## Non-Negotiable Rules
 
-Do not assume Android and iOS use the same user-facing version string. They
-must use the same source commit, while each platform keeps its own monotonic
-build coordinate.
+1. Every semantic version gets its own immutable stabilization branch named
+   `release-X.Y.Z`. A patch release such as `1.9.1` uses
+   `release-1.9.1`, even when it branches from `release-1.9.0`. Reusing a
+   family branch requires a recorded owner exception in the release plan and
+   receipt; it is never the default.
+2. Android and iOS carriers for one paired train use one full 40-character
+   **carrier source exact**. Platform marketing versions and build numbers may
+   differ, but both artifacts must embed that same source.
+3. Every source change on the release branch creates a new candidate. All
+   earlier artifacts, hashes, runtime results, notes readbacks, and source
+   approvals become stale. Rebuild with strictly higher platform coordinates.
+4. CI may build, sign, upload, and create Hands drafts. Hands activation,
+   TestFlight upload, internal distribution, external distribution, Beta App
+   Review, tester notification, App Store production, and announcements are
+   separate mutations. Authorization for one never implies another.
+5. Release notes come from reviewed versioned files, not commit subjects.
+6. A repository closeout may record an open product defect. It must not rename
+   a source, packaging, or merge-back PASS into a product PASS.
 
-## 2. Build Drafts From The Exact Source
+## 1. Open The Release Plan
 
-Run Android from a clean checkout that exactly equals the remote release
-branch. The wrapper creates only a draft and runs the release preflight:
+Before creating a release branch, add:
+
+```text
+change-logs/X.Y.Z/release-plan.md
+```
+
+The plan is the train's scope authority. It records:
+
+- target release date and timezone;
+- reservation cutoff, scope lock, branch cut, and release-candidate dates;
+- Android/iOS/OHOS delivery intent and the maximum authorized boundary;
+- candidate PR or changeset, feature owner, support owner, dependencies,
+  platforms, rollout, risk, and required evidence;
+- current state: `proposed`, `reserved`, `accepted`, `removed`, or `shipped`;
+- every exception, accountable approver, expiry, and lift condition.
+
+No reservation means no release inclusion. `reserved` means capacity is held,
+not that the feature is ready. Only `accepted` items may be selected at scope
+lock. Emergency fixes may enter after cutoff only through a recorded exception
+with owner, evidence, risk, and rollback.
+
+The release owner must fill real calendar dates before branch creation. A
+relative `T-5` schedule is a planning aid, not a substitute for a date.
+
+## 2. Require A Changeset For Every User-Visible Candidate
+
+Each candidate adds:
+
+```text
+change-logs/X.Y.Z/changesets/<kebab-name>.md
+```
+
+Front matter includes `type`, `area`, `platforms`, `pull_request`, and
+`rollout`. The body contains equivalent `zh-CN` and `en` user behavior; add
+other locales when required. Do not include implementation detail, commit ids,
+test narration, or unshipped work.
+
+A PR may land on `main` without being accepted for the train, but the release
+plan must account for any user-visible behavior already present in the branch
+cut candidate. Missing changesets are a scope-lock blocker, not an invitation
+to reconstruct notes from git subjects at build time.
+
+## 3. Select And Freeze The Branch Point
+
+At scope lock:
+
+1. Remove candidates that lack terminal exact-head checks, independent review,
+   required product evidence, dependencies, or a complete changeset.
+2. Record the accepted PRs and their merge commits in the plan.
+3. Choose a reviewed commit reachable from `origin/main`, or from the previous
+   patch branch when creating a patch train.
+4. Create the dedicated branch:
+
+```bash
+scripts/create_android_release_branch.sh \
+  --version X.Y.Z \
+  --candidate <reviewed-40-character-commit>
+```
+
+The helper must fail if the remote branch already exists at another commit.
+Never force-push, rewind, or repurpose a release branch.
+
+After branch cut:
+
+- new product work continues on `main`;
+- a release blocker branches from `origin/release-X.Y.Z` and targets that
+  release branch;
+- do not merge `main` into release to collect unrelated work;
+- bring in one reviewed blocker and its strict dependencies per PR;
+- update the release plan whenever scope changes.
+
+## 4. Aggregate And Review Platform Notes
+
+After scope is accepted, aggregate changesets into all three reviewed locales:
+
+```text
+change-logs/X.Y.Z/android/{zh-CN,en,ja}.md
+change-logs/X.Y.Z/ios/{zh-CN,en,ja}.md
+```
+
+Platform notes contain only behavior shipped on that platform. Claims and
+section counts must be semantically equivalent across locales. Git history may
+help find omissions but may not be published as notes.
+
+Android's semantic version normally equals `X.Y.Z`. iOS may keep a separate
+marketing version, so iOS dispatch must pass `release_notes_version=X.Y.Z`.
+An incomplete reviewed locale set fails closed; generated history is allowed
+only when no reviewed locale file exists, and is not acceptable for a planned
+production train.
+
+## 5. Build Drafts From One Exact Source
+
+Start from a clean checkout equal to `origin/release-X.Y.Z`. Record branch,
+carrier source exact, tree, required PRs, and terminal exact-source checks.
+
+Android:
 
 ```bash
 export SLOCK_RELEASE_BRANCH=release-X.Y.Z
@@ -54,8 +156,7 @@ scripts/release_android_hands_github.sh \
   --wait
 ```
 
-Dispatch iOS on the same remote ref with `release_mode=draft` and
-`publish_hands=true`:
+iOS on the same remote ref:
 
 ```bash
 gh workflow run ios-release.yml \
@@ -66,237 +167,151 @@ gh workflow run ios-release.yml \
   -f version_patch=<ios-patch> \
   -f version_build=<ios-build-component> \
   -f version_suffix= \
+  -f release_notes_version=X.Y.Z \
   -f hands_channel=main \
   -f export_method=app-store-connect \
   -f release_mode=draft \
   -f publish_hands=true
 ```
 
-If the frozen source changes after either dispatch, do not reuse the draft or
-an App Store Connect build number. Mark the old evidence superseded, raise the
-affected build coordinates, and repeat both platform builds.
+Draft creation does not authorize activation or distribution. If source drifts
+after either dispatch, supersede both platform carriers and raise both build
+coordinates before rebuilding.
 
-## 3. Verify Stored Bytes
+## 6. Verify Stored Bytes And Candidate Behavior
 
 For Android, record and independently verify:
 
-- GitHub run and artifact ids, APK size and SHA-256;
-- package/version/minSdk/targetSdk;
-- signing lineage and v2/v3/v3.1 verification;
-- `zipalign -P 16`, compressed DEX admission, and every 64-bit ELF at 16 KiB;
-- native-symbol archive identity and expected Build IDs;
-- byte equality between the GitHub artifact and Hands installable asset.
+- run and artifact ids, APK and symbols size/SHA-256;
+- package, version, min/target SDK, signer lineage, v2/v3/v3.1;
+- `zipalign -P 16`, compressed DEX admission, every 64-bit ELF at 16 KiB;
+- expected native Build IDs;
+- byte equality between GitHub and Hands installable/symbol assets.
 
 For iOS, record and independently verify:
 
-- GitHub run and IPA/dSYM artifact ids, sizes, and SHA-256 values;
+- run and IPA/dSYM artifact ids, size/SHA-256;
 - bundle id, marketing version, build number, and minimum iOS;
-- `codesign --verify --deep --strict`, distribution authority, team, profile,
-  and production entitlements;
-- app binary UUID equals the matching dSYM UUID;
-- byte equality for both IPA and dSYM between GitHub and Hands.
+- strict codesign, distribution authority, team, profile, and production
+  entitlements;
+- app binary UUID equals dSYM UUID;
+- byte equality between GitHub and Hands IPA/dSYM assets.
 
-A Hands metadata row is not a substitute for downloading and hashing both
-sides.
+Then run the plan's acceptance matrix. At minimum cover fresh install, supported
+upgrade paths, authentication/session, Home/Activity/Thread, attachments,
+composer/IME, crash scans, and every accepted changeset. Mark unrun cases
+`NOT RUN`; never infer physical-device behavior from Simulator or compile.
 
-## 4. Review And Apply Release Notes
+## 7. Apply Notes With Revision Preconditions
 
-Store all three reviewed locales for each platform:
+For each Hands draft:
 
-```text
-change-logs/X.Y.Z/android/{zh-CN,en,ja}.md
-change-logs/X.Y.Z/ios/{zh-CN,en,ja}.md
-```
+1. Fresh-read app, build, release, source, status, revision, scope, and assets.
+2. Update `zh-CN`, `en`, and `ja` notes using that exact revision.
+3. Fresh-read again and require byte equality with the reviewed files,
+   unchanged source/scope, and `status=draft`.
 
-Each locale must carry equivalent user-visible claims and matching section
-counts. Platform directories may intentionally contain identical product-wide
-notes, but the operator must still read back both Hands releases separately.
+A metadata row is not byte verification. Download and hash both stores.
 
-For each draft:
+## 8. Execute Only The Planned Delivery Boundary
 
-1. Fetch fresh release detail and record `revision`, `status`, source, and
-   scopes.
-2. Update notes with that exact revision precondition.
-3. Fetch fresh detail again and require exact file equality, `status=draft`,
-   unchanged source, and unchanged scopes.
+The release plan names each platform's intended boundary. Examples:
 
-Do not activate a release whose notes came only from build metadata or git
-history.
+| Boundary | Mutation | Separate authorization required |
+| --- | --- | --- |
+| Android Hands | Activate exact draft and scope | Yes |
+| iOS Hands | Activate exact draft | Yes |
+| TestFlight upload | Upload verified Hands IPA | Yes |
+| TestFlight internal | Assign named internal group | Yes |
+| TestFlight external | Assign named group, What to Test, Beta Review, notification | Yes |
+| App Store production | Submit/publish production version | Yes |
+| Community | Post approved announcement | Yes |
 
-## 5. Activate Hands Only After The Owner Go
+Immediately before every mutation, fresh-read the authoritative state and the
+latest owner directive. Use exact revision, scope, build, group, and source
+preconditions. Read back terminal state afterward.
 
-For each platform, immediately before activation require:
+Android and iOS do not need the same delivery mechanism. A valid paired train
+may end with Android Hands active and iOS Hands draft while the same IPA is in
+named TestFlight groups. The receipt must state that intent explicitly.
 
-- exact app, build, release, version, and source identity;
-- `status=draft` and a fresh revision;
-- reviewed zh-CN/en/ja notes;
-- exact scope, normally `[full:all]`;
-- explicit owner authorization to publish.
+## 9. Announce Only A Reachable Build
 
-Publish with both revision and scope preconditions. Then perform a new detail
-read and require:
-
-- `status=active`;
-- revision advanced exactly once;
-- source, notes, scope, build, and version unchanged.
-
-Treat Android and iOS as two independent mutations. A successful Android
-activation does not authorize or prove iOS activation, and vice versa.
-
-## 6. Deliver TestFlight At The Authorized Level
-
-Always upload the already verified Hands IPA; never export the ASC credential
-or bypass Hands.
-
-### Upload Only
-
-1. Start upload for the exact Hands iOS build.
-2. Poll the Build Upload to `COMPLETE` with empty errors and warnings.
-3. Read back the exact marketing version/build as `VALID`, `ready`, not
-   expired, and with the expected audience.
-
-This does not select beta groups or notify testers.
-
-### Internal Distribution
-
-Require the owner to name the internal group. Read back its stable id, assign
-the exact build, and verify `IN_BETA_TESTING` plus the intended group. An
-internal group with `has_access_to_all_builds=true` may already expose the
-build automatically; record that fact instead of claiming a new assignment.
-
-### External Distribution
-
-Require explicit authorization naming the external group, What to Test
-localization, Beta App Review submission, and notification intent. External
-distribution may submit Beta App Review and notify testers after approval.
-These side effects are never inferred from a generic request to upload.
-
-None of these TestFlight operations publishes an App Store production
-version. App Store production remains a separate owner-authorized procedure.
-
-## 7. Draft And Approve The Community Announcement
-
-After a platform reaches its owner-approved community delivery boundary and
-has a terminal readback, draft the user-facing community announcements under
-the release:
+Store approved community copy under:
 
 ```text
 change-logs/X.Y.Z/community-announcement.zh-CN.md
 change-logs/X.Y.Z/community-announcement.en.md
 ```
 
-Both Chinese and English are required. Additional locales may be added for the
-audience, but each announcement must:
+Announce only platforms that reached their intended community boundary. For
+iOS TestFlight, fresh-read the exact build and audience, include marketing
+version/build number and the current verified join URL, and state that it is a
+TestFlight beta rather than an App Store production release. Do not expose
+internal tasks, CI detail, or unshipped work. Record the final message ids.
 
-- cover only platforms that have reached the intended community boundary; do
-  not pre-announce an internal TestFlight build or any other unreleased
-  platform;
-- derive every product claim from the approved platform notes and preserve the
-  reviewed section structure instead of inventing a second feature summary;
-- include the supported update path and feedback path where applicable;
-- avoid CI detail, internal task language, and unshipped work. Android
-  community copy should omit build coordinates; an iOS TestFlight announcement
-  must include the exact marketing version and build number shown by
-  TestFlight;
-- receive explicit release-owner approval before it is posted to a community
-channel. Chinese and English may be posted together or as separate messages,
-but the release receipt must identify the final message receipt for each.
+## 10. Handle Post-Distribution Defects Honestly
 
-### iOS TestFlight Announcement Format
+When a shipped or distributed carrier produces a material regression:
 
-Use the established complete format below for every iOS TestFlight community
-announcement. Do not shorten it to "open TestFlight" or omit the join URL.
-The current Raft app-level join URL is
-`https://testflight.apple.com/join/JvM5wXuc`; confirm it against the latest
-owner-approved announcement or authoritative TestFlight public-link readback
-before posting, and never guess or manufacture a replacement URL.
+1. Bind the report to exact artifact bytes, source marker, and binary UUIDs.
+2. Mark the affected product claim `RED` or `UNKNOWN`; do not rewrite the
+   original packaging evidence.
+3. Record the canonical incident and successor owner in the receipt.
+4. Do not expand rollout while a live safety hold applies.
+5. A containment guard is not a root-cause fix unless the causal failure and
+   the corrected contract are proven.
 
-Before posting, fresh-read the exact TestFlight build and require all of the
-following:
+Repository closeout may continue so shipped source and evidence are durable,
+but the receipt must preserve the open product blocker and its lift condition.
 
-- the title and final canonical-version sentence use the exact marketing
-  version and build number, not values copied from the previous announcement;
-- the intended community audience can actually reach that exact build through
-  the named TestFlight group/public link; an internal-only build must not be
-  announced as publicly available;
-- every highlight comes from the approved iOS release notes;
-- the TestFlight join URL is present as an angle-bracketed link;
-- the final sentence states that this is a TestFlight beta, not an App Store
-  production release;
-- ordinary release or link follow-ups do not use warning symbols. Reserve a
-  warning marker for a real safety issue, invalidation, or hold.
+## 11. Write The Receipt And Merge Back
 
-Chinese template:
+Create `change-logs/X.Y.Z/release-receipt.md` with:
 
-```markdown
-📱 Raft iOS {MARKETING_VERSION} ({BUILD_NUMBER}) 已在 TestFlight 提供测试
+- release plan and accepted/removed scope;
+- carrier source/ref/tree and exact checks;
+- workflow, artifact, build, release, asset, size, hash, signing, and UUID ids;
+- Hands activation revision/scope and TestFlight/App Store terminal states;
+- acceptance evidence, unrun scope, accepted residuals, and live blockers;
+- announcements and superseded carriers;
+- merge-back PR and landed main exact.
 
-本次更新包括：
+Do not advance the frozen release branch merely to add the post-release
+receipt. Create an integration branch from fresh `origin/main`. Prefer a real
+two-parent merge with `origin/release-X.Y.Z`, resolve conflicts by preserving
+shipped fixes and intentional newer main work, and add the receipt on that
+integration branch.
 
-- {APPROVED_IOS_NOTE}
-- {APPROVED_IOS_NOTE}
+If the immutable protected release ancestry contains malformed commit metadata
+that the repository's current sign-off policy intentionally refuses to attest,
+do not weaken the checker, add a waiver, or rewrite shipped history. Use a
+signed single-parent content integration from fresh `origin/main` instead. Its
+receipt must freeze the release ref/source/tree, the failed two-parent attempt
+and exact failing check/commit, the reviewed signed source when available, and
+the reconciled path/blob result. Independent review must prove that the
+single-parent integration carries the intended release content with no
+unexplained drift. This exception is for immutable-history incompatibility,
+not convenience.
 
-TestFlight：<{TESTFLIGHT_JOIN_URL}>
+A known-invalid release-only fix may be excluded from either merge result only
+with the incident and successor recorded in the receipt.
 
-说明：这是 TestFlight 测试版本，不是 App Store 正式发布。版本号以 TestFlight 中显示的 `{MARKETING_VERSION} ({BUILD_NUMBER})` 为准。
-```
-
-English template:
-
-```markdown
-📱 Raft iOS {MARKETING_VERSION} ({BUILD_NUMBER}) is now available on TestFlight
-
-Highlights:
-
-- {APPROVED_IOS_NOTE}
-- {APPROVED_IOS_NOTE}
-
-TestFlight: <{TESTFLIGHT_JOIN_URL}>
-
-This is a TestFlight beta, not an App Store production release. The canonical TestFlight version is `{MARKETING_VERSION} ({BUILD_NUMBER})`.
-```
-
-Post the complete Chinese and English announcements as their own community
-messages. If an incomplete announcement was already posted and messages cannot
-be edited, publish the complete corrected announcement in the same locale and
-record only that superseding message id as the final receipt.
-
-Posting the announcement is a separate communication action, not an implied
-side effect of Hands activation or TestFlight distribution. Record the final
-announcement paths plus their channel/message receipts in the release receipt.
-An unreleased platform gets its own announcement later, after it reaches its
-separately authorized community boundary.
-
-## 8. Preserve The Receipt And Merge Back
-
-Commit a release receipt under `change-logs/X.Y.Z/` containing:
-
-- frozen source/ref and terminal Hosted run;
-- workflow, artifact, Hands build/release/asset, size, and hash identities;
-- activation state, revision, scope, and approved note paths;
-- TestFlight upload/distribution ids and terminal Apple readback;
-- runtime evidence, accepted residuals, and explicit untested/excluded scope;
-- superseded carrier coordinates;
-- release-to-main PR and landed main exact.
-
-After both Hands activations and the intended TestFlight boundary are
-terminal, open a reviewed `release-X.Y.Z -> main` PR. Resolve conflicts by
-preserving both shipped fixes and intentional newer main work. Before treating
-merge-back as complete, scan the landed tree for conflict markers and run the
-resource/code generation gates affected by conflict resolution.
-
-Do not delete the immutable carrier ref. Remove only temporary local
-worktrees, downloaded credentials, and short-lived verification material after
-the receipt is durable.
+Open the integration branch as a protected PR to `main`. Require exact Hosted,
+independent review, conflict-marker scans, generated-resource checks, and
+affected platform compile/tests. After merge, record the landed SHA in the
+receipt through a final docs follow-up when necessary. Keep an immutable
+carrier ref; delete only temporary worktrees, credentials, and verification
+downloads.
 
 ## Abort Rules
 
-- Source drift: stop, supersede, increment, rebuild both platforms.
-- Revision or scope mismatch: stop without publishing and fetch fresh detail.
-- Artifact/hash/signing mismatch: stop; do not repair metadata around bad
-  bytes.
-- Apple upload failure or non-`VALID` processing: stop before distribution.
-- Unnamed TestFlight group or ambiguous notification intent: ask the owner;
-  do not guess an internal/external mutation.
-- Merge-back conflict markers or failed resource generation: fix main in a
-  dedicated PR before rebasing unrelated work.
+- Missing real release date or unaccepted scope: do not cut the branch.
+- Source drift: supersede and rebuild both platforms.
+- Revision, scope, group, or source mismatch: stop and fresh-read.
+- Artifact/hash/signing/UUID mismatch: stop; do not repair metadata around it.
+- Apple processing not `VALID`: stop before distribution.
+- Ambiguous authorization or unnamed audience: ask; do not infer.
+- Live material product regression: stop rollout expansion and record the hold.
+- Merge-back conflict marker or failed affected gate: fix in the integration
+  PR before landing.
