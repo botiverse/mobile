@@ -30,6 +30,31 @@ mark_all_platforms() {
   run_ohos=true
 }
 
+# Task #26 option A (artin 2026-08-09): main pushes keep the iOS compile only
+# when the push can plausibly affect iOS: iOS-specific source, the Kuikly
+# gitlink, or CI-control paths. Ordinary commonMain pushes fall back to the
+# nightly iOS readback instead of recompiling iOS on every push. Unknown
+# changed paths stay fail-closed (classify already marked all platforms and
+# this function keeps them).
+main_push_keeps_ios() {
+  local changed_paths_file="$1"
+  local path
+  while IFS= read -r path || test -n "$path"; do
+    path="${path%$'\r'}"
+    test -n "$path" || continue
+    if is_deterministic_all_path "$path"; then
+      return 0
+    fi
+    case "$path" in
+      compose/iosApp/*|compose/shared/src/iosMain/*|compose/shared/src/iosTest/*|compose/shared/src/nativeMain/*|compose/shared/src/nativeInterop/*)
+        return 0
+        ;;
+    esac
+  done < "$changed_paths_file"
+  return 1
+}
+
+
 # Classify one repository path. The function mutates the platform booleans in
 # the caller and returns 0 only when Test owns coverage for that path.
 #
@@ -165,6 +190,16 @@ emit_plan() {
       case "$ref_name" in
         main)
           classify_changed_paths "$changed_paths_file" "main-push"
+          # Task #26 option A: iOS compile only when the push can affect iOS;
+          # ordinary pushes rely on the nightly iOS readback. Fail-closed:
+          # unknown paths were already marked all-platform by classify and are
+          # kept here.
+          if test "$run_ios" = true && ! main_push_keeps_ios "$changed_paths_file"; then
+            run_ios=false
+            case "$reason" in
+              main-push-paths:*) reason="main-push-paths:$(platform_summary)" ;;
+            esac
+          fi
           # Preserve post-merge Android device readback whenever the changed
           # paths select Android. iOS-only, OHOS-only and irrelevant pushes no
           # longer spend emulator capacity.
@@ -270,6 +305,17 @@ self_test() {
     push false main $'compose/iosApp/iosApp/Example.swift\n'
   assert_plan "$all_emulators"$'\nreason=main-push-diff-unavailable-fail-closed' \
     push false main "$UNKNOWN_PATH_SENTINEL"$'\n'
+  # Task #26 option A: ordinary main pushes (commonMain catch-all) no longer
+  # compile iOS; the nightly readback covers them.
+  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_emulators=true\nreason=main-push-paths:android,ohos' \
+    push false main $'compose/shared/src/commonMain/kotlin/Example.kt\n'
+  # Pushes that can affect iOS keep the iOS compile.
+  assert_plan "$all_emulators"$'\nreason=main-push-paths:android,ios,ohos' \
+    push false main $'compose/shared/src/commonMain/kotlin/Example.kt\ncompose/iosApp/iosApp/Example.swift\n'
+  assert_plan "$all_emulators"$'\nreason=main-push-ci-control' \
+    push false main $'third_party/kuikly-ui\n'
+  assert_plan "$all_emulators"$'\nreason=main-push-ci-control' \
+    push false main $'.github/workflows/test.yml\n'
   assert_plan "$all_emulators"$'\nreason=release-push-full-readback' \
     push false release-1.9.0 $'docs/readme.md\n'
   assert_plan "$all_emulators"$'\nreason=schedule-full-readback' \
