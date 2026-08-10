@@ -784,7 +784,9 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-pending-mention-batch-partial")
                     .put("visualFixture", "pending_mention_actions_batch_partial"),
-            crop = THREAD_COMPOSER_PENDING_MENTION_ACTIONS_CROP
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000,
+            captureSystemSurface = true
         )
     }
 
@@ -798,7 +800,8 @@ class KmpVisualScreenshotCaptureTest {
                     .put("instanceId", "visual-thread-composer-pending-mention-batch-details")
                     .put("visualFixture", "pending_mention_actions_batch_details"),
             crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_000
+            settleMs = 2_000,
+            captureSystemSurface = true
         )
     }
 

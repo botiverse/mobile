@@ -3599,27 +3599,46 @@ private fun PendingMentionActionBanner(
     ModalBottomSheet(
         visible = detailsVisible,
         onDismissRequest = { detailsVisible = false },
-        modifier = Modifier.fillMaxWidth(),
-        containerColor = SlockColor.SurfaceWhite,
+        modifier = Modifier.padding(horizontal = 12.dp),
+        containerColor = Color.Transparent,
         dismissOnDrag = true
     ) {
-        PendingMentionActionDetailsSheet(
-            actions = displayedActions,
-            memberSuggestions = memberSuggestions,
-            channelLabel = channelLabel,
-            actionStates = actionStates,
-            removingIds = removingIds,
-            executingIds = executingIds,
-            executingStates = executingStates,
-            eligibleCount = eligibleActions.size,
-            batchExecuting = batchExecuting,
-            mentionActionNotice = mentionActionNotice,
-            onInvite = onInvite,
-            onNotify = onNotify,
-            onDismiss = onDismiss,
-            onAddAll = onAddAll,
-            onClose = { detailsVisible = false }
-        )
+        Box(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .offset(x = 4f, y = 4f)
+                        .background(SlockColor.ShadowBlack)
+            )
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 256.dp)
+                        .background(SlockColor.SurfaceCream)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+            ) {
+                PendingMentionActionDetailsSheet(
+                    actions = displayedActions,
+                    memberSuggestions = memberSuggestions,
+                    channelLabel = channelLabel,
+                    actionStates = actionStates,
+                    removingIds = removingIds,
+                    executingIds = executingIds,
+                    executingStates = executingStates,
+                    eligibleCount = eligibleActions.size,
+                    batchExecuting = batchExecuting,
+                    mentionActionNotice = mentionActionNotice,
+                    onInvite = onInvite,
+                    onNotify = onNotify,
+                    onDismiss = onDismiss,
+                    onAddAll = onAddAll,
+                    onClose = { detailsVisible = false }
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(20.dp))
     }
 }
 
@@ -3767,8 +3786,8 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .background(SlockColor.SurfaceCream)
+                .padding(start = 24.dp, top = 32.dp, end = 24.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -3789,13 +3808,13 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
             shadowOffset = 2.dp
         )
     }
-    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     LazyColumn(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .heightIn(max = 420.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(SlockColor.SurfaceCream)
+                .padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = 24.dp)
     ) {
         mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
             item(key = "mention-action-notice", contentType = "notice") {
@@ -3831,15 +3850,13 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
             }
         }
     }
-    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-    Row(
+    Column(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-        verticalAlignment = Alignment.CenterVertically
+                .background(SlockColor.SurfaceCream)
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         if (eligibleCount >= 2 || batchExecuting) {
             SlockBrutalActionButton(
@@ -3851,8 +3868,9 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
                     },
                 onClick = onAddAll,
                 enabled = !batchExecuting,
+                modifier = Modifier.fillMaxWidth(),
                 minWidth = 0.dp,
-                minHeight = 34.dp,
+                minHeight = 40.dp,
                 leadingIcon = if (batchExecuting) SlockLucideIconName.LoaderCircle else SlockLucideIconName.UserPlus,
                 backgroundColor = SlockColor.AccentPink,
                 shadowOffset = 2.dp
@@ -3861,8 +3879,9 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
         SlockBrutalActionButton(
             label = stringResource(MR.strings.common_done),
             onClick = onClose,
+            modifier = Modifier.fillMaxWidth(),
             minWidth = 0.dp,
-            minHeight = 34.dp,
+            minHeight = 40.dp,
             shadowOffset = 2.dp
         )
     }
@@ -3895,7 +3914,7 @@ private fun PendingMentionActionCompactRow(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 54.dp)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
