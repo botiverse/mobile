@@ -1,6 +1,34 @@
 import XCTest
 
 final class SlockExternalShareEnvelopeStorageTests: XCTestCase {
+    func testHostLaunchURLUsesConfiguredDebugAndReleaseSchemes() throws {
+        let token = "opaque-token_1234567890"
+        XCTAssertEqual(
+            try SlockExternalShareContract.hostLaunchURL(token: token, configuredScheme: "raft-debug").absoluteString,
+            "raft-debug://external-share?token=opaque-token_1234567890"
+        )
+        XCTAssertEqual(
+            try SlockExternalShareContract.hostLaunchURL(token: token, configuredScheme: "raft").absoluteString,
+            "raft://external-share?token=opaque-token_1234567890"
+        )
+    }
+
+    func testHostLaunchURLRejectsMissingOrUnknownScheme() {
+        for scheme in [nil, "", "https"] as [String?] {
+            XCTAssertThrowsError(
+                try SlockExternalShareContract.hostLaunchURL(
+                    token: "opaque-token_1234567890",
+                    configuredScheme: scheme
+                )
+            ) { error in
+                XCTAssertEqual(
+                    error as? SlockExternalShareStorageError,
+                    .rejected("external_share_launch_scheme_invalid")
+                )
+            }
+        }
+    }
+
     private var root: URL!
 
     override func setUpWithError() throws {

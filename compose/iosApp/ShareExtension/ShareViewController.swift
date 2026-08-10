@@ -181,13 +181,11 @@ final class ShareViewController: UIViewController {
                     subject: "",
                     candidates: payload.1
                 )
-                var components = URLComponents()
-                components.scheme = "raft"
-                components.host = "external-share"
-                components.queryItems = [URLQueryItem(name: "token", value: token)]
-                guard let url = components.url else {
-                    throw SlockExternalShareStorageError.rejected("external_share_launch_url_invalid")
-                }
+                let scheme = Bundle.main.object(forInfoDictionaryKey: "SlockHostLaunchScheme") as? String
+                let url = try SlockExternalShareContract.hostLaunchURL(
+                    token: token,
+                    configuredScheme: scheme
+                )
                 extensionContext?.open(url) { [weak self] opened in
                     DispatchQueue.main.async {
                         if opened {

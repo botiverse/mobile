@@ -12,6 +12,24 @@ enum SlockExternalShareContract {
     static let maximumTotalBytes: Int64 = 100 * 1024 * 1024
     static let maximumTextCharacters = 256 * 1024
     static let envelopeTtl: TimeInterval = 24 * 60 * 60
+
+    static func hostLaunchURL(token: String, configuredScheme: String?) throws -> URL {
+        guard SlockExternalShareEnvelopeStorage.isSafeToken(token) else {
+            throw SlockExternalShareStorageError.rejected("external_share_token_invalid")
+        }
+        let scheme = configuredScheme?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let scheme, ["raft", "raft-alpha", "raft-beta", "raft-debug"].contains(scheme) else {
+            throw SlockExternalShareStorageError.rejected("external_share_launch_scheme_invalid")
+        }
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = "external-share"
+        components.queryItems = [URLQueryItem(name: "token", value: token)]
+        guard let url = components.url else {
+            throw SlockExternalShareStorageError.rejected("external_share_launch_url_invalid")
+        }
+        return url
+    }
 }
 
 struct SlockExternalShareCandidate {
