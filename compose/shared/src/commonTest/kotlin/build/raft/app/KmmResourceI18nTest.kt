@@ -1156,6 +1156,10 @@ class KmmResourceI18nTest {
                 ResourceFormattedStringDesc
         )
         assertTrue(
+            MR.strings.thread_composer_mention_batch_row_status.format(listOf("#team")) is
+                ResourceFormattedStringDesc
+        )
+        assertTrue(
             MR.strings.thread_composer_mention_batch_more.format(listOf(2)) is ResourceFormattedStringDesc
         )
         assertTrue(

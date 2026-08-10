@@ -419,6 +419,7 @@
     <string name="thread_composer_mention_notify_chip">通知</string>
     <string name="thread_composer_mention_batch_summary_one">1 人が %1$s に参加していません</string>
     <string name="thread_composer_mention_batch_summary_many">%1$s 人が %2$s に参加していません</string>
+    <string name="thread_composer_mention_batch_row_status">%1$s に未参加</string>
     <string name="thread_composer_mention_batch_more">+%1$s</string>
     <string name="thread_composer_mention_batch_avatar_description">対応待ちのメンション対象 %1$s 人</string>
     <string name="thread_composer_mention_batch_add_all">すべて追加</string>

@@ -1273,7 +1273,8 @@ internal fun ThreadComposerScreen() {
                         ThreadComposerContent(
                             payload = payload,
                             initialMentionActionDetailsVisible =
-                                visualFixture == ThreadComposerMentionBatchDetailsVisualFixture,
+                                visualFixture == ThreadComposerMentionBatchDetailsVisualFixture ||
+                                    visualFixture == "pending_mention_actions_batch_partial",
                             attachmentPreviewEnabled = false,
                             onEvent = { action, _, _, attachmentId ->
                                 if (
@@ -2523,8 +2524,8 @@ internal fun ThreadComposerContentLeaf(
                     onEvent(action, null, null, attachmentId)
                 }
             }
-            state.mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
-                MentionActionNotice(
+            val localizedMentionActionNotice =
+                state.mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
                     if (notice == ThreadComposerMentionBatchPartialNoticeVisualMarker) {
                         stringResource(
                             MR.strings.thread_composer_mention_batch_result,
@@ -2535,8 +2536,8 @@ internal fun ThreadComposerContentLeaf(
                     } else {
                         notice
                     }
-                )
-            }
+                }
+            localizedMentionActionNotice?.let { notice -> MentionActionNotice(notice) }
             if (state.pendingMentionActions.isNotEmpty()) {
                 PendingMentionActionBanner(
                     actions = state.pendingMentionActions,
@@ -2550,6 +2551,7 @@ internal fun ThreadComposerContentLeaf(
                     onNotify = { resolutionId -> onEvent("notifyMention", resolutionId, null, null) },
                     onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) },
                     onAddAll = { onEvent("addAllMentions", null, null, null) },
+                    mentionActionNotice = localizedMentionActionNotice,
                     initialDetailsVisible = initialMentionActionDetailsVisible,
                     onOpenDetails = {
                         currentDismissSuggestions()
@@ -3521,6 +3523,7 @@ private fun PendingMentionActionBanner(
     onNotify: (String) -> Unit,
     onDismiss: (String) -> Unit,
     onAddAll: () -> Unit,
+    mentionActionNotice: String?,
     initialDetailsVisible: Boolean,
     onOpenDetails: () -> Unit
 ) {
@@ -3596,8 +3599,8 @@ private fun PendingMentionActionBanner(
     ModalBottomSheet(
         visible = detailsVisible,
         onDismissRequest = { detailsVisible = false },
-        modifier = Modifier.fillMaxHeight(0.6f),
-        containerColor = SlockColor.SurfaceCream,
+        modifier = Modifier.fillMaxWidth(),
+        containerColor = SlockColor.SurfaceWhite,
         dismissOnDrag = true
     ) {
         PendingMentionActionDetailsSheet(
@@ -3610,6 +3613,7 @@ private fun PendingMentionActionBanner(
             executingStates = executingStates,
             eligibleCount = eligibleActions.size,
             batchExecuting = batchExecuting,
+            mentionActionNotice = mentionActionNotice,
             onInvite = onInvite,
             onNotify = onNotify,
             onDismiss = onDismiss,
@@ -3752,6 +3756,7 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
     executingStates: Map<String, String>,
     eligibleCount: Int,
     batchExecuting: Boolean,
+    mentionActionNotice: String?,
     onInvite: (String) -> Unit,
     onNotify: (String) -> Unit,
     onDismiss: (String) -> Unit,
@@ -3762,8 +3767,8 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .background(SlockColor.SurfaceWhite)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -3784,19 +3789,25 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
             shadowOffset = 2.dp
         )
     }
+    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     LazyColumn(
-        modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = 420.dp)
+                .background(SlockColor.SurfaceWhite)
     ) {
+        mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
+            item(key = "mention-action-notice", contentType = "notice") {
+                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    MentionActionNotice(notice)
+                }
+            }
+        }
         items(actions.size, key = { actions[it].resolutionId }) { index ->
             val action = actions[index]
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 10.dp)
-            ) {
-                PendingMentionActionRow(
+            Column(modifier = Modifier.fillMaxWidth()) {
+                PendingMentionActionCompactRow(
                     action = action,
                     targetSuggestion = action.matchingTargetSuggestion(memberSuggestions),
                     channelLabel = action.channelName.toComposerChannelMentionLabel() ?: channelLabel,
@@ -3808,15 +3819,25 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
                     onNotify = { onNotify(action.resolutionId) },
                     onDismiss = { onDismiss(action.resolutionId) }
                 )
+                if (index < actions.lastIndex) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(SlockStroke.Thin)
+                                .background(SlockColor.BorderBlack.copy(alpha = 0.2f))
+                    )
+                }
             }
         }
     }
+    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(12.dp),
+                .background(SlockColor.SurfaceWhite)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -3844,6 +3865,117 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
             minHeight = 34.dp,
             shadowOffset = 2.dp
         )
+    }
+}
+
+@Composable
+private fun PendingMentionActionCompactRow(
+    action: KuiklyPendingMentionActionItem,
+    targetSuggestion: KuiklyComposerMemberItem?,
+    channelLabel: String,
+    executing: Boolean,
+    localState: String?,
+    removing: Boolean,
+    executingState: String?,
+    onInvite: () -> Unit,
+    onNotify: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val targetAvatarLabel =
+        targetSuggestion?.avatarLabel
+            ?.takeIf { it.isNotBlank() }
+            ?: targetSuggestion?.displayName
+                ?.takeIf { it.isNotBlank() }
+            ?: action.targetInitial()
+    val canInvite = action.supportsMentionAction("invite") && localState == null
+    val canNotify = action.supportsMentionAction("notify") && localState == null
+    val contentAlpha = if (removing) 0.45f else 1f
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 54.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SlockAvatar(
+            avatarWireValue = action.targetAvatarWireValue() ?: targetSuggestion?.avatarWireValue,
+            label = targetAvatarLabel,
+            avatarSize = 28.dp,
+            borderWidth = SlockStroke.Default
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(
+                text = action.targetLabel(),
+                style = SlockType.Button.copy(fontSize = 12.sp),
+                color = SlockColor.TextBlack.copy(alpha = contentAlpha),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = stringResource(MR.strings.thread_composer_mention_batch_row_status, channelLabel),
+                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                color = SlockColor.TextMutedGray.copy(alpha = contentAlpha),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (localState == "added") {
+                ComposerTextChip(
+                    stringResource(MR.strings.thread_composer_mention_added_chip),
+                    variant = ComposerTextChipVariant.Disabled,
+                    enabled = false,
+                    leadingIcon = SlockLucideIconName.Check,
+                    onClick = {}
+                )
+            } else if (canInvite) {
+                ComposerTextChip(
+                    if (executingState == "added") {
+                        stringResource(MR.strings.thread_composer_mention_adding_chip)
+                    } else {
+                        stringResource(MR.strings.thread_composer_mention_add_chip)
+                    },
+                    variant = ComposerTextChipVariant.Pink,
+                    enabled = !executing,
+                    loading = executingState == "added",
+                    leadingIcon = SlockLucideIconName.UserPlus,
+                    onClick = onInvite
+                )
+            }
+            if (localState == "notified") {
+                ComposerTextChip(
+                    stringResource(MR.strings.thread_composer_mention_notified_chip),
+                    variant = ComposerTextChipVariant.Disabled,
+                    enabled = false,
+                    leadingIcon = SlockLucideIconName.Check,
+                    onClick = {}
+                )
+            } else if (canNotify) {
+                ComposerTextChip(
+                    if (executingState == "notified") {
+                        stringResource(MR.strings.thread_composer_mention_notifying_chip)
+                    } else {
+                        stringResource(MR.strings.thread_composer_mention_notify_chip)
+                    },
+                    variant = ComposerTextChipVariant.White,
+                    enabled = !executing,
+                    loading = executingState == "notified",
+                    leadingIcon = SlockLucideIconName.BellRing,
+                    onClick = onNotify
+                )
+            }
+            ComposerTextChip(
+                stringResource(MR.strings.common_dismiss),
+                variant = ComposerTextChipVariant.MutedText,
+                enabled = !executing,
+                onClick = onDismiss
+            )
+        }
     }
 }
 

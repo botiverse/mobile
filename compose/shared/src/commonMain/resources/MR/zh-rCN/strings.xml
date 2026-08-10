@@ -419,6 +419,7 @@
     <string name="thread_composer_mention_notify_chip">通知</string>
     <string name="thread_composer_mention_batch_summary_one">1 人不在 %1$s 中</string>
     <string name="thread_composer_mention_batch_summary_many">%1$s 人不在 %2$s 中</string>
+    <string name="thread_composer_mention_batch_row_status">不在 %1$s 中</string>
     <string name="thread_composer_mention_batch_more">+%1$s</string>
     <string name="thread_composer_mention_batch_avatar_description">%1$s 个待处理的提及对象</string>
     <string name="thread_composer_mention_batch_add_all">全部添加</string>

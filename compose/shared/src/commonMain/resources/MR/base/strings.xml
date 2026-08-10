@@ -419,6 +419,7 @@
     <string name="thread_composer_mention_notify_chip">Notify</string>
     <string name="thread_composer_mention_batch_summary_one">1 person isn’t in %1$s</string>
     <string name="thread_composer_mention_batch_summary_many">%1$s people aren’t in %2$s</string>
+    <string name="thread_composer_mention_batch_row_status">Not in %1$s</string>
     <string name="thread_composer_mention_batch_more">+%1$s</string>
     <string name="thread_composer_mention_batch_avatar_description">%1$s pending mention targets</string>
     <string name="thread_composer_mention_batch_add_all">Add all</string>
