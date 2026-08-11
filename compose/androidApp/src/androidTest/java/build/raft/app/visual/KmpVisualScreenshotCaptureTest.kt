@@ -6,11 +6,14 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
 import android.app.Activity
 import android.view.MotionEvent
+import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -746,6 +749,66 @@ class KmpVisualScreenshotCaptureTest {
                     .put("instanceId", "visual-thread-composer-pending-mention-actions")
                     .put("visualFixture", "pending_mention_actions"),
             crop = THREAD_COMPOSER_PENDING_MENTION_ACTIONS_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadComposerPendingMentionBatch() {
+        captureKmpComponentCase(
+            caseId = "components.thread.composer.pending-mention-batch",
+            pageName = "compose_thread_composer_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer-pending-mention-batch")
+                    .put("visualFixture", "pending_mention_actions_batch"),
+            crop = THREAD_COMPOSER_PENDING_MENTION_ACTIONS_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadComposerPendingMentionBatchExecuting() {
+        captureKmpComponentCase(
+            caseId = "components.thread.composer.pending-mention-batch-executing",
+            pageName = "compose_thread_composer_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer-pending-mention-batch-executing")
+                    .put("visualFixture", "pending_mention_actions_batch_executing"),
+            crop = THREAD_COMPOSER_PENDING_MENTION_ACTIONS_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadComposerPendingMentionBatchPartial() {
+        captureKmpComponentCase(
+            caseId = "components.thread.composer.pending-mention-batch-partial",
+            pageName = "compose_thread_composer_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer-pending-mention-batch-partial")
+                    .put("visualFixture", "pending_mention_actions_batch_partial")
+                    .put("androidVisualMentionDrawerStartsClosed", true),
+            crop = THREAD_COMPOSER_MODAL_VIEWPORT_CROP,
+            settleMs = 2_000,
+            beforeScreenshot = ::openPendingMentionDrawer,
+            captureAppWindowSurface = true
+        )
+    }
+
+    @Test
+    fun captureThreadComposerPendingMentionBatchDetails() {
+        captureKmpComponentCase(
+            caseId = "components.thread.composer.pending-mention-batch-details",
+            pageName = "compose_thread_composer_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer-pending-mention-batch-details")
+                    .put("visualFixture", "pending_mention_actions_batch_details")
+                    .put("androidVisualMentionDrawerStartsClosed", true),
+            crop = THREAD_COMPOSER_MODAL_VIEWPORT_CROP,
+            settleMs = 2_000,
+            beforeScreenshot = ::openPendingMentionDrawer,
+            captureAppWindowSurface = true
         )
     }
 
@@ -3557,6 +3620,7 @@ class KmpVisualScreenshotCaptureTest {
         afterScreenshot: (() -> Unit)? = null,
         suppressSoftKeyboard: Boolean = true,
         captureSystemSurface: Boolean = false,
+        captureAppWindowSurface: Boolean = false,
         // Native transient surfaces may cancel on a second window read; preserve the validated interaction frame.
         capturedBitmapAfterBeforeScreenshot: (() -> Bitmap)? = null,
         assertBitmap: ((Bitmap) -> Unit)? = null,
@@ -3595,6 +3659,10 @@ class KmpVisualScreenshotCaptureTest {
                     }
                     screenshot.cropDp(effectiveCrop).also { cropped ->
                         if (cropped !== screenshot) screenshot.recycle()
+                    }
+                } else if (captureAppWindowSurface) {
+                    requireNotNull(captureWindowPixelCopyBitmap(caseId, effectiveCrop)) {
+                        "Unable to capture system surface for $caseId"
                     }
                 } else if (captureSystemSurface) {
                     requireNotNull(captureUiAutomationFallbackBitmap(caseId, effectiveCrop)) {
@@ -4115,6 +4183,20 @@ class KmpVisualScreenshotCaptureTest {
         Thread.sleep(1_000)
     }
 
+    private fun openPendingMentionDrawer() {
+        val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+        val viewAction = root?.findAccessibilityNodeInfosByText("View")?.firstOrNull()
+        requireNotNull(viewAction) { "Pending mention View action is not visible" }
+        val clickableAction = generateSequence(viewAction) { it.parent }.firstOrNull { it.isClickable }
+        requireNotNull(clickableAction) { "Pending mention View action has no clickable ancestor" }
+        val bounds = android.graphics.Rect()
+        clickableAction.getBoundsInScreen(bounds)
+        require(!bounds.isEmpty) { "Pending mention View action has empty bounds" }
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        tapDisplayDp(bounds.exactCenterX() / density, bounds.exactCenterY() / density)
+        Thread.sleep(1_500)
+    }
+
     private fun applyVisualFullscreen(activity: Activity, hideKeyboard: Boolean = true) {
         activity.window.setSoftInputMode(
             (if (hideKeyboard) WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN else 0) or
@@ -4296,6 +4378,60 @@ class KmpVisualScreenshotCaptureTest {
         if (cropped !== screenshot) {
             screenshot.recycle()
         }
+        return null
+    }
+
+    /** Captures Kuikly's hardware-backed in-window Modal surface at the app window's dimensions. */
+    private fun captureWindowPixelCopyBitmap(caseId: String, crop: VisualCrop): Bitmap? {
+        val anrProblem = anrDialogProblem()
+        if (anrProblem != null) {
+            Log.w(VISUAL_LOG_TAG, "$caseId PixelCopy rejected: $anrProblem")
+            return null
+        }
+        val copied = CountDownLatch(1)
+        var screenshot: Bitmap? = null
+        var copyResult = PixelCopy.ERROR_UNKNOWN
+        onActivityNoIdle { activity ->
+            val root = activity.window.decorView.rootView
+            if (root.width > 0 && root.height > 0) {
+                screenshot = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
+                PixelCopy.request(
+                    activity.window,
+                    requireNotNull(screenshot),
+                    { result ->
+                        copyResult = result
+                        copied.countDown()
+                    },
+                    Handler(Looper.getMainLooper())
+                )
+            } else {
+                copied.countDown()
+            }
+        }
+        if (!copied.await(5, TimeUnit.SECONDS) || copyResult != PixelCopy.SUCCESS) {
+            Log.w(VISUAL_LOG_TAG, "$caseId PixelCopy failed: result=$copyResult")
+            screenshot?.recycle()
+            return captureUiAutomationFallbackBitmap(caseId, crop)
+        }
+        val captured = requireNotNull(screenshot)
+        val boundsProblem = cropBoundsProblem(captured, crop)
+        if (boundsProblem != null) {
+            Log.w(VISUAL_LOG_TAG, "$caseId PixelCopy $boundsProblem")
+            captured.recycle()
+            return null
+        }
+        val cropped = captured.cropDp(crop)
+        val problems = visualValidationProblems(cropped, cropped.visualStats())
+        if (problems.isEmpty()) {
+            if (cropped !== captured) captured.recycle()
+            return cropped
+        }
+        Log.w(
+            VISUAL_LOG_TAG,
+            "$caseId PixelCopy failed validation: ${problems.joinToString("; ")}"
+        )
+        cropped.recycle()
+        if (cropped !== captured) captured.recycle()
         return null
     }
 
@@ -5272,6 +5408,15 @@ class KmpVisualScreenshotCaptureTest {
                 heightDp = 844,
                 contract = "viewport-bounds",
                 captureMethod = "app-window-root-draw-viewport-density-resize"
+            )
+        private val THREAD_COMPOSER_MODAL_VIEWPORT_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 844,
+                contract = "viewport-bounds",
+                captureMethod = "pixel-copy-app-window-viewport-crop"
             )
         private val HOME_TITLEBAR_PREFERENCE_CROP =
             VisualCrop(

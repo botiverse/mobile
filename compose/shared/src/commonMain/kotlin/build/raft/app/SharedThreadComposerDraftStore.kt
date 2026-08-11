@@ -40,6 +40,7 @@ internal data class SharedThreadComposerDraftState(
     val uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList(),
     val externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList(),
     val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
+    val mentionActionNoticeTitle: String? = null,
     val mentionActionNotice: String? = null,
     val mentionActionStates: Map<String, String> = emptyMap(),
     val removingMentionActionIds: Set<String> = emptySet(),
@@ -782,7 +783,9 @@ private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosti
         is SharedThreadComposerDraftIntent.ApplyPendingMentionActions -> "ApplyPendingMentionActions"
         is SharedThreadComposerDraftIntent.DismissMentionAction -> "DismissMentionAction"
         is SharedThreadComposerDraftIntent.BeginMentionAction -> "BeginMentionAction"
+        is SharedThreadComposerDraftIntent.BeginMentionActionBatch -> "BeginMentionActionBatch"
         is SharedThreadComposerDraftIntent.FinishMentionAction -> "FinishMentionAction"
+        is SharedThreadComposerDraftIntent.FinishMentionActionBatch -> "FinishMentionActionBatch"
         SharedThreadComposerDraftIntent.ClearMentionActionNotice -> "ClearMentionActionNotice"
         is SharedThreadComposerDraftIntent.MarkMentionActionRemoving -> "MarkMentionActionRemoving"
         is SharedThreadComposerDraftIntent.RemoveMentionAction -> "RemoveMentionAction"
@@ -830,11 +833,20 @@ internal sealed interface SharedThreadComposerDraftIntent {
         val resolutionId: String,
         val state: String
     ) : SharedThreadComposerDraftIntent
+    data class BeginMentionActionBatch(
+        val resolutionIds: List<String>
+    ) : SharedThreadComposerDraftIntent
     data class FinishMentionAction(
         val resolutionId: String,
         val notice: String,
         val delivered: Boolean,
         val state: String
+    ) : SharedThreadComposerDraftIntent
+    data class FinishMentionActionBatch(
+        val requestedIds: List<String>,
+        val deliveredIds: Set<String>,
+        val noticeTitle: String?,
+        val notice: String?
     ) : SharedThreadComposerDraftIntent
     data object ClearMentionActionNotice : SharedThreadComposerDraftIntent
     data class MarkMentionActionRemoving(val resolutionId: String) : SharedThreadComposerDraftIntent
@@ -982,6 +994,7 @@ internal class SharedThreadComposerDraftStore(
                     removedAttachmentIds = emptySet(),
                     uploadedAttachments = emptyList(),
                     externalShareSources = emptyList(),
+                    mentionActionNoticeTitle = null,
                     mentionActionNotice = null,
                     mentionActionStates = emptyMap(),
                     removingMentionActionIds = emptySet(),
@@ -1017,6 +1030,7 @@ internal class SharedThreadComposerDraftStore(
                     removedAttachmentIds = if (shouldClearComposer) emptySet() else current.removedAttachmentIds,
                     uploadedAttachments = if (shouldClearComposer) emptyList() else current.uploadedAttachments,
                     externalShareSources = if (shouldClearComposer) emptyList() else current.externalShareSources,
+                    mentionActionNoticeTitle = null,
                     mentionActionNotice = null,
                     mentionActionStates = emptyMap(),
                     removingMentionActionIds = emptySet(),
@@ -1036,6 +1050,7 @@ internal class SharedThreadComposerDraftStore(
                     uploadedAttachments = if (shouldClearComposer) emptyList() else current.uploadedAttachments,
                     externalShareSources = if (shouldClearComposer) emptyList() else current.externalShareSources,
                     pendingMentionActions = intent.pendingMentionActions,
+                    mentionActionNoticeTitle = null,
                     mentionActionNotice = null,
                     mentionActionStates = emptyMap(),
                     removingMentionActionIds = emptySet(),
@@ -1047,6 +1062,7 @@ internal class SharedThreadComposerDraftStore(
                 current.copy(
                     syncNonce = current.syncNonce + 1,
                     pendingMentionActions = intent.pendingMentionActions,
+                    mentionActionNoticeTitle = null,
                     mentionActionNotice = null,
                     mentionActionStates = emptyMap(),
                     removingMentionActionIds = emptySet(),
@@ -1057,6 +1073,7 @@ internal class SharedThreadComposerDraftStore(
                 current.copy(
                     syncNonce = current.syncNonce + 1,
                     pendingMentionActions = current.pendingMentionActions.filterNot { it.resolutionId == intent.resolutionId },
+                    mentionActionNoticeTitle = null,
                     mentionActionNotice = null,
                     mentionActionStates = current.mentionActionStates - intent.resolutionId,
                     removingMentionActionIds = current.removingMentionActionIds - intent.resolutionId,
@@ -1066,14 +1083,27 @@ internal class SharedThreadComposerDraftStore(
             is SharedThreadComposerDraftIntent.BeginMentionAction ->
                 current.copy(
                     syncNonce = current.syncNonce + 1,
+                    mentionActionNoticeTitle = null,
                     mentionActionNotice = null,
                     executingMentionActionIds = current.executingMentionActionIds + intent.resolutionId,
                     executingMentionActionStates = current.executingMentionActionStates + (intent.resolutionId to intent.state)
                 )
+            is SharedThreadComposerDraftIntent.BeginMentionActionBatch -> {
+                val resolutionIds = intent.resolutionIds.map(String::trim).filter(String::isNotEmpty).distinct()
+                current.copy(
+                    syncNonce = current.syncNonce + 1,
+                    mentionActionNoticeTitle = null,
+                    mentionActionNotice = null,
+                    executingMentionActionIds = current.executingMentionActionIds + resolutionIds,
+                    executingMentionActionStates =
+                        current.executingMentionActionStates + resolutionIds.associateWith { "added" }
+                )
+            }
             is SharedThreadComposerDraftIntent.FinishMentionAction ->
                 current.copy(
                     syncNonce = current.syncNonce + 1,
                     pendingMentionActions = current.pendingMentionActions,
+                    mentionActionNoticeTitle = null,
                     mentionActionNotice = if (intent.delivered) null else intent.notice,
                     mentionActionStates =
                         if (intent.delivered) {
@@ -1085,8 +1115,23 @@ internal class SharedThreadComposerDraftStore(
                     executingMentionActionIds = current.executingMentionActionIds - intent.resolutionId,
                     executingMentionActionStates = current.executingMentionActionStates - intent.resolutionId
                 )
+            is SharedThreadComposerDraftIntent.FinishMentionActionBatch -> {
+                val requestedIds = intent.requestedIds.map(String::trim).filter(String::isNotEmpty).toSet()
+                val deliveredIds = intent.deliveredIds.intersect(requestedIds)
+                current.copy(
+                    syncNonce = current.syncNonce + 1,
+                    pendingMentionActions =
+                        current.pendingMentionActions.filterNot { it.resolutionId.trim() in deliveredIds },
+                    mentionActionNoticeTitle = intent.noticeTitle,
+                    mentionActionNotice = intent.notice,
+                    mentionActionStates = current.mentionActionStates - deliveredIds,
+                    removingMentionActionIds = current.removingMentionActionIds - requestedIds,
+                    executingMentionActionIds = current.executingMentionActionIds - requestedIds,
+                    executingMentionActionStates = current.executingMentionActionStates - requestedIds
+                )
+            }
             SharedThreadComposerDraftIntent.ClearMentionActionNotice ->
-                current.copy(mentionActionNotice = null)
+                current.copy(mentionActionNoticeTitle = null, mentionActionNotice = null)
             is SharedThreadComposerDraftIntent.MarkMentionActionRemoving ->
                 current.copy(
                     syncNonce = current.syncNonce + 1,

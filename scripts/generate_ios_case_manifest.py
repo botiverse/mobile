@@ -47,6 +47,9 @@ Cases that stay pending, with reasons:
 slockVisualZeroSafeArea:true is injected into every case's pageData to match
 what captureKmpComponentCase does harness-side.
 
+Literal pageData keys prefixed with androidVisual are instrumentation-only
+controls and are omitted from the iOS launch manifest.
+
 Usage:
   scripts/generate_ios_case_manifest.py [--filter id1,id2] [--out manifest.json]
 Prints a summary to stderr; writes JSON {cases:[...], pending:[...]} to --out
@@ -73,6 +76,7 @@ PUT_LITERAL = re.compile(
     r"(?P<val>\"(?:[^\"\\]|\\.)*\"|true|false|-?\d+(?:\.\d+)?)\s*\)"
 )
 PUT_ANY = re.compile(r"\.put\(")
+ANDROID_ONLY_PAGE_DATA_PREFIX = "androidVisual"
 CASE_ID_LITERAL = re.compile(r'"((?:components|screens|library|auth)\.[a-z0-9./_-]+)"')
 # captureActivityScreenshot("<id>") literal args are auxiliary probe-screenshot
 # labels (e.g. "<case>.before" / "<case>.after" phase shots inside a
@@ -167,7 +171,12 @@ def main() -> int:
                     defer(case_id, method, "pageData has non-literal .put values")
                     continue
                 for key, raw in literal_puts:
-                    page_data[key] = parse_literal(raw)
+                    # Android instrumentation may need launch-only controls for
+                    # an interaction it performs before capture. Those controls
+                    # are not valid iOS launch data because the iOS provider has
+                    # no corresponding pre-screenshot interaction hook.
+                    if not key.startswith(ANDROID_ONLY_PAGE_DATA_PREFIX):
+                        page_data[key] = parse_literal(raw)
             emit(case_id, page_m.group(1), page_data)
             continue
 

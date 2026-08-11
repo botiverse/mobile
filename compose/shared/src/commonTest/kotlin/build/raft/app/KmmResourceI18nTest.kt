@@ -1121,6 +1121,62 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun pendingMentionBatchResourcesAreGeneratedWithFormattedVariants() {
+        val staticResources =
+            listOf(
+                MR.strings.thread_composer_mention_batch_add_all,
+                MR.strings.thread_composer_mention_batch_adding,
+                MR.strings.thread_composer_mention_batch_view,
+                MR.strings.thread_composer_mention_batch_error_missing,
+                MR.strings.thread_composer_mention_batch_error_delivery_unavailable,
+                MR.strings.thread_composer_mention_batch_error_dropped,
+                MR.strings.thread_composer_mention_batch_error_sender_access,
+                MR.strings.thread_composer_mention_batch_error_target_access,
+                MR.strings.thread_composer_mention_batch_error_surface,
+                MR.strings.thread_composer_mention_batch_error_human_authority,
+                MR.strings.thread_composer_mention_batch_error_member_authority,
+                MR.strings.thread_composer_mention_batch_error_permission,
+                MR.strings.thread_composer_mention_batch_error_already_member,
+                MR.strings.thread_composer_mention_batch_error_target_unavailable,
+                MR.strings.thread_composer_mention_batch_error_stale,
+                MR.strings.thread_composer_mention_batch_error_expired,
+                MR.strings.thread_composer_mention_batch_error_ambiguous,
+                MR.strings.thread_composer_mention_batch_error_generic
+            )
+
+        staticResources.forEach { resource ->
+            assertTrue(resource.desc() is ResourceStringDesc)
+        }
+        assertTrue(
+            MR.strings.thread_composer_mention_batch_summary_one.format(listOf("#team")) is
+                ResourceFormattedStringDesc
+        )
+        assertTrue(
+            MR.strings.thread_composer_mention_batch_summary_many.format(listOf(3, "#team")) is
+                ResourceFormattedStringDesc
+        )
+        assertTrue(
+            MR.strings.thread_composer_mention_batch_row_status.format(listOf("#team")) is
+                ResourceFormattedStringDesc
+        )
+        assertTrue(
+            MR.strings.thread_composer_mention_batch_more.format(listOf(2)) is ResourceFormattedStringDesc
+        )
+        assertTrue(
+            MR.strings.thread_composer_mention_batch_avatar_description.format(listOf(3)) is
+                ResourceFormattedStringDesc
+        )
+        assertTrue(
+            MR.strings.thread_composer_mention_batch_result.format(listOf(2, 3, "failure")) is
+                ResourceFormattedStringDesc
+        )
+        assertTrue(
+            MR.strings.thread_composer_mention_batch_result_summary.format(listOf(2, 3)) is
+                ResourceFormattedStringDesc
+        )
+    }
+
+    @Test
     fun rawStringDescIsUsableForLiterals() {
         // Bonus: verify the common `String.desc()` extension (the literal helper)
         // also resolves, so the test file is itself a sanity check on the API

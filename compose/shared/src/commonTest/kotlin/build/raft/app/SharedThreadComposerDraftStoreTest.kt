@@ -1733,6 +1733,90 @@ class SharedThreadComposerDraftStoreTest {
         assertTrue(queued.canOpenComposerAttachmentPreview(composerEnabled = true))
     }
 
+    @Test
+    fun mentionActionBatchBeginMarksStableDistinctIdsAtomically() {
+        val store = SharedThreadComposerDraftStore()
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.BeginMentionActionBatch(
+                listOf(" first ", "second", "first", "")
+            )
+        )
+
+        assertEquals(setOf("first", "second"), store.state.value.executingMentionActionIds)
+        assertEquals(
+            mapOf("first" to "added", "second" to "added"),
+            store.state.value.executingMentionActionStates
+        )
+        assertEquals(null, store.state.value.mentionActionNotice)
+    }
+
+    @Test
+    fun mentionActionBatchPartialFinishRemovesOnlyDeliveredAndKeepsFailuresRetryable() {
+        val first =
+            KuiklyPendingMentionActionItem(
+                resolutionId = " first ",
+                targetType = "user",
+                targetHandle = "first",
+                availableActions = listOf("add")
+            )
+        val second = first.copy(resolutionId = "second", targetHandle = "second")
+        val unrelated = first.copy(resolutionId = "unrelated", targetHandle = "unrelated")
+        val store = SharedThreadComposerDraftStore()
+        store.dispatch(SharedThreadComposerDraftIntent.ApplyPendingMentionActions(listOf(first, second, unrelated)))
+        store.dispatch(SharedThreadComposerDraftIntent.BeginMentionActionBatch(listOf("first", "second")))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.FinishMentionActionBatch(
+                requestedIds = listOf("first", "second"),
+                deliveredIds = setOf("first", "not-requested"),
+                noticeTitle = "Added 1 of 2",
+                notice = "The second action failed."
+            )
+        )
+
+        assertEquals(listOf(second, unrelated), store.state.value.pendingMentionActions)
+        assertEquals("Added 1 of 2", store.state.value.mentionActionNoticeTitle)
+        assertEquals("The second action failed.", store.state.value.mentionActionNotice)
+        assertEquals(emptySet(), store.state.value.executingMentionActionIds)
+        assertEquals(emptyMap(), store.state.value.executingMentionActionStates)
+        assertEquals(emptySet(), store.state.value.removingMentionActionIds)
+        assertEquals(emptyMap(), store.state.value.mentionActionStates)
+    }
+
+    @Test
+    fun mentionActionBatchMissingResultsKeepEveryPendingRow() {
+        val first =
+            KuiklyPendingMentionActionItem(
+                resolutionId = "first",
+                targetType = "user",
+                targetHandle = "first",
+                availableActions = listOf("add")
+            )
+        val second = first.copy(resolutionId = "second", targetHandle = "second")
+        val store = SharedThreadComposerDraftStore()
+        store.dispatch(SharedThreadComposerDraftIntent.ApplyPendingMentionActions(listOf(first, second)))
+        store.dispatch(SharedThreadComposerDraftIntent.BeginMentionActionBatch(listOf("first", "second")))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.FinishMentionActionBatch(
+                requestedIds = listOf("first", "second"),
+                deliveredIds = emptySet(),
+                noticeTitle = "Added 0 of 2",
+                notice = "This mention action is no longer available."
+            )
+        )
+
+        assertEquals(listOf(first, second), store.state.value.pendingMentionActions)
+        assertEquals(emptySet(), store.state.value.executingMentionActionIds)
+        assertEquals(emptyMap(), store.state.value.executingMentionActionStates)
+        assertEquals(
+            "This mention action is no longer available.",
+            store.state.value.mentionActionNotice
+        )
+        assertEquals("Added 0 of 2", store.state.value.mentionActionNoticeTitle)
+    }
+
     private fun externalShareAttachment(status: String) =
         SharedThreadComposerAttachment(
             id = "local",
