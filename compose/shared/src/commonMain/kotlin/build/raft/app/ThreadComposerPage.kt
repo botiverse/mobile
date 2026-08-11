@@ -3851,7 +3851,7 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
     ) {
         mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
             item(key = "mention-action-notice", contentType = "notice") {
-                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                     MentionActionNotice(title = mentionActionNoticeTitle, detail = notice)
                 }
             }
