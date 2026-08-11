@@ -8,5 +8,10 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:app.raft.build</string>
+		<string>applinks:raft-app-staging.botiverse.dev</string>
+	</array>
 </dict>
 </plist>

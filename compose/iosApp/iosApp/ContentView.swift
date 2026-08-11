@@ -40,6 +40,11 @@ struct ContentView: View {
                 .onOpenURL { url in
                     _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "swiftui_open_url")
                 }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    // The URL is launch intent only. Accepted links deliberately leave the normal
+                    // app-shell/last-session destination unchanged and carry no desktop auth state.
+                    _ = SlockIosMobileDownloadUniversalLink.accepts(activity.webpageURL)
+                }
                 .onAppear {
                     SlockIosMobileOAuthHost.shared.resumeDeferredCallbackIfNeeded()
                 }

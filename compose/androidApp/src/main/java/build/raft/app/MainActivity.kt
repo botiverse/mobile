@@ -90,6 +90,7 @@ class MainActivity : ComponentActivity() {
             !handleMobileOAuthCallback(intent) &&
             !handleSocialAuthCallback(intent) &&
             !handleEmailVerificationLink(intent) &&
+            !handleMobileDownloadAppLink(intent) &&
             !handleUnsupportedSlockWebLink(intent)
         ) {
             openSharedShell(intent)
@@ -126,10 +127,20 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * The manifest intentionally receives the whole Raft web origin so typed callbacks can be
-     * added without another install. Anything not consumed above must stay on the web instead of
-     * silently opening an empty app shell. The browser component is explicit so Android App Links
-     * cannot resolve the fallback straight back to this activity.
+     * A download link is only a request to enter the already-installed app. Keep the VIEW intent
+     * for task-preservation policy, but never project its URL into shared page data or auth state.
+     */
+    private fun handleMobileDownloadAppLink(intent: Intent?): Boolean {
+        if (!intent.isMobileDownloadAppLink()) return false
+        setIntent(Intent(this, MainActivity::class.java))
+        openSharedShell(intent)
+        return true
+    }
+
+    /**
+     * Legacy callback filters may still deliver Raft Web URLs. Anything not consumed above must
+     * stay on the web instead of silently opening an empty app shell. The browser component is
+     * explicit so Android App Links cannot resolve the fallback straight back to this activity.
      */
     private fun handleUnsupportedSlockWebLink(intent: Intent?): Boolean {
         if (!intent.shouldOpenUnsupportedSlockWebLinkExternally()) return false
@@ -558,6 +569,27 @@ internal fun Intent?.shouldOpenUnsupportedSlockWebLinkExternally(): Boolean =
         }
     } ?: false
 
+internal fun Intent?.isMobileDownloadAppLink(): Boolean =
+    this?.data?.let { uri ->
+        isMobileDownloadAppLink(
+            action = action,
+            dataScheme = uri.scheme,
+            dataHost = uri.host,
+            dataPath = uri.path,
+        )
+    } ?: false
+
+internal fun isMobileDownloadAppLink(
+    action: String?,
+    dataScheme: String?,
+    dataHost: String?,
+    dataPath: String?,
+): Boolean =
+    action == Intent.ACTION_VIEW &&
+        dataScheme.equals("https", ignoreCase = true) &&
+        dataHost?.lowercase(Locale.US) in MOBILE_DOWNLOAD_APP_LINK_HOSTS &&
+        dataPath == "/download"
+
 internal fun shouldOpenUnsupportedSlockWebLinkExternally(
     action: String?,
     dataScheme: String?,
@@ -645,7 +677,13 @@ internal fun Uri.isSlockAppWebLink(): Boolean =
 
 private fun isSlockAppWebLink(scheme: String?, host: String?): Boolean =
     scheme.equals("https", ignoreCase = true) &&
-        host?.lowercase(Locale.US) in setOf("app.slock.ai", "app.raft.build")
+        host?.lowercase(Locale.US) in APP_WEB_LINK_HOSTS
+
+private val MOBILE_DOWNLOAD_APP_LINK_HOSTS =
+    setOf("app.raft.build", "raft-app-staging.botiverse.dev")
+
+private val APP_WEB_LINK_HOSTS =
+    MOBILE_DOWNLOAD_APP_LINK_HOSTS + "app.slock.ai"
 
 private fun Intent?.safeDataString(): String =
     this?.data?.buildUpon()?.clearQuery()?.fragment(null)?.build()?.toString().orEmpty()

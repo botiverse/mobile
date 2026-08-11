@@ -100,7 +100,107 @@ class MainActivityLaunchTest {
                 .substringBefore("private fun handleUnsupportedSlockWebLink")
         assertTrue(handler.indexOf("handleMobileOAuthCallback") < handler.indexOf("handleSocialAuthCallback"))
         assertTrue(handler.indexOf("handleSocialAuthCallback") < handler.indexOf("handleEmailVerificationLink"))
-        assertTrue(handler.indexOf("handleEmailVerificationLink") < handler.indexOf("openSharedShell"))
+        assertTrue(handler.indexOf("handleEmailVerificationLink") < handler.indexOf("handleMobileDownloadAppLink"))
+        assertTrue(handler.indexOf("handleMobileDownloadAppLink") < handler.indexOf("handleUnsupportedSlockWebLink"))
+        assertTrue(handler.indexOf("handleUnsupportedSlockWebLink") < handler.indexOf("openSharedShell"))
+    }
+
+    @Test
+    fun mobileDownloadAdmissionAcceptsOnlyCanonicalHttpsHostsAndExactPath() {
+        listOf("app.raft.build", "raft-app-staging.botiverse.dev").forEach { host ->
+            assertTrue(
+                isMobileDownloadAppLink(
+                    action = "android.intent.action.VIEW",
+                    dataScheme = "https",
+                    dataHost = host,
+                    dataPath = "/download",
+                )
+            )
+            assertTrue(
+                isMobileDownloadAppLink(
+                    action = "android.intent.action.VIEW",
+                    dataScheme = "HTTPS",
+                    dataHost = host.uppercase(),
+                    dataPath = "/download",
+                )
+            )
+        }
+
+        listOf(null, "", "/", "/download/", "/Download", "/download/anything").forEach { path ->
+            assertFalse(
+                isMobileDownloadAppLink(
+                    action = "android.intent.action.VIEW",
+                    dataScheme = "https",
+                    dataHost = "app.raft.build",
+                    dataPath = path,
+                )
+            )
+        }
+        assertFalse(isMobileDownloadAppLink("android.intent.action.MAIN", "https", "app.raft.build", "/download"))
+        assertFalse(isMobileDownloadAppLink("android.intent.action.VIEW", "http", "app.raft.build", "/download"))
+        assertFalse(isMobileDownloadAppLink("android.intent.action.VIEW", "https", "app.slock.ai", "/download"))
+        assertFalse(isMobileDownloadAppLink("android.intent.action.VIEW", "https", "example.com", "/download"))
+    }
+
+    @Test
+    fun mobileDownloadLinkIsConsumedBeforeGenericBrowserFallback() {
+        listOf("app.raft.build", "raft-app-staging.botiverse.dev").forEach { host ->
+            assertTrue(
+                isMobileDownloadAppLink(
+                    action = "android.intent.action.VIEW",
+                    dataScheme = "https",
+                    dataHost = host,
+                    dataPath = "/download",
+                )
+            )
+            assertTrue(
+                "the host stays in the Web-link family so VIEW launches preserve the existing task",
+                shouldOpenUnsupportedSlockWebLinkExternally(
+                    action = "android.intent.action.VIEW",
+                    dataScheme = "https",
+                    dataHost = host,
+                    dataPath = "/other",
+                )
+            )
+        }
+
+        val source = mainActivitySource()
+        val handler =
+            source.substringAfter("private fun handleMobileDownloadAppLink(intent: Intent?)")
+                .substringBefore("private fun handleUnsupportedSlockWebLink")
+        assertTrue(handler.contains("setIntent(Intent(this, MainActivity::class.java))"))
+        assertTrue(handler.contains("openSharedShell(intent)"))
+        assertFalse(handler.contains("openSharedShell(Intent(this, MainActivity::class.java))"))
+    }
+
+    @Test
+    fun verifiedManifestFiltersNeverBroadenCanonicalHostsBeyondDownload() {
+        val filters =
+            Regex("<intent-filter[^>]*>[\\s\\S]*?</intent-filter>")
+                .findAll(androidManifestSource())
+                .map { it.value }
+                .toList()
+        val productionFilters = filters.filter { it.contains("android:host=\"app.raft.build\"") }
+        val stagingFilters = filters.filter { it.contains("android:host=\"raft-app-staging.botiverse.dev\"") }
+
+        assertEquals(2, productionFilters.size)
+        assertEquals(1, stagingFilters.size)
+        assertTrue(
+            productionFilters.any {
+                it.contains("android:autoVerify=\"true\"") && it.contains("android:path=\"/download\"")
+            }
+        )
+        assertTrue(
+            productionFilters.any {
+                !it.contains("android:autoVerify=\"true\"") && it.contains("android:path=\"/\"")
+            }
+        )
+        assertTrue(
+            stagingFilters.single().contains("android:autoVerify=\"true\"") &&
+                stagingFilters.single().contains("android:path=\"/download\"")
+        )
+        assertTrue(productionFilters.all { it.contains("android:path=") })
+        assertTrue(stagingFilters.all { it.contains("android:path=\"/download\"") })
     }
 
     @Test
@@ -413,5 +513,15 @@ class MainActivityLaunchTest {
             current = current.parentFile ?: return@repeat
         }
         error("Unable to locate MainActivity.kt from ${System.getProperty("user.dir")}")
+    }
+
+    private fun androidManifestSource(): String {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
+        repeat(8) {
+            val candidate = File(current, "src/main/AndroidManifest.xml")
+            if (candidate.isFile) return candidate.readText()
+            current = current.parentFile ?: return@repeat
+        }
+        error("Unable to locate AndroidManifest.xml from ${System.getProperty("user.dir")}")
     }
 }
