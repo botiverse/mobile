@@ -117,6 +117,7 @@ import build.raft.app.data.KeyValueNotificationPreferenceStore
 import build.raft.app.data.PersistentNotificationPreferenceRepository
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
 import build.raft.app.data.ChatLayoutPreferenceSnapshotRuntimeAuthority
+import build.raft.app.data.DEFAULT_SERVER_DRAWER_ENABLED
 import build.raft.app.data.ConversationForwardGestureRuntimeAuthority
 import build.raft.app.data.kuiklyChatLayoutPreferenceRepository
 import build.raft.app.data.reconcileConversationForwardGesturePreference
@@ -2557,7 +2558,7 @@ private fun SlockAppShellReadyContent(
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
     var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
     var activitySenderAvatarsEnabled by remember { mutableStateOf(false) }
-    var serverDrawerEnabled by remember { mutableStateOf(false) }
+    var serverDrawerEnabled by remember { mutableStateOf(DEFAULT_SERVER_DRAWER_ENABLED) }
     var homeServerAvatarEnabled by remember { mutableStateOf(false) }
     var conversationForwardGestureEnabled by remember { mutableStateOf(false) }
     var serverDrawerProgrammaticCloseFence by remember { mutableStateOf<((String) -> Unit)?>(null) }

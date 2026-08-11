@@ -13,6 +13,7 @@ import build.raft.app.components.SlockRaftUiBannerSize
 import build.raft.app.components.SlockRaftUiBannerStatus
 import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockRaftUiMenuItem
+import build.raft.app.components.SlockSwitchButton
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockToolbarChip
 import build.raft.app.base.Utils
@@ -86,6 +87,7 @@ import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider
+import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
@@ -118,6 +120,7 @@ import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.toMessageMetadata
+import build.raft.app.data.typedPinnedOrLegacy
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.RealtimeCanonicalFinalSinkSurfaceKey
 import build.raft.app.data.RealtimeScopeAuthority
@@ -1695,9 +1698,12 @@ internal data class ThreadActivityMuteUiState(
     val muteFromSeq: Long?
 )
 
-internal data class ThreadChannelPinUiState(
-    val channelId: String,
-    val pinned: Boolean
+internal data class ThreadConversationPinUiState(
+    val conversationId: String,
+    val pinnedKind: String,
+    val pinnedId: String,
+    val pinned: Boolean,
+    val available: Boolean
 )
 
 internal fun KuiklyThreadScreenPayload.threadActivityMuteState(
@@ -1730,14 +1736,80 @@ internal fun KuiklyThreadScreenPayload.threadActivityMutedIndicatorVisible(
     return supported && (projection?.activityMuted ?: activityMuted)
 }
 
-internal fun KuiklyThreadScreenPayload.threadChannelPinTargetId(
+internal data class ThreadConversationPinTarget(
+    val conversationId: String,
+    val kind: String,
+    val id: String
+)
+
+internal fun KuiklyThreadScreenPayload.threadConversationPinTarget(
     projection: SharedConversationDirectoryProjection?
-): String? {
-    if (surfaceKind != KuiklyThreadSurfaceKind.Channel) return null
-    return projection?.canonicalChannelId?.trim()?.takeIf { it.isNotBlank() }
-        ?: streamChannelId?.trim()?.takeIf { it.isNotBlank() }
-        ?: sourceThreadId?.trim()?.takeIf { it.isNotBlank() }
+): ThreadConversationPinTarget? {
+    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return null
+    val conversationId =
+        projection?.canonicalChannelId?.trim()?.takeIf { it.isNotBlank() }
+            ?: streamChannelId?.trim()?.takeIf { it.isNotBlank() }
+            ?: sourceThreadId?.trim()?.takeIf { it.isNotBlank() }
+            ?: return null
+    if (surfaceKind == KuiklyThreadSurfaceKind.Channel) {
+        return ThreadConversationPinTarget(
+            conversationId = conversationId,
+            kind = "channel",
+            id = conversationId
+        )
+    }
+    if (surfaceKind != KuiklyThreadSurfaceKind.DirectMessage) return null
+    val peer = projection?.peerIdentity ?: dmPeerIdentity ?: return null
+    val kind =
+        when (peer.kind) {
+            MemberKind.Agent -> "agent"
+            MemberKind.Human -> "human"
+            MemberKind.System -> return null
+        }
+    return ThreadConversationPinTarget(
+        conversationId = conversationId,
+        kind = kind,
+        id = peer.memberId.value
+    )
 }
+
+internal fun ThreadConversationPinTarget.toUiState(
+    sidebarOrder: SettingsServerSidebarOrderSnapshot?
+): ThreadConversationPinUiState {
+    val pinned =
+        sidebarOrder?.let { order ->
+            order.typedPinnedOrLegacy().any { item ->
+                item.kind.equals(kind, ignoreCase = true) && item.id == id
+            } ||
+                conversationId in order.pinnedChannelIds ||
+                (kind == "agent" && id in order.pinnedAgentIds) ||
+                id in order.pinnedOrder ||
+                conversationId in order.pinnedOrder
+        } == true
+    return ThreadConversationPinUiState(
+        conversationId = conversationId,
+        pinnedKind = kind,
+        pinnedId = id,
+        pinned = pinned,
+        available = sidebarOrder != null
+    )
+}
+
+internal fun threadHeaderSettingsActionVisible(
+    payloadShowSettingsAction: Boolean,
+    surfaceKind: String
+): Boolean =
+    payloadShowSettingsAction || surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
+
+internal fun threadHeaderInlineActivityMuteVisible(surfaceKind: String): Boolean =
+    surfaceKind != KuiklyThreadSurfaceKind.DirectMessage
+
+internal fun threadSettingsUsesStandalonePage(
+    surfaceKind: String,
+    newDesignSettingsEnabled: Boolean
+): Boolean =
+    surfaceKind != KuiklyThreadSurfaceKind.DirectMessage &&
+        channelSettingsUsesStandalonePage(newDesignSettingsEnabled)
 
 internal fun KuiklyThreadScreenPayload.joinChannelTargetId(): ChannelId? =
     (parentChannelId?.takeIf { it.isNotBlank() }
@@ -4397,10 +4469,43 @@ internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false) {
             channelName = "design",
             subtitle = stringResource(MR.strings.channel_description_design),
             actions = channelPanelVisualSettingsActions(),
-            channelPinState = ThreadChannelPinUiState(channelId = "thread_design", pinned = pinned),
+            conversationPinState =
+                ThreadConversationPinUiState(
+                    conversationId = "thread_design",
+                    pinnedKind = "channel",
+                    pinnedId = "thread_design",
+                    pinned = pinned,
+                    available = true
+                ),
             onDismiss = {},
             onTogglePin = {},
             onOpenAction = {}
+        )
+    }
+}
+
+@Composable
+internal fun DirectMessageSettingsPanelVisualScreen() {
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        ThreadDirectMessageSettingsModal(
+            activityMuteState =
+                ThreadActivityMuteUiState(
+                    channelId = "dm-visual-friday",
+                    muted = true,
+                    supported = true,
+                    muteFromSeq = 42
+                ),
+            conversationPinState =
+                ThreadConversationPinUiState(
+                    conversationId = "dm-visual-friday",
+                    pinnedKind = "agent",
+                    pinnedId = "agent-visual-friday",
+                    pinned = true,
+                    available = true
+                ),
+            onDismiss = {},
+            onToggleActivityMute = {},
+            onTogglePin = {}
         )
     }
 }
@@ -5023,22 +5128,15 @@ internal fun SharedThreadRouteContent(
         remember(payload, stableHeaderProjection) {
             payload.threadActivityMutedIndicatorVisible(stableHeaderProjection)
         }
-    val channelPinTargetId = remember(payload, stableHeaderProjection) {
-        payload.threadChannelPinTargetId(stableHeaderProjection)
-    }
-    val pinnedChannelConversationIds =
+    val sidebarOrder =
         remember(sharedHomeState.content) {
             (sharedHomeState.content as? SharedHomeContentState.Content)
                 ?.snapshot
                 ?.sidebarOrder
-                .pinnedChannelConversationIds()
         }
-    val channelPinState =
-        channelPinTargetId?.let { targetId ->
-            ThreadChannelPinUiState(
-                channelId = targetId,
-                pinned = targetId in pinnedChannelConversationIds
-            )
+    val conversationPinState =
+        remember(payload, stableHeaderProjection, sidebarOrder) {
+            payload.threadConversationPinTarget(stableHeaderProjection)?.toUiState(sidebarOrder)
         }
     val routeMountPlan =
         payload.threadRouteMountPlan(
@@ -7838,11 +7936,19 @@ internal fun SharedThreadRouteContent(
                         )
                     }
                 },
-            channelPinState = channelPinState,
-            onToggleChannelPin =
-                channelPinState?.let { pinState ->
+            conversationPinState = conversationPinState,
+            onToggleConversationPin =
+                conversationPinState
+                    ?.takeIf { it.available && renderSlice.writeActionsEnabled }
+                    ?.let { pinState ->
                     {
-                        sharedHomeStore?.dispatch(SharedHomeIntent.TogglePinned(pinState.channelId))
+                        sharedHomeStore?.dispatch(
+                            SharedHomeIntent.TogglePinned(
+                                conversationId = pinState.conversationId,
+                                pinnedKind = pinState.pinnedKind,
+                                pinnedId = pinState.pinnedId
+                            )
+                        )
                     }
                 },
             forwardServerId = headerProjectionServerId,
@@ -10897,8 +11003,8 @@ private fun ThreadPageContent(
     activityMuteState: ThreadActivityMuteUiState? = null,
     activityMutedIndicatorVisible: Boolean = false,
     onToggleActivityMute: (() -> Unit)? = null,
-    channelPinState: ThreadChannelPinUiState? = null,
-    onToggleChannelPin: (() -> Unit)? = null,
+    conversationPinState: ThreadConversationPinUiState? = null,
+    onToggleConversationPin: (() -> Unit)? = null,
     forwardServerId: ServerId?,
     forwardTargetRepository: ForwardMessageTargetRepository?,
     contentExtrasVisible: Boolean,
@@ -11765,7 +11871,7 @@ private fun ThreadPageContent(
                         onThreadEvent("openMembersPager", null, null, null)
                     },
                     onShowSettings = {
-                        if (channelSettingsUsesStandalonePage(newDesignSettingsEnabled())) {
+                        if (threadSettingsUsesStandalonePage(payload.surfaceKind, newDesignSettingsEnabled())) {
                             onThreadEvent("openChannelSettings", null, null, null)
                         } else {
                             activeModal = "settings"
@@ -12117,34 +12223,45 @@ private fun ThreadPageContent(
                 )
         }
         when (activeModal) {
-            "settings" ->
-                ThreadSettingsModal(
-                    channelName = headerDisplay.title,
-                    subtitle = headerDisplay.subtitle,
-                    actions = payload.settingsActions,
-                    channelPinState = channelPinState,
-                    activityMuteState = activityMuteState,
-                    updateStatus = channelProfileUpdateStatus,
-                    updateErrorCode = channelProfileUpdateErrorCode,
-                    onDismiss = {
-                        if (channelProfileUpdateStatus != ChannelProfileUpdateStatus.InFlight) {
+            "settings" -> {
+                if (payload.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+                    ThreadDirectMessageSettingsModal(
+                        activityMuteState = activityMuteState,
+                        conversationPinState = conversationPinState,
+                        onDismiss = { activeModal = null },
+                        onToggleActivityMute = onToggleActivityMute,
+                        onTogglePin = onToggleConversationPin
+                    )
+                } else {
+                    ThreadSettingsModal(
+                        channelName = headerDisplay.title,
+                        subtitle = headerDisplay.subtitle,
+                        actions = payload.settingsActions,
+                        conversationPinState = conversationPinState,
+                        activityMuteState = activityMuteState,
+                        updateStatus = channelProfileUpdateStatus,
+                        updateErrorCode = channelProfileUpdateErrorCode,
+                        onDismiss = {
+                            if (channelProfileUpdateStatus != ChannelProfileUpdateStatus.InFlight) {
+                                activeModal = null
+                                onClearChannelProfileUpdateStatus()
+                            }
+                        },
+                        onSave = { originalName, originalDescription, name, description ->
+                            payload.resolveThreadRouteIdentity().timelineChannelId?.let { channelId ->
+                                onUpdateChannelProfile(channelId, originalName, originalDescription, name, description)
+                            }
+                        },
+                        onTogglePin = onToggleConversationPin,
+                        onToggleActivityMute = onToggleActivityMute,
+                        onOpenAction = { actionId ->
                             activeModal = null
                             onClearChannelProfileUpdateStatus()
+                            onThreadEvent("settingsAction", actionId, null, null)
                         }
-                    },
-                    onSave = { originalName, originalDescription, name, description ->
-                        payload.resolveThreadRouteIdentity().timelineChannelId?.let { channelId ->
-                            onUpdateChannelProfile(channelId, originalName, originalDescription, name, description)
-                        }
-                    },
-                    onTogglePin = onToggleChannelPin,
-                    onToggleActivityMute = onToggleActivityMute,
-                    onOpenAction = { actionId ->
-                        activeModal = null
-                        onClearChannelProfileUpdateStatus()
-                        onThreadEvent("settingsAction", actionId, null, null)
-                    }
-                )
+                    )
+                }
+            }
             "sharePreview" ->
                 ThreadSharePreviewModal(
                     messages = selectedShareMessages,
@@ -12220,7 +12337,7 @@ private fun ThreadPageHeader(
         showActions &&
             (
                 payload.threadHeaderSearchAction() != null ||
-                    payload.showSettingsAction ||
+                    threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind) ||
                     payload.showMembersAction ||
                     payload.threadHeaderOpenInParentActionVisible()
             )
@@ -12300,7 +12417,7 @@ private fun ThreadPageHeader(
                     if (payload.threadHeaderSearchAction() != null) {
                         ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
                     }
-                    if (payload.showSettingsAction) {
+                    if (threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind)) {
                         ThreadHeaderIconButton(icon = SlockLucideIconName.Settings, onClick = onShowSettings)
                     }
                     if (payload.showMembersAction) {
@@ -26306,12 +26423,73 @@ private fun KuiklyThreadSettingsAction.canonicalThreadSettingsActionId(): String
     }
 
 @Composable
+private fun ThreadDirectMessageSettingsModal(
+    activityMuteState: ThreadActivityMuteUiState?,
+    conversationPinState: ThreadConversationPinUiState?,
+    onDismiss: () -> Unit,
+    onToggleActivityMute: (() -> Unit)?,
+    onTogglePin: (() -> Unit)?
+) {
+    SlockUnifiedDialog(
+        title = stringResource(MR.strings.thread_dm_settings_title),
+        onDismiss = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            ThreadDirectMessagePreferenceRow(
+                title = stringResource(MR.strings.thread_dm_settings_mute_person),
+                detail = stringResource(MR.strings.thread_dm_settings_mute_person_detail),
+                checked = activityMuteState?.muted == true,
+                enabled = activityMuteState != null && onToggleActivityMute != null,
+                onClick = { onToggleActivityMute?.invoke() }
+            )
+            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+            ThreadDirectMessagePreferenceRow(
+                title = stringResource(MR.strings.thread_dm_settings_pin_person),
+                detail = stringResource(MR.strings.thread_dm_settings_pin_person_detail),
+                checked = conversationPinState?.pinned == true,
+                enabled = conversationPinState?.available == true && onTogglePin != null,
+                onClick = { onTogglePin?.invoke() }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadDirectMessagePreferenceRow(
+    title: String,
+    detail: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                text = title,
+                style = SlockType.Body.withSlockFontWeight(FontWeight.W600),
+                color = SlockColor.TextBlack
+            )
+            Text(text = detail, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+        }
+        SlockSwitchButton(checked = checked, enabled = enabled)
+    }
+}
+
+@Composable
 internal fun ThreadSettingsModal(
     channelName: String,
     subtitle: String?,
     actions: List<KuiklyThreadSettingsAction>,
     initialDangerActionId: String? = null,
-    channelPinState: ThreadChannelPinUiState? = null,
+    conversationPinState: ThreadConversationPinUiState? = null,
     activityMuteState: ThreadActivityMuteUiState? = null,
     updateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     updateErrorCode: String? = null,
@@ -26423,7 +26601,7 @@ internal fun ThreadSettingsModal(
                 }
                 if (
                     (activityMuteState != null && onToggleActivityMute != null) ||
-                        (channelPinState != null && onTogglePin != null) ||
+                        (conversationPinState != null && onTogglePin != null) ||
                         dangerActions.isNotEmpty()
                 ) {
                     Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
@@ -26439,7 +26617,7 @@ internal fun ThreadSettingsModal(
                                 onClick = { onToggleActivityMute?.invoke() }
                             )
                         }
-                        channelPinState?.takeIf { onTogglePin != null }?.let { pinState ->
+                        conversationPinState?.takeIf { onTogglePin != null }?.let { pinState ->
                             SlockModalFullWidthActionButton(
                                 label =
                                     stringResource(

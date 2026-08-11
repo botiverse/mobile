@@ -485,6 +485,11 @@
 <string name="thread_member_role_member">Member</string>
     <string name="thread_member_role_system">System</string>
     <string name="thread_settings_edit_channel">EDIT CHANNEL</string>
+    <string name="thread_dm_settings_title">DM SETTINGS</string>
+    <string name="thread_dm_settings_mute_person">Mute this person</string>
+    <string name="thread_dm_settings_mute_person_detail">Mute activity from this direct message</string>
+    <string name="thread_dm_settings_pin_person">Pin this person</string>
+    <string name="thread_dm_settings_pin_person_detail">Keep this person in the Pinned section</string>
     <string name="thread_settings_name">Name</string>
     <string name="thread_settings_name_placeholder">e.g. ai-research</string>
     <string name="thread_settings_description">Description</string>
