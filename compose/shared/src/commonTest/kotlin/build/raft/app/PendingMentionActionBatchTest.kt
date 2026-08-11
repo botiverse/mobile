@@ -101,6 +101,8 @@ class PendingMentionActionBatchTest {
             "Added 1 of 3. Only channel admins can add members.",
             outcome.localizedNotice(strings())
         )
+        assertEquals("Added 1 of 3", outcome.localizedNoticeTitle(strings()))
+        assertEquals("Only channel admins can add members.", outcome.localizedFailureNotice(strings()))
     }
 
     @Test
@@ -135,6 +137,7 @@ class PendingMentionActionBatchTest {
     private fun strings() =
         PendingMentionActionBatchStrings(
             resultTemplate = "Added __RAFT_ADDED__ of __RAFT_TOTAL__. __RAFT_ERROR__",
+            resultSummaryTemplate = "Added __RAFT_ADDED__ of __RAFT_TOTAL__",
             missing = "This mention action is no longer available.",
             deliveryUnavailable = "Delivery is temporarily unavailable.",
             dropped = "The action was not delivered.",

@@ -15,6 +15,7 @@ internal data class PendingMentionActionBatchOutcome(
 
 internal data class PendingMentionActionBatchStrings(
     val resultTemplate: String,
+    val resultSummaryTemplate: String,
     val missing: String,
     val deliveryUnavailable: String,
     val dropped: String,
@@ -87,16 +88,31 @@ internal fun pendingMentionActionBatchOutcome(
 
 internal fun PendingMentionActionBatchOutcome.localizedNotice(strings: PendingMentionActionBatchStrings): String? {
     if (requestedCount == 0 || deliveredCount == requestedCount) return null
-    val failure =
-        if (missingFirstFailure) {
-            strings.missing
-        } else {
-            firstFailure.localizedPendingMentionBatchFailure(strings)
-        }
+    val failure = localizedFailureNotice(strings) ?: return null
     return strings.resultTemplate
         .replace("__RAFT_ADDED__", deliveredCount.toString())
         .replace("__RAFT_TOTAL__", requestedCount.toString())
         .replace("__RAFT_ERROR__", failure)
+}
+
+internal fun PendingMentionActionBatchOutcome.localizedNoticeTitle(
+    strings: PendingMentionActionBatchStrings
+): String? {
+    if (requestedCount == 0 || deliveredCount == requestedCount) return null
+    return strings.resultSummaryTemplate
+        .replace("__RAFT_ADDED__", deliveredCount.toString())
+        .replace("__RAFT_TOTAL__", requestedCount.toString())
+}
+
+internal fun PendingMentionActionBatchOutcome.localizedFailureNotice(
+    strings: PendingMentionActionBatchStrings
+): String? {
+    if (requestedCount == 0 || deliveredCount == requestedCount) return null
+    return if (missingFirstFailure) {
+        strings.missing
+    } else {
+        firstFailure.localizedPendingMentionBatchFailure(strings)
+    }
 }
 
 private fun PendingMentionActionExecuteResult?.localizedPendingMentionBatchFailure(

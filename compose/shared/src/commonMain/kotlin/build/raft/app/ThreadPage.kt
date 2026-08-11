@@ -6058,6 +6058,12 @@ internal fun SharedThreadRouteContent(
                     "__RAFT_TOTAL__",
                     "__RAFT_ERROR__"
                 ),
+            resultSummaryTemplate =
+                stringResource(
+                    MR.strings.thread_composer_mention_batch_result_summary,
+                    "__RAFT_ADDED__",
+                    "__RAFT_TOTAL__"
+                ),
             missing = stringResource(MR.strings.thread_composer_mention_batch_error_missing),
             deliveryUnavailable = stringResource(MR.strings.thread_composer_mention_batch_error_delivery_unavailable),
             dropped = stringResource(MR.strings.thread_composer_mention_batch_error_dropped),
@@ -9576,7 +9582,8 @@ internal fun SharedThreadRouteContent(
                                 SharedThreadComposerDraftIntent.FinishMentionActionBatch(
                                     requestedIds = outcome.requestedIds,
                                     deliveredIds = outcome.deliveredIds,
-                                    notice = outcome.localizedNotice(pendingMentionActionBatchStrings)
+                                    noticeTitle = outcome.localizedNoticeTitle(pendingMentionActionBatchStrings),
+                                    notice = outcome.localizedFailureNotice(pendingMentionActionBatchStrings)
                                 )
                             )
                             if (outcome.deliveredIds.isNotEmpty()) {
@@ -13120,6 +13127,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
             },
         statusLabel = statusLabel,
         pendingMentionActions = draftState.pendingMentionActions,
+        mentionActionNoticeTitle = draftState.mentionActionNoticeTitle,
         mentionActionNotice = draftState.mentionActionNotice,
         mentionActionStates = draftState.mentionActionStates,
         removingMentionActionIds = draftState.removingMentionActionIds.toList(),

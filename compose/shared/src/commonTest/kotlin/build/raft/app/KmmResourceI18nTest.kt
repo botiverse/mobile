@@ -1170,6 +1170,10 @@ class KmmResourceI18nTest {
             MR.strings.thread_composer_mention_batch_result.format(listOf(2, 3, "failure")) is
                 ResourceFormattedStringDesc
         )
+        assertTrue(
+            MR.strings.thread_composer_mention_batch_result_summary.format(listOf(2, 3)) is
+                ResourceFormattedStringDesc
+        )
     }
 
     @Test

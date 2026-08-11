@@ -426,6 +426,7 @@
     <string name="thread_composer_mention_batch_adding">Adding</string>
     <string name="thread_composer_mention_batch_view">View</string>
     <string name="thread_composer_mention_batch_result">Added %1$s of %2$s. %3$s</string>
+    <string name="thread_composer_mention_batch_result_summary">Added %1$s of %2$s</string>
     <string name="thread_composer_mention_batch_error_missing">This mention action is no longer available.</string>
     <string name="thread_composer_mention_batch_error_delivery_unavailable">Delivery is temporarily unavailable. Try again.</string>
     <string name="thread_composer_mention_batch_error_dropped">That target was not added right now. Try again.</string>

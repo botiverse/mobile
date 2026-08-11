@@ -136,6 +136,8 @@ private const val ThreadComposerSuggestionRepositionDelayMillis = 8_000L
 private const val ThreadComposerMentionBatchDetailsVisualFixture = "pending_mention_actions_batch_details"
 private const val ThreadComposerMentionBatchPartialNoticeVisualMarker =
     "__visual_pending_mention_batch_partial_notice__"
+private const val ThreadComposerMentionBatchPartialNoticeTitleVisualMarker =
+    "__visual_pending_mention_batch_partial_notice_title__"
 private val ThreadComposerSuggestionScrollOracleUnderlay = Color(0xFF22D3EE)
 private val ThreadComposerSuggestionScrollOracleLeak = Color(0xFFEF4444)
 private val ThreadComposerSuggestionInteractionOracleSuccess = Color(0xFF22C55E)
@@ -357,6 +359,7 @@ private val threadComposerContentPayloadKeys =
         "statusLabel",
         "pendingAttachments",
         "pendingMentionActions",
+        "mentionActionNoticeTitle",
         "mentionActionNotice",
         "mentionActionStates",
         "removingMentionActionIds",
@@ -382,6 +385,7 @@ internal data class KuiklyThreadComposerPayload(
     val statusLabel: String? = null,
     val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
     val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
+    val mentionActionNoticeTitle: String? = null,
     val mentionActionNotice: String? = null,
     val mentionActionStates: Map<String, String> = emptyMap(),
     val removingMentionActionIds: List<String> = emptyList(),
@@ -466,6 +470,7 @@ internal data class ThreadComposerUiState(
     val statusLabel: String? = null,
     val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
     val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
+    val mentionActionNoticeTitle: String? = null,
     val mentionActionNotice: String? = null,
     val mentionActionStates: Map<String, String> = emptyMap(),
     val removingMentionActionIds: List<String> = emptyList(),
@@ -1532,6 +1537,7 @@ private fun threadComposerVisualFixture(
                     base.copy(
                         seedText = "",
                         pendingMentionActions = actions.drop(1),
+                        mentionActionNoticeTitle = ThreadComposerMentionBatchPartialNoticeTitleVisualMarker,
                         mentionActionNotice = ThreadComposerMentionBatchPartialNoticeVisualMarker
                     )
                 else -> base.copy(seedText = "", pendingMentionActions = actions)
@@ -1660,6 +1666,7 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadCompos
         statusLabel = statusLabel,
         pendingAttachments = pendingAttachments,
         pendingMentionActions = pendingMentionActions,
+        mentionActionNoticeTitle = mentionActionNoticeTitle,
         mentionActionNotice = mentionActionNotice,
         mentionActionStates = mentionActionStates,
         removingMentionActionIds = removingMentionActionIds,
@@ -2529,17 +2536,22 @@ internal fun ThreadComposerContentLeaf(
             val localizedMentionActionNotice =
                 state.mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
                     if (notice == ThreadComposerMentionBatchPartialNoticeVisualMarker) {
-                        stringResource(
-                            MR.strings.thread_composer_mention_batch_result,
-                            1,
-                            3,
-                            stringResource(MR.strings.thread_composer_mention_batch_error_member_authority)
-                        )
+                        stringResource(MR.strings.thread_composer_mention_batch_error_member_authority)
                     } else {
                         notice
                     }
                 }
-            localizedMentionActionNotice?.let { notice -> MentionActionNotice(notice) }
+            val localizedMentionActionNoticeTitle =
+                state.mentionActionNoticeTitle?.takeIf { it.isNotBlank() }?.let { title ->
+                    if (title == ThreadComposerMentionBatchPartialNoticeTitleVisualMarker) {
+                        stringResource(MR.strings.thread_composer_mention_batch_result_summary, 1, 3)
+                    } else {
+                        title
+                    }
+                }
+            localizedMentionActionNotice?.let { notice ->
+                MentionActionNotice(title = localizedMentionActionNoticeTitle, detail = notice)
+            }
             if (state.pendingMentionActions.isNotEmpty()) {
                 PendingMentionActionBanner(
                     actions = state.pendingMentionActions,
@@ -2553,6 +2565,7 @@ internal fun ThreadComposerContentLeaf(
                     onNotify = { resolutionId -> onEvent("notifyMention", resolutionId, null, null) },
                     onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) },
                     onAddAll = { onEvent("addAllMentions", null, null, null) },
+                    mentionActionNoticeTitle = localizedMentionActionNoticeTitle,
                     mentionActionNotice = localizedMentionActionNotice,
                     initialDetailsVisible = initialMentionActionDetailsVisible,
                     onOpenDetails = {
@@ -3489,26 +3502,41 @@ private fun ComposerAgentStatusDot(status: SlockAgentStatusIndicatorState) {
 }
 
 @Composable
-private fun MentionActionNotice(notice: String) {
-    Box(
+private fun MentionActionNotice(
+    title: String?,
+    detail: String
+) {
+    Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.TextBlack.copy(alpha = 0.04f))
-                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.35f))
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .background(SlockColor.AccentOrange.copy(alpha = 0.12f))
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top
     ) {
-        Text(
-            text = notice,
-            style = SlockType.Caption.copy(
-                fontSize = 11.sp,
-                lineHeight = 16.sp,
-                color = SlockColor.TextBlack.copy(alpha = 0.7f)
-            ),
-            color = SlockColor.TextBlack.copy(alpha = 0.7f),
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis
+        SlockLucideIcon(
+            name = SlockLucideIconName.TriangleAlert,
+            modifier = Modifier.size(14.dp)
         )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            title?.takeIf { it.isNotBlank() }?.let { text ->
+                Text(
+                    text = text,
+                    style = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = detail,
+                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.72f),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -3525,6 +3553,7 @@ private fun PendingMentionActionBanner(
     onNotify: (String) -> Unit,
     onDismiss: (String) -> Unit,
     onAddAll: () -> Unit,
+    mentionActionNoticeTitle: String?,
     mentionActionNotice: String?,
     initialDetailsVisible: Boolean,
     onOpenDetails: () -> Unit
@@ -3631,6 +3660,7 @@ private fun PendingMentionActionBanner(
                     executingStates = executingStates,
                     eligibleCount = eligibleActions.size,
                     batchExecuting = batchExecuting,
+                    mentionActionNoticeTitle = mentionActionNoticeTitle,
                     mentionActionNotice = mentionActionNotice,
                     onInvite = onInvite,
                     onNotify = onNotify,
@@ -3777,6 +3807,7 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
     executingStates: Map<String, String>,
     eligibleCount: Int,
     batchExecuting: Boolean,
+    mentionActionNoticeTitle: String?,
     mentionActionNotice: String?,
     onInvite: (String) -> Unit,
     onNotify: (String) -> Unit,
@@ -3821,7 +3852,7 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
         mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
             item(key = "mention-action-notice", contentType = "notice") {
                 Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    MentionActionNotice(notice)
+                    MentionActionNotice(title = mentionActionNoticeTitle, detail = notice)
                 }
             }
         }

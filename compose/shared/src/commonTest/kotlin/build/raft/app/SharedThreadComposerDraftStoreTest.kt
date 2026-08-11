@@ -1770,12 +1770,14 @@ class SharedThreadComposerDraftStoreTest {
             SharedThreadComposerDraftIntent.FinishMentionActionBatch(
                 requestedIds = listOf("first", "second"),
                 deliveredIds = setOf("first", "not-requested"),
-                notice = "Added 1 of 2. The second action failed."
+                noticeTitle = "Added 1 of 2",
+                notice = "The second action failed."
             )
         )
 
         assertEquals(listOf(second, unrelated), store.state.value.pendingMentionActions)
-        assertEquals("Added 1 of 2. The second action failed.", store.state.value.mentionActionNotice)
+        assertEquals("Added 1 of 2", store.state.value.mentionActionNoticeTitle)
+        assertEquals("The second action failed.", store.state.value.mentionActionNotice)
         assertEquals(emptySet(), store.state.value.executingMentionActionIds)
         assertEquals(emptyMap(), store.state.value.executingMentionActionStates)
         assertEquals(emptySet(), store.state.value.removingMentionActionIds)
@@ -1800,7 +1802,8 @@ class SharedThreadComposerDraftStoreTest {
             SharedThreadComposerDraftIntent.FinishMentionActionBatch(
                 requestedIds = listOf("first", "second"),
                 deliveredIds = emptySet(),
-                notice = "Added 0 of 2. This mention action is no longer available."
+                noticeTitle = "Added 0 of 2",
+                notice = "This mention action is no longer available."
             )
         )
 
@@ -1808,9 +1811,10 @@ class SharedThreadComposerDraftStoreTest {
         assertEquals(emptySet(), store.state.value.executingMentionActionIds)
         assertEquals(emptyMap(), store.state.value.executingMentionActionStates)
         assertEquals(
-            "Added 0 of 2. This mention action is no longer available.",
+            "This mention action is no longer available.",
             store.state.value.mentionActionNotice
         )
+        assertEquals("Added 0 of 2", store.state.value.mentionActionNoticeTitle)
     }
 
     private fun externalShareAttachment(status: String) =

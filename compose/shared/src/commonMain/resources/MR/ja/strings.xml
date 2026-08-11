@@ -426,6 +426,7 @@
     <string name="thread_composer_mention_batch_adding">追加中</string>
     <string name="thread_composer_mention_batch_view">表示</string>
     <string name="thread_composer_mention_batch_result">%2$s 人中 %1$s 人を追加しました。%3$s</string>
+    <string name="thread_composer_mention_batch_result_summary">%2$s 人中 %1$s 人を追加しました</string>
     <string name="thread_composer_mention_batch_error_missing">このメンション操作は利用できません。</string>
     <string name="thread_composer_mention_batch_error_delivery_unavailable">一時的に配信できません。再試行してください。</string>
     <string name="thread_composer_mention_batch_error_dropped">現在この対象を追加できません。再試行してください。</string>

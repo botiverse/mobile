@@ -426,6 +426,7 @@
     <string name="thread_composer_mention_batch_adding">添加中</string>
     <string name="thread_composer_mention_batch_view">查看</string>
     <string name="thread_composer_mention_batch_result">已添加 %1$s/%2$s。%3$s</string>
+    <string name="thread_composer_mention_batch_result_summary">已添加 %1$s/%2$s</string>
     <string name="thread_composer_mention_batch_error_missing">该提及操作已不可用。</string>
     <string name="thread_composer_mention_batch_error_delivery_unavailable">暂时无法送达，请重试。</string>
     <string name="thread_composer_mention_batch_error_dropped">暂时无法添加该对象，请重试。</string>
