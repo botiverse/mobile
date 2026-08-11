@@ -212,9 +212,12 @@ import build.raft.app.data.ServerPushMode
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.SlockAuthApi
 import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.SlockDatabaseLaunchAttempt
 import build.raft.app.data.SlockEventBus
 import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.SlockSharedStoreProvider
 import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.attemptSlockDatabaseLaunch
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.toSharedHomeAppUpdateNotification
 import build.raft.app.data.DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE
@@ -2472,6 +2475,57 @@ internal fun SlockAppShellContent(
     // in the app shell lifecycle, so shared `StringDesc` lookups resolve
     // against the user's last selection rather than the OS default.
     RememberKmmResourceLocaleSeedFromLocalActivity(pageVisibleTick)
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    var databaseLaunchRetryEpoch by remember { mutableStateOf(0) }
+    val databaseLaunchAttempt =
+        remember(bridge, databaseLaunchRetryEpoch) {
+            attemptSlockDatabaseLaunch { SlockSharedStoreRegistry.get(bridge) }
+        }
+    when (databaseLaunchAttempt) {
+        is SlockDatabaseLaunchAttempt.Ready ->
+            SlockAppShellReadyContent(
+                pageVisibleTick = pageVisibleTick,
+                initialAuthRestoreTick = initialAuthRestoreTick,
+                pageVisible = pageVisible,
+                adaptivePane = adaptivePane,
+                conversationForwardRequestTick = conversationForwardRequestTick,
+                sharedStores = databaseLaunchAttempt.value,
+            )
+        is SlockDatabaseLaunchAttempt.UpgradeRequired -> {
+            val mismatch = databaseLaunchAttempt.mismatch
+            LaunchedEffect(mismatch) {
+                bridge.logWarn(
+                    "database_launch_guard result=upgrade_required " +
+                        "databaseVersion=${mismatch.databaseVersion} " +
+                        "supportedVersion=${mismatch.supportedVersion}",
+                )
+            }
+            SlockDatabaseLaunchRecoveryContent(
+                mismatch = mismatch,
+                onRetry = {
+                    bridge.logWarn(
+                        "database_launch_guard action=retry " +
+                            "databaseVersion=${mismatch.databaseVersion} " +
+                            "supportedVersion=${mismatch.supportedVersion}",
+                    )
+                    databaseLaunchRetryEpoch += 1
+                },
+            )
+        }
+        is SlockDatabaseLaunchAttempt.Fatal -> throw databaseLaunchAttempt.throwable
+    }
+}
+
+@Composable
+private fun SlockAppShellReadyContent(
+    pageVisibleTick: Int,
+    initialAuthRestoreTick: Int,
+    pageVisible: Boolean,
+    adaptivePane: SlockAdaptivePaneState,
+    conversationForwardRequestTick: Int,
+    sharedStores: SlockSharedStoreProvider,
+) {
     val errorStrings = localizedErrorPresentationStrings()
     val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
     val notificationServerUnavailableMessage = stringResource(MR.strings.home_error_notification_server_unavailable)
@@ -2523,7 +2577,6 @@ internal fun SlockAppShellContent(
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val adaptiveWorkspaceStore =
         remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
     val adaptiveWorkspaceSession by adaptiveWorkspaceStore.state.collectAsState()

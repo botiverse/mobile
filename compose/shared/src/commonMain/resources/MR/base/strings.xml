@@ -3,6 +3,9 @@
     <string name="common_ok">OK</string>
     <string name="common_cancel">Cancel</string>
     <string name="common_retry">Retry</string>
+    <string name="database_recovery_title">Update Raft to open this local data</string>
+    <string name="database_recovery_detail">This app supports database version %2$d, but your local data uses version %1$d. Install the Raft version that created this data, or a newer version, then retry. This app has not changed your local database.</string>
+    <string name="database_recovery_action_retry">Retry after updating</string>
     <string name="error_session_expired">Your session expired. Sign in again to continue.</string>
     <string name="error_server_unreachable">The server could not be reached. Check your connection and try again.</string>
     <string name="error_request_timed_out">The server did not respond in time. Please try again.</string>

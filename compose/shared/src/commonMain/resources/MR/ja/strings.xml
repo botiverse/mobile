@@ -3,6 +3,9 @@
     <string name="common_ok">OK</string>
     <string name="common_cancel">キャンセル</string>
     <string name="common_retry">再試行</string>
+    <string name="database_recovery_title">ローカルデータを開くには Raft を更新してください</string>
+    <string name="database_recovery_detail">このアプリが対応するデータベースはバージョン %2$d ですが、ローカルデータはバージョン %1$d です。このデータを作成した Raft と同じか、それ以降のバージョンをインストールしてから再試行してください。このアプリはローカルデータベースを変更していません。</string>
+    <string name="database_recovery_action_retry">更新後に再試行</string>
     <string name="error_session_expired">セッションの有効期限が切れました。もう一度サインインしてください。</string>
     <string name="error_server_unreachable">サーバーに接続できませんでした。接続を確認して、もう一度お試しください。</string>
     <string name="error_request_timed_out">サーバーから時間内に応答がありませんでした。もう一度お試しください。</string>

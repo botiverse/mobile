@@ -3,6 +3,9 @@
     <string name="common_ok">确定</string>
     <string name="common_cancel">取消</string>
     <string name="common_retry">重试</string>
+    <string name="database_recovery_title">请更新 Raft 后再打开本地数据</string>
+    <string name="database_recovery_detail">当前应用支持数据库版本 %2$d，但本地数据已是版本 %1$d。请安装创建这些数据时使用的 Raft 版本或更高版本，然后重试。当前版本不会改动本地数据库。</string>
+    <string name="database_recovery_action_retry">更新后重试</string>
     <string name="error_session_expired">会话已过期。请重新登录后继续。</string>
     <string name="error_server_unreachable">无法连接服务器。请检查网络连接后重试。</string>
     <string name="error_request_timed_out">服务器响应超时。请重试。</string>
