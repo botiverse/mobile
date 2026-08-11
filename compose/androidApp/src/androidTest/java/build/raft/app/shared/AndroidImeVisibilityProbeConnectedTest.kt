@@ -49,10 +49,24 @@ class AndroidImeVisibilityProbeConnectedTest {
                 putExtra(AndroidImeVisibilityProbeActivity.ExtraResultReceiver, receiver)
             }
 
+        // A leaked keyguard or a launcher ANR dialog owns input focus on CI
+        // emulators often enough to turn this probe red without the product
+        // being involved: the probe activity then reports windowFocused=false
+        // and the IME never accepts the show request. Recover the active window
+        // first (bounded; never throws) and carry what it saw into the failure
+        // messages so an emulator-state red cannot read as a product red.
+        val preLaunchRecovery =
+            AndroidActiveWindowRecovery.awaitActiveWindow(targetContext.packageName)
+
         targetContext.startActivity(intent)
 
+        val probeRecovery =
+            AndroidActiveWindowRecovery.awaitActiveWindow(targetContext.packageName)
+        val windowState =
+            "preLaunch[${preLaunchRecovery.describe()}] probe[${probeRecovery.describe()}]"
+
         assertTrue(
-            "native IME visibility probe did not finish",
+            "native IME visibility probe did not finish; $windowState",
             completed.await(ProbeResultTimeoutSeconds, TimeUnit.SECONDS),
         )
         val result = resultData.get()
@@ -66,21 +80,42 @@ class AndroidImeVisibilityProbeConnectedTest {
             println(failureReceipt)
         }
         assertEquals(
-            "native EditText could not make the software IME visible: $result",
+            "native EditText could not make the software IME visible: $result; $windowState",
             Activity.RESULT_OK,
             resultCode.get(),
         )
-        assertTrue(result!!.getBoolean(AndroidImeVisibilityProbeActivity.ResultImeVisible))
-        assertEquals(1, result.getInt(AndroidImeVisibilityProbeActivity.ResultShowRequests))
-        assertEquals(1, result.getInt(AndroidImeVisibilityProbeActivity.ResultAcceptedRequests))
-        assertTrue(result.getBoolean(AndroidImeVisibilityProbeActivity.ResultEditorFocused))
-        assertTrue(result.getBoolean(AndroidImeVisibilityProbeActivity.ResultWindowFocused))
+        assertTrue(
+            "software IME never became visible; $windowState",
+            result!!.getBoolean(AndroidImeVisibilityProbeActivity.ResultImeVisible)
+        )
+        assertEquals(
+            "unexpected IME show-request count; $windowState",
+            1,
+            result.getInt(AndroidImeVisibilityProbeActivity.ResultShowRequests)
+        )
+        assertEquals(
+            "unexpected IME accepted-request count; $windowState",
+            1,
+            result.getInt(AndroidImeVisibilityProbeActivity.ResultAcceptedRequests)
+        )
+        assertTrue(
+            "probe editor never took focus; $windowState",
+            result.getBoolean(AndroidImeVisibilityProbeActivity.ResultEditorFocused)
+        )
+        assertTrue(
+            "probe window never took focus (emulator focus theft, not product); $windowState",
+            result.getBoolean(AndroidImeVisibilityProbeActivity.ResultWindowFocused)
+        )
         val receipt =
             "ANDROID_IME_VISIBILITY_PROBE_PASS " +
                 "showRequests=${result.getInt(AndroidImeVisibilityProbeActivity.ResultShowRequests)} " +
                 "acceptedRequests=${result.getInt(AndroidImeVisibilityProbeActivity.ResultAcceptedRequests)} " +
                 "editorFocused=${result.getBoolean(AndroidImeVisibilityProbeActivity.ResultEditorFocused)} " +
-                "windowFocused=${result.getBoolean(AndroidImeVisibilityProbeActivity.ResultWindowFocused)}"
+                "windowFocused=${result.getBoolean(AndroidImeVisibilityProbeActivity.ResultWindowFocused)} " +
+                // Recovery facts ride the PASS receipt too: a green that needed
+                // a force-stop is still green, but the emulator was unhealthy
+                // and that trend is only visible if we record it when passing.
+                "recovery=$windowState"
         instrumentation.sendStatus(
             0,
             Bundle().apply { putString("imeVisibilityProbe", receipt) },
