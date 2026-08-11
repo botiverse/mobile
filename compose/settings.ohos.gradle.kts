@@ -21,6 +21,10 @@ pluginManagement {
                 includeModuleByRegex("build\\.raft\\.kuiklybase", "datetime.*")
                 includeModule("co.touchlab", "sqliter-driver")
                 includeModule("co.touchlab", "sqliter-driver-ohosarm64")
+                includeModule("co.touchlab", "stately-strict")
+                includeModule("co.touchlab", "stately-strict-ohosarm64")
+                includeModule("co.touchlab", "stately-concurrency")
+                includeModule("co.touchlab", "stately-concurrency-ohosarm64")
             }
         }
     }
@@ -69,11 +73,6 @@ pluginManagement {
                 providers.gradleProperty("slock.skipOhosLocalDependencyPrep").orNull
                     .enabledByDefault(false)
             )
-    val needsStately =
-        !mavenArtifactExists("co/touchlab", "stately-strict", sqldelightVersion) ||
-            !mavenArtifactExists("co/touchlab", "stately-strict-ohosarm64", sqldelightVersion) ||
-            !mavenArtifactExists("co/touchlab", "stately-concurrency", sqldelightVersion) ||
-            !mavenArtifactExists("co/touchlab", "stately-concurrency-ohosarm64", sqldelightVersion)
     val needsSqlDelight =
         !mavenArtifactExists("app/cash/sqldelight", "app.cash.sqldelight.gradle.plugin", sqldelightVersion) ||
             !mavenArtifactExists("app/cash/sqldelight", "gradle-plugin", sqldelightVersion) ||
@@ -83,20 +82,6 @@ pluginManagement {
             !mavenArtifactExists("app/cash/sqldelight", "runtime", sqldelightVersion) ||
             !mavenArtifactExists("app/cash/sqldelight", "runtime-ohosarm64", sqldelightVersion) ||
             !mavenArtifactExists("app/cash/sqldelight", "native-driver-ohosarm64", sqldelightVersion)
-    if (!skipOhosLocalDependencyPrep && needsStately) {
-        ensureSubmodule("third_party/stately")
-        runChecked(
-            File(slockRoot, "third_party/stately"),
-            "./gradlew",
-            "--no-daemon",
-            "--console=plain",
-            ":stately-strict:publishKotlinMultiplatformPublicationToMavenLocal",
-            ":stately-strict:publishOhosArm64PublicationToMavenLocal",
-            ":stately-concurrency:publishKotlinMultiplatformPublicationToMavenLocal",
-            ":stately-concurrency:publishOhosArm64PublicationToMavenLocal"
-        )
-    }
-
     if (!skipOhosLocalDependencyPrep && needsSqlDelight) {
         ensureSubmodule("third_party/sqldelight")
         runChecked(
@@ -154,6 +139,10 @@ dependencyResolutionManagement {
                 includeModuleByRegex("build\\.raft\\.kuiklybase", "datetime.*")
                 includeModule("co.touchlab", "sqliter-driver")
                 includeModule("co.touchlab", "sqliter-driver-ohosarm64")
+                includeModule("co.touchlab", "stately-strict")
+                includeModule("co.touchlab", "stately-strict-ohosarm64")
+                includeModule("co.touchlab", "stately-concurrency")
+                includeModule("co.touchlab", "stately-concurrency-ohosarm64")
             }
         }
     }
