@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>15b1623f-20260811221129</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-11T22:14:30.203Z" data-timestamp="2026-08-11T22:14:30.203Z" title="2026-08-11T22:14:30.203Z">2026-08-11 22:14:30 UTC</time></p>
+    <p class="runMeta"><code>15b1623f-20260811221129</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-11T22:18:17.049Z" data-timestamp="2026-08-11T22:18:17.049Z" title="2026-08-11T22:18:17.049Z">2026-08-11 22:18:17 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 85</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 81/86 ready</span>
+      <span class="pill">AI 85/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1732,7 +1732,12 @@
       <p><code>RGB 85.5%</code><br/><code>Pixel 71.96%</code><br/><code>Mismatch 28.04%</code><br/><code>Raw 1026×504 / 1026×504</code><br/><code>Canvas 1026×504</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×168 / component-bounds 342×168</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-ui-engineering</summary>
+    <ul><li>Android (right) avatar tiles are larger than React (left) – approximately 1.5–2x bigger in both rows, increasing row height.</li><li>Android (right) second row is noticeably taller than React (left) due to enlarged avatar, larger title font, and extra vertical padding.</li><li>Android (right) uses a heavier/larger font weight for 'Product UX Designer' title and 'Cindy' name compared to React's lighter weight.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align avatar size token to match React (e.g., 40dp/40px square).</li><li>Map 'name' and 'title' text styles to match React weight (semi-bold/600) and size scale.</li><li>Apply the same active/green color and bold border to the 'Online' badge on Android.</li><li>Normalize row vertical padding and avatar-to-text gap using a shared spacing token.</li><li>Re-run visual regression after token alignment; target pixel-perfect similarity &gt; 0.95.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.avatar-list-row.states.png" data-current-src="android/components.ui.avatar-list-row.states.png" data-overlay-width="1026" data-overlay-height="504">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2760,7 +2765,12 @@
       <p><code>RGB 91.1%</code><br/><code>Pixel 29.10%</code><br/><code>Mismatch 70.90%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-with-portal 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-engineering</summary>
+    <ul><li>Selection action bar position differs: Android shows it in the middle of the viewport (after message list), React shows it anchored to the bottom of the viewport.</li><li>Android selection bar contains extra buttons (X close, All, Forward, copy, download) plus a yellow background extending across the viewport; React bar has only Cancel, Forward, copy, and overflow and is anchored to bottom with a yellow strip.</li><li>Android message items show checkbox + filled yellow square indicator with avatar inline; React shows yellow circular check icon stacked above the avatar with different shape/placement.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Anchor the selection action bar to the bottom of the viewport on Android to match React parity.</li><li>Remove or hide the extra 'All' and download actions so the action set matches React (Cancel, Forward, copy, overflow).</li><li>Use circular check indicators stacked above avatars (React style) instead of square yellow checkboxes next to avatars.</li><li>Bind real avatar assets (or render a consistent fallback) on Android instead of generic silhouettes.</li><li>Ensure the crop/background under the list is neutral white on Android; remove the yellow tint that bleeds into the viewport.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-share.selection.png" data-current-src="android/components.thread.message-share.selection.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4975,7 +4985,12 @@
       <p><code>RGB 86.6%</code><br/><code>Pixel 76.31%</code><br/><code>Mismatch 23.69%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-with-portal 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · android-auth</summary>
+    <ul><li>Form content is more vertically compressed on Android: Email/Password fields, social buttons, terms text, and 'Create One' link are rendered higher up the viewport, leaving more empty space at the bottom.</li><li>Typography on Android appears slightly larger/heavier: 'Sign In' heading and input labels look bigger than React's, contributing to the tighter vertical packing.</li><li>Footer links differ: React shows 'Forgot password?' (lowercase, underlined); Android shows 'Forgot Password?' (title case, underlined) and 'Create One' (title case) vs React's 'Create one' (lowercase).</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align Android form vertical padding/spacing to match React's baseline so the form sits at a similar y-offset within the 390x844 viewport.</li><li>Normalize label and heading text size/weight on Android to match React's typography scale.</li><li>Decide whether footer link casing ('Forgot Password?' / 'Create One') should be platform-specific or unified and document accordingly.</li><li>Adjust Android header banner height to match React's banner height.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/screens.auth.login.signing.png" data-current-src="android/screens.auth.login.signing.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -5031,7 +5046,12 @@
       <p><code>RGB 89.6%</code><br/><code>Pixel 80.09%</code><br/><code>Mismatch 19.91%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop screen-route 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · mobile-android</summary>
+    <ul><li>Profile picture section with Upload button is entirely missing on Android (right side)</li><li>Username field on React shows a leading yellow '@' prefix badge/adornment that is absent on Android</li><li>React shows a red validation error 'This username is already taken.' directly below the Username input; Android has no error state</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Add the Profile picture row (avatar placeholder + Upload button + helper text) on Android to match the React layout</li><li>Include the '@' prefix adornment inside the Username TextInput on Android or remove it from React to harmonize</li><li>Wire up the username-taken validation error message ('This username is already taken.') on Android and style it red</li><li>Align top content padding/safe-area insets between React and Android so the icon and heading sit at the same vertical position</li><li>Re-run slock visual diff after fixes to confirm pixel mismatch drops below tolerance</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/screens.auth.profile-setup.png" data-current-src="android/screens.auth.profile-setup.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

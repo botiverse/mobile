@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-11T22:14:30.203Z",
+  "generatedAt": "2026-08-11T22:18:17.049Z",
   "runId": "15b1623f-20260811221129",
   "cases": [
     {
@@ -5414,17 +5414,28 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-11T22:14:23.330Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-11T22:16:47.285Z",
+            "severity": "low",
+            "summary": [
+              "The pink waiting-pulse dot on iOS appears slightly lighter/less saturated than the React baseline.",
+              "The 'Waiting pulse' label on iOS renders in a slightly lighter font weight than the React baseline.",
+              "The four top status dots (green, orange, gray, cyan) appear visually matching in color and size across both sides."
+            ],
+            "likelyCauses": [
+              "iOS uses SF/system font with a slightly different default weight than the React render's font stack.",
+              "iOS color rendering or the SwiftUI/RUI StatusDot.pulse variant may use a slightly lighter pink fill or reduced opacity."
+            ],
+            "suggestedOwner": "ios-engineering",
+            "suggestedFixes": [
+              "Verify the iOS StatusDot pulsing state uses the same fill color (e.g., pink #FF69B4 or equivalent token) as the React variant.",
+              "Set the iOS 'Waiting pulse' label font weight to match the React baseline (e.g., bold/600).",
+              "Confirm the same color tokens are mapped in both web and iOS themes."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -5447,17 +5458,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-11T22:14:28.033Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-11T22:16:55.389Z",
+            "severity": "low",
+            "summary": [
+              "Status dot sizes appear marginally larger on iOS than Android (especially the pink 'Waiting pulse' dot)",
+              "Pink/waiting dot on iOS shows a slightly more saturated/reddish hue compared to Android",
+              "Spacing between the four small status dots is consistent but the overall row sits at a proportionally similar offset",
+              "Typography weight of 'Raft UI Status Dot' header and 'Waiting pulse' label appears visually consistent across platforms",
+              "No missing elements or clipping detected; both renders show the same four small dots plus the pink waiting dot with label"
+            ],
+            "likelyCauses": [
+              "Platform-specific default font metrics causing minor anti-aliasing differences",
+              "Kuikly renderer's default dot sizing token not normalized between Android and iOS backends",
+              "Color profile difference (sRGB vs Display P3) affecting the pink dot's perceived saturation"
+            ],
+            "suggestedOwner": "ui-engineering",
+            "suggestedFixes": [
+              "Normalize StatusDot component size token via Kuikly's design-token bridge for both platforms",
+              "Audit pink/waiting color token for cross-platform color-space parity",
+              "Verify StatusDot sizing dp value matches between Android and iOS implementations",
+              "Re-run pixel-diff with tightened tolerance after token alignment"
+            ],
+            "intentional": [
+              "Minor rendering variance within 2% pixel mismatch tolerance",
+              "RGB similarity 97.99% is within acceptable platform delta"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -5483,17 +5512,28 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-11T22:14:23.330Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-11T22:16:47.285Z",
+            "severity": "low",
+            "summary": [
+              "The pink waiting-pulse dot on iOS appears slightly lighter/less saturated than the React baseline.",
+              "The 'Waiting pulse' label on iOS renders in a slightly lighter font weight than the React baseline.",
+              "The four top status dots (green, orange, gray, cyan) appear visually matching in color and size across both sides."
+            ],
+            "likelyCauses": [
+              "iOS uses SF/system font with a slightly different default weight than the React render's font stack.",
+              "iOS color rendering or the SwiftUI/RUI StatusDot.pulse variant may use a slightly lighter pink fill or reduced opacity."
+            ],
+            "suggestedOwner": "ios-engineering",
+            "suggestedFixes": [
+              "Verify the iOS StatusDot pulsing state uses the same fill color (e.g., pink #FF69B4 or equivalent token) as the React variant.",
+              "Set the iOS 'Waiting pulse' label font weight to match the React baseline (e.g., bold/600).",
+              "Confirm the same color tokens are mapped in both web and iOS themes."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -5517,17 +5557,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-11T22:14:28.033Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-11T22:16:55.389Z",
+            "severity": "low",
+            "summary": [
+              "Status dot sizes appear marginally larger on iOS than Android (especially the pink 'Waiting pulse' dot)",
+              "Pink/waiting dot on iOS shows a slightly more saturated/reddish hue compared to Android",
+              "Spacing between the four small status dots is consistent but the overall row sits at a proportionally similar offset",
+              "Typography weight of 'Raft UI Status Dot' header and 'Waiting pulse' label appears visually consistent across platforms",
+              "No missing elements or clipping detected; both renders show the same four small dots plus the pink waiting dot with label"
+            ],
+            "likelyCauses": [
+              "Platform-specific default font metrics causing minor anti-aliasing differences",
+              "Kuikly renderer's default dot sizing token not normalized between Android and iOS backends",
+              "Color profile difference (sRGB vs Display P3) affecting the pink dot's perceived saturation"
+            ],
+            "suggestedOwner": "ui-engineering",
+            "suggestedFixes": [
+              "Normalize StatusDot component size token via Kuikly's design-token bridge for both platforms",
+              "Audit pink/waiting color token for cross-platform color-space parity",
+              "Verify StatusDot sizing dp value matches between Android and iOS implementations",
+              "Re-run pixel-diff with tightened tolerance after token alignment"
+            ],
+            "intentional": [
+              "Minor rendering variance within 2% pixel mismatch tolerance",
+              "RGB similarity 97.99% is within acceptable platform delta"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -9295,17 +9353,34 @@
         "currentHeight": 504
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-11T22:14:19.236Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-11T22:16:35.645Z",
+        "severity": "high",
+        "summary": [
+          "Android (right) avatar tiles are larger than React (left) – approximately 1.5–2x bigger in both rows, increasing row height.",
+          "Android (right) second row is noticeably taller than React (left) due to enlarged avatar, larger title font, and extra vertical padding.",
+          "Android (right) uses a heavier/larger font weight for 'Product UX Designer' title and 'Cindy' name compared to React's lighter weight.",
+          "Android (right) 'Online' badge has a thinner/lighter green fill and lighter border stroke vs React's saturated green with bold black border.",
+          "Android (right) avatar square background appears slightly more saturated lavender vs React's paler purple."
+        ],
+        "likelyCauses": [
+          "Android component is using different default avatar size token (likely 64dp vs 40dp).",
+          "Android typography mapping for headline/title style is using a heavier weight and larger size than the React token.",
+          "Android status badge uses a muted/washed-out color variant instead of the active/filled variant used in React.",
+          "Spacing tokens (row padding, gap between avatar and text) differ between platforms, inflating Android row height."
+        ],
+        "suggestedOwner": "android-ui-engineering",
+        "suggestedFixes": [
+          "Align avatar size token to match React (e.g., 40dp/40px square).",
+          "Map 'name' and 'title' text styles to match React weight (semi-bold/600) and size scale.",
+          "Apply the same active/green color and bold border to the 'Online' badge on Android.",
+          "Normalize row vertical padding and avatar-to-text gap using a shared spacing token.",
+          "Re-run visual regression after token alignment; target pixel-perfect similarity > 0.95."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -9392,17 +9467,34 @@
             "currentHeight": 504
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-11T22:14:19.236Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-11T22:16:35.645Z",
+            "severity": "high",
+            "summary": [
+              "Android (right) avatar tiles are larger than React (left) – approximately 1.5–2x bigger in both rows, increasing row height.",
+              "Android (right) second row is noticeably taller than React (left) due to enlarged avatar, larger title font, and extra vertical padding.",
+              "Android (right) uses a heavier/larger font weight for 'Product UX Designer' title and 'Cindy' name compared to React's lighter weight.",
+              "Android (right) 'Online' badge has a thinner/lighter green fill and lighter border stroke vs React's saturated green with bold black border.",
+              "Android (right) avatar square background appears slightly more saturated lavender vs React's paler purple."
+            ],
+            "likelyCauses": [
+              "Android component is using different default avatar size token (likely 64dp vs 40dp).",
+              "Android typography mapping for headline/title style is using a heavier weight and larger size than the React token.",
+              "Android status badge uses a muted/washed-out color variant instead of the active/filled variant used in React.",
+              "Spacing tokens (row padding, gap between avatar and text) differ between platforms, inflating Android row height."
+            ],
+            "suggestedOwner": "android-ui-engineering",
+            "suggestedFixes": [
+              "Align avatar size token to match React (e.g., 40dp/40px square).",
+              "Map 'name' and 'title' text styles to match React weight (semi-bold/600) and size scale.",
+              "Apply the same active/green color and bold border to the 'Online' badge on Android.",
+              "Normalize row vertical padding and avatar-to-text gap using a shared spacing token.",
+              "Re-run visual regression after token alignment; target pixel-perfect similarity > 0.95."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -15474,17 +15566,34 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-11T22:14:19.462Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-11T22:16:35.875Z",
+        "severity": "high",
+        "summary": [
+          "Selection action bar position differs: Android shows it in the middle of the viewport (after message list), React shows it anchored to the bottom of the viewport.",
+          "Android selection bar contains extra buttons (X close, All, Forward, copy, download) plus a yellow background extending across the viewport; React bar has only Cancel, Forward, copy, and overflow and is anchored to bottom with a yellow strip.",
+          "Android message items show checkbox + filled yellow square indicator with avatar inline; React shows yellow circular check icon stacked above the avatar with different shape/placement.",
+          "Android avatars use generic user silhouettes (placeholder, no image) whereas React shows actual avatars (QR-style avatar and purple user avatar).",
+          "Android list area has a yellow/cream background tint covering the lower half of the screen; React background is white/neutral in the same region."
+        ],
+        "likelyCauses": [
+          "Android implementation re-rendered the selection toolbar as an inline component rather than a fixed bottom portal/sheet.",
+          "Different selection state UI design on Android (extra actions: close, 'All', download) vs. React baseline spec.",
+          "Placeholder avatars used on Android due to missing image asset binding or different avatar rendering pipeline.",
+          "Android crop mode (viewport-bounds) may be exposing background chrome that the React baseline element crop excluded."
+        ],
+        "suggestedOwner": "android-engineering",
+        "suggestedFixes": [
+          "Anchor the selection action bar to the bottom of the viewport on Android to match React parity.",
+          "Remove or hide the extra 'All' and download actions so the action set matches React (Cancel, Forward, copy, overflow).",
+          "Use circular check indicators stacked above avatars (React style) instead of square yellow checkboxes next to avatars.",
+          "Bind real avatar assets (or render a consistent fallback) on Android instead of generic silhouettes.",
+          "Ensure the crop/background under the list is neutral white on Android; remove the yellow tint that bleeds into the viewport."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -15576,17 +15685,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-11T22:14:19.462Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-11T22:16:35.875Z",
+            "severity": "high",
+            "summary": [
+              "Selection action bar position differs: Android shows it in the middle of the viewport (after message list), React shows it anchored to the bottom of the viewport.",
+              "Android selection bar contains extra buttons (X close, All, Forward, copy, download) plus a yellow background extending across the viewport; React bar has only Cancel, Forward, copy, and overflow and is anchored to bottom with a yellow strip.",
+              "Android message items show checkbox + filled yellow square indicator with avatar inline; React shows yellow circular check icon stacked above the avatar with different shape/placement.",
+              "Android avatars use generic user silhouettes (placeholder, no image) whereas React shows actual avatars (QR-style avatar and purple user avatar).",
+              "Android list area has a yellow/cream background tint covering the lower half of the screen; React background is white/neutral in the same region."
+            ],
+            "likelyCauses": [
+              "Android implementation re-rendered the selection toolbar as an inline component rather than a fixed bottom portal/sheet.",
+              "Different selection state UI design on Android (extra actions: close, 'All', download) vs. React baseline spec.",
+              "Placeholder avatars used on Android due to missing image asset binding or different avatar rendering pipeline.",
+              "Android crop mode (viewport-bounds) may be exposing background chrome that the React baseline element crop excluded."
+            ],
+            "suggestedOwner": "android-engineering",
+            "suggestedFixes": [
+              "Anchor the selection action bar to the bottom of the viewport on Android to match React parity.",
+              "Remove or hide the extra 'All' and download actions so the action set matches React (Cancel, Forward, copy, overflow).",
+              "Use circular check indicators stacked above avatars (React style) instead of square yellow checkboxes next to avatars.",
+              "Bind real avatar assets (or render a consistent fallback) on Android instead of generic silhouettes.",
+              "Ensure the crop/background under the list is neutral white on Android; remove the yellow tint that bleeds into the viewport."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -15609,17 +15735,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-11T22:14:24.062Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-11T22:16:47.854Z",
+            "severity": "medium",
+            "summary": [
+              "Action bar position differs: React pins the action bar to bottom of viewport; iOS renders it near the top (~25% from top) instead of the bottom edge.",
+              "iOS action bar contains extra actions (All, Forward, Copy, Download) while React shows only Cancel, Forward, Copy, More.",
+              "iOS selection checkboxes appear as smaller filled yellow squares placed above/inline with avatars; React uses larger circular yellow check icons left of avatars.",
+              "iOS avatar slots are larger squares with a thicker dark outline; React avatars are smaller rounded squares.",
+              "React shows a thumbs-up reaction chip ('👍 2') and a '+' add-reaction pill under the first message; iOS is missing the reaction chip and add-reaction affordance entirely."
+            ],
+            "likelyCauses": [
+              "Independent redesign of the multi-select action bar per platform instead of sharing a spec.",
+              "iOS composer/portal renders the action bar inline with the list rather than as a viewport-portal footer.",
+              "Reaction control (thumbs-up count and add-reaction button) not implemented on iOS.",
+              "Avatar and checkbox components sized/positioned differently between React and iOS implementations."
+            ],
+            "suggestedOwner": "ios",
+            "suggestedFixes": [
+              "Move iOS action bar to bottom of viewport and align it to full width matching React's yellow footer.",
+              "Trim iOS action buttons to the same set shown on React (Cancel, Forward, Copy, More) or align both platforms to the same action set.",
+              "Implement the thumbs-up reaction chip and '+' add-reaction button on iOS to match React.",
+              "Standardize avatar size, border, and selection checkbox shape/size across platforms.",
+              "Verify metadata row layout (author, preview, timestamp) so both platforms render the same fields in the same order."
+            ],
+            "intentional": [
+              "Different action button set on iOS if platform-specific export/download is by design.",
+              "Truncated preview text on iOS if message headers are intentionally condensed."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -15695,17 +15841,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-11T22:14:24.062Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-11T22:16:47.854Z",
+            "severity": "medium",
+            "summary": [
+              "Action bar position differs: React pins the action bar to bottom of viewport; iOS renders it near the top (~25% from top) instead of the bottom edge.",
+              "iOS action bar contains extra actions (All, Forward, Copy, Download) while React shows only Cancel, Forward, Copy, More.",
+              "iOS selection checkboxes appear as smaller filled yellow squares placed above/inline with avatars; React uses larger circular yellow check icons left of avatars.",
+              "iOS avatar slots are larger squares with a thicker dark outline; React avatars are smaller rounded squares.",
+              "React shows a thumbs-up reaction chip ('👍 2') and a '+' add-reaction pill under the first message; iOS is missing the reaction chip and add-reaction affordance entirely."
+            ],
+            "likelyCauses": [
+              "Independent redesign of the multi-select action bar per platform instead of sharing a spec.",
+              "iOS composer/portal renders the action bar inline with the list rather than as a viewport-portal footer.",
+              "Reaction control (thumbs-up count and add-reaction button) not implemented on iOS.",
+              "Avatar and checkbox components sized/positioned differently between React and iOS implementations."
+            ],
+            "suggestedOwner": "ios",
+            "suggestedFixes": [
+              "Move iOS action bar to bottom of viewport and align it to full width matching React's yellow footer.",
+              "Trim iOS action buttons to the same set shown on React (Cancel, Forward, Copy, More) or align both platforms to the same action set.",
+              "Implement the thumbs-up reaction chip and '+' add-reaction button on iOS to match React.",
+              "Standardize avatar size, border, and selection checkbox shape/size across platforms.",
+              "Verify metadata row layout (author, preview, timestamp) so both platforms render the same fields in the same order."
+            ],
+            "intentional": [
+              "Different action button set on iOS if platform-specific export/download is by design.",
+              "Truncated preview text on iOS if message headers are intentionally condensed."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -20790,7 +20956,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-11T22:14:19.023Z",
+        "generatedAt": "2026-08-11T22:18:09.311Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20851,7 +21017,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:19.023Z",
+            "generatedAt": "2026-08-11T22:18:09.311Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20873,7 +21039,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:22.897Z",
+            "generatedAt": "2026-08-11T22:18:12.118Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20950,7 +21116,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:22.897Z",
+            "generatedAt": "2026-08-11T22:18:12.118Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24532,17 +24698,34 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-11T22:14:20.075Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-11T22:16:36.340Z",
+        "severity": "low",
+        "summary": [
+          "Form content is more vertically compressed on Android: Email/Password fields, social buttons, terms text, and 'Create One' link are rendered higher up the viewport, leaving more empty space at the bottom.",
+          "Typography on Android appears slightly larger/heavier: 'Sign In' heading and input labels look bigger than React's, contributing to the tighter vertical packing.",
+          "Footer links differ: React shows 'Forgot password?' (lowercase, underlined); Android shows 'Forgot Password?' (title case, underlined) and 'Create One' (title case) vs React's 'Create one' (lowercase).",
+          "Yellow header bar is narrower in height on Android (roughly 96px vs ~115px on React), and the RAFT logo+wordmark is scaled down and positioned with slightly different vertical centering.",
+          "Overall font rendering differs (sans-serif weight/spacing), causing label and link text widths to differ between platforms."
+        ],
+        "likelyCauses": [
+          "Android uses different default font scaling or dp-based dimensions that produce larger text metrics for the same logical size.",
+          "Different vertical padding/margins in the Android layout (e.g., top safe-area handling or form section spacing) compress the form upward.",
+          "Footer capitalization is controlled per-platform (Android uses 'Forgot Password?' / 'Create One') rather than a shared i18n string."
+        ],
+        "suggestedOwner": "android-auth",
+        "suggestedFixes": [
+          "Align Android form vertical padding/spacing to match React's baseline so the form sits at a similar y-offset within the 390x844 viewport.",
+          "Normalize label and heading text size/weight on Android to match React's typography scale.",
+          "Decide whether footer link casing ('Forgot Password?' / 'Create One') should be platform-specific or unified and document accordingly.",
+          "Adjust Android header banner height to match React's banner height."
+        ],
+        "intentional": [
+          "Continue with GitHub button is black on Android and white on React; per artin's ruling the Android black treatment is correct and React will adopt later."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -24629,17 +24812,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-11T22:14:20.075Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-11T22:16:36.340Z",
+            "severity": "low",
+            "summary": [
+              "Form content is more vertically compressed on Android: Email/Password fields, social buttons, terms text, and 'Create One' link are rendered higher up the viewport, leaving more empty space at the bottom.",
+              "Typography on Android appears slightly larger/heavier: 'Sign In' heading and input labels look bigger than React's, contributing to the tighter vertical packing.",
+              "Footer links differ: React shows 'Forgot password?' (lowercase, underlined); Android shows 'Forgot Password?' (title case, underlined) and 'Create One' (title case) vs React's 'Create one' (lowercase).",
+              "Yellow header bar is narrower in height on Android (roughly 96px vs ~115px on React), and the RAFT logo+wordmark is scaled down and positioned with slightly different vertical centering.",
+              "Overall font rendering differs (sans-serif weight/spacing), causing label and link text widths to differ between platforms."
+            ],
+            "likelyCauses": [
+              "Android uses different default font scaling or dp-based dimensions that produce larger text metrics for the same logical size.",
+              "Different vertical padding/margins in the Android layout (e.g., top safe-area handling or form section spacing) compress the form upward.",
+              "Footer capitalization is controlled per-platform (Android uses 'Forgot Password?' / 'Create One') rather than a shared i18n string."
+            ],
+            "suggestedOwner": "android-auth",
+            "suggestedFixes": [
+              "Align Android form vertical padding/spacing to match React's baseline so the form sits at a similar y-offset within the 390x844 viewport.",
+              "Normalize label and heading text size/weight on Android to match React's typography scale.",
+              "Decide whether footer link casing ('Forgot Password?' / 'Create One') should be platform-specific or unified and document accordingly.",
+              "Adjust Android header banner height to match React's banner height."
+            ],
+            "intentional": [
+              "Continue with GitHub button is black on Android and white on React; per artin's ruling the Android black treatment is correct and React will adopt later."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -24662,17 +24862,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-11T22:14:24.774Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-11T22:16:48.329Z",
+            "severity": "low",
+            "summary": [
+              "Yellow RAFT hero band is significantly taller on React (occupies ~upper third) vs iOS (smaller band with more vertical breathing room).",
+              "Sign In title and form fields appear larger / heavier weight on iOS; React uses lighter typography at same logical sizes.",
+              "Vertical spacing between Email field, Password field, and Signing in… button is looser on iOS than React (more whitespace between rows).",
+              "Footer text wrap differs: React renders 'By continuing, you agree to the Terms of Service and Privacy Policy.' as a tight 3-line block; iOS wraps it across 2 lines with 'Terms of Service' and 'Privacy Policy' underlined as separate links.",
+              "React shows 'Forgot password?' link that is missing on the iOS render in this state."
+            ],
+            "likelyCauses": [
+              "Different default type scale / line-height between React web stack and iOS UIKit rendering at the captured device resolution.",
+              "Different vertical rhythm tokens (form field gap, section spacing) between the two platforms' design implementations.",
+              "Footer legal copy is being split into 2 underlined links on iOS but rendered as a single underlined phrase on React."
+            ],
+            "suggestedOwner": "design-systems",
+            "suggestedFixes": [
+              "Normalize the hero band height / padding-top so both platforms reserve the same proportional space below it.",
+              "Unify form vertical rhythm: set the same gap (e.g. 16/24dp) between Email, Password, primary button, and the OR divider on both sides.",
+              "Align the legal-text link treatment: decide whether 'Terms of Service' and 'Privacy Policy' are 2 distinct links or one inline phrase and apply consistently.",
+              "Decide whether 'Forgot password?' should appear in the signing-in disabled state on iOS as it does on React, or hide it on both.",
+              "Keep the GitHub black-button treatment as the intended product behavior on iOS/native and schedule the React web adoption separately."
+            ],
+            "intentional": [
+              "GitHub social button rendered as black with white icon+text on iOS vs white-with-dark-text on React — native is the desired behavior (react-adopts-later)."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -24748,17 +24966,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-11T22:14:24.774Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-11T22:16:48.329Z",
+            "severity": "low",
+            "summary": [
+              "Yellow RAFT hero band is significantly taller on React (occupies ~upper third) vs iOS (smaller band with more vertical breathing room).",
+              "Sign In title and form fields appear larger / heavier weight on iOS; React uses lighter typography at same logical sizes.",
+              "Vertical spacing between Email field, Password field, and Signing in… button is looser on iOS than React (more whitespace between rows).",
+              "Footer text wrap differs: React renders 'By continuing, you agree to the Terms of Service and Privacy Policy.' as a tight 3-line block; iOS wraps it across 2 lines with 'Terms of Service' and 'Privacy Policy' underlined as separate links.",
+              "React shows 'Forgot password?' link that is missing on the iOS render in this state."
+            ],
+            "likelyCauses": [
+              "Different default type scale / line-height between React web stack and iOS UIKit rendering at the captured device resolution.",
+              "Different vertical rhythm tokens (form field gap, section spacing) between the two platforms' design implementations.",
+              "Footer legal copy is being split into 2 underlined links on iOS but rendered as a single underlined phrase on React."
+            ],
+            "suggestedOwner": "design-systems",
+            "suggestedFixes": [
+              "Normalize the hero band height / padding-top so both platforms reserve the same proportional space below it.",
+              "Unify form vertical rhythm: set the same gap (e.g. 16/24dp) between Email, Password, primary button, and the OR divider on both sides.",
+              "Align the legal-text link treatment: decide whether 'Terms of Service' and 'Privacy Policy' are 2 distinct links or one inline phrase and apply consistently.",
+              "Decide whether 'Forgot password?' should appear in the signing-in disabled state on iOS as it does on React, or hide it on both.",
+              "Keep the GitHub black-button treatment as the intended product behavior on iOS/native and schedule the React web adoption separately."
+            ],
+            "intentional": [
+              "GitHub social button rendered as black with white icon+text on iOS vs white-with-dark-text on React — native is the desired behavior (react-adopts-later)."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -24839,17 +25075,34 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-11T22:14:20.078Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-11T22:16:36.372Z",
+        "severity": "high",
+        "summary": [
+          "Profile picture section with Upload button is entirely missing on Android (right side)",
+          "Username field on React shows a leading yellow '@' prefix badge/adornment that is absent on Android",
+          "React shows a red validation error 'This username is already taken.' directly below the Username input; Android has no error state",
+          "Layout/spacing differs: React content starts with a large top gap above the icon, Android content begins much higher with less vertical spacing under the yellow header",
+          "Subtitle/description text styling differs: Android renders 'Choose the identity people will see in Raft.' in a lighter gray, React omits this line entirely (description text differs between variants)"
+        ],
+        "likelyCauses": [
+          "Android implementation did not render the optional Profile picture upload section",
+          "Username input adornment/icon (@ prefix) not ported to the native Android component",
+          "Form validation error message is conditionally hidden on Android, possibly because the taken-username state is not surfaced in native",
+          "Possible difference in default scroll padding / content top offset between React web and Android layouts"
+        ],
+        "suggestedOwner": "mobile-android",
+        "suggestedFixes": [
+          "Add the Profile picture row (avatar placeholder + Upload button + helper text) on Android to match the React layout",
+          "Include the '@' prefix adornment inside the Username TextInput on Android or remove it from React to harmonize",
+          "Wire up the username-taken validation error message ('This username is already taken.') on Android and style it red",
+          "Align top content padding/safe-area insets between React and Android so the icon and heading sit at the same vertical position",
+          "Re-run slock visual diff after fixes to confirm pixel mismatch drops below tolerance"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -24936,17 +25189,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-11T22:14:20.078Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-11T22:16:36.372Z",
+            "severity": "high",
+            "summary": [
+              "Profile picture section with Upload button is entirely missing on Android (right side)",
+              "Username field on React shows a leading yellow '@' prefix badge/adornment that is absent on Android",
+              "React shows a red validation error 'This username is already taken.' directly below the Username input; Android has no error state",
+              "Layout/spacing differs: React content starts with a large top gap above the icon, Android content begins much higher with less vertical spacing under the yellow header",
+              "Subtitle/description text styling differs: Android renders 'Choose the identity people will see in Raft.' in a lighter gray, React omits this line entirely (description text differs between variants)"
+            ],
+            "likelyCauses": [
+              "Android implementation did not render the optional Profile picture upload section",
+              "Username input adornment/icon (@ prefix) not ported to the native Android component",
+              "Form validation error message is conditionally hidden on Android, possibly because the taken-username state is not surfaced in native",
+              "Possible difference in default scroll padding / content top offset between React web and Android layouts"
+            ],
+            "suggestedOwner": "mobile-android",
+            "suggestedFixes": [
+              "Add the Profile picture row (avatar placeholder + Upload button + helper text) on Android to match the React layout",
+              "Include the '@' prefix adornment inside the Username TextInput on Android or remove it from React to harmonize",
+              "Wire up the username-taken validation error message ('This username is already taken.') on Android and style it red",
+              "Align top content padding/safe-area insets between React and Android so the icon and heading sit at the same vertical position",
+              "Re-run slock visual diff after fixes to confirm pixel mismatch drops below tolerance"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -24969,17 +25239,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-11T22:14:24.800Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-11T22:16:48.348Z",
+            "severity": "high",
+            "summary": [
+              "iOS version is missing the entire Profile picture section (avatar preview, Upload button, helper text)",
+              "iOS version omits the inline error state 'This username is already taken.' shown in red below the Username field on React",
+              "React shows a yellow '@' prefix adornment inside the Username input; iOS renders the input without any leading icon",
+              "iOS header/banner area uses extra top padding so the RAFT logo sits lower and content starts further down the page",
+              "React field labels (Username, Display name) are bold/heavier; iOS labels render thinner/lighter weight"
+            ],
+            "likelyCauses": [
+              "Profile picture upload component not implemented in iOS build or conditionally hidden",
+              "Username validation error message not wired up or only rendered on web",
+              "Username input lacks leading icon decoration in iOS implementation",
+              "Different safe-area / navigation bar handling pushes hero content down on iOS",
+              "Typography style sheet for field labels differs between platforms"
+            ],
+            "suggestedOwner": "iOS engineering",
+            "suggestedFixes": [
+              "Add the Profile picture section (avatar, Upload button, helper text) to match the React layout",
+              "Render the 'username already taken' error in red beneath the Username field when validation fails",
+              "Add the yellow '@' prefix adornment to the Username TextField in iOS",
+              "Apply consistent top padding/safe-area inset so the RAFT banner and content align with React",
+              "Unify field label font weight between React and iOS implementations"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -25055,17 +25343,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-11T22:14:24.800Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-11T22:16:48.348Z",
+            "severity": "high",
+            "summary": [
+              "iOS version is missing the entire Profile picture section (avatar preview, Upload button, helper text)",
+              "iOS version omits the inline error state 'This username is already taken.' shown in red below the Username field on React",
+              "React shows a yellow '@' prefix adornment inside the Username input; iOS renders the input without any leading icon",
+              "iOS header/banner area uses extra top padding so the RAFT logo sits lower and content starts further down the page",
+              "React field labels (Username, Display name) are bold/heavier; iOS labels render thinner/lighter weight"
+            ],
+            "likelyCauses": [
+              "Profile picture upload component not implemented in iOS build or conditionally hidden",
+              "Username validation error message not wired up or only rendered on web",
+              "Username input lacks leading icon decoration in iOS implementation",
+              "Different safe-area / navigation bar handling pushes hero content down on iOS",
+              "Typography style sheet for field labels differs between platforms"
+            ],
+            "suggestedOwner": "iOS engineering",
+            "suggestedFixes": [
+              "Add the Profile picture section (avatar, Upload button, helper text) to match the React layout",
+              "Render the 'username already taken' error in red beneath the Username field when validation fails",
+              "Add the yellow '@' prefix adornment to the Username TextField in iOS",
+              "Apply consistent top padding/safe-area inset so the RAFT banner and content align with React",
+              "Unify field label font weight between React and iOS implementations"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -25304,7 +25610,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:22.897Z",
+            "generatedAt": "2026-08-11T22:18:12.118Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25326,7 +25632,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:27.485Z",
+            "generatedAt": "2026-08-11T22:18:15.397Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25351,7 +25657,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:22.897Z",
+            "generatedAt": "2026-08-11T22:18:12.118Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25374,7 +25680,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:27.485Z",
+            "generatedAt": "2026-08-11T22:18:15.397Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25574,7 +25880,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:22.897Z",
+            "generatedAt": "2026-08-11T22:18:12.118Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25596,7 +25902,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:27.485Z",
+            "generatedAt": "2026-08-11T22:18:15.397Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25621,7 +25927,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:22.897Z",
+            "generatedAt": "2026-08-11T22:18:12.118Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25644,7 +25950,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:27.485Z",
+            "generatedAt": "2026-08-11T22:18:15.397Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25844,7 +26150,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:22.897Z",
+            "generatedAt": "2026-08-11T22:18:12.118Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25866,7 +26172,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:27.485Z",
+            "generatedAt": "2026-08-11T22:18:15.397Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25891,7 +26197,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:22.897Z",
+            "generatedAt": "2026-08-11T22:18:12.118Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25914,7 +26220,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:27.485Z",
+            "generatedAt": "2026-08-11T22:18:15.397Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26110,7 +26416,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:22.897Z",
+            "generatedAt": "2026-08-11T22:18:12.118Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26132,7 +26438,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:27.485Z",
+            "generatedAt": "2026-08-11T22:18:15.397Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26157,7 +26463,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:22.897Z",
+            "generatedAt": "2026-08-11T22:18:12.118Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26180,7 +26486,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:27.485Z",
+            "generatedAt": "2026-08-11T22:18:15.397Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26376,7 +26682,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:22.897Z",
+            "generatedAt": "2026-08-11T22:18:12.118Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26398,7 +26704,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:27.485Z",
+            "generatedAt": "2026-08-11T22:18:15.397Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26423,7 +26729,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:22.897Z",
+            "generatedAt": "2026-08-11T22:18:12.118Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26446,7 +26752,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-11T22:14:27.485Z",
+            "generatedAt": "2026-08-11T22:18:15.397Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

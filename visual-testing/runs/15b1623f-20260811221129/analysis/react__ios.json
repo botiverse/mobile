@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-11T22:14:22.891Z",
+  "generatedAt": "2026-08-11T22:18:12.114Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 76,
-    "pending": 10
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -464,15 +464,29 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-11T22:14:20.979Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-11T22:16:47.285Z",
+      "severity": "low",
+      "summary": [
+        "The pink waiting-pulse dot on iOS appears slightly lighter/less saturated than the React baseline.",
+        "The 'Waiting pulse' label on iOS renders in a slightly lighter font weight than the React baseline.",
+        "The four top status dots (green, orange, gray, cyan) appear visually matching in color and size across both sides."
+      ],
+      "likelyCauses": [
+        "iOS uses SF/system font with a slightly different default weight than the React render's font stack.",
+        "iOS color rendering or the SwiftUI/RUI StatusDot.pulse variant may use a slightly lighter pink fill or reduced opacity."
+      ],
+      "suggestedOwner": "ios-engineering",
+      "suggestedFixes": [
+        "Verify the iOS StatusDot pulsing state uses the same fill color (e.g., pink #FF69B4 or equivalent token) as the React variant.",
+        "Set the iOS 'Waiting pulse' label font weight to match the React baseline (e.g., bold/600).",
+        "Confirm the same color tokens are mapped in both web and iOS themes."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -1340,15 +1354,38 @@
     },
     {
       "id": "components.thread.message-share.selection",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc07fcfffe7ffe801e01f2c0024002f0fe7002f1fe7ffe83fe03fe80024002f8fe7002fffe4006fffe0000fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe0000fffe0000fffe00000000fffe1fff",
-      "generatedAt": "2026-08-11T22:14:21.691Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-11T22:16:47.854Z",
+      "severity": "medium",
+      "summary": [
+        "Action bar position differs: React pins the action bar to bottom of viewport; iOS renders it near the top (~25% from top) instead of the bottom edge.",
+        "iOS action bar contains extra actions (All, Forward, Copy, Download) while React shows only Cancel, Forward, Copy, More.",
+        "iOS selection checkboxes appear as smaller filled yellow squares placed above/inline with avatars; React uses larger circular yellow check icons left of avatars.",
+        "iOS avatar slots are larger squares with a thicker dark outline; React avatars are smaller rounded squares.",
+        "React shows a thumbs-up reaction chip ('👍 2') and a '+' add-reaction pill under the first message; iOS is missing the reaction chip and add-reaction affordance entirely."
+      ],
+      "likelyCauses": [
+        "Independent redesign of the multi-select action bar per platform instead of sharing a spec.",
+        "iOS composer/portal renders the action bar inline with the list rather than as a viewport-portal footer.",
+        "Reaction control (thumbs-up count and add-reaction button) not implemented on iOS.",
+        "Avatar and checkbox components sized/positioned differently between React and iOS implementations."
+      ],
+      "suggestedOwner": "ios",
+      "suggestedFixes": [
+        "Move iOS action bar to bottom of viewport and align it to full width matching React's yellow footer.",
+        "Trim iOS action buttons to the same set shown on React (Cancel, Forward, Copy, More) or align both platforms to the same action set.",
+        "Implement the thumbs-up reaction chip and '+' add-reaction button on iOS to match React.",
+        "Standardize avatar size, border, and selection checkbox shape/size across platforms.",
+        "Verify metadata row layout (author, preview, timestamp) so both platforms render the same fields in the same order."
+      ],
+      "intentional": [
+        "Different action button set on iOS if platform-specific export/download is by design.",
+        "Truncated preview text on iOS if message headers are intentionally condensed."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.18851183483884904
     },
     {
@@ -1805,7 +1842,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:14:21.990Z",
+      "generatedAt": "2026-08-11T22:18:11.496Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2125,35 +2162,77 @@
     },
     {
       "id": "screens.auth.login.signing",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe1ffe0000000000000000f0000000ffff0000fffffffffffffe7ffe7ffe7ffe7ffe7ffe7fdfff9fffc1ff83fcc0038000cfff8ffbdfff8ffcc0038000c0038001c0038001dffbdffbd81bfc1e8003800080038000c0038000fb1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-      "generatedAt": "2026-08-11T22:14:22.485Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-11T22:16:48.329Z",
+      "severity": "low",
+      "summary": [
+        "Yellow RAFT hero band is significantly taller on React (occupies ~upper third) vs iOS (smaller band with more vertical breathing room).",
+        "Sign In title and form fields appear larger / heavier weight on iOS; React uses lighter typography at same logical sizes.",
+        "Vertical spacing between Email field, Password field, and Signing in… button is looser on iOS than React (more whitespace between rows).",
+        "Footer text wrap differs: React renders 'By continuing, you agree to the Terms of Service and Privacy Policy.' as a tight 3-line block; iOS wraps it across 2 lines with 'Terms of Service' and 'Privacy Policy' underlined as separate links.",
+        "React shows 'Forgot password?' link that is missing on the iOS render in this state."
+      ],
+      "likelyCauses": [
+        "Different default type scale / line-height between React web stack and iOS UIKit rendering at the captured device resolution.",
+        "Different vertical rhythm tokens (form field gap, section spacing) between the two platforms' design implementations.",
+        "Footer legal copy is being split into 2 underlined links on iOS but rendered as a single underlined phrase on React."
+      ],
+      "suggestedOwner": "design-systems",
+      "suggestedFixes": [
+        "Normalize the hero band height / padding-top so both platforms reserve the same proportional space below it.",
+        "Unify form vertical rhythm: set the same gap (e.g. 16/24dp) between Email, Password, primary button, and the OR divider on both sides.",
+        "Align the legal-text link treatment: decide whether 'Terms of Service' and 'Privacy Policy' are 2 distinct links or one inline phrase and apply consistently.",
+        "Decide whether 'Forgot password?' should appear in the signing-in disabled state on iOS as it does on React, or hide it on both.",
+        "Keep the GitHub black-button treatment as the intended product behavior on iOS/native and schedule the React web adoption separately."
+      ],
+      "intentional": [
+        "GitHub social button rendered as black with white icon+text on iOS vs white-with-dark-text on React — native is the desired behavior (react-adopts-later)."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.24784907036091874
     },
     {
       "id": "screens.auth.profile-setup",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe1ffe000000000000000030000000ffff0000fffffffffffffe7ffffffe7ffe7ff00ffe7ffffff00fefffffffcfff8fffc00381fdc0038001ffffcfffc7ffffffc3fb87ffc00383fcffff80018003c7ff800380ffffff80ffffff803fffff8001ffff8001fffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-08-11T22:14:22.478Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-11T22:16:48.348Z",
+      "severity": "high",
+      "summary": [
+        "iOS version is missing the entire Profile picture section (avatar preview, Upload button, helper text)",
+        "iOS version omits the inline error state 'This username is already taken.' shown in red below the Username field on React",
+        "React shows a yellow '@' prefix adornment inside the Username input; iOS renders the input without any leading icon",
+        "iOS header/banner area uses extra top padding so the RAFT logo sits lower and content starts further down the page",
+        "React field labels (Username, Display name) are bold/heavier; iOS labels render thinner/lighter weight"
+      ],
+      "likelyCauses": [
+        "Profile picture upload component not implemented in iOS build or conditionally hidden",
+        "Username validation error message not wired up or only rendered on web",
+        "Username input lacks leading icon decoration in iOS implementation",
+        "Different safe-area / navigation bar handling pushes hero content down on iOS",
+        "Typography style sheet for field labels differs between platforms"
+      ],
+      "suggestedOwner": "iOS engineering",
+      "suggestedFixes": [
+        "Add the Profile picture section (avatar, Upload button, helper text) to match the React layout",
+        "Render the 'username already taken' error in red beneath the Username field when validation fails",
+        "Add the yellow '@' prefix adornment to the Username TextField in iOS",
+        "Apply consistent top padding/safe-area inset so the RAFT banner and content align with React",
+        "Unify field label font weight between React and iOS implementations"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.22624491972833205
     },
     {
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:14:22.368Z",
+      "generatedAt": "2026-08-11T22:18:11.725Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2166,7 +2245,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:14:22.368Z",
+      "generatedAt": "2026-08-11T22:18:11.725Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2179,7 +2258,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:14:22.368Z",
+      "generatedAt": "2026-08-11T22:18:11.725Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2192,7 +2271,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:14:22.368Z",
+      "generatedAt": "2026-08-11T22:18:11.725Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2205,7 +2284,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:14:22.368Z",
+      "generatedAt": "2026-08-11T22:18:11.725Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

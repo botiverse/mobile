@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-11T22:14:19.016Z",
+  "generatedAt": "2026-08-11T22:18:09.305Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 81,
-    "pending": 5
+    "ready": 85,
+    "pending": 1
   },
   "cases": [
     {
@@ -822,15 +822,35 @@
     },
     {
       "id": "components.ui.avatar-list-row.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffffffffffcfffc0ffc0ffc3fff3fffffffffffffffffffffffffffffffffffcfff9ff3c3f387f3c03383f3cff39ff3cfffdffffffffffbffffffffc003800180019ffdfffc80618000802180019f618fe180e180619ff188e18001fffc80018000ffffc003ffffffffffff00000000fffffffffffbdffffffa1fffffffffff",
-      "generatedAt": "2026-08-11T22:14:17.561Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-11T22:16:35.645Z",
+      "severity": "high",
+      "summary": [
+        "Android (right) avatar tiles are larger than React (left) – approximately 1.5–2x bigger in both rows, increasing row height.",
+        "Android (right) second row is noticeably taller than React (left) due to enlarged avatar, larger title font, and extra vertical padding.",
+        "Android (right) uses a heavier/larger font weight for 'Product UX Designer' title and 'Cindy' name compared to React's lighter weight.",
+        "Android (right) 'Online' badge has a thinner/lighter green fill and lighter border stroke vs React's saturated green with bold black border.",
+        "Android (right) avatar square background appears slightly more saturated lavender vs React's paler purple."
+      ],
+      "likelyCauses": [
+        "Android component is using different default avatar size token (likely 64dp vs 40dp).",
+        "Android typography mapping for headline/title style is using a heavier weight and larger size than the React token.",
+        "Android status badge uses a muted/washed-out color variant instead of the active/filled variant used in React.",
+        "Spacing tokens (row padding, gap between avatar and text) differ between platforms, inflating Android row height."
+      ],
+      "suggestedOwner": "android-ui-engineering",
+      "suggestedFixes": [
+        "Align avatar size token to match React (e.g., 40dp/40px square).",
+        "Map 'name' and 'title' text styles to match React weight (semi-bold/600) and size scale.",
+        "Apply the same active/green color and bold border to the 'Online' badge on Android.",
+        "Normalize row vertical padding and avatar-to-text gap using a shared spacing token.",
+        "Re-run visual regression after token alignment; target pixel-perfect similarity > 0.95."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.280413611188465
     },
     {
@@ -1356,15 +1376,35 @@
     },
     {
       "id": "components.thread.message-share.selection",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe07fcfffe7ffe805e81fec0024002f0fe7006f1fe7ffe83fe83fe80024002f8fe7002fffe5006fffe0001fffe0001fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe00007ffe00000000fffe3fff",
-      "generatedAt": "2026-08-11T22:14:17.789Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-11T22:16:35.875Z",
+      "severity": "high",
+      "summary": [
+        "Selection action bar position differs: Android shows it in the middle of the viewport (after message list), React shows it anchored to the bottom of the viewport.",
+        "Android selection bar contains extra buttons (X close, All, Forward, copy, download) plus a yellow background extending across the viewport; React bar has only Cancel, Forward, copy, and overflow and is anchored to bottom with a yellow strip.",
+        "Android message items show checkbox + filled yellow square indicator with avatar inline; React shows yellow circular check icon stacked above the avatar with different shape/placement.",
+        "Android avatars use generic user silhouettes (placeholder, no image) whereas React shows actual avatars (QR-style avatar and purple user avatar).",
+        "Android list area has a yellow/cream background tint covering the lower half of the screen; React background is white/neutral in the same region."
+      ],
+      "likelyCauses": [
+        "Android implementation re-rendered the selection toolbar as an inline component rather than a fixed bottom portal/sheet.",
+        "Different selection state UI design on Android (extra actions: close, 'All', download) vs. React baseline spec.",
+        "Placeholder avatars used on Android due to missing image asset binding or different avatar rendering pipeline.",
+        "Android crop mode (viewport-bounds) may be exposing background chrome that the React baseline element crop excluded."
+      ],
+      "suggestedOwner": "android-engineering",
+      "suggestedFixes": [
+        "Anchor the selection action bar to the bottom of the viewport on Android to match React parity.",
+        "Remove or hide the extra 'All' and download actions so the action set matches React (Cancel, Forward, copy, overflow).",
+        "Use circular check indicators stacked above avatars (React style) instead of square yellow checkboxes next to avatars.",
+        "Bind real avatar assets (or render a consistent fallback) on Android instead of generic silhouettes.",
+        "Ensure the crop/background under the list is neutral white on Android; remove the yellow tint that bleeds into the viewport."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.7089800974872065
     },
     {
@@ -1816,7 +1856,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:14:18.009Z",
+      "generatedAt": "2026-08-11T22:18:08.663Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2148,28 +2188,68 @@
     },
     {
       "id": "screens.auth.login.signing",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe1ffe0000000000000000f0000000ffff7ffefffffe7ffffffe7ffe7ffe7ffe7ffffffe7fc1fb9fffc0fb83fcc0038000dfff8ffbc0038ffcc0038000c0038001c1838001fc1bdffbc003fc1e80038000c0038000fb1f8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-      "generatedAt": "2026-08-11T22:14:18.469Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-11T22:16:36.340Z",
+      "severity": "low",
+      "summary": [
+        "Form content is more vertically compressed on Android: Email/Password fields, social buttons, terms text, and 'Create One' link are rendered higher up the viewport, leaving more empty space at the bottom.",
+        "Typography on Android appears slightly larger/heavier: 'Sign In' heading and input labels look bigger than React's, contributing to the tighter vertical packing.",
+        "Footer links differ: React shows 'Forgot password?' (lowercase, underlined); Android shows 'Forgot Password?' (title case, underlined) and 'Create One' (title case) vs React's 'Create one' (lowercase).",
+        "Yellow header bar is narrower in height on Android (roughly 96px vs ~115px on React), and the RAFT logo+wordmark is scaled down and positioned with slightly different vertical centering.",
+        "Overall font rendering differs (sans-serif weight/spacing), causing label and link text widths to differ between platforms."
+      ],
+      "likelyCauses": [
+        "Android uses different default font scaling or dp-based dimensions that produce larger text metrics for the same logical size.",
+        "Different vertical padding/margins in the Android layout (e.g., top safe-area handling or form section spacing) compress the form upward.",
+        "Footer capitalization is controlled per-platform (Android uses 'Forgot Password?' / 'Create One') rather than a shared i18n string."
+      ],
+      "suggestedOwner": "android-auth",
+      "suggestedFixes": [
+        "Align Android form vertical padding/spacing to match React's baseline so the form sits at a similar y-offset within the 390x844 viewport.",
+        "Normalize label and heading text size/weight on Android to match React's typography scale.",
+        "Decide whether footer link casing ('Forgot Password?' / 'Create One') should be platform-specific or unified and document accordingly.",
+        "Adjust Android header banner height to match React's banner height."
+      ],
+      "intentional": [
+        "Continue with GitHub button is black on Android and white on React; per artin's ruling the Android black treatment is correct and React will adopt later."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2368841225476297
     },
     {
       "id": "screens.auth.profile-setup",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe1ffc000000000000000030000000ffff7982fffffe7ffffffe7ffffff00ffe7ffc9ffe7feffff00fcfffffffc0038fffc00380fdffff8001c7ffcfffc3fbffffc00387ffffff83fcc00380018003c7ffffff80ffffff80ffffff803fffff8001ffff8001fffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-08-11T22:14:18.515Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-11T22:16:36.372Z",
+      "severity": "high",
+      "summary": [
+        "Profile picture section with Upload button is entirely missing on Android (right side)",
+        "Username field on React shows a leading yellow '@' prefix badge/adornment that is absent on Android",
+        "React shows a red validation error 'This username is already taken.' directly below the Username input; Android has no error state",
+        "Layout/spacing differs: React content starts with a large top gap above the icon, Android content begins much higher with less vertical spacing under the yellow header",
+        "Subtitle/description text styling differs: Android renders 'Choose the identity people will see in Raft.' in a lighter gray, React omits this line entirely (description text differs between variants)"
+      ],
+      "likelyCauses": [
+        "Android implementation did not render the optional Profile picture upload section",
+        "Username input adornment/icon (@ prefix) not ported to the native Android component",
+        "Form validation error message is conditionally hidden on Android, possibly because the taken-username state is not surfaced in native",
+        "Possible difference in default scroll padding / content top offset between React web and Android layouts"
+      ],
+      "suggestedOwner": "mobile-android",
+      "suggestedFixes": [
+        "Add the Profile picture row (avatar placeholder + Upload button + helper text) on Android to match the React layout",
+        "Include the '@' prefix adornment inside the Username TextInput on Android or remove it from React to harmonize",
+        "Wire up the username-taken validation error message ('This username is already taken.') on Android and style it red",
+        "Align top content padding/safe-area insets between React and Android so the icon and heading sit at the same vertical position",
+        "Re-run slock visual diff after fixes to confirm pixel mismatch drops below tolerance"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.19905483317805595
     },
     {

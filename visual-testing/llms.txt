@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-11 22:14:30 UTC
+Generated: 2026-08-11 22:18:17 UTC
 Latest run: 15b1623f-20260811221129
 Latest commit: 15b1623f-20260811221129
 Commit subject: fix(thread): hand focused anchor to composer on IME
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 86, same 0, pass 0, basic-pass 0, different 85, missing 1
-AI analysis: ready 81 / total 86, pending 5
+AI analysis: ready 85 / total 86, pending 1
 Visual coverage matrix: active 95 / total 114, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

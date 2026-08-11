@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-11T22:14:27.476Z",
+  "generatedAt": "2026-08-11T22:18:15.392Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 81,
+    "pending": 5
   },
   "cases": [
     {
@@ -457,15 +457,36 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03f407fe43fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-11T22:14:25.607Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-11T22:16:55.389Z",
+      "severity": "low",
+      "summary": [
+        "Status dot sizes appear marginally larger on iOS than Android (especially the pink 'Waiting pulse' dot)",
+        "Pink/waiting dot on iOS shows a slightly more saturated/reddish hue compared to Android",
+        "Spacing between the four small status dots is consistent but the overall row sits at a proportionally similar offset",
+        "Typography weight of 'Raft UI Status Dot' header and 'Waiting pulse' label appears visually consistent across platforms",
+        "No missing elements or clipping detected; both renders show the same four small dots plus the pink waiting dot with label"
+      ],
+      "likelyCauses": [
+        "Platform-specific default font metrics causing minor anti-aliasing differences",
+        "Kuikly renderer's default dot sizing token not normalized between Android and iOS backends",
+        "Color profile difference (sRGB vs Display P3) affecting the pink dot's perceived saturation"
+      ],
+      "suggestedOwner": "ui-engineering",
+      "suggestedFixes": [
+        "Normalize StatusDot component size token via Kuikly's design-token bridge for both platforms",
+        "Audit pink/waiting color token for cross-platform color-space parity",
+        "Verify StatusDot sizing dp value matches between Android and iOS implementations",
+        "Re-run pixel-diff with tightened tolerance after token alignment"
+      ],
+      "intentional": [
+        "Minor rendering variance within 2% pixel mismatch tolerance",
+        "RGB similarity 97.99% is within acceptable platform delta"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.002999216861776066
     },
     {
@@ -2110,7 +2131,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:14:26.929Z",
+      "generatedAt": "2026-08-11T22:18:15.007Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2123,7 +2144,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:14:26.929Z",
+      "generatedAt": "2026-08-11T22:18:15.007Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2136,7 +2157,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:14:26.929Z",
+      "generatedAt": "2026-08-11T22:18:15.007Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2149,7 +2170,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:14:26.929Z",
+      "generatedAt": "2026-08-11T22:18:15.007Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2162,7 +2183,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:14:26.929Z",
+      "generatedAt": "2026-08-11T22:18:15.007Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
