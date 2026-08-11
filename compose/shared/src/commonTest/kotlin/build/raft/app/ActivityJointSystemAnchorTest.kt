@@ -65,6 +65,7 @@ class ActivityJointSystemAnchorTest {
                 parentChannelId = ChannelId("joint-1"),
                 parentChannelKind = ConversationKind.Joint,
                 parentMessageId = MessageId("parent-1"),
+                firstUnreadMessageId = MessageId("thread-reply"),
                 latestActivityMessageId = MessageId("thread-reply")
             ).resolveInboxAnchorMessageId()?.value
         )
