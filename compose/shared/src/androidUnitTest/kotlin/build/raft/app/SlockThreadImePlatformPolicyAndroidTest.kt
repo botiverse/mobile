@@ -5,9 +5,9 @@ import kotlin.test.assertEquals
 
 class SlockThreadImePlatformPolicyAndroidTest {
     @Test
-    fun androidRetainsTheWhiteScreenStopLoss() {
+    fun androidRestoresOrdinaryCorrectionAfterTheRootFix() {
         assertEquals(
-            ThreadImeProgrammaticViewportPolicy.SuppressWhileImeOpen,
+            ThreadImeProgrammaticViewportPolicy.AllowWhileImeOpen,
             slockPlatformThreadImeProgrammaticViewportPolicy(),
         )
     }
