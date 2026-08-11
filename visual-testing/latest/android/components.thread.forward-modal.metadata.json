@@ -36,16 +36,16 @@
     "laidOutViews": 85,
     "visibleContentLeafViews": 11,
     "targetPackage": "build.raft.app.connectedtest",
-    "processId": 4502,
+    "processId": 4415,
     "processUid": 10192
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "718f3063001eb6e392925480d386b3a5",
-                "bootId": "cb21c580-4402-456c-8a75-9f6c02e57077",
-                "capturedAtEpochMs": 1786398995854,
-                "capturedAtMonotonicNs": 164689773401
+                "generation": "ad492734db28b8684b3d14428f515754",
+                "bootId": "a5db490f-774d-439c-8ba7-cae3492e57a6",
+                "capturedAtEpochMs": 1786485602900,
+                "capturedAtMonotonicNs": 228391473050
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1786398995854"
+              "capturedAt": "1786485602900"
             }

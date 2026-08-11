@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-10T22:17:48.204Z",
+  "generatedAt": "2026-08-11T22:14:19.016Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 85,
-    "pending": 1
+    "ready": 81,
+    "pending": 5
   },
   "cases": [
     {
@@ -458,7 +458,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe0ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe1ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-10T22:11:45.609Z",
       "severity": "low",
       "summary": [
@@ -524,7 +524,7 @@
     {
       "id": "components.ui.skeleton.states",
       "status": "ready",
-      "imageHash": "p1:000000017ffc7ffc1ffc1ffc1ffe1ffefffefffefffefffefffefffe80fe80fe9cfe00fe9ffe17fe83fe83fefffefffefffefffe80008000800080008000800080008000800080008000800080008000fffefffe9ffe9ffe9ffe9ffe003e003e003e003e9ffe9ffe0000000000000000fffffffffff00ffffff81fffffffffff",
+      "imageHash": "p1:000000017ffc7ffc1ffc1ffc1ffe1ffefffefffefffefffefffefffe80fe80fe94fe00fe9ffe17fe83fe83fefffefffefffefffe80008000800080008000800080008000800080008000800080008000fffefffe9ffe9ffe9ffe9ffe003e003e003e003e9ffe9ffe0000000000000000fffffffffff00ffffff81fffffffffff",
       "generatedAt": "2026-07-11T22:10:05.920Z",
       "severity": "low",
       "summary": [
@@ -822,36 +822,16 @@
     },
     {
       "id": "components.ui.avatar-list-row.states",
-      "status": "ready",
-      "imageHash": "p1:fffffffffffcfffc0ffc0ffc3fff3fffffffffffffffffffffffffffffffffffcfff9ff3cff38773c07383f3cbf39ff3cfffdffffffffff3ffffffffc003800180009ffdfffc80618030802180319f618b31806180719ff188708001fffc80018000ffffc003ffffffffffff00000000fffffffffffbdffffffa1fffffffffff",
-      "generatedAt": "2026-07-23T22:52:59.812Z",
-      "severity": "high",
-      "summary": [
-        "Cindy (Claude Code) row is missing in Android — only the second 'Product UX Designer' row is rendered.",
-        "Product UX Designer title text in Android is visibly larger than React baseline.",
-        "product@slock.ai subtitle in Android is larger/heavier and sits lower, crowding the row.",
-        "Avatar tile in Android row appears slightly larger than React.",
-        "Row card padding and vertical spacing differ between React and Android."
-      ],
-      "likelyCauses": [
-        "Android implementation only renders the second list item instead of both rows.",
-        "Title/subtitle typography scale and weights are not mapped to the Android Material token set.",
-        "Avatar Image/IconButton size and row inner padding use different dp values than the React spec."
-      ],
-      "suggestedOwner": "android-ui-engineer",
-      "suggestedFixes": [
-        "Render both 'Cindy — Claude Code' (Online) and 'Product UX Designer' (Open) rows in the Android AvatarListRow states fixture.",
-        "Map title and subtitle to the same type scale used by React (font size + weight) via shared design tokens.",
-        "Constrain avatar size and card horizontal/vertical padding to match the React component bounds contract.",
-        "Re-run the Slock visual test once component bounds, padding, and typography match baseline."
-      ],
-      "intentional": [
-        "The 'Online' badge appears in the same green and position in both builds, suggesting that state is intentional and only the second-row content differs."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2771608805965531
+      "status": "pending",
+      "imageHash": "p1:fffffffffffcfffc0ffc0ffc3fff3fffffffffffffffffffffffffffffffffffcfff9ff3c3f387f3c03383f3cff39ff3cfffdffffffffffbffffffffc003800180019ffdfffc80618000802180019f618fe180e180619ff188e18001fffc80018000ffffc003ffffffffffff00000000fffffffffffbdffffffa1fffffffffff",
+      "generatedAt": "2026-08-11T22:14:17.561Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.280413611188465
     },
     {
       "id": "components.auth.register.inputs",
@@ -1091,7 +1071,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3137183235867447
+      "metricMismatch": 0.31390614847303444
     },
     {
       "id": "components.thread.composer.channel-suggestions",
@@ -1264,7 +1244,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.34864164521027263
+      "metricMismatch": 0.34936786162276356
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1336,7 +1316,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4143881395066229
+      "metricMismatch": 0.4144772552355491
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1372,41 +1352,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.42307861087481946
+      "metricMismatch": 0.4231677266037456
     },
     {
       "id": "components.thread.message-share.selection",
-      "status": "ready",
-      "imageHash": "p1:07fc07fcfffe7ffe801e017ac0024002f0fe7006f1fe7ffe83fe03fe80024002f8fe7002fffe4006fffe0001fffe0001fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe00000000fffe1fff",
-      "generatedAt": "2026-08-02T22:01:52.568Z",
-      "severity": "high",
-      "summary": [
-        "Bottom action bar position differs: React pins bar to bottom of viewport; Android places it immediately under the message list at the top of the empty area, leaving a large cream-colored empty region below.",
-        "Android action bar contains additional actions ('All', copy icon, download icon) absent in React; React shows only Cancel, Forward, copy, and overflow (...).",
-        "Android message rows render with extra inline metadata between name and timestamp (e.g., 'Keeps visua…' on Cindy's row) that React does not show; 'artin' name is not truncated with ellipsis on Android as it is on React.",
-        "Selection checkbox control differs: React uses a circular yellow check icon; Android uses a square yellow check button with visible black border.",
-        "Android adds a cream/peach background fill across the lower half of the viewport that React does not have."
-      ],
-      "likelyCauses": [
-        "Android portal rendering the selection action bar inline below content instead of as a fixed/portal bottom sheet used by React.",
-        "Action bar spec mismatch between platforms: Android exposes extra bulk actions ('All', copy, download) not in the React baseline.",
-        "Different list-item metadata composition (status/preview text injected between author name and timestamp) on Android.",
-        "Different avatar asset binding and missing author-name truncation on Android.",
-        "Background container/empty-state color applied on Android but not on React."
-      ],
-      "suggestedOwner": "android-engineering",
-      "suggestedFixes": [
-        "Anchor the selection action bar to the bottom of the viewport (e.g., BoxWithConstraints/WindowInsets-aware footer) to match React's portal bottom positioning.",
-        "Remove or hide the extra 'All', copy, and download buttons in the action bar until parity with React is confirmed.",
-        "Strip the inline metadata string between the author name and the timestamp on Android message rows; match React's layout exactly.",
-        "Use the circular yellow check selection indicator from React or apply the same component on Android.",
-        "Remove the cream background fill below the message list on Android, or match React's surface color."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.7089041465818717
+      "status": "pending",
+      "imageHash": "p1:07fe07fcfffe7ffe805e81fec0024002f0fe7006f1fe7ffe83fe83fe80024002f8fe7002fffe5006fffe0001fffe0001fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe00007ffe00000000fffe3fff",
+      "generatedAt": "2026-08-11T22:14:17.789Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.7089800974872065
     },
     {
       "id": "components.thread.forward-modal",
@@ -1574,7 +1533,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26768069564278096
+      "metricMismatch": 0.2676550411147568
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1607,12 +1566,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26828830288545924
+      "metricMismatch": 0.2682616356786973
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fdfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa7fff",
+      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fdfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa3fff",
       "generatedAt": "2026-07-30T04:34:27.469Z",
       "severity": "medium",
       "summary": [
@@ -1644,7 +1603,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19033044079733386
+      "metricMismatch": 0.19017690582489677
     },
     {
       "id": "components.home.activity.results",
@@ -1678,7 +1637,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18618342451109848
+      "metricMismatch": 0.18614307572994615
     },
     {
       "id": "components.tasks.panel.states",
@@ -1857,7 +1816,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-10T22:17:47.347Z",
+      "generatedAt": "2026-08-11T22:14:18.009Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1971,12 +1930,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.715950702799044
+      "metricMismatch": 0.7159665680992695
     },
     {
       "id": "components.settings.root.page",
       "status": "ready",
-      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe01fe81fe01fec7fe07fec7fe07fe83fe0ffedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe0ffe83fe03fec7fe03fe87fe03fe87fe07fe87fe7ffe87fe1ffebffe03fe8ffe03fe83fe03fe83fe7ffe87fe7ffe83fe7ffe83fe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe01fe81fe01fec7fe07fec7fe07fe83fe0ffedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe0ffe83fe03fec7fe03fe87fe03fe87fe07fe87fe7ffe87fe1ffe9ffe03fe8ffe03fe83fe03fe83fe7ffe87fe7ffe83fe7ffe83fe7ffefffe7ffefffe7ffe00000000fff81fff",
       "generatedAt": "2026-08-02T22:01:52.904Z",
       "severity": "high",
       "summary": [
@@ -2008,7 +1967,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04213114864773637
+      "metricMismatch": 0.042509215376513976
     },
     {
       "id": "components.settings.account.page",
@@ -2120,7 +2079,7 @@
     {
       "id": "components.settings.appearance.page",
       "status": "ready",
-      "imageHash": "p1:0ffe0ffc8fff0ffe81fe01fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c03fc81fc3d0cbffc007c8ffc007c807400008004007cb3fc0004800020008000000081f0ffffb71cffffbffcffffbbfcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffff7fff",
+      "imageHash": "p1:0ffe0ffc8fff0ffe81fe01fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c03fc81fc3d0cbffc007c9ffc007c807400008004007cb3fc0004800020008000000081f0ffffb71cffffbffcffffbbfcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffff7fff",
       "generatedAt": "2026-08-07T00:06:04.615Z",
       "severity": "high",
       "summary": [
@@ -2149,7 +2108,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19934513441622448
+      "metricMismatch": 0.19935627388234023
     },
     {
       "id": "components.settings.notifications.page",
@@ -2189,72 +2148,29 @@
     },
     {
       "id": "screens.auth.login.signing",
-      "status": "ready",
-      "imageHash": "p1:3ffe1ffe0000000000000000f0000000ffff7ffefffffe7ffffffe7ffe7ffe7ffe7ffffffe7fc1fbffffc0fb8bfec00381f4dfff8c03c0038ffec0038000c0038001c1838001fc1bdffbc003fffe80038000c0038000fb1f900cffffce03ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-      "generatedAt": "2026-07-26T22:12:57.492Z",
-      "severity": "medium",
-      "summary": [
-        "Layout is compressed on Android: form starts much higher (around y≈235) versus React (starts around y≈370), reducing vertical breathing room between header and inputs.",
-        "Header text on React is left-aligned at top-left; on Android it sits centered/right-aligned near top, shifting position of the screen title block.",
-        "Typography differs: Android 'Sign In' heading and field labels render with lighter weight/smaller size compared to React's bolder, larger text.",
-        "Field heights differ: Android Email/Password inputs appear shorter than React's inputs.",
-        "Button heights differ: Android 'Continue with Google' and 'Continue with GitHub' buttons are noticeably shorter than React's buttons."
-      ],
-      "likelyCauses": [
-        "Different default vertical layout container/padding between React web layout and Android native layout for the same screen component.",
-        "Typography tokens (font-size, font-weight, line-height) not unified across platforms — Android may use a smaller default scale.",
-        "Input and Button component implementations have different intrinsic min-heights on each platform.",
-        "Container top padding/inset differs, likely due to differing SafeArea/header bar treatment on Android vs web."
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "Align top padding/insets so the form begins at the same vertical offset on both platforms.",
-        "Unify typography scale tokens (font-size/weight/line-height) for headings, labels, inputs, and buttons across React and Android.",
-        "Normalize input and button min-heights via shared design tokens.",
-        "Standardize vertical rhythm (margin/gap) between form controls and bottom links.",
-        "Verify header/title block alignment rules are consistent across platforms."
-      ],
-      "intentional": [
-        "Android renders 'Continue with GitHub' as a black button while React renders it as a white button — intentional platform difference (react-adopts-later)."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.23653677374056525
+      "status": "pending",
+      "imageHash": "p1:3ffe1ffe0000000000000000f0000000ffff7ffefffffe7ffffffe7ffe7ffe7ffe7ffffffe7fc1fb9fffc0fb83fcc0038000dfff8ffbc0038ffcc0038000c0038001c1838001fc1bdffbc003fc1e80038000c0038000fb1f8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "generatedAt": "2026-08-11T22:14:18.469Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2368841225476297
     },
     {
       "id": "screens.auth.profile-setup",
-      "status": "ready",
-      "imageHash": "p1:3ffe1ffc000000000000000030000000ffff7982fffffe7ffffffe7ffffff00ffe7ffc9ffe7feffff00fcfffffffc0038fffc00381fdffff8001c7ffcfffc3fbffffc00387ffffff83fcc00380008003df0bffff83ffffff80ffffff82ffffff8001ffff8001fffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-07-22T11:29:16.086Z",
-      "severity": "high",
-      "summary": [
-        "Android build is missing the 'Profile picture' section (avatar preview + Upload button + helper text) entirely.",
-        "React baseline shows a red/orange error message 'This username is already taken.' beneath the Username field; Android omits this validation/feedback state.",
-        "Username input on Android lacks the yellow '@' prefix adornment shown in React.",
-        "Layout/spacing differs: Android centers the header content vertically higher and places 'Set up your account' / subtitle immediately after the logo, while React uses more top whitespace and a larger vertical gap before the form fields.",
-        "'Choose the identity people will see in Raft.' subtitle appears in Android but is absent in React (or vice versa depending on baseline)."
-      ],
-      "likelyCauses": [
-        "Android screen was implemented without the Profile picture / avatar upload component.",
-        "Username field validation error (taken-username state) is not wired into the Android render path.",
-        "React Native Web/Baseline uses an InputAdornment with '@' icon; Android Compose TextField has no leading icon configured.",
-        "Inconsistent vertical padding/Spacer tokens between platforms (different top inset and field-gap values).",
-        "Subtitle text differs because copy or localization was not shared/synced across web and Android."
-      ],
-      "suggestedOwner": "android-auth",
-      "suggestedFixes": [
-        "Add the Profile picture section to the Android ProfileSetupScreen: avatar placeholder tile + Upload button + 'A default is picked for you.' helper, matching React layout.",
-        "Wire the username-unavailable validation state into the Android UI so the red 'This username is already taken.' message renders below the Username field.",
-        "Add a leading '@' icon/adornment to the Username TextField on Android to match the React baseline.",
-        "Align Android vertical spacing tokens with the design system (top padding, header-to-fields gap) so the heading position matches React.",
-        "Sync the subtitle copy across platforms and confirm via the shared design spec."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2019970024709361
+      "status": "pending",
+      "imageHash": "p1:3ffe1ffc000000000000000030000000ffff7982fffffe7ffffffe7ffffff00ffe7ffc9ffe7feffff00fcfffffffc0038fffc00380fdffff8001c7ffcfffc3fbffffc00387ffffff83fcc00380018003c7ffffff80ffffff80ffffff803fffff8001ffff8001fffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "generatedAt": "2026-08-11T22:14:18.515Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19905483317805595
     },
     {
       "id": "screens.members.agent-detail.profile",
@@ -2324,7 +2240,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05978652732207235
+      "metricMismatch": 0.05978990291786501
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2528,7 +2444,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2351794466723377
+      "metricMismatch": 0.23518045935107545
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2594,12 +2510,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.15702292704662368
+      "metricMismatch": 0.1570252899636786
     },
     {
       "id": "components.thread.message-row.rich-content",
       "status": "ready",
-      "imageHash": "p1:07fc07fc03fe03fcfffefffe07fefffe000083fe00008702e0028000e002f000e002e000e002e006e006e000e03ee000e03ee000f07ef3fee03ee3fefffefffefffef03ee0fefffefffefffef07ef0fee03efffefffefffefffef01efffefffee1fefffee002f3fee002f3fefffee03efffee07e00000e00ffff1ffffffeffff",
+      "imageHash": "p1:07fc07fc03fe03fcfffefffe07fefffe000083fe00008702e0028000e002f000e002e000e002e006e006e000e03ee000e03ee000f07ef3fee03ee3fefffefffefffef03ee0fefffefffefffef07ef0fee03efffefffefffefffef01efffefffee1fefffee002f3fee002f3fefffee03efffee07e00000e00ffff0ffffffeffff",
       "generatedAt": "2026-08-07T00:06:08.727Z",
       "severity": "high",
       "summary": [
@@ -2628,7 +2544,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2326515668754514
+      "metricMismatch": 0.2326499177064677
     },
     {
       "id": "components.thread.message-row.long-inline-code",
@@ -2661,7 +2577,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3202458108856213
+      "metricMismatch": 0.32024513576646274
     },
     {
       "id": "components.thread.message-row.md-link-ref",
@@ -2699,7 +2615,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7716028003942697
+      "metricMismatch": 0.7716021252751111
     },
     {
       "id": "components.thread.message-row.md-latest-release",
@@ -2735,7 +2651,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7581226961558716
+      "metricMismatch": 0.758122021036713
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
@@ -2771,7 +2687,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.21024527079029454
+      "metricMismatch": 0.21024425811155667
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
@@ -2805,7 +2721,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.54432697371086
+      "metricMismatch": 0.544326467371491
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
@@ -2837,7 +2753,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.8717395120238722
+      "metricMismatch": 0.8717388369047137
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
@@ -2871,7 +2787,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6953838727535411
+      "metricMismatch": 0.6953831976343825
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
@@ -2905,7 +2821,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6374665816016527
+      "metricMismatch": 0.637465568922915
     }
   ]
 }

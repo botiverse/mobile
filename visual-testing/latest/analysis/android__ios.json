@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-10T22:17:55.818Z",
+  "generatedAt": "2026-08-11T22:14:27.476Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 81,
-    "pending": 5
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -457,30 +457,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffebffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-02T22:45:32.757Z",
-      "severity": "low",
-      "summary": [
-        "Top header layout and typography are isomorphic; title 'Raft UI Status Dot' and metadata label render identically on both ends with no visible weight, size, or color drift.",
-        "Color row of four status dots (green, orange, gray, blue) matches in hue, fill, stroke, and relative spacing on both Android and iOS renders.",
-        "Active 'Waiting pulse' indicator (pink dot + label) is positioned and sized consistently on both sides; no clipping, missing glyphs, or alignment offset detected.",
-        "Similarity metrics (RGB 0.9796, pixel-perfect 0.9970, mismatch 0.30%) confirm near-identical render; remaining delta is consistent with platform font hinting/AA differences only, not a structural divergence."
-      ],
-      "likelyCauses": [
-        "Minor font-hinting and subpixel antialiasing differences between Android (Skia) and iOS (CoreText) renderers for the same Kuikly text node.",
-        "The ~0.3% pixel mismatch is within the configured 2% tolerance and likely attributable to native canvas AA rather than a real layout or color regression."
-      ],
-      "suggestedOwner": "ui-platform (Kuikly renderer)",
-      "suggestedFixes": [
-        "No code change required; this case should remain marked as a visual pass within tolerance.",
-        "If higher fidelity is desired, enable a shared text-rasterization hint (e.g., grayscale AA) in the Kuikly iOS text pipeline to better match Android's font metrics.",
-        "Re-run the comparison after upgrading tolerance or snapshot to lock the current acceptable delta as the new baseline."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03f407fe43fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
+      "generatedAt": "2026-08-11T22:14:25.607Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.002999216861776066
     },
     {
@@ -1142,7 +1127,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0594543686960749
+      "metricMismatch": 0.05945268089817857
     },
     {
       "id": "components.thread.header.states",
@@ -1307,7 +1292,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.37244636178285473
+      "metricMismatch": 0.3724466993424339
     },
     {
       "id": "components.thread.message-share.selection",
@@ -2125,7 +2110,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-10T22:17:55.316Z",
+      "generatedAt": "2026-08-11T22:14:26.929Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2138,7 +2123,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-10T22:17:55.316Z",
+      "generatedAt": "2026-08-11T22:14:26.929Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2151,7 +2136,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-10T22:17:55.316Z",
+      "generatedAt": "2026-08-11T22:14:26.929Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2164,7 +2149,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-10T22:17:55.316Z",
+      "generatedAt": "2026-08-11T22:14:26.929Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2177,7 +2162,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-10T22:17:55.316Z",
+      "generatedAt": "2026-08-11T22:14:26.929Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
