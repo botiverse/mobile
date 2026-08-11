@@ -23,10 +23,11 @@ package build.raft.app
  *
  * What this is not: a root-cause fix. It is a platform-scoped kill-switch for
  * the triggering action while the draw-layer investigation continues, and it
- * makes no claim beyond that. Android retains the stop-loss. iOS restores the
- * ordinary correction path because applying the stop-loss there caused the
- * user-visible Hands 8f33b1f3 regression. OHOS stays unchanged until it has
- * its own product evidence.
+ * makes no claim beyond that. task #1010 proved and fixed Android's competing
+ * focused-anchor/IME owners, so Android restores ordinary correction together
+ * with that root fix. iOS had already restored it after the stop-loss caused
+ * the user-visible Hands 8f33b1f3 regression. OHOS stays unchanged until it
+ * has its own product evidence.
  */
 internal enum class ThreadImeProgrammaticViewportPolicy {
     SuppressWhileImeOpen,

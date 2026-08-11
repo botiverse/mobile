@@ -12,7 +12,9 @@ internal actual fun slockPlatformConsumesSnapshotsFromKuikly(): Boolean = true
 
 internal actual fun slockPlatformThreadImeProgrammaticViewportPolicy():
     ThreadImeProgrammaticViewportPolicy =
-    ThreadImeProgrammaticViewportPolicy.SuppressWhileImeOpen
+    // task #1010: the route-focus watcher now retires before composer IME
+    // correction, so Android can restore the ordinary single-owner path.
+    ThreadImeProgrammaticViewportPolicy.AllowWhileImeOpen
 
 internal actual fun slockPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode =
     AppShellChildPagePrewarmMode.Canary

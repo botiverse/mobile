@@ -17104,6 +17104,19 @@ private fun ThreadMessagesList(
         while (true) {
             delay(FocusedAnchorSessionRecheckIntervalMs)
             focusedAnchorSessionElapsedMs += FocusedAnchorSessionRecheckIntervalMs
+            // task #1010: opening the IME hands viewport ownership from the
+            // one-shot route focus to the composer. The composer effect marks
+            // the identity consumed before it evaluates the inset layout; a
+            // suspended focus watcher must observe that retirement before it
+            // can re-pin into the shrinking viewport.
+            if (consumedFocusedMessageAnchorIdentity == targetIdentity) {
+                diagnosticsLogger(
+                    "thread_focused_anchor_session outcome=consumed_ime_handoff " +
+                        "reanchors=$focusedAnchorSessionReanchors driftMaxPx=$driftMaxPx " +
+                        "elapsedMs=$focusedAnchorSessionElapsedMs messageId=$targetMessageId"
+                )
+                return@LaunchedEffect
+            }
             val currentOffset = listState.focusedAnchorTargetOffset(targetIndex)
             val currentUserScrollGeneration = userScrollGeneration.value
             val rawScrollInProgress = listState.isScrollInProgress
@@ -17584,6 +17597,38 @@ private fun ThreadMessagesList(
         val focusedTargetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() }
         val focusedTargetItemIndex = renderPayload.focusedMessageListItemIndex()
         val focusedTailMessageId = renderPayload.messages.lastOrNull()?.id
+        val imeHandoffIdentity =
+            focusedAnchorImeHandoffIdentity(
+                keyboardInsetDp = composerKeyboardInsetDp,
+                targetIdentity = focusedTargetIdentity,
+                anchoredIdentity = focusedAnchorSessionIdentity,
+                consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
+                currentUserScrollGeneration = userScrollGeneration.value
+            )
+        if (imeHandoffIdentity != null) {
+            consumedFocusedMessageAnchorIdentity = imeHandoffIdentity
+            val handoffTransfersToBottom =
+                focusedAnchorImeHandoffTransfersToBottom(
+                    handoffIdentity = imeHandoffIdentity,
+                    targetItemIndex = focusedTargetItemIndex,
+                    latestMessageItemIndex = latestMessageListItemIndex,
+                    canLoadMoreAfter = renderPayload.canLoadMoreAfter
+                )
+            if (handoffTransfersToBottom) {
+                allowBottomAutoAnchor = true
+            }
+            // The composer now owns the shrunken viewport. A late origin-row
+            // correction belongs to the retired route-focus session and must
+            // not become a second scroll actor after the handoff.
+            correctedFocusedOriginIdentity = imeHandoffIdentity
+            diagnosticsLogger(
+                "thread_focused_anchor_ime_handoff outcome=consumed " +
+                    "bottomAutoAnchor=$handoffTransfersToBottom " +
+                    "messageId=${focusedTargetMessageId.orEmpty()}"
+            )
+        }
         val focusedAnchorOwnsViewport =
             focusedMessageAnchorOwnsViewport(
                 pendingIdentity = focusedTargetIdentity,
@@ -19512,6 +19557,45 @@ internal fun focusedMessageAnchorOwnsViewport(
         scrollInterruptedIdentity = scrollInterruptedIdentity,
         yieldElapsedMs = yieldElapsedMs
     )
+
+// task #1010: the focused-message request is route intent, while an open IME
+// establishes a new explicit composer viewport. Once the focus request has
+// actually anchored, hand ownership to the composer exactly once. This keeps
+// the ordinary inset correction available but prevents the focus watcher and
+// late origin correction from dispatching a second scroll into the shrinking
+// Lazy viewport. An unanchored request remains pending; user takeover remains
+// authoritative.
+internal fun focusedAnchorImeHandoffIdentity(
+    keyboardInsetDp: Float,
+    targetIdentity: String?,
+    anchoredIdentity: String?,
+    consumedIdentity: String?,
+    scrollInterruptedIdentity: String?,
+    startUserScrollGeneration: Int?,
+    currentUserScrollGeneration: Int
+): String? =
+    targetIdentity?.takeIf { identity ->
+        keyboardInsetDp > 0f &&
+            anchoredIdentity == identity &&
+            shouldRunFocusedMessageAnchor(
+                targetIdentity = identity,
+                consumedIdentity = consumedIdentity,
+                scrollInterruptedIdentity = scrollInterruptedIdentity
+            ) &&
+            startUserScrollGeneration != null &&
+            startUserScrollGeneration == currentUserScrollGeneration
+    }
+
+internal fun focusedAnchorImeHandoffTransfersToBottom(
+    handoffIdentity: String?,
+    targetItemIndex: Int,
+    latestMessageItemIndex: Int,
+    canLoadMoreAfter: Boolean
+): Boolean =
+    handoffIdentity != null &&
+        targetItemIndex >= 0 &&
+        targetItemIndex == latestMessageItemIndex &&
+        !canLoadMoreAfter
 
 internal data class ThreadBottomAutoAnchorAvailabilityState(
     val currentAllow: Boolean,
