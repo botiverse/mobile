@@ -19,6 +19,8 @@ pluginManagement {
                 includeModule("com.tencent.kuiklybase", "resource-generator")
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
                 includeModuleByRegex("build\\.raft\\.kuiklybase", "datetime.*")
+                includeModule("co.touchlab", "sqliter-driver")
+                includeModule("co.touchlab", "sqliter-driver-ohosarm64")
             }
         }
     }
@@ -54,7 +56,6 @@ pluginManagement {
     }
 
     val sqldelightVersion = "2.1.0-KBA-001"
-    val sqliterVersion = "1.3.3-KBA-001"
     fun String?.enabledByDefault(defaultValue: Boolean): Boolean =
         when (this?.trim()?.lowercase()) {
             "1", "true", "yes", "on" -> true
@@ -73,9 +74,6 @@ pluginManagement {
             !mavenArtifactExists("co/touchlab", "stately-strict-ohosarm64", sqldelightVersion) ||
             !mavenArtifactExists("co/touchlab", "stately-concurrency", sqldelightVersion) ||
             !mavenArtifactExists("co/touchlab", "stately-concurrency-ohosarm64", sqldelightVersion)
-    val needsSqliter =
-        !mavenArtifactExists("co/touchlab", "sqliter-driver", sqliterVersion) ||
-            !mavenArtifactExists("co/touchlab", "sqliter-driver-ohosarm64", sqliterVersion)
     val needsSqlDelight =
         !mavenArtifactExists("app/cash/sqldelight", "app.cash.sqldelight.gradle.plugin", sqldelightVersion) ||
             !mavenArtifactExists("app/cash/sqldelight", "gradle-plugin", sqldelightVersion) ||
@@ -96,18 +94,6 @@ pluginManagement {
             ":stately-strict:publishOhosArm64PublicationToMavenLocal",
             ":stately-concurrency:publishKotlinMultiplatformPublicationToMavenLocal",
             ":stately-concurrency:publishOhosArm64PublicationToMavenLocal"
-        )
-    }
-
-    if (!skipOhosLocalDependencyPrep && needsSqliter) {
-        ensureSubmodule("third_party/sqliter")
-        runChecked(
-            File(slockRoot, "third_party/sqliter"),
-            "./gradlew",
-            "--no-daemon",
-            "--console=plain",
-            ":sqliter-driver:publishKotlinMultiplatformPublicationToMavenLocal",
-            ":sqliter-driver:publishOhosArm64PublicationToMavenLocal"
         )
     }
 
@@ -166,6 +152,8 @@ dependencyResolutionManagement {
                 includeModule("com.tencent.kuiklybase", "resource-generator")
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
                 includeModuleByRegex("build\\.raft\\.kuiklybase", "datetime.*")
+                includeModule("co.touchlab", "sqliter-driver")
+                includeModule("co.touchlab", "sqliter-driver-ohosarm64")
             }
         }
     }
