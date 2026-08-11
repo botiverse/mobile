@@ -16,6 +16,7 @@ import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.ScreenError
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.TasksViewMode
@@ -404,8 +405,13 @@ class SlockHomeComponentsTest {
                 currentServerId = "server-1",
                 servers =
                     listOf(
-                        SlockServerSwitcherItem(id = "server-1", name = "Current", slug = "current", unreadCount = 8),
-                        SlockServerSwitcherItem(id = "server-2", name = "Other", slug = "other", unreadCount = 0)
+                        SlockServerSwitcherItem(
+                            id = "server-1",
+                            name = "Current",
+                            slug = "current",
+                            hasBroaderUnread = true
+                        ),
+                        SlockServerSwitcherItem(id = "server-2", name = "Other", slug = "other")
                     )
             )
         )
@@ -414,11 +420,176 @@ class SlockHomeComponentsTest {
                 currentServerId = "server-1",
                 servers =
                     listOf(
-                        SlockServerSwitcherItem(id = "server-1", name = "Current", slug = "current", unreadCount = 0),
-                        SlockServerSwitcherItem(id = "server-2", name = "Other", slug = "other", unreadCount = 3)
+                        SlockServerSwitcherItem(id = "server-1", name = "Current", slug = "current"),
+                        SlockServerSwitcherItem(
+                            id = "server-2",
+                            name = "Other",
+                            slug = "other",
+                            hasBroaderUnread = true
+                        )
                     )
             )
         )
+    }
+
+    @Test
+    fun selectedServerBadgeUsesTheSameActivityUnreadAuthorityAsHome() {
+        val owner = testServerSwitcherActivityOwner()
+        val authority =
+            HomeServerSwitcherActivityAuthority(
+                owner = owner,
+                unreadCount = 78,
+                totalCount = 120,
+                hasValue = true
+            )
+        val selected =
+            sharedHomeSwitcherItems(
+                session = testServerSwitcherSession(),
+                selectedServer = ServerSummary(ServerId("server-1"), "Current", slug = "current"),
+                serverUnreadCounts = mapOf("server-1" to 21, "server-2" to 6),
+                activityUnreadOwner = owner,
+                activityUnreadAuthority = authority
+            ).first { it.id == "server-1" }
+        val homeAuthority =
+            homeServerSwitcherActivityAuthorityFor(
+                selectedServerId = "server-1",
+                expectedOwner = owner,
+                authority = authority
+            )
+
+        assertEquals(homeAuthority?.unreadCount, selected.activityUnreadCount)
+        assertEquals(
+            HomeServerSwitcherBadgePresentation(
+                kind = HomeServerSwitcherBadgeKind.ActivityNumber,
+                activityLabel = "78"
+            ),
+            homeServerSwitcherBadgePresentation(selected)
+        )
+    }
+
+    @Test
+    fun selectedServerWithoutActivityValueNeverUsesBroaderUnreadAsANumber() {
+        val owner = testServerSwitcherActivityOwner()
+        val missing =
+            sharedHomeSwitcherItems(
+                session = testServerSwitcherSession(),
+                selectedServer = ServerSummary(ServerId("server-1"), "Current", slug = "current"),
+                serverUnreadCounts = mapOf("server-1" to 21),
+                activityUnreadOwner = owner,
+                activityUnreadAuthority = HomeServerSwitcherActivityAuthority(owner = owner, unreadCount = 21)
+            ).first { it.id == "server-1" }
+        val authoritativeZero =
+            sharedHomeSwitcherItems(
+                session = testServerSwitcherSession(),
+                selectedServer = ServerSummary(ServerId("server-1"), "Current", slug = "current"),
+                serverUnreadCounts = mapOf("server-1" to 21),
+                activityUnreadOwner = owner,
+                activityUnreadAuthority =
+                    HomeServerSwitcherActivityAuthority(
+                        owner = owner,
+                        unreadCount = 0,
+                        hasValue = true
+                    )
+            ).first { it.id == "server-1" }
+
+        assertNull(missing.activityUnreadCount)
+        assertEquals(HomeServerSwitcherBadgeKind.BroaderUnreadDot, homeServerSwitcherBadgePresentation(missing).kind)
+        assertNull(homeServerSwitcherBadgePresentation(missing).activityLabel)
+        assertEquals(0, authoritativeZero.activityUnreadCount)
+        assertEquals(
+            HomeServerSwitcherBadgeKind.BroaderUnreadDot,
+            homeServerSwitcherBadgePresentation(authoritativeZero).kind
+        )
+    }
+
+    @Test
+    fun nonselectedServerBroaderUnreadProjectsToNeutralDotOnly() {
+        val owner = testServerSwitcherActivityOwner()
+        val authority =
+            HomeServerSwitcherActivityAuthority(
+                owner = owner,
+                unreadCount = 78,
+                hasValue = true
+            )
+        val unreadCounts = mapOf("server-1" to 21, "server-2" to 6)
+        val compactItems =
+            sharedHomeSwitcherItems(
+                session = testServerSwitcherSession(),
+                selectedServer = ServerSummary(ServerId("server-1"), "Current", slug = "current"),
+                serverUnreadCounts = unreadCounts,
+                activityUnreadOwner = owner,
+                activityUnreadAuthority = authority
+            )
+        val drawerItems =
+            HomeServerDrawerState(
+                sections =
+                    linkedMapOf(
+                        ServerId("server-1") to
+                            HomeServerDrawerSectionState(
+                                server = ServerSummary(ServerId("server-1"), "Current", slug = "current")
+                            ),
+                        ServerId("server-2") to
+                            HomeServerDrawerSectionState(
+                                server = ServerSummary(ServerId("server-2"), "Other", slug = "other")
+                            )
+                    )
+            ).toSlockHomeServerDrawerSections(
+                serverUnreadCounts = unreadCounts,
+                selectedServerId = "server-1",
+                activityUnreadOwner = owner,
+                activityUnreadAuthority = authority
+            ).map { it.server }
+        val compactNonselected = compactItems.first { it.id == "server-2" }
+        val drawerNonselected = drawerItems.first { it.id == "server-2" }
+        val presentation = homeServerSwitcherBadgePresentation(compactNonselected)
+
+        assertEquals(compactItems.map(::homeServerSwitcherBadgePresentation), drawerItems.map(::homeServerSwitcherBadgePresentation))
+        assertNull(compactNonselected.activityUnreadCount)
+        assertNull(drawerNonselected.activityUnreadCount)
+        assertEquals(HomeServerSwitcherBadgeKind.BroaderUnreadDot, presentation.kind)
+        assertNull(presentation.activityLabel)
+    }
+
+    @Test
+    fun activityAuthorityChangesCannotInheritAnOldEnvironmentAccountOrServerValue() {
+        val oldOwner =
+            HomeServerSwitcherActivityOwner(
+                environmentId = "https://old.example",
+                accountId = "account-old",
+                serverId = "server-old"
+            )
+        val oldAuthority =
+            HomeServerSwitcherActivityAuthority(
+                owner = oldOwner,
+                unreadCount = 78,
+                totalCount = 120,
+                hasValue = true
+            )
+        val changedOwners =
+            listOf(
+                oldOwner.copy(environmentId = "https://new.example"),
+                oldOwner.copy(accountId = "account-new"),
+                oldOwner.copy(serverId = "server-new")
+            )
+
+        changedOwners.forEach { expectedOwner ->
+            val projected =
+                sharedHomeSwitcherItems(
+                    session = testServerSwitcherSession(selectedServerId = expectedOwner.serverId),
+                    selectedServer =
+                        ServerSummary(
+                            id = ServerId(expectedOwner.serverId),
+                            name = "Current",
+                            slug = "current"
+                        ),
+                    serverUnreadCounts = emptyMap(),
+                    activityUnreadOwner = expectedOwner,
+                    activityUnreadAuthority = oldAuthority
+                ).first { it.id == expectedOwner.serverId }
+
+            assertNull(projected.activityUnreadCount)
+            assertEquals(HomeServerSwitcherBadgeKind.None, homeServerSwitcherBadgePresentation(projected).kind)
+        }
     }
 
     @Test
@@ -2238,6 +2409,29 @@ class SlockHomeComponentsTest {
             channels = emptyList(),
             directMessages = emptyList(),
             unreadTotal = 0
+        )
+
+    private fun testServerSwitcherActivityOwner(): HomeServerSwitcherActivityOwner =
+        HomeServerSwitcherActivityOwner(
+            environmentId = "https://raft.example",
+            accountId = "account-1",
+            serverId = "server-1"
+        )
+
+    private fun testServerSwitcherSession(selectedServerId: String = "server-1"): StoredAuthSession =
+        StoredAuthSession(
+            user = StoredAuthUser(id = "account-1", email = "artin@example.com", displayName = "Artin"),
+            accessToken = "token",
+            refreshToken = "refresh",
+            selectedServerId = selectedServerId,
+            servers =
+                linkedSetOf(selectedServerId, "server-1", "server-2").map { serverId ->
+                    StoredAuthServer(
+                        id = serverId,
+                        name = if (serverId == selectedServerId) "Current" else "Other",
+                        slug = if (serverId == selectedServerId) "current" else "other"
+                    )
+                }
         )
 
     private fun testAuthSession(): StoredAuthSession =

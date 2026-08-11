@@ -2517,6 +2517,49 @@ internal fun SlockAppShellContent(
     }
 }
 
+private data class AppShellActivityUnreadProjection(
+    val summary: build.raft.app.data.ActivityUnreadSummaryProjection,
+    val owner: HomeServerSwitcherActivityOwner?,
+    val authority: HomeServerSwitcherActivityAuthority
+)
+
+@Composable
+private fun rememberAppShellActivityUnreadProjection(
+    sharedStores: SlockSharedStoreProvider,
+    readySession: StoredAuthSession?,
+    readyServerId: String?
+): AppShellActivityUnreadProjection {
+    val serverId = remember(readyServerId) { ServerId(readyServerId.orEmpty()) }
+    val owner =
+        homeServerSwitcherActivityOwner(
+            environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+            accountId = readySession?.user?.id.orEmpty(),
+            serverId = serverId.value
+        )
+    val flow =
+        remember(sharedStores.activityUnreadSummaryStore, serverId) {
+            sharedStores.activityUnreadSummaryStore.projectionFlow(serverId)
+        }
+    val summaryState =
+        key(owner, flow) {
+            flow.collectAsState(
+                sharedStores.activityUnreadSummaryStore.currentProjection(serverId)
+            )
+        }
+    val summary = summaryState.value
+    return AppShellActivityUnreadProjection(
+        summary = summary,
+        owner = owner,
+        authority =
+            HomeServerSwitcherActivityAuthority(
+                owner = owner,
+                unreadCount = summary.totalUnreadCount,
+                totalCount = summary.totalCount,
+                hasValue = summary.hasValue && summary.serverId == serverId.value
+            )
+    )
+}
+
 @Composable
 private fun SlockAppShellReadyContent(
     pageVisibleTick: Int,
@@ -3599,14 +3642,11 @@ private fun SlockAppShellReadyContent(
             is SharedAuthGateState.Error -> Unit
         }
     }
-    val activityUnreadServerId = remember(readyServerId) { ServerId(readyServerId.orEmpty()) }
-    val activityUnreadSummaryFlow =
-        remember(sharedStores.activityUnreadSummaryStore, activityUnreadServerId) {
-            sharedStores.activityUnreadSummaryStore.projectionFlow(activityUnreadServerId)
-        }
-    val activityUnreadSummary by activityUnreadSummaryFlow.collectAsState(
-        sharedStores.activityUnreadSummaryStore.currentProjection(activityUnreadServerId)
-    )
+    val activityUnreadProjection =
+        rememberAppShellActivityUnreadProjection(sharedStores, readySession, readyServerId)
+    val activityUnreadSummary = activityUnreadProjection.summary
+    val activityUnreadOwner = activityUnreadProjection.owner
+    val activityUnreadAuthority = activityUnreadProjection.authority
     // Forward the process-owned selected-server Activity projection to the host badge. Source is
     // diagnostics-only; hosts display count and must not branch on provenance.
     LaunchedEffect(homeState.appBadgeCount, activityUnreadSummary) {
@@ -5536,8 +5576,8 @@ private fun SlockAppShellReadyContent(
                                 sessionReady = readyServerId?.isNotBlank() == true,
                                 draftPersistSlice = composerDraftPersistSlice,
                                 conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
-                                activityUnreadCount = activityUnreadSummary.totalUnreadCount,
-                                activityTotalCount = activityUnreadSummary.totalCount,
+                                activityUnreadOwner = activityUnreadOwner,
+                                activityUnreadAuthority = activityUnreadAuthority,
                                 savedCount = homeSearchSavedState.saved.totalCount,
                                 prefersChineseCommunity = prefersChineseCommunity,
                                 serverDrawerEnabled = serverDrawerEnabled,
@@ -5921,6 +5961,9 @@ private fun SlockAppShellReadyContent(
                 topSafeArea = shellScope.topSafeArea,
                 bottomSafeArea = shellScope.bottomSafeArea,
                 serverMembersStore = appShellServerMembersStore,
+                selectedServerId = readyServerId.orEmpty(),
+                activityUnreadOwner = activityUnreadOwner,
+                activityUnreadAuthority = activityUnreadAuthority,
                 selectedTab = selectedTab,
                 modalGestureBlocked =
                     appShellModalHostState.entries.isNotEmpty() ||
@@ -6014,6 +6057,9 @@ private fun AppShellServerDrawerHost(
     topSafeArea: Dp,
     bottomSafeArea: Dp,
     serverMembersStore: SharedServerMembersStore?,
+    selectedServerId: String,
+    activityUnreadOwner: HomeServerSwitcherActivityOwner?,
+    activityUnreadAuthority: HomeServerSwitcherActivityAuthority,
     selectedTab: String,
     modalGestureBlocked: Boolean,
     dismissLabel: String,
@@ -6041,8 +6087,19 @@ private fun AppShellServerDrawerHost(
     val projection by projectionFlow.collectAsState(initialProjection)
     val currentIntent by rememberUpdatedState(projection.commandIntent)
     val drawerSections =
-        remember(projection.drawer, projection.unreadCounts) {
-            projection.drawer.toSlockHomeServerDrawerHostedSections(projection.unreadCounts)
+        remember(
+            projection.drawer,
+            projection.unreadCounts,
+            selectedServerId,
+            activityUnreadOwner,
+            activityUnreadAuthority
+        ) {
+            projection.drawer.toSlockHomeServerDrawerHostedSections(
+                serverUnreadCounts = projection.unreadCounts,
+                selectedServerId = selectedServerId,
+                activityUnreadOwner = activityUnreadOwner,
+                activityUnreadAuthority = activityUnreadAuthority
+            )
         }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -17160,8 +17217,8 @@ private fun SharedHomeScreen(
     sessionReady: Boolean = true,
     draftPersistSlice: SharedThreadComposerDraftPersistSlice? = null,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null,
-    activityUnreadCount: Int = 0,
-    activityTotalCount: Int = 0,
+    activityUnreadOwner: HomeServerSwitcherActivityOwner? = null,
+    activityUnreadAuthority: HomeServerSwitcherActivityAuthority = HomeServerSwitcherActivityAuthority(),
     savedCount: Int = 0,
     prefersChineseCommunity: Boolean = false,
     serverDrawerEnabled: Boolean = false,
@@ -17220,15 +17277,28 @@ private fun SharedHomeScreen(
 
     val serverSwitchState = state.serverSwitchState
     val serverSwitcherExpanded = state.serverSwitcherExpanded
+    val selectedActivityServerId = activityUnreadOwner?.serverId.orEmpty()
     val serverDrawerSections =
-        remember(state.serverDrawer, state.serverUnreadCounts) {
-            state.serverDrawer.toSlockHomeServerDrawerSections(state.serverUnreadCounts)
+        remember(
+            state.serverDrawer,
+            state.serverUnreadCounts,
+            selectedActivityServerId,
+            activityUnreadOwner,
+            activityUnreadAuthority
+        ) {
+            state.serverDrawer.toSlockHomeServerDrawerSections(
+                serverUnreadCounts = state.serverUnreadCounts,
+                selectedServerId = selectedActivityServerId,
+                activityUnreadOwner = activityUnreadOwner,
+                activityUnreadAuthority = activityUnreadAuthority
+            )
         }
     val renderBranch = sharedHomeRenderBranch(state.content)
-    LaunchedEffect(active, renderBranch, homeContentSummary, selectedConversationId, activityUnreadCount, savedCount) {
+    LaunchedEffect(active, renderBranch, homeContentSummary, selectedConversationId, activityUnreadAuthority, savedCount) {
         bridge.log(
             "shared_home_render_branch active=$active branch=$renderBranch state=$homeContentSummary " +
-                "activityUnread=$activityUnreadCount saved=$savedCount selectedConversation=${selectedConversationId.orEmpty()}"
+                "activityUnread=${activityUnreadAuthority.unreadCount} saved=$savedCount " +
+                "selectedConversation=${selectedConversationId.orEmpty()}"
         )
     }
     when (val current = state.content) {
@@ -17243,6 +17313,8 @@ private fun SharedHomeScreen(
                     homeServerAvatarEnabled = homeServerAvatarEnabled,
                     serverDrawerSections = serverDrawerSections,
                     serverUnreadCounts = state.serverUnreadCounts,
+                    activityUnreadOwner = activityUnreadOwner,
+                    activityUnreadAuthority = activityUnreadAuthority,
                     prefersChineseCommunity = prefersChineseCommunity,
                     bottomContentPadding = bottomContentPadding,
                     loadingSkeletons = true,
@@ -17277,6 +17349,8 @@ private fun SharedHomeScreen(
                 homeServerAvatarEnabled = homeServerAvatarEnabled,
                 serverDrawerSections = serverDrawerSections,
                 serverUnreadCounts = state.serverUnreadCounts,
+                activityUnreadOwner = activityUnreadOwner,
+                activityUnreadAuthority = activityUnreadAuthority,
                 prefersChineseCommunity = prefersChineseCommunity,
                 bottomContentPadding = bottomContentPadding,
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
@@ -17307,6 +17381,8 @@ private fun SharedHomeScreen(
                     homeServerAvatarEnabled = homeServerAvatarEnabled,
                     serverDrawerSections = serverDrawerSections,
                     serverUnreadCounts = state.serverUnreadCounts,
+                    activityUnreadOwner = activityUnreadOwner,
+                    activityUnreadAuthority = activityUnreadAuthority,
                     prefersChineseCommunity = prefersChineseCommunity,
                     bottomContentPadding = bottomContentPadding,
                     inlineError = localizedSharedHomeErrorDisplay(current.code),
@@ -17403,18 +17479,20 @@ private fun SharedHomeScreen(
                     )
                 }
             val servers =
-                remember(current.session.servers, snapshot.server, state.serverUnreadCounts) {
-                    current.session.servers.map { server ->
-                        server.toServerSummary().let { summary ->
-                            if (summary.id == snapshot.server.id) {
-                                snapshot.server.copy(
-                                    avatarUrl = snapshot.server.avatarUrl ?: summary.avatarUrl
-                                )
-                            } else {
-                                summary
-                            }
-                        }.toSharedSwitcherItem(state.serverUnreadCounts)
-                    }.ifEmpty { listOf(snapshot.server.toSharedSwitcherItem(state.serverUnreadCounts)) }
+                remember(
+                    current.session.servers,
+                    snapshot.server,
+                    state.serverUnreadCounts,
+                    activityUnreadOwner,
+                    activityUnreadAuthority
+                ) {
+                    sharedHomeSwitcherItems(
+                        session = current.session,
+                        selectedServer = snapshot.server,
+                        serverUnreadCounts = state.serverUnreadCounts,
+                        activityUnreadOwner = activityUnreadOwner,
+                        activityUnreadAuthority = activityUnreadAuthority
+                    )
                 }
             val channelItems =
                 remember(snapshot.channels, conversationRowProjector) {
@@ -17450,9 +17528,16 @@ private fun SharedHomeScreen(
                 remember(snapshot.channels, snapshot.directMessages) {
                     (snapshot.channels + snapshot.directMessages).associateBy { it.threadId.value }
                 }
-            val homeActivityUnreadCount = homeActivitySidebarUnreadCount(
-                activityUnreadCount = activityUnreadCount
-            )
+            val selectedActivityAuthority =
+                homeServerSwitcherActivityAuthorityFor(
+                    selectedServerId = snapshot.server.id.value,
+                    expectedOwner = activityUnreadOwner,
+                    authority = activityUnreadAuthority
+                )
+            val homeActivityUnreadCount =
+                homeActivitySidebarUnreadCount(
+                    activityUnreadCount = selectedActivityAuthority?.unreadCount ?: 0
+                )
             val homeShellLabels = SlockHomeShellLabels.localized()
             SlockStructuralHomeShell(
                 currentServerName = snapshot.server.name,
@@ -17464,7 +17549,7 @@ private fun SharedHomeScreen(
                 inboxUnreadCount = homeActivityUnreadCount,
                 inboxTotalCount = homeActivitySidebarTotalCount(
                     activityUnreadCount = homeActivityUnreadCount,
-                    activityTotalCount = activityTotalCount
+                    activityTotalCount = selectedActivityAuthority?.totalCount ?: 0
                 ),
                 savedCount = savedCount,
                 serverSwitcherExpanded = serverSwitcherExpanded,
@@ -20561,6 +20646,8 @@ private fun SharedHomeSessionShell(
     serverDrawerSections: List<SlockHomeServerDrawerSection> = emptyList(),
     scrollToTopRequest: Int = 0,
     serverUnreadCounts: Map<String, Int> = emptyMap(),
+    activityUnreadOwner: HomeServerSwitcherActivityOwner? = null,
+    activityUnreadAuthority: HomeServerSwitcherActivityAuthority = HomeServerSwitcherActivityAuthority(),
     prefersChineseCommunity: Boolean = false,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     // #372: true only for the Loading-with-session branch — renders
@@ -20579,10 +20666,20 @@ private fun SharedHomeSessionShell(
     onCreateChannelClick: () -> Unit
 ) {
     val currentServer = session.currentServerSummary()
+    val currentServerId = currentServer?.id?.value ?: session.currentServerId.orEmpty()
     SlockStructuralHomeShell(
         currentServerName = currentServer?.name ?: "No server",
-        currentServerId = currentServer?.id?.value ?: session.currentServerId.orEmpty(),
-        servers = session.servers.map { it.toServerSummary().toSharedSwitcherItem(serverUnreadCounts) },
+        currentServerId = currentServerId,
+        servers =
+            currentServer?.let {
+                sharedHomeSwitcherItems(
+                    session = session,
+                    selectedServer = it,
+                    serverUnreadCounts = serverUnreadCounts,
+                    activityUnreadOwner = activityUnreadOwner,
+                    activityUnreadAuthority = activityUnreadAuthority
+                )
+            }.orEmpty(),
         channels = emptyList(),
         directMessages = emptyList(),
         showLoadingSkeletons = loadingSkeletons,
@@ -20621,8 +20718,39 @@ private fun ServerSummary.toSharedSwitcherItem(serverUnreadCounts: Map<String, I
         name = name,
         slug = slug ?: description?.removePrefix("/") ?: id.value,
         avatarUrl = avatarUrl,
-        unreadCount = serverUnreadCounts[id.value] ?: unreadCount
+        hasBroaderUnread = (serverUnreadCounts[id.value] ?: unreadCount) > 0
     )
+
+internal fun sharedHomeSwitcherItems(
+    session: StoredAuthSession,
+    selectedServer: ServerSummary,
+    serverUnreadCounts: Map<String, Int>,
+    activityUnreadOwner: HomeServerSwitcherActivityOwner?,
+    activityUnreadAuthority: HomeServerSwitcherActivityAuthority
+): List<SlockServerSwitcherItem> =
+    session.servers.map { server ->
+        server.toServerSummary().let { summary ->
+            if (summary.id == selectedServer.id) {
+                selectedServer.copy(avatarUrl = selectedServer.avatarUrl ?: summary.avatarUrl)
+            } else {
+                summary
+            }
+        }.toSharedSwitcherItem(serverUnreadCounts)
+            .withServerSwitcherActivityAuthority(
+                selectedServerId = selectedServer.id.value,
+                expectedOwner = activityUnreadOwner,
+                authority = activityUnreadAuthority
+            )
+    }.ifEmpty {
+        listOf(
+            selectedServer.toSharedSwitcherItem(serverUnreadCounts)
+                .withServerSwitcherActivityAuthority(
+                    selectedServerId = selectedServer.id.value,
+                    expectedOwner = activityUnreadOwner,
+                    authority = activityUnreadAuthority
+                )
+        )
+    }
 
 internal data class SharedHomeConversationRowSeed(
     val id: String,
@@ -20655,14 +20783,23 @@ internal data class SharedHomeConversationRowProjector(
 }
 
 internal fun HomeServerDrawerState.toSlockHomeServerDrawerSections(
-    serverUnreadCounts: Map<String, Int> = emptyMap()
+    serverUnreadCounts: Map<String, Int> = emptyMap(),
+    selectedServerId: String = "",
+    activityUnreadOwner: HomeServerSwitcherActivityOwner? = null,
+    activityUnreadAuthority: HomeServerSwitcherActivityAuthority = HomeServerSwitcherActivityAuthority()
 ): List<SlockHomeServerDrawerSection> {
     val projector = SharedHomeConversationRowProjector()
     return sections.values.map { section ->
         val snapshot = section.content?.snapshot
         val sidebarOrder = snapshot?.sidebarOrder
         SlockHomeServerDrawerSection(
-            server = section.server.toSharedSwitcherItem(serverUnreadCounts),
+            server =
+                section.server.toSharedSwitcherItem(serverUnreadCounts)
+                    .withServerSwitcherActivityAuthority(
+                        selectedServerId = selectedServerId,
+                        expectedOwner = activityUnreadOwner,
+                        authority = activityUnreadAuthority
+                    ),
             expanded = section.server.id in expandedServerIds,
             status = section.status,
             requestGeneration = section.requestGeneration,
@@ -20684,13 +20821,22 @@ internal fun HomeServerDrawerState.toSlockHomeServerDrawerSections(
 }
 
 internal fun HomeServerDrawerState.toSlockHomeServerDrawerHostedSections(
-    serverUnreadCounts: Map<String, Int> = emptyMap()
+    serverUnreadCounts: Map<String, Int> = emptyMap(),
+    selectedServerId: String = "",
+    activityUnreadOwner: HomeServerSwitcherActivityOwner? = null,
+    activityUnreadAuthority: HomeServerSwitcherActivityAuthority = HomeServerSwitcherActivityAuthority()
 ): List<SlockHomeServerDrawerHostedSection> =
     sections.values.map { section ->
         SlockHomeServerDrawerHostedSection(
             header =
                 SlockHomeServerDrawerSection(
-                    server = section.server.toSharedSwitcherItem(serverUnreadCounts),
+                    server =
+                        section.server.toSharedSwitcherItem(serverUnreadCounts)
+                            .withServerSwitcherActivityAuthority(
+                                selectedServerId = selectedServerId,
+                                expectedOwner = activityUnreadOwner,
+                                authority = activityUnreadAuthority
+                            ),
                     expanded = section.server.id in expandedServerIds,
                     status = section.status,
                     requestGeneration = section.requestGeneration,

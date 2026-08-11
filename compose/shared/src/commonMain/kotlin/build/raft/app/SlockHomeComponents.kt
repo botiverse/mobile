@@ -277,8 +277,89 @@ data class SlockServerSwitcherItem(
     val name: String = "",
     val slug: String = "",
     val avatarUrl: String? = null,
-    val unreadCount: Int = 0
+    val activityUnreadCount: Int? = null,
+    val hasBroaderUnread: Boolean = false
 )
+
+internal data class HomeServerSwitcherActivityOwner(
+    val environmentId: String,
+    val accountId: String,
+    val serverId: String
+)
+
+internal data class HomeServerSwitcherActivityAuthority(
+    val owner: HomeServerSwitcherActivityOwner? = null,
+    val unreadCount: Int = 0,
+    val totalCount: Int = 0,
+    val hasValue: Boolean = false
+)
+
+internal enum class HomeServerSwitcherBadgeKind {
+    None,
+    ActivityNumber,
+    BroaderUnreadDot
+}
+
+internal data class HomeServerSwitcherBadgePresentation(
+    val kind: HomeServerSwitcherBadgeKind,
+    val activityLabel: String? = null
+)
+
+internal fun homeServerSwitcherActivityOwner(
+    environmentId: String,
+    accountId: String,
+    serverId: String
+): HomeServerSwitcherActivityOwner? {
+    val normalizedEnvironmentId = environmentId.trim().trimEnd('/')
+    val normalizedAccountId = accountId.trim()
+    val normalizedServerId = serverId.trim()
+    if (normalizedEnvironmentId.isBlank() || normalizedAccountId.isBlank() || normalizedServerId.isBlank()) return null
+    return HomeServerSwitcherActivityOwner(
+        environmentId = normalizedEnvironmentId,
+        accountId = normalizedAccountId,
+        serverId = normalizedServerId
+    )
+}
+
+internal fun homeServerSwitcherActivityAuthorityFor(
+    selectedServerId: String,
+    expectedOwner: HomeServerSwitcherActivityOwner?,
+    authority: HomeServerSwitcherActivityAuthority
+): HomeServerSwitcherActivityAuthority? =
+    authority.takeIf {
+        it.hasValue &&
+            expectedOwner != null &&
+            it.owner == expectedOwner &&
+            expectedOwner.serverId == selectedServerId.trim()
+    }
+
+internal fun SlockServerSwitcherItem.withServerSwitcherActivityAuthority(
+    selectedServerId: String,
+    expectedOwner: HomeServerSwitcherActivityOwner?,
+    authority: HomeServerSwitcherActivityAuthority
+): SlockServerSwitcherItem =
+    copy(
+        activityUnreadCount =
+            homeServerSwitcherActivityAuthorityFor(selectedServerId, expectedOwner, authority)
+                ?.takeIf { id == selectedServerId }
+                ?.unreadCount
+    )
+
+internal fun homeServerSwitcherBadgePresentation(
+    server: SlockServerSwitcherItem
+): HomeServerSwitcherBadgePresentation {
+    val activityLabel = server.activityUnreadCount?.let(::formatHomeSidebarBadgeCount)
+    return when {
+        activityLabel != null ->
+            HomeServerSwitcherBadgePresentation(
+                kind = HomeServerSwitcherBadgeKind.ActivityNumber,
+                activityLabel = activityLabel
+            )
+        server.hasBroaderUnread ->
+            HomeServerSwitcherBadgePresentation(kind = HomeServerSwitcherBadgeKind.BroaderUnreadDot)
+        else -> HomeServerSwitcherBadgePresentation(kind = HomeServerSwitcherBadgeKind.None)
+    }
+}
 
 @Serializable
 data class SlockHomeConversationItem(
@@ -2817,8 +2898,7 @@ internal fun homeServerSwitcherHasOtherUnread(
     servers: List<SlockServerSwitcherItem>
 ): Boolean =
     servers.any { server ->
-        server.id != currentServerId &&
-            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = server.unreadCount)).hasUnread
+        server.id != currentServerId && server.hasBroaderUnread
     }
 
 private const val DefaultCommunityServerSlug = "community"
@@ -4336,11 +4416,7 @@ private fun HomeServerDrawerServerHeader(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        if (!unavailable) {
-            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = section.server.unreadCount)).label?.let {
-                HomeUnreadBadge(it)
-            }
-        }
+        if (!unavailable) ServerSwitcherUnreadIndicator(section.server)
         if (busy) {
             SlockLucideIcon(SlockLucideIconName.LoaderCircle, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
         } else if (failed) {
@@ -4762,10 +4838,7 @@ private fun ServerSwitcherRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        val badgeLabel =
-            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = server.unreadCount))
-                .label
-        if (badgeLabel != null) HomeUnreadBadge(badgeLabel)
+        ServerSwitcherUnreadIndicator(server)
         if (dragHandleVisible) {
             Box(modifier = Modifier.width(HomeServerSwitcherDragHandleWidth), contentAlignment = Alignment.Center) {
                 SlockLucideIcon(
@@ -4775,6 +4848,21 @@ private fun ServerSwitcherRow(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ServerSwitcherUnreadIndicator(server: SlockServerSwitcherItem) {
+    val presentation = homeServerSwitcherBadgePresentation(server)
+    when (presentation.kind) {
+        HomeServerSwitcherBadgeKind.ActivityNumber ->
+            presentation.activityLabel?.let { HomeUnreadBadge(it) }
+        HomeServerSwitcherBadgeKind.BroaderUnreadDot ->
+            SlockStatusIndicator(
+                color = SlockColor.TextMutedGray,
+                size = SlockStatusIndicatorTokens.ServerUnreadSize
+            )
+        HomeServerSwitcherBadgeKind.None -> Unit
     }
 }
 
