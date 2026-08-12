@@ -2663,7 +2663,8 @@ internal class SharedThreadDataSource(
         provenance: ReplyCacheProvenance,
         currentPayload: KuiklyThreadScreenPayload,
         channelLabel: String,
-        threadShortId: String?
+        threadShortId: String?,
+        requiredParentKind: ConversationKind? = null
     ): DataResult<KuiklyThreadScreenPayload> {
         val shortId =
             threadShortId
@@ -2681,8 +2682,14 @@ internal class SharedThreadDataSource(
         val home =
             currentHomeSnapshot(session)
                 ?: return DataResult.Empty(EmptyReason.NoChannels)
+        val knownMemberProfilesById = currentKnownMarkdownMemberProfilesById(home)
         val channel =
-            resolveMarkdownChannelConversation(home, channelLabel)
+            resolveMarkdownChannelConversation(
+                home = home,
+                channelLabel = channelLabel,
+                requiredKind = requiredParentKind,
+                knownMemberProfilesById = knownMemberProfilesById
+            )
                 ?: return DataResult.Empty(EmptyReason.NoChannels)
         val parentChannelId =
             channel.resolveThreadRouteIdentity().timelineChannelId
@@ -2717,6 +2724,8 @@ internal class SharedThreadDataSource(
                 home = home,
                 channelLabel = channelLabel,
                 threadShortId = shortId,
+                requiredParentKind = requiredParentKind,
+                knownMemberProfilesById = knownMemberProfilesById,
                 parentMessageId = target.parentMessageId,
                 focusedMessageId = target.focusedMessageId,
                 threadChannelId = target.threadChannelId
@@ -4095,16 +4104,28 @@ internal class SharedThreadDataSource(
     private fun KuiklyThreadScreenPayload.withKnownMarkdownChannelNames(
         home: HomeSnapshot
     ): KuiklyThreadScreenPayload {
-        val names =
+        val channelNames =
             home.channels
                 .mapNotNull { conversation -> conversation.name.trim().takeIf { it.isNotBlank() } }
                 .distinctBy { it.lowercase() }
-        return if (names.isEmpty() || names == knownMarkdownChannelNames) {
+        val knownMemberProfilesById = currentKnownMarkdownMemberProfilesById(home)
+        val directMessagePeerNames =
+            home.knownMarkdownDirectMessagePeerNames(knownMemberProfilesById)
+        return if (
+            (channelNames.isEmpty() || channelNames == knownMarkdownChannelNames) &&
+            directMessagePeerNames == knownMarkdownDirectMessagePeerNames
+        ) {
             this
         } else {
-            copy(knownMarkdownChannelNames = names)
+            copy(
+                knownMarkdownChannelNames = channelNames.ifEmpty { knownMarkdownChannelNames },
+                knownMarkdownDirectMessagePeerNames = directMessagePeerNames
+            )
         }
     }
+
+    private fun currentKnownMarkdownMemberProfilesById(home: HomeSnapshot): Map<String, MemberProfile> =
+        serverMembersStore?.currentKnownMemberProfilesById(home.server.id).orEmpty()
 
     private suspend fun currentHomeSnapshot(session: StoredAuthSession): HomeSnapshot? {
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null
@@ -7349,6 +7370,8 @@ internal fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreen
             timeFormat = base.timeFormat,
             knownMarkdownChannelNames =
                 base.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
+            knownMarkdownDirectMessagePeerNames =
+                base.knownMarkdownDirectMessagePeerNames.ifEmpty { knownMarkdownDirectMessagePeerNames },
             emptyTitle = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyTitle else base.emptyTitle,
             emptyDetail = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyDetail else base.emptyDetail
         )
@@ -7369,6 +7392,8 @@ internal fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreen
             timeFormat = base.timeFormat,
             knownMarkdownChannelNames =
                 base.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
+            knownMarkdownDirectMessagePeerNames =
+                base.knownMarkdownDirectMessagePeerNames.ifEmpty { knownMarkdownDirectMessagePeerNames },
             composer = base.composer.takeUnless { it.isDefaultThreadComposer() } ?: composer,
             emptyTitle = base.emptyTitle,
             emptyDetail = base.emptyDetail
@@ -7471,6 +7496,8 @@ private fun KuiklyThreadScreenPayload.withRouteIntentFrom(routePayload: KuiklyTh
         timeFormat = routePayload.timeFormat,
         knownMarkdownChannelNames =
             routePayload.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
+        knownMarkdownDirectMessagePeerNames =
+            routePayload.knownMarkdownDirectMessagePeerNames.ifEmpty { knownMarkdownDirectMessagePeerNames },
         composer =
             composer.copy(
                 syncNonce = maxOf(composer.syncNonce, routePayload.composer.syncNonce),
@@ -7488,7 +7515,10 @@ private fun KuiklyThreadScreenPayload.withHomeContextProjectionFrom(
     // Access is resolved exactly once by launchInitialAccessResolution and is
     // emitted atomically with ThreadAccessResolution.Resolved. Background Home
     // enrichment must never flip an already-mounted Composer into Join later.
-    return copy(knownMarkdownChannelNames = knownNames)
+    return copy(
+        knownMarkdownChannelNames = knownNames,
+        knownMarkdownDirectMessagePeerNames = patch.knownMarkdownDirectMessagePeerNames
+    )
 }
 
 private fun KuiklyThreadScreenPayload.withResolvedReplyThreadRouteIntentFrom(
@@ -7536,9 +7566,17 @@ internal fun buildMarkdownThreadRefLaunchPayload(
     threadShortId: String,
     parentMessageId: String,
     focusedMessageId: String? = null,
-    threadChannelId: String? = null
+    threadChannelId: String? = null,
+    requiredParentKind: ConversationKind? = null,
+    knownMemberProfilesById: Map<String, MemberProfile> = emptyMap()
 ): KuiklyThreadScreenPayload? {
-    val channel = resolveMarkdownChannelConversation(home, channelLabel) ?: return null
+    val channel =
+        resolveMarkdownChannelConversation(
+            home = home,
+            channelLabel = channelLabel,
+            requiredKind = requiredParentKind,
+            knownMemberProfilesById = knownMemberProfilesById
+        ) ?: return null
     val routeIdentity = channel.resolveThreadRouteIdentity()
     val parentChannelId =
         routeIdentity.timelineChannelId
@@ -7557,7 +7595,7 @@ internal fun buildMarkdownThreadRefLaunchPayload(
             parentChannelId = ChannelId(parentChannelId),
             parentMessageId = MessageId(cleanParentMessageId),
             parentSurfaceKind = channel.kind.threadParentSurfaceKindOrNull(),
-            parentChannelKind = routeIdentity.routeKind
+            parentChannelKind = channel.kind.threadChannelKindWireValue()
         )
     return buildStandaloneConversationThreadLaunchPayload(
         conversation = conversation,
@@ -7569,20 +7607,75 @@ internal fun buildMarkdownThreadRefLaunchPayload(
     )?.toInitialPayloadOrNull(instanceId)
 }
 
-private fun resolveMarkdownChannelConversation(home: HomeSnapshot, channelLabel: String): ConversationSummary? {
+private fun resolveMarkdownChannelConversation(
+    home: HomeSnapshot,
+    channelLabel: String,
+    requiredKind: ConversationKind? = null,
+    knownMemberProfilesById: Map<String, MemberProfile> = emptyMap()
+): ConversationSummary? {
     val key = channelLabel.markdownChannelLookupKey()
     if (key.isBlank()) return null
     val matches =
-        home.channels
+        (if (requiredKind == ConversationKind.DirectMessage) home.directMessages else home.channels)
             .map { it.toConversationSummary() }
-            .filter { it.name.markdownChannelLookupKey() == key }
+            .filter { conversation ->
+                (requiredKind == null || conversation.kind == requiredKind) &&
+                    if (requiredKind == ConversationKind.DirectMessage) {
+                        conversation.markdownDirectMessagePeerAliases(knownMemberProfilesById)
+                            .any { alias -> alias.markdownChannelLookupKey() == key }
+                    } else {
+                        conversation.name.markdownChannelLookupKey() == key
+                    }
+            }
             .distinctBy { it.messageStreamChannelId().value }
     return matches.singleOrNull()
 }
 
+private fun ConversationSummary.markdownDirectMessagePeerAliases(
+    knownMemberProfilesById: Map<String, MemberProfile>
+): List<String> {
+    val profile =
+        presenceMemberId
+            ?.value
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let(knownMemberProfilesById::get)
+    return listOfNotNull(name, profile?.handle, profile?.displayName)
+        .mapNotNull { alias -> alias.trim().removePrefix("@").takeIf { it.isNotBlank() } }
+        .distinctBy { it.lowercase() }
+}
+
+private fun HomeSnapshot.knownMarkdownDirectMessagePeerNames(
+    knownMemberProfilesById: Map<String, MemberProfile>
+): List<String> {
+    val aliasesByLookupKey = linkedMapOf<String, MutableList<Pair<String, String>>>()
+    directMessages.forEach { row ->
+        val conversation = row.toConversationSummary()
+        val conversationId = conversation.messageStreamChannelId().value.trim()
+        if (conversationId.isBlank()) return@forEach
+        conversation.markdownDirectMessagePeerAliases(knownMemberProfilesById).forEach { alias ->
+            val key = alias.markdownChannelLookupKey()
+            if (key.isNotBlank()) {
+                aliasesByLookupKey.getOrPut(key) { mutableListOf() } += conversationId to alias
+            }
+        }
+    }
+    return aliasesByLookupKey.values.mapNotNull { matches ->
+        matches.firstOrNull()?.second?.takeIf {
+            matches.map { match -> match.first }.distinct().size == 1
+        }
+    }
+}
+
 private fun String.markdownChannelLookupKey(): String =
     trim()
-        .removePrefix("#")
+        .let { value ->
+            when {
+                value.startsWith("dm:@", ignoreCase = true) -> value.drop(4)
+                value.startsWith("#") -> value.drop(1)
+                else -> value
+            }
+        }
         .substringBefore(":")
         .trim()
         .lowercase()
@@ -8932,6 +9025,8 @@ internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadS
         originErrorCode = patch.originErrorCode,
         knownMarkdownChannelNames =
             patch.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
+        knownMarkdownDirectMessagePeerNames =
+            patch.knownMarkdownDirectMessagePeerNames.ifEmpty { knownMarkdownDirectMessagePeerNames },
         canLoadMoreBefore = patch.canLoadMoreBefore,
         canLoadMoreAfter = patch.canLoadMoreAfter,
         olderMessagesStatus = patch.olderMessagesStatus,

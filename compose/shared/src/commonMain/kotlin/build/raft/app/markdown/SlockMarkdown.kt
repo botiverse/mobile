@@ -141,7 +141,8 @@ data class ThreadMarkdownTag(
     val label: String,
     val kind: ThreadMarkdownTagKind,
     val channelName: String? = null,
-    val threadShortId: String? = null
+    val threadShortId: String? = null,
+    val directMessagePeerName: String? = null
 )
 
 internal typealias SlockMessagePermalinkLabelResolver =
@@ -163,6 +164,7 @@ internal val LocalSlockMarkdownRenderConfig =
 
 enum class ThreadMarkdownTagKind {
     ChannelThread,
+    DirectMessageThread,
     Channel,
     Task,
     UserMention
@@ -182,6 +184,7 @@ data class ThreadInlineCodeMatch(
 
 internal enum class MarkdownInlineTokenKind {
     ChannelThread,
+    DirectMessageThread,
     Channel,
     Task,
     UserMention
@@ -435,6 +438,7 @@ fun defaultSlockMarkdownTagValidity(tag: ThreadMarkdownTag): Boolean =
 private fun ThreadMarkdownTagKind.toMarkdownInlineTokenKind(): MarkdownInlineTokenKind =
     when (this) {
         ThreadMarkdownTagKind.ChannelThread -> MarkdownInlineTokenKind.ChannelThread
+        ThreadMarkdownTagKind.DirectMessageThread -> MarkdownInlineTokenKind.DirectMessageThread
         ThreadMarkdownTagKind.Channel -> MarkdownInlineTokenKind.Channel
         ThreadMarkdownTagKind.Task -> MarkdownInlineTokenKind.Task
         ThreadMarkdownTagKind.UserMention -> MarkdownInlineTokenKind.UserMention
@@ -595,6 +599,16 @@ private fun Set<String>.containsThreadMention(label: String): Boolean {
 
 private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
     when {
+        isThreadDirectMessageReference() -> {
+            val peerStart = indexOf('@') + 1
+            val colonIndex = indexOf(':', peerStart)
+            ThreadMarkdownTag(
+                label = this,
+                kind = ThreadMarkdownTagKind.DirectMessageThread,
+                threadShortId = substring(colonIndex + 1),
+                directMessagePeerName = substring(peerStart, colonIndex)
+            )
+        }
         startsWith('@') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.UserMention)
         drop(1).all { it.isDigit() } -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.Task)
         isThreadChannelReference() -> {
@@ -611,6 +625,23 @@ private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
         startsWith('#') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.Channel, channelName = drop(1))
         else -> null
     }
+
+private fun String.isThreadDirectMessageReference(): Boolean {
+    if (!startsWith("dm:@", ignoreCase = true)) return false
+    val peerStart = 4
+    val colonIndex = indexOf(':', peerStart)
+    if (colonIndex <= peerStart || colonIndex == lastIndex) return false
+    val peerName = substring(peerStart, colonIndex)
+    if (!peerName.first().isAsciiWordCharacter() || peerName.any { !it.isRaftDirectMessagePeerPart() }) return false
+    val shortId = substring(colonIndex + 1)
+    return shortId.length in 6..8 && shortId.all(Char::isThreadShortIdPart)
+}
+
+private fun Char.isRaftDirectMessagePeerPart(): Boolean =
+    isAsciiWordCharacter() || this == '.' || this == '-'
+
+private fun Char.isAsciiWordCharacter(): Boolean =
+    this in 'a'..'z' || this in 'A'..'Z' || isDigit() || this == '_'
 
 private fun String.isThreadChannelReference(): Boolean {
     if (!startsWith('#')) return false
@@ -981,11 +1012,13 @@ private fun SlockRichTextAction.toThreadMarkdownTag(): ThreadMarkdownTag =
             when (refKind) {
                 SlockRichTextRefKind.Channel -> ThreadMarkdownTagKind.Channel
                 SlockRichTextRefKind.Thread -> ThreadMarkdownTagKind.ChannelThread
+                SlockRichTextRefKind.DirectMessageThread -> ThreadMarkdownTagKind.DirectMessageThread
                 SlockRichTextRefKind.Task -> ThreadMarkdownTagKind.Task
                 SlockRichTextRefKind.UserMention -> ThreadMarkdownTagKind.UserMention
             },
         channelName = channelName,
-        threadShortId = threadShortId
+        threadShortId = threadShortId,
+        directMessagePeerName = directMessagePeerName
     )
 
 private object SlockMarkdownTextProvider : TextProvider {
@@ -2540,7 +2573,9 @@ private fun String.slockInlineTextWidthUnits(): Int =
 
 private fun String.slockInlineChipWidthSafetySp(kind: ThreadMarkdownTagKind?): Float =
     when {
-        kind == ThreadMarkdownTagKind.Channel || kind == ThreadMarkdownTagKind.ChannelThread -> 16f
+        kind == ThreadMarkdownTagKind.Channel ||
+            kind == ThreadMarkdownTagKind.ChannelThread ||
+            kind == ThreadMarkdownTagKind.DirectMessageThread -> 16f
         startsWith("#") && drop(1).any { !it.isDigit() } -> 16f
         else -> 0f
     }
@@ -2618,6 +2653,10 @@ internal fun threadMarkdownTagActivationKey(tag: ThreadMarkdownTag): String =
         tag.threadShortId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }?.let { threadShortId ->
             append(":thread=")
             append(threadShortId)
+        }
+        tag.directMessagePeerName?.trim()?.lowercase()?.takeIf { it.isNotBlank() }?.let { peerName ->
+            append(":dm=")
+            append(peerName)
         }
     }
 
@@ -2698,6 +2737,7 @@ private fun slockRichTextChromeKind(
         active -> SlockRichTextChromeKind.Active
         kind == ThreadMarkdownTagKind.UserMention && highlighted -> SlockRichTextChromeKind.SelfMention
         kind == ThreadMarkdownTagKind.UserMention -> SlockRichTextChromeKind.OrdinaryMention
+        kind == ThreadMarkdownTagKind.DirectMessageThread -> SlockRichTextChromeKind.Thread
         kind == ThreadMarkdownTagKind.ChannelThread -> SlockRichTextChromeKind.Thread
         kind == ThreadMarkdownTagKind.Channel -> SlockRichTextChromeKind.Channel
         kind == ThreadMarkdownTagKind.Task -> SlockRichTextChromeKind.Task

@@ -11,6 +11,7 @@ Raft messages use GFM plus product references:
 - `@member`
 - `#channel`
 - `#channel:threadShortId`
+- `dm:@peer:threadShortId`
 - numeric `#task`
 
 These forms are syntax, not a paint-time text search. Markdown constructs own
@@ -106,6 +107,16 @@ followed by whitespace belongs to prose (`#design: next` recognizes
 `_`, `.`, or `-`. Dots are legal inside a handle, but trailing `.` characters
 belong to surrounding sentence punctuation and are not part of the mention.
 
+### Direct-message thread
+
+Case-insensitive `dm:@`, followed by an ASCII peer name using `A-Z`, `a-z`,
+`0-9`, `_`, `.`, or `-`, then `:` and a 6-8 character hexadecimal short id. The complete
+`dm:@peer:shortId` is one typed reference and resolves only against a direct
+message conversation. A same-name channel cannot satisfy it, and ambiguous or
+unknown DM peers fail closed. Bare `@peer:shortId` intentionally remains an
+ordinary member mention followed by literal text; it does not gain message or
+thread navigation semantics.
+
 ## Boundaries, escaping, and CJK
 
 A candidate opener must be at the start of the source or follow a character
@@ -138,7 +149,7 @@ after validation and never changes parsing.
 
 `RaftMarkdownDialectTest` owns syntax/precedence coverage:
 
-- all four Raft reference shapes in ordinary text;
+- all five Raft reference shapes in ordinary text;
 - production-shaped GitHub link label and URL fragment;
 - image, inline code, fenced code, autolink, and HTML ownership;
 - escaping and word/CJK adjacency.

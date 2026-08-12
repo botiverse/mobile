@@ -1461,6 +1461,7 @@ internal data class KuiklyThreadScreenPayload(
     val tasks: List<KuiklyThreadTaskItem> = emptyList(),
     val knownMarkdownChannelNames: List<String> = emptyList(),
     val knownMarkdownMentionNames: List<String> = emptyList(),
+    val knownMarkdownDirectMessagePeerNames: List<String> = emptyList(),
     val knownMarkdownTaskNumbers: List<Int> = emptyList(),
     val canLoadMoreBefore: Boolean = false,
     val canLoadMoreAfter: Boolean = false,
@@ -2555,6 +2556,7 @@ internal fun KuiklyThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: Threa
                 ?.takeIf { it.isNotBlank() }
                 ?.let { "@$it" }
                 ?: threadMarkdownTagDisplayLabel(tag.label)
+        ThreadMarkdownTagKind.DirectMessageThread -> threadMarkdownTagDisplayLabel(tag.label)
         else -> threadMarkdownTagDisplayLabel(tag.label)
     }
 
@@ -2576,6 +2578,11 @@ private fun KuiklyThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<Strin
         }
     }
 
+private fun KuiklyThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet(): Set<String> =
+    buildSet {
+        knownMarkdownDirectMessagePeerNames.forEach { name -> addKnownThreadMentionValue(name) }
+    }
+
 private fun KuiklyThreadScreenPayload.toKnownMarkdownTaskNumberSetOrNull(): Set<Int>? =
     knownMarkdownTaskNumbers.takeIf { it.isNotEmpty() }
         ?.filterTo(mutableSetOf()) { it > 0 }
@@ -2584,11 +2591,13 @@ private fun threadMarkdownTagContextSignature(
     highlightedMentions: Set<String>,
     knownChannelNames: Set<String>,
     knownMentionNames: Set<String>,
+    knownDirectMessagePeerNames: Set<String>,
     knownTaskNumbers: Set<Int>?
 ): String =
     "highlighted=${highlightedMentions.size}:${highlightedMentions.hashCode().toString(16)} " +
         "channels=${knownChannelNames.size}:${knownChannelNames.hashCode().toString(16)} " +
         "mentions=${knownMentionNames.size}:${knownMentionNames.hashCode().toString(16)} " +
+        "dmPeers=${knownDirectMessagePeerNames.size}:${knownDirectMessagePeerNames.hashCode().toString(16)} " +
         "tasks=${knownTaskNumbers?.size ?: -1}:${knownTaskNumbers?.hashCode()?.toString(16) ?: "all"}"
 
 private fun MutableSet<String>.addKnownThreadMentionValues(member: KuiklyThreadMemberItem) {
@@ -2611,12 +2620,16 @@ private fun MutableSet<String>.addKnownThreadMentionValue(value: String?) {
 private fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
     knownChannelNames: Set<String>,
     knownMentionNames: Set<String>,
+    knownDirectMessagePeerNames: Set<String>,
     knownTaskNumbers: Set<Int>? = null
 ): Boolean =
     when (kind) {
         ThreadMarkdownTagKind.Task ->
             knownTaskNumbers?.contains(label.removePrefix("#").toIntOrNull()) ?: true
         ThreadMarkdownTagKind.UserMention -> label.normalizedThreadMentionLookupKey() in knownMentionNames
+        ThreadMarkdownTagKind.DirectMessageThread ->
+            directMessagePeerName.orEmpty().normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames &&
+                !threadShortId.isNullOrBlank()
         ThreadMarkdownTagKind.Channel,
         ThreadMarkdownTagKind.ChannelThread -> {
             val key =
@@ -3982,20 +3995,43 @@ private fun ThreadMessageVisualScreenContent() {
         remember(payload.knownMarkdownMentionNames, payload.members, payload.memberCandidates, payload.originMessage, payload.messages) {
             payload.toKnownMarkdownMentionNameSet()
         }
+    val knownMarkdownDirectMessagePeerNames =
+        remember(payload.knownMarkdownDirectMessagePeerNames) {
+            payload.toKnownMarkdownDirectMessagePeerNameSet()
+        }
     val knownMarkdownTaskNumbers =
         remember(payload.knownMarkdownTaskNumbers) {
             payload.toKnownMarkdownTaskNumberSetOrNull()
         }
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean =
-        remember(knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) {
-            { tag -> tag.isKnownThreadMarkdownTag(knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) }
+        remember(
+            knownMarkdownChannelNames,
+            knownMarkdownMentionNames,
+            knownMarkdownDirectMessagePeerNames,
+            knownMarkdownTaskNumbers
+        ) {
+            { tag ->
+                tag.isKnownThreadMarkdownTag(
+                    knownMarkdownChannelNames,
+                    knownMarkdownMentionNames,
+                    knownMarkdownDirectMessagePeerNames,
+                    knownMarkdownTaskNumbers
+                )
+            }
         }
     val markdownTagContextSignature =
-        remember(highlightedMentions, knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) {
+        remember(
+            highlightedMentions,
+            knownMarkdownChannelNames,
+            knownMarkdownMentionNames,
+            knownMarkdownDirectMessagePeerNames,
+            knownMarkdownTaskNumbers
+        ) {
             threadMarkdownTagContextSignature(
                 highlightedMentions = highlightedMentions,
                 knownChannelNames = knownMarkdownChannelNames,
                 knownMentionNames = knownMarkdownMentionNames,
+                knownDirectMessagePeerNames = knownMarkdownDirectMessagePeerNames,
                 knownTaskNumbers = knownMarkdownTaskNumbers
             )
         }
@@ -9162,7 +9198,8 @@ internal fun SharedThreadRouteContent(
                         }
                     }
                 }
-                action == "openMarkdownThreadRef" && !itemId.isNullOrBlank() -> {
+                (action == "openMarkdownThreadRef" || action == "openMarkdownDirectMessageThreadRef") &&
+                    !itemId.isNullOrBlank() -> {
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
                     coroutineScope.launch {
@@ -9178,7 +9215,13 @@ internal fun SharedThreadRouteContent(
                                         provenance = provenance,
                                         currentPayload = renderedThread,
                                         channelLabel = itemId,
-                                        threadShortId = tab
+                                        threadShortId = tab,
+                                        requiredParentKind =
+                                            if (action == "openMarkdownDirectMessageThreadRef") {
+                                                build.raft.app.model.ConversationKind.DirectMessage
+                                            } else {
+                                                null
+                                            }
                                     )
                             ) {
                                 is DataResult.Content -> {
@@ -13914,6 +13957,14 @@ private fun ThreadPageContent(
                     markdownActionId = actionId
                 )
             }
+            ThreadMarkdownTagKind.DirectMessageThread -> {
+                onThreadEvent(
+                    "openMarkdownDirectMessageThreadRef",
+                    tag.directMessagePeerName ?: tag.label,
+                    tab = tag.threadShortId,
+                    markdownActionId = actionId
+                )
+            }
         }
     }
     val openMarkdownUrl: (String) -> Unit = { url ->
@@ -13927,20 +13978,43 @@ private fun ThreadPageContent(
         remember(payload.knownMarkdownMentionNames, payload.members, payload.memberCandidates, payload.originMessage, payload.messages) {
             payload.toKnownMarkdownMentionNameSet()
         }
+    val knownMarkdownDirectMessagePeerNames =
+        remember(payload.knownMarkdownDirectMessagePeerNames) {
+            payload.toKnownMarkdownDirectMessagePeerNameSet()
+        }
     val knownMarkdownTaskNumbers =
         remember(payload.knownMarkdownTaskNumbers) {
             payload.toKnownMarkdownTaskNumberSetOrNull()
         }
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean =
-        remember(knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) {
-            { tag -> tag.isKnownThreadMarkdownTag(knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) }
+        remember(
+            knownMarkdownChannelNames,
+            knownMarkdownMentionNames,
+            knownMarkdownDirectMessagePeerNames,
+            knownMarkdownTaskNumbers
+        ) {
+            { tag ->
+                tag.isKnownThreadMarkdownTag(
+                    knownMarkdownChannelNames,
+                    knownMarkdownMentionNames,
+                    knownMarkdownDirectMessagePeerNames,
+                    knownMarkdownTaskNumbers
+                )
+            }
         }
     val markdownTagContextSignature =
-        remember(highlightedMentions, knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) {
+        remember(
+            highlightedMentions,
+            knownMarkdownChannelNames,
+            knownMarkdownMentionNames,
+            knownMarkdownDirectMessagePeerNames,
+            knownMarkdownTaskNumbers
+        ) {
             threadMarkdownTagContextSignature(
                 highlightedMentions = highlightedMentions,
                 knownChannelNames = knownMarkdownChannelNames,
                 knownMentionNames = knownMarkdownMentionNames,
+                knownDirectMessagePeerNames = knownMarkdownDirectMessagePeerNames,
                 knownTaskNumbers = knownMarkdownTaskNumbers
             )
         }

@@ -1791,6 +1791,30 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun directMessageThreadReferencePreservesTypedPeerAndShortId() {
+        val body = "Open dm:@artin:1c50c30a, not @artin:1c50c30a."
+        val plan =
+            SlockMarkdownInlineTokenRegistry.plan(
+                body,
+                isTagValid =
+                    validThreadMarkdownTags(
+                        knownMentions = setOf("artin"),
+                        knownDirectMessagePeers = setOf("artin")
+                    )
+            )
+
+        assertEquals(listOf("dm:@artin:1c50c30a", "@artin"), plan.tagTokens().map { it.label })
+        assertEquals(
+            listOf(MarkdownInlineTokenKind.DirectMessageThread, MarkdownInlineTokenKind.UserMention),
+            plan.tagTokens().map { it.kind }
+        )
+        val dmThread = plan.tagTokens().first().tag
+        assertEquals(ThreadMarkdownTagKind.DirectMessageThread, dmThread?.kind)
+        assertEquals("artin", dmThread?.directMessagePeerName)
+        assertEquals("1c50c30a", dmThread?.threadShortId)
+    }
+
+    @Test
     fun inlineChannelReferencesRequireValidChannelCallback() {
         val body = "Known #raft-mobile thread #raft-mobile:4752266f unknown #not-channel and #not-channel:4752266f"
 
@@ -2073,16 +2097,22 @@ class SlockMarkdownTest {
     private fun validThreadMarkdownTags(
         knownChannels: Set<String> = emptySet(),
         knownMentions: Set<String> = emptySet(),
+        knownDirectMessagePeers: Set<String> = emptySet(),
         knownTaskNumbers: Set<Int>? = null
     ): (ThreadMarkdownTag) -> Boolean {
         val channelKeys = knownChannels.mapTo(mutableSetOf()) { it.trim().lowercase() }
         val mentionKeys = knownMentions.mapTo(mutableSetOf()) { it.trim().removePrefix("@").lowercase() }
+        val directMessagePeerKeys =
+            knownDirectMessagePeers.mapTo(mutableSetOf()) { it.trim().removePrefix("@").lowercase() }
         return { tag ->
             when (tag.kind) {
                 ThreadMarkdownTagKind.Task ->
                     knownTaskNumbers?.contains(tag.label.removePrefix("#").toIntOrNull()) ?: true
                 ThreadMarkdownTagKind.UserMention ->
                     tag.label.removePrefix("@").trim().lowercase() in mentionKeys
+                ThreadMarkdownTagKind.DirectMessageThread ->
+                    tag.directMessagePeerName.orEmpty().trim().lowercase() in directMessagePeerKeys &&
+                        !tag.threadShortId.isNullOrBlank()
                 ThreadMarkdownTagKind.Channel,
                 ThreadMarkdownTagKind.ChannelThread -> {
                     val key =
