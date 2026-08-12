@@ -4215,9 +4215,14 @@ private fun ThreadMessageVisualScreenContent() {
         mutableStateOf<ThreadInlineReplyTimestampBounds?>(null)
     }
     val inheritedTimeContextProvider = LocalSlockTimeContextProvider.current
+    // A fixture that pins `nowEpochMillis` owns its clock, so every relative timestamp under it
+    // resolves against that fixed instant: deterministic across runs AND rendered as real digits.
+    // Without a time context, resolveSlockRelativeTimeLabel() returns Unknown and the row shows the
+    // literal "unknown time" — which is how a non-monospace inline reply timestamp (#2074) shipped
+    // past the case built to guard that row. Fixtures that pin no clock keep the Unknown behavior.
     val visualTimeContextProvider =
         remember(payload, interactionProbe) {
-            if (interactionProbe == "reply-timestamp-owner") {
+            if (interactionProbe == "reply-timestamp-owner" || payload.nowEpochMillis != null) {
                 SlockTimeContextProvider(payload.toSlockTimeContext())
             } else {
                 null
@@ -11008,7 +11013,7 @@ private const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD = "markdo
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_DELETED_HUMAN = "deleted_human"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
-private const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES = "inline_replies"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES = "inline_replies"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION = "share_selection"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW = "share_preview"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE = "long_inline_code"
