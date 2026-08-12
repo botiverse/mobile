@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-11T22:18:12.114Z",
+  "generatedAt": "2026-08-12T22:14:53.173Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -520,7 +520,7 @@
     {
       "id": "components.ui.skeleton.states",
       "status": "ready",
-      "imageHash": "p1:0000200000fc01fe00fc01fe0000000600000006003c007e00003ffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "imageHash": "p1:0000200000fc01fe01fc01fe0000000600000006107c007e00003ffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
       "generatedAt": "2026-08-02T22:43:37.527Z",
       "severity": "low",
       "summary": [
@@ -546,7 +546,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062095097284670775
+      "metricMismatch": 0.06209779776130486
     },
     {
       "id": "components.ui.spinner.states",
@@ -806,7 +806,7 @@
     {
       "id": "components.ui.avatar-list-row.states",
       "status": "ready",
-      "imageHash": "p1:0ff81ffc0ffc3ffe826100c6000000060000000200000002000100060001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "imageHash": "p1:03f81ffc0ffc3ffe806100c6000000060000000200000002000000060001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
       "generatedAt": "2026-08-02T22:43:48.440Z",
       "severity": "low",
       "summary": [
@@ -836,7 +836,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04540581412619327
+      "metricMismatch": 0.04478470450034433
     },
     {
       "id": "components.auth.register.inputs",
@@ -1104,7 +1104,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09158025141437465
+      "metricMismatch": 0.09195528010693887
     },
     {
       "id": "components.thread.composer.image-preview",
@@ -1562,7 +1562,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26841961356179367
+      "metricMismatch": 0.26843480374286066
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1595,7 +1595,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26900494187224044
+      "metricMismatch": 0.2690079799084538
     },
     {
       "id": "components.home.saved.results",
@@ -1631,7 +1631,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11128225381779888
+      "metricMismatch": 0.11133356287384721
     },
     {
       "id": "components.home.activity.results",
@@ -1666,7 +1666,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10719845802784189
+      "metricMismatch": 0.10718529320425052
     },
     {
       "id": "components.tasks.panel.states",
@@ -1842,7 +1842,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:18:11.496Z",
+      "generatedAt": "2026-08-12T22:14:52.165Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2126,7 +2126,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19774780248713897
+      "metricMismatch": 0.19773632546144393
     },
     {
       "id": "components.settings.notifications.page",
@@ -2232,7 +2232,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:18:11.725Z",
+      "generatedAt": "2026-08-12T22:14:52.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2245,7 +2245,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:18:11.725Z",
+      "generatedAt": "2026-08-12T22:14:52.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2258,7 +2258,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:18:11.725Z",
+      "generatedAt": "2026-08-12T22:14:52.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2271,7 +2271,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:18:11.725Z",
+      "generatedAt": "2026-08-12T22:14:52.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2284,7 +2284,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-11T22:18:11.725Z",
+      "generatedAt": "2026-08-12T22:14:52.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2458,7 +2458,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19328999068335562
+      "metricMismatch": 0.19329100336209337
     },
     {
       "id": "components.thread.message-row.rich-content",

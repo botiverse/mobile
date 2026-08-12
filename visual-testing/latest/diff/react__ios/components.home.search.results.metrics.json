@@ -5,9 +5,9 @@
   "currentHeight": 2532,
   "comparisonWidth": 1170,
   "comparisonHeight": 2532,
-  "rgbSimilarity": 0.887489723406906,
-  "pixelPerfectSimilarity": 0.7315803864382063,
-  "pixelMismatchRatio": 0.26841961356179367,
+  "rgbSimilarity": 0.8874788014791856,
+  "pixelPerfectSimilarity": 0.7315651962571393,
+  "pixelMismatchRatio": 0.26843480374286066,
   "compositor": "sharp",
   "displayMode": "preserve-provider-raw-size",
   "metricMode": "rgb-resize-pixel-pad-no-crop"
