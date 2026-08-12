@@ -24085,7 +24085,7 @@ private fun ThreadInlineReplyRow(
                         }
                     },
                 displayGroup = SlockTimestampDisplayGroup.Conversation,
-                style = SlockType.Caption.copy(fontSize = 11.5.sp, lineHeight = 15.sp),
+                style = ThreadInlineReplyTimestampStyle,
                 color = SlockColor.TextBlack.copy(alpha = 0.42f),
                 maxLines = 1,
                 toggleEnabled = false,
@@ -24116,6 +24116,13 @@ internal fun threadInlineReplyRowHeightDp(fontScale: Float): Float {
 private const val ThreadInlineReplyContentLineHeightSp = 16f
 private const val ThreadInlineReplyRowMinHeightDp = 20f
 private const val ThreadInlineReplyRowVerticalAllowanceDp = 4f
+
+internal val ThreadInlineReplyTimestampStyle =
+    SlockType.Caption.copy(
+        fontFamily = SlockMonoFamily,
+        fontSize = 11.5.sp,
+        lineHeight = 15.sp,
+    )
 
 @Composable
 private fun ThreadMessageFooterMeta(
