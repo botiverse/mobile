@@ -34,6 +34,7 @@ Run: python3 scripts/ci/visual_fixture_split_census.py
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,7 +51,18 @@ MOVED = (
 DECL = re.compile(
     r"^(?P<vis>private|internal)\s+(?:const\s+)?(?:suspend\s+)?(?:inline\s+)?"
     r"(?:fun|val|var|class|object|interface|enum class|data class|typealias)\s+"
-    r"(?:<[^>]*>\s*)?(?:[\w.<>, ?]+\.)?(?P<name>\w+)\b",
+    # Receiver handling: the optional receiver group is GREEDY, which is what makes
+    # `private fun KuiklyThreadMessageItem.toMemberProfile()` register
+    # `toMemberProfile` rather than the receiver. The trailing (?!\s*\.) is
+    # belt-and-braces only - mutation testing shows removing it changes nothing,
+    # while making the receiver group lazy or deleting it does break the contract,
+    # and self_test() catches both of those.
+    #
+    # Recorded because I got this wrong once: the phantom private->internal
+    # transitions seen during task #189 came from a throwaway analysis script that
+    # anchored the NAME directly (letting the optional receiver be skipped), not
+    # from this pattern.
+    r"(?:<[^>]*>\s*)?(?:[\w.<>, ?]+\.)?(?P<name>\w+)(?!\s*\.)\b",
     re.MULTILINE,
 )
 
@@ -101,6 +113,53 @@ fun render() {
         print("self-test: census failed to report a real production dependency", file=sys.stderr)
         return 1
 
+    # Failure shape 1: a plain extension declaration must be read as the FUNCTION
+    # name, never the receiver. Misreading this invented phantom private->internal
+    # transitions three separate times during task #189.
+    plain_extension = "private fun KuiklyThreadMessageItem.toMemberProfile() = Unit\n"
+    names = declarations(plain_extension)
+    if "toMemberProfile" not in names:
+        print("self-test: extension declaration did not register its function name", file=sys.stderr)
+        return 1
+    if "KuiklyThreadMessageItem" in names:
+        print(
+            "self-test: extension receiver was registered as a declaration name",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Failure shape 2: same, with a generic receiver - the form that first hid
+    # five extension functions from the split analysis.
+    generic_extension = "private fun <T> List<T>.firstVisualOrNull() = null\n"
+    names = declarations(generic_extension)
+    if "firstVisualOrNull" not in names:
+        print("self-test: generic extension did not register its function name", file=sys.stderr)
+        return 1
+    if "List" in names:
+        print("self-test: generic receiver was registered as a declaration name", file=sys.stderr)
+        return 1
+
+    # Failure shape 3: a visual-only EXTENSION left behind must be RED, and GREEN
+    # once migrated. The left-behind check is the one the compiler cannot make.
+    production_left_behind_extension = production_clean + (
+        "internal fun KuiklyThreadScreenPayload.withVisualOnlyTweak() = this\n"
+    )
+    moved_using_extension = moved + "\nfun more() { payload.withVisualOnlyTweak() }\n"
+    stuck = classify(production_left_behind_extension, moved_using_extension)
+    if "withVisualOnlyTweak" not in stuck.left_behind:
+        print(
+            "self-test: census accepted a visual-only extension left in production",
+            file=sys.stderr,
+        )
+        return 1
+    freed = classify(production_clean, moved_using_extension)
+    if "withVisualOnlyTweak" in freed.left_behind:
+        print(
+            "self-test: census still reported a migrated extension as left behind",
+            file=sys.stderr,
+        )
+        return 1
+
     dirty = classify(production_with_left_behind, moved)
     if "OnlyTheVisualFilesUseThis" not in dirty.left_behind:
         print(
@@ -136,6 +195,38 @@ def classify(production: str, moved_text: str) -> Census:
     return Census(left_behind, unreachable, widened)
 
 
+def base_production(rev: str = "origin/main") -> str | None:
+    """The pre-split production file, for the migrated-symbol census.
+
+    Returns None when the base cannot be read (shallow clone, detached CI
+    checkout). The migrated census is then reported as unavailable rather than
+    guessed at - a partial list would read like a complete one.
+    """
+    rel = PRODUCTION.relative_to(ROOT).as_posix()
+    try:
+        done = subprocess.run(
+            ["git", "show", f"{rev}:{rel}"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    return done.stdout if done.returncode == 0 and done.stdout else None
+
+
+def migrated_symbols(base: str, production: str, moved_text: str) -> list[tuple[str, str]]:
+    """Symbols declared in the pre-split production file and now declared in the moved files."""
+    out: list[tuple[str, str]] = []
+    base_decls = declarations(base)
+    now_decls = declarations(production)
+    for name, vis in sorted(declarations(moved_text).items()):
+        if name in base_decls and name not in now_decls:
+            out.append((name, base_decls[name]))
+    return out
+
+
 def main() -> int:
     production = PRODUCTION.read_text(encoding="utf-8")
     moved_text = "\n".join(p.read_text(encoding="utf-8") for p in MOVED)
@@ -157,6 +248,18 @@ def main() -> int:
     print("   (the widening census; each still has production call sites)")
     for n, remaining in widened:
         print(f"   {n:<52} production-uses={remaining}")
+    print()
+    base = base_production()
+    if base is None:
+        print("== symbols fully migrated out of the production file ==")
+        print("   UNAVAILABLE: could not read the base revision of the production file")
+    else:
+        migrated = migrated_symbols(base, production, moved_text)
+        print("== symbols fully migrated out of the production file ==")
+        print("   (declared in the base production file, now declared only in the moved files)")
+        for name, vis in migrated:
+            print(f"   {name:<62} was {vis}")
+        print(f"   migrated total={len(migrated)}")
     print()
     print(f"total widened={len(widened)} left-behind={len(left_behind)} unreachable={len(unreachable)}")
 
