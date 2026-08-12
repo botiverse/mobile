@@ -21,8 +21,10 @@ import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.model.SlockRelativeTimeLabel
 import build.raft.app.model.SlockTimeFormat12Hour
 import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.resolveSlockRelativeTimeLabel
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
@@ -1283,6 +1285,51 @@ class ThreadPayloadTest {
         assertEquals("👍", message.reactions.single().emoji)
         assertEquals(1, message.reactions.single().count)
         assertFalse(message.reactions.single().selected)
+    }
+
+    @Test
+    fun inlineRepliesVisualFixturePinsItsOwnClockSoReplyTimestampsRenderRealDigits() {
+        // The capture case components.thread.message-row.inline-replies exists to guard the inline
+        // reply timestamp row, but every reply rendered the literal "unknown time": the fixture host
+        // installed no time context, so resolveSlockRelativeTimeLabel() answered Unknown for a
+        // perfectly parseable createdAt. A row with no digits cannot guard digit rendering, which is
+        // how the non-monospace timestamp fixed in #2074 got past it. The pinned clock below keeps
+        // the capture deterministic while making the row show real, comparable digits.
+        val payload =
+            threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES, "visual-thread-inline-replies")
+        val timeContext = payload.toSlockTimeContext()
+
+        assertEquals(1_784_888_400_000L, timeContext.nowEpochMillis)
+        assertEquals(480, timeContext.localOffsetMinutes)
+
+        // The header runs through the same shared time context (production ThreadMessageCard), so a
+        // pinned clock also demands a production-shaped label: MessageParser sets
+        // timestampLabel = createdAt, a raw ISO instant. A pre-formatted "07/24 18:20" does not
+        // parse and would resolve to Unknown — the capture caught exactly that.
+        val message = payload.messages.single()
+        assertEquals("2026-07-24T10:20:00Z", message.timestampLabel)
+        assertNotEquals(
+            SlockRelativeTimeLabel.Unknown,
+            resolveSlockRelativeTimeLabel(message.timestampLabel, timeContext),
+            "the header timestamp must resolve to a real label, not the unknown-time fallback"
+        )
+        assertEquals("18:20", slockAbsoluteTimestampLabel(message.timestampLabel, timeContext))
+
+        val replies = message.inlineReplies?.replies.orEmpty()
+        assertEquals(3, replies.size)
+        replies.forEach { reply ->
+            assertNotEquals(
+                SlockRelativeTimeLabel.Unknown,
+                resolveSlockRelativeTimeLabel(reply.createdAt, timeContext),
+                "reply ${reply.messageId} must resolve to a real label, not the unknown-time fallback"
+            )
+        }
+        // Conversation-group timestamps default to compact local absolute time, and every reply is
+        // on the pinned clock's local day, so the row renders bare digits at +08:00.
+        assertEquals(
+            listOf("18:16", "18:18", "18:20"),
+            replies.map { slockAbsoluteTimestampLabel(it.createdAt, timeContext) }
+        )
     }
 
     @Test
