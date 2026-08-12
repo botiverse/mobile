@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>0f9e9ba3-20260812221114</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-12T22:15:02.270Z" data-timestamp="2026-08-12T22:15:02.270Z" title="2026-08-12T22:15:02.270Z">2026-08-12 22:15:02 UTC</time></p>
+    <p class="runMeta"><code>0f9e9ba3-20260812221114</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-12T22:19:37.868Z" data-timestamp="2026-08-12T22:19:37.868Z" title="2026-08-12T22:19:37.868Z">2026-08-12 22:19:37 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 85</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 84/86 ready</span>
+      <span class="pill">AI 85/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1732,7 +1732,12 @@
       <p><code>RGB 85.8%</code><br/><code>Pixel 72.28%</code><br/><code>Mismatch 27.72%</code><br/><code>Raw 1026×504 / 1026×504</code><br/><code>Canvas 1026×504</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×168 / component-bounds 342×168</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-ui</summary>
+    <ul><li>Bottom row ('Product UX Designer') appears taller and more vertically padded on Android than React; top row heights are roughly similar but Android row bounds are tighter to the avatar.</li><li>The 'Online' badge in the top row on Android has slightly heavier/thicker borders and appears marginally smaller in width versus the React version.</li><li>The 'Open' button on Android renders with a heavier border stroke and tighter internal padding than the React counterpart.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Reconcile the Android TextStyle for row titles ('Cindy', 'Product UX Designer') with the React font-weight/size tokens; reduce weight if it should match a regular/medium weight.</li><li>Match Android row vertical padding and avatar dimensions to the React baseline dp/px values to equalize row heights.</li><li>Thin the border stroke on the row container and on the 'Online' / 'Open' chips on Android to match React's stroke width.</li><li>Verify the 'Open' button internal padding and badge corner radius against the design token for the React component.</li><li>Re-run Slock with aligned cropping (both sides currently crop slightly differently; baseline uses element-mode contract while current uses manual-rect).</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.avatar-list-row.states.png" data-current-src="android/components.ui.avatar-list-row.states.png" data-overlay-width="1026" data-overlay-height="504">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

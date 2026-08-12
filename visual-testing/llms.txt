@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-12 22:15:02 UTC
+Generated: 2026-08-12 22:19:37 UTC
 Latest run: 0f9e9ba3-20260812221114
 Latest commit: 0f9e9ba3-20260812221114
 Commit subject: fix(network): follow proxy environment changes (#2086)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 86, same 0, pass 0, basic-pass 0, different 85, missing 1
-AI analysis: ready 84 / total 86, pending 2
+AI analysis: ready 85 / total 86, pending 1
 Visual coverage matrix: active 95 / total 114, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

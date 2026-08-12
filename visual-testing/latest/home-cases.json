@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-12T22:15:02.270Z",
+  "generatedAt": "2026-08-12T22:19:37.868Z",
   "runId": "0f9e9ba3-20260812221114",
   "cases": [
     {
@@ -5458,17 +5458,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-12T22:14:59.860Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-12T22:17:54.763Z",
+            "severity": "low",
+            "summary": [
+              "Status dot row (4 dots: green, orange, gray, blue) appears slightly larger and with wider spacing on iOS compared to Android",
+              "Pink pulsing status dot before 'Waiting pulse' label appears noticeably larger on iOS",
+              "'Waiting pulse' text label appears rendered with slightly heavier weight and larger size on iOS",
+              "Top-left metadata text block (component ID, title, resolution) appears at the same proportional position but text is larger on iOS due to device pixel density",
+              "Overall layout is isomorphic; differences are subtle and likely driven by font metrics and dot sizing"
+            ],
+            "likelyCauses": [
+              "Platform-specific font rendering and weight differences (SF Pro on iOS vs Roboto on Android)",
+              "Default status dot diameter may not be pinned to a fixed dp, causing density-based scaling differences",
+              "Possible difference in pulse animation snapshot frame between platforms"
+            ],
+            "suggestedOwner": "kuikly-component-owner",
+            "suggestedFixes": [
+              "Pin status dot diameter to a fixed dp value to ensure consistent sizing across platforms",
+              "Normalize font weight/size for the 'Waiting pulse' label via explicit typography tokens",
+              "Verify pulse animation is captured at the same phase on both platforms for snapshot comparison",
+              "Confirm crop region is consistent — current (iOS) crop is null while baseline is manual-rect"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -5539,17 +5554,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-12T22:14:59.860Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-12T22:17:54.763Z",
+            "severity": "low",
+            "summary": [
+              "Status dot row (4 dots: green, orange, gray, blue) appears slightly larger and with wider spacing on iOS compared to Android",
+              "Pink pulsing status dot before 'Waiting pulse' label appears noticeably larger on iOS",
+              "'Waiting pulse' text label appears rendered with slightly heavier weight and larger size on iOS",
+              "Top-left metadata text block (component ID, title, resolution) appears at the same proportional position but text is larger on iOS due to device pixel density",
+              "Overall layout is isomorphic; differences are subtle and likely driven by font metrics and dot sizing"
+            ],
+            "likelyCauses": [
+              "Platform-specific font rendering and weight differences (SF Pro on iOS vs Roboto on Android)",
+              "Default status dot diameter may not be pinned to a fixed dp, causing density-based scaling differences",
+              "Possible difference in pulse animation snapshot frame between platforms"
+            ],
+            "suggestedOwner": "kuikly-component-owner",
+            "suggestedFixes": [
+              "Pin status dot diameter to a fixed dp value to ensure consistent sizing across platforms",
+              "Normalize font weight/size for the 'Waiting pulse' label via explicit typography tokens",
+              "Verify pulse animation is captured at the same phase on both platforms for snapshot comparison",
+              "Confirm crop region is consistent — current (iOS) crop is null while baseline is manual-rect"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -9317,17 +9347,34 @@
         "currentHeight": 504
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-12T22:14:48.521Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-12T22:17:46.095Z",
+        "severity": "medium",
+        "summary": [
+          "Bottom row ('Product UX Designer') appears taller and more vertically padded on Android than React; top row heights are roughly similar but Android row bounds are tighter to the avatar.",
+          "The 'Online' badge in the top row on Android has slightly heavier/thicker borders and appears marginally smaller in width versus the React version.",
+          "The 'Open' button on Android renders with a heavier border stroke and tighter internal padding than the React counterpart.",
+          "Typography weight on 'Product UX Designer' / 'Cindy' labels appears slightly heavier (more bold) on Android than React, where the React 'Cindy' label looks thinner.",
+          "Row container borders/strokes look thicker on Android (top row outline and bottom row outline both render with a heavier line weight)."
+        ],
+        "likelyCauses": [
+          "Android uses a different default text style/weight (e.g., Roboto Bold vs. web font-weight mapping) than the React baseline.",
+          "Padding/sizing tokens differ between the Android and React implementations of the avatar-list-row component (dp vs. px conversion, or missing/extra vertical insets).",
+          "Border/stroke thickness on the row container and badges is rendered differently in Compose versus the CSS/web baseline (no sub-pixel stroke matching).",
+          "Avatar size may be slightly off in dp, pushing row height and label baseline alignment differences."
+        ],
+        "suggestedOwner": "android-ui",
+        "suggestedFixes": [
+          "Reconcile the Android TextStyle for row titles ('Cindy', 'Product UX Designer') with the React font-weight/size tokens; reduce weight if it should match a regular/medium weight.",
+          "Match Android row vertical padding and avatar dimensions to the React baseline dp/px values to equalize row heights.",
+          "Thin the border stroke on the row container and on the 'Online' / 'Open' chips on Android to match React's stroke width.",
+          "Verify the 'Open' button internal padding and badge corner radius against the design token for the React component.",
+          "Re-run Slock with aligned cropping (both sides currently crop slightly differently; baseline uses element-mode contract while current uses manual-rect)."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -9414,17 +9461,34 @@
             "currentHeight": 504
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-12T22:14:48.521Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-12T22:17:46.095Z",
+            "severity": "medium",
+            "summary": [
+              "Bottom row ('Product UX Designer') appears taller and more vertically padded on Android than React; top row heights are roughly similar but Android row bounds are tighter to the avatar.",
+              "The 'Online' badge in the top row on Android has slightly heavier/thicker borders and appears marginally smaller in width versus the React version.",
+              "The 'Open' button on Android renders with a heavier border stroke and tighter internal padding than the React counterpart.",
+              "Typography weight on 'Product UX Designer' / 'Cindy' labels appears slightly heavier (more bold) on Android than React, where the React 'Cindy' label looks thinner.",
+              "Row container borders/strokes look thicker on Android (top row outline and bottom row outline both render with a heavier line weight)."
+            ],
+            "likelyCauses": [
+              "Android uses a different default text style/weight (e.g., Roboto Bold vs. web font-weight mapping) than the React baseline.",
+              "Padding/sizing tokens differ between the Android and React implementations of the avatar-list-row component (dp vs. px conversion, or missing/extra vertical insets).",
+              "Border/stroke thickness on the row container and badges is rendered differently in Compose versus the CSS/web baseline (no sub-pixel stroke matching).",
+              "Avatar size may be slightly off in dp, pushing row height and label baseline alignment differences."
+            ],
+            "suggestedOwner": "android-ui",
+            "suggestedFixes": [
+              "Reconcile the Android TextStyle for row titles ('Cindy', 'Product UX Designer') with the React font-weight/size tokens; reduce weight if it should match a regular/medium weight.",
+              "Match Android row vertical padding and avatar dimensions to the React baseline dp/px values to equalize row heights.",
+              "Thin the border stroke on the row container and on the 'Online' / 'Open' chips on Android to match React's stroke width.",
+              "Verify the 'Open' button internal padding and badge corner radius against the design token for the React component.",
+              "Re-run Slock with aligned cropping (both sides currently crop slightly differently; baseline uses element-mode contract while current uses manual-rect)."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -20876,7 +20940,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-12T22:14:48.215Z",
+        "generatedAt": "2026-08-12T22:19:26.877Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20937,7 +21001,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:48.215Z",
+            "generatedAt": "2026-08-12T22:19:26.877Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20959,7 +21023,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:53.182Z",
+            "generatedAt": "2026-08-12T22:19:30.837Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -21036,7 +21100,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:53.182Z",
+            "generatedAt": "2026-08-12T22:19:30.837Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25530,7 +25594,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:53.182Z",
+            "generatedAt": "2026-08-12T22:19:30.837Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25552,7 +25616,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:59.346Z",
+            "generatedAt": "2026-08-12T22:19:35.481Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25577,7 +25641,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:53.182Z",
+            "generatedAt": "2026-08-12T22:19:30.837Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25600,7 +25664,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:59.346Z",
+            "generatedAt": "2026-08-12T22:19:35.481Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25800,7 +25864,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:53.182Z",
+            "generatedAt": "2026-08-12T22:19:30.837Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25822,7 +25886,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:59.346Z",
+            "generatedAt": "2026-08-12T22:19:35.481Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25847,7 +25911,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:53.182Z",
+            "generatedAt": "2026-08-12T22:19:30.837Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25870,7 +25934,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:59.346Z",
+            "generatedAt": "2026-08-12T22:19:35.481Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26070,7 +26134,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:53.182Z",
+            "generatedAt": "2026-08-12T22:19:30.837Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26092,7 +26156,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:59.346Z",
+            "generatedAt": "2026-08-12T22:19:35.481Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26117,7 +26181,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:53.182Z",
+            "generatedAt": "2026-08-12T22:19:30.837Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26140,7 +26204,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:59.346Z",
+            "generatedAt": "2026-08-12T22:19:35.481Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26336,7 +26400,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:53.182Z",
+            "generatedAt": "2026-08-12T22:19:30.837Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26358,7 +26422,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:59.346Z",
+            "generatedAt": "2026-08-12T22:19:35.481Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26383,7 +26447,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:53.182Z",
+            "generatedAt": "2026-08-12T22:19:30.837Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26406,7 +26470,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:59.346Z",
+            "generatedAt": "2026-08-12T22:19:35.481Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26602,7 +26666,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:53.182Z",
+            "generatedAt": "2026-08-12T22:19:30.837Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26624,7 +26688,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:59.346Z",
+            "generatedAt": "2026-08-12T22:19:35.481Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26649,7 +26713,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:53.182Z",
+            "generatedAt": "2026-08-12T22:19:30.837Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26672,7 +26736,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-12T22:14:59.346Z",
+            "generatedAt": "2026-08-12T22:19:35.481Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

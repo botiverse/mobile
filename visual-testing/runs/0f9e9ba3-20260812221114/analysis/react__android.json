@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-12T22:14:48.203Z",
+  "generatedAt": "2026-08-12T22:19:26.869Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 84,
-    "pending": 2
+    "ready": 85,
+    "pending": 1
   },
   "cases": [
     {
@@ -822,15 +822,35 @@
     },
     {
       "id": "components.ui.avatar-list-row.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffffffffffcfffc0ffc0ffc3fff3fffffffffffffffffffffffffffffffffffcfff9ff3cff38773c07383f3cbf39ff3cfffdffffffffff3ffffffffc003800180009ffdfffc80618030802180319f618b31806180719ff188708001fffc80018000ffffc003ffffffffffff00000000fffffffffffbdffffffa1fffffffffff",
-      "generatedAt": "2026-08-12T22:14:46.326Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-12T22:17:46.095Z",
+      "severity": "medium",
+      "summary": [
+        "Bottom row ('Product UX Designer') appears taller and more vertically padded on Android than React; top row heights are roughly similar but Android row bounds are tighter to the avatar.",
+        "The 'Online' badge in the top row on Android has slightly heavier/thicker borders and appears marginally smaller in width versus the React version.",
+        "The 'Open' button on Android renders with a heavier border stroke and tighter internal padding than the React counterpart.",
+        "Typography weight on 'Product UX Designer' / 'Cindy' labels appears slightly heavier (more bold) on Android than React, where the React 'Cindy' label looks thinner.",
+        "Row container borders/strokes look thicker on Android (top row outline and bottom row outline both render with a heavier line weight)."
+      ],
+      "likelyCauses": [
+        "Android uses a different default text style/weight (e.g., Roboto Bold vs. web font-weight mapping) than the React baseline.",
+        "Padding/sizing tokens differ between the Android and React implementations of the avatar-list-row component (dp vs. px conversion, or missing/extra vertical insets).",
+        "Border/stroke thickness on the row container and badges is rendered differently in Compose versus the CSS/web baseline (no sub-pixel stroke matching).",
+        "Avatar size may be slightly off in dp, pushing row height and label baseline alignment differences."
+      ],
+      "suggestedOwner": "android-ui",
+      "suggestedFixes": [
+        "Reconcile the Android TextStyle for row titles ('Cindy', 'Product UX Designer') with the React font-weight/size tokens; reduce weight if it should match a regular/medium weight.",
+        "Match Android row vertical padding and avatar dimensions to the React baseline dp/px values to equalize row heights.",
+        "Thin the border stroke on the row container and on the 'Online' / 'Open' chips on Android to match React's stroke width.",
+        "Verify the 'Open' button internal padding and badge corner radius against the design token for the React component.",
+        "Re-run Slock with aligned cropping (both sides currently crop slightly differently; baseline uses element-mode contract while current uses manual-rect)."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2771608805965531
     },
     {
@@ -1836,7 +1856,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-12T22:14:46.938Z",
+      "generatedAt": "2026-08-12T22:19:25.965Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

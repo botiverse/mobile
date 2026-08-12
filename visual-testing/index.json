@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-12T22:15:02.270Z",
+  "generatedAt": "2026-08-12T22:19:37.868Z",
   "latestRunId": "0f9e9ba3-20260812221114",
   "latest": {
     "runId": "0f9e9ba3-20260812221114",
     "commit": "0f9e9ba3-20260812221114",
     "commitSubject": "fix(network): follow proxy environment changes (#2086)",
-    "generatedAt": "2026-08-12T22:15:02.270Z",
+    "generatedAt": "2026-08-12T22:19:37.868Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 86,
-      "ready": 84,
-      "pending": 2
+      "ready": 85,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "0f9e9ba3-20260812221114",
       "commit": "0f9e9ba3-20260812221114",
       "commitSubject": "fix(network): follow proxy environment changes (#2086)",
-      "generatedAt": "2026-08-12T22:15:02.270Z",
+      "generatedAt": "2026-08-12T22:19:37.868Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 84,
-        "pending": 2
+        "ready": 85,
+        "pending": 1
       },
       "comparisons": [
         "react__android",
