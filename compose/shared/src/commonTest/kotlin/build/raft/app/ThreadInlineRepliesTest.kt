@@ -214,6 +214,11 @@ class ThreadInlineRepliesTest {
     }
 
     @Test
+    fun inlineReplyTimestampUsesTheSharedMonospaceFamily() {
+        assertEquals(SlockMonoFamily, ThreadInlineReplyTimestampStyle.fontFamily)
+    }
+
+    @Test
     fun multilineReplyPreviewUsesTheAvailableSingleLineWidth() {
         assertEquals(
             "New activity - 14:10 final Android carrier is ready",
