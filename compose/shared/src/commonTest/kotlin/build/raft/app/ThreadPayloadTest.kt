@@ -3232,7 +3232,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun replyThreadPayloadHidesActivityMuteBellEvenWhenProjectionIsParentChannel() {
+    fun replyThreadShowsParentMutedStatusWithoutExposingItsOwnMuteAction() {
         val payload =
             KuiklyThreadScreenPayload(
                 instanceId = "reply-message-1",
@@ -3262,10 +3262,11 @@ class ThreadPayloadTest {
             )
 
         assertEquals(null, payload.threadActivityMuteState(parentProjection))
+        assertTrue(payload.threadActivityMutedIndicatorVisible(parentProjection))
     }
 
     @Test
-    fun channelPayloadKeepsActivityMuteBellWhenProjectionClaimsReplyThread() {
+    fun channelPayloadKeepsActivityMuteStateWhenProjectionClaimsReplyThread() {
         val payload =
             KuiklyThreadScreenPayload(
                 instanceId = "channel-1",
@@ -3298,6 +3299,32 @@ class ThreadPayloadTest {
         assertEquals("channel-1", muteState?.channelId)
         assertEquals(true, muteState?.muted)
         assertEquals(true, muteState?.supported)
+        assertTrue(payload.threadActivityMutedIndicatorVisible(wrongProjection))
+    }
+
+    @Test
+    fun mutedIndicatorFollowsCanonicalMuteStateAcrossChannelAndDirectMessageSurfaces() {
+        val unmutedChannel =
+            KuiklyThreadScreenPayload(
+                instanceId = "channel-1",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                activityMuted = false,
+                activityMuteSupported = true
+            )
+        val mutedDirectMessage =
+            KuiklyThreadScreenPayload(
+                instanceId = "dm-1",
+                sourceThreadId = "dm-1",
+                streamChannelId = "dm-1",
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                activityMuted = true,
+                activityMuteSupported = true
+            )
+
+        assertFalse(unmutedChannel.threadActivityMutedIndicatorVisible(null))
+        assertTrue(mutedDirectMessage.threadActivityMutedIndicatorVisible(null))
     }
 
     @Test
