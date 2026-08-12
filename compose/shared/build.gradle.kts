@@ -152,11 +152,12 @@ kotlin {
                 // still have to compile on the ordinary unit gate, which passes no flag. Wiring the
                 // data here (and only here) keeps both true without a second gated test source set.
                 kotlin.srcDir("src/visualFixtureData/kotlin")
-                // NOTE: the OHOS leg does not build from this file at all — it runs
-                // `-c settings.ohos.gradle.kts`, which sets buildFileName to build.ohos.gradle.kts.
-                // The same wiring therefore has to be repeated there, or compileTestKotlinOhosArm64
-                // cannot see this directory. Any future source-set change here needs the same edit
-                // in that file.
+                // SOURCE-SET CHANGES MUST BE MADE IN BOTH FILES: this one and
+                // compose/shared/build.ohos.gradle.kts. The OHOS leg does not build from this file
+                // at all — it runs `-c settings.ohos.gradle.kts`, which sets buildFileName to
+                // build.ohos.gradle.kts — so wiring added only here is invisible to
+                // compileTestKotlinOhosArm64. That file reads no slockVisualFixtures flag, so it
+                // registers this directory on commonTest unconditionally.
             }
             dependencies {
                 implementation(kotlin("test"))

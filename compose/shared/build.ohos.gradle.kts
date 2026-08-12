@@ -175,7 +175,12 @@ kotlin {
             // repeated. This build has no slockVisualFixtures flag and never compiles the gated
             // visual host, so the data belongs in commonTest unconditionally: it keeps
             // fixture-contract tests compiling for compileTestKotlinOhosArm64 while the OHOS
-            // production klib stays free of fixture code.
+            // production klib stays free of fixture code. Because the flag is not read here at all,
+            // passing -PslockVisualFixtures=true to this leg changes nothing.
+            //
+            // SOURCE-SET CHANGES MUST BE MADE IN BOTH FILES: this one and
+            // compose/shared/build.gradle.kts. Editing only one silently skips a platform — that is
+            // exactly how the task #189 spike burned three CI rounds.
             kotlin.srcDir("src/visualFixtureData/kotlin")
             dependencies {
                 implementation(kotlin("test"))
