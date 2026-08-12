@@ -789,6 +789,88 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
+    fun attachmentUploadCapabilitiesUseServerMaxBytesWithoutClientFallback() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET attachments/upload-capabilities" to
+                            """{"directUploadEnabled":false,"directUploadThresholdBytes":null,"maxBytes":143654912,"sessionExpiresInSeconds":null}"""
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val capability = assertIs<DataResult.Content<AttachmentUploadCapabilities>>(
+            repository.getAttachmentUploadCapabilities()
+        ).data
+
+        assertEquals(143654912L, capability.maxBytes)
+        assertEquals("attachments/upload-capabilities", network.requests.single().path)
+    }
+
+    @Test
+    fun attachmentUploadCapabilitiesRejectNonPositiveServerValue() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses = mapOf("GET attachments/upload-capabilities" to """{"maxBytes":0}""")
+            )
+
+        val result = RealConversationRepository(sampleStore(), network).getAttachmentUploadCapabilities()
+
+        assertEquals("network_parse_failed", assertIs<DataResult.Error>(result).error.code)
+    }
+
+    @Test
+    fun legacyMultipartTooLargeUsesStructuredServerErrorCode() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                uploadResponse =
+                    HomeNetworkResponse(
+                        code = 413,
+                        bodyText = null,
+                        errorBodyText =
+                            """{"error":"Max 90MB per file","errorCode":"ATTACHMENT_TOO_LARGE","maxBytes":94371840}"""
+                    )
+            )
+        val result =
+            RealConversationRepository(sampleStore(), network).uploadAttachments(
+                AttachmentUploadRequest(
+                    channelId = ChannelId("channel-1"),
+                    files = listOf(PlatformFile(id = "local-1", fileName = "large.bin", sizeBytes = 94371841L))
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("ATTACHMENT_TOO_LARGE", error.code)
+        assertEquals("Max 90MB per file", error.serverMessage)
+    }
+
+    @Test
+    fun uploadSessionTooLargeUsesStructuredServerCode() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                uploadResponse =
+                    HomeNetworkResponse(
+                        code = 413,
+                        bodyText = null,
+                        errorBodyText =
+                            """{"error":"Upload exceeds the active limit","code":"UPLOAD_TOO_LARGE","maxBytes":94371840}"""
+                    )
+            )
+        val result =
+            RealConversationRepository(sampleStore(), network).uploadAttachments(
+                AttachmentUploadRequest(
+                    channelId = ChannelId("channel-1"),
+                    files = listOf(PlatformFile(id = "local-1", fileName = "large.bin", sizeBytes = 94371841L))
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("UPLOAD_TOO_LARGE", error.code)
+        assertEquals(ErrorPresentationKey.AttachmentTooLarge, error.errorPresentation().key)
+    }
+
+    @Test
     fun pagingContextFilesAndUploadConsumeCanonicalDtosWithoutJoiningSummaries() = runBlocking {
         val network =
             FakeConversationNetworkClient(
@@ -911,6 +993,7 @@ class ConversationRepositoryDataSourceTest {
         private val responses: Map<String, String> = emptyMap(),
         private val failures: Map<String, String> = emptyMap(),
         private val uploadBody: String = """{"attachments":[]}""",
+        private val uploadResponse: HomeNetworkResponse? = null,
         private val requestStarted: Map<String, CompletableDeferred<Unit>> = emptyMap(),
         private val requestRelease: Map<String, CompletableDeferred<Unit>> = emptyMap(),
     ) : SlockNetworkClient {
@@ -947,7 +1030,7 @@ class ConversationRepositoryDataSourceTest {
         ): HomeNetworkResponse {
             requests += RecordedConversationRequest(priority, "POST", "messages/channels/${channelId.value}/attachments", emptyList())
             uploadedFileNames += files.map { it.fileName }
-            return HomeNetworkResponse(code = 200, bodyText = uploadBody)
+            return uploadResponse ?: HomeNetworkResponse(code = 200, bodyText = uploadBody)
         }
     }
 

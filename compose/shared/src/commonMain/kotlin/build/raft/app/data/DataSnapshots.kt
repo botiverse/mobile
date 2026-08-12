@@ -409,6 +409,10 @@ data class AttachmentUploadResult(
     val attachmentIds: List<AttachmentId> = attachments.map { it.id }
 }
 
+data class AttachmentUploadCapabilities(
+    val maxBytes: Long
+)
+
 data class AttachmentOpenTarget(
     val attachmentId: AttachmentId,
     val url: String,

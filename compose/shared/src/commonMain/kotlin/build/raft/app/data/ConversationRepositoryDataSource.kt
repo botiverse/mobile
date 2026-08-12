@@ -200,6 +200,11 @@ private suspend fun SlockNetworkClient.attachmentUrl(
 ): HomeNetworkResponse =
     request(priority, "attachments/${attachmentId.value}/url")
 
+private suspend fun SlockNetworkClient.attachmentUploadCapabilities(
+    priority: DataRequestPriority
+): HomeNetworkResponse =
+    request(priority, "attachments/upload-capabilities")
+
 private suspend fun SlockNetworkClient.channelFiles(
     priority: DataRequestPriority,
     channelId: ChannelId,
@@ -230,6 +235,15 @@ class RealConversationRepository(
     private val routeServerIdProvider: (() -> String?)? = null,
     private val warningLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
 ) : ConversationRepository, ProgressiveConversationAttachmentUploader {
+    override suspend fun getAttachmentUploadCapabilities(): DataResult<AttachmentUploadCapabilities> {
+        currentContext() ?: return authRequired()
+        return executeConversation(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            block = { networkClient.attachmentUploadCapabilities(DataRequestPriority.Foreground) },
+            source = "attachment_upload_capabilities",
+            mapper = ::parseSharedAttachmentUploadCapabilities
+        )
+    }
     override suspend fun getThread(
         threadId: ThreadId,
         includeFollowedSummaries: Boolean,
@@ -1562,6 +1576,14 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
             )
         in 500..599 ->
             DataResult.Error(ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage))
+        413 ->
+            DataResult.Error(
+                ScreenError(
+                    code = conversationRouteStructuredErrorCodeOrNull() ?: "attachment_too_large",
+                    retryable = false,
+                    serverMessage = serverMessage
+                )
+            )
         else ->
             DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404, serverMessage = serverMessage))
     }
@@ -1569,6 +1591,24 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
 
 @Serializable
 private data class ConversationRouteErrorDto(val error: String? = null)
+
+@Serializable
+private data class ConversationRouteStructuredErrorDto(
+    val code: String? = null,
+    val errorCode: String? = null
+)
+
+private fun HomeNetworkResponse.conversationRouteStructuredErrorCodeOrNull(): String? {
+    val payload =
+        bodyText?.takeIf { it.isNotBlank() }
+            ?: errorBodyText?.takeIf { it.isNotBlank() }
+            ?: return null
+    val dto =
+        runCatching {
+            conversationRepositoryJson.decodeFromString<ConversationRouteStructuredErrorDto>(payload)
+        }.getOrNull()
+    return (dto?.code ?: dto?.errorCode)?.trim()?.takeIf { it.isNotBlank() }
+}
 
 private fun HomeNetworkResponse.conversationRouteErrorTextOrNull(): String? {
     val payload = bodyText?.takeIf { it.isNotBlank() }

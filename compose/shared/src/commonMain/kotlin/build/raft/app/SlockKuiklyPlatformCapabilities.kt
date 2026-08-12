@@ -108,9 +108,7 @@ internal expect fun slockFirstComposedCharacterEnd(text: String): Int?
  */
 internal expect fun slockSlugSlashCenteringOffsetDp(): Float
 
-// task #92 close-out: feedback attachment size cap follows what each
-// platform's Hands SDK can actually deliver. Android/iOS stream >10MB
-// attachments through a presigned R2 PUT up to 200MB; the OHOS SDK still
-// reads the whole file into one ArrayBuffer, so it stays at 50MB until it
-// learns to stream.
+// Hands feedback is one cross-platform product contract. The common cap must
+// stay at the largest size every platform SDK can actually deliver; OHOS still
+// reads one ArrayBuffer, so all three targets are capped at 50MB until it streams.
 internal expect fun slockFeedbackAttachmentMaxBytes(): Long
