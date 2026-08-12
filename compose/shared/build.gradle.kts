@@ -152,6 +152,13 @@ kotlin {
                 // still have to compile on the ordinary unit gate, which passes no flag. Wiring the
                 // data here (and only here) keeps both true without a second gated test source set.
                 kotlin.srcDir("src/visualFixtureData/kotlin")
+                // ...except the OHOS target, whose test source set is created by the Kuikly plugin
+                // and does NOT inherit srcDirs added to commonTest — it picked up commonTest's own
+                // directory but not this one, so compileTestKotlinOhosArm64 failed to resolve while
+                // Android and iOS both resolved (iosTest declares dependsOn(commonTest) below).
+                // Register it explicitly for that target only; adding it to targets that DO inherit
+                // would compile the same declarations twice.
+                sourceSets.findByName("ohosArm64Test")?.kotlin?.srcDir("src/visualFixtureData/kotlin")
             }
             dependencies {
                 implementation(kotlin("test"))
