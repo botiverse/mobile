@@ -388,6 +388,7 @@ private val ThreadInlineSelectionReactionHorizontalPadding = 9.dp
 private val ThreadInlineSelectionToolRowHeight = 52.dp
 private val ThreadInlineSelectionToolIconSize = 18.dp
 private val ThreadInlineSelectionMoreOverlayHeight = 20.dp
+private val ThreadInlineSelectionToolbarVerticalPadding = 6.dp
 private const val ThreadInlineSelectionToolbarZIndex = 30f
 private const val ThreadInlineSelectionMarkdownTriggerChars = "`*_#><|[]()~@&\\-+=:/"
 private val ThreadInlineSelectionOrderedListPrefix = Regex("""^\d+\. """)
@@ -599,6 +600,16 @@ internal fun threadInlineSelectionToolbarPlacement(
     val y = (if (belowSelection) belowY else aboveY).coerceIn(0, maxY)
     return ThreadInlineSelectionToolbarPlacement(xPx = x, yPx = y, belowSelection = belowSelection)
 }
+
+internal fun threadInlineSelectionToolbarResolvedSize(
+    measuredSize: IntSize,
+    fallbackWidthPx: Int,
+    fallbackHeightPx: Int
+): IntSize =
+    IntSize(
+        width = measuredSize.width.takeIf { it > 0 } ?: fallbackWidthPx.coerceAtLeast(0),
+        height = measuredSize.height.takeIf { it > 0 } ?: fallbackHeightPx.coerceAtLeast(0)
+    )
 
 private class ThreadInlineSelectionController(
     val selectionState: SelectionContainerState
@@ -3933,6 +3944,8 @@ private fun ThreadMessageVisualScreenContent() {
     val longPressReadyToken = params.optString("longPressReadyToken")
     val longPressMenuVisibleToken = params.optString("longPressMenuVisibleToken")
     val singleTapOpensThreadEnabled = params.optBoolean("singleTapOpensThreadEnabled", false)
+    val inlineSelectionComposerBoundaryVisible =
+        params.optBoolean("inlineSelectionComposerBoundaryVisible", false)
     // Reply count for the inline-selection fixture's compact target group. Zero
     // keeps the fixture exactly as authored, so cases that omit this parameter
     // render byte-identically to before it existed.
@@ -4101,7 +4114,8 @@ private fun ThreadMessageVisualScreenContent() {
             replyMetadataByParentId = payload.toThreadReplyMetadataMap(),
             messageBodyTextStyle = messageBodyTextStyle,
             inlineSelectionEnabled = inlineSelectionToolbarEnabled,
-            singleTapOpensThreadEnabled = singleTapOpensThreadEnabled
+            singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+            composerBoundaryVisible = inlineSelectionComposerBoundaryVisible
         )
         return
     }
@@ -4427,64 +4441,97 @@ private fun ThreadInlineSelectionCompactGroupVisual(
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     messageBodyTextStyle: TextStyle,
     inlineSelectionEnabled: Boolean,
-    singleTapOpensThreadEnabled: Boolean
+    singleTapOpensThreadEnabled: Boolean,
+    composerBoundaryVisible: Boolean
 ) {
     var openedMessageId by remember { mutableStateOf<String?>(null) }
     val inlineSelectionOverlayCoordinator =
         rememberThreadInlineSelectionOverlayCoordinator("thread-inline-selection-compact-group")
-    Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
-                .onGloballyPositioned(inlineSelectionOverlayCoordinator::updateRootBounds)
-    ) {
-        LazyColumn(
+    val renderedMessages =
+        if (composerBoundaryVisible) {
+            messages.take(THREAD_INLINE_SELECTION_TARGET_GROUP_SIZE)
+        } else {
+            messages
+        }
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Box(
             modifier =
                 Modifier
-                    .width(390.dp)
-                    .fillMaxSize()
-                    .padding(SlockSpacing.Md)
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .onGloballyPositioned(inlineSelectionOverlayCoordinator::updateRootBounds)
         ) {
-            items(messages.size, key = { index -> messages[index].id }) { index ->
-                val message = messages[index]
-                ThreadMessageCard(
-                    message = message,
-                    replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message),
-                    messageBodyTextStyle = messageBodyTextStyle,
-                    messageIndex = index,
-                    compactConsecutiveMessages = true,
-                    suppressRepeatedAuthor = index in 1..2 || index >= 4,
-                    showReplyAction = true,
-                    singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
-                    taskOpenEnabled = false,
-                    taskStatusActionsEnabled = false,
-                    showSaveAction = false,
-                    showReactionAddAction = false,
-                    onShowActions = {},
-                    onOpenMember = {},
-                    onOpenThread = { openedMessageId = it },
-                    onOpenTask = {},
-                    onOpenTaskStatusMenu = {},
-                    onToggleReaction = {},
-                    onOpenAttachment = {},
-                    onOpenMarkdownTag = { _, _ -> },
-                    onOpenMarkdownUrl = {},
-                    inlineSelectionEnabled = inlineSelectionEnabled,
-                    onInlineSelectionOverlayChanged = inlineSelectionOverlayCoordinator::update,
-                    outerPadding = 0.dp
+            LazyColumn(
+                modifier = Modifier.width(390.dp).fillMaxSize().padding(SlockSpacing.Md),
+                verticalArrangement =
+                    if (composerBoundaryVisible) Arrangement.Bottom else Arrangement.Top
+            ) {
+                items(renderedMessages.size, key = { index -> renderedMessages[index].id }) { index ->
+                    val message = renderedMessages[index]
+                    ThreadMessageCard(
+                        message = message,
+                        replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message),
+                        messageBodyTextStyle = messageBodyTextStyle,
+                        messageIndex = index,
+                        compactConsecutiveMessages = true,
+                        suppressRepeatedAuthor = index in 1..2 || index >= 4,
+                        showReplyAction = true,
+                        singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                        taskOpenEnabled = false,
+                        taskStatusActionsEnabled = false,
+                        showSaveAction = false,
+                        showReactionAddAction = false,
+                        onShowActions = {},
+                        onOpenMember = {},
+                        onOpenThread = { openedMessageId = it },
+                        onOpenTask = {},
+                        onOpenTaskStatusMenu = {},
+                        onToggleReaction = {},
+                        onOpenAttachment = {},
+                        onOpenMarkdownTag = { _, _ -> },
+                        onOpenMarkdownUrl = {},
+                        inlineSelectionEnabled = inlineSelectionEnabled,
+                        onInlineSelectionOverlayChanged = inlineSelectionOverlayCoordinator::update,
+                        outerPadding = 0.dp
+                    )
+                }
+            }
+            ThreadInlineSelectionRootOverlay(inlineSelectionOverlayCoordinator)
+            if (openedMessageId != null) {
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .size(24.dp)
+                            .background(Color(0xFFFF00A8))
                 )
             }
         }
-        ThreadInlineSelectionRootOverlay(inlineSelectionOverlayCoordinator)
-        if (openedMessageId != null) {
+        if (composerBoundaryVisible) {
+            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
             Box(
                 modifier =
                     Modifier
-                        .align(Alignment.TopEnd)
-                        .size(24.dp)
-                        .background(Color(0xFFFF00A8))
-            )
+                        .fillMaxWidth()
+                        // Keep the visual oracle's bottom band equal to the
+                        // Composer host bounds, so message-selection pixels
+                        // are never counted as Composer overlap.
+                        .height(150.dp)
+                        .padding(start = SlockSpacing.Sm, top = 12.dp, end = SlockSpacing.Sm, bottom = 14.dp)
+            ) {
+                ThreadComposerContent(
+                    payload =
+                        KuiklyThreadComposerPayload(
+                            instanceId = "visual-inline-selection-composer",
+                            placeholder = "Message",
+                            streamChannelId = "visual-inline-selection-thread"
+                        ),
+                    onEvent = { _, _, _, _ -> },
+                    contentPaddingTop = 0.dp,
+                    contentPaddingBottom = 0.dp,
+                    attachmentPreviewEnabled = false
+                )
+            }
         }
     }
 }
@@ -21556,15 +21603,43 @@ private fun ThreadInlineSelectionRootOverlay(
     val request = coordinator.request ?: return
     val controller = request.controller
     if (!threadInlineSelectionToolbarVisible(controller.lifecycle)) return
-    val gapPx = with(LocalDensity.current) { ThreadInlineSelectionToolbarGap.roundToPx() }
+    val density = LocalDensity.current
+    val gapPx = with(density) { ThreadInlineSelectionToolbarGap.roundToPx() }
+    // Kuikly can deliver the first stable SelectionFrame before the toolbar's
+    // onGloballyPositioned callback. Placing with a 0x0 toolbar anchors its top
+    // at the selected line and lets the real menu extend below the message
+    // viewport, where the Composer clips it. Use the toolbar's fixed layout
+    // contract until the live measurement arrives, then prefer that measured
+    // size for renderer/font variance.
+    val fallbackToolbarWidthPx =
+        with(density) {
+            (ThreadInlineSelectionToolbarWidth + SlockShadow.BrutalSmall).roundToPx()
+        }
+    val fallbackToolbarHeightPx =
+        with(density) {
+            (
+                ThreadInlineSelectionReactionRowHeight +
+                    SlockStroke.Thin +
+                    ThreadInlineSelectionToolRowHeight +
+                    ThreadInlineSelectionMoreOverlayHeight +
+                    ThreadInlineSelectionToolbarVerticalPadding * 2 +
+                    SlockShadow.BrutalSmall
+            ).roundToPx()
+        }
+    val toolbarSize =
+        threadInlineSelectionToolbarResolvedSize(
+            measuredSize = controller.toolbarSize,
+            fallbackWidthPx = fallbackToolbarWidthPx,
+            fallbackHeightPx = fallbackToolbarHeightPx
+        )
     val placement =
         threadInlineSelectionToolbarPlacement(
             rootBounds = coordinator.rootBounds,
             selectionContainerXInRootPx = controller.containerRootPosition.x,
             selectionContainerYInRootPx = controller.containerRootPosition.y,
             selectionFrame = controller.lifecycle.settledFrame,
-            toolbarWidthPx = controller.toolbarSize.width,
-            toolbarHeightPx = controller.toolbarSize.height,
+            toolbarWidthPx = toolbarSize.width,
+            toolbarHeightPx = toolbarSize.height,
             gapPx = gapPx
         )
     ThreadInlineSelectionToolbar(
@@ -21620,7 +21695,7 @@ private fun ThreadInlineSelectionToolbar(
                     .width(ThreadInlineSelectionToolbarWidth)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .padding(horizontal = 8.dp, vertical = ThreadInlineSelectionToolbarVerticalPadding)
         ) {
             ThreadMessageReactionRow(
                 reactionAtlasImage = LocalThreadReactionAtlasImage.current,

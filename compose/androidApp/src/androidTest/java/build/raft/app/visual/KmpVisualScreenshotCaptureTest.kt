@@ -1233,13 +1233,15 @@ class KmpVisualScreenshotCaptureTest {
     fun captureThreadInlineSelectionCompactLast() {
         captureThreadInlineSelectionCompactTarget(
             caseId = "components.thread.inline-selection-compact-last",
-            targetYDp = 172f
+            targetYDp = 660f,
+            composerBoundaryVisible = true
         )
     }
 
     private fun captureThreadInlineSelectionCompactTarget(
         caseId: String,
-        targetYDp: Float
+        targetYDp: Float,
+        composerBoundaryVisible: Boolean = false
     ) {
         val backingStore = slockSharedPreferenceStore()
         val previous = backingStore.getString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY)
@@ -1257,6 +1259,7 @@ class KmpVisualScreenshotCaptureTest {
                     JSONObject()
                         .put("instanceId", "visual-$caseId")
                         .put("visualFixture", "inline_selection_demo")
+                        .put("inlineSelectionComposerBoundaryVisible", composerBoundaryVisible)
                         .put("singleTapOpensThreadEnabled", true),
                 crop = FULL_VIEWPORT_CROP,
                 suppressSoftKeyboard = false,
@@ -1295,6 +1298,15 @@ class KmpVisualScreenshotCaptureTest {
                         val selectionBlueAfter = after.countThreadInlineSelectionBlueSamples()
                         val addedToolbarBlack = after.countNewNearBlackSamplesComparedWith(before)
                         val changedRatio = before.fullBitmapChangedPixelRatio(after)
+                        val composerChangedRatio =
+                            if (composerBoundaryVisible) {
+                                before.bottomBandChangedPixelRatio(
+                                    after,
+                                    heightDp = THREAD_INLINE_SELECTION_COMPOSER_BOUNDARY_HEIGHT_DP
+                                )
+                            } else {
+                                0f
+                            }
                         assertTrue(
                             "Long press must render the in-place selection and compact toolbar; changedRatio=$changedRatio",
                             changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
@@ -1313,6 +1325,13 @@ class KmpVisualScreenshotCaptureTest {
                             threadOpenAfter <
                                 threadOpenBefore + THREAD_INLINE_SELECTION_MIN_ADDED_OPEN_PROBE_SAMPLES
                         )
+                        if (composerBoundaryVisible) {
+                            assertTrue(
+                                "Inline-selection toolbar must not paint over the Composer boundary; " +
+                                    "bottomBandChangedRatio=$composerChangedRatio",
+                                composerChangedRatio < THREAD_INLINE_SELECTION_COMPOSER_MAX_CHANGED_RATIO
+                            )
+                        }
                         selectedArtifact = after
                         after = null
                     } finally {
@@ -1940,6 +1959,28 @@ class KmpVisualScreenshotCaptureTest {
             y += FORWARD_PROBE_PIXEL_STRIDE
         }
         return samples
+    }
+
+    private fun Bitmap.bottomBandChangedPixelRatio(other: Bitmap, heightDp: Int): Float {
+        require(width == other.width && height == other.height) {
+            "Bitmap size changed: ${width}x$height vs ${other.width}x${other.height}"
+        }
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        val bandHeightPx = (heightDp * density).toInt().coerceIn(1, height)
+        val startY = height - bandHeightPx
+        var changed = 0L
+        var total = 0L
+        var y = startY
+        while (y < height) {
+            var x = 0
+            while (x < width) {
+                if (getPixel(x, y) != other.getPixel(x, y)) changed++
+                total++
+                x += FORWARD_PROBE_PIXEL_STRIDE
+            }
+            y += FORWARD_PROBE_PIXEL_STRIDE
+        }
+        return if (total == 0L) 0f else changed.toFloat() / total.toFloat()
     }
 
     private fun Bitmap.fullBitmapChangedPixelRatio(other: Bitmap): Float {
@@ -6080,6 +6121,10 @@ class KmpVisualScreenshotCaptureTest {
         private const val THREAD_INLINE_SELECTION_MIN_ADDED_BLACK_SAMPLES = 40
         private const val THREAD_INLINE_SELECTION_MIN_FINAL_BLUE_SAMPLES = 80
         private const val THREAD_INLINE_SELECTION_MIN_ADDED_OPEN_PROBE_SAMPLES = 100
+        // Matches the fixed host bounds in the compact-last visual fixture.
+        // The sampled band therefore contains only the real Composer host.
+        private const val THREAD_INLINE_SELECTION_COMPOSER_BOUNDARY_HEIGHT_DP = 150
+        private const val THREAD_INLINE_SELECTION_COMPOSER_MAX_CHANGED_RATIO = 0.005f
         private const val THREAD_INLINE_SELECTION_OPEN_PROBE_TOLERANCE = 8
         private const val SEARCH_PIN_MENU_MIN_CHANGED_RATIO = 0.004f
         private const val THREAD_OPEN_PROBE_TOP_BAND_FRACTION = 0.15f
