@@ -1016,3 +1016,21 @@ internal data class ThreadInlineReplyTimestampBounds(
 )
 internal const val ThreadInlineReplyTimestampHitTargetDescription =
     "Inline reply timestamp hit target"
+
+internal fun KuiklyThreadScreenPayload.withInlineSelectionTargetReplyCount(
+    count: Int
+): KuiklyThreadScreenPayload =
+    if (count <= 0) {
+        this
+    } else {
+        copy(
+            messages =
+                messages.mapIndexed { index, message ->
+                    if (index < THREAD_INLINE_SELECTION_TARGET_GROUP_SIZE) {
+                        message.copy(replyCount = count)
+                    } else {
+                        message
+                    }
+                }
+        )
+    }

@@ -2558,11 +2558,11 @@ internal fun KuiklyThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: Threa
         else -> threadMarkdownTagDisplayLabel(tag.label)
     }
 
-private fun List<String>.toKnownMarkdownChannelNameSet(): Set<String> =
+internal fun List<String>.toKnownMarkdownChannelNameSet(): Set<String> =
     mapNotNull { it.trim().takeIf { name -> name.isNotBlank() }?.lowercase() }
         .toSet()
 
-private fun KuiklyThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<String> =
+internal fun KuiklyThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<String> =
     if (knownMarkdownMentionNames.isNotEmpty()) {
         buildSet {
             knownMarkdownMentionNames.forEach { name -> addKnownThreadMentionValue(name) }
@@ -2576,7 +2576,7 @@ private fun KuiklyThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<Strin
         }
     }
 
-private fun KuiklyThreadScreenPayload.toKnownMarkdownTaskNumberSetOrNull(): Set<Int>? =
+internal fun KuiklyThreadScreenPayload.toKnownMarkdownTaskNumberSetOrNull(): Set<Int>? =
     knownMarkdownTaskNumbers.takeIf { it.isNotEmpty() }
         ?.filterTo(mutableSetOf()) { it > 0 }
 
@@ -2608,7 +2608,7 @@ private fun MutableSet<String>.addKnownThreadMentionValue(value: String?) {
     if (key.isNotBlank()) add(key)
 }
 
-private fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
+internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
     knownChannelNames: Set<String>,
     knownMentionNames: Set<String>,
     knownTaskNumbers: Set<Int>? = null
@@ -10387,23 +10387,6 @@ internal const val THREAD_INLINE_SELECTION_TARGET_GROUP_SIZE = 3
  * so a capture case that exercises it has to say so. A count of zero returns the
  * payload untouched, keeping every case that omits the parameter unchanged.
  */
-private fun KuiklyThreadScreenPayload.withInlineSelectionTargetReplyCount(
-    count: Int
-): KuiklyThreadScreenPayload =
-    if (count <= 0) {
-        this
-    } else {
-        copy(
-            messages =
-                messages.mapIndexed { index, message ->
-                    if (index < THREAD_INLINE_SELECTION_TARGET_GROUP_SIZE) {
-                        message.copy(replyCount = count)
-                    } else {
-                        message
-                    }
-                }
-        )
-    }
 
 
 
