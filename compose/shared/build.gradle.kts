@@ -117,12 +117,21 @@ kotlin {
 
     sourceSets {
         if (!slockVisualFixturesEnabled) {
-            // The Kuikly plugin creates ohosArm64Test after this block is configured, and that
-            // source set does not inherit srcDirs added to commonTest. Match lazily so the
-            // directory is registered whenever the plugin gets around to creating it.
-            matching { it.name == "ohosArm64Test" }.configureEach {
-                kotlin.srcDir("src/visualFixtureData/kotlin")
+            // The Kuikly plugin creates the OHOS source sets after this block is configured, and
+            // they do not inherit srcDirs added to commonTest. Two attempts to register the data
+            // directory by the assumed name ohosArm64Test changed nothing, so stop assuming the
+            // name: register on every *Test source set that is not one already inheriting it, and
+            // print what actually exists so the next iteration works from fact rather than guess.
+            all {
+                if (name.endsWith("Test")) {
+                    logger.lifecycle("SLOCK_SRCSET_DIAG test-source-set=$name")
+                }
             }
+            matching { it.name.endsWith("Test") && it.name != "commonTest" && !it.name.startsWith("ios") && !it.name.startsWith("android") }
+                .configureEach {
+                    logger.lifecycle("SLOCK_SRCSET_DIAG registering data dir on $name")
+                    kotlin.srcDir("src/visualFixtureData/kotlin")
+                }
         }
         val commonMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
