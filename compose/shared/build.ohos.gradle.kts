@@ -170,6 +170,13 @@ kotlin {
             }
         }
         val commonTest by getting {
+            // The OHOS leg builds from THIS file (settings.ohos.gradle.kts sets buildFileName), so
+            // the visual fixture data wiring in build.gradle.kts does not apply here and has to be
+            // repeated. This build has no slockVisualFixtures flag and never compiles the gated
+            // visual host, so the data belongs in commonTest unconditionally: it keeps
+            // fixture-contract tests compiling for compileTestKotlinOhosArm64 while the OHOS
+            // production klib stays free of fixture code.
+            kotlin.srcDir("src/visualFixtureData/kotlin")
             dependencies {
                 implementation(kotlin("test"))
             }

@@ -116,23 +116,6 @@ kotlin {
     }
 
     sourceSets {
-        if (!slockVisualFixturesEnabled) {
-            // The Kuikly plugin creates the OHOS source sets after this block is configured, and
-            // they do not inherit srcDirs added to commonTest. Two attempts to register the data
-            // directory by the assumed name ohosArm64Test changed nothing, so stop assuming the
-            // name: register on every *Test source set that is not one already inheriting it, and
-            // print what actually exists so the next iteration works from fact rather than guess.
-            all {
-                if (name.endsWith("Test")) {
-                    logger.lifecycle("SLOCK_SRCSET_DIAG test-source-set=$name")
-                }
-            }
-            matching { it.name.endsWith("Test") && it.name != "commonTest" && !it.name.startsWith("ios") && !it.name.startsWith("android") }
-                .configureEach {
-                    logger.lifecycle("SLOCK_SRCSET_DIAG registering data dir on $name")
-                    kotlin.srcDir("src/visualFixtureData/kotlin")
-                }
-        }
         val commonMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/commonMain/kotlin"))
@@ -169,12 +152,11 @@ kotlin {
                 // still have to compile on the ordinary unit gate, which passes no flag. Wiring the
                 // data here (and only here) keeps both true without a second gated test source set.
                 kotlin.srcDir("src/visualFixtureData/kotlin")
-                // ...except the OHOS target, whose test source set is created by the Kuikly plugin
-                // and does NOT inherit srcDirs added to commonTest — it picked up commonTest's own
-                // directory but not this one, so compileTestKotlinOhosArm64 failed to resolve while
-                // Android and iOS both resolved (iosTest declares dependsOn(commonTest) below).
-                // Registered lazily just below: the plugin creates that source set after this block
-                // runs, so an eager findByName() returns null and silently does nothing.
+                // NOTE: the OHOS leg does not build from this file at all — it runs
+                // `-c settings.ohos.gradle.kts`, which sets buildFileName to build.ohos.gradle.kts.
+                // The same wiring therefore has to be repeated there, or compileTestKotlinOhosArm64
+                // cannot see this directory. Any future source-set change here needs the same edit
+                // in that file.
             }
             dependencies {
                 implementation(kotlin("test"))
