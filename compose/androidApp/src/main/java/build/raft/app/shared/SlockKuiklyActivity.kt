@@ -185,6 +185,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+internal const val THREAD_CAMERA_CAPTURE_CACHE_DIR_NAME = "slock-camera-captures"
+
 internal fun formatMergedSettingsDiagnosticsExportText(
         about: Map<String, Any>,
         recentLogs: String,
@@ -434,6 +436,20 @@ private fun Bundle.toPendingAndroidAttachmentSaveAs(): PendingAndroidAttachmentS
             )
         }.getOrNull()
 
+internal fun restoredThreadCameraCaptureFile(cacheDir: File, savedPath: String?): File? {
+    val cameraDir = File(cacheDir, THREAD_CAMERA_CAPTURE_CACHE_DIR_NAME).canonicalFile
+    val candidate = savedPath?.takeIf(String::isNotBlank)?.let(::File)?.canonicalFile ?: return null
+    return candidate.takeIf { file ->
+        file.parentFile == cameraDir &&
+            file.name.startsWith("camera-") &&
+            file.name.endsWith(".jpg") &&
+            file.isFile
+    }
+}
+
+internal fun discardRestoredThreadCameraCaptureResult(file: File): Boolean =
+    !file.exists() || file.delete()
+
 private fun PendingAndroidAttachmentSaveAs.ownerOperationIsCurrent(): Boolean =
         restoredFromActivityResultState || ProcessAndroidAttachmentOwners.admit(owner)
 
@@ -467,6 +483,7 @@ open class SlockKuiklyActivity :
     private var kuiklyHostAttached = false
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
+    private var pendingThreadCameraCapture: PendingThreadCameraCapture? = null
     private var pendingAttachmentSaveAs: PendingAndroidAttachmentSaveAs? = null
     private var androidShellLaunchTarget: AndroidShellLaunchTarget? = null
     private val realtimeVisibilityOwnerId: String by lazy {
@@ -488,6 +505,10 @@ open class SlockKuiklyActivity :
     private val threadFileAttachmentPickerLauncher: ActivityResultLauncher<Array<String>> =
             registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
                 handleThreadAttachmentPickerResult(uris, persistable = true)
+            }
+    private val threadCameraAttachmentLauncher: ActivityResultLauncher<Uri> =
+            registerForActivityResult(ActivityResultContracts.TakePicture()) { captured ->
+                handleThreadCameraCaptureResult(captured)
             }
     private val attachmentSaveAsLauncher: ActivityResultLauncher<Intent> =
             registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -512,6 +533,20 @@ open class SlockKuiklyActivity :
                 savedInstanceState
                     ?.getBundle(ATTACHMENT_SAVE_AS_STATE_KEY)
                     ?.toPendingAndroidAttachmentSaveAs()
+        pendingThreadCameraCapture = savedInstanceState
+            ?.getString(THREAD_CAMERA_CAPTURE_STATE_KEY)
+            ?.let { restoredThreadCameraCaptureFile(applicationContext.cacheDir, it) }
+            ?.let { file ->
+                PendingThreadCameraCapture(
+                    uri = FileProvider.getUriForFile(
+                        applicationContext,
+                        "${applicationContext.packageName}.fileprovider",
+                        file,
+                    ),
+                    file = file,
+                    restoredAfterActivityRecreation = true,
+                )
+            }
         onBackPressedDispatcher.addCallback(this, kuiklySystemBackCallback)
         setContentView(R.layout.activity_slock_kuikly)
         prepareScreenshotFeedbackObserver()
@@ -750,6 +785,9 @@ open class SlockKuiklyActivity :
     override fun onSaveInstanceState(outState: Bundle) {
         pendingAttachmentSaveAs?.let { pending ->
             outState.putBundle(ATTACHMENT_SAVE_AS_STATE_KEY, pending.toSavedState())
+        }
+        pendingThreadCameraCapture?.let { pending ->
+            outState.putString(THREAD_CAMERA_CAPTURE_STATE_KEY, pending.file.canonicalPath)
         }
         super.onSaveInstanceState(outState)
     }
@@ -1392,6 +1430,7 @@ open class SlockKuiklyActivity :
     internal fun requestThreadAttachmentUpload(
             channelId: String,
             imageOnly: Boolean,
+            capture: Boolean,
             callback: KuiklyRenderCallback?
     ) {
         if (pendingThreadAttachmentUpload != null) {
@@ -1408,13 +1447,19 @@ open class SlockKuiklyActivity :
         pendingThreadAttachmentUpload =
                 PendingThreadAttachmentUpload(channelId = channelId, callback = callback)
         runCatching {
-                    if (imageOnly) {
+                    if (capture) {
+                        val cameraCapture = createPendingThreadCameraCapture()
+                        pendingThreadCameraCapture = cameraCapture
+                        threadCameraAttachmentLauncher.launch(cameraCapture.uri)
+                    } else if (imageOnly) {
                         threadImageAttachmentPickerLauncher.launch(threadMediaAttachmentPickerRequest())
                     } else {
                         threadFileAttachmentPickerLauncher.launch(arrayOf("*/*"))
                     }
                 }
                 .onFailure { throwable ->
+                    pendingThreadCameraCapture?.file?.let { runCatching { it.delete() } }
+                    pendingThreadCameraCapture = null
                     pendingThreadAttachmentUpload = null
                     callback?.invoke(
                             mapOf(
@@ -1425,6 +1470,54 @@ open class SlockKuiklyActivity :
                             )
                     )
                 }
+    }
+
+    private fun createPendingThreadCameraCapture(): PendingThreadCameraCapture {
+        val directory = File(applicationContext.cacheDir, THREAD_CAMERA_CAPTURE_CACHE_DIR_NAME)
+        if (!directory.exists() && !directory.mkdirs()) {
+            throw IOException("Camera capture cache unavailable")
+        }
+        directory.listFiles()
+                ?.filter { it.isFile }
+                ?.forEach { file -> runCatching { file.delete() } }
+        val file = File(directory, "camera-${System.currentTimeMillis()}-${System.nanoTime()}.jpg")
+        if (!file.createNewFile()) {
+            throw IOException("Camera capture file unavailable")
+        }
+        val uri =
+                FileProvider.getUriForFile(
+                        applicationContext,
+                        "${applicationContext.packageName}.fileprovider",
+                        file
+                )
+        return PendingThreadCameraCapture(uri = uri, file = file)
+    }
+
+    private fun handleThreadCameraCaptureResult(captured: Boolean) {
+        val cameraCapture = pendingThreadCameraCapture ?: return
+        pendingThreadCameraCapture = null
+        if (cameraCapture.restoredAfterActivityRecreation) {
+            val cleaned = runCatching {
+                discardRestoredThreadCameraCaptureResult(cameraCapture.file)
+            }.getOrDefault(false)
+            SlockAppLog.w(
+                "SlockCameraCapture",
+                "camera_result_discarded_after_activity_recreation captured=$captured cleaned=$cleaned",
+            )
+            return
+        }
+        if (!captured || !cameraCapture.file.isFile || cameraCapture.file.length() <= 0L) {
+            runCatching { cameraCapture.file.delete() }
+            val pending = pendingThreadAttachmentUpload ?: return
+            pendingThreadAttachmentUpload = null
+            pending.callback?.invoke(mapOf("code" to 204, "bodyText" to ""))
+            return
+        }
+        handleThreadAttachmentPickerResult(
+                uris = listOf(cameraCapture.uri),
+                source = "platform_camera",
+                sourceFilesToDelete = listOf(cameraCapture.file)
+        )
     }
 
     internal fun requestGoogleNativeSocialAuth(callback: KuiklyRenderCallback?): Boolean {
@@ -1497,7 +1590,12 @@ open class SlockKuiklyActivity :
         return true
     }
 
-    private fun handleThreadAttachmentPickerResult(uris: List<Uri>, persistable: Boolean = false) {
+    private fun handleThreadAttachmentPickerResult(
+            uris: List<Uri>,
+            persistable: Boolean = false,
+            source: String = "platform_picker",
+            sourceFilesToDelete: List<File> = emptyList()
+    ) {
         val pending = pendingThreadAttachmentUpload ?: return
         pendingThreadAttachmentUpload = null
         SlockAppLog.record(
@@ -1512,7 +1610,12 @@ open class SlockKuiklyActivity :
             persistThreadAttachmentUriPermissions(uris)
         }
         lifecycleScope.launch(Dispatchers.IO) {
-            val result = readThreadPlatformPickedFiles(uris)
+            val result =
+                    try {
+                        readThreadPlatformPickedFiles(uris, source = source)
+                    } finally {
+                        sourceFilesToDelete.forEach { file -> runCatching { file.delete() } }
+                    }
             withContext(Dispatchers.Main) {
                 SlockAppLog.record(
                         "SlockKuiklyAttachment",
@@ -1540,7 +1643,10 @@ open class SlockKuiklyActivity :
         }
     }
 
-    private fun readThreadPlatformPickedFiles(uris: List<Uri>): Map<String, Any> {
+    private fun readThreadPlatformPickedFiles(
+            uris: List<Uri>,
+            source: String = "platform_picker"
+    ): Map<String, Any> {
         cleanupPickedThreadAttachmentCache()
         val files = mutableListOf<PickedThreadAttachment>()
         val errorsJson = JSONArray()
@@ -1582,7 +1688,7 @@ open class SlockKuiklyActivity :
                             .put("sizeBytes", file.sizeBytes)
                             .put("previewUri", file.previewUri)
                             .put("fileRef", file.fileRef)
-                            .put("source", "platform_picker")
+                            .put("source", source)
             )
         }
         SlockAppLog.record(
@@ -1962,6 +2068,7 @@ open class SlockKuiklyActivity :
 
     companion object {
         private const val ATTACHMENT_SAVE_AS_STATE_KEY = "slockAttachmentSaveAsState"
+        private const val THREAD_CAMERA_CAPTURE_STATE_KEY = "slockThreadCameraCaptureState"
         const val PAGE_LOGIN = SlockKuiklyPages.LOGIN
         const val PAGE_REGISTER = SlockKuiklyPages.REGISTER
         const val PAGE_FORGOT_PASSWORD = SlockKuiklyPages.FORGOT_PASSWORD
@@ -2309,6 +2416,12 @@ internal object SlockKuiklyAdapters {
 private data class PendingThreadAttachmentUpload(
         val channelId: String,
         val callback: KuiklyRenderCallback?
+)
+
+private data class PendingThreadCameraCapture(
+        val uri: Uri,
+        val file: File,
+        val restoredAfterActivityRecreation: Boolean = false,
 )
 
 private data class PickedThreadAttachment(
@@ -3274,6 +3387,7 @@ internal class SlockKuiklyBridgeModule(
                 (activity as? SlockKuiklyActivity)?.requestThreadAttachmentUpload(
                         channelId = request.optString("channelId"),
                         imageOnly = request.optBoolean("imageOnly", false),
+                        capture = request.optBoolean("capture", false),
                         callback = callback
                 ) ?: callback?.invoke(
                         mapOf(

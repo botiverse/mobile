@@ -81,6 +81,7 @@ import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.semantics.disabled
+import com.tencent.kuikly.compose.ui.semantics.onLongClick
 import com.tencent.kuikly.compose.ui.semantics.onClick
 import com.tencent.kuikly.compose.ui.semantics.role
 import com.tencent.kuikly.compose.ui.semantics.semantics
@@ -1144,7 +1145,9 @@ private fun Modifier.slockPressedOffset(
  */
 internal fun Modifier.slockButtonAccessibility(
     enabled: Boolean,
-    performClick: () -> Unit
+    longClickLabel: String? = null,
+    performLongClick: (() -> Unit)? = null,
+    performClick: () -> Unit,
 ): Modifier =
     semantics(mergeDescendants = true) {
         role = Role.Button
@@ -1154,6 +1157,16 @@ internal fun Modifier.slockButtonAccessibility(
                 true
             } else {
                 false
+            }
+        }
+        if (performLongClick != null) {
+            onLongClick(label = longClickLabel) {
+                if (enabled) {
+                    performLongClick()
+                    true
+                } else {
+                    false
+                }
             }
         }
         if (!enabled) {
@@ -1214,6 +1227,8 @@ fun Modifier.dragEnable(enable: Boolean): Modifier {
 @Composable
 internal fun Button(
     onClick: () -> Unit = {},
+    onLongClick: (() -> Unit)? = null,
+    longClickLabel: String? = null,
     onClick2: ((SlockPopoverAnchor) -> Unit)? = null,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
@@ -1228,7 +1243,9 @@ internal fun Button(
         remember(resolvedAnchorOwnerIdentity) { SlockLiveRootAnchorRef(identity = resolvedAnchorOwnerIdentity) }
     var pressed by remember(resolvedAnchorOwnerIdentity) { mutableStateOf(false) }
     val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongClick by rememberUpdatedState(onLongClick)
     val currentEnabled by rememberUpdatedState(enabled)
+    val hasLongClick = onLongClick != null
     val gestureOwner =
         rememberSlockGestureOwner(
             surface = "button",
@@ -1238,6 +1255,7 @@ internal fun Button(
                     enabled = enabled,
                     pressFeedback = pressFeedback,
                     onClick = onClick,
+                    onLongClick = onLongClick,
                     onClick2 = onClick2,
                     onPressedChange = { pressed = it },
                     rootAnchor = rootAnchor
@@ -1245,9 +1263,14 @@ internal fun Button(
         )
     Box(
         modifier = Modifier
-            .slockButtonAccessibility(enabled = enabled) {
-                if (currentEnabled) currentOnClick()
-            }
+            .slockButtonAccessibility(
+                enabled = enabled,
+                performClick = { if (currentEnabled) currentOnClick() },
+                longClickLabel = longClickLabel,
+                performLongClick = currentOnLongClick?.let {
+                    { if (currentEnabled) currentOnLongClick?.invoke() }
+                },
+            )
             .then(
                 if (onClick2 != null) {
                     Modifier.slockCaptureLiveRootAnchor(rootAnchor)
@@ -1259,10 +1282,12 @@ internal fun Button(
             // out of the pointer-input keys prevents Kuikly from tearing down
             // the tap handler when a dynamically-enabled button (for example
             // Undo/Clear after the first edit) transitions from false to true.
-            .slockGesturePointerInput(gestureOwner, pressFeedback) { owner ->
+            .slockGesturePointerInput(gestureOwner, pressFeedback, hasLongClick) { owner ->
                 var gesture: SlockGestureSession<SlockButtonGestureCallbacks>? = null
+                var arbiter = SlockButtonGestureArbiter(hasLongClick)
                 detectTapGestures(
                     onPress = {
+                        arbiter = SlockButtonGestureArbiter(hasLongClick)
                         val session = owner.beginGesture()
                         gesture = session
                         val callbacks = session.currentCallbacksOrNull()
@@ -1280,12 +1305,27 @@ internal fun Button(
                             (gesture ?: owner.beginGesture()).currentCallbacksOrNull()
                                 ?: return@detectTapGestures
                         if (callbacks.enabled) {
-                            callbacks.onClick()
-                            callbacks.rootAnchor.resolve(SlockPopoverLocalPoint.Exact(offset))?.let { anchor ->
-                                callbacks.onClick2?.invoke(anchor)
+                            arbiter.dispatchTap {
+                                callbacks.onClick()
+                                callbacks.rootAnchor.resolve(SlockPopoverLocalPoint.Exact(offset))?.let { anchor ->
+                                    callbacks.onClick2?.invoke(anchor)
+                                }
                             }
                         }
-                    }
+                    },
+                    onLongPress =
+                        if (hasLongClick) {
+                            {
+                                val callbacks =
+                                    (gesture ?: owner.beginGesture()).currentCallbacksOrNull()
+                                        ?: return@detectTapGestures
+                                if (callbacks.enabled) {
+                                    arbiter.dispatchLongClick(callbacks.onLongClick)
+                                }
+                            }
+                        } else {
+                            null
+                        }
                 )
             }
             .slockPressedOffset(pressed = pressed && enabled, pressOffset = pressOffset)
@@ -1296,10 +1336,29 @@ internal fun Button(
     }
 }
 
+/** Owns the one-gesture tap/long-press decision used by the production pointer callbacks. */
+internal class SlockButtonGestureArbiter(private val hasLongClick: Boolean) {
+    private var longClickCommitted = false
+
+    fun dispatchTap(action: () -> Unit): Boolean {
+        if (longClickCommitted) return false
+        action()
+        return true
+    }
+
+    fun dispatchLongClick(action: (() -> Unit)?): Boolean {
+        if (!hasLongClick || action == null || longClickCommitted) return false
+        longClickCommitted = true
+        action()
+        return true
+    }
+}
+
 private data class SlockButtonGestureCallbacks(
     val enabled: Boolean,
     val pressFeedback: Boolean,
     val onClick: () -> Unit,
+    val onLongClick: (() -> Unit)?,
     val onClick2: ((SlockPopoverAnchor) -> Unit)?,
     val onPressedChange: (Boolean) -> Unit,
     val rootAnchor: SlockLiveRootAnchorRef

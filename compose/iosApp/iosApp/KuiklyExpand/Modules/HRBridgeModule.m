@@ -2,6 +2,7 @@
 #import "RaftDiagnosticsPathAdmission.h"
 
 #import "KuiklyRenderViewController.h"
+#import <AVFoundation/AVFoundation.h>
 #import <CommonCrypto/CommonDigest.h>
 #import <Hands/Hands.h>
 #import <ImageIO/ImageIO.h>
@@ -2205,7 +2206,7 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
     }];
 }
 
-@interface HRBridgeModule () <PHPickerViewControllerDelegate, UIDocumentPickerDelegate, SharedAttachmentDownloadObserver>
+@interface HRBridgeModule () <PHPickerViewControllerDelegate, UIDocumentPickerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, SharedAttachmentDownloadObserver>
 
 @property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentExportCallback;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportRequestId;
@@ -2227,6 +2228,8 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
 - (void)slock_saveAttachmentExportToPhotos;
 - (void)slock_finishAttachmentPicker:(NSDictionary *)result;
 - (void)slock_presentPhotoPicker;
+- (void)slock_requestAndPresentCamera;
+- (void)slock_presentCamera;
 - (void)slock_presentDocumentPicker;
 - (void)slock_processPhotoPickerResults:(NSArray<PHPickerResult *> *)results;
 - (void)slock_processDocumentPickerURLs:(NSArray<NSURL *> *)urls;
@@ -2750,13 +2753,19 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
     self.slock_attachmentPickerCallback = callback;
     self.slock_attachmentPickerChannelId = SlockBridgeString(params[@"channelId"]);
     BOOL imageOnly = SlockBridgeBool(params[@"imageOnly"]);
+    BOOL capture = SlockBridgeBool(params[@"capture"]);
     SlockDiagnosticsRecord(
         @"info",
         @"SlockKuiklyAttachment",
-        [NSString stringWithFormat:@"picker_start imageOnly=%@ channelIdPresent=%@",
+        [NSString stringWithFormat:@"picker_start imageOnly=%@ capture=%@ channelIdPresent=%@",
                                    imageOnly ? @"true" : @"false",
+                                   capture ? @"true" : @"false",
                                    self.slock_attachmentPickerChannelId.length > 0 ? @"true" : @"false"]
     );
+    if (capture) {
+        [self slock_requestAndPresentCamera];
+        return;
+    }
     if (!imageOnly) {
         [self slock_presentDocumentPicker];
         return;
@@ -3276,6 +3285,128 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
         PHPickerViewController *picker = [[PHPickerViewController alloc] initWithConfiguration:configuration];
         picker.delegate = self;
         [controller presentViewController:picker animated:YES completion:nil];
+    });
+}
+
+- (void)slock_requestAndPresentCamera {
+    if (![UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) {
+        [self slock_finishAttachmentPicker:@{
+            @"code" : @503,
+            @"bodyText" : @"",
+            @"errorCode" : @"attachment_camera_unavailable",
+            @"errorBodyText" : @"Camera is unavailable"
+        }];
+        return;
+    }
+    AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+    if (status == AVAuthorizationStatusAuthorized) {
+        [self slock_presentCamera];
+        return;
+    }
+    if (status == AVAuthorizationStatusDenied || status == AVAuthorizationStatusRestricted) {
+        [self slock_finishAttachmentPicker:@{
+            @"code" : @403,
+            @"bodyText" : @"",
+            @"errorCode" : @"attachment_camera_permission_denied",
+            @"errorBodyText" : @"Camera access is denied"
+        }];
+        return;
+    }
+    __weak typeof(self) weakSelf = self;
+    [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
+        SlockBridgeRunOnMain(^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf || !strongSelf.slock_attachmentPickerCallback) {
+                return;
+            }
+            if (granted) {
+                [strongSelf slock_presentCamera];
+            } else {
+                [strongSelf slock_finishAttachmentPicker:@{
+                    @"code" : @403,
+                    @"bodyText" : @"",
+                    @"errorCode" : @"attachment_camera_permission_denied",
+                    @"errorBodyText" : @"Camera access is denied"
+                }];
+            }
+        });
+    }];
+}
+
+- (void)slock_presentCamera {
+    SlockBridgeRunOnMain(^{
+        UIViewController *controller = [self slock_currentViewController];
+        if (!controller || ![UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) {
+            [self slock_finishAttachmentPicker:@{
+                @"code" : @503,
+                @"bodyText" : @"",
+                @"errorCode" : @"attachment_camera_unavailable",
+                @"errorBodyText" : @"Camera is unavailable"
+            }];
+            return;
+        }
+        UIImagePickerController *picker = [[UIImagePickerController alloc] init];
+        picker.sourceType = UIImagePickerControllerSourceTypeCamera;
+        picker.mediaTypes = @[ UTTypeImage.identifier ];
+        picker.cameraCaptureMode = UIImagePickerControllerCameraCaptureModePhoto;
+        picker.delegate = self;
+        [controller presentViewController:picker animated:YES completion:nil];
+    });
+}
+
+- (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
+    [picker dismissViewControllerAnimated:YES completion:nil];
+    [self slock_finishAttachmentPicker:@{ @"code" : @204, @"bodyText" : @"" }];
+}
+
+- (void)imagePickerController:(UIImagePickerController *)picker
+didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> *)info {
+    UIImage *image = info[UIImagePickerControllerOriginalImage];
+    [picker dismissViewControllerAnimated:YES completion:nil];
+    if (!image) {
+        [self slock_finishAttachmentPicker:@{
+            @"code" : @400,
+            @"bodyText" : @"",
+            @"errorCode" : @"attachment_read_failed",
+            @"errorBodyText" : @"Captured image is unavailable"
+        }];
+        return;
+    }
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSData *jpegData = UIImageJPEGRepresentation(image, 0.92);
+        if (jpegData.length == 0) {
+            [self slock_finishAttachmentPicker:@{
+                @"code" : @400,
+                @"bodyText" : @"",
+                @"errorCode" : @"attachment_read_failed",
+                @"errorBodyText" : @"Captured image could not be encoded"
+            }];
+            return;
+        }
+        NSURL *temporaryURL = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
+            URLByAppendingPathComponent:[NSUUID.UUID.UUIDString stringByAppendingPathExtension:@"jpg"]
+                         isDirectory:NO];
+        NSError *error = nil;
+        NSDictionary *file = nil;
+        if ([jpegData writeToURL:temporaryURL options:NSDataWritingAtomic error:&error]) {
+            file = [self slock_cachePickedAttachmentURL:temporaryURL
+                                          suggestedName:@"camera.jpg"
+                                               mimeType:@"image/jpeg"
+                                                  error:&error];
+        }
+        [NSFileManager.defaultManager removeItemAtURL:temporaryURL error:nil];
+        if (!file) {
+            [self slock_finishAttachmentPicker:@{
+                @"code" : @400,
+                @"bodyText" : @"",
+                @"errorCode" : @"attachment_read_failed",
+                @"errorBodyText" : error.localizedDescription ?: @"Captured image could not be cached"
+            }];
+            return;
+        }
+        NSMutableDictionary *capturedFile = [file mutableCopy];
+        capturedFile[@"source"] = @"platform_camera";
+        [self slock_finishAttachmentPickerFiles:@[ capturedFile ] errors:@[]];
     });
 }
 

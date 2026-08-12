@@ -7,6 +7,9 @@
         name="slock_attachments"
         path="slock-attachments/" />
     <cache-path
+        name="slock_camera_captures"
+        path="slock-camera-captures/" />
+    <cache-path
         name="slock_share_images"
         path="slock-share-images/" />
     <external-files-path
