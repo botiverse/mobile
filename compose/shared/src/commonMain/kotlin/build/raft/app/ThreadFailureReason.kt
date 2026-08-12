@@ -117,8 +117,8 @@ internal fun threadUserFacingErrorCodeReason(errorCode: String?): ThreadUserFaci
             "forbidden" in normalized ||
             "admin_required" in normalized ||
             "no_permission" in normalized -> ThreadUserFacingErrorReason.PermissionDenied
-        "too_large" in normalized ||
-            "attachment_size" in normalized -> ThreadUserFacingErrorReason.AttachmentTooLarge
+        normalized == "attachment_too_large" ||
+            normalized == "upload_too_large" -> ThreadUserFacingErrorReason.AttachmentTooLarge
         "rate" in normalized ||
             "too_many" in normalized -> ThreadUserFacingErrorReason.RateLimited
         "contract" in normalized ||

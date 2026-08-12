@@ -2933,6 +2933,15 @@ internal class SharedThreadDataSource(
         }
     }
 
+    suspend fun attachmentUploadMaxBytes(): DataResult<Long> {
+        val repository =
+            conversationRepository
+                ?: return DataResult.Error(
+                    ScreenError(code = "attachment_upload_capabilities_unavailable", retryable = true)
+                )
+        return repository.getAttachmentUploadCapabilities().map { capabilities -> capabilities.maxBytes }
+    }
+
     suspend fun captureExternalShareSendAuthority(): SlockExpectedAuthBinding? {
         val session = sessionStore.readSession() ?: return null
         val serverId = session.currentServerId?.takeIf(String::isNotBlank) ?: return null

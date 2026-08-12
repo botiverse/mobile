@@ -6103,6 +6103,13 @@ internal fun SharedThreadRouteContent(
     val preparingAttachmentPreviewLabel = stringResource(MR.strings.thread_state_preparing_attachment)
     val attachmentUploadFailedDetailTemplate =
         stringResource(MR.strings.thread_error_attachment_upload_detail, ThreadLocalizedFeedbackPlaceholder)
+    val attachmentLimitUnavailableLabel = stringResource(MR.strings.thread_error_attachment_limit_unavailable)
+    val attachmentTooLargeTemplate =
+        stringResource(
+            MR.strings.thread_error_attachment_too_large_detail,
+            ThreadLocalizedFeedbackPlaceholder,
+            "__RAFT_ATTACHMENT_LIMIT__"
+        )
     val unableToOpenRepliesLabel = stringResource(MR.strings.thread_error_open_replies)
     val unableToOpenParentMessageLabel = stringResource(MR.strings.thread_error_open_parent_message)
     val unableToOpenTaskLabel = stringResource(MR.strings.thread_error_open_task)
@@ -6206,6 +6213,10 @@ internal fun SharedThreadRouteContent(
         stringResource(MR.strings.thread_attachment_skipped_many, ThreadLocalizedFeedbackPlaceholder)
     fun localizedAttachmentUploadFailedDetail(detail: String): String =
         attachmentUploadFailedDetailTemplate.replace(ThreadLocalizedFeedbackPlaceholder, detail)
+    fun localizedAttachmentTooLarge(fileSize: Long, maxBytes: Long): String =
+        attachmentTooLargeTemplate
+            .replace(ThreadLocalizedFeedbackPlaceholder, formatAttachmentSizeLabel(fileSize))
+            .replace("__RAFT_ATTACHMENT_LIMIT__", formatAttachmentSizeLabel(maxBytes))
     fun localizedUnableToOpenTarget(target: String): String =
         unableToOpenTargetTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
     fun localizedUnableToOpenTaskNumber(taskNumber: Int): String =
@@ -7723,12 +7734,43 @@ internal fun SharedThreadRouteContent(
             )
         )
     }
-    fun uploadComposerAttachmentFiles(files: List<PlatformFile>, replaceAttachmentId: String? = null) {
+    suspend fun admittedComposerAttachmentFiles(files: List<PlatformFile>): List<PlatformFile> {
+        val maxBytes =
+            when (val capability = dataSource.attachmentUploadMaxBytes()) {
+                is DataResult.Content -> capability.data
+                is DataResult.NoPermission -> {
+                    routeAuthRequired(capability)
+                    bridge.toast(attachmentLimitUnavailableLabel)
+                    return emptyList()
+                }
+                is DataResult.Empty,
+                is DataResult.Error -> {
+                    bridge.toast(attachmentLimitUnavailableLabel)
+                    return emptyList()
+                }
+            }
+        val sizeDecision = applyServerAttachmentUploadLimit(files, maxBytes)
+        if (sizeDecision.rejected.isNotEmpty()) {
+            val largest = sizeDecision.largestRejectedBytes ?: 0L
+            bridge.toast(localizedAttachmentTooLarge(largest, maxBytes))
+            bridge.log(
+                "thread_composer_attachment_size_rejected rejected=${sizeDecision.rejected.size} " +
+                    "largestBytes=$largest maxBytes=$maxBytes"
+            )
+        }
+        return sizeDecision.accepted
+    }
+    suspend fun uploadComposerAttachmentFiles(
+        files: List<PlatformFile>,
+        replaceAttachmentId: String? = null
+    ): Boolean {
         val channelId = composerSurface.sendChannelId
         if (channelId == null) {
             bridge.toast(attachmentPickerUnavailableLabel)
-            return
+            return false
         }
+        val admittedFiles = admittedComposerAttachmentFiles(files)
+        if (admittedFiles.isEmpty()) return false
         val activeUploadFileRefs =
             attachmentUploadOrchestrator.activeAttemptIds
                 .filter(attachmentUploadOrchestrator::isActive)
@@ -7736,16 +7778,16 @@ internal fun SharedThreadRouteContent(
                 .toSet()
         val acceptedFileRefs = mutableSetOf<String>()
         val acceptedFiles =
-            files.filter { file ->
+            admittedFiles.filter { file ->
                 val fileRef = file.fileRef?.takeIf { it.isNotBlank() }
                 val isDuplicate =
                     fileRef != null &&
                         (fileRef in activeUploadFileRefs || !acceptedFileRefs.add(fileRef))
                 !isDuplicate
             }
-        if (acceptedFiles.size != files.size) {
+        if (acceptedFiles.size != admittedFiles.size) {
             bridge.log(
-                "thread_composer_attachment_duplicate_skip skipped=${files.size - acceptedFiles.size} " +
+                "thread_composer_attachment_duplicate_skip skipped=${admittedFiles.size - acceptedFiles.size} " +
                     "activeUploads=${activeUploadFileRefs.size}"
             )
         }
@@ -7901,6 +7943,7 @@ internal fun SharedThreadRouteContent(
                     }
                 }
         }
+        return acceptedFiles.isNotEmpty()
     }
     fun performComposerSend(): Boolean {
         val currentComposer = currentComposerPayload()
@@ -8045,7 +8088,11 @@ internal fun SharedThreadRouteContent(
                         bridge.toast(attachmentRetryUnavailableLabel)
                         return@launch
                     }
-                    uploadComposerAttachmentFiles(files)
+                    val uploadStarted = uploadComposerAttachmentFiles(files)
+                    if (!uploadStarted) {
+                        externalShareSendRequested = false
+                        externalShareExpectedAuthority = null
+                    }
                 } else {
                     val stillCurrent = dataSource.matchesExternalShareSendAuthority(expected)
                     externalShareSendRequested = false
@@ -9768,7 +9815,9 @@ internal fun SharedThreadRouteContent(
                             )
                         ) {
                             ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->
-                                openComposerImageAnnotation(files)
+                                admittedComposerAttachmentFiles(files)
+                                    .takeIf { admitted -> admitted.isNotEmpty() }
+                                    ?.let(::openComposerImageAnnotation)
                             ThreadPickedAttachmentComposerAction.UploadToComposer -> uploadComposerAttachmentFiles(files)
                             ThreadPickedAttachmentComposerAction.None -> Unit
                         }
@@ -9801,7 +9850,7 @@ internal fun SharedThreadRouteContent(
                             "thread_composer_attachment_retry result=start attachmentId=$id fileName=${file.fileName}"
                         )
                         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RetryAttachment(id))
-                        uploadComposerAttachmentFiles(listOf(file))
+                        coroutineScope.launch { uploadComposerAttachmentFiles(listOf(file)) }
                     }
                 }
                 "previewAttachment" -> {
