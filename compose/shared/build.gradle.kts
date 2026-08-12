@@ -116,6 +116,14 @@ kotlin {
     }
 
     sourceSets {
+        if (!slockVisualFixturesEnabled) {
+            // The Kuikly plugin creates ohosArm64Test after this block is configured, and that
+            // source set does not inherit srcDirs added to commonTest. Match lazily so the
+            // directory is registered whenever the plugin gets around to creating it.
+            matching { it.name == "ohosArm64Test" }.configureEach {
+                kotlin.srcDir("src/visualFixtureData/kotlin")
+            }
+        }
         val commonMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/commonMain/kotlin"))
@@ -156,9 +164,8 @@ kotlin {
                 // and does NOT inherit srcDirs added to commonTest — it picked up commonTest's own
                 // directory but not this one, so compileTestKotlinOhosArm64 failed to resolve while
                 // Android and iOS both resolved (iosTest declares dependsOn(commonTest) below).
-                // Register it explicitly for that target only; adding it to targets that DO inherit
-                // would compile the same declarations twice.
-                sourceSets.findByName("ohosArm64Test")?.kotlin?.srcDir("src/visualFixtureData/kotlin")
+                // Registered lazily just below: the plugin creates that source set after this block
+                // runs, so an eager findByName() returns null and silently does nothing.
             }
             dependencies {
                 implementation(kotlin("test"))
