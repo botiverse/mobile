@@ -870,6 +870,42 @@ private fun ThreadMessageTextSelectionDialog(message: Message, onDismiss: () -> 
 private fun ThreadMessageMenuChrome() = Unit
 """
     check_system_selectable_text_dialog(good_dialog)
+    # task #189 relaxed the region-END anchor to accept `internal fun
+    # ThreadMessageMenuChrome`, because the visual host moved into a gated source set
+    # and has to call it. Prove that is only anchor compatibility, not a weakened
+    # guard: the region must be found under BOTH modifiers, and every content
+    # assertion must still bite under BOTH.
+    good_dialog_internal_neighbour = good_dialog.replace(
+        "private fun ThreadMessageMenuChrome",
+        "internal fun ThreadMessageMenuChrome",
+    )
+    if good_dialog_internal_neighbour == good_dialog:
+        raise SystemExit("self-test: task #924 anchor fixture did not vary the neighbour modifier")
+    check_system_selectable_text_dialog(good_dialog_internal_neighbour)
+    for variant_name, variant in (
+        ("private neighbour", good_dialog),
+        ("internal neighbour", good_dialog_internal_neighbour),
+    ):
+        for token in (
+            "SelectableText(",
+            "LazyColumn(",
+            "val originalText = message.body",
+            "text = originalText",
+        ):
+            broken = variant.replace(token, "removed", 1)
+            if broken == variant:
+                raise SystemExit(
+                    f"self-test: task #924 fixture missing {token!r} under {variant_name}"
+                )
+            try:
+                check_system_selectable_text_dialog(broken)
+            except Violation:
+                pass
+            else:
+                raise SystemExit(
+                    f"self-test: task #924 checker accepted a broken {token!r} "
+                    f"under {variant_name}"
+                )
     for bad in (
         good_dialog.replace("SelectableText(", "SelectionContainer("),
         good_dialog.replace('.testTag("thread_message_selection_text")', ""),
