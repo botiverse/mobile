@@ -1,6 +1,7 @@
 package build.raft.app
 
 import com.tencent.kuikly.compose.text.SelectionFrame
+import com.tencent.kuikly.compose.ui.unit.IntSize
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -254,6 +255,50 @@ class ThreadInlineSelectionTest {
         assertEquals(
             ThreadInlineSelectionToolbarPlacement(xPx = 2, yPx = 188, belowSelection = false),
             placement
+        )
+    }
+
+    @Test
+    fun unmeasuredToolbarUsesItsLayoutContractAndStaysAboveBottomSelection() {
+        val toolbarSize =
+            threadInlineSelectionToolbarResolvedSize(
+                measuredSize = IntSize.Zero,
+                fallbackWidthPx = 330,
+                fallbackHeightPx = 131
+            )
+
+        assertEquals(IntSize(330, 131), toolbarSize)
+        assertEquals(
+            ThreadInlineSelectionToolbarPlacement(xPx = 60, yPx = 333, belowSelection = false),
+            threadInlineSelectionToolbarPlacement(
+                rootBounds = ThreadInlineSelectionRootBounds(widthPx = 450, heightPx = 600),
+                selectionContainerXInRootPx = 140f,
+                selectionContainerYInRootPx = 450f,
+                selectionFrame = SelectionFrame(x = 0f, y = 20f, width = 170f, height = 24f),
+                toolbarWidthPx = toolbarSize.width,
+                toolbarHeightPx = toolbarSize.height,
+                gapPx = 6
+            )
+        )
+    }
+
+    @Test
+    fun measuredToolbarReplacesOnlyResolvedFallbackDimensions() {
+        assertEquals(
+            IntSize(342, 131),
+            threadInlineSelectionToolbarResolvedSize(
+                measuredSize = IntSize(width = 342, height = 0),
+                fallbackWidthPx = 330,
+                fallbackHeightPx = 131
+            )
+        )
+        assertEquals(
+            IntSize(342, 146),
+            threadInlineSelectionToolbarResolvedSize(
+                measuredSize = IntSize(width = 342, height = 146),
+                fallbackWidthPx = 330,
+                fallbackHeightPx = 131
+            )
         )
     }
 
