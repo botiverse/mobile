@@ -646,7 +646,7 @@ private class ThreadInlineSelectionController(
     }
 }
 
-private data class ThreadInlineSelectionOverlayRequest(
+internal data class ThreadInlineSelectionOverlayRequest(
     val messageId: String,
     val controller: ThreadInlineSelectionController,
     val availability: ThreadInlineSelectionActionAvailability,
@@ -660,7 +660,7 @@ private data class ThreadInlineSelectionOverlayRequest(
     val onMore: () -> Unit
 )
 
-private class ThreadInlineSelectionOverlayCoordinator {
+internal class ThreadInlineSelectionOverlayCoordinator {
     var request by mutableStateOf<ThreadInlineSelectionOverlayRequest?>(null)
         private set
     var rootBounds by mutableStateOf(ThreadInlineSelectionRootBounds())
@@ -873,7 +873,7 @@ internal fun threadStableViewportListItemIndex(
         else -> -1
     }
 
-private data class ThreadSharePreviewImage(
+internal data class ThreadSharePreviewImage(
     val uri: String,
     val path: String,
     val width: Int,
@@ -10467,26 +10467,6 @@ internal fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
             .toSet()
     }.orEmpty()
 
-internal fun threadVisualFixtureHighlightedMentions(
-    visualFixture: String
-): Set<String> =
-    if (visualFixture.requiresViewerSelfMentionContext()) {
-        // Visual fixtures must be deterministic and match the React fixture's
-        // declared viewer. Do not let a runner's persisted login (or the lack
-        // of one) change self-mention chrome between captures.
-        setOf("artin")
-    } else {
-        emptySet()
-    }
-
-private fun String.requiresViewerSelfMentionContext(): Boolean =
-    this == THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD ||
-        this == THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF ||
-        this == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT ||
-        this == THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE ||
-        this == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP ||
-        this == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS ||
-        this == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW
 
 internal fun PendingMentionAction.toKuiklyPendingMentionActionItem(): KuiklyPendingMentionActionItem =
     KuiklyPendingMentionActionItem(

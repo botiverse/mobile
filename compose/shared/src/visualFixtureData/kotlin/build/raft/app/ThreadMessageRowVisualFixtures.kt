@@ -2273,3 +2273,24 @@ internal fun threadActionCardVisualMessage(
         body = body,
         metadata = card.toMessageMetadata()
     )
+
+internal fun threadVisualFixtureHighlightedMentions(
+    visualFixture: String
+): Set<String> =
+    if (visualFixture.requiresViewerSelfMentionContext()) {
+        // Visual fixtures must be deterministic and match the React fixture's
+        // declared viewer. Do not let a runner's persisted login (or the lack
+        // of one) change self-mention chrome between captures.
+        setOf("artin")
+    } else {
+        emptySet()
+    }
+
+private fun String.requiresViewerSelfMentionContext(): Boolean =
+    this == THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD ||
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF ||
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT ||
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE ||
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP ||
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS ||
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW
