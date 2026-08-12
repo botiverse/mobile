@@ -611,7 +611,7 @@ internal fun threadInlineSelectionToolbarResolvedSize(
         height = measuredSize.height.takeIf { it > 0 } ?: fallbackHeightPx.coerceAtLeast(0)
     )
 
-private class ThreadInlineSelectionController(
+internal class ThreadInlineSelectionController(
     val selectionState: SelectionContainerState
 ) {
     var lifecycle by mutableStateOf(ThreadInlineSelectionLifecycle())
