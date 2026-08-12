@@ -11383,7 +11383,13 @@ internal fun threadVisualFixture(
                             authorName = "Mahua",
                             authorKind = "agent",
                             avatarLabel = "MH",
-                            timestampLabel = "07/24 18:20",
+                            // Production sets timestampLabel = createdAt (MessageParser.kt:445), a
+                            // raw ISO instant that the header formats through the shared time
+                            // context. A pre-formatted "07/24 18:20" is a string production never
+                            // produces; it only survived here because no time context existed, so
+                            // the header took the Literal passthrough. With this fixture's pinned
+                            // clock the header now renders like production does: 18:20 at +08:00.
+                            timestampLabel = "2026-07-24T10:20:00Z",
                             messageType = "Chat",
                             body = "Native/KMP inline reply previews are ready for review.",
                             threadChannelId = "thread-msg-inline-replies",

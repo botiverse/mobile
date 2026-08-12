@@ -1302,7 +1302,20 @@ class ThreadPayloadTest {
         assertEquals(1_784_888_400_000L, timeContext.nowEpochMillis)
         assertEquals(480, timeContext.localOffsetMinutes)
 
-        val replies = payload.messages.single().inlineReplies?.replies.orEmpty()
+        // The header runs through the same shared time context (production ThreadMessageCard), so a
+        // pinned clock also demands a production-shaped label: MessageParser sets
+        // timestampLabel = createdAt, a raw ISO instant. A pre-formatted "07/24 18:20" does not
+        // parse and would resolve to Unknown — the capture caught exactly that.
+        val message = payload.messages.single()
+        assertEquals("2026-07-24T10:20:00Z", message.timestampLabel)
+        assertNotEquals(
+            SlockRelativeTimeLabel.Unknown,
+            resolveSlockRelativeTimeLabel(message.timestampLabel, timeContext),
+            "the header timestamp must resolve to a real label, not the unknown-time fallback"
+        )
+        assertEquals("18:20", slockAbsoluteTimestampLabel(message.timestampLabel, timeContext))
+
+        val replies = message.inlineReplies?.replies.orEmpty()
         assertEquals(3, replies.size)
         replies.forEach { reply ->
             assertNotEquals(
