@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -65,20 +66,66 @@ def occurrences(text: str, name: str) -> int:
     return len(re.findall(r"\b%s\b" % re.escape(name), text))
 
 
-def main() -> int:
-    production = PRODUCTION.read_text(encoding="utf-8")
-    moved_text = "\n".join(p.read_text(encoding="utf-8") for p in MOVED)
-    prod_decls = declarations(production)
+def self_test() -> int:
+    """The guard must reject a left-behind visual-only declaration and accept its absence.
 
+    Without this, the census is exactly the kind of rule that quietly stops
+    biting - which is how verifyNoProductionVisualPages accumulated nine
+    violations while nobody noticed it never ran.
+    """
+    production_clean = """
+internal fun ProductionThing() = Unit
+private fun StaysPrivate() = Unit
+internal fun SomeProductionCaller() {
+    ProductionThing()
+}
+"""
+    production_with_left_behind = production_clean + """
+internal fun OnlyTheVisualFilesUseThis() = Unit
+"""
+    moved = """
+fun render() {
+    ProductionThing()
+    OnlyTheVisualFilesUseThis()
+}
+"""
+    clean = classify(production_clean, moved)
+    if clean.left_behind:
+        print(
+            "self-test: census reported a left-behind symbol on clean input: "
+            f"{clean.left_behind}",
+            file=sys.stderr,
+        )
+        return 1
+    if "ProductionThing" not in dict(clean.widened):
+        print("self-test: census failed to report a real production dependency", file=sys.stderr)
+        return 1
+
+    dirty = classify(production_with_left_behind, moved)
+    if "OnlyTheVisualFilesUseThis" not in dirty.left_behind:
+        print(
+            "self-test: census accepted a visual-only declaration left in production",
+            file=sys.stderr,
+        )
+        return 1
+    print("visual_fixture_split_census self-test passed")
+    return 0
+
+
+@dataclass
+class Census:
+    left_behind: list[str]
+    unreachable: list[str]
+    widened: list[tuple[str, int]]
+
+
+def classify(production: str, moved_text: str) -> Census:
     left_behind: list[str] = []
     unreachable: list[str] = []
     widened: list[tuple[str, int]] = []
-
-    for name, vis in sorted(prod_decls.items()):
-        used_by_moved = occurrences(moved_text, name)
-        if not used_by_moved:
+    for name, vis in sorted(declarations(production).items()):
+        if not occurrences(moved_text, name):
             continue
-        # Uses that remain in production, excluding the declaration itself.
         remaining = occurrences(production, name) - 1
         if vis == "private":
             unreachable.append(name)
@@ -86,6 +133,14 @@ def main() -> int:
             left_behind.append(name)
         else:
             widened.append((name, remaining))
+    return Census(left_behind, unreachable, widened)
+
+
+def main() -> int:
+    production = PRODUCTION.read_text(encoding="utf-8")
+    moved_text = "\n".join(p.read_text(encoding="utf-8") for p in MOVED)
+    result = classify(production, moved_text)
+    left_behind, unreachable, widened = result.left_behind, result.unreachable, result.widened
 
     print("== visual-only symbols still declared in the production file ==")
     print("   (expect none; each should have moved with the cluster)")
@@ -116,4 +171,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if "--self-test" in sys.argv:
+        raise SystemExit(self_test())
     raise SystemExit(main())
