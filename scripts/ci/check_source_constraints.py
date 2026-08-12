@@ -286,7 +286,11 @@ def check_system_selectable_text_dialog(thread_page: str) -> None:
     """
     match = re.search(
         r"private fun ThreadMessageTextSelectionDialog\(.*?"
-        r"\n}\n\n@Composable\nprivate fun ThreadMessageMenuChrome",
+        # Anchor only — this marks where the dialog body ends. task #189 moved the
+        # visual host into a gated source set, which required ThreadMessageMenuChrome
+        # to become internal; the invariant below is about the dialog's contents, not
+        # about that neighbour's visibility, so accept either keyword.
+        r"\n}\n\n@Composable\n(?:private|internal) fun ThreadMessageMenuChrome",
         thread_page,
         flags=re.DOTALL,
     )
