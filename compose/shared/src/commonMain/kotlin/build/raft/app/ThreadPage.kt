@@ -1725,6 +1725,13 @@ internal fun KuiklyThreadScreenPayload.threadActivityMuteState(
     )
 }
 
+internal fun KuiklyThreadScreenPayload.threadActivityMutedIndicatorVisible(
+    projection: SharedConversationDirectoryProjection?
+): Boolean {
+    val supported = projection?.activityMuteSupported ?: activityMuteSupported
+    return supported && (projection?.activityMuted ?: activityMuted)
+}
+
 internal fun KuiklyThreadScreenPayload.threadChannelPinTargetId(
     projection: SharedConversationDirectoryProjection?
 ): String? {
@@ -4685,14 +4692,13 @@ internal fun Task797ThreadHeaderVisualScreen() {
             headerDisplay = headerDisplay,
             agentStatusResolver = activityResolver,
             applyTopSafeArea = applyTopSafeArea,
-            activityMuteState = payload.threadActivityMuteState(null),
+            activityMutedIndicatorVisible = payload.threadActivityMutedIndicatorVisible(null),
             onBack = {},
             onOpenInChannel = {},
             onOpenMemberProfile = {},
             onOpenSearch = {},
             onShowMembers = {},
             onShowSettings = {},
-            onToggleActivityMute = {},
         )
     }
 }
@@ -4801,7 +4807,6 @@ internal fun ThreadActivityMuteVisualScreen() {
             onOpenSearch = {},
             onShowMembers = {},
             onShowSettings = {},
-            onToggleActivityMute = {}
         )
         ThreadPageHeader(
             payload = mutedPayload,
@@ -4812,7 +4817,6 @@ internal fun ThreadActivityMuteVisualScreen() {
             onOpenSearch = {},
             onShowMembers = {},
             onShowSettings = {},
-            onToggleActivityMute = {}
         )
         SlockStructuralHomeShell(
             modifier = Modifier.height(700.dp),
@@ -5620,6 +5624,10 @@ internal fun SharedThreadRouteContent(
         remember(payload, stableHeaderProjection, sharedHomeStore) {
             payload.threadActivityMuteState(stableHeaderProjection)
                 ?.takeIf { sharedHomeStore != null }
+        }
+    val activityMutedIndicatorVisible =
+        remember(payload, stableHeaderProjection) {
+            payload.threadActivityMutedIndicatorVisible(stableHeaderProjection)
         }
     val channelPinTargetId = remember(payload, stableHeaderProjection) {
         payload.threadChannelPinTargetId(stableHeaderProjection)
@@ -8298,6 +8306,7 @@ internal fun SharedThreadRouteContent(
             onSelectedTabChanged = { selectedThreadTab = it },
             onSuggestionDemandChanged = { composerSuggestionDemand = it },
             activityMuteState = activityMuteState?.takeIf { renderSlice.writeActionsEnabled },
+            activityMutedIndicatorVisible = activityMutedIndicatorVisible,
             onToggleActivityMute =
                 activityMuteState?.takeIf { renderSlice.writeActionsEnabled }?.let { muteState ->
                     {
@@ -13252,7 +13261,7 @@ private fun ThreadDeferredLoadingRouteContent(
                 ThreadPageHeader(
                     payload = payload,
                     headerDisplay = displayModel,
-                    activityMuteState = null,
+                    activityMutedIndicatorVisible = false,
                     memberAvatarResolver = memberAvatarResolver,
                     showActions = false,
                     onBack = onBack,
@@ -13334,6 +13343,7 @@ private fun ThreadPageContent(
     onSelectedTabChanged: (KuiklyThreadTab) -> Unit,
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
     activityMuteState: ThreadActivityMuteUiState? = null,
+    activityMutedIndicatorVisible: Boolean = false,
     onToggleActivityMute: (() -> Unit)? = null,
     channelPinState: ThreadChannelPinUiState? = null,
     onToggleChannelPin: (() -> Unit)? = null,
@@ -14144,7 +14154,7 @@ private fun ThreadPageContent(
                 ThreadPageHeader(
                     payload = payload,
                     headerDisplay = headerDisplay,
-                    activityMuteState = activityMuteState,
+                    activityMutedIndicatorVisible = activityMutedIndicatorVisible,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
                     onBack = onBack,
@@ -14176,7 +14186,6 @@ private fun ThreadPageContent(
                             activeModal = "settings"
                         }
                     },
-                    onToggleActivityMute = onToggleActivityMute,
                     onTitleClick =
                         if (threadHeaderScrollToTopEnabled(payload.surfaceKind, selectedTab.wireValue)) {
                             { threadHeaderScrollToTopRequest += 1 }
@@ -14521,6 +14530,7 @@ private fun ThreadPageContent(
                     subtitle = headerDisplay.subtitle,
                     actions = payload.settingsActions,
                     channelPinState = channelPinState,
+                    activityMuteState = activityMuteState,
                     updateStatus = channelProfileUpdateStatus,
                     updateErrorCode = channelProfileUpdateErrorCode,
                     onDismiss = {
@@ -14535,6 +14545,7 @@ private fun ThreadPageContent(
                         }
                     },
                     onTogglePin = onToggleChannelPin,
+                    onToggleActivityMute = onToggleActivityMute,
                     onOpenAction = { actionId ->
                         activeModal = null
                         onClearChannelProfileUpdateStatus()
@@ -14580,7 +14591,7 @@ private fun ThreadPageContent(
 private fun ThreadPageHeader(
     payload: KuiklyThreadScreenPayload,
     headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderFallbackDisplayModel(),
-    activityMuteState: ThreadActivityMuteUiState? = payload.threadActivityMuteState(null),
+    activityMutedIndicatorVisible: Boolean = payload.threadActivityMutedIndicatorVisible(null),
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     applyTopSafeArea: Boolean = true,
@@ -14591,7 +14602,6 @@ private fun ThreadPageHeader(
     onOpenSearch: () -> Unit,
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit,
-    onToggleActivityMute: (() -> Unit)? = null,
     onTitleClick: (() -> Unit)? = null
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
@@ -14617,7 +14627,6 @@ private fun ThreadPageHeader(
         showActions &&
             (
                 payload.threadHeaderSearchAction() != null ||
-                    (activityMuteState != null && onToggleActivityMute != null) ||
                     payload.showSettingsAction ||
                     payload.showMembersAction ||
                     payload.threadHeaderOpenInParentActionVisible()
@@ -14672,6 +14681,9 @@ private fun ThreadPageHeader(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (activityMutedIndicatorVisible) {
+                        ThreadActivityMutedBadge()
+                    }
                     dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }
                 }
                 headerDisplay.subtitle?.takeIf { it.isNotBlank() }?.let {
@@ -14695,12 +14707,6 @@ private fun ThreadPageHeader(
                     if (payload.threadHeaderSearchAction() != null) {
                         ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
                     }
-                    if (activityMuteState != null && onToggleActivityMute != null) {
-                        ThreadHeaderIconButton(
-                            icon = if (activityMuteState.muted) SlockLucideIconName.BellOff else SlockLucideIconName.Bell,
-                            onClick = onToggleActivityMute
-                        )
-                    }
                     if (payload.showSettingsAction) {
                         ThreadHeaderIconButton(icon = SlockLucideIconName.Settings, onClick = onShowSettings)
                     }
@@ -14717,6 +14723,31 @@ private fun ThreadPageHeader(
             },
         showBodyTopBanner = false,
     )
+}
+
+@Composable
+private fun ThreadActivityMutedBadge() {
+    Row(
+        modifier =
+            Modifier
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .background(SlockColor.AccentOrange.copy(alpha = 0.25f))
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        SlockLucideIcon(
+            SlockLucideIconName.BellOff,
+            Modifier.size(11.dp),
+            color = SlockColor.TextBlackArgb
+        )
+        Text(
+            text = stringResource(MR.strings.member_label_muted).uppercase(),
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 11.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1
+        )
+    }
 }
 
 internal fun localizedThreadHeaderTitle(
@@ -28715,11 +28746,13 @@ internal fun ThreadSettingsModal(
     actions: List<KuiklyThreadSettingsAction>,
     initialDangerActionId: String? = null,
     channelPinState: ThreadChannelPinUiState? = null,
+    activityMuteState: ThreadActivityMuteUiState? = null,
     updateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     updateErrorCode: String? = null,
     onDismiss: () -> Unit,
     onSave: (String, String, String, String) -> Unit = { _, _, _, _ -> },
     onTogglePin: (() -> Unit)? = null,
+    onToggleActivityMute: (() -> Unit)? = null,
     onOpenAction: (String) -> Unit
 ) {
     var name by remember(channelName) { mutableStateOf(channelName) }
@@ -28822,9 +28855,24 @@ internal fun ThreadSettingsModal(
                         }
                     )
                 }
-                if ((channelPinState != null && onTogglePin != null) || dangerActions.isNotEmpty()) {
+                if (
+                    (activityMuteState != null && onToggleActivityMute != null) ||
+                        (channelPinState != null && onTogglePin != null) ||
+                        dangerActions.isNotEmpty()
+                ) {
                     Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
                     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        activityMuteState?.takeIf { onToggleActivityMute != null }?.let { muteState ->
+                            SlockModalFullWidthActionButton(
+                                label =
+                                    stringResource(
+                                        if (muteState.muted) MR.strings.home_action_unmute else MR.strings.home_action_mute
+                                    ),
+                                icon = if (muteState.muted) SlockLucideIconName.Bell else SlockLucideIconName.BellOff,
+                                color = if (muteState.muted) SlockColor.AccentOrange else SlockColor.SurfaceWhite,
+                                onClick = { onToggleActivityMute?.invoke() }
+                            )
+                        }
                         channelPinState?.takeIf { onTogglePin != null }?.let { pinState ->
                             SlockModalFullWidthActionButton(
                                 label =
