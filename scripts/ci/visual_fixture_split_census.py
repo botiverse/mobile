@@ -244,10 +244,43 @@ def main() -> int:
     for n in unreachable:
         print(f"   UNREACHABLE  {n}")
     print()
-    print("== internal production symbols the visual files depend on ==")
-    print("   (the widening census; each still has production call sites)")
-    for n, remaining in widened:
-        print(f"   {n:<52} production-uses={remaining}")
+    base_for_split = base_production()
+    base_decls = declarations(base_for_split) if base_for_split else {}
+    now_decls = declarations(production)
+
+    if base_for_split is None:
+        print("== internal production symbols the visual files depend on ==")
+        print("   (base revision unavailable, so widened-by-this-change cannot be split out)")
+        for n, remaining in widened:
+            print(f"   {n:<52} production-uses={remaining}")
+    else:
+        widened_here = [(n, r) for n, r in widened if base_decls.get(n) == "private"]
+        pre_existing = [(n, r) for n, r in widened if base_decls.get(n) == "internal"]
+        print("== A. widened by this change (private -> internal), still used by production ==")
+        for n, remaining in widened_here:
+            print(f"   {n:<52} production-uses={remaining}")
+        print(f"   A total={len(widened_here)}")
+        print()
+        # Types that had to widen only because a widened signature exposes them.
+        # They carry no direct textual use in the moved files, which is exactly why
+        # they do not appear in the dependency scan above.
+        cascade = sorted(
+            n
+            for n, vis in now_decls.items()
+            if vis == "internal"
+            and base_decls.get(n) == "private"
+            and not occurrences(moved_text, n)
+        )
+        print("== B. widened only as a consequence of a widened signature ==")
+        for n in cascade:
+            print(f"   {n:<52} visual-uses=0")
+        print(f"   B total={len(cascade)}")
+        print()
+        print("== pre-existing internal production symbols the visual files use ==")
+        print("   (not widened by this change; listed so A is not over-read)")
+        for n, remaining in pre_existing:
+            print(f"   {n:<52} production-uses={remaining}")
+        print(f"   pre-existing total={len(pre_existing)}")
     print()
     base = base_production()
     if base is None:
