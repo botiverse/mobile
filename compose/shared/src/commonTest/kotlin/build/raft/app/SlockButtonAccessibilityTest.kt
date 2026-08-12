@@ -32,6 +32,62 @@ class SlockButtonAccessibilityTest {
         val click = assertNotNull(assertNotNull(config.getOrNull(SemanticsActions.OnClick)).action)
         assertTrue(click())
         assertEquals(1, clickCount)
+        assertNull(config.getOrNull(SemanticsActions.OnLongClick))
+    }
+
+    @Test
+    fun buttonPublishesLocalizedAccessibilityLongClick() {
+        var tapCount = 0
+        var cameraCount = 0
+        val config = Modifier.slockButtonAccessibility(
+            enabled = true,
+            performClick = { tapCount += 1 },
+            longClickLabel = "Take photo",
+            performLongClick = { cameraCount += 1 },
+        ).semanticsConfiguration()
+
+        val longClick = assertNotNull(config.getOrNull(SemanticsActions.OnLongClick))
+        assertEquals("Take photo", longClick.label)
+        assertTrue(assertNotNull(longClick.action)())
+        assertEquals(0, tapCount)
+        assertEquals(1, cameraCount)
+    }
+
+    @Test
+    fun disabledButtonRejectsAccessibilityLongClick() {
+        var cameraCount = 0
+        val config = Modifier.slockButtonAccessibility(
+            enabled = false,
+            performClick = {},
+            longClickLabel = "Take photo",
+            performLongClick = { cameraCount += 1 },
+        ).semanticsConfiguration()
+
+        val longClick = assertNotNull(config.getOrNull(SemanticsActions.OnLongClick))
+        assertFalse(assertNotNull(longClick.action)())
+        assertEquals(0, cameraCount)
+    }
+
+    @Test
+    fun productionGestureArbiterDispatchesExactlyOneAction() {
+        var galleryCount = 0
+        var cameraCount = 0
+
+        SlockButtonGestureArbiter(hasLongClick = true).dispatchTap { galleryCount += 1 }
+        assertEquals(1, galleryCount)
+        assertEquals(0, cameraCount)
+
+        val longPress = SlockButtonGestureArbiter(hasLongClick = true)
+        assertTrue(longPress.dispatchLongClick { cameraCount += 1 })
+        assertFalse(longPress.dispatchTap { galleryCount += 1 })
+        assertEquals(1, galleryCount)
+        assertEquals(1, cameraCount)
+
+        val withoutLongClick = SlockButtonGestureArbiter(hasLongClick = false)
+        assertFalse(withoutLongClick.dispatchLongClick(null))
+        assertTrue(withoutLongClick.dispatchTap { galleryCount += 1 })
+        assertEquals(2, galleryCount)
+        assertEquals(1, cameraCount)
     }
 
     @Test

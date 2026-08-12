@@ -1519,6 +1519,8 @@ internal fun SlockAnchoredToolbarChip(
 internal fun SlockBrutalIconButton(
     iconName: SlockLucideIconName,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    longClickLabel: String? = null,
     contentDescription: String? = null,
     modifier: Modifier = Modifier,
     clickIdentity: Any? = null,
@@ -1555,6 +1557,8 @@ internal fun SlockBrutalIconButton(
         )
         SlockAnchorButton(
             onClick = onClick,
+            onLongClick = onLongClick,
+            longClickLabel = longClickLabel,
             enabled = enabled,
             pressFeedback = enabled,
             pressOffset = shadowOffset,

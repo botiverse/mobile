@@ -321,6 +321,25 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun composerImageButtonMapsTapToLibraryAndLongPressToCamera() {
+        assertEquals(ThreadComposerAttachImageAction, threadComposerImageAction(longPress = false))
+        assertEquals(ThreadComposerCaptureImageAction, threadComposerImageAction(longPress = true))
+    }
+
+    @Test
+    fun capturedImageUsesTheSameAnnotationPipelineAsPickedImage() {
+        assertEquals(
+            ThreadPickedAttachmentComposerAction.OpenImageAnnotation,
+            resolveThreadPickedAttachmentComposerAction(
+                action = ThreadComposerCaptureImageAction,
+                fileCount = 1,
+                imageAnnotationEnabled = true,
+                allFilesAreImages = true,
+            )
+        )
+    }
+
+    @Test
     fun pickedSingleImageUploadsDirectlyWhenAnnotationIsDisabled() {
         assertEquals(
             ThreadPickedAttachmentComposerAction.UploadToComposer,

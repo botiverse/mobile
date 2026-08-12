@@ -1,5 +1,6 @@
 import { bundleManager, common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { camera, cameraPicker } from '@kit.CameraKit';
 import { picker, fileUri } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { image } from '@kit.ImageKit';
@@ -1698,9 +1699,11 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const channelId = (records["channelId"] as string | undefined) ?? "";
       const imageOnlyValue = records["imageOnly"];
       const imageOnly = imageOnlyValue === true || imageOnlyValue === "true";
+      const captureValue = records["capture"];
+      const capture = captureValue === true || captureValue === "true";
       SlockOhosDiagnostics.record(
         "ThreadAttachmentUpload",
-        `start imageOnly=${imageOnly} channelIdPresent=${channelId.length > 0}`
+        `start imageOnly=${imageOnly} capture=${capture} channelIdPresent=${channelId.length > 0}`
       );
 
       if (channelId.length === 0) {
@@ -1708,7 +1711,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         return;
       }
 
-      const uris = await this.pickThreadAttachmentUris(imageOnly).catch((error: BusinessError) => {
+      const uris = await this.pickThreadAttachmentUris(imageOnly, capture).catch((error: BusinessError) => {
         SlockOhosDiagnostics.record(
           "ThreadAttachmentUpload",
           `picker_failed code=${error.code ?? -1} message=${error.message ?? ""}`
@@ -1729,7 +1732,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         return;
       }
 
-      callback(this.threadPickedAttachmentFiles(files));
+      callback(this.threadPickedAttachmentFiles(files, capture));
     } catch (error) {
       const businessError = error as BusinessError;
       const message = businessError.message ?? `${error}`;
@@ -1746,7 +1749,18 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
   }
 
-  private async pickThreadAttachmentUris(imageOnly: boolean): Promise<Array<string>> {
+  private async pickThreadAttachmentUris(imageOnly: boolean, capture: boolean): Promise<Array<string>> {
+    if (capture) {
+      const profile: cameraPicker.PickerProfile = {
+        cameraPosition: camera.CameraPosition.CAMERA_POSITION_BACK
+      };
+      const result = await cameraPicker.pick(
+        getContext(this) as common.UIAbilityContext,
+        [cameraPicker.PickerMediaType.PHOTO],
+        profile
+      );
+      return result.resultCode === 0 && result.resultUri.length > 0 ? [result.resultUri] : [];
+    }
     if (imageOnly) {
       const options = new photoAccessHelper.PhotoSelectOptions();
       options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
@@ -1803,7 +1817,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     return files;
   }
 
-  private threadPickedAttachmentFiles(files: Array<OhosPickedThreadAttachment>): Record<string, Object> {
+  private threadPickedAttachmentFiles(
+    files: Array<OhosPickedThreadAttachment>,
+    capture: boolean
+  ): Record<string, Object> {
     return {
       "code": 200,
       "bodyText": "",
@@ -1815,7 +1832,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           "sizeBytes": file.sizeBytes,
           "previewUri": file.previewUri,
           "fileRef": file.fileRef,
-          "source": "platform_picker"
+          "source": capture ? "platform_camera" : "platform_picker"
         };
       })
     };

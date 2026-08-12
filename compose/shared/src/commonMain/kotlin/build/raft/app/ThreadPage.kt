@@ -752,7 +752,9 @@ internal fun resolveThreadPickedAttachmentComposerAction(
 ): ThreadPickedAttachmentComposerAction {
     return when {
         fileCount <= 0 -> ThreadPickedAttachmentComposerAction.None
-        action == "attachImage" && imageAnnotationEnabled && allFilesAreImages ->
+        (action == ThreadComposerAttachImageAction || action == ThreadComposerCaptureImageAction) &&
+            imageAnnotationEnabled &&
+            allFilesAreImages ->
             ThreadPickedAttachmentComposerAction.OpenImageAnnotation
         else -> ThreadPickedAttachmentComposerAction.UploadToComposer
     }
@@ -9704,7 +9706,7 @@ internal fun SharedThreadRouteContent(
                         }
                     }
                 }
-                "attachImage", "attachFile" -> {
+                ThreadComposerAttachImageAction, ThreadComposerCaptureImageAction, "attachFile" -> {
                     coroutineScope.launch {
                         val channelId = composerSurface.sendChannelId
                         if (channelId == null) {
@@ -9714,7 +9716,8 @@ internal fun SharedThreadRouteContent(
                         val response =
                             bridge.threadAttachmentUpload(
                                 channelId = channelId,
-                                imageOnly = action == "attachImage"
+                                imageOnly = action != "attachFile",
+                                capture = action == ThreadComposerCaptureImageAction,
                             )
                         val files = parseSharedThreadPickedPlatformFiles(response)
                         bridge.log(
@@ -9750,7 +9753,8 @@ internal fun SharedThreadRouteContent(
                             resolveThreadPickedAttachmentComposerAction(
                                 action = action,
                                 fileCount = files.size,
-                                imageAnnotationEnabled = action == "attachImage" && imageAnnotationEnabled(),
+                                imageAnnotationEnabled =
+                                    action != "attachFile" && imageAnnotationEnabled(),
                                 allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(files),
                             )
                         ) {

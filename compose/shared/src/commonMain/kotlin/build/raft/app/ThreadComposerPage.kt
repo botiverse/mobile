@@ -90,6 +90,11 @@ import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 
 private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
+internal const val ThreadComposerAttachImageAction = "attachImage"
+internal const val ThreadComposerCaptureImageAction = "captureImage"
+
+internal fun threadComposerImageAction(longPress: Boolean): String =
+    if (longPress) ThreadComposerCaptureImageAction else ThreadComposerAttachImageAction
 private val ThreadComposerStandaloneTopPadding = 10.dp
 private val ThreadComposerStandaloneBottomPadding = 8.dp
 private val ThreadComposerHostKeyboardBasePadding = 12.dp
@@ -2712,9 +2717,18 @@ internal fun ThreadComposerContentLeaf(
                             horizontalArrangement = Arrangement.spacedBy(ThreadComposerLeftActionGroupSpacing)
                         ) {
                             if (state.attachmentActionsEnabled) {
-                                ComposerIconButton(SlockLucideIconName.ImagePlus, composerEnabled) {
-                                    onEvent("attachImage", null, null, null)
-                                }
+                                ComposerIconButton(
+                                    icon = SlockLucideIconName.ImagePlus,
+                                    enabled = composerEnabled,
+                                    contentDescription = stringResource(MR.strings.composer_add_image),
+                                    longClickLabel = stringResource(MR.strings.composer_take_photo),
+                                    onLongClick = {
+                                        onEvent(threadComposerImageAction(longPress = true), null, null, null)
+                                    },
+                                    onClick = {
+                                        onEvent(threadComposerImageAction(longPress = false), null, null, null)
+                                    }
+                                )
                                 ComposerIconButton(SlockLucideIconName.Paperclip, composerEnabled) {
                                     onEvent("attachFile", null, null, null)
                                 }
@@ -4647,6 +4661,8 @@ private fun ComposerIconButton(
     disabledAlpha: Float = 1f,
     disabledIconColor: String = "#4D000000",
     iconSpinning: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
+    longClickLabel: String? = null,
     onClick: () -> Unit
 ) {
     SlockBrutalIconButton(
@@ -4664,7 +4680,9 @@ private fun ComposerIconButton(
         size = ThreadComposerIconButtonSize,
         shadowOffset = ThreadComposerActionShadowOffset,
         iconSize = ThreadComposerIconSize,
-        iconSpinning = iconSpinning
+        iconSpinning = iconSpinning,
+        onLongClick = onLongClick,
+        longClickLabel = longClickLabel,
     )
 }
 

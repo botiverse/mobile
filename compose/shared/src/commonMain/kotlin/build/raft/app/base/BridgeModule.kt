@@ -804,11 +804,16 @@ internal class BridgeModule : Module() {
             }
         }
 
-    suspend fun threadAttachmentUpload(channelId: String, imageOnly: Boolean): JSONObject? =
+    suspend fun threadAttachmentUpload(
+        channelId: String,
+        imageOnly: Boolean,
+        capture: Boolean = false,
+    ): JSONObject? =
         suspendCoroutine { continuation ->
             val methodArgs = JSONObject()
             methodArgs.put("channelId", channelId)
             methodArgs.put("imageOnly", imageOnly)
+            methodArgs.put("capture", capture)
             callNativeMethod("threadAttachmentUpload", methodArgs) {
                 continuation.resume(it)
             }
