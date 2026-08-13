@@ -7,7 +7,6 @@ import build.raft.app.data.hasUnopenableInternalJointParentSource
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
-import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.isInternalJointStorageIdentity
@@ -36,7 +35,6 @@ internal data class ConversationOpenSourceMessageIdentity(
     val lastMessageId: String? = null,
     val latestActivityMessageId: String? = null,
     val unreadCount: Int = 0,
-    val isTopLevelChannelSystemActivity: Boolean = false,
     val originFallback: ThreadLaunchOriginFallback? = null
 ) {
     // task #441 (superseding the old ordered-fallback contract): the lookup resolves ONLY
@@ -237,8 +235,6 @@ internal fun InboxItem.toConversationOpenSourceMessageIdentity(): ConversationOp
         lastMessageId = lastMessageId?.value?.takeIf { it.isNotBlank() },
         latestActivityMessageId = latestActivityMessageId?.value?.takeIf { it.isNotBlank() },
         unreadCount = unreadCount,
-        isTopLevelChannelSystemActivity =
-            kind == InboxItemKind.Channel && lastMessageSenderKind == MemberKind.System,
         originFallback = toActivityOpenThreadLaunchOriginFallback()
     )
 
@@ -349,17 +345,7 @@ private fun ConversationOpenSourceMessageIdentity.resolveOpenAnchorMessageId(
     conversation: ThreadLaunchConversationIdentity
 ): String? =
     when (source) {
-        ConversationOpenSource.ActivityRow ->
-            if (
-                conversation.kind == ConversationKind.Joint &&
-                isTopLevelChannelSystemActivity
-            ) {
-                // Joint system events are stored outside the canonical joint message stream.
-                // A context request around one exposes that event neighborhood as the channel.
-                null
-            } else {
-                messageId
-            }
+        ConversationOpenSource.ActivityRow -> messageId
         ConversationOpenSource.Notification ->
             if (
                 conversation.kind != ConversationKind.Thread &&
