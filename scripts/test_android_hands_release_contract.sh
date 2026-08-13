@@ -236,8 +236,6 @@ ruby -e '
     ja_strings[element.attributes["name"]] = element.text.to_s
   end
   {
-    "settings_mobile_reactions" => "リアクション",
-    "settings_mobile_saved_disabled" => "保存済み状態",
     "thread_error_task_status_unsupported" => "タスクステータス",
     "app_update_working" => "処理中",
   }.each do |key, canonical|

@@ -98,12 +98,8 @@ jobs:
             echo "githubPackagesToken=${{ secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}"
           } > compose/github-packages.properties
 
-      - name: Publish Kuikly fork artifacts
-        shell: bash
-        run: |
-          git submodule sync third_party/kuikly-ui
-          git submodule update --init third_party/kuikly-ui
-          scripts/build_kuikly_fork.sh --android-only
+      - name: Verify complete immutable Kuikly release
+        run: scripts/ci/verify_kuikly_release_manifest.sh
 
       - name: Build alpha debug APK
         working-directory: compose

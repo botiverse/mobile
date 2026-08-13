@@ -49,6 +49,29 @@ plugins {
 }
 
 dependencyResolutionManagement {
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsKuiklyRelease() {
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = "RaftArtifactsKuiklyRelease"
+                    url = uri("https://maven.artifacts.botiverse.dev")
+                }
+            }
+            filter {
+                includeGroup("com.tencent.kuikly-open")
+                includeGroupByRegex("com\\.tencent\\.kuikly-open\\.compose\\..+")
+                includeVersion("org.jetbrains.kotlin", "kotlin-stdlib", "2.0.21-KBA-003")
+                includeVersion("org.jetbrains.kotlin", "kotlin-stdlib-common", "2.0.21-KBA-003")
+                includeVersion("org.jetbrains.kotlin", "kotlin-stdlib", "2.0.21-KBA-010")
+                includeVersion("org.jetbrains.kotlin", "kotlin-stdlib-common", "2.0.21-KBA-010")
+                includeVersion("org.jetbrains.kotlinx", "atomicfu", "0.23.2-KBA-001")
+                includeVersion("org.jetbrains.kotlinx", "atomicfu-ohosarm64", "0.23.2-KBA-001")
+                includeVersion("org.jetbrains.kotlinx", "kotlinx-coroutines-core", "1.8.0-KBA-002")
+                includeVersion("org.jetbrains.kotlinx", "kotlinx-coroutines-core-ohosarm64", "1.8.0-KBA-002")
+            }
+        }
+    }
+
     fun githubPackagesCredentials(): Pair<String, String> {
         val localProperties =
             listOf(
@@ -120,6 +143,7 @@ dependencyResolutionManagement {
     }
 
     repositories {
+        raftArtifactsKuiklyRelease()
         raftArtifactsKuiklyBase()
         githubPackagesHands()
         mavenLocal()

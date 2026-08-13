@@ -53,7 +53,7 @@ expected_needs = {
   "android-device" => ["plan", "android"],
   "android-minimum-supported-attachment-runtime" => ["plan", "android"],
   "android-canonical-final-actual-host" => ["plan", "android"],
-  "ios" => ["plan"],
+  "ios" => ["plan", "kuikly-artifacts"],
   "ohos-receipt-selftest" => ["plan"],
   "ohos" => ["plan", "kuikly-artifacts", "fork-deps"],
   "ohos-host" => ["plan", "kuikly-artifacts", "fork-deps"],
@@ -61,8 +61,9 @@ expected_needs = {
 expected_needs.each do |job, needs|
   raise "#{job} needs drifted" unless Array(jobs.dig(job, "needs")) == needs
 end
-raise "Kuikly prebuild must follow Android or OHOS" unless
+raise "Kuikly manifest gate must follow every Kuikly consumer platform" unless
   jobs.dig("kuikly-artifacts", "if").include?("run_android") &&
+  jobs.dig("kuikly-artifacts", "if").include?("run_ios") &&
   jobs.dig("kuikly-artifacts", "if").include?("run_ohos")
 raise "Android compile is not Android-path gated" unless jobs.dig("android", "if").include?("run_android")
 raise "iOS compile is not iOS-path gated" unless jobs.dig("ios", "if").include?("run_ios")
@@ -72,11 +73,14 @@ end
 %w[android-device android-minimum-supported-attachment-runtime android-canonical-final-actual-host].each do |job|
   raise "#{job} is not emulator-tier gated" unless jobs.dig(job, "if").include?("run_emulators")
 end
-ohos_fork_steps = jobs.fetch("kuikly-artifacts").fetch("steps").select do |step|
-  step.fetch("name", "").include?("OpenHarmony") || step.fetch("name", "").include?("ohos flavor")
+kuikly_steps = jobs.fetch("kuikly-artifacts").fetch("steps")
+raise "Kuikly manifest admission gate is not hosted" unless kuikly_steps.any? do |step|
+  step["run"]&.include?("verify_kuikly_release_manifest.sh")
 end
-raise "OHOS fork work disappeared from the OHOS path group" if ohos_fork_steps.empty?
-raise "non-OHOS plans still perform OHOS fork work" unless ohos_fork_steps.all? { |step| step.fetch("if", "").include?("run_ohos") }
+raise "Kuikly gate regressed to gitlink/source publication" if kuikly_steps.any? do |step|
+  run = step["run"].to_s
+  run.include?("third_party/kuikly-ui") || run.include?("build_kuikly_fork.sh") || run.include?("mavenLocal")
+end
 
 plan_outputs = jobs.fetch("plan").fetch("outputs").keys
 raise "platform plan outputs drifted" unless plan_outputs == %w[run_android run_ios run_ohos run_emulators reason]

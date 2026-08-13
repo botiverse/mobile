@@ -7,7 +7,6 @@ plugins {
     id("com.android.library")
     id("com.google.devtools.ksp")
     id("maven-publish")
-    id("com.tencent.kuikly-open.kuikly")
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
     id("app.cash.sqldelight")

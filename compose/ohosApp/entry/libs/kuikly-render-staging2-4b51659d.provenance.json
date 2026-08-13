@@ -1,9 +1,0 @@
-{
-  "formatVersion": 1,
-  "sourceCommit": "4b51659d923a69a19c346eeba562e728f9a29bd4",
-  "harFile": "kuikly-render-staging2-4b51659d.har",
-  "harSha256": "310b4d59a9ef3cc6561af0c5408ad1230738d7f40220c715820c42ad77de376b",
-  "libraryMember": "package/libs/arm64-v8a/libkuikly.so",
-  "librarySha256": "73912504db0147152d70c088fc2398743d6a46a46d75dcba9dd5bdc7a7409d5c",
-  "libraryBuildId": "4ea8d13b3ac0cff62138343bb2096bde11331b38"
-}

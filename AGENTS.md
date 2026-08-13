@@ -470,59 +470,22 @@ cd /Users/artin/AndroidStudioProjects/Slock
 scripts/sync_kuikly_ai_skills.sh
 ```
 
-## KuiklyUI Fork
+## KuiklyUI Release
 
-- We maintain a fork at `https://github.com/bytemain/KuiklyUI` checked out as a
-  git submodule at `third_party/kuikly-ui/` (branch `staging2` — see
-  `.gitmodules`; older notes saying `staging` are obsolete).
-- Patches that fix Kuikly upstream bugs land on the fork branch first, then a
-  PR is submitted to `Tencent-TDS/KuiklyUI`.
-- The committed gitlink is the source of truth for which fork revision a build
-  uses. When debugging a "my fix does not show up" pixel mystery, verify the
-  gitlink and the locally published artifact revision before suspecting the
-  code.
-- To pull a fork ref and refresh every local consumer in one step (MavenLocal
-  for Android/iOS shared and OHOS shared, iOS CocoaPods state, OHOS render
-  HAR + entry lockfile), use `scripts/publish_kuikly_staging2_all.sh`.
-- The fork branch may sit ahead of the latest public Kuikly tag. Treat the
-  fork `git describe` as part of the dependency version evidence. For example,
-  a build pinned to public `2.21.0` may still need fork artifacts from
-  `2.21.0-33-gea0788c8` in mavenLocal.
-- Current fork-branch patches include font-family serialization/input fixes,
-  reverse lazy-list behavior, and OHOS/Compose cancellation/runtime fixes that
-  may not exist in the public Maven artifacts for the same release line.
-- When a fix is accepted upstream and released as a new Kuikly version, update
-  `KUIKLY_VERSION` in `compose/buildSrc/src/main/java/KotlinBuildVar.kt` and
-  simplify any workaround code that the fix obsoletes (e.g. per-weight
-  FontFamily dispatch in `SlockDesignTokens.kt`).
-- To publish the fork locally for testing:
-  ```bash
-  cd /Users/artin/AndroidStudioProjects/Slock
-  sh scripts/build_kuikly_fork.sh
-  ```
-  Do not run bare `:core-render-android:publishToMavenLocal` from inside the
-  Kuikly checkout unless you also pass the Slock release coordinates. The
-  default Kuikly Gradle properties publish `core-render-android` under a
-  snapshot coordinate such as `2.0.0-2.1.21-SNAPSHOT`, while Slock consumes
-  `com.tencent.kuikly-open:core-render-android` at the `kuiklyAndroid` version
-  pinned in `compose/gradle/libs.versions.toml` (currently
-  `2.21.0-2.1.21`). For Android-only republish during a local fix, use:
-  ```bash
-  cd /Users/artin/AndroidStudioProjects/Slock/third_party/kuikly-ui
-  KUIKLY_VERSION=2.21.0 KUIKLY_KOTLIN_VERSION=2.1.21 \
-    ./gradlew :core-render-android:publishToMavenLocal
-  ```
-  Then verify the MavenLocal AAR timestamp/hash under
-  `~/.m2/repository/com/tencent/kuikly-open/core-render-android/2.21.0-2.1.21/`
-  before rebuilding Slock.
-- After publishing, Slock Android and OHOS Gradle builds pick up the forked
-  artifacts from mavenLocal automatically (`mavenLocal()` is already in the
-  repository config). Android Studio Run works without extra steps — only
-  re-run the script after pulling fork changes (e.g. `git submodule update`).
-- Do not use `includeBuild` for the fork. The KuiklyUI project includes
-  androidApp/demo/ohosApp/h5App/iosApp in its settings, causing composite
-  builds to configure the entire project tree on every Gradle sync and
-  timing out.
+- Mobile consumes the immutable Raft release pinned in
+  `compose/gradle/kuikly-release-closure.json`; it does not carry a Kuikly
+  source gitlink or build Kuikly into Maven Local.
+- `scripts/ci/verify_kuikly_release_manifest.sh` is the fail-closed version
+  admission gate. Android/KMP/OHOS then resolve exact coordinates from the
+  exclusive Raft repository, while iOS and the OHOS renderer are fetched from
+  the same manifest with byte verification. Set `KUIKLY_FULL_READBACK=1` only
+  for an explicit audit/recovery run that must re-read the full release set.
+- Fork development and publication happen in the KuiklyUI repository. To
+  upgrade Mobile, publish a complete immutable successor first, then update
+  the closure, exact Gradle versions, CocoaPods lock, and OHOS lock together.
+- The `.agents/skills/kuikly-ui-framework/references/KuiklyUI` tree remains a
+  vendor reference for API and implementation research; it is not a build
+  input or consumer fallback.
 
 ## OHOS Kuikly Workflow
 

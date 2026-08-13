@@ -18,7 +18,6 @@ required by the Mobile ruleset.
 | Other `compose/**` paths | Android + iOS + OHOS | Common/shared code, Gradle/version configuration and any new unrecognized source-set layout fail closed to all platforms. |
 | Test-owned actions/helpers, dependency pins and `.gitmodules` | Android + iOS + OHOS | Workflow inputs and shared dependency changes are treated as cross-platform. |
 | `.github/workflows/test.yml`, the planner/verifier/contract, the Mobile ruleset plan | Android + iOS + OHOS | CI control changes force the deterministic non-emulator matrix. |
-| `third_party/kuikly-ui` gitlink | Android + iOS + OHOS | The gitlink's external commit range is unbounded. It is never inferred from the one top-level Mobile path. |
 | Anything outside the Test-owned groups | none | Expensive jobs are skipped; `plan` and `CI gate` still report. |
 
 Pull requests use merge-base diff semantics, matching GitHub's changed-file
