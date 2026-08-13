@@ -486,7 +486,7 @@
     <string name="thread_member_role_system">システム</string>
     <string name="thread_settings_edit_channel">チャンネルを編集</string>
     <string name="thread_dm_settings_title">DM設定</string>
-    <string name="thread_dm_settings_mute_person">アクティビティをミュート</string>
+    <string name="thread_dm_settings_mute_person">ミュート</string>
     <string name="thread_dm_settings_mute_person_detail">このダイレクトメッセージのアクティビティ通知をオフにします</string>
     <string name="thread_dm_settings_pin_person">会話をピン留め</string>
     <string name="thread_dm_settings_pin_person_detail">このダイレクトメッセージを「ピン留め」セクションに表示します</string>
