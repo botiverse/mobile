@@ -61,12 +61,8 @@ jobs:
           } > compose/github-packages.properties
           chmod 600 compose/github-packages.properties
 
-      - name: Publish Kuikly fork artifacts
-        shell: bash
-        run: |
-          git submodule sync third_party/kuikly-ui
-          git submodule update --init third_party/kuikly-ui
-          scripts/build_kuikly_fork.sh --android-only
+      - name: Verify complete immutable Kuikly release
+        run: scripts/ci/verify_kuikly_release_manifest.sh
 
       - name: Run Testbox
         uses: useblacksmith/run-testbox@5ca05834db1d3813554d1dd109e5f2087a8d7cbc # v2

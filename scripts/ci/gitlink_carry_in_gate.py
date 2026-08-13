@@ -95,22 +95,40 @@ def gitmodules_at(repo: Path, commit: str) -> dict[str, dict[str, str]]:
     return modules
 
 
-def changed_gitlinks(repo: Path, base: str, head: str) -> list[GitlinkChange]:
+def path_exists_at(repo: Path, commit: str, path: str) -> bool:
+    return bool(run_git(repo, "ls-tree", commit, "--", path).stdout.strip())
+
+
+def changed_gitlinks(
+    repo: Path,
+    base: str,
+    head: str,
+) -> tuple[list[GitlinkChange], list[dict[str, str]]]:
     base_links = gitlinks_at(repo, base)
     head_links = gitlinks_at(repo, head)
     base_modules = gitmodules_at(repo, base)
     head_modules = gitmodules_at(repo, head)
     changes: list[GitlinkChange] = []
+    removals: list[dict[str, str]] = []
     for path in sorted(set(base_links) | set(head_links)):
         old = base_links.get(path)
         new = head_links.get(path)
         if old == new:
             continue
-        if old is None or new is None:
-            action = "added" if old is None else "removed"
+        if old is None:
             raise GateError(
-                f"gitlink {path} was {action}; the carry-in gate requires an existing old and new pin"
+                f"gitlink {path} was added; audit new submodule authority separately"
             )
+        if new is None:
+            base_module = base_modules.get(path)
+            if base_module is None:
+                raise GateError(f"removed gitlink {path} is missing from base .gitmodules")
+            if path in head_modules:
+                raise GateError(f"removed gitlink {path} remains in head .gitmodules")
+            if path_exists_at(repo, head, path):
+                raise GateError(f"removed gitlink {path} was replaced by another tracked object")
+            removals.append({"path": path, "old": old, "url": base_module.get("url", "")})
+            continue
         base_module = base_modules.get(path)
         head_module = head_modules.get(path)
         if base_module is None or head_module is None:
@@ -123,7 +141,7 @@ def changed_gitlinks(repo: Path, base: str, head: str) -> list[GitlinkChange]:
         if not url:
             raise GateError(f"gitlink {path} has an empty .gitmodules URL")
         changes.append(GitlinkChange(path=path, old=old, new=new, url=url))
-    return changes
+    return changes, removals
 
 
 def validate_remote_url(url: str, allow_local_remotes: bool) -> None:
@@ -313,7 +331,16 @@ def render_markdown(manifest: dict[str, object]) -> str:
         lines.extend(markdown_list((str(error) for error in errors), "No error recorded"))
         lines.append("")
     submodules = manifest.get("submodules", [])
-    if not submodules:
+    removals = manifest.get("removed_submodules", [])
+    if removals:
+        lines.extend(["### Removed gitlinks", ""])
+        for removal in removals:
+            lines.append(
+                f"- {markdown_code(str(removal['path']))} removed from "
+                f"{markdown_code(str(removal['old']))}; `.gitmodules` entry and tracked path absent"
+            )
+        lines.append("")
+    if not submodules and not removals:
         lines.extend(["No gitlink changes in this exact range.", ""])
         return "\n".join(lines)
 
@@ -417,7 +444,7 @@ def audit(
             "cannot determine what this branch introduces"
         )
 
-    changes = changed_gitlinks(repo, comparison_base, head_commit)
+    changes, removals = changed_gitlinks(repo, comparison_base, head_commit)
     manifest: dict[str, object] = {
         "schema": SCHEMA,
         "base": base_commit,
@@ -425,8 +452,9 @@ def audit(
         # actually used; when the branch is current these are the same commit.
         "comparison_base": comparison_base,
         "head": head_commit,
-        "status": "no_changes" if not changes else "pass",
+        "status": "no_changes" if not changes and not removals else "pass",
         "submodules": [],
+        "removed_submodules": removals,
         "errors": [],
     }
     if not changes:
@@ -479,6 +507,7 @@ def main() -> int:
             "head": args.head,
             "status": "error",
             "submodules": [],
+            "removed_submodules": [],
             "errors": [str(error)],
         }
         write_outputs(manifest, args.manifest, args.markdown)
@@ -504,7 +533,8 @@ def main() -> int:
     write_outputs(manifest, args.manifest, args.markdown)
     print(
         f"gitlink carry-in gate: {manifest['status']} "
-        f"submodules={len(manifest['submodules'])}"
+        f"submodules={len(manifest['submodules'])} "
+        f"removed={len(manifest['removed_submodules'])}"
     )
     return 0
 

@@ -13,7 +13,3 @@
 	path = third_party/sqldelight
 	url = https://github.com/bytemain/sqldelight.git
 	branch = slock-2.1.0-ohos
-[submodule "third_party/kuikly-ui"]
-	path = third_party/kuikly-ui
-	url = https://github.com/bytemain/KuiklyUI.git
-	branch = staging2

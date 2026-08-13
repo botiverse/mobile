@@ -201,6 +201,28 @@ def validate_git_safe_action_wiring(workflow, job_name, expected_scope)
   fail_contract("#{job_name} git-safe scope expected #{expected_scope}, got #{scope}") unless scope == expected_scope
 end
 
+def validate_kuikly_manifest_job(workflow)
+  job = workflow.fetch("jobs").fetch("kuikly-artifacts")
+  fail_contract("Kuikly manifest admission regressed to a container prebuild") if job.key?("container")
+  steps = job.fetch("steps")
+  checkout_steps = steps.select { |step| step["uses"] == "actions/checkout@v5" }
+  fail_contract("expected one Kuikly manifest checkout, found #{checkout_steps.length}") unless
+    checkout_steps.length == 1
+  admission_steps = steps.select do |step|
+    step["run"].to_s.include?("scripts/ci/verify_kuikly_release_manifest.sh")
+  end
+  fail_contract("expected one Kuikly manifest admission, found #{admission_steps.length}") unless
+    admission_steps.length == 1
+  forbidden = steps.any? do |step|
+    source = step["run"].to_s
+    step["uses"] == "./.github/actions/git-safe-workspace" ||
+      source.include?("third_party/kuikly-ui") ||
+      source.include?("build_kuikly_fork.sh") ||
+      source.include?("mavenLocal")
+  end
+  fail_contract("Kuikly manifest admission retains source-prebuild wiring") if forbidden
+end
+
 def validate_git_safe_action_source(action, script)
   fail_contract("git-safe-workspace is no longer a composite action") unless
     action.dig("runs", "using") == "composite"
@@ -355,7 +377,7 @@ ohos_paths = %w[
 
 thread = find_step(workflow, "Select Thread newer-pagination gate")
 ohos = find_step(workflow, "Detect OHOS native-bridge changes")
-validate_git_safe_action_wiring(workflow, "kuikly-artifacts", "all")
+validate_kuikly_manifest_job(workflow)
 validate_git_safe_action_wiring(workflow, "fork-deps", "all")
 validate_git_safe_action_wiring(workflow, "ohos", "workspace")
 validate_git_safe_action_wiring(workflow, "ohos-host", "all")
@@ -375,6 +397,21 @@ end
 expect_failure("git-safe-repository-assertion-missing") do
   mutated = safe_workspace_script.sub('git -C "$GITHUB_WORKSPACE" rev-parse --git-dir >/dev/null', "")
   validate_git_safe_action_source(safe_workspace_action, mutated)
+end
+expect_failure("kuikly-manifest-admission-missing") do
+  mutated = Marshal.load(Marshal.dump(workflow))
+  mutated.fetch("jobs").fetch("kuikly-artifacts").fetch("steps").reject! do |step|
+    step["run"].to_s.include?("scripts/ci/verify_kuikly_release_manifest.sh")
+  end
+  validate_kuikly_manifest_job(mutated)
+end
+expect_failure("kuikly-manifest-source-prebuild-restored") do
+  mutated = Marshal.load(Marshal.dump(workflow))
+  mutated.fetch("jobs").fetch("kuikly-artifacts").fetch("steps") << {
+    "name" => "Build Kuikly fork",
+    "run" => "scripts/build_kuikly_fork.sh --android-only",
+  }
+  validate_kuikly_manifest_job(mutated)
 end
 expect_failure("ohos-git-safe-action-missing") do
   mutated = Marshal.load(Marshal.dump(workflow))

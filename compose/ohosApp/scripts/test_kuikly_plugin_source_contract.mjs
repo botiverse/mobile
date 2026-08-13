@@ -20,7 +20,6 @@ function assertContract(condition, message) {
 
 const plugin = read('hvigor/kuiklyPlugin.ts');
 const example = read('local.properties.example');
-const forkPublisher = fs.readFileSync(path.resolve(repositoryRoot, 'scripts/build_kuikly_fork.sh'), 'utf8');
 const releaseWorkflow = fs.readFileSync(path.resolve(repositoryRoot, '.github/workflows/ohos-release.yml'), 'utf8');
 const testWorkflow = fs.readFileSync(path.resolve(repositoryRoot, '.github/workflows/test.yml'), 'utf8');
 
@@ -46,34 +45,26 @@ assertContract(
 );
 assertContract(
   plugin.includes("runGradle(config, ['--refresh-dependencies', `:${config.moduleName}:link${buildMode}SharedOhosArm64`]);"),
-  'the OHOS link must re-resolve same-coordinate fork artifacts instead of accepting an older Gradle cache entry'
+  'the OHOS link must refresh the immutable Raft artifacts instead of accepting stale Gradle state'
 );
 assertContract(
   plugin.includes("../../scripts/verify_kuikly_ohos_provenance.sh") &&
     plugin.includes('verifyKuiklyForkProvenance(ohosAppPath, destinationSo);'),
-  'the copied libshared must pass the fork provenance gate before packaging'
+  'the copied libshared must pass the Kuikly provenance gate before packaging'
 );
 assertContract(
-  forkPublisher.includes(':core-annotations:publishJvmPublicationToMavenLocal'),
-  'OHOS fork publication must include the JVM annotations variant required by core-ksp'
-);
-const releaseCacheKeys = releaseWorkflow.match(/key: kuikly-fork-mavenlocal-ohos-.+/g) ?? [];
-const releaseProducerCacheKey =
-  "key: kuikly-fork-mavenlocal-ohos-${{ hashFiles('scripts/build_kuikly_fork.sh') }}-${{ steps.pins.outputs.kuikly }}";
-const releaseConsumerCacheKey =
-  "key: kuikly-fork-mavenlocal-ohos-${{ hashFiles('scripts/build_kuikly_fork.sh') }}-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}";
-assertContract(
-  releaseCacheKeys.length === 3 &&
-    releaseWorkflow.split(releaseProducerCacheKey).length - 1 === 2 &&
-    releaseWorkflow.split(releaseConsumerCacheKey).length - 1 === 1,
-  'every OHOS release producer/consumer cache key must bind both the publisher script and Kuikly gitlink'
+  releaseWorkflow.includes('scripts/ci/verify_kuikly_release_manifest.sh'),
+  'OHOS release must require the complete immutable Kuikly manifest'
 );
 assertContract(
-  releaseWorkflow.includes('test -d "$root/core-annotations-jvm"') &&
-    releaseWorkflow.includes('test -d "$root/core-ksp"') &&
-    releaseWorkflow.includes('test -d "$dst/com/tencent/kuikly-open/core-annotations-jvm"') &&
-    releaseWorkflow.includes('test -d "$dst/com/tencent/kuikly-open/core-ksp"'),
-  'the OHOS release producer and consumer must fail closed when JVM/KSP variants are absent'
+  !releaseWorkflow.includes('third_party/kuikly-ui') &&
+    !releaseWorkflow.includes('build_kuikly_fork.sh') &&
+    !releaseWorkflow.includes('kuikly-fork-mavenlocal'),
+  'OHOS release must not hydrate Kuikly from a gitlink, source build, or mavenLocal cache'
+);
+assertContract(
+  releaseWorkflow.includes('needs: [resolve, kuikly-artifacts, fork-deps]'),
+  'the OHOS package job must depend on the manifest gate'
 );
 assertContract(
   releaseWorkflow.includes('--refresh-dependencies \\\n            copyNetworkOhosRuntimeLibs') &&
@@ -81,8 +72,10 @@ assertContract(
   'the direct OHOS release link must refresh the fork and verify the staged libshared before HAP packaging'
 );
 assertContract(
-  testWorkflow.includes('scripts/test_verify_kuikly_ohos_provenance.sh'),
-  'required CI must execute the stale/missing provenance negative self-test'
+  testWorkflow.includes('scripts/ci/test_kuikly_raft_consumer_contract.py') &&
+    testWorkflow.includes('scripts/ci/verify_kuikly_release_manifest.sh') &&
+    testWorkflow.includes('scripts/ci/verify_kuikly_ohos_renderer.sh'),
+  'required CI must validate the Raft-only source contract and release manifest'
 );
 
-console.log('OHOS Kuikly plugin source contract: PASS');
+console.log('OHOS Kuikly plugin + immutable-Raft source contract: PASS');

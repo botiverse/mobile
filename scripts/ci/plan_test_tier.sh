@@ -15,7 +15,7 @@ UNKNOWN_PATH_SENTINEL="__CI_CHANGED_PATHS_UNKNOWN__"
 
 is_deterministic_all_path() {
   case "$1" in
-    "$UNKNOWN_PATH_SENTINEL"|.github/workflows/test.yml|scripts/ci/plan_test_tier.sh|scripts/ci/verify_test_tier_results.mjs|scripts/ci/test_ci_tiering_contract.sh|third_party/kuikly-ui|.github/rulesets/mobile-main-merge-queue.json)
+    "$UNKNOWN_PATH_SENTINEL"|.github/workflows/test.yml|scripts/ci/plan_test_tier.sh|scripts/ci/verify_test_tier_results.mjs|scripts/ci/test_ci_tiering_contract.sh|.github/rulesets/mobile-main-merge-queue.json)
       return 0
       ;;
     *)
@@ -31,8 +31,8 @@ mark_all_platforms() {
 }
 
 # Task #26 option A (artin 2026-08-09): main pushes keep the iOS compile only
-# when the push can plausibly affect iOS: iOS-specific source, the Kuikly
-# gitlink, or CI-control paths. Ordinary commonMain pushes fall back to the
+# when the push can plausibly affect iOS: iOS-specific source or CI-control
+# paths. Ordinary commonMain pushes fall back to the
 # nightly iOS readback instead of recompiling iOS on every push. Unknown
 # changed paths stay fail-closed (classify already marked all platforms and
 # this function keeps them).
@@ -59,9 +59,7 @@ main_push_keeps_ios() {
 # the caller and returns 0 only when Test owns coverage for that path.
 #
 # Shared and build-system paths are intentionally fail-closed to all platforms.
-# A platform-only path selects only that platform. A gitlink never gets inferred
-# from its top-level name: third_party/kuikly-ui is handled above as an explicit
-# deterministic-all control path because its external commit range is unbounded.
+# A platform-only path selects only that platform.
 classify_relevant_path() {
   case "$1" in
     compose/androidApp/*|compose/shared/src/androidMain/*|compose/shared/src/androidUnitTest/*|compose/shared/src/androidInstrumentedTest/*)
@@ -87,7 +85,7 @@ classify_relevant_path() {
     .gitmodules|.github/actions/*|.github/gradle-cache-epoch|.github/gradle-cache-quarantine)
       mark_all_platforms
       ;;
-    scripts/check_commonmain_map_compat.sh|scripts/check_markdown_spike_println_gate.sh|scripts/check_auth_session_writes.sh|scripts/check_attachment_mapper_formatting.sh|scripts/check_canonical_message_v2_reaction_vector.sh|scripts/check_read_state_behavior_vector.sh|scripts/check_read_state_sync_domain_registration.sh|scripts/audit_translucent_action_tokens.py|scripts/build_kuikly_fork.sh|scripts/prepare_*.sh|scripts/test_kuikly_plugin_source_contract.mjs|scripts/test_mr_resource_staging_source_contract.mjs|scripts/test_process_network_lifecycle_source_contract.mjs|scripts/ci/*)
+    scripts/check_commonmain_map_compat.sh|scripts/check_markdown_spike_println_gate.sh|scripts/check_auth_session_writes.sh|scripts/check_attachment_mapper_formatting.sh|scripts/check_canonical_message_v2_reaction_vector.sh|scripts/check_read_state_behavior_vector.sh|scripts/check_read_state_sync_domain_registration.sh|scripts/audit_translucent_action_tokens.py|scripts/prepare_*.sh|scripts/test_kuikly_plugin_source_contract.mjs|scripts/test_mr_resource_staging_source_contract.mjs|scripts/test_process_network_lifecycle_source_contract.mjs|scripts/ci/*)
       mark_all_platforms
       ;;
     third_party/ktor-ohos/*|third_party/stately|third_party/sqliter|third_party/sqldelight|third_party/kuikly-compose-markdown/*|third_party/markdown-parser/*)
@@ -287,8 +285,6 @@ self_test() {
     pull_request false feature $'scripts/test_process_network_lifecycle_source_contract.mjs\n'
   assert_plan "$all"$'\nreason=pull-request-ci-control' \
     pull_request false feature $'.github/workflows/test.yml\n'
-  assert_plan "$all"$'\nreason=pull-request-ci-control' \
-    pull_request false feature $'third_party/kuikly-ui\n'
   assert_plan "$all"$'\nreason=pull-request-diff-unavailable-fail-closed' \
     pull_request false feature "$UNKNOWN_PATH_SENTINEL"$'\n'
   assert_plan $'run_android=true\nrun_ios=true\nrun_ohos=false\nrun_emulators=false\nreason=pull-request-paths:android,ios' \
@@ -312,8 +308,6 @@ self_test() {
   # Pushes that can affect iOS keep the iOS compile.
   assert_plan "$all_emulators"$'\nreason=main-push-paths:android,ios,ohos' \
     push false main $'compose/shared/src/commonMain/kotlin/Example.kt\ncompose/iosApp/iosApp/Example.swift\n'
-  assert_plan "$all_emulators"$'\nreason=main-push-ci-control' \
-    push false main $'third_party/kuikly-ui\n'
   assert_plan "$all_emulators"$'\nreason=main-push-ci-control' \
     push false main $'.github/workflows/test.yml\n'
   assert_plan "$all_emulators"$'\nreason=release-push-full-readback' \

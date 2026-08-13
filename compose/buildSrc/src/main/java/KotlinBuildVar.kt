@@ -1,6 +1,6 @@
 object Version {
 
-    private const val KUIKLY_VERSION = "2.21.0"
+    private const val KUIKLY_VERSION = "2.24.0-raft.1"
     private const val KOTLIN_VERSION = "2.1.21"
     private const val KOTLIN_OHOS_VERSION = "2.0.21-ohos"
 
@@ -17,11 +17,5 @@ object Version {
      */
     fun getKuiklyOhosVersion(): String {
         return "$KUIKLY_VERSION-$KOTLIN_OHOS_VERSION"
-    }
-}
-
-object BuildPlugin {
-    val kuikly by lazy {
-        "com.tencent.kuikly-open:core-gradle-plugin:${Version.getKuiklyVersion()}"
     }
 }

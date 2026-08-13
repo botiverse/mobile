@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -134,6 +135,11 @@ class GitlinkCarryInGateTest(unittest.TestCase):
         )
         self.unrelated_head = commit_index(self.mobile, "pin unrelated history")
 
+        git(self.mobile, "checkout", "-b", "remove", self.base)
+        git(self.mobile, "rm", "--cached", "vendor/fixture")
+        write(self.mobile, ".gitmodules", "")
+        self.removed_head = commit_all(self.mobile, "remove fixture gitlink")
+
     def audit(self, head: str):
         return GATE.audit(
             self.mobile,
@@ -149,6 +155,35 @@ class GitlinkCarryInGateTest(unittest.TestCase):
         markdown = GATE.render_markdown(manifest)
         self.assertIn("No gitlink changes", markdown)
         self.assertNotIn("Files different at the two endpoint trees (1)", markdown)
+
+    def test_clean_gitlink_removal_is_audited_and_allowed(self) -> None:
+        manifest = self.audit(self.removed_head)
+        self.assertEqual("pass", manifest["status"])
+        self.assertEqual([], manifest["submodules"])
+        self.assertEqual(
+            [{"path": "vendor/fixture", "old": self.old_pin, "url": str(self.submodule)}],
+            manifest["removed_submodules"],
+        )
+        markdown = GATE.render_markdown(manifest)
+        self.assertIn("Removed gitlinks", markdown)
+        self.assertIn("`.gitmodules` entry and tracked path absent", markdown)
+
+    def test_gitlink_removal_with_stale_module_metadata_is_hard_red(self) -> None:
+        git(self.mobile, "checkout", "-q", "-b", "dirty-remove-metadata", self.base)
+        git(self.mobile, "rm", "--cached", "vendor/fixture")
+        head = commit_index(self.mobile, "remove pin but retain metadata")
+        with self.assertRaisesRegex(GATE.GateError, "remains in head .gitmodules"):
+            self.audit(head)
+
+    def test_gitlink_replaced_by_regular_file_is_hard_red(self) -> None:
+        git(self.mobile, "checkout", "-q", "-b", "dirty-remove-path", self.base)
+        git(self.mobile, "rm", "--cached", "vendor/fixture")
+        shutil.rmtree(self.mobile / "vendor/fixture")
+        write(self.mobile, "vendor/fixture", "not a submodule\n")
+        write(self.mobile, ".gitmodules", "")
+        head = commit_all(self.mobile, "replace gitlink with a file")
+        with self.assertRaisesRegex(GATE.GateError, "replaced by another tracked object"):
+            self.audit(head)
 
     def test_base_advancing_the_pin_does_not_blame_a_branch_that_never_touched_it(self) -> None:
         # The real case this gate got wrong: the base advanced the submodule
