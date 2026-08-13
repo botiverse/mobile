@@ -486,10 +486,10 @@
     <string name="thread_member_role_system">系统</string>
     <string name="thread_settings_edit_channel">编辑频道</string>
     <string name="thread_dm_settings_title">私信设置</string>
-    <string name="thread_dm_settings_mute_person">将此人静音</string>
+    <string name="thread_dm_settings_mute_person">静音动态</string>
     <string name="thread_dm_settings_mute_person_detail">关闭此私信的动态提醒</string>
-    <string name="thread_dm_settings_pin_person">置顶此人</string>
-    <string name="thread_dm_settings_pin_person_detail">将此人保留在“已置顶”分区</string>
+    <string name="thread_dm_settings_pin_person">置顶会话</string>
+    <string name="thread_dm_settings_pin_person_detail">将此私信保留在“已置顶”分区</string>
     <string name="thread_settings_name">名称</string>
     <string name="thread_settings_name_placeholder">例如：ai-research</string>
     <string name="thread_settings_description">描述</string>
