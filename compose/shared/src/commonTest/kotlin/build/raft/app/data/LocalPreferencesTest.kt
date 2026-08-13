@@ -144,16 +144,11 @@ class LocalPreferencesTest {
         assertEquals(false, snapshot.homeServerAvatarEnabled)
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
         assertEquals(TranslationTargetLanguages.Browser, snapshot.translationTargetLanguage)
-        assertEquals(setOf(ThreadRowAffordancePreference.Reactions), snapshot.threadRowAffordances)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
         assertTrue(
             snapshot.supportedLargeScreenNavigation.contains(
                 LargeScreenNavigationPreference.FloatingDock
             )
-        )
-        assertEquals(
-            listOf(ThreadRowAffordancePreference.Reactions),
-            snapshot.supportedThreadRowAffordances
         )
     }
 
@@ -288,8 +283,6 @@ class LocalPreferencesTest {
         val homeServerAvatar = repository.setHomeServerAvatarEnabled(true)
         val translationMode = repository.setTranslationMode(TranslationModePreference.Manual)
         val translationTarget = repository.setTranslationTargetLanguage("zh-Hans")
-        val savedAction = repository.setThreadRowAffordance(ThreadRowAffordancePreference.Saved, true)
-        val reactionAction = repository.setThreadRowAffordance(ThreadRowAffordancePreference.Reactions, false)
         val restored = repository.getChatLayoutPreference()
         val disabledImageAnnotation = repository.setImageAnnotationEnabled(false)
         val disabledActivityTaskStatusBadges = repository.setActivityTaskStatusBadgesEnabled(false)
@@ -334,9 +327,6 @@ class LocalPreferencesTest {
         assertEquals(true, restored.homeServerAvatarEnabled)
         assertEquals(TranslationModePreference.Manual, restored.translationMode)
         assertEquals("zh-cn", restored.translationTargetLanguage)
-        assertEquals(setOf(ThreadRowAffordancePreference.Reactions), savedAction.threadRowAffordances)
-        assertEquals(emptySet(), reactionAction.threadRowAffordances)
-        assertEquals(emptySet(), restored.threadRowAffordances)
         assertEquals(false, disabledImageAnnotation.imageAnnotationEnabled)
         assertEquals(false, repository.setForegroundMessageBannersEnabled(false).foregroundMessageBannersEnabled)
         assertEquals(false, disabledActivityTaskStatusBadges.activityTaskStatusBadgesEnabled)

@@ -1325,19 +1325,6 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Show the current workspace avatar in the Home header. When off, keep the existing compact title badge."
         ),
-    val threadRowAffordances: SettingsMobileMultiSelectionSnapshot =
-        SettingsMobileMultiSelectionSnapshot(
-            selectedKeys = ThreadRowAffordancePreference.Default.map { it.storageKey }.toSet(),
-            statusLabel = "Reactions",
-            detail = "Choose which message row actions are visible in conversations.",
-            options =
-                ThreadRowAffordancePreference.entries.map {
-                    SettingsMobileSelectionOptionSnapshot(
-                        key = it.storageKey,
-                        label = it.name
-                    )
-                }
-        ),
     val linkOpenMode: SettingsMobileSelectionSnapshot =
         SettingsMobileSelectionSnapshot(
             selectedKey = LinkOpenMode.Default.storageKey,

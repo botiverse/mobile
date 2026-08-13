@@ -61,7 +61,6 @@ import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_SERVER_DRAWER
 import build.raft.app.data.MOBILE_ACTION_NEW_DESIGN_SETTINGS
 import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
-import build.raft.app.data.MOBILE_ACTION_THREAD_ROW_AFFORDANCES
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS
 import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
@@ -83,7 +82,6 @@ import build.raft.app.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
 import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.LinkOpenMode
-import build.raft.app.data.ThreadRowAffordancePreference
 import build.raft.app.data.CONNECTED_APPS_ACTION_DELETE
 import build.raft.app.data.CONNECTED_APPS_ACTION_INSTALL
 import build.raft.app.data.CONNECTED_APPS_ACTION_LOGO_CLEAR
@@ -943,7 +941,6 @@ private data class HomeSecondaryRouteEnvironment(
     val foregroundMessageBannersEnabled: Boolean,
     val activityTaskStatusBadgesEnabled: Boolean,
     val activitySenderAvatarsEnabled: Boolean,
-    val threadRowAffordances: Set<ThreadRowAffordancePreference>,
     val storeScope: SlockShellStoreScope,
     val hasExplicitShellScope: Boolean,
     val shellScope: SlockAppShellScope,
@@ -992,7 +989,6 @@ private fun rememberHomeSecondaryRouteEnvironment(
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
     var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
     var activitySenderAvatarsEnabled by remember { mutableStateOf(false) }
-    var threadRowAffordances by remember { mutableStateOf(ThreadRowAffordancePreference.Default) }
     LaunchedEffect(chatLayoutPreferenceRepository) {
         val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
         myMessageAlignment = chatLayout.myMessageAlignment
@@ -1000,7 +996,6 @@ private fun rememberHomeSecondaryRouteEnvironment(
         foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
         activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
         activitySenderAvatarsEnabled = chatLayout.activitySenderAvatarsEnabled
-        threadRowAffordances = chatLayout.threadRowAffordances
     }
     val timeCapabilities =
         remember(pager.pageData.params.toString()) {
@@ -1037,7 +1032,6 @@ private fun rememberHomeSecondaryRouteEnvironment(
         foregroundMessageBannersEnabled,
         activityTaskStatusBadgesEnabled,
         activitySenderAvatarsEnabled,
-        threadRowAffordances,
         storeScope,
         hasExplicitShellScope,
         shellScope
@@ -1058,7 +1052,6 @@ private fun rememberHomeSecondaryRouteEnvironment(
             foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
-            threadRowAffordances = threadRowAffordances,
             storeScope = storeScope,
             hasExplicitShellScope = hasExplicitShellScope,
             shellScope = shellScope,
@@ -1121,8 +1114,7 @@ private fun HomeActivityRouterContent(
                 timeContext = environment.timeContext,
                 alignOwnMessagesRight = environment.alignOwnMessagesRight,
                 compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                threadRowAffordances = environment.threadRowAffordances,
-                storeScope = environment.storeScope
+                    storeScope = environment.storeScope
             )
         },
         onClose = { environment.pager.closeHomeSecondaryPage() },
@@ -1285,8 +1277,7 @@ private fun HomeSearchRouterContent(
                         timeContext = environment.timeContext,
                         alignOwnMessagesRight = environment.alignOwnMessagesRight,
                         compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                        threadRowAffordances = environment.threadRowAffordances,
-                        storeScope = environment.storeScope
+                                    storeScope = environment.storeScope
                     )
                 is ConversationOpenResolution.Pending -> {
                     environment.bridge.logWarn(
@@ -1303,8 +1294,7 @@ private fun HomeSearchRouterContent(
                 timeContext = environment.timeContext,
                 alignOwnMessagesRight = environment.alignOwnMessagesRight,
                 compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                threadRowAffordances = environment.threadRowAffordances,
-                storeScope = environment.storeScope
+                    storeScope = environment.storeScope
             )
         },
         pinnedItems = pinnedItems,
@@ -1420,8 +1410,7 @@ private fun HomeSavedRouterContent(
                         timeContext = environment.timeContext,
                         alignOwnMessagesRight = environment.alignOwnMessagesRight,
                         compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                        threadRowAffordances = environment.threadRowAffordances,
-                        storeScope = environment.storeScope
+                                    storeScope = environment.storeScope
                     )
                 is ConversationOpenResolution.Pending -> {
                     environment.bridge.logWarn(
@@ -3280,7 +3269,6 @@ private fun SlockAppShellReadyContent(
     var homeServerAvatarEnabled by remember { mutableStateOf(false) }
     var conversationForwardGestureEnabled by remember { mutableStateOf(false) }
     var serverDrawerProgrammaticCloseFence by remember { mutableStateOf<((String) -> Unit)?>(null) }
-    var threadRowAffordances by remember { mutableStateOf(ThreadRowAffordancePreference.Default) }
     var createChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
     // task #226: global announcement modal. The API client already exists (the
@@ -4015,8 +4003,7 @@ private fun SlockAppShellReadyContent(
                 activitySenderAvatarsEnabled = chatLayout.activitySenderAvatarsEnabled
                 serverDrawerEnabled = chatLayout.serverDrawerEnabled
                 homeServerAvatarEnabled = chatLayout.homeServerAvatarEnabled
-                threadRowAffordances = chatLayout.threadRowAffordances
-            }
+                    }
         }
     DisposableEffect(
         chatLayoutPreferenceEvents,
@@ -4161,8 +4148,7 @@ private fun SlockAppShellReadyContent(
                             timeContext = threadTimeContext,
                             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                             compactConsecutiveMessages = compactConsecutiveMessages,
-                            threadRowAffordances = threadRowAffordances,
-                            anchorMessageId = it.anchorMessageId,
+                                            anchorMessageId = it.anchorMessageId,
                             originFallback = it.originFallback,
                             onWarn = bridge::logWarn
                         )
@@ -4208,8 +4194,7 @@ private fun SlockAppShellReadyContent(
                 timeContext = threadTimeContext,
                 alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                threadRowAffordances = threadRowAffordances,
-                onWarn = { bridge.logWarn(it) },
+                    onWarn = { bridge.logWarn(it) },
                 anchorMessageId = anchorMessageId,
                 originFallback = originFallback
             ) ?: return
@@ -5316,8 +5301,7 @@ private fun SlockAppShellReadyContent(
                     timeContext = threadTimeContext,
                     alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                     compactConsecutiveMessages = compactConsecutiveMessages,
-                    threadRowAffordances = threadRowAffordances,
-                    onWarn = bridge::logWarn
+                            onWarn = bridge::logWarn
                 ) ?: return@launch
             homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(identity.threadId.value))
             conversationForwardHistory.recordNewOpen(
@@ -5363,8 +5347,7 @@ private fun SlockAppShellReadyContent(
                 timeContext = threadTimeContext,
                 alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                threadRowAffordances = threadRowAffordances,
-                onWarn = bridge::logWarn
+                    onWarn = bridge::logWarn
             ) ?: run {
                 bridge.toast(conversationUnavailableMessage)
                 return false
@@ -5508,8 +5491,7 @@ private fun SlockAppShellReadyContent(
                                     timeContext = threadTimeContext,
                                     alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                                     compactConsecutiveMessages = compactConsecutiveMessages,
-                                    threadRowAffordances = threadRowAffordances,
-                                    storeScope = navigationStoreScope
+                                                            storeScope = navigationStoreScope
                                 )
                             }
                         )
@@ -6398,7 +6380,6 @@ internal fun SettingsNativeDetailScreen() {
         },
         onServerDrawerSelected = {},
         onHomeServerAvatarSelected = {},
-        onThreadRowAffordanceSelected = { _, _ -> },
         bottomContentPadding = SlockSpacing.Lg,
         timeContext = null,
         onLogout = { pager.openLoginReplacingCurrentPage() },
@@ -6448,7 +6429,6 @@ private fun SettingsNativeDetailPageContent(
     onActivitySenderAvatarsSelected: (Boolean) -> Unit,
     onServerDrawerSelected: (Boolean) -> Unit,
     onHomeServerAvatarSelected: (Boolean) -> Unit,
-    onThreadRowAffordanceSelected: (ThreadRowAffordancePreference, Boolean) -> Unit,
     bottomContentPadding: Dp,
     timeContext: SlockTimeContext?,
     onSessionCleared: (StoredAuthSession) -> Unit = {},
@@ -6851,15 +6831,6 @@ private fun SettingsNativeDetailPageContent(
                         onSettingsIntent(SharedSettingsIntent.SetHomeServerAvatarEnabled(enabled))
                         onHomeServerAvatarSelected(enabled)
                     },
-                    onThreadRowAffordanceChange = { affordance, enabled ->
-                        onSettingsIntent(
-                            SharedSettingsIntent.SetThreadRowAffordance(
-                                affordance.storageKey,
-                                enabled
-                            )
-                        )
-                        onThreadRowAffordanceSelected(affordance, enabled)
-                    }
                 )
             SettingsNativeDetailPage.About ->
                 SharedSettingsAboutContent(
@@ -7965,7 +7936,6 @@ private fun SettingsMobileContent(
     onServerDrawerChange: (Boolean) -> Unit,
     onNewDesignSettingsChange: (Boolean) -> Unit,
     onHomeServerAvatarChange: (Boolean) -> Unit,
-    onThreadRowAffordanceChange: (ThreadRowAffordancePreference, Boolean) -> Unit
 ) {
     val snapshot =
         when (state) {
@@ -8070,13 +8040,6 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onHomeServerAvatarChange = onHomeServerAvatarChange
-                )
-            }
-            item {
-                SettingsThreadRowAffordancesCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onThreadRowAffordanceChange = onThreadRowAffordanceChange
                 )
             }
             item {
@@ -8759,90 +8722,11 @@ private fun SettingsComposerSendKeyCard(
 }
 
 @Composable
-private fun SettingsThreadRowAffordancesCard(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    onThreadRowAffordanceChange: (ThreadRowAffordancePreference, Boolean) -> Unit
-) {
-    val preference = snapshot.threadRowAffordances
-    SettingsFormSectionCard(iconName = SlockLucideIconName.SlidersHorizontal, title = stringResource(MR.strings.settings_mobile_message_row_actions)) {
-        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_message_row_actions_detail))
-        preference.options.forEach { option ->
-            val affordance = ThreadRowAffordancePreference.fromStorageKey(option.key) ?: return@forEach
-            val enabled = option.key in preference.selectedKeys
-            val busy =
-                actionState?.action == MOBILE_ACTION_THREAD_ROW_AFFORDANCES &&
-                    actionState.itemId == option.key &&
-                    actionState.inProgress
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = preference.available && !busy) {
-                            onThreadRowAffordanceChange(affordance, !enabled)
-                        }
-                        .padding(vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = affordance.settingsTitle(),
-                        style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = affordance.settingsDetail(enabled),
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                SlockSwitchButton(
-                    checked = enabled,
-                    enabled = preference.available && !busy
-                )
-            }
-        }
-        if (actionState?.action == MOBILE_ACTION_THREAD_ROW_AFFORDANCES && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState)
-        }
-    }
-}
-
-@Composable
 private fun SettingsMobileToggleSnapshot.localizedToggleStatus(): String =
     when {
         !available -> stringResource(MR.strings.settings_state_unavailable)
         enabled -> stringResource(MR.strings.settings_mobile_status_enabled)
         else -> stringResource(MR.strings.settings_state_off)
-    }
-
-@Composable
-private fun ThreadRowAffordancePreference.settingsTitle(): String =
-    when (this) {
-        ThreadRowAffordancePreference.Reactions -> stringResource(MR.strings.settings_mobile_reactions)
-        ThreadRowAffordancePreference.Saved -> stringResource(MR.strings.settings_mobile_saved)
-    }
-
-@Composable
-private fun ThreadRowAffordancePreference.settingsDetail(enabled: Boolean): String =
-    when (this) {
-        ThreadRowAffordancePreference.Reactions ->
-            if (enabled) {
-                stringResource(MR.strings.settings_mobile_reactions_enabled)
-            } else {
-                stringResource(MR.strings.settings_mobile_reactions_disabled)
-            }
-        ThreadRowAffordancePreference.Saved ->
-            if (enabled) {
-                stringResource(MR.strings.settings_mobile_saved_enabled)
-            } else {
-                stringResource(MR.strings.settings_mobile_saved_disabled)
-            }
     }
 
 @Composable
@@ -21020,7 +20904,6 @@ internal fun buildAppShellThreadPayload(
     timeContext: AppShellThreadTimeContext? = null,
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
-    threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
     anchorMessageId: String? = null,
     originFallback: ThreadLaunchOriginFallback? = null,
     accessState: ThreadLaunchAccessState = ThreadLaunchAccessState(),
@@ -21120,8 +21003,6 @@ internal fun buildAppShellThreadPayload(
         showReplyActions = !isReplyThread,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
-        showReactionActions = threadRowAffordances.showReactionActions(),
-        showInlineSaveAction = threadRowAffordances.showInlineSaveAction(),
         showOpenInChannelAction = isReplyThread && parentMessageId != null && parentSurfaceKind != null,
         joined = accessState.joined,
         canSend = canSend,
@@ -21160,7 +21041,6 @@ private fun Pager.openStandaloneTaskThreadPage(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
-    threadRowAffordances: Set<ThreadRowAffordancePreference>,
     storeScope: SlockShellStoreScope
 ) {
     val launchPayload =
@@ -21171,7 +21051,6 @@ private fun Pager.openStandaloneTaskThreadPage(
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages,
-            threadRowAffordances = threadRowAffordances
         )
             ?: return
     openStandaloneThreadLaunchPayload(launchPayload, storeScope)
@@ -21229,7 +21108,6 @@ private fun Pager.openStandaloneHomeMessageRequest(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
-    threadRowAffordances: Set<ThreadRowAffordancePreference>,
     storeScope: SlockShellStoreScope
 ) {
     openStandaloneHomeConversation(
@@ -21239,7 +21117,6 @@ private fun Pager.openStandaloneHomeMessageRequest(
         timeContext = timeContext,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
-        threadRowAffordances = threadRowAffordances,
         storeScope = storeScope,
         anchorMessageId = request.anchorMessageId,
         originFallback = request.originFallback
@@ -21253,7 +21130,6 @@ private fun Pager.openStandaloneHomeConversation(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
-    threadRowAffordances: Set<ThreadRowAffordancePreference>,
     storeScope: SlockShellStoreScope,
     anchorMessageId: String? = null,
     originFallback: ThreadLaunchOriginFallback? = null
@@ -21280,7 +21156,6 @@ private fun Pager.openStandaloneHomeConversation(
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages,
-            threadRowAffordances = threadRowAffordances,
             anchorMessageId = anchorMessageId,
             originFallback = originFallback,
             onWarn = { bridge.logWarn(it) }
@@ -21300,7 +21175,6 @@ private fun Pager.openHomeSearchEntity(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
-    threadRowAffordances: Set<ThreadRowAffordancePreference>,
     storeScope: SlockShellStoreScope
 ) {
     when (val destination = entity.destinationOrNull()) {
@@ -21312,8 +21186,7 @@ private fun Pager.openHomeSearchEntity(
                 timeContext = timeContext,
                 alignOwnMessagesRight = alignOwnMessagesRight,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                threadRowAffordances = threadRowAffordances,
-                storeScope = storeScope
+                    storeScope = storeScope
             )
         }
         is HomeSearchEntityDestination.Member -> {
@@ -21360,7 +21233,6 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
-    threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
     anchorMessageId: String? = null,
     originFallback: ThreadLaunchOriginFallback? = null,
     instanceIdOverride: String? = null,
@@ -21423,8 +21295,6 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
         navigationLabel = "Back",
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
-        showReactionActions = threadRowAffordances.showReactionActions(),
-        showInlineSaveAction = threadRowAffordances.showInlineSaveAction(),
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,
@@ -21438,12 +21308,6 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     )
 }
 
-private fun Set<ThreadRowAffordancePreference>.showReactionActions(): Boolean =
-    ThreadRowAffordancePreference.Reactions in this
-
-private fun Set<ThreadRowAffordancePreference>.showInlineSaveAction(): Boolean =
-    ThreadRowAffordancePreference.Saved in this
-
 internal fun buildStandaloneTaskThreadLaunchPayload(
     task: TaskSummary,
     serverId: String,
@@ -21451,7 +21315,6 @@ internal fun buildStandaloneTaskThreadLaunchPayload(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
-    threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
     parentConversationKind: ConversationKind? = null
 ): WireThreadLaunchPayload? {
     val request =
@@ -21465,8 +21328,7 @@ internal fun buildStandaloneTaskThreadLaunchPayload(
         timeContext = timeContext,
         anchorMessageId = request.anchorMessageId,
         alignOwnMessagesRight = alignOwnMessagesRight,
-        compactConsecutiveMessages = compactConsecutiveMessages,
-        threadRowAffordances = threadRowAffordances
+        compactConsecutiveMessages = compactConsecutiveMessages
     )
 }
 
@@ -23658,8 +23520,7 @@ private fun SettingsRouteVisualFixtureDetailContent(
             onActivitySenderAvatarsSelected = {},
             onServerDrawerSelected = {},
             onHomeServerAvatarSelected = {},
-            onThreadRowAffordanceSelected = { _, _ -> },
-            bottomContentPadding = bottomContentPadding,
+                bottomContentPadding = bottomContentPadding,
             timeContext = timeContext,
             onLogout = onLogout,
         )
