@@ -122,6 +122,11 @@ kotlin {
             kotlin.srcDir(generatedSlockDatetimeConfigDir)
             if (slockVisualFixturesEnabled) {
                 kotlin.srcDir("src/visualFixtures/kotlin")
+                // Visual fixture DATA follows the gated host into commonMain, so the visual
+                // @Page can read the fixtures it renders. When the flag is off it goes to
+                // commonTest instead (see below) — exactly one source set per build, so the
+                // same declarations are never compiled twice.
+                kotlin.srcDir("src/visualFixtureData/kotlin")
             }
             dependencies {
                 implementation("com.tencent.kuikly-open:core:${Version.getKuiklyVersion()}")
@@ -141,6 +146,18 @@ kotlin {
             }
         }
         val commonTest by getting {
+            if (!slockVisualFixturesEnabled) {
+                // Production builds must ship zero fixture code, but fixture-contract unit tests
+                // still have to compile on the ordinary unit gate, which passes no flag. Wiring the
+                // data here (and only here) keeps both true without a second gated test source set.
+                kotlin.srcDir("src/visualFixtureData/kotlin")
+                // SOURCE-SET CHANGES MUST BE MADE IN BOTH FILES: this one and
+                // compose/shared/build.ohos.gradle.kts. The OHOS leg does not build from this file
+                // at all — it runs `-c settings.ohos.gradle.kts`, which sets buildFileName to
+                // build.ohos.gradle.kts — so wiring added only here is invisible to
+                // compileTestKotlinOhosArm64. That file reads no slockVisualFixtures flag, so it
+                // registers this directory on commonTest unconditionally.
+            }
             dependencies {
                 implementation(kotlin("test"))
                 implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.4")

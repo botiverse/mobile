@@ -47,3 +47,12 @@ jobs:
 
       - name: Enforce constraints
         run: python3 scripts/ci/check_source_constraints.py
+
+      # task #189: runs inside this already-required job on purpose. A guard that
+      # is only wired to an optional task is how verifyNoProductionVisualPages
+      # collected nine violations while never actually running.
+      - name: Self-test visual fixture split census
+        run: python3 scripts/ci/visual_fixture_split_census.py --self-test
+
+      - name: Enforce visual fixture split census
+        run: python3 scripts/ci/visual_fixture_split_census.py
