@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-13T22:12:21.747Z",
+  "generatedAt": "2026-08-13T22:17:22.456Z",
   "runId": "2b809ebf-20260813221008",
   "commit": "2b809ebf-20260813221008",
   "commitSubject": "build(android): resolve Hands SDK from Raft Maven (#2100)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 70,
-        "pending": 16
+        "ready": 85,
+        "pending": 1
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 78,
-        "pending": 8
+        "ready": 80,
+        "pending": 6
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 62,
-        "pending": 24
+        "ready": 81,
+        "pending": 5
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 86,
-    "ready": 70,
-    "pending": 16
+    "ready": 85,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 114,

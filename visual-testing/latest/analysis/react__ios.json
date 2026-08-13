@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-13T22:12:16.732Z",
+  "generatedAt": "2026-08-13T22:17:15.446Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 78,
-    "pending": 8
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -1354,15 +1354,36 @@
     },
     {
       "id": "components.thread.message-share.selection",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc07fcfffe7ffe801e01f2c0024002f0fe7002f1fe7ffe83fe03fe80024002f8fe7002fffe782efffe0000fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe0000fffe0000fffe00000000fffe1fff",
-      "generatedAt": "2026-08-13T22:12:15.949Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:15:03.509Z",
+      "severity": "high",
+      "summary": [
+        "Bottom action bar (selection toolbar) is missing on React baseline — it appears at the bottom on iOS but is not rendered on React, or vice versa given viewport contract.",
+        "Message author names render with different typography weight/size between platforms (React bold, iOS regular weight appears heavier/darker).",
+        "Timestamp formatting differs: React shows '06/22 02:30 AM', iOS shows '06/27 09:20' — also React includes an author initial letter (K, O…) while iOS omits it.",
+        "Selection checkboxes on iOS are square with a yellow filled background and black border; React uses circular yellow check icons with black ring — distinct shape and color treatment.",
+        "Reaction count chip with 👍 '2' and '+' add-reaction button visible on React below Cindy's message is absent on iOS."
+      ],
+      "likelyCauses": [
+        "Platform-specific toolbar/bottom-bar not rendered in React under the 'viewport-with-portal' contract.",
+        "Inconsistent selection-state component: React and iOS render different checkbox/checkmark shapes and color tokens.",
+        "Avatar component diverges between React (decorative pixel avatar + presence dot) and iOS (generic person placeholder).",
+        "Reaction affordances (like count + add-reaction chip) not implemented in iOS message-share selection view.",
+        "Author display-name metadata (initial letter) and timestamp locale/format differ per platform."
+      ],
+      "suggestedOwner": "components-thread / message-share selection owner",
+      "suggestedFixes": [
+        "Unify the selection toolbar: ensure React renders the bottom 'X selected — Cancel / Forward / Copy / More' bar in the same viewport-portal region as iOS.",
+        "Normalize the checkbox/checkmark to a single shape (square or circle) and a single fill color across platforms.",
+        "Align avatar component or accept the platform-specific avatar but ensure both include/omit the presence dot consistently.",
+        "Add the reaction count chip + add-reaction button to iOS or remove from React to match.",
+        "Standardize author name + timestamp rendering (bold weight, initial letter, date/time format) across both implementations."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.19621832003348594
     },
     {
@@ -1819,7 +1840,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-13T22:12:16.113Z",
+      "generatedAt": "2026-08-13T22:17:14.548Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2209,7 +2230,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-13T22:12:16.348Z",
+      "generatedAt": "2026-08-13T22:17:14.879Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2222,7 +2243,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-13T22:12:16.348Z",
+      "generatedAt": "2026-08-13T22:17:14.879Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2235,7 +2256,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-13T22:12:16.348Z",
+      "generatedAt": "2026-08-13T22:17:14.879Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2248,7 +2269,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-13T22:12:16.348Z",
+      "generatedAt": "2026-08-13T22:17:14.879Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2261,7 +2282,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-13T22:12:16.348Z",
+      "generatedAt": "2026-08-13T22:17:14.879Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2305,15 +2326,36 @@
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe3ffe800000318000082100040000008405dc80008c018fff00018fff0bfff7ff9fff81ffe7ffffffffff819bffff803f81ffffffffffffffffff8fff1fff8fff0fffc0fff8ff81fff1fffffff1ffd47fffffffffffffdbff0c3f80078c7f80070c7f8fff00038fff000380ffffff807f87ff807f97fffffe7c02ffffffff",
-      "generatedAt": "2026-08-13T22:12:16.490Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:15:04.140Z",
+      "severity": "high",
+      "summary": [
+        "Stop Agent / Restart Reset menu is clipped/obscured by overlapping agent identity block on iOS",
+        "iOS INFO section uses a 2-column grid (Computer / Created / Creator rows) vs React's 2-column pair layout, with different truncation of Computer name",
+        "React shows full Computer row with name, connection state and version; iOS shows truncated 'Jiachengs-Mac…' and shifts Connected/daemon v0.61.1 inline",
+        "Runtime Config on React stacks Runtime/Model/Reasoning and Mode vertically; iOS lays them out as 2-column grid with Reason and Mode side-by-side",
+        "iOS adds an extra 'CREATED AGENTS' section with a 'Visual QA' row and a status dot that is missing on React baseline"
+      ],
+      "likelyCauses": [
+        "iOS layout uses a responsive 2-column grid for INFO and Runtime Config instead of React's stacked rows",
+        "Missing or conditional rendering of edit (pencil) icons on iOS",
+        "iOS version includes an additional 'Created Agents' list section not present in React baseline",
+        "Avatar component fallback differs between platforms (solid color vs pixelated QR placeholder)",
+        "Dropdown/menu overlay z-index or position math not adjusted for iOS safe-area/content insets, causing it to overlap the agent card"
+      ],
+      "suggestedOwner": "iOS engineering / design systems",
+      "suggestedFixes": [
+        "Pin the Stop Agent / Restart Reset popup above all content with proper elevation and reposition it relative to the trigger button instead of overlapping the identity card",
+        "Restore edit (pencil) icons for Role and Display Name sections on iOS to match React",
+        "Align INFO section layout: stack Computer name and metadata vertically with full name (no truncation) on iOS, matching React",
+        "Either remove the 'CREATED AGENTS' section from iOS or add it to React baseline and verify intended parity",
+        "Use the same solid cyan placeholder avatar on iOS, or update both to the pixelated QR glyph intentionally"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.19875946854619841
     },
     {

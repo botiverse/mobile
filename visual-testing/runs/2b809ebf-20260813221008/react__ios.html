@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>2b809ebf-20260813221008</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-13T22:12:21.747Z" data-timestamp="2026-08-13T22:12:21.747Z" title="2026-08-13T22:12:21.747Z">2026-08-13 22:12:21 UTC</time></p>
+    <p class="runMeta"><code>2b809ebf-20260813221008</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-13T22:17:22.456Z" data-timestamp="2026-08-13T22:17:22.456Z" title="2026-08-13T22:17:22.456Z">2026-08-13 22:17:22 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 13</span>
       <span class="pill">Different 55</span>
       <span class="pill">Missing 6</span>
-      <span class="pill">AI 78/86 ready</span>
+      <span class="pill">AI 80/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -2765,7 +2765,12 @@
       <p><code>RGB 91.7%</code><br/><code>Pixel 80.38%</code><br/><code>Mismatch 19.62%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-with-portal 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · components-thread / message-share selection owner</summary>
+    <ul><li>Bottom action bar (selection toolbar) is missing on React baseline — it appears at the bottom on iOS but is not rendered on React, or vice versa given viewport contract.</li><li>Message author names render with different typography weight/size between platforms (React bold, iOS regular weight appears heavier/darker).</li><li>Timestamp formatting differs: React shows '06/22 02:30 AM', iOS shows '06/27 09:20' — also React includes an author initial letter (K, O…) while iOS omits it.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Unify the selection toolbar: ensure React renders the bottom 'X selected — Cancel / Forward / Copy / More' bar in the same viewport-portal region as iOS.</li><li>Normalize the checkbox/checkmark to a single shape (square or circle) and a single fill color across platforms.</li><li>Align avatar component or accept the platform-specific avatar but ensure both include/omit the presence dot consistently.</li><li>Add the reaction count chip + add-reaction button to iOS or remove from React to match.</li><li>Standardize author name + timestamp rendering (bold weight, initial letter, date/time format) across both implementations.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-share.selection.png" data-current-src="ios/components.thread.message-share.selection.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4334,7 +4339,12 @@
       <p><code>RGB 89.0%</code><br/><code>Pixel 80.12%</code><br/><code>Mismatch 19.88%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS engineering / design systems</summary>
+    <ul><li>Stop Agent / Restart Reset menu is clipped/obscured by overlapping agent identity block on iOS</li><li>iOS INFO section uses a 2-column grid (Computer / Created / Creator rows) vs React's 2-column pair layout, with different truncation of Computer name</li><li>React shows full Computer row with name, connection state and version; iOS shows truncated 'Jiachengs-Mac…' and shifts Connected/daemon v0.61.1 inline</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Pin the Stop Agent / Restart Reset popup above all content with proper elevation and reposition it relative to the trigger button instead of overlapping the identity card</li><li>Restore edit (pencil) icons for Role and Display Name sections on iOS to match React</li><li>Align INFO section layout: stack Computer name and metadata vertically with full name (no truncation) on iOS, matching React</li><li>Either remove the 'CREATED AGENTS' section from iOS or add it to React baseline and verify intended parity</li><li>Use the same solid cyan placeholder avatar on iOS, or update both to the pixelated QR glyph intentionally</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.agent-lifecycle-actions.png" data-current-src="ios/components.members.agent-lifecycle-actions.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">

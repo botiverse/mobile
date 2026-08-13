@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-13T22:12:13.803Z",
+  "generatedAt": "2026-08-13T22:17:11.380Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 70,
-    "pending": 16
+    "ready": 85,
+    "pending": 1
   },
   "cases": [
     {
@@ -100,28 +100,69 @@
     },
     {
       "id": "components.ui.card.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffffffffffcfffc3ffe3ffcffffffffffffffff80018001a004a005fffcfffc80fc80fc80fc80fcfffcfffcfffcfffce004fffcfffcfffcc9fcdffcfffce00480008001800080018000800180008001fffcfffc8000800180018001ffffffffffffffffffffffffffffffff00000000800fe001fffffffffffa1fffffffffff",
-      "generatedAt": "2026-08-13T22:12:12.477Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:14:32.801Z",
+      "severity": "medium",
+      "summary": [
+        "Android card starts 27 px farther right and is 4 px wider than the React card, with different horizontal centering.",
+        "Card content is shifted right on Android: title and description have roughly 15 px more left padding, while the button has about 18 px more left padding.",
+        "Android button is 4 px taller and uses slightly darker yellow fill.",
+        "The card’s dark lower/right shadow is visibly thicker on Android.",
+        "Android title, description, and button text appear approximately 1–2 px smaller than React."
+      ],
+      "likelyCauses": [
+        "Android layout uses larger card width, horizontal margins, or different width calculation than React.",
+        "Shared padding or content-inset tokens are not applied consistently across implementations.",
+        "Android text styles map to different font sizes.",
+        "Button height and background-color tokens differ by platform.",
+        "Android elevation produces a larger shadow than the React box-shadow."
+      ],
+      "suggestedOwner": "Design-system Android implementation owner",
+      "suggestedFixes": [
+        "Match the React card bounds within the 342 px canvas, including the 27 px left offset and total width.",
+        "Set Android card content insets to match React: approximately 15 px for title/description and 18 px for the button.",
+        "Align the shared title, body, and button typography scales and font sizing across platforms.",
+        "Use the shared button height, fill color, border, and corner-radius tokens.",
+        "Set the Android card elevation to reproduce the thinner React shadow."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1170496905030608
     },
     {
       "id": "components.ui.card.states.elegant",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:000000010ffc1ffc0ffc0ffc7ffe7ffefffefffefffefffefffefffefffefffe80fe80fe80fe80fefffefffec72ec00ec006c006f9fec9fec1fec1fefffefffec002c0028000800280028002c002c002fffefffec0028002fffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffff00fffffffffff",
-      "generatedAt": "2026-08-13T22:12:12.496Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:14:32.873Z",
+      "severity": "medium",
+      "summary": [
+        "Save changes button extends to the right edge of the card on Android (no right inset/margin) while React leaves visible padding between the button and the card's right edge.",
+        "Title and description text on Android starts further to the right (reduced left padding) compared to React.",
+        "Title 'Channel settings' appears with slightly different font weight/size rendering between React and Android.",
+        "Button corner radius on Android appears smaller / less rounded than the React version.",
+        "Body description text on Android appears slightly smaller or lighter weight than React."
+      ],
+      "likelyCauses": [
+        "Android card container uses different padding tokens than the React card implementation.",
+        "Button component on Android is set to fill parent width instead of being a fixed/auto-width button aligned with text content.",
+        "Typography scale mapping differs between platforms (font size/weight not normalized to the design tokens).",
+        "Corner radius token mismatch between web and Android themes."
+      ],
+      "suggestedOwner": "android-ui",
+      "suggestedFixes": [
+        "Match card inner padding to React baseline (e.g., 24px left/right) on the Android Card composable.",
+        "Constrain Save changes button width or apply right margin so it does not touch the card's right edge.",
+        "Align Android text styles (title + body) to the shared design tokens for font size and weight.",
+        "Apply the same border-radius token (e.g., 12–16px) used on React to the Android button.",
+        "Re-run Slock comparison after fixes to verify pixel mismatch drops below 5%."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.24979480865907455
     },
     {
@@ -612,15 +653,32 @@
     },
     {
       "id": "components.ui.section-header.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:bfffbffd000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffefffefffefffefff8fff0fff8fff083f881f083f881f0fff8fff0fff8fff1fff8fffe8000800080008000fffefffefffefffefffefffefffefffefffefffefffefffefffefffe00000000fffffffffffffffffff00ffffff00ffffffe7fffffffffff",
-      "generatedAt": "2026-08-13T22:12:12.586Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:15:44.849Z",
+      "severity": "medium",
+      "summary": [
+        "Android section header label reads 'CONNECTED APPS' while React label reads 'APPLICATIONS' — text content/strings diverge.",
+        "Section header label letter-spacing/tracking on Android appears slightly wider, giving 'CONNECTED APPS' a more spaced-out appearance vs the tighter React 'APPLICATIONS'.",
+        "Underline divider on Android is thinner and lighter in color than the React baseline (React stroke looks thicker/darker).",
+        "Add button on Android appears to have a heavier/thicker border and slightly larger hit area compared to React."
+      ],
+      "likelyCauses": [
+        "Component copy/label string was not aligned across platforms — Android localized or diverged from the design spec.",
+        "Different design-token values for border-width and text tracking between web (Raft UI React) and Android implementations.",
+        "Platform-default font metrics causing different letter-spacing and underline stroke weight on Android."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Reconcile section header label string to a single source of truth (use 'APPLICATIONS' on Android or update spec to 'CONNECTED APPS').",
+        "Align Android border-width and underline stroke tokens with React baseline values.",
+        "Verify letter-spacing/tracking tokens map identically across React and Android (e.g., normalize tracking-scale).",
+        "Re-export snapshot after token and copy updates and rerun visual regression with tolerance ≥ 1dp."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.07482352767440492
     },
     {
@@ -791,15 +849,35 @@
     },
     {
       "id": "components.auth.register.inputs",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffc000000000000000000000000fe7f7180fe7ffe7ff08ffe7ff00ff81f9fffffff83fcc3fb8000c0038fffc00380fccffb8000c003801fd47ff01fe7cf8000c0038000c003c183c003b00cffff8000ffffb00cffff8000fffff7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-08-13T22:12:12.711Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:14:33.090Z",
+      "severity": "high",
+      "summary": [
+        "React (left) has 'Continue with Google' and 'Continue with GitHub' OAuth buttons plus an 'OR' divider; Android (right) is missing these entirely",
+        "React primary CTA reads 'Continue'; Android reads 'Create Account'",
+        "Android title is 'Create Account' while React is 'Create your account' (case and wording differ)",
+        "Android lacks 'OR' divider and trailing 'Already have an account? Sign in' link in its primary flow position; Android's Sign In link sits directly under the primary button instead",
+        "Checkbox + Terms/Privacy copy wraps to three lines on Android vs. two on React, indicating tighter container width or larger label type on Android"
+      ],
+      "likelyCauses": [
+        "Android implementation missing OAuth providers (Google/GitHub) and the 'OR' separator component",
+        "Primary CTA and headline strings not shared from a single copy/design-token source between platforms",
+        "Android form container width or label font-size is larger, causing the agreement text to wrap to an extra line",
+        "Android footer 'Sign In' link placed before OAuth buttons rather than after the social-auth block"
+      ],
+      "suggestedOwner": "android-auth",
+      "suggestedFixes": [
+        "Add 'Continue with Google' and 'Continue with GitHub' buttons plus 'OR' divider to Android register screen to match React parity",
+        "Align button label to 'Continue' (or align React to 'Create Account') via shared copy source",
+        "Set Android title string to 'Create your account' (lowercase 'your') or update both to match a single spec",
+        "Reduce Android label font-size or widen the agreement-text container so copy fits on two lines",
+        "Move Android 'Already have an account? Sign In' link below the OAuth buttons to match React layout order"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.18482399643537084
     },
     {
@@ -1289,15 +1367,39 @@
     },
     {
       "id": "components.thread.message-share.selection",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe07fcfffe7ffe805e81fec0024002f0fe7006f1fe7ffe83fe83fe80024002f8fe7002fffe7cfeffff0000ffff0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe00007ffe00000000fffe3fff",
-      "generatedAt": "2026-08-13T22:12:12.830Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:14:33.420Z",
+      "severity": "high",
+      "summary": [
+        "Bottom action bar position differs: React renders it pinned at the bottom of the viewport, Android renders it immediately below the message list (top-anchored), leaving a large empty cream/ivory area below.",
+        "Selection checkbox style differs: React uses a round yellow circular check icon; Android uses a square yellow checkbox.",
+        "React message list shows avatars and reactions (👍 2, +) inline; Android omits avatar backgrounds and reactions entirely, showing only plain text.",
+        "Header crop differs: React truncates the second user as \"artin 0…\" with an ellipsis; Android shows \"artin\" without truncation and uses different timestamp formatting (06/27 09:24 vs 06/22 02:35 AM).",
+        "Typography weight/spacing: Android message body text appears slightly larger and the author name \"artin\" is rendered in bold, while React uses regular weight; vertical spacing between rows is tighter on React."
+      ],
+      "likelyCauses": [
+        "Android implementation is not pinning the share-selection action bar to the bottom of the screen (missing bottom-anchored container or safe-area inset handling).",
+        "Android avatar/reaction subviews are not rendered in selection mode, or are conditionally hidden when selection toolbar is active.",
+        "Checkbox component on Android is using a different primitive (Material checkbox) instead of the shared circular check icon used on React.",
+        "Truncation policy differs between platforms (single-line vs no truncation) and timestamp formatter is locale-specific.",
+        "Test viewport on Android is taller than content, exposing empty background; React capture is element-bounded so empty space is cropped."
+      ],
+      "suggestedOwner": "android-chat",
+      "suggestedFixes": [
+        "Anchor the selection action bar to the bottom of the parent container (or use CoordinatorLayout/WindowInsets) so it stays at the viewport bottom regardless of list length.",
+        "Reuse the shared circular check selection component on Android instead of the native square checkbox.",
+        "Ensure avatar tiles and reaction pills (👍, +) remain visible inside each row when in selection mode.",
+        "Normalize timestamp formatting (e.g., \"MM/DD HH:mm\") and apply consistent single-line ellipsis truncation to author names across platforms.",
+        "Verify the test capture bounds: either crop Android to the actual content height or render filler content to match the React baseline viewport."
+      ],
+      "intentional": [
+        "Different data sample (Cindy's message text and timestamps) is expected since each platform renders its own fixture.",
+        "The ivory/cream background tint on Android may be an intentional theme color, not a bug."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.7241031041978909
     },
     {
@@ -1369,15 +1471,39 @@
     },
     {
       "id": "components.home.titlebar.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffcfffe7ffeffff00020003000200030002ffff0002ffff0002ffff0002ffff0006ffff0002ffff0002ffff003effff0002ffff0002ffff48f2ffff0006fffffffefffffffefffffffefffffffefffffffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffefffe4000ffffffff",
-      "generatedAt": "2026-08-13T22:12:12.916Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:14:33.714Z",
+      "severity": "high",
+      "summary": [
+        "Android renders only one titlebar state ('SETTING OFF · EXISTING COMPACT BADGE'); React baseline shows a single compact state but Android adds three additional states (icon, long-name ellipsis, expanded switcher) not in baseline",
+        "Compact badge in Android sits directly inside the yellow bar with overlapping black pill behind text; React baseline shows badge as a distinct black pill above/over the bar with a pink dot on top",
+        "Android title-bar avatar/icon block renders with blue/teal pixel-style artwork; React baseline omits the icon entirely (text-only label)",
+        "Android includes a left-side checkmark glyph indicating selected identity in expanded switcher; React baseline has no switcher/selection affordance",
+        "Android title-bar label uses smaller black weight text on yellow with chevron flush against label; React baseline label is larger and visually heavier on solid black pill"
+      ],
+      "likelyCauses": [
+        "Android implementation carried forward extra storybook states (compact badge, short-name, long-name, expanded switcher) that were not part of the React baseline snapshot",
+        "Inconsistent component contract between React and Android — Android specs the badge as inline label on yellow rather than a separate black pill chip",
+        "Icon/swatch token (blue pixel artwork) is missing from React baseline or Android added it locally",
+        "Selection/checkmark affordance added on Android for identity switcher without parity in React",
+        "Typography tokens (size/weight/color contrast) diverged between the two implementations"
+      ],
+      "suggestedOwner": "components/home (title-bar owner) + design-systems",
+      "suggestedFixes": [
+        "Reconcile state matrix: match the set of title-bar variants shipped on React and Android; remove or hide non-shared states in the Android story or add the missing ones on React",
+        "Reuse the same badge primitive (black pill with offset/shadow and pink unread dot) across platforms; pin to a shared design token",
+        "Add the same leading icon/swatch support in React or remove it from Android to keep the compact state symmetric",
+        "Define a single title-bar label type style token (size, weight, color, chevron gap) and apply consistently on both platforms",
+        "Introduce a shared identity-switcher selection indicator (checkmark or filled chevron) across React and Android, or omit it from Android if out-of-scope"
+      ],
+      "intentional": [
+        "Pink dot on bell may be intentionally larger on Android to indicate unread notifications",
+        "Extra identity switcher states on Android could be platform-only tooling and expected to differ from the React baseline story"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.6793244757699735
     },
     {
@@ -1415,28 +1541,72 @@
     },
     {
       "id": "components.home.search.results",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800300020002dfffffffffffffff80ff80009fff803c80ff800080ff8803dfffe7ffffffc0fe8001c00e8002fffe03ffd8fe87ffd05ec9fedffe9fffffff807effff7fffffff403fffffc1effffffffffffff81ffffffc3ffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-08-13T22:12:12.925Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:14:37.330Z",
+      "severity": "medium",
+      "summary": [
+        "Search input has a leading yellow circular search-icon button on React that is missing on Android; Android shows only the back arrow + input + clear button.",
+        "Android filter chips are filled yellow/orange and show selected values (From: Me, Scope 2, #design) inline; React chips are outlined/light with placeholder labels (From, Scope, Channel).",
+        "Results count differs: React shows '3 RESULTS'; Android shows '5 results' (mixed casing, no all-caps).",
+        "Android adds a 'CHANNELS & DMS' section (with #android-artifacts channel card and Android Developer DM card) that is absent on React; React only renders a 'SERVER ENTITIES' section.",
+        "Android message cards include a thread indicator (speech-bubble icon + 'Thread' label, '#design 2 hits', timestamp HH:MM) and richer metadata; React message cards use relative time ('53 days ago') and no thread badge or clock timestamp."
+      ],
+      "likelyCauses": [
+        "Android Search Results screen implemented from a different spec that adds Channels & DMs results, thread metadata, and pagination",
+        "React implementation is missing the Channels/DMs result category and the Load more results CTA",
+        "Search input leading icon affordance not ported to Android search bar component",
+        "Filter chips on Android render in a 'selected/filled' visual state while React uses an unselected/outlined state regardless of value",
+        "Result-count label styling differs (lowercase + count) vs React's uppercase tracked label"
+      ],
+      "suggestedOwner": "android-search",
+      "suggestedFixes": [
+        "Align filter chip visual states across platforms: React should show selected values (e.g., 'From: Me', 'Scope 2', '#design') when active, or Android should use outlined chips for placeholders.",
+        "Add the yellow magnifier icon button to Android's search bar between the back arrow and text input to match React affordance.",
+        "Normalize the results-count header styling (same casing, weight, and label format e.g. '3 RESULTS' on both).",
+        "Decide whether the 'Channels & DMs' result section is in-scope for React; if yes, add it; otherwise remove from Android for parity.",
+        "Unify message card metadata: thread badge/icon, HH:MM timestamps vs relative time, and the pink thread-card background treatment should match across platforms."
+      ],
+      "intentional": [
+        "Filter chip row layout: React wraps to two rows and includes a Recent sort chip; Android is a single non-wrapping row with fewer chips — intentional platform difference per spec."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2684169130851596
     },
     {
       "id": "components.home.search.channel-dropdown",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218380012fc7cfe00fc00fe9e813c00879d3c000081fc00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff41ffc9ffffff9fffffff807fffffffffffffd83fffffc3fffffffffffffff81ffffffc3ffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-08-13T22:12:13.000Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:14:38.408Z",
+      "severity": "high",
+      "summary": [
+        "Search field leading icon differs: React shows a magnifying glass in a yellow filled square; Android shows a back-arrow icon in a light gray square",
+        "Search field trailing clear control is missing on Android (React has a × clear button)",
+        "Channel dropdown is not open on Android; React shows the open CHANNELS popover with Search field and #design / #android-artifacts options",
+        "Active filter chips on Android show filled yellow backgrounds with icons (From: Me, @Scope 2, #design), while React shows neutral outlined chips (From, Scope, Channel)",
+        "Filter chip row on Android overflows/clips on the right edge (a fourth chip is partially cut off)"
+      ],
+      "likelyCauses": [
+        "Android implementation is rendering a different screen state than React (filter bar visible vs. dropdown open)",
+        "Channel dropdown z-index/popover trigger not opened in the Android capture",
+        "Search input clear icon not implemented on Android",
+        "Filter chip styling uses primary fill on Android vs. neutral outline on React, indicating unthemed component reuse",
+        "Message thread metadata (timestamps, sender, hit count) rendered on Android but intentionally hidden on React"
+      ],
+      "suggestedOwner": "android-search",
+      "suggestedFixes": [
+        "Open the channel dropdown popover in the Android capture to match the React baseline state, or align baseline to the closed state",
+        "Add a × clear button to the Android search input trailing edge",
+        "Replace primary-fill yellow filter chips with neutral outlined chips to match React styling",
+        "Ensure the filter chip row wraps or scrolls so the fourth chip is not clipped at the viewport edge",
+        "Remove or hide the Clear action and selection checkmark in the channel popover if React does not show them, or add them to React for parity"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.26867413348456004
     },
     {
@@ -1512,15 +1682,40 @@
     },
     {
       "id": "components.tasks.panel.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe3ffe000000000000000080060006ffffffefef80ff818f801f819fff9fff9ffc9ffd9ffc97f483a487f49ffefffcfff0ffe0bfa0800187ff841f87ff87ffbffcbffc80368014bff4bfe0ffc08001800187ff8fff8fff9ffcbffc8efe808cffe0a3c0a00080019fff9fff9fff9ffdfffc807c803cbfe0bff07fe0ffffffff",
-      "generatedAt": "2026-08-13T22:12:13.034Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:14:39.647Z",
+      "severity": "medium",
+      "summary": [
+        "The Android header adds a large checked-tasks icon to the left of the “Tasks” title, increasing the header’s internal spacing and shifting the title right.",
+        "Android task cards consistently position status badges at the bottom-right, while React alternates between bottom-right and vertically centered on the right edge.",
+        "The Android In Progress card is substantially shorter than its React counterpart, compressing vertical padding and reducing space between the assignee, title, and status badge.",
+        "Android’s In Review and Done cards are wider and their status labels use sentence case, while React uses title case.",
+        "The Android Done card is clipped at the bottom of the screenshot, omitting most of its status badge."
+      ],
+      "likelyCauses": [
+        "Different task-card templates or content-layout rules between platforms",
+        "Android-specific assignee and timestamp rows alter card content flow",
+        "Missing bottom safe-area or viewport spacing on Android",
+        "Inconsistent status-label capitalization across implementations",
+        "Different secondary-text color tokens for section counts"
+      ],
+      "suggestedOwner": "Tasks panel / cross-platform UI parity owner",
+      "suggestedFixes": [
+        "Match the Android bottom-right status-badge placement in React while preserving intentional assignee and timestamp additions.",
+        "Normalize card min-height and vertical padding so equivalent cards have consistent internal spacing across platforms.",
+        "Apply title casing to Android In Review and Done status labels.",
+        "Increase the bottom content inset or viewport handling on Android so the final card and its status badge are not clipped.",
+        "Align section-count text color with the React token."
+      ],
+      "intentional": [
+        "Android shows per-task relative timestamps at card top-right; React should adopt this later.",
+        "Android shows assignee text at card bottom-left; React should adopt this later.",
+        "The filter row is Android-only and remains in one unwrapped row; React’s wrapped Channel/Creator/Assignee layout is an intentional platform difference."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1909415886904039
     },
     {
@@ -1664,7 +1859,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-13T22:12:13.007Z",
+      "generatedAt": "2026-08-13T22:17:10.595Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1819,28 +2014,67 @@
     },
     {
       "id": "components.settings.account.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff80007fff81fccfff83fc8ff7860c83f780010ff7ffff7ff781fc7ff781fcc7f787fc9fe7fffc800787fc7e3788088237800083f78ffcc0f7cffc61f79e3c7307823c7f0783fc7ff780fc430781fc7f17a7c061f7bfc061f7fff48007c7c0ffffbfe00ff783fc7ff783fc8007801c0002ffffffff",
-      "generatedAt": "2026-08-13T22:12:13.241Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:14:40.846Z",
+      "severity": "high",
+      "summary": [
+        "Android renders a completely different page structure: shows a 'Profile' form with NAME, DISPLAY NAME fields and is missing the 'Workspace mode' section, the 'ACCOUNT' section header, the Username field, and the 'Set a password' section present in React.",
+        "React shows Google as 'Connected as artin@slock.ai' with a 'Disconnect' button; Android shows Google as 'Not connected' with a 'Connect' button — different account connection state.",
+        "Android's Profile card is positioned where React shows Workspace mode + ACCOUNT sections; the overall vertical ordering/layout diverges significantly."
+      ],
+      "likelyCauses": [
+        "Android page is implementing a separate Profile form layout instead of the unified Account page used on web.",
+        "Connected accounts state mismatch — the Android build was captured with Google not connected while React baseline shows it connected.",
+        "Possible page-level component divergence: Android route renders Profile component first while React renders Workspace mode + Account sections."
+      ],
+      "suggestedOwner": "android-account-settings",
+      "suggestedFixes": [
+        "Align Android Account page structure with React baseline: include Workspace mode toggle at top, then ACCOUNT section with profile card, Display Name, Username (with @ prefix), Email + Verified badge, Save Profile button, Connected accounts list, Set a password section, and Change password row.",
+        "Resolve Connected accounts state so both platforms show identical connection status and Disconnect/Connect button labels for Google and GitHub.",
+        "Verify session/Log out section renders identically below the connected accounts on both platforms.",
+        "Add visual regression test covering full Account page layout (not just viewport crops) so structural differences are caught."
+      ],
+      "intentional": [
+        "Log out copy differs: React 'Sign out of this browser' vs Android 'Sign out on this device' — intentional platform-difference per task #381."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.4345519234144827
     },
     {
       "id": "components.settings.account.error-state",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff80007fff81fccfff83fc8ff7860c83f7800105d7ffff000781fcdff781fc7ff787fc7ff7fffc87f787fc88078808411780007e378ffc83f7cffc83f79e3c9807803c8007800041f783fc73f783fc530780fc7f17a7fc4307a7c04f07bfc080e7c7e08077efc0c007b80461f783fc61f2ffffffff",
-      "generatedAt": "2026-08-13T22:12:13.280Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:14:41.490Z",
+      "severity": "high",
+      "summary": [
+        "Android shows an additional 'Profile save failed: server_unavailable' error banner not present on React",
+        "React shows a 'Workspace mode' toggle card at the top of the page that is missing on Android",
+        "Android adds a 'Retry' action button beneath the email field; React renders 'Save Profile' instead",
+        "Connected account error states differ: Android shows 'Provider link failed: oauth_provider_unavailable' under GitHub; React shows no provider error on its matching row (Google row instead shows 'Connected as artin@slock.ai' with a 'Disconnect' action)",
+        "Field ordering differs: Android places the avatar upload error directly under the avatar/profile block and puts 'NAME' before 'DISPLAY NAME'; React renders only 'Display Name' with error below the email field"
+      ],
+      "likelyCauses": [
+        "Android implemented the error-state design with multiple inline error banners and a dedicated Retry affordance instead of mirroring React's single combined Save Profile flow",
+        "The React build's 'Workspace mode' card was either dropped from the Android scope or not yet ported",
+        "Provider-state binding mismatch: React reads Google as connected (Disconnect) while Android reads it as not connected (Connect), indicating divergent account state handling"
+      ],
+      "suggestedOwner": "android-settings",
+      "suggestedFixes": [
+        "Reconcile account-state shape so Google/GitHub reflect the same connection on both platforms (one shows Connect + error, the other shows Disconnect/Connected)",
+        "Add the 'Workspace mode' card to the Android Account screen to match React scope, or intentionally scope it out and document the divergence",
+        "Consolidate error presentation: pick either one banner per action with Retry (Android) or one banner near Save Profile (React) and apply consistently",
+        "Unify field order under Profile (avatar → name → display name → username → email) and standardize error banner placement beneath the related field",
+        "Replace 'Retry' with parity to React's 'Save Profile' button, or document Retry as the intended Android retry pattern"
+      ],
+      "intentional": [
+        "Account section header label uses 'Profile' on Android and 'ACCOUNT' on React (platform naming choice)"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.5112312823213296
     },
     {
@@ -1881,28 +2115,72 @@
     },
     {
       "id": "components.settings.appearance.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffc8fff0ffe81fe01fe97fe1efe820f001c81fc4ff481fc4ff0800401fcbffc8000807c82a081fc3d0cbffc007c9ffc007c807400008004007cb3fc0004800020008000000081f0ffffb71cffffbffcffffbbfcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffff7fff",
-      "generatedAt": "2026-08-13T22:12:13.294Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:14:45.269Z",
+      "severity": "high",
+      "summary": [
+        "Android renders a completely different page — 'Activity sender avatars' appears at top instead of 'APPEARANCE' / 'Message font size' section as in React baseline.",
+        "On Android, the 'APPEARANCE' label has lowercase 'Appearance' (sentence case) while React baseline uses uppercase 'APPEARANCE' (tracked/eyebrow style).",
+        "Android version is missing the 'Live agent activity' section that is present in the React baseline (with toggle and 'Saved on this device.' note).",
+        "Preview block differs: React shows a green Minecraft-style avatar with sender 'Cindy', timestamp '09:49 PM', and inline code chips (#proj-uiux highlighted, `pull` code chip); Android shows a generic person icon, sender 'Onboarding Assistant', no timestamp, and no inline code styling.",
+        "Copy text diverges: React preview says 'doing a git `pull` now' with formatted code chip; Android collapses to plain 'doing a git pull now' without code chip formatting."
+      ],
+      "likelyCauses": [
+        "Android implementation renders a different screen/scroll position (possibly scrolled past the top of the Appearance section, showing an 'Activity sender avatars' card that appears further down the page).",
+        "Section order/navigation on Android differs from React — 'Activity sender avatars' is shown above the font-size control whereas React puts 'Message font size' first.",
+        "Missing 'Live agent activity' card on Android suggests the section was not implemented or was scrolled out of the 390×844 viewport crop.",
+        "Preview component on Android uses a default placeholder avatar and lacks inline-code / channel mention chip styling present in React.",
+        "Typography token for the section eyebrow ('APPEARANCE') differs: Android applies lowercase/sentence-case instead of uppercase tracked label."
+      ],
+      "suggestedOwner": "android-settings-appearance",
+      "suggestedFixes": [
+        "Verify Android page scroll/state at capture time; ensure the screenshot targets the top of the Appearance page so 'Message font size' appears first and 'Live agent activity' is within the 390×844 viewport.",
+        "Reorder Android cards to match React sequence: Message font size → Live agent activity → Activity sender avatars (or the spec's intended order).",
+        "Restore the 'Live agent activity' card with its toggle and 'Saved on this device.' helper text on Android.",
+        "Implement the Preview block on Android with the same avatar asset, sender name, timestamp, and inline-code/channel-mention chip styling as React.",
+        "Apply uppercase tracked typography style (or correct text-transform token) to the 'Appearance' section eyebrow so it matches React's 'APPEARANCE' label."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.20001789065770104
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffc9fff1fff81ff01ff9cfe1ffe80ff8ff3807c000080600000806087fbbffc81ffbffc81f1bffcff19a01c81fe807c81f1807cffff81fc80f9e274c1f1fff0fffebfe0807b80017fd1ffff7ffeffff00ffffff41fdffff7fffffffcfffffff0000ffff0000ffff0000ffff0000ffff2bfeffff0000fffe0000ffffffff",
-      "generatedAt": "2026-08-13T22:12:13.362Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:14:48.486Z",
+      "severity": "high",
+      "summary": [
+        "Android renders an entirely different notification settings page with platform-specific sections (SYSTEM, ON THIS DEVICE, WORKSPACE) while React shows a web push-only layout with a single PUSH NOTIFICATIONS section.",
+        "React displays an 'UNAVAILABLE' status badge and an 'Enable Push Notifications' button; Android instead shows a green 'Notifications allowed' status banner with a chevron, and no enable button.",
+        "React contains a 'Mute this server' checkbox and a 'Save' button; Android has no equivalent mute control or save action — settings are immediate (toggles and radio selections).",
+        "Android adds multiple toggle switches (Message notifications, Background realtime, Offline computer alerts, Foreground message banners) and a 'Send a test notification' action with a paper-plane icon, none of which appear on React.",
+        "Android uses radio-button style options ('All messages' highlighted in yellow, 'Only mentions') for workspace scope, whereas React uses a server-mute checkbox model."
+      ],
+      "likelyCauses": [
+        "The Android client was implemented as a native settings screen with platform-native controls rather than reusing the web/React settings spec.",
+        "Different product capabilities per platform — Android has OS-level notification permission, background realtime toggle, and test notification which don't map to the web push model.",
+        "Feature parity gap between web and native notification settings: native exposes more granular per-device controls.",
+        "Design system divergence: Android uses toggle switches and radio cards; React uses a single form with a save button."
+      ],
+      "suggestedOwner": "mobile-android",
+      "suggestedFixes": [
+        "Align information architecture: ensure both platforms expose equivalent concepts (notification permission state, per-channel toggles, scope) under consistent section labels.",
+        "Decide whether 'Mute this server' (web) maps to any Android setting, and add it if relevant; otherwise document the platform difference.",
+        "Replace the 'Save' button model on React with immediate toggle updates to match Android, or add auto-save/unsaved-state indicator.",
+        "Unify status indicator styling — pick one pattern for 'notifications allowed/denied/unavailable' across platforms.",
+        "Cross-link to notification platform docs explaining why Android shows extra controls (background realtime, test notification)."
+      ],
+      "intentional": [
+        "Android native toggles for OS-level capabilities (background realtime, message banners) that have no web equivalent.",
+        "Platform-specific 'Send a test notification' action useful on mobile where users verify notifications in context."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.27440724537880934
     },
     {
@@ -2180,15 +2458,40 @@
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe3ffe80000031800008210004000000840dfc80008c018fff00018fff0ffff7ffdfff81ffe7ffffffffff819bffff803f81ffffffffffffffffff8fff1fff8fff0fffc0fff87f81fff9fffffff1ffd47fffffffffffffdbff0c3f80078c3f80070c7f8fff00078fff000380ffffff807f97ff807f87fffffe1ffeffffffff",
-      "generatedAt": "2026-08-13T22:12:13.573Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:15:45.942Z",
+      "severity": "high",
+      "summary": [
+        "Header avatar is a solid cyan block in React vs a pixelated Q-style icon in Android",
+        "Header title and description render with a heavy monospace/serif look on Android while React uses lighter sans-serif weight",
+        "React header shows truncated one-line description ('Turns product feedback, s...'); Android shows full truncated text ('Turns product feedback, screensho...') on one line at smaller width",
+        "A 'Working' status indicator with yellow dot appears under the title on Android but is absent on React",
+        "INFO section on Android is reordered: Role pill, then Computer/Connected·daemon v0.61.1 inline, then Created, then Creator; React has edit icons, Connected pill, and Created/Creator laid out differently"
+      ],
+      "likelyCauses": [
+        "Different design token / typography stack on Android (custom font, heavier weight, different line-height)",
+        "Android screen uses a smaller content width and/or wider gutters, causing earlier text truncation",
+        "Profile/Info fields implemented without the same edit affordances (pencil icons) on Android",
+        "Android view renders additional runtime data (daemon version, 'Working' status, Created Agents) that React screen does not",
+        "Chip/label component on Android has different border thickness, radius, and color palette"
+      ],
+      "suggestedOwner": "mobile-engineering",
+      "suggestedFixes": [
+        "Unify typography tokens (font-family, weight, size, line-height) for header title and description across React and Android",
+        "Match truncation behavior and content width so the description shortens consistently",
+        "Port the 'Working' status indicator or remove it from Android to align with React",
+        "Add edit (pencil) icons to Android Display Name, Description, and Role rows to match React",
+        "Standardize Info row order, value styling, and Connected pill design (color, label, version suffix)"
+      ],
+      "intentional": [
+        "Platform-specific monospace typography on Android may be intentional for technical/code identity",
+        "'Working' status may be an Android-only live state indicator",
+        "'Created Agents' panel may be intentionally Android-only"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.20272039264930264
     },
     {
@@ -2326,15 +2629,37 @@
     },
     {
       "id": "components.thread.message-row.long-inline-code",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe07fc0ffe7ffe001f07ffe000801ec201e176c001e007e01ee0bfc000e00bc043e003c012e006e203e006e003e01ee07fe042ffffe00fc002e033c002e75fffffe3dfffffe00effffe00effffe00fffffe0dfffffe003ffffe6b3ffffe003ffffe003ffffe083ffffe3aeffffe03fffffe00fffffe7ebffffc000ffff7fff",
-      "generatedAt": "2026-08-13T22:12:13.677Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-13T22:14:50.221Z",
+      "severity": "high",
+      "summary": [
+        "Right (Android) renders substantially more content than left (React) — the React baseline appears clipped/truncated, missing the long inline code, short code, command, and trailing sections shown on Android.",
+        "Text wrapping is significantly different: Android reflows each paragraph onto multiple lines while React keeps wide single-line text where possible.",
+        "Mention chip color for @artin on React uses yellow background; Android also shows yellow but the trailing text wrapping shifts line positions of subsequent tokens.",
+        "React shows an ellipsised / truncated paragraph ('ConversationSummary launch compatibility helpers.' truncated via 'Show more'); Android renders the same paragraph fully without a Show more control and then continues with inline-code sections that React does not display.",
+        "React footer toolbar (replies counter, like/reaction counts, '+' button) is missing on Android — Android likely scrolls past it or the crop excludes it; React baseline shows #42 @Cindy, 4 replies·1 new, 3, 1, + chips."
+      ],
+      "likelyCauses": [
+        "Different vertical content extents: Android canvas is 390×844 vs React 390×412, and the element-bounds crop on React captures only the visible message portion while Android's manual rect captures the full scrollable region.",
+        "React message row applies a clamp/ellipsis on body text with a 'Show more' affordance; Android message row does not clamp and renders the full body, including long inline code spans that React may suppress or render out of crop.",
+        "Possible scroll/crop mismatch: the React element-bounds crop ended at the 'Show more' link, omitting the inline-code content that exists below it on the page."
+      ],
+      "suggestedOwner": "android-message-rendering",
+      "suggestedFixes": [
+        "Normalize crop strategy: use element-bounds on both sides, or expand React's crop to include the full message body so long inline code and trailing paragraphs are visible.",
+        "Verify whether React's 'Show more' clamp should also apply on Android; if not, ensure both platforms render the full body so visual diffs compare the same content.",
+        "Investigate why the footer actions (reply count, reactions, '+') are missing from the Android capture — either extend crop or confirm they render below the captured region.",
+        "Align paragraph wrap behavior: React appears to keep wide line widths while Android breaks aggressively; pick one wrap policy and apply consistently.",
+        "Confirm @artin self-mention yellow chip is intentional on Android and matches React styling as stated in the intentional-divergence note."
+      ],
+      "intentional": [
+        "Bare #number task chips: Android tags '#520' as a yellow task chip; React renders it as plain text — accepted platform difference per case metadata.",
+        "@artin rendered as yellow self-mention chip on both platforms — not a styling divergence per the updated rules."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3196122115553395
     },
     {

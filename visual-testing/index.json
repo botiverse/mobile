@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-13T22:12:21.747Z",
+  "generatedAt": "2026-08-13T22:17:22.456Z",
   "latestRunId": "2b809ebf-20260813221008",
   "latest": {
     "runId": "2b809ebf-20260813221008",
     "commit": "2b809ebf-20260813221008",
     "commitSubject": "build(android): resolve Hands SDK from Raft Maven (#2100)",
-    "generatedAt": "2026-08-13T22:12:21.747Z",
+    "generatedAt": "2026-08-13T22:17:22.456Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 86,
-      "ready": 70,
-      "pending": 16
+      "ready": 85,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "2b809ebf-20260813221008",
       "commit": "2b809ebf-20260813221008",
       "commitSubject": "build(android): resolve Hands SDK from Raft Maven (#2100)",
-      "generatedAt": "2026-08-13T22:12:21.747Z",
+      "generatedAt": "2026-08-13T22:17:22.456Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 70,
-        "pending": 16
+        "ready": 85,
+        "pending": 1
       },
       "comparisons": [
         "react__android",
