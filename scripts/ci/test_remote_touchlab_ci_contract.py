@@ -55,11 +55,6 @@ def main() -> None:
             "git submodule update --init third_party/sqldelight" in source,
             f"{path.name} no longer prepares the still-required SQLDelight source",
         )
-        require(
-            "scripts/prepare_ktor_ohos_fork.sh --publish" in source,
-            f"{path.name} no longer prepares the still-required Ktor source",
-        )
-
     test_source = sources[WORKFLOWS[0]]
     require(
         test_source.count('caches/modules-2/files-2.1/co.touchlab') == 4,
