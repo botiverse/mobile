@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-12T22:19:30.829Z",
+  "generatedAt": "2026-08-13T22:12:16.732Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 78,
+    "pending": 8
   },
   "cases": [
     {
@@ -520,7 +520,7 @@
     {
       "id": "components.ui.skeleton.states",
       "status": "ready",
-      "imageHash": "p1:0000200000fc01fe01fc01fe0000000600000006107c007e00003ffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "imageHash": "p1:0000200000fc01fe00fc01fe0000000600000006003c007e00003ffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
       "generatedAt": "2026-08-02T22:43:37.527Z",
       "severity": "low",
       "summary": [
@@ -546,7 +546,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06209779776130486
+      "metricMismatch": 0.062095097284670775
     },
     {
       "id": "components.ui.spinner.states",
@@ -841,7 +841,7 @@
     {
       "id": "components.auth.register.inputs",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe000000000000000030000000fe7f0000fe7ffffff08ffe7ff00ffe7f9ffff81f83fcdfff8000c3fb8fffc00380fcc0038000d00b881fc003f61fd41f8000e00f8001c003c183c003b00cffff8000ffffb00cffff8001fffff7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffe000000000000000030000000fe7f0000fe7ffffff08ffe7ff00ffe7f9ffff81f83fcdfff8000c3fb8fffc00380fcc0038000d00b881fc003f61fc40f8000c0078001c003c183c003b00cffff8000ffffb00cffff8001fffff7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-02T22:43:48.506Z",
       "severity": "medium",
       "summary": [
@@ -872,7 +872,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.20994180472853463
+      "metricMismatch": 0.20874751893709242
     },
     {
       "id": "components.navigation.tabbar.states",
@@ -1354,39 +1354,16 @@
     },
     {
       "id": "components.thread.message-share.selection",
-      "status": "ready",
-      "imageHash": "p1:07fc07fcfffe7ffe801e01f2c0024002f0fe7002f1fe7ffe83fe03fe80024002f8fe7002fffe4006fffe0000fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe0000fffe0000fffe00000000fffe1fff",
-      "generatedAt": "2026-08-11T22:16:47.854Z",
-      "severity": "medium",
-      "summary": [
-        "Action bar position differs: React pins the action bar to bottom of viewport; iOS renders it near the top (~25% from top) instead of the bottom edge.",
-        "iOS action bar contains extra actions (All, Forward, Copy, Download) while React shows only Cancel, Forward, Copy, More.",
-        "iOS selection checkboxes appear as smaller filled yellow squares placed above/inline with avatars; React uses larger circular yellow check icons left of avatars.",
-        "iOS avatar slots are larger squares with a thicker dark outline; React avatars are smaller rounded squares.",
-        "React shows a thumbs-up reaction chip ('👍 2') and a '+' add-reaction pill under the first message; iOS is missing the reaction chip and add-reaction affordance entirely."
-      ],
-      "likelyCauses": [
-        "Independent redesign of the multi-select action bar per platform instead of sharing a spec.",
-        "iOS composer/portal renders the action bar inline with the list rather than as a viewport-portal footer.",
-        "Reaction control (thumbs-up count and add-reaction button) not implemented on iOS.",
-        "Avatar and checkbox components sized/positioned differently between React and iOS implementations."
-      ],
-      "suggestedOwner": "ios",
-      "suggestedFixes": [
-        "Move iOS action bar to bottom of viewport and align it to full width matching React's yellow footer.",
-        "Trim iOS action buttons to the same set shown on React (Cancel, Forward, Copy, More) or align both platforms to the same action set.",
-        "Implement the thumbs-up reaction chip and '+' add-reaction button on iOS to match React.",
-        "Standardize avatar size, border, and selection checkbox shape/size across platforms.",
-        "Verify metadata row layout (author, preview, timestamp) so both platforms render the same fields in the same order."
-      ],
-      "intentional": [
-        "Different action button set on iOS if platform-specific export/download is by design.",
-        "Truncated preview text on iOS if message headers are intentionally condensed."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.18851183483884904
+      "status": "pending",
+      "imageHash": "p1:07fc07fcfffe7ffe801e01f2c0024002f0fe7002f1fe7ffe83fe03fe80024002f8fe7002fffe782efffe0000fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe0000fffe0000fffe00000000fffe1fff",
+      "generatedAt": "2026-08-13T22:12:15.949Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19621832003348594
     },
     {
       "id": "components.thread.forward-modal",
@@ -1489,7 +1466,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.25584585679372407
+      "metricMismatch": 0.2562056953052214
     },
     {
       "id": "components.home.notification-center.states",
@@ -1562,7 +1539,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26843480374286066
+      "metricMismatch": 0.26843716665991546
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1595,7 +1572,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2690079799084538
+      "metricMismatch": 0.26901709401709406
     },
     {
       "id": "components.home.saved.results",
@@ -1631,7 +1608,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11133356287384721
+      "metricMismatch": 0.11133018727805455
     },
     {
       "id": "components.home.activity.results",
@@ -1666,7 +1643,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10718529320425052
+      "metricMismatch": 0.10722917594955506
     },
     {
       "id": "components.tasks.panel.states",
@@ -1842,7 +1819,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-12T22:19:29.965Z",
+      "generatedAt": "2026-08-13T22:12:16.113Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2232,7 +2209,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-12T22:19:30.273Z",
+      "generatedAt": "2026-08-13T22:12:16.348Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2245,7 +2222,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-12T22:19:30.273Z",
+      "generatedAt": "2026-08-13T22:12:16.348Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2258,7 +2235,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-12T22:19:30.273Z",
+      "generatedAt": "2026-08-13T22:12:16.348Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2271,7 +2248,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-12T22:19:30.273Z",
+      "generatedAt": "2026-08-13T22:12:16.348Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2284,7 +2261,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-12T22:19:30.273Z",
+      "generatedAt": "2026-08-13T22:12:16.348Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2328,41 +2305,16 @@
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe8010003180100821000c0000008405dc80008c018fff00018fff0bffffff9fff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff1fff8fff0fffc0fff8ff81fff1fffffff1ffd47fffffffffffffdfff0c3f80010c7f80010c7f80ff0003807f0003807fffffffff87ffdfff97ff80f87c02ffffffff",
-      "generatedAt": "2026-08-02T22:44:47.721Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows 'Working' status indicator under @Product-UX-Designer that is absent on React",
-        "iOS popup is clipped on the right edge, overlapping the header icons and 'Workers' tab text (truncated to '...rs')",
-        "React popup overlaps the avatar/identity row but does not clip the right side header icons",
-        "iOS Info section uses two-column layout (Computer, Created, Creator) while React stacks vertically with Connected/version inline",
-        "iOS Runtime Config uses a 2x2 grid (Runtime/Model, Reasoning/Mode); React uses a single 4-column row"
-      ],
-      "likelyCauses": [
-        "iOS popup/menu component lacks viewport-aware positioning or arrow/offset logic, causing right-edge overflow",
-        "iOS Info section rendered with a different responsive grid breakpoint than React",
-        "iOS runtime config layout uses a fixed 2-column grid that differs from React's flex row",
-        "Different default avatar rendering between platforms (solid color vs. generated pattern)",
-        "Agent status ('Working') state may only be surfaced in iOS implementation and missing on React, or vice versa"
-      ],
-      "suggestedOwner": "mobile-ios",
-      "suggestedFixes": [
-        "Anchor the Stop/Restart popup to its trigger with safe-area inset and prevent right-edge overflow; flip alignment when near the right edge",
-        "Raise popup z-order above header icons and 'Workers' tab, and add a small offset so it does not visually clip them",
-        "Match React's single-row Runtime/Model/Reasoning/Mode layout on iOS, or align both on the same 2x2 grid intentionally",
-        "Add a 'Working' / status indicator on React or remove from iOS to keep parity",
-        "Use the same avatar rendering strategy (solid color or mosaic) across platforms"
-      ],
-      "intentional": [
-        "Pill colors (cyan Runtime, purple Model, yellow Reasoning, orange Mode) appear consistent across both sides",
-        "Profile/Activity tab styling and active yellow state match between platforms",
-        "Display name, description copy, and Environment Variables chips render identically"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.20115647911856438
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe800000318000082100040000008405dc80008c018fff00018fff0bfff7ff9fff81ffe7ffffffffff819bffff803f81ffffffffffffffffff8fff1fff8fff0fffc0fff8ff81fff1fffffff1ffd47fffffffffffffdbff0c3f80078c7f80070c7f8fff00038fff000380ffffff807f87ff807f97fffffe7c02ffffffff",
+      "generatedAt": "2026-08-13T22:12:16.490Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19875946854619841
     },
     {
       "id": "components.members.avatar-management",
