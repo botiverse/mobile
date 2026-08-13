@@ -30,11 +30,9 @@ in any channel (usually `#artifacts`). Lane assumptions:
    git rev-parse --short HEAD
    git status --short --branch       # expect clean and equal to origin/main
    git ls-tree HEAD third_party/kuikly-ui third_party/slock-source
-   ls compose/github-packages.properties
    ```
-   Then decide base + pinned submodule SHAs + whether the GitHub Packages
-   token is present in `compose/github-packages.properties` (needed for
-   `:androidApp:assembleRelease` Gradle build to pull KuiklyBase AAR).
+   Then decide base + pinned submodule SHAs. Hands Android SDK and the migrated
+   KuiklyBase dependencies resolve anonymously from Raft Maven.
 
 2. **Create detached worktree** at the base commit.
    ```bash
@@ -56,19 +54,7 @@ in any channel (usually `#artifacts`). Lane assumptions:
      tar -x` to materialize a clean tree (avoiding main-checkout dirty files).
    See "Submodule strategy" below for the rationale.
 
-4. **Copy GitHub Packages properties** to the worktree.
-   ```bash
-   cp /Users/artin/AndroidStudioProjects/Slock/compose/github-packages.properties \
-      <worktree>/compose/github-packages.properties
-   ```
-   The properties file is **untracked** in the canonical checkout
-   (`.gitignore` or the example is `.example`). It is read by
-   `compose/settings.gradle.kts` to authenticate against
-   `https://maven.pkg.github.com/bytemain/KuiklyBase-components`. Without it,
-   `:androidApp:assembleRelease` fails with HTTP 401 on
-   `com.tencent.kuiklybase:resource-core-android:0.1.0-raft.1`.
-
-5. **Build, sign, align, verify**.
+4. **Build, sign, align, verify**.
    ```bash
    cd <worktree>/compose
    ./gradlew :shared:generateSqlDelightInterface :androidApp:assembleRelease
@@ -109,10 +95,6 @@ in any channel (usually `#artifacts`). Lane assumptions:
 
    **Credential discipline**:
    - `keystore password` is `artin123` (DM from @Cindy, same as `#60`-`#69`).
-   - `compose/github-packages.properties` (untracked file) contains the
-     `bytemain` GitHub PAT. Owner has confirmed this PAT also has read
-     access to `oranix-io/quiver` (Quiver SDK), so the same file is used
-     for both repos.
    - Token / password is consumed inside `unset HISTFILE` subshells, never
      pasted in a public channel, never committed (the properties file is
      `.gitignore`'d).
@@ -121,7 +103,7 @@ in any channel (usually `#artifacts`). Lane assumptions:
      deviation means a different keystore and Android will refuse upgrade
      install.
 
-6. **Create the Hands draft** (using the KMP helper, which wraps the Hands
+5. **Create the Hands draft** (using the KMP helper, which wraps the Hands
    npm CLI).
    ```bash
    unset HISTFILE
@@ -149,7 +131,7 @@ in any channel (usually `#artifacts`). Lane assumptions:
    or publish a real `main` channel release just to test the pipeline — use
    `preview` for that, then `DELETE` the release after verification.
 
-7. **Server-side verify** (the lane's 6-scope split: scope 1, 2, 5 are
+6. **Server-side verify** (the lane's 6-scope split: scope 1, 2, 5 are
    server-only; scope 3, 4, 6 need device/emulator — see
    `docs/...-practices-2026-07-02.md`).
    ```bash
@@ -161,7 +143,7 @@ in any channel (usually `#artifacts`). Lane assumptions:
    # scope 5: arch 边界 (arm64-v8a / no arch / armeabi-v7a)
    ```
 
-8. **Pull the public download URL** (for owner to download via browser /
+7. **Pull the public download URL** (for owner to download via browser /
    `curl`) and post it to the task thread.
    ```bash
    curl -sS "https://quiver.oranix.io/public/v2/apps/raft-android/updates/check?channel=main&..." \
@@ -170,7 +152,7 @@ in any channel (usually `#artifacts`). Lane assumptions:
    The signed `/public/r2/...&sig=...` URL is short-lived (R2 default
    `expires_in=3600s`); re-pull when the URL expires.
 
-9. **Report to owner** in the task thread with:
+8. **Report to owner** in the task thread with:
    - artifact path + APK SHA-256 + sign cert SHA-256
    - Hands `build_id` + `release_id` + provenance
    - public check verification (scope 1-2 + 5)

@@ -74,6 +74,9 @@ jobs:
       - name: Validate Kuikly immutable-Raft consumer contract
         run: python3 scripts/ci/test_kuikly_raft_consumer_contract.py
 
+      - name: Validate Hands Android SDK Raft consumer contract
+        run: python3 scripts/ci/test_hands_raft_consumer_contract.py
+
       - name: Validate remote Touchlab dependency contract
         run: python3 scripts/ci/test_remote_touchlab_ci_contract.py
 
@@ -245,8 +248,6 @@ jobs:
       image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1@sha256:333681267bdf66eaba96d311d34eada49cfd86621f33c21cdf9a19fed343f5e5
     timeout-minutes: 60
     env:
-      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
-      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
       OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
       DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
     outputs:
@@ -271,15 +272,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
-
-      - name: Write GitHub Packages credentials
-        shell: bash
-        run: |
-          {
-            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
-            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
-          } > compose/github-packages.properties
-
       # The fork projects' settings list only CN mirrors (mirrors.tencent.com /
       # maven.eazytec-cloud.com), which are flaky from hosted runners. Fall back
       # to the canonical repositories without touching the pinned submodules.
@@ -455,8 +447,6 @@ jobs:
     if: ${{ needs.plan.outputs.run_android == 'true' }}
     timeout-minutes: 40
     env:
-      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
-      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
       # A stable (not per-run) GRADLE_USER_HOME so the setup-gradle cache actually
       # restores across runs: its GitHub cache version hashes the resolved cache
       # paths, so a run_id-suffixed home would change the version every run and
@@ -557,15 +547,6 @@ jobs:
             caches/jars-*
             caches/transforms-*
             caches/*/transforms
-
-      - name: Write GitHub Packages credentials
-        shell: bash
-        run: |
-          {
-            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
-            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
-          } > compose/github-packages.properties
-
       # Compiling the unit-test source set closes the gap where a broken
       # commonTest (or an API change that breaks tests) sailed through green
       # CI — main sources alone do not compile test code (#198 follow-up).
@@ -1103,9 +1084,6 @@ jobs:
     if: ${{ needs.plan.outputs.run_ios == 'true' }}
     runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 75
-    env:
-      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
-      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -1121,15 +1099,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
-
-      - name: Write GitHub Packages credentials
-        shell: bash
-        run: |
-          {
-            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
-            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
-          } > compose/github-packages.properties
-
       - name: Compile shared iOS targets and unit tests
         working-directory: compose
         run: |
@@ -1214,8 +1183,6 @@ jobs:
     if: ${{ needs.plan.outputs.run_ohos == 'true' }}
     timeout-minutes: 90
     env:
-      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
-      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
       # Task #91: fail-close resource receipt scratch dir (memory/cgroup snapshots,
       # compile-phase exit/signal, crash inventory, classifier verdict). Uploaded
       # as a diagnostic artifact; never influences the gate result. Uses
@@ -1243,15 +1210,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
-
-      - name: Write GitHub Packages credentials
-        shell: bash
-        run: |
-          {
-            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
-            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
-          } > compose/github-packages.properties
-
       - name: Restore shared fork dependencies mavenLocal artifacts
         uses: actions/cache/restore@v5
         with:
@@ -1467,8 +1425,6 @@ jobs:
     container:
       image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1@sha256:333681267bdf66eaba96d311d34eada49cfd86621f33c21cdf9a19fed343f5e5
     env:
-      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
-      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
       OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
       DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
       SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
@@ -1492,15 +1448,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
-
-      - name: Write GitHub Packages credentials
-        shell: bash
-        run: |
-          {
-            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
-            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
-          } > compose/github-packages.properties
-
       - name: Restore shared fork dependencies mavenLocal artifacts
         uses: actions/cache/restore@v5
         with:

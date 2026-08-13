@@ -1,4 +1,0 @@
-# Copy to github-packages.properties and fill a PAT with read:packages.
-# The untracked file is read by compose/settings*.gradle.kts before env fallbacks.
-githubPackagesUsername=bytemain
-githubPackagesToken=github_pat_replace_me

@@ -87,8 +87,6 @@ jobs:
     runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 75
     env:
-      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
-      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
       # iPhone 14: 390x844pt @3x — same geometry as the android/react baselines.
       SIM_DEVICE: iPhone 14
     steps:
@@ -124,15 +122,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
-
-      - name: Write GitHub Packages credentials
-        shell: bash
-        run: |
-          {
-            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
-            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
-          } > compose/github-packages.properties
-
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
 

@@ -175,9 +175,6 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: signing-preflight
     timeout-minutes: 60
-    env:
-      GITHUB_PACKAGES_USERNAME: ${{ secrets.SLOCK_GITHUB_PACKAGES_USERNAME || 'bytemain' }}
-      GITHUB_PACKAGES_TOKEN: ${{ secrets.SLOCK_GITHUB_PACKAGES_TOKEN || github.token }}
     outputs:
       forkdeps-key: ${{ steps.keys.outputs.forkdeps }}
     steps:
@@ -217,15 +214,6 @@ jobs:
       - name: Export OpenHarmony SDK path
         shell: bash
         run: echo "OHOS_SDK_HOME=${{ steps.setup-ohos-sdk.outputs.ohos-base-sdk-home }}" >> "$GITHUB_ENV"
-
-      - name: Write GitHub Packages credentials
-        shell: bash
-        run: |
-          {
-            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
-            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
-          } > compose/github-packages.properties
-
       - name: Add canonical plugin repository fallbacks
         shell: bash
         run: |
@@ -352,8 +340,6 @@ jobs:
     container:
       image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1
     env:
-      GITHUB_PACKAGES_USERNAME: ${{ secrets.SLOCK_GITHUB_PACKAGES_USERNAME || 'bytemain' }}
-      GITHUB_PACKAGES_TOKEN: ${{ secrets.SLOCK_GITHUB_PACKAGES_TOKEN || github.token }}
       OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
       DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
       SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
@@ -400,10 +386,6 @@ jobs:
       - name: Write project build configuration
         shell: bash
         run: |
-          {
-            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
-            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
-          } > compose/github-packages.properties
           cat > compose/ohosApp/local.properties <<'PROPERTIES'
           kuikly.projectPath=../
           kuikly.moduleName=ohosBridge

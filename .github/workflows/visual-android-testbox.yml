@@ -112,16 +112,6 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
-      - name: Write GitHub Packages credentials
-        shell: bash
-        run: |
-          umask 077
-          {
-            echo "githubPackagesUsername=${{ secrets.SLOCK_GITHUB_PACKAGES_USERNAME }}"
-            echo "githubPackagesToken=${{ secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}"
-          } > compose/github-packages.properties
-          chmod 600 compose/github-packages.properties
-
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
 
@@ -134,11 +124,10 @@ jobs:
             :androidApp:assembleConnectedTest \
             :androidApp:assembleConnectedTestAndroidTest
 
-      - name: Remove credentials before interactive Testbox
+      - name: Remove checkout credentials before interactive Testbox
         shell: bash
         run: |
           (cd compose && ./gradlew --stop) || true
-          rm -f compose/github-packages.properties
           git config --local --unset-all http.https://github.com/.extraheader || true
           git submodule foreach --recursive \
             'git config --local --unset-all http.https://github.com/.extraheader || true'
@@ -149,7 +138,6 @@ jobs:
               sleep 1
             done
           fi
-          test ! -e compose/github-packages.properties
           if git config --local --get-regexp '^http\..*\.extraheader$' >/dev/null; then
             echo "GitHub checkout credential survived cleanup" >&2
             exit 1

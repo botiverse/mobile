@@ -51,16 +51,6 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
-      - name: Write GitHub Packages credentials
-        shell: bash
-        run: |
-          umask 077
-          {
-            echo "githubPackagesUsername=${{ secrets.SLOCK_GITHUB_PACKAGES_USERNAME }}"
-            echo "githubPackagesToken=${{ secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}"
-          } > compose/github-packages.properties
-          chmod 600 compose/github-packages.properties
-
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
 

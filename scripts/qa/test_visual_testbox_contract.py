@@ -27,19 +27,16 @@ def main() -> int:
     assert "contents: read" in workflow and "packages: read" in workflow
     assert f"useblacksmith/begin-testbox@{BEGIN_PIN}" in workflow
     assert f"useblacksmith/run-testbox@{RUN_PIN}" in workflow
-    write_index = workflow.index("Write GitHub Packages credentials")
     hydrate_index = workflow.index("Hydrate visual APK build")
-    cleanup_index = workflow.index("Remove credentials before interactive Testbox")
+    cleanup_index = workflow.index("Remove checkout credentials before interactive Testbox")
     interactive_index = workflow.index("useblacksmith/run-testbox@")
-    assert write_index < hydrate_index < cleanup_index < interactive_index
+    assert hydrate_index < cleanup_index < interactive_index
     cleanup = workflow[cleanup_index:interactive_index]
-    assert "rm -f compose/github-packages.properties" in cleanup
     assert "--unset-all http.https://github.com/.extraheader" in cleanup
     assert "./gradlew --stop" in cleanup
     assert "Gradle daemon survived credential cleanup" in cleanup
-    assert "test ! -e compose/github-packages.properties" in cleanup
     assert "GitHub checkout credential survived cleanup" in cleanup
-    assert "Do not recreate that credential inside Testbox" in skill
+    assert "Do not add credentials inside Testbox" in skill
     assert "product PASS/FAIL" in skill
     assert "whole-system logcat" in skill
     appearance = harness.split("fun captureSettingsAppearancePage()", 1)[1].split("\n    @Test", 1)[0]

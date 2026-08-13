@@ -72,40 +72,6 @@ dependencyResolutionManagement {
         }
     }
 
-    fun githubPackagesCredentials(): Pair<String, String> {
-        val localProperties =
-            listOf(
-                File(settingsDir, "github-packages.properties"),
-                File(settingsDir.parentFile, "github-packages.properties")
-            ).firstOrNull { it.isFile }
-                ?.let { propertiesFile ->
-                    java.util.Properties().apply {
-                        propertiesFile.inputStream().use(::load)
-                    }
-                }
-
-        fun property(name: String): String? =
-            localProperties?.getProperty(name)?.takeIf { it.isNotBlank() }
-
-        val username =
-            property("githubPackagesUsername")
-                ?: property("gpr.user")
-                ?: providers.gradleProperty("githubPackagesUsername").orNull
-                ?: providers.gradleProperty("gpr.user").orNull
-                ?: System.getenv("GITHUB_PACKAGES_USERNAME")
-                ?: System.getenv("GITHUB_ACTOR")
-                ?: ""
-        val token =
-            property("githubPackagesToken")
-                ?: property("gpr.key")
-                ?: providers.gradleProperty("githubPackagesToken").orNull
-                ?: providers.gradleProperty("gpr.key").orNull
-                ?: System.getenv("GITHUB_PACKAGES_TOKEN")
-                ?: System.getenv("GITHUB_TOKEN")
-                ?: ""
-        return username to token
-    }
-
     fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsKuiklyBase() {
         maven {
             name = "RaftArtifactsKuiklyBase"
@@ -127,17 +93,16 @@ dependencyResolutionManagement {
         }
     }
 
-    fun org.gradle.api.artifacts.dsl.RepositoryHandler.githubPackagesHands() {
-        maven {
-            name = "GitHubPackagesHands"
-            url = uri("https://maven.pkg.github.com/botiverse/hands")
-            content {
-                includeModuleByRegex("build\\.hands", ".*")
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsHands() {
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = "RaftArtifactsHands"
+                    url = uri("https://maven.artifacts.botiverse.dev")
+                }
             }
-            credentials {
-                val (user, token) = githubPackagesCredentials()
-                username = user
-                password = token
+            filter {
+                includeGroup("build.hands")
             }
         }
     }
@@ -145,7 +110,7 @@ dependencyResolutionManagement {
     repositories {
         raftArtifactsKuiklyRelease()
         raftArtifactsKuiklyBase()
-        githubPackagesHands()
+        raftArtifactsHands()
         mavenLocal()
         google()
         mavenCentral()
