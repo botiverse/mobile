@@ -181,6 +181,24 @@ fun render() {
         )
         return 1
 
+    # Failure shape 5: prose whose subject moved out. Declaration-level checks are
+    # blind to it, and the block silently re-binds to the next declaration.
+    detached = "/** Leading messages of the inline-selection fixture. */\n\nfun unrelated() = Unit\n"
+    if not orphaned_visual_prose(detached):
+        print("self-test: a detached fixture doc block was not detected", file=sys.stderr)
+        return 1
+    attached = "/** Leading messages of the inline-selection fixture. */\ninternal fun stillHere() = Unit\n"
+    if orphaned_visual_prose(attached):
+        print(
+            "self-test: a fixture doc block still attached to its declaration was flagged",
+            file=sys.stderr,
+        )
+        return 1
+    unrelated_doc = "/** Resolves the composer mention scope. */\n\nfun other() = Unit\n"
+    if orphaned_visual_prose(unrelated_doc):
+        print("self-test: ordinary production prose was flagged as orphaned", file=sys.stderr)
+        return 1
+
     dirty = classify(production_with_left_behind, moved)
     if "OnlyTheVisualFilesUseThis" not in dirty.left_behind:
         print(
@@ -224,6 +242,49 @@ def classify(production: str, moved_text: str) -> Census:
     prod_decls = declarations(production)
     duplicated = sorted(set(moved_decls) & set(prod_decls))
     return Census(left_behind, unreachable, widened, duplicated)
+
+
+# Prose that only makes sense next to a moved declaration. A declaration-level
+# census cannot see an orphaned KDoc block: the doc survives, its subject leaves,
+# and the block silently re-binds to whatever production function follows it.
+# That happened once here - a fixture KDoc ended up documenting
+# threadComposerMentionScopeChannelId.
+VISUAL_ONLY_PROSE = (
+    "inline-selection fixture",
+    "capture case",
+    "visual fixture",
+    "compact target group",
+)
+
+
+def orphaned_visual_prose(production: str) -> list[tuple[int, str]]:
+    """Doc blocks about visual fixtures that no longer sit against a declaration.
+
+    Content alone is not the signal: production code legitimately explains why it
+    serves fixtures (ThreadReactionAtlasProvider does), and a comment directly
+    above a visual @Page that has not moved yet is fine too. The failure is
+    STRUCTURAL - a block whose subject moved out is left separated from the next
+    code by a blank line, so it silently re-binds to whatever follows.
+    """
+    lines = production.split("\n")
+    hits: list[tuple[int, str]] = []
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if stripped.startswith("/**"):
+            start = index
+            while index < len(lines) and "*/" not in lines[index]:
+                index += 1
+            block = "\n".join(lines[start : index + 1]).lower()
+            after = index + 1
+            blanks = 0
+            while after < len(lines) and lines[after].strip() == "":
+                blanks += 1
+                after += 1
+            if blanks and any(needle in block for needle in VISUAL_ONLY_PROSE):
+                hits.append((start + 1, lines[start].strip()[:100]))
+        index += 1
+    return hits
 
 
 def base_production(rev: str = "origin/main") -> str | None:
@@ -326,6 +387,12 @@ def main() -> int:
             print(f"   {name:<62} was {vis}")
         print(f"   migrated total={len(migrated)}")
     print()
+    prose = orphaned_visual_prose(production)
+    print("== visual-only prose left in the production file ==")
+    print("   (hard failure: an orphaned doc block re-binds to the next declaration)")
+    for number, text in prose:
+        print(f"   ORPHAN-DOC  {PRODUCTION.name}:{number}: {text}")
+    print()
     print("== symbols declared in BOTH the production file and a moved file ==")
     print("   (hard failure: duplicate declaration in the same package)")
     for n in duplicated:
@@ -333,10 +400,11 @@ def main() -> int:
     print()
     print(
         f"total widened={len(widened)} left-behind={len(left_behind)} "
-        f"unreachable={len(unreachable)} duplicated={len(duplicated)}"
+        f"unreachable={len(unreachable)} duplicated={len(duplicated)} "
+        f"orphan-doc={len(prose)}"
     )
 
-    if left_behind or duplicated:
+    if left_behind or duplicated or prose:
         if left_behind:
             print(
                 "\nFAIL: visual-only symbols are still declared in the production file",
@@ -345,6 +413,11 @@ def main() -> int:
         if duplicated:
             print(
                 "\nFAIL: symbols are declared in both the production file and a moved file",
+                file=sys.stderr,
+            )
+        if prose:
+            print(
+                "\nFAIL: visual-only prose is still in the production file",
                 file=sys.stderr,
             )
         return 1

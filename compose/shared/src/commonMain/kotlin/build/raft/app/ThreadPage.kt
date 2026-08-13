@@ -3928,10 +3928,6 @@ private fun ThreadMembersPageScreen() {
 }
 
 
-
-
-
-
 @Composable
 internal fun ThreadHeaderVisualScreen() {
     val payload = remember {
@@ -10421,23 +10417,6 @@ private fun String.toSharedThreadTaskStatus(): TaskStatus? =
     }
 
 
-/** Leading messages of the inline-selection fixture that form its compact group. */
-
-/**
- * Gives the inline-selection fixture's compact target group [count] replies.
- *
- * Single-tap thread opening only applies to messages that already have replies,
- * so a capture case that exercises it has to say so. A count of zero returns the
- * payload untouched, keeping every case that omits the parameter unchanged.
- */
-
-
-
-
-
-
-
-
 private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelId(): String? {
     val resolvedComposer = resolveThreadComposer()
     return resolvedComposer.mentionChannelId.nonBlank()
@@ -10492,7 +10471,6 @@ internal fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
             .filter { it.isNotBlank() }
             .toSet()
     }.orEmpty()
-
 
 
 internal fun PendingMentionAction.toKuiklyPendingMentionActionItem(): KuiklyPendingMentionActionItem =
