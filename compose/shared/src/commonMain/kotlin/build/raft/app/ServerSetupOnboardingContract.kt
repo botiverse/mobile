@@ -54,11 +54,28 @@ internal fun serverSetupOnboardingUrl(
     webBaseUrl: String,
     serverSlug: String,
     generation: String,
-    encode: (String) -> String,
 ): String? {
     if (webBaseUrl.isBlank() || serverSlug.isBlank() || !generation.isValidServerSetupGeneration()) return null
     val origin = serverSetupCanonicalWebOrigin(webBaseUrl) ?: return null
-    return "$origin/s/${encode(serverSlug)}/onboarding?generation=${encode(generation)}"
+    val encodedSlug = serverSlug.serverSetupPercentEncode().takeIf { it.isNotBlank() } ?: return null
+    val encodedGeneration = generation.serverSetupPercentEncode().takeIf { it.isNotBlank() } ?: return null
+    return "$origin/s/$encodedSlug/onboarding?generation=$encodedGeneration"
+}
+
+private fun String.serverSetupPercentEncode(): String = buildString {
+    encodeToByteArray().forEach { byte ->
+        val value = byte.toInt() and 0xFF
+        val char = value.toChar()
+        if (
+            char in 'A'..'Z' || char in 'a'..'z' || char in '0'..'9' ||
+            char == '-' || char == '.' || char == '_' || char == '~'
+        ) {
+            append(char)
+        } else {
+            append('%')
+            append(value.toString(16).uppercase().padStart(2, '0'))
+        }
+    }
 }
 
 /**

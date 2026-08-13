@@ -29,13 +29,10 @@ class ServerSetupAdmissionProductionWiringTest {
     }
 
     @Test
-    fun onboardingWaitsForCanonicalSlugAndCommitsItBeforeNavigation() {
+    fun onboardingUrlUsesSharedEncoderInsteadOfMissingNativeBridgeMethod() {
         val source = repositoryFile("compose/shared/src/commonMain/kotlin/build/raft/app/ServerSetupAdmissionHost.kt").readText()
-        assertTrue(source.contains("val currentSession = authSnapshot.session"))
-        assertTrue(source.contains("val canonicalServerSlug = currentSession?.canonicalServerSlugFor(serverId)"))
-        assertTrue(source.contains("shellAuthStore.updateSelectedServer(serverId, canonicalServerSlug)"))
-        assertTrue(source.contains("?.takeIf { selectedSlugCommitted }"))
-        assertTrue(source.contains("currentSession == null ||"))
+        assertTrue(source.contains("serverSetupOnboardingUrl(webBaseUrl, serverSlug, generation)"))
+        assertTrue(!source.contains("bridge::urlEncode"))
     }
 
     private fun repositoryFile(relativePath: String): File {

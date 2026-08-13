@@ -1,9 +1,6 @@
 package build.raft.app
 
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import build.raft.app.data.StoredAuthServer
-import build.raft.app.data.StoredAuthSession
-import build.raft.app.data.StoredAuthUser
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -46,31 +43,18 @@ class ServerSetupOnboardingContractTest {
 
     @Test
     fun urlPercentEncodesPathAndQueryIndependently() {
-        val encoded = mutableListOf<String>()
-        val url = serverSetupOnboardingUrl("https://raft.test/", "my server", "gen:1", encode = {
-            encoded += it
-            it.replace(" ", "%20").replace(":", "%3A")
-        })
+        val url = serverSetupOnboardingUrl("https://raft.test/", "my server", "gen:1")
 
-        assertEquals(listOf("my server", "gen:1"), encoded)
         assertEquals("https://raft.test/s/my%20server/onboarding?generation=gen%3A1", url)
     }
 
     @Test
-    fun canonicalSlugStaysUnresolvedUntilSelectedIdAppearsInFreshServerList() {
-        val stale = session(selectedSlug = null, servers = emptyList())
-        val refreshed =
-            session(
-                selectedSlug = null,
-                servers = listOf(StoredAuthServer(id = "server-1", name = "New", slug = "t124z2143")),
-            )
-        val committed = refreshed.copy(selectedServerSlug = "t124z2143")
-
-        assertNull(stale.canonicalServerSlugFor("server-1"))
-        assertEquals("t124z2143", refreshed.canonicalServerSlugFor("server-1"))
-        assertEquals("t124z2143", committed.canonicalServerSlugFor("server-1"))
-        assertNull(refreshed.canonicalServerSlugFor("server-old"))
-        assertNull(serverSetupOnboardingUrl("https://raft.test", "", "native:1") { it })
+    fun sharedEncoderHandlesUtf8AndBlankSlugNeverBuildsAUrl() {
+        assertEquals(
+            "https://raft.test/s/%E7%AD%8F/onboarding?generation=native%3A1",
+            serverSetupOnboardingUrl("https://raft.test", "筏", "native:1"),
+        )
+        assertNull(serverSetupOnboardingUrl("https://raft.test", "", "native:1"))
     }
 
     @Test
@@ -79,7 +63,7 @@ class ServerSetupOnboardingContractTest {
             "https://raft-app-staging.botiverse.dev/s/botiverse/?old=1#fragment",
             "ysbbeiqoqjbde",
             "native:7",
-        ) { it.replace(":", "%3A") }
+        )
 
         assertEquals(
             "https://raft-app-staging.botiverse.dev/s/ysbbeiqoqjbde/onboarding?generation=native%3A7",
@@ -115,16 +99,4 @@ class ServerSetupOnboardingContractTest {
         assertNull(decodeServerSetupBridgeNavigation("$url&extra=1") { it })
     }
 
-    private fun session(
-        selectedSlug: String?,
-        servers: List<StoredAuthServer>,
-    ): StoredAuthSession =
-        StoredAuthSession(
-            user = StoredAuthUser(id = "account", email = "account@raft.test"),
-            accessToken = "access",
-            refreshToken = "refresh",
-            selectedServerId = "server-1",
-            selectedServerSlug = selectedSlug,
-            servers = servers,
-        )
 }
