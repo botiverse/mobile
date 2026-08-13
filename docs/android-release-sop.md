@@ -104,8 +104,11 @@ The preflight fails closed when any of these facts is false:
 3. The release head has a successful `Commit Sign-off` workflow. The Android
    Release workflow itself is the candidate build/test gate; do not run a
    separate exact-head `Test` workflow for release.
-4. The checked-in Kuikly gitlink is reachable from `origin/staging2`; the
-   operator must not publish a detached/orphan Kuikly commit during release.
+4. The pinned Kuikly release has a valid create-last manifest with the exact
+   coordinate closure. The release build then resolves those coordinates
+   through the standard Gradle/CocoaPods/OHPM surfaces; there is no source
+   checkout or Maven Local fallback in the release lane. Full 920-object
+   readback remains an explicit audit/recovery mode, not an ordinary build step.
 5. The OHOS Hands dependency is complete and immutable. For the current public
    OHPM package mode, `oh-package.json5` must use an exact version, the lock
    must bind that version to the official `ohpm.openharmony.cn` HAR with a

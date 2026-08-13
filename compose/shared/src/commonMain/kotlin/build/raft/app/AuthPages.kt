@@ -62,11 +62,13 @@ import com.tencent.kuikly.compose.ui.input.key.KeyEventType
 import com.tencent.kuikly.compose.ui.input.key.onPreviewKeyEvent
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.LinkAnnotation
 import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
 import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.withLink
+import com.tencent.kuikly.compose.ui.text.withStyle
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -1926,6 +1928,15 @@ private fun AuthLegalNotice(
 
 @Composable
 private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    val agreementText =
+        authTermsAgreementText(
+            prefix = stringResource(MR.strings.auth_terms_agreement_prefix),
+            terms = stringResource(MR.strings.auth_link_terms_of_service),
+            connector = stringResource(MR.strings.auth_terms_agreement_connector),
+            acknowledgement = stringResource(MR.strings.auth_terms_agreement_acknowledgement),
+            privacy = stringResource(MR.strings.auth_link_privacy_policy),
+            suffix = stringResource(MR.strings.auth_terms_agreement_suffix),
+        )
     Row(
         modifier = Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) },
         verticalAlignment = Alignment.Top
@@ -1941,39 +1952,31 @@ private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> U
             if (checked) SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(13.dp))
         }
         Spacer(Modifier.width(10.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(MR.strings.auth_terms_agreement_prefix),
-                    style = AuthTermsTextStyle,
-                    color = AuthTermsTextColor,
-                    modifier = Modifier.authPageStaticTextFocus()
-                )
-                Text(stringResource(MR.strings.auth_link_terms_of_service), style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
-                Text(
-                    stringResource(MR.strings.auth_terms_agreement_connector),
-                    style = AuthTermsTextStyle,
-                    color = AuthTermsTextColor,
-                    modifier = Modifier.authPageStaticTextFocus()
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(MR.strings.auth_terms_agreement_acknowledgement),
-                    style = AuthTermsTextStyle,
-                    color = AuthTermsTextColor,
-                    modifier = Modifier.authPageStaticTextFocus()
-                )
-                Text(stringResource(MR.strings.auth_link_privacy_policy), style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
-                Text(
-                    stringResource(MR.strings.auth_terms_agreement_suffix),
-                    style = AuthTermsTextStyle,
-                    color = AuthTermsTextColor
-                )
-            }
-        }
+        Text(
+            text = agreementText,
+            style = AuthTermsTextStyle,
+            color = AuthTermsTextColor,
+            modifier = Modifier.authPageStaticTextFocus()
+        )
     }
 }
+
+internal fun authTermsAgreementText(
+    prefix: String,
+    terms: String,
+    connector: String,
+    acknowledgement: String,
+    privacy: String,
+    suffix: String,
+): AnnotatedString =
+    buildAnnotatedString {
+        append(prefix)
+        withStyle(AuthTermsLinkStyle.toSpanStyle()) { append(terms) }
+        append(connector)
+        append(acknowledgement)
+        withStyle(AuthTermsLinkStyle.toSpanStyle()) { append(privacy) }
+        append(suffix)
+    }
 
 private val AuthLegalNoticeTextColor = SlockColor.TextBlack.copy(alpha = 0.60f)
 private val AuthLegalNoticeTextStyle = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = AuthLegalNoticeTextColor)

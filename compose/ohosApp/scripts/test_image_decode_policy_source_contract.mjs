@@ -9,22 +9,21 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, '../../..');
+const release = '2.24.0-raft.1';
+const version = `${release}-2.0.21-ohos`;
+const coordinate = `com.tencent.kuikly-open:core-render-ohos:${version}`;
+const expectedHarSpec = `file:../../build/kuikly/core-render-ohos-${version}.har`;
 
 function read(relativePath) {
   return fs.readFileSync(path.resolve(repositoryRoot, relativePath), 'utf8').replaceAll('\r\n', '\n');
 }
 
 function assertContract(condition, message) {
-  if (!condition) {
-    throw new Error(`OHOS image decode policy contract failed: ${message}`);
-  }
+  if (!condition) throw new Error(`OHOS image decode policy contract failed: ${message}`);
 }
 
 function run(command, args, encoding = 'utf8') {
-  const result = spawnSync(command, args, {
-    encoding,
-    maxBuffer: 64 * 1024 * 1024
-  });
+  const result = spawnSync(command, args, { encoding, maxBuffer: 64 * 1024 * 1024 });
   assertContract(!result.error, `${command} failed to start: ${result.error?.message}`);
   assertContract(
     result.status === 0,
@@ -38,12 +37,8 @@ function resolveLlvmTool(name) {
     process.env.OHOS_SDK_HOME && path.join(process.env.OHOS_SDK_HOME, 'native/llvm/bin', name),
     process.env.OHOS_SDK_HOME && path.join(process.env.OHOS_SDK_HOME, 'openharmony/native/llvm/bin', name),
     process.env.OHOS_SDK_HOME && path.join(process.env.OHOS_SDK_HOME, 'default/openharmony/native/llvm/bin', name),
-    process.env.DEVECO_SDK_HOME &&
-      path.join(process.env.DEVECO_SDK_HOME, 'default/openharmony/native/llvm/bin', name),
-    path.join(
-      '/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/native/llvm/bin',
-      name
-    )
+    process.env.DEVECO_SDK_HOME && path.join(process.env.DEVECO_SDK_HOME, 'default/openharmony/native/llvm/bin', name),
+    path.join('/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/native/llvm/bin', name)
   ].filter(Boolean);
   const exact = candidates.find((candidate) => fs.existsSync(candidate));
   if (exact) return exact;
@@ -63,121 +58,46 @@ function functionBody(source, startMarker, endMarker) {
   return source.slice(start, end);
 }
 
-function occurrenceCount(source, marker) {
-  return source.split(marker).length - 1;
-}
-
-function assertCanvasCompatibleDecode(name, source) {
-  assertContract(
-    source.includes('OH_DecodingOptions_SetDesiredDynamicRange') &&
-      source.includes('IMAGE_DYNAMIC_RANGE_SDR'),
-    `${name} must tone-map HDR input to SDR`
-  );
-  assertContract(
-    source.includes('OH_DecodingOptions_SetPixelFormat') &&
-      source.includes('PIXEL_FORMAT_RGBA_8888'),
-    `${name} must request RGBA_8888 pixels`
-  );
-  assertContract(
-    source.includes('OH_ImageSourceNative_CreatePixelmapUsingAllocator') &&
-      source.includes('IMAGE_ALLOCATOR_TYPE_SHARE_MEMORY'),
-    `${name} must request CPU-readable shared-memory pixels`
-  );
-  assertContract(
-    !source.includes('IMAGE_DYNAMIC_RANGE_AUTO'),
-    `${name} must not preserve HDR AUTO output`
-  );
-  assertContract(
-    source.includes('OH_ImageSourceNative_CreatePixelmapUsingAllocator != nullptr'),
-    `${name} must gate the API 15 allocator symbol before calling it`
-  );
-  assertContract(
-    source.includes('OH_ImageSourceNative_CreatePixelmap(source, options, pixelmap)') &&
-      occurrenceCount(source, 'code = ValidateCpuReadableRgbaPixelmap(*pixelmap);') >= 2 &&
-      source.includes('OH_PixelmapNative_ReadPixels('),
-    `${name} allocator success and legacy retry must both prove the SDR/RGBA result is CPU-readable`
-  );
-  assertContract(
-    source.includes('ReleaseAndClearPixelmap(pixelmap);') &&
-      source.includes('OH_ImageSourceNative_CreatePixelmapUsingAllocator == nullptr || code != IMAGE_SUCCESS'),
-    `${name} must clear an unreadable allocator result before the validated legacy retry`
-  );
-}
-
-const memoryCacheSource = read(
-  'third_party/kuikly-ui/core-render-ohos/src/main/cpp/libohos_render/expand/modules/cache/KRMemoryCacheModule.cpp'
-);
-const memoryCacheDecode = functionBody(
-  memoryCacheSource,
-  'static Image_ErrorCode ValidateCpuReadableRgbaPixelmap(',
-  'KRAnyValue KRMemoryCacheModule::Get('
-);
-assertContract(
-  /OH_ImageSourceNative_CreatePixelmapUsingAllocator\([\s\S]*?__attribute__\(\(weak\)\)/.test(memoryCacheSource),
-  'API 15 allocator decoder must remain weak-linked for Kuikly API 12-14 compatibility'
-);
-assertContract(
-  /OH_PixelmapNative_Destroy\([\s\S]*?__attribute__\(\(weak\)\)/.test(memoryCacheSource),
-  'API 18 PixelMap destroy must remain weak-linked for Kuikly API 12-17 compatibility'
-);
-const releasePixelmap = functionBody(
-  memoryCacheSource,
-  'static void ReleaseAndClearPixelmap(',
-  'static Image_ErrorCode CreateCanvasCompatiblePixelmap('
-);
-assertContract(
-  releasePixelmap.includes('OH_PixelmapNative_Destroy != nullptr') &&
-    releasePixelmap.includes('OH_PixelmapNative_Destroy(pixelmap)') &&
-    releasePixelmap.includes('OH_PixelmapNative_Release(*pixelmap)') &&
-    releasePixelmap.includes('*pixelmap = nullptr'),
-  'PixelMap cleanup must destroy on API 18+ and release plus clear only on API 12-17'
-);
-
 const entryPackage = read('compose/ohosApp/entry/oh-package.json5');
-const renderPin = /"@kuikly-open\/render"\s*:\s*['"]file:\.\/libs\/([^'"]+\.har)['"]/.exec(
-  entryPackage
-);
-assertContract(renderPin, 'OHOS entry must consume a checked-in Kuikly render HAR');
-const pinnedHarName = renderPin[1];
-const pinnedHarRelativePath = `compose/ohosApp/entry/libs/${pinnedHarName}`;
-const pinnedHarPath = path.resolve(repositoryRoot, pinnedHarRelativePath);
-assertContract(fs.existsSync(pinnedHarPath), `pinned render HAR is missing: ${pinnedHarName}`);
-
-const pinIdentity = /^kuikly-render-staging2-([0-9a-f]{8})\.har$/.exec(pinnedHarName);
-assertContract(pinIdentity, 'render HAR filename must name the staging2 source short SHA');
-const kuiklySourceExact = run('git', ['-C', 'third_party/kuikly-ui', 'rev-parse', 'HEAD']).trim();
 assertContract(
-  kuiklySourceExact.startsWith(pinIdentity[1]),
-  `render HAR source ${pinIdentity[1]} does not match Kuikly gitlink ${kuiklySourceExact}`
+  entryPackage.includes(`"@kuikly-open/render": "${expectedHarSpec}"`),
+  'OHOS entry must consume the manifest-generated renderer HAR'
 );
+assertContract(!entryPackage.includes('kuikly-render-staging2'), 'local staging renderer fallback remains');
 
-const provenanceName = pinnedHarName.replace(/\.har$/, '.provenance.json');
-const provenance = JSON.parse(read(`compose/ohosApp/entry/libs/${provenanceName}`));
-assertContract(provenance.sourceCommit === kuiklySourceExact, 'render HAR provenance source must match gitlink');
-assertContract(provenance.harFile === pinnedHarName, 'render HAR provenance filename mismatch');
-const harBytes = fs.readFileSync(pinnedHarPath);
-assertContract(sha256(harBytes) === provenance.harSha256, 'render HAR SHA-256 mismatch');
+const harPath = process.env.KUIKLY_OHOS_HAR;
+const provenancePath = process.env.KUIKLY_OHOS_PROVENANCE;
+assertContract(harPath && fs.existsSync(harPath), 'KUIKLY_OHOS_HAR is missing');
+assertContract(provenancePath && fs.existsSync(provenancePath), 'KUIKLY_OHOS_PROVENANCE is missing');
+const harBytes = fs.readFileSync(harPath);
+const provenance = JSON.parse(fs.readFileSync(provenancePath, 'utf8'));
+assertContract(provenance.schema === 'kuikly-host-renderer-provenance/v1', 'provenance schema drifted');
+assertContract(provenance.coordinate === coordinate, 'provenance coordinate drifted');
+assertContract(provenance.binarySize === harBytes.length, 'HAR size does not match provenance');
+assertContract(provenance.binarySha256 === sha256(harBytes), 'HAR SHA-256 does not match provenance');
+assertContract(provenance.source?.repository === 'botiverse/KuiklyUI', 'source repository drifted');
+assertContract(/^[0-9a-f]{40}$/.test(provenance.source?.commit ?? ''), 'source commit is invalid');
+assertContract(/^[0-9a-f]{40}$/.test(provenance.source?.tree ?? ''), 'source tree is invalid');
 
-const lockfile = read('compose/ohosApp/entry/oh-package-lock.json5');
+const members = run('tar', ['-tzf', harPath]).trim().split('\n');
 assertContract(
-  lockfile.includes(`@kuikly-open/render@libs/${pinnedHarName}`) &&
-    lockfile.includes(`"resolved": "libs/${pinnedHarName}"`),
-  'OHOS lockfile must resolve the same checked-in render HAR'
+  members.every((member) => member && !member.startsWith('/') && !member.split('/').includes('..')),
+  'HAR contains an unsafe member path'
 );
+const libraryMember = 'package/libs/arm64-v8a/libkuikly.so';
+assertContract(members.filter((member) => member === libraryMember).length === 1, 'HAR must contain one arm64 libkuikly.so');
 
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'kuikly-render-contract-'));
 const extractedLibrary = path.join(temporaryDirectory, 'libkuikly.so');
 try {
-  const libraryBytes = run('tar', ['-xOzf', pinnedHarPath, provenance.libraryMember], null);
-  assertContract(Buffer.isBuffer(libraryBytes), 'render HAR extraction must return binary bytes');
+  const libraryBytes = run('tar', ['-xOzf', harPath, libraryMember], null);
   fs.writeFileSync(extractedLibrary, libraryBytes);
-  assertContract(sha256(libraryBytes) === provenance.librarySha256, 'libkuikly.so SHA-256 mismatch');
 
   const symbolTable = run(resolveLlvmTool('llvm-nm'), ['-D', extractedLibrary]);
   assertContract(
     /^\s*w\s+OH_ImageSourceNative_CreatePixelmapUsingAllocator$/m.test(symbolTable) &&
       /^\s*w\s+OH_PixelmapNative_Destroy$/m.test(symbolTable),
-    'pinned libkuikly.so must weak-link the API 15 allocator and API 18 destroy symbols'
+    'renderer must weak-link the API 15 allocator and API 18 destroy symbols'
   );
   assertContract(
     /^\s*U\s+OH_ImageSourceNative_CreatePixelmap$/m.test(symbolTable) &&
@@ -185,14 +105,12 @@ try {
       /^\s*U\s+OH_PixelmapNative_Release$/m.test(symbolTable) &&
       /^\s*U\s+OH_Drawing_PixelMapGetFromOhPixelMapNative$/m.test(symbolTable) &&
       /^\s*U\s+OH_Drawing_PixelMapDissolve$/m.test(symbolTable),
-    'pinned libkuikly.so must retain legacy decode/read/release and Canvas conversion/dissolve symbols'
+    'renderer must retain the legacy decode/read/release and Canvas conversion symbols'
   );
-
   const notes = run(resolveLlvmTool('llvm-readobj'), ['--notes', extractedLibrary]);
-  const buildId = /Build ID:\s*([0-9a-f]+)/i.exec(notes)?.[1];
-  assertContract(buildId === provenance.libraryBuildId, 'libkuikly.so Build ID mismatch');
+  assertContract(/Build ID:\s*[0-9a-f]+/i.test(notes), 'renderer has no ELF Build ID');
   const dynamicTable = run(resolveLlvmTool('llvm-readelf'), ['-d', extractedLibrary]);
-  assertContract(dynamicTable.includes('BIND_NOW'), 'pinned libkuikly.so must retain BIND_NOW');
+  assertContract(dynamicTable.includes('BIND_NOW'), 'renderer must retain BIND_NOW');
 } finally {
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });
 }
@@ -206,58 +124,17 @@ const editor = functionBody(
 assertContract(
   editor.includes('rememberAsyncImageBitmap(payload.imageUrl)') &&
     editor.includes('SlockAspectFitImagePreviewSurface('),
-  'editor bitmap and visible preview must remain on the shared Kuikly image-cache path'
+  'editor image path must remain on the shared Kuikly image-cache surface'
 );
-
 const widgetsSource = read('compose/shared/src/commonMain/kotlin/build/raft/app/BasicWidget.kt');
-const cachedImage = functionBody(widgetsSource, 'fun SlockCachedImage(', 'internal fun SlockAspectFitImagePreviewSurface(');
-assertContract(
-  cachedImage.includes('rememberAsyncImagePainter(source)'),
-  'editor preview surface must resolve through the Kuikly async painter'
+const cachedImage = functionBody(
+  widgetsSource,
+  'fun SlockCachedImage(',
+  'internal fun SlockAspectFitImagePreviewSurface('
 );
-
-const asyncPainterSource = read(
-  'third_party/kuikly-ui/compose/src/commonMain/kotlin/com/tencent/kuikly/compose/coil3/AsyncImagePainter.kt'
-);
-const asyncBitmap = functionBody(asyncPainterSource, 'fun rememberAsyncImageBitmap(', '/**\n * Return an [AsyncImagePainter]');
-assertContract(
-  asyncBitmap.includes('activity.imageCacheManager.loadImage(source)'),
-  'rememberAsyncImageBitmap must resolve through KuiklyImageCacheManager'
-);
-
-const kuiklyPainterSource = read(
-  'third_party/kuikly-ui/compose/src/commonMain/kotlin/com/tencent/kuikly/compose/ui/KuiklyPainter.kt'
-);
-assertContract(
-  kuiklyPainterSource.includes('context.imageCacheManager.loadImage(src)'),
-  'rememberAsyncImagePainter must resolve through the same KuiklyImageCacheManager'
-);
-
-assertCanvasCompatibleDecode('Kuikly Canvas memory cache', memoryCacheDecode);
-
-const canvasSource = read(
-  'third_party/kuikly-ui/core-render-ohos/src/main/cpp/libohos_render/expand/components/canvas/KRCanvasView.cpp'
-);
-const canvasDrawImage = functionBody(
-  canvasSource,
-  'void KRCanvasView::DrawImage(',
-  'void KRCanvasView::CreatePenIfNeeded('
-);
-const conversion = canvasDrawImage.indexOf('OH_Drawing_PixelMapGetFromOhPixelMapNative(pixelmap)');
-const conversionGuard = canvasDrawImage.indexOf('if (!drawingPixelMap)', conversion);
-const draw = canvasDrawImage.indexOf('OH_Drawing_CanvasDrawPixelMapRect(', conversionGuard);
-const dissolve = canvasDrawImage.indexOf('OH_Drawing_PixelMapDissolve(drawingPixelMap)', draw);
-assertContract(
-  canvasDrawImage.includes('if (!module)') &&
-    conversion >= 0 &&
-    conversionGuard > conversion &&
-    draw > conversionGuard &&
-    dissolve > draw,
-  'Canvas image drawing must guard the cache module and conversion, then dissolve after drawing'
-);
+assertContract(cachedImage.includes('rememberAsyncImagePainter(source)'), 'preview must use the async painter');
 
 console.log(
-  `OHOS image decode policy source + pinned HAR contract: PASS ` +
-    `(source=${kuiklySourceExact} harSha256=${provenance.harSha256} ` +
-    `libSha256=${provenance.librarySha256} buildId=${provenance.libraryBuildId})`
+  `OHOS image decode policy + manifest-bound HAR contract: PASS ` +
+    `(source=${provenance.source.commit} harSha256=${provenance.binarySha256})`
 );

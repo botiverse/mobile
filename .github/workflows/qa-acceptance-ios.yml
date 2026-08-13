@@ -133,35 +133,8 @@ jobs:
             echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
           } > compose/github-packages.properties
 
-      - name: Resolve kuikly fork submodule sha
-        id: kuikly-fork
-        shell: bash
-        run: |
-          sha="$(git rev-parse HEAD:third_party/kuikly-ui)"
-          test -n "$sha"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      # Same key as visual-testing/test.yml so this job rides their warm cache.
-      - name: Cache kuikly fork mavenLocal artifacts
-        id: kuikly-cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-android-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
-
-      - name: Publish Kuikly fork artifacts
-        if: steps.kuikly-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          git submodule sync third_party/kuikly-ui
-          git submodule update --init third_party/kuikly-ui
-          scripts/build_kuikly_fork.sh --android-only
-
-      - name: Ensure kuikly fork submodule for local pod
-        shell: bash
-        run: |
-          git submodule sync third_party/kuikly-ui
-          git submodule update --init third_party/kuikly-ui
+      - name: Verify complete immutable Kuikly release
+        run: scripts/ci/verify_kuikly_release_manifest.sh
 
       # Reused blacksmith macOS runners can carry a stale KSP incremental cache in
       # compose/shared/build from a prior job on a DIFFERENT commit. That stale state

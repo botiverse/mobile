@@ -58,7 +58,7 @@ Do not paste SSH private keys, GitHub tokens, `NPM_TOKEN`,
 | Raft Mobile / KMP app | `/Users/artin/AndroidStudioProjects/Slock` | `origin = git@github.com:botiverse/mobile.git` |
 | Mobile worktrees | `/Users/artin/AndroidStudioProjects/Slock-worktrees` | Local worktrees based on the mobile repo |
 | React / server source reference | `/Users/artin/0Workspace/github.com/botiverse/slock` | `github.com/botiverse/slock` |
-| Kuikly fork consumed by mobile | `third_party/kuikly-ui` | `github.com/bytemain/KuiklyUI` |
+| Kuikly release consumed by mobile | `compose/gradle/kuikly-release-closure.json` | Immutable Raft Maven release manifest |
 | Upstream Kuikly reference | `.agents/skills/kuikly-ui-framework/references/KuiklyUI` | `github.com/Tencent-TDS/KuiklyUI` |
 
 The mobile repo also has OHOS/KMP fork submodules:

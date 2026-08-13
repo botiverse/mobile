@@ -2,7 +2,6 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -28,17 +27,6 @@ function assertContract(condition, message) {
   if (!condition) fail(message);
 }
 
-function runGit(args, workingDirectory) {
-  const result = spawnSync('git', args, {
-    cwd: workingDirectory,
-    encoding: 'utf8',
-    maxBuffer: 8 * 1024 * 1024
-  });
-  assertContract(!result.error, `git failed to start: ${result.error?.message}`);
-  assertContract(result.status === 0, `git ${args.join(' ')} failed: ${result.stderr.trim()}`);
-  return result.stdout;
-}
-
 function section(body, startMarker, endMarker, name) {
   const start = body.indexOf(startMarker);
   const end = body.indexOf(endMarker, start + startMarker.length);
@@ -49,28 +37,6 @@ function section(body, startMarker, endMarker, name) {
 function occurrenceCount(body, marker) {
   return body.split(marker).length - 1;
 }
-
-const kuiklyGitlink = runGit(['rev-parse', 'HEAD:third_party/kuikly-ui'], repositoryRoot).trim();
-assertContract(/^[0-9a-f]{40}$/.test(kuiklyGitlink), 'Kuikly gitlink is not an exact commit');
-const kuiklyRepository = process.env.SLOCK_KUIKLY_IOS_SOURCE_ROOT ||
-  path.resolve(repositoryRoot, 'third_party/kuikly-ui');
-const baseModuleSource = runGit([
-  'show',
-  `${kuiklyGitlink}:core-render-ios/Extension/Modules/KRBaseModule.m`
-], kuiklyRepository).replaceAll('\r\n', '\n');
-
-const baseUnknownBranch = section(
-  baseModuleSource,
-  '    } else {',
-  '    }\n    return nil;',
-  'pinned KRBaseModule unknown-selector branch'
-);
-const assertionIndex = baseUnknownBranch.indexOf('NSAssert(false, reason);');
-const callbackIndex = baseUnknownBranch.indexOf('callback(');
-assertContract(
-  assertionIndex >= 0 && callbackIndex > assertionIndex,
-  'pinned unknown-selector branch must prove Debug asserts before its fallback callback'
-);
 
 const debugConfiguration = /\/\* Debug \*\/ = \{[\s\S]*?name = Debug;\n\s*\};/.exec(projectSource)?.[0];
 const releaseConfiguration = /\/\* Release \*\/ = \{[\s\S]*?name = Release;\n\s*\};/.exec(projectSource)?.[0];
@@ -149,4 +115,4 @@ assertMutationRejected(
   'throwing Debug fallback'
 );
 
-console.log(`iOS avatar-cache unsupported bridge contract passed (${kuiklyGitlink.slice(0, 12)})`);
+console.log('iOS avatar-cache unsupported bridge contract passed');

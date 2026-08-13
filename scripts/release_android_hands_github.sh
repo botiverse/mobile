@@ -18,8 +18,6 @@ CREATE_SHARE_PAGE="${SLOCK_CREATE_SHARE_PAGE:-true}"
 SHARE_TTL_SECONDS="${SLOCK_SHARE_TTL_SECONDS:-604800}"
 PUSH_REMOTE="${SLOCK_RELEASE_REMOTE:-origin}"
 PUSH_BRANCH="${SLOCK_RELEASE_BRANCH:-main}"
-KUIKLY_REMOTE="${SLOCK_KUIKLY_REMOTE:-origin}"
-KUIKLY_BRANCH="${SLOCK_KUIKLY_BRANCH:-staging2}"
 WAIT_FOR_RUN="${SLOCK_RELEASE_WAIT:-0}"
 PARALLEL_PREFLIGHT="${SLOCK_RELEASE_PARALLEL_PREFLIGHT:-1}"
 PREFLIGHT_REPORT="${SLOCK_RELEASE_PREFLIGHT_REPORT:-}"
@@ -36,8 +34,8 @@ usage() {
 Usage: scripts/release_android_hands_github.sh [options]
 
 Verifies local Slock Android release inputs are already present on the protected
-remote release branch, ensures the Kuikly submodule commit is reachable by
-GitHub Actions, and dispatches .github/workflows/android-release.yml.
+remote release branch, verifies the immutable Kuikly release manifest, and
+dispatches .github/workflows/android-release.yml.
 
 Defaults create a Hands **draft** release with release preflight enforced:
   versionName=1.0.1
@@ -85,8 +83,6 @@ Options:
 Environment overrides:
   SLOCK_RELEASE_REMOTE=origin
   SLOCK_RELEASE_BRANCH=main
-  SLOCK_KUIKLY_REMOTE=origin
-  SLOCK_KUIKLY_BRANCH=staging2
   SLOCK_HANDS_CHANNEL=main
   SLOCK_ANDROID_DEX_PACKAGING=compressed
   SLOCK_ANDROID_JNI_PACKAGING=current
@@ -295,8 +291,6 @@ cd "${ROOT_DIR}"
 
 [ -e .git ] || die "not a git repository: ${ROOT_DIR}"
 [ -f .github/workflows/android-release.yml ] || die "android-release.yml not found"
-[ -e third_party/kuikly-ui/.git ] || die "third_party/kuikly-ui submodule is not initialized"
-
 [ "${RELEASE_MODE}" = "draft" ] ||
   die "release_mode must be draft; active Hands publication is an explicit post-smoke owner action"
 
@@ -319,10 +313,10 @@ current_branch="$(git rev-parse --abbrev-ref HEAD)"
 [ "${current_branch}" = "${PUSH_BRANCH}" ] ||
   die "expected branch ${PUSH_BRANCH}, current branch is ${current_branch}"
 
-if ! git diff --quiet -- . ':!third_party/kuikly-ui'; then
+if ! git diff --quiet; then
   die "working tree has unstaged tracked changes; commit or stash before release"
 fi
-if ! git diff --cached --quiet -- . ':!third_party/kuikly-ui'; then
+if ! git diff --cached --quiet; then
   die "working tree has staged changes; commit or unstage before release"
 fi
 

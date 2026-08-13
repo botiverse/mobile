@@ -190,7 +190,7 @@ kotlin {
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/jvmMain/kotlin"))
             kotlin.srcDir(generatedTmmResourceDir.map { it.dir("androidMain/src") })
             dependencies {
-                api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyOhosVersion()}")
+                api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyVersion()}")
             }
         }
         val ohosArm64Main by getting {

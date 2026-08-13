@@ -244,8 +244,8 @@ the release preflight that is easy to forget manually:
 - verifies the local Slock branch is `main`
 - verifies each selected `--required-pr` is merged and included in the release
   head
-- ensures the checked-out `third_party/kuikly-ui` commit is reachable from
-  `origin/staging2`; it never pushes a Kuikly commit during release
+- verifies the pinned Kuikly release manifest admission before the normal
+  resolver build; it never builds or publishes Kuikly source during a Mobile release
 - verifies the OHOS `hands.har` artifact and both manifest/lock references
 - verifies local Slock `main` matches `origin/main`; the wrapper does not push
   Slock `main`. First merge the release candidate through a GitHub PR, then

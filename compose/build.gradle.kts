@@ -17,20 +17,6 @@ configurations.configureEach {
     resolutionStrategy.cacheChangingModulesFor(0, "seconds")
 }
 
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-        mavenLocal()
-        maven {
-            url = uri("https://mirrors.tencent.com/nexus/repository/maven-tencent/")
-        }
-    }
-    dependencies {
-        classpath(BuildPlugin.kuikly)
-    }
-}
-
 // Task #32: per-test hang watchdog for JVM unit tests. A hung test must fail
 // loud and named (HANG DETECTED + thread dump + fork exit 73) instead of
 // burning the job timeout in silence. Config via Gradle JVM -D properties:

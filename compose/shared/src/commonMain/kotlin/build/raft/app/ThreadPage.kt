@@ -1460,6 +1460,7 @@ internal data class KuiklyThreadScreenPayload(
     val tasks: List<KuiklyThreadTaskItem> = emptyList(),
     val knownMarkdownChannelNames: List<String> = emptyList(),
     val knownMarkdownMentionNames: List<String> = emptyList(),
+    val knownMarkdownDirectMessagePeerNames: List<String> = emptyList(),
     val knownMarkdownTaskNumbers: List<Int> = emptyList(),
     val canLoadMoreBefore: Boolean = false,
     val canLoadMoreAfter: Boolean = false,
@@ -2553,6 +2554,7 @@ internal fun KuiklyThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: Threa
                 ?.takeIf { it.isNotBlank() }
                 ?.let { "@$it" }
                 ?: threadMarkdownTagDisplayLabel(tag.label)
+        ThreadMarkdownTagKind.DirectMessageThread -> threadMarkdownTagDisplayLabel(tag.label)
         else -> threadMarkdownTagDisplayLabel(tag.label)
     }
 
@@ -2574,6 +2576,11 @@ internal fun KuiklyThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<Stri
         }
     }
 
+private fun KuiklyThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet(): Set<String> =
+    buildSet {
+        knownMarkdownDirectMessagePeerNames.forEach { name -> addKnownThreadMentionValue(name) }
+    }
+
 internal fun KuiklyThreadScreenPayload.toKnownMarkdownTaskNumberSetOrNull(): Set<Int>? =
     knownMarkdownTaskNumbers.takeIf { it.isNotEmpty() }
         ?.filterTo(mutableSetOf()) { it > 0 }
@@ -2582,11 +2589,13 @@ internal fun threadMarkdownTagContextSignature(
     highlightedMentions: Set<String>,
     knownChannelNames: Set<String>,
     knownMentionNames: Set<String>,
+    knownDirectMessagePeerNames: Set<String>,
     knownTaskNumbers: Set<Int>?
 ): String =
     "highlighted=${highlightedMentions.size}:${highlightedMentions.hashCode().toString(16)} " +
         "channels=${knownChannelNames.size}:${knownChannelNames.hashCode().toString(16)} " +
         "mentions=${knownMentionNames.size}:${knownMentionNames.hashCode().toString(16)} " +
+        "dmPeers=${knownDirectMessagePeerNames.size}:${knownDirectMessagePeerNames.hashCode().toString(16)} " +
         "tasks=${knownTaskNumbers?.size ?: -1}:${knownTaskNumbers?.hashCode()?.toString(16) ?: "all"}"
 
 private fun MutableSet<String>.addKnownThreadMentionValues(member: KuiklyThreadMemberItem) {
@@ -2609,12 +2618,16 @@ private fun MutableSet<String>.addKnownThreadMentionValue(value: String?) {
 internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
     knownChannelNames: Set<String>,
     knownMentionNames: Set<String>,
+    knownDirectMessagePeerNames: Set<String>,
     knownTaskNumbers: Set<Int>? = null
 ): Boolean =
     when (kind) {
         ThreadMarkdownTagKind.Task ->
             knownTaskNumbers?.contains(label.removePrefix("#").toIntOrNull()) ?: true
         ThreadMarkdownTagKind.UserMention -> label.normalizedThreadMentionLookupKey() in knownMentionNames
+        ThreadMarkdownTagKind.DirectMessageThread ->
+            directMessagePeerName.orEmpty().normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames &&
+                !threadShortId.isNullOrBlank()
         ThreadMarkdownTagKind.Channel,
         ThreadMarkdownTagKind.ChannelThread -> {
             val key =
@@ -3926,6 +3939,10 @@ private fun ThreadMembersPageScreen() {
         }
     }
 }
+
+
+
+
 
 
 @Composable
@@ -8538,7 +8555,8 @@ internal fun SharedThreadRouteContent(
                         }
                     }
                 }
-                action == "openMarkdownThreadRef" && !itemId.isNullOrBlank() -> {
+                (action == "openMarkdownThreadRef" || action == "openMarkdownDirectMessageThreadRef") &&
+                    !itemId.isNullOrBlank() -> {
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
                     coroutineScope.launch {
@@ -8554,7 +8572,13 @@ internal fun SharedThreadRouteContent(
                                         provenance = provenance,
                                         currentPayload = renderedThread,
                                         channelLabel = itemId,
-                                        threadShortId = tab
+                                        threadShortId = tab,
+                                        requiredParentKind =
+                                            if (action == "openMarkdownDirectMessageThreadRef") {
+                                                build.raft.app.model.ConversationKind.DirectMessage
+                                            } else {
+                                                null
+                                            }
                                     )
                             ) {
                                 is DataResult.Content -> {
@@ -10417,6 +10441,15 @@ private fun String.toSharedThreadTaskStatus(): TaskStatus? =
     }
 
 
+
+
+
+
+
+
+
+
+
 private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelId(): String? {
     val resolvedComposer = resolveThreadComposer()
     return resolvedComposer.mentionChannelId.nonBlank()
@@ -10471,6 +10504,7 @@ internal fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
             .filter { it.isNotBlank() }
             .toSet()
     }.orEmpty()
+
 
 
 internal fun PendingMentionAction.toKuiklyPendingMentionActionItem(): KuiklyPendingMentionActionItem =
@@ -11313,6 +11347,14 @@ private fun ThreadPageContent(
                     markdownActionId = actionId
                 )
             }
+            ThreadMarkdownTagKind.DirectMessageThread -> {
+                onThreadEvent(
+                    "openMarkdownDirectMessageThreadRef",
+                    tag.directMessagePeerName ?: tag.label,
+                    tab = tag.threadShortId,
+                    markdownActionId = actionId
+                )
+            }
         }
     }
     val openMarkdownUrl: (String) -> Unit = { url ->
@@ -11326,20 +11368,43 @@ private fun ThreadPageContent(
         remember(payload.knownMarkdownMentionNames, payload.members, payload.memberCandidates, payload.originMessage, payload.messages) {
             payload.toKnownMarkdownMentionNameSet()
         }
+    val knownMarkdownDirectMessagePeerNames =
+        remember(payload.knownMarkdownDirectMessagePeerNames) {
+            payload.toKnownMarkdownDirectMessagePeerNameSet()
+        }
     val knownMarkdownTaskNumbers =
         remember(payload.knownMarkdownTaskNumbers) {
             payload.toKnownMarkdownTaskNumberSetOrNull()
         }
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean =
-        remember(knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) {
-            { tag -> tag.isKnownThreadMarkdownTag(knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) }
+        remember(
+            knownMarkdownChannelNames,
+            knownMarkdownMentionNames,
+            knownMarkdownDirectMessagePeerNames,
+            knownMarkdownTaskNumbers
+        ) {
+            { tag ->
+                tag.isKnownThreadMarkdownTag(
+                    knownMarkdownChannelNames,
+                    knownMarkdownMentionNames,
+                    knownMarkdownDirectMessagePeerNames,
+                    knownMarkdownTaskNumbers
+                )
+            }
         }
     val markdownTagContextSignature =
-        remember(highlightedMentions, knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) {
+        remember(
+            highlightedMentions,
+            knownMarkdownChannelNames,
+            knownMarkdownMentionNames,
+            knownMarkdownDirectMessagePeerNames,
+            knownMarkdownTaskNumbers
+        ) {
             threadMarkdownTagContextSignature(
                 highlightedMentions = highlightedMentions,
                 knownChannelNames = knownMarkdownChannelNames,
                 knownMentionNames = knownMarkdownMentionNames,
+                knownDirectMessagePeerNames = knownMarkdownDirectMessagePeerNames,
                 knownTaskNumbers = knownMarkdownTaskNumbers
             )
         }
@@ -11638,13 +11703,21 @@ private fun ThreadPageContent(
                         selectedCount = selectedShareMessages.size,
                         selectableCount = selectableShareMessageIds.size,
                         onCancel = clearShareSelection,
-                        onSelectAll = {
-                            selectedShareMessageIds = selectableShareMessageIds
-                        },
+                        onSelectAll =
+                            if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+                                { selectedShareMessageIds = selectableShareMessageIds }
+                            } else {
+                                null
+                            },
                         onForward = {
                             openForwardPickerForMessageIds(selectedShareMessageIds)
                         },
                         forwardEnabled = writeActionsEnabled,
+                        onCopyMarkdown = {
+                            if (selectedShareMarkdown.isNotBlank()) {
+                                onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
+                            }
+                        },
                         onExportImage = {
                             if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
                                 diagnosticsLogger(
@@ -25471,14 +25544,34 @@ internal fun ThreadShareSelectionToolbar(
     selectedCount: Int,
     selectableCount: Int,
     onCancel: () -> Unit,
-    onSelectAll: () -> Unit,
+    onSelectAll: (() -> Unit)? = null,
     onForward: () -> Unit,
     forwardEnabled: Boolean = true,
     onExportImage: () -> Unit,
-    onCopyLinks: () -> Unit
+    onCopyLinks: () -> Unit,
+    onCopyMarkdown: (() -> Unit)? = null
 ) {
     val hasSelection = selectedCount > 0
     val bottomSafeArea = slockBottomSafeAreaPadding()
+    var moreMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    val moreAnchor = remember { SlockLiveRootAnchorRef(identity = "thread_share_selection_more") }
+    val moreItems =
+        listOfNotNull(
+            SlockBrutalDropdownMenuItem(
+                id = "generate-image",
+                label = stringResource(MR.strings.thread_share_generate_image),
+                icon = SlockLucideIconName.Image,
+                enabled = hasSelection
+            ),
+            onCopyMarkdown?.let {
+                SlockBrutalDropdownMenuItem(
+                    id = "copy-md",
+                    label = stringResource(MR.strings.thread_share_copy_markdown),
+                    icon = SlockLucideIconName.Copy,
+                    enabled = hasSelection
+                )
+            }
+        )
     Column(
         modifier =
             Modifier
@@ -25510,24 +25603,27 @@ internal fun ThreadShareSelectionToolbar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.X,
-                    onClick = onCancel,
-                    size = 28.dp,
-                    shadowOffset = SlockShadow.BrutalSmall,
-                    iconSize = 14.dp
-                )
+                if (onSelectAll != null) {
+                    ThreadShareSelectionActionButton(
+                        label = stringResource(MR.strings.thread_comments_filter_all),
+                        icon = SlockLucideIconName.Check,
+                        onClick = onSelectAll,
+                        enabled = hasSelection && selectedCount < selectableCount
+                    )
+                }
                 ThreadShareSelectionActionButton(
-                    label = stringResource(MR.strings.thread_comments_filter_all),
-                    icon = SlockLucideIconName.Check,
-                    onClick = onSelectAll,
-                    enabled = hasSelection && selectedCount < selectableCount
+                    label = stringResource(MR.strings.common_cancel),
+                    icon = SlockLucideIconName.X,
+                    onClick = onCancel,
+                    enabled = true
                 )
                 ThreadShareSelectionActionButton(
                     label = stringResource(MR.strings.thread_action_forward),
                     icon = SlockLucideIconName.Send,
                     onClick = onForward,
-                    enabled = hasSelection && forwardEnabled
+                    enabled = hasSelection && forwardEnabled,
+                    backgroundColor = SlockColor.AccentPink,
+                    disabledBackgroundColor = SlockColor.AccentPink
                 )
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.Copy,
@@ -25538,17 +25634,34 @@ internal fun ThreadShareSelectionToolbar(
                     iconSize = 14.dp
                 )
                 SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.Download,
-                    onClick = onExportImage,
+                    iconName = SlockLucideIconName.Ellipsis,
+                    onClick = {
+                        moreAnchor.resolve(SlockPopoverLocalPoint.BottomEnd)?.let { moreMenuAnchor = it }
+                    },
                     enabled = hasSelection,
                     size = 28.dp,
                     shadowOffset = SlockShadow.BrutalSmall,
                     iconSize = 14.dp,
-                    backgroundColor = SlockColor.AccentPink,
-                    disabledBackgroundColor = SlockColor.AccentPink
+                    modifier = Modifier.slockCaptureLiveRootAnchor(moreAnchor),
+                    contentDescription = stringResource(MR.strings.thread_inline_selection_more)
                 )
             }
         }
+    }
+    moreMenuAnchor?.let { anchor ->
+        SlockBrutalDropdownMenu(
+            anchor = anchor,
+            items = moreItems,
+            onSelect = { id ->
+                moreMenuAnchor = null
+                when (id) {
+                    "generate-image" -> onExportImage()
+                    "copy-md" -> onCopyMarkdown?.invoke()
+                }
+            },
+            onDismiss = { moreMenuAnchor = null },
+            verticalPlacement = SlockFloatingVerticalPlacement.Above
+        )
     }
 }
 
@@ -25557,33 +25670,24 @@ private fun ThreadShareSelectionActionButton(
     label: String,
     icon: SlockLucideIconName,
     onClick: () -> Unit,
-    enabled: Boolean
+    enabled: Boolean,
+    backgroundColor: Color = SlockColor.SurfaceWhite,
+    disabledBackgroundColor: Color = SlockColor.SurfaceCream
 ) {
-    Button(
+    SlockBrutalActionButton(
+        label = label,
         onClick = onClick,
         enabled = enabled,
-        pressFeedback = false,
-        modifier =
-            Modifier
-                .height(28.dp)
-                .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 8.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            SlockLucideIcon(icon, modifier = Modifier.size(13.dp), color = "#FF111111")
-            Text(
-                text = label,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
+        backgroundColor = backgroundColor,
+        disabledBackgroundColor = disabledBackgroundColor,
+        minWidth = 0.dp,
+        minHeight = 28.dp,
+        leadingIcon = icon,
+        leadingIconSize = 14.dp,
+        contentSpacing = 4.dp,
+        shadowOffset = SlockShadow.BrutalSmall,
+        textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp)
+    )
 }
 
 @Composable

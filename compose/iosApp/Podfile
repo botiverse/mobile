@@ -1,11 +1,26 @@
 source 'https://cdn.cocoapods.org/'
 
+kuikly_release = '2.24.0-raft.1'
+kuikly_binary_version = "#{kuikly_release}-2.1.21"
+kuikly_coordinate = "com.tencent.kuikly-open:core-render-ios:#{kuikly_binary_version}"
+kuikly_podspec = "../build/kuikly/core-render-ios-#{kuikly_binary_version}.podspec.json"
+kuikly_podspec_output = File.expand_path(kuikly_podspec, __dir__)
+kuikly_fetcher = File.expand_path('../../scripts/ci/fetch_kuikly_release_artifact.py', __dir__)
+unless system(
+  'python3', kuikly_fetcher,
+  '--release', kuikly_release,
+  '--coordinate', kuikly_coordinate,
+  '--kind', 'podspec-json',
+  '--output', kuikly_podspec_output
+)
+  abort "Kuikly release is incomplete or its iOS podspec failed byte verification"
+end
+
 target 'iosApp' do
   use_frameworks!
   platform :ios, '15.0'
 
-  ENV['KUIKLY_VERSION'] ||= '2.21.0'
-  pod 'OpenKuiklyIOSRender', :path => '../../third_party/kuikly-ui'
+  pod 'OpenKuiklyIOSRender', :podspec => kuikly_podspec
   pod 'shared', :path => '../shared'
 
   pod 'Hands', :git => 'https://github.com/oranix-io/hands.git', :tag => 'ios-v0.2.1'

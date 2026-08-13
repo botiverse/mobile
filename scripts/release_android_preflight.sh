@@ -4,8 +4,6 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RELEASE_REMOTE="${SLOCK_RELEASE_REMOTE:-origin}"
 RELEASE_BRANCH="${SLOCK_RELEASE_BRANCH:-main}"
-KUIKLY_REMOTE="${SLOCK_KUIKLY_REMOTE:-origin}"
-KUIKLY_BRANCH="${SLOCK_KUIKLY_BRANCH:-staging2}"
 HANDS_API="${HANDS_API:-https://hands.build}"
 HANDS_APP_SLUG="${HANDS_APP_SLUG:-raft-android}"
 HANDS_ARCH="${SLOCK_ANDROID_ARCH:-arm64-v8a}"
@@ -46,8 +44,6 @@ Options:
 Environment overrides:
   SLOCK_RELEASE_REMOTE=origin
   SLOCK_RELEASE_BRANCH=main
-  SLOCK_KUIKLY_REMOTE=origin
-  SLOCK_KUIKLY_BRANCH=staging2
   HANDS_API=https://hands.build
   HANDS_APP_SLUG=raft-android
   SLOCK_ANDROID_ARCH=arm64-v8a
@@ -135,8 +131,6 @@ cd "${ROOT_DIR}"
 [ -f compose/ohosApp/entry/oh-package-lock.json5 ] || die "OHOS package lock is missing"
 
 git fetch "${RELEASE_REMOTE}" "${RELEASE_BRANCH}" --prune
-git -C third_party/kuikly-ui fetch "${KUIKLY_REMOTE}" "${KUIKLY_BRANCH}" --prune
-
 REMOTE_REF="refs/remotes/${RELEASE_REMOTE}/${RELEASE_BRANCH}"
 git rev-parse --verify --quiet "${REMOTE_REF}" >/dev/null ||
   die "release branch not found: ${RELEASE_REMOTE}/${RELEASE_BRANCH}"
@@ -154,13 +148,8 @@ git diff --quiet || die "working tree has unstaged tracked changes"
 git diff --cached --quiet || die "working tree has staged changes"
 [ -z "$(git status --porcelain --untracked-files=normal)" ] || die "working tree has untracked or submodule changes"
 
-KUIKLY_SHA="$(git ls-tree HEAD third_party/kuikly-ui | awk '{print $3}')"
-[ -n "${KUIKLY_SHA}" ] || die "Kuikly gitlink is missing"
-KUIKLY_REMOTE_REF="refs/remotes/${KUIKLY_REMOTE}/${KUIKLY_BRANCH}"
-git -C third_party/kuikly-ui rev-parse --verify --quiet "${KUIKLY_REMOTE_REF}" >/dev/null ||
-  die "Kuikly release branch not found: ${KUIKLY_REMOTE}/${KUIKLY_BRANCH}"
-git -C third_party/kuikly-ui merge-base --is-ancestor "${KUIKLY_SHA}" "${KUIKLY_REMOTE_REF}" ||
-  die "Kuikly gitlink ${KUIKLY_SHA} is not reachable from ${KUIKLY_REMOTE}/${KUIKLY_BRANCH}"
+scripts/ci/verify_kuikly_release_manifest.sh ||
+  die "immutable Kuikly release manifest admission is incomplete or conflicting"
 
 HANDS_DEPENDENCY_METADATA="$(mktemp)"
 trap 'rm -f "${HANDS_DEPENDENCY_METADATA}" "${HANDS_RESPONSE:-}"' EXIT
@@ -261,7 +250,7 @@ if [ -n "${REPORT_PATH}" ]; then
     printf -- '- Candidate version: `%s` (versionCode `%s`)\n' "${VERSION}" "${RELEASE_CODE}"
     printf -- '- Channel: `%s`\n' "${CHANNEL}"
     printf -- '- Release head: `%s`\n' "${HEAD_SHA}"
-    printf -- '- Kuikly gitlink: `%s` reachable from `%s/%s`\n' "${KUIKLY_SHA}" "${KUIKLY_REMOTE}" "${KUIKLY_BRANCH}"
+    printf -- '- Kuikly release: immutable Raft manifest admission verified\n'
     printf -- '- OHOS Hands dependency: `%s@%s` via `%s`; source `%s`; verified artifact SHA-256 `%s`\n' \
       "${HANDS_DEPENDENCY_NAME}" "${HANDS_DEPENDENCY_VERSION}" "${HANDS_DEPENDENCY_MODE}" \
       "${HANDS_DEPENDENCY_SOURCE}" "${HANDS_DEPENDENCY_SHA256}"
@@ -284,7 +273,7 @@ fi
 echo "Android release preflight passed"
 echo "  candidate: ${VERSION} (${RELEASE_CODE})"
 echo "  head: ${HEAD_SHA}"
-echo "  Kuikly: ${KUIKLY_SHA} on ${KUIKLY_REMOTE}/${KUIKLY_BRANCH}"
+echo "  Kuikly: immutable Raft release manifest admission verified"
 echo "  Hands dependency: ${HANDS_DEPENDENCY_NAME}@${HANDS_DEPENDENCY_VERSION} (${HANDS_DEPENDENCY_MODE})"
 echo "  Hands artifact SHA-256: ${HANDS_DEPENDENCY_SHA256}"
 if [ -n "${LIVE_CODE}" ]; then
