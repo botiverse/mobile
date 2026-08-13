@@ -4,6 +4,7 @@ import build.raft.app.components.SlockAnchoredMetaChip
 import build.raft.app.components.SlockAttachmentPreviewCard
 import build.raft.app.components.SlockAttachmentPreviewCardWidth
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockChipLoadingIndicator
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalSearchField
 import build.raft.app.components.SlockBrutalTextField
@@ -37,6 +38,7 @@ import build.raft.app.data.ForwardMessageTargetRequiredAction
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.NetworkSlockTasksApi
 import build.raft.app.data.NetworkSlockThreadApi
+import build.raft.app.data.SlockThreadApiClient
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealSettingsRepository
@@ -342,14 +344,17 @@ import kotlin.time.TimeSource
 /**
  * Visual fixture DATA for the thread message row capture route (task #189).
  *
- * Pure data: fixture payloads, their constants and self-contained builders. No @Page, no host, no
- * production composables. Wired into commonMain when -PslockVisualFixtures=true and into commonTest
- * when it is off, so fixture-contract unit tests keep compiling on the ordinary unit gate while
- * production artifacts stay free of fixture code. See the notes in both shared build files.
+ * Pure data: fixture payloads, their constants and self-contained builders. Wired into commonMain when
+ * -PslockVisualFixtures=true and into commonTest when it is off, so fixture-contract unit tests keep
+ * compiling on the ordinary unit gate while production artifacts stay free of fixture code.
+ *
+ * Regenerated from main at merge time, for the same reason recorded in ThreadMessageRowVisualHost.kt.
  */
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO = "inline_selection_demo"
+/** Leading messages of the inline-selection fixture that form its compact group. */
+internal const val THREAD_INLINE_SELECTION_TARGET_GROUP_SIZE = 3
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD = "markdown_link_child"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD = "markdown_mention_child"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
@@ -2271,7 +2276,6 @@ internal fun threadActionCardVisualMessage(
         body = body,
         metadata = card.toMessageMetadata()
     )
-
 internal fun threadVisualFixtureHighlightedMentions(
     visualFixture: String
 ): Set<String> =
@@ -2283,8 +2287,7 @@ internal fun threadVisualFixtureHighlightedMentions(
     } else {
         emptySet()
     }
-
-private fun String.requiresViewerSelfMentionContext(): Boolean =
+internal fun String.requiresViewerSelfMentionContext(): Boolean =
     this == THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT ||
@@ -2292,5 +2295,3 @@ private fun String.requiresViewerSelfMentionContext(): Boolean =
         this == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW
-
-internal const val THREAD_INLINE_SELECTION_TARGET_GROUP_SIZE = 3

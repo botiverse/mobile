@@ -4,6 +4,7 @@ import build.raft.app.components.SlockAnchoredMetaChip
 import build.raft.app.components.SlockAttachmentPreviewCard
 import build.raft.app.components.SlockAttachmentPreviewCardWidth
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockChipLoadingIndicator
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalSearchField
 import build.raft.app.components.SlockBrutalTextField
@@ -37,6 +38,7 @@ import build.raft.app.data.ForwardMessageTargetRequiredAction
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.NetworkSlockTasksApi
 import build.raft.app.data.NetworkSlockThreadApi
+import build.raft.app.data.SlockThreadApiClient
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealSettingsRepository
@@ -342,9 +344,12 @@ import kotlin.time.TimeSource
 /**
  * Visual-only host for the thread message row capture route (task #189).
  *
- * Moved out of ThreadPage.kt so production sources carry no visual @Page. This file is compiled into
- * commonMain only when -PslockVisualFixtures=true, so default production artifacts contain neither
- * the page nor the host. Fixture DATA lives in src/visualFixtureData/kotlin.
+ * Moved out of ThreadPage.kt so production sources carry no visual @Page. Compiled into commonMain
+ * only when -PslockVisualFixtures=true. Fixture DATA lives in src/visualFixtureData/kotlin.
+ *
+ * Regenerated from main at merge time: this file is a MOVE of main's current content, not a snapshot
+ * taken when the split began. A merge deletes main's copy but cannot propagate main's edits into this
+ * file, so re-extracting is the only way to keep them equal.
  */
 
 @Page("compose_thread_message_row_visual", supportInLocal = true)
@@ -405,12 +410,8 @@ internal fun ThreadMessageVisualScreenContent() {
         remember(payload.knownMarkdownMentionNames, payload.members, payload.memberCandidates, payload.originMessage, payload.messages) {
             payload.toKnownMarkdownMentionNameSet()
         }
-    // main added knownDirectMessagePeerNames to both of these (task #126's quoted
-    // permalink work). Mirror the production call site in ThreadPage.kt rather than
-    // dropping the argument, so the visual host validates tags the same way the real
-    // thread page does.
     val knownMarkdownDirectMessagePeerNames =
-        remember(payload) {
+        remember(payload.knownMarkdownDirectMessagePeerNames) {
             payload.toKnownMarkdownDirectMessagePeerNameSet()
         }
     val knownMarkdownTaskNumbers =
@@ -456,45 +457,52 @@ internal fun ThreadMessageVisualScreenContent() {
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION) {
         val messages = payload.toThreadTimelineSlice().messages
         // task #415: measure unbounded (see the default fixture Column below).
-        Column(modifier = Modifier.width(390.dp).wrapContentHeight(align = Alignment.Top, unbounded = true).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
-            messages.forEach { selectedMessage ->
-                ThreadMessageCard(
-                    message = selectedMessage,
-                    messageBodyTextStyle = messageBodyTextStyle,
-                    replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(selectedMessage),
-                    highlightedMentions = highlightedMentions,
-                    shareSelectionActive = true,
-                    selectedForShare = true,
-                    onToggleShareSelection = {},
-                    alignOwnMessageRight = payload.alignOwnMessagesRight && selectedMessage.isOwn,
-                    showReplyAction = payload.showReplyActions,
-                    taskOpenEnabled = payload.showTaskOpenActions,
-                    taskStatusActionsEnabled = payload.showTaskStatusActions,
-                    showReactionAddAction = payload.showReactionActions,
-                    timestampLabel = selectedMessage.timestampLabel,
-                    onShowActions = {},
-                    onOpenMember = {},
-                    onOpenThread = {},
-                    onOpenTask = {},
-                    onOpenTaskStatusMenu = {},
-                    isMarkdownTagValid = isMarkdownTagValid,
-                    markdownTagContextSignature = markdownTagContextSignature,
-                    onToggleReaction = {},
-                    onOpenAttachment = {},
-                    onOpenMarkdownTag = { _, _ -> },
-                    onOpenMarkdownUrl = {},
-                    outerPadding = 0.dp
-                )
+        Column(
+            modifier =
+                Modifier
+                    .width(390.dp)
+                    .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                    .background(SlockColor.SurfaceWhite)
+        ) {
+            Column(modifier = Modifier.padding(SlockSpacing.Md)) {
+                messages.forEach { selectedMessage ->
+                    ThreadMessageCard(
+                        message = selectedMessage,
+                        messageBodyTextStyle = messageBodyTextStyle,
+                        replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(selectedMessage),
+                        highlightedMentions = highlightedMentions,
+                        shareSelectionActive = true,
+                        selectedForShare = true,
+                        onToggleShareSelection = {},
+                        alignOwnMessageRight = payload.alignOwnMessagesRight && selectedMessage.isOwn,
+                        showReplyAction = payload.showReplyActions,
+                        taskOpenEnabled = payload.showTaskOpenActions,
+                        taskStatusActionsEnabled = payload.showTaskStatusActions,
+                        showReactionAddAction = payload.showReactionActions,
+                        timestampLabel = selectedMessage.timestampLabel,
+                        onShowActions = {},
+                        onOpenMember = {},
+                        onOpenThread = {},
+                        onOpenTask = {},
+                        onOpenTaskStatusMenu = {},
+                        isMarkdownTagValid = isMarkdownTagValid,
+                        markdownTagContextSignature = markdownTagContextSignature,
+                        onToggleReaction = {},
+                        onOpenAttachment = {},
+                        onOpenMarkdownTag = { _, _ -> },
+                        onOpenMarkdownUrl = {},
+                        outerPadding = 0.dp
+                    )
+                }
             }
-            Spacer(Modifier.height(SlockSpacing.Sm))
             ThreadShareSelectionToolbar(
                 selectedCount = messages.size,
                 selectableCount = messages.size,
                 onCancel = {},
-                onSelectAll = {},
                 onForward = {},
                 onExportImage = {},
-                onCopyLinks = {}
+                onCopyLinks = {},
+                onCopyMarkdown = {}
             )
         }
         return
@@ -1036,13 +1044,13 @@ internal fun ThreadTaskStatusOwnerAnchorVisualProbe(message: KuiklyThreadMessage
         )
     }
 }
-internal data class ThreadInlineReplyTimestampBounds(
-    val origin: Offset,
-    val size: IntSize,
-)
-internal const val ThreadInlineReplyTimestampHitTargetDescription =
-    "Inline reply timestamp hit target"
-
+/**
+ * Gives the inline-selection fixture's compact target group [count] replies.
+ *
+ * Single-tap thread opening only applies to messages that already have replies,
+ * so a capture case that exercises it has to say so. A count of zero returns the
+ * payload untouched, keeping every case that omits the parameter unchanged.
+ */
 internal fun KuiklyThreadScreenPayload.withInlineSelectionTargetReplyCount(
     count: Int
 ): KuiklyThreadScreenPayload =
@@ -1060,3 +1068,9 @@ internal fun KuiklyThreadScreenPayload.withInlineSelectionTargetReplyCount(
                 }
         )
     }
+internal data class ThreadInlineReplyTimestampBounds(
+    val origin: Offset,
+    val size: IntSize,
+)
+internal const val ThreadInlineReplyTimestampHitTargetDescription =
+    "Inline reply timestamp hit target"
