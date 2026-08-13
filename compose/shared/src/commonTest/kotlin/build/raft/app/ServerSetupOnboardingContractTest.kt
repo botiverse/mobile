@@ -1,6 +1,9 @@
 package build.raft.app
 
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.data.StoredAuthServer
+import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthUser
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -54,6 +57,23 @@ class ServerSetupOnboardingContractTest {
     }
 
     @Test
+    fun canonicalSlugStaysUnresolvedUntilSelectedIdAppearsInFreshServerList() {
+        val stale = session(selectedSlug = null, servers = emptyList())
+        val refreshed =
+            session(
+                selectedSlug = null,
+                servers = listOf(StoredAuthServer(id = "server-1", name = "New", slug = "t124z2143")),
+            )
+        val committed = refreshed.copy(selectedServerSlug = "t124z2143")
+
+        assertNull(stale.canonicalServerSlugFor("server-1"))
+        assertEquals("t124z2143", refreshed.canonicalServerSlugFor("server-1"))
+        assertEquals("t124z2143", committed.canonicalServerSlugFor("server-1"))
+        assertNull(refreshed.canonicalServerSlugFor("server-old"))
+        assertNull(serverSetupOnboardingUrl("https://raft.test", "", "native:1") { it })
+    }
+
+    @Test
     fun tenantPathQueryAndFragmentAreDiscardedBeforeBuildingDedicatedRoute() {
         val url = serverSetupOnboardingUrl(
             "https://raft-app-staging.botiverse.dev/s/botiverse/?old=1#fragment",
@@ -94,4 +114,17 @@ class ServerSetupOnboardingContractTest {
         assertEquals(ServerSetupCompletionWake("server-1", "raft", "gen:1"), wake)
         assertNull(decodeServerSetupBridgeNavigation("$url&extra=1") { it })
     }
+
+    private fun session(
+        selectedSlug: String?,
+        servers: List<StoredAuthServer>,
+    ): StoredAuthSession =
+        StoredAuthSession(
+            user = StoredAuthUser(id = "account", email = "account@raft.test"),
+            accessToken = "access",
+            refreshToken = "refresh",
+            selectedServerId = "server-1",
+            selectedServerSlug = selectedSlug,
+            servers = servers,
+        )
 }

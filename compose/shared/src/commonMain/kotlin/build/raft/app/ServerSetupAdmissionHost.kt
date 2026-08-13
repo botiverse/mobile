@@ -82,9 +82,11 @@ internal fun rememberServerSetupAdmissionHost(
     val controller = rememberSlockWebViewController()
     val authSnapshot = rememberSettingsWebViewAuthSnapshot(shellAuthStore, authEvents)
     val accountId = session.user.id.trim()
-    val serverSlug = session.servers.firstOrNull { it.id == serverId }?.slug
-        ?: session.selectedServerSlug?.takeIf { session.currentServerId == serverId }
-        ?: ""
+    val currentSession = authSnapshot.session
+    val canonicalServerSlug = currentSession?.canonicalServerSlugFor(serverId)
+    val selectedSlugCommitted =
+        currentSession?.currentServerId == serverId &&
+            currentSession.selectedServerSlug?.trim() == canonicalServerSlug
     val generation = remember(environmentId, accountId, serverId) {
         "native:${nextServerSetupGeneration.incrementAndGet()}"
     }
@@ -100,6 +102,11 @@ internal fun rememberServerSetupAdmissionHost(
     }
     var refreshEpoch by remember(identity) { mutableStateOf(0) }
     var state by remember(identity) { mutableStateOf<ServerSetupAdmissionState?>(null) }
+    LaunchedEffect(shellAuthStore, identity, canonicalServerSlug, selectedSlugCommitted) {
+        if (canonicalServerSlug != null && !selectedSlugCommitted) {
+            shellAuthStore.updateSelectedServer(serverId, canonicalServerSlug)
+        }
+    }
     LaunchedEffect(featureFlags, identity) {
         if (featureDecision == ServerSetupFeatureDecision.Checking) {
             featureDecision = resolveServerSetupFeatureDecision(featureFlags, ServerId(serverId))
@@ -136,10 +143,15 @@ internal fun rememberServerSetupAdmissionHost(
                         is ServerSetupAdmissionState.Blocked -> {
                             SlockBackHandler(enabled = true, label = "server_setup_onboarding") { }
                             val binding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
-                            val url = remember(webBaseUrl, serverSlug, generation) {
-                                serverSetupOnboardingUrl(webBaseUrl, serverSlug, generation, bridge::urlEncode)
+                            val url = remember(webBaseUrl, canonicalServerSlug, selectedSlugCommitted, generation) {
+                                canonicalServerSlug
+                                    ?.takeIf { selectedSlugCommitted }
+                                    ?.let { slug ->
+                                        serverSetupOnboardingUrl(webBaseUrl, slug, generation, bridge::urlEncode)
+                                    }
                             }
                             if (
+                                currentSession == null ||
                                 binding == null ||
                                 binding.accountId != accountId ||
                                 binding.serverId != serverId ||
@@ -148,11 +160,11 @@ internal fun rememberServerSetupAdmissionHost(
                                 SettingsWebViewLoadingCover()
                             } else {
                                 var documentReady by remember(identity) { mutableStateOf(false) }
-                                val injectedJavaScript = remember(session, binding) {
+                                val injectedJavaScript = remember(currentSession, binding) {
                                     """
                                         (function() {
                                           try {
-                                            ${settingsWebViewAuthStorageJavaScript(session, binding)};
+                                            ${settingsWebViewAuthStorageJavaScript(currentSession, binding)};
                                             ${serverSetupHostBridgeJavaScript()}
                                           } catch (_) {}
                                         })();
@@ -169,7 +181,7 @@ internal fun rememberServerSetupAdmissionHost(
                                         onNavigationBlocked = { blockedUrl ->
                                             val wake = decodeServerSetupBridgeNavigation(blockedUrl, bridge::urlDecode)
                                             if (
-                                                wake?.matches(identity, serverSlug) == true &&
+                                                canonicalServerSlug?.let { slug -> wake?.matches(identity, slug) } == true &&
                                                 controllerState.acceptsWake(identity)
                                             ) {
                                                 refreshEpoch += 1
@@ -193,6 +205,16 @@ internal fun rememberServerSetupAdmissionHost(
             }
         },
     )
+}
+
+internal fun StoredAuthSession.canonicalServerSlugFor(serverId: String): String? {
+    val normalizedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return null
+    if (currentServerId?.trim() != normalizedServerId) return null
+    return servers
+        .firstOrNull { it.id.trim() == normalizedServerId }
+        ?.slug
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
 }
 
 private val nextServerSetupGeneration = atomic(0L)

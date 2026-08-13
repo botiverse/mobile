@@ -28,6 +28,16 @@ class ServerSetupAdmissionProductionWiringTest {
         assertTrue(source.contains("runCatchingPreservingCancellation { authSessionStore.readSession() }"))
     }
 
+    @Test
+    fun onboardingWaitsForCanonicalSlugAndCommitsItBeforeNavigation() {
+        val source = repositoryFile("compose/shared/src/commonMain/kotlin/build/raft/app/ServerSetupAdmissionHost.kt").readText()
+        assertTrue(source.contains("val currentSession = authSnapshot.session"))
+        assertTrue(source.contains("val canonicalServerSlug = currentSession?.canonicalServerSlugFor(serverId)"))
+        assertTrue(source.contains("shellAuthStore.updateSelectedServer(serverId, canonicalServerSlug)"))
+        assertTrue(source.contains("?.takeIf { selectedSlugCommitted }"))
+        assertTrue(source.contains("currentSession == null ||"))
+    }
+
     private fun repositoryFile(relativePath: String): File {
         val start = File(System.getProperty("user.dir") ?: ".")
         return generateSequence(start) { it.parentFile }
