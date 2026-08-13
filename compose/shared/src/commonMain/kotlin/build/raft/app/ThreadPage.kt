@@ -110,7 +110,6 @@ import build.raft.app.data.SharedTaskReferenceResolution
 import build.raft.app.data.SharedTaskReferenceResolutionSource
 import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.SharedTasksViewModel
-import build.raft.app.data.ThreadRowAffordancePreference
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockSharedStoreRegistry
@@ -1062,7 +1061,6 @@ internal fun KuiklyThreadScreenPayload.withThreadWriteActionsEnabled(
             settingsActions = emptyList(),
             showSettingsAction = false,
             showMessageSaveAction = false,
-            showInlineSaveAction = false,
             showReactionActions = false,
             showTaskStatusActions = false
         )
@@ -1074,7 +1072,6 @@ internal fun ThreadTimelineSlice.withThreadWriteActionsEnabled(enabled: Boolean)
     } else {
         copy(
             showMessageSaveAction = false,
-            showInlineSaveAction = false,
             showReactionActions = false,
             showTaskStatusActions = false,
             canConvertMessagesToTasks = false
@@ -1487,7 +1484,6 @@ internal data class KuiklyThreadScreenPayload(
     val showSettingsAction: Boolean = true,
     val showOpenInChannelAction: Boolean = false,
     val showMessageSaveAction: Boolean = true,
-    val showInlineSaveAction: Boolean = false,
     val showReactionActions: Boolean = true,
     val showTaskOpenActions: Boolean = true,
     val showTaskStatusActions: Boolean = true,
@@ -2855,11 +2851,6 @@ internal fun KuiklyThreadScreenPayload.taskThreadLaunchPayload(
                 ),
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages,
-            threadRowAffordances =
-                listOfNotNull(
-                    ThreadRowAffordancePreference.Reactions.takeIf { showReactionActions },
-                    ThreadRowAffordancePreference.Saved.takeIf { showInlineSaveAction }
-                ).toSet(),
             parentConversationKind = currentParentKind
         ) ?: return null
     return launchPayload.toInitialPayloadOrNull(launchPayload.instanceId)
@@ -3463,11 +3454,6 @@ private fun ThreadPageScreen(
                     timeContext = currentPayload.toSlockTimeCapabilities().staticContext(),
                     alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
                     compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
-                    threadRowAffordances =
-                        listOfNotNull(
-                            ThreadRowAffordancePreference.Reactions.takeIf { currentPayload.showReactionActions },
-                            ThreadRowAffordancePreference.Saved.takeIf { currentPayload.showInlineSaveAction }
-                        ).toSet(),
                     onWarn = bridge::logWarn
                 ) ?: return@SharedThreadRouteContent false
             openStandaloneThreadPayload(parentPayload, serverIdOverride = parentServerId)
@@ -8272,11 +8258,6 @@ internal fun SharedThreadRouteContent(
                     timeContext = renderedPayload.toSlockTimeCapabilities().staticContext(),
                     alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
                     compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
-                    threadRowAffordances =
-                        listOfNotNull(
-                            ThreadRowAffordancePreference.Reactions.takeIf { renderedPayload.showReactionActions },
-                            ThreadRowAffordancePreference.Saved.takeIf { renderedPayload.showInlineSaveAction }
-                        ).toSet(),
                     anchorMessageId = request.anchorMessageId ?: target.focusedMessageId,
                     originFallback = request.originFallback,
                     onWarn = bridge::logWarn
@@ -9114,11 +9095,6 @@ internal fun SharedThreadRouteContent(
                                 timeContext = renderedThread.toSlockTimeCapabilities().staticContext(),
                                 alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
                                 compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
-                                threadRowAffordances =
-                                    listOfNotNull(
-                                        ThreadRowAffordancePreference.Reactions.takeIf { renderedThread.showReactionActions },
-                                        ThreadRowAffordancePreference.Saved.takeIf { renderedThread.showInlineSaveAction }
-                                    ).toSet(),
                                 anchorMessageId = openRequest.anchorMessageId,
                                 originFallback = openRequest.originFallback,
                                 onWarn = bridge::logWarn
@@ -11202,7 +11178,6 @@ internal fun threadVisualFixture(
             val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
             base.copy(
                 showMessageSaveAction = true,
-                showInlineSaveAction = false,
                 messages =
                     base.messages.mapIndexed { index, message ->
                         if (index == 0) message.copy(isSaved = true) else message
@@ -18534,7 +18509,6 @@ private fun ThreadMessagesList(
                                 selectedForShare = message.id in selectedShareMessageIds,
                                 onToggleShareSelection = { onToggleShareSelection(message.id) },
                                 showSaveAction = !captureShareBounds,
-                                showInlineSaveAction = renderPayload.showInlineSaveAction,
                                 // Defer this snapshot read to the avatar leaf. Reading it at the
                                 // card boundary invalidates every visible message while anchoring.
                                 isMessageListScrolling = { listState.isScrollInProgress },
@@ -20884,7 +20858,6 @@ private fun ThreadMessageCard(
     taskOpenEnabled: Boolean = true,
     taskStatusActionsEnabled: Boolean = true,
     showSaveAction: Boolean = true,
-    showInlineSaveAction: Boolean = false,
     showReactionAddAction: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     activeMarkdownTagKey: String? = null,
@@ -25383,7 +25356,6 @@ private fun ThreadOriginCard(
                             taskOpenEnabled = timelineSlice.showTaskOpenActions && contentExtrasVisible,
                             taskStatusActionsEnabled = timelineSlice.showTaskStatusActions && contentExtrasVisible,
                             showSaveAction = timelineSlice.showMessageSaveAction,
-                            showInlineSaveAction = timelineSlice.showInlineSaveAction,
                             isMarkdownTagValid = isMarkdownTagValid,
                             onShowActions = { anchor -> onShowActions(origin, anchor) },
                             onOpenMember = onOpenMember,

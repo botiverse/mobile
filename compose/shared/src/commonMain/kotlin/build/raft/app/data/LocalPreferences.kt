@@ -158,21 +158,6 @@ enum class LargeScreenNavigationPreference(val storageKey: String) {
     }
 }
 
-enum class ThreadRowAffordancePreference(val storageKey: String) {
-    Reactions("reactions"),
-    Saved("saved");
-
-    companion object {
-        val Default: Set<ThreadRowAffordancePreference> = setOf(Reactions)
-        val Supported: List<ThreadRowAffordancePreference> = listOf(Reactions)
-
-        fun fromStorageKey(value: String?): ThreadRowAffordancePreference? =
-            entries.firstOrNull { it.storageKey == value }
-
-        fun fromStorageKeys(value: Set<String>): Set<ThreadRowAffordancePreference> =
-            value.mapNotNull(::fromStorageKey).filterTo(mutableSetOf()) { it in Supported }
-    }
-}
 
 enum class TranslationModePreference(val storageKey: String) {
     Automatic("automatic"),
@@ -270,10 +255,6 @@ data class ChatLayoutPreferenceSnapshot(
     val translationTargetLanguage: String = TranslationTargetLanguages.Browser,
     val supportedTranslationModes: List<TranslationModePreference> =
         TranslationModePreference.entries,
-    val threadRowAffordances: Set<ThreadRowAffordancePreference> =
-        ThreadRowAffordancePreference.Default,
-    val supportedThreadRowAffordances: List<ThreadRowAffordancePreference> =
-        ThreadRowAffordancePreference.Supported
 )
 
 interface ChatLayoutPreferenceStore {
@@ -331,9 +312,6 @@ interface ChatLayoutPreferenceStore {
     fun readTranslationTargetLanguageSync(): String
     suspend fun readTranslationTargetLanguage(): String
     suspend fun saveTranslationTargetLanguage(language: String)
-    fun readThreadRowAffordancesSync(): Set<ThreadRowAffordancePreference>
-    suspend fun readThreadRowAffordances(): Set<ThreadRowAffordancePreference>
-    suspend fun saveThreadRowAffordances(affordances: Set<ThreadRowAffordancePreference>)
 }
 
 class KeyValueChatLayoutPreferenceStore(
@@ -526,31 +504,6 @@ class KeyValueChatLayoutPreferenceStore(
         store.putString(KEY_TRANSLATION_TARGET_LANGUAGE, normalized ?: TranslationTargetLanguages.Browser)
     }
 
-    override fun readThreadRowAffordancesSync(): Set<ThreadRowAffordancePreference> {
-        val stored = store.getString(KEY_THREAD_ROW_AFFORDANCES)
-        return if (stored == null) {
-            ThreadRowAffordancePreference.Default
-        } else {
-            ThreadRowAffordancePreference.fromStorageKeys(
-                stored.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
-            )
-        }
-    }
-
-    override suspend fun readThreadRowAffordances(): Set<ThreadRowAffordancePreference> =
-        readThreadRowAffordancesSync()
-
-    override suspend fun saveThreadRowAffordances(
-        affordances: Set<ThreadRowAffordancePreference>
-    ) {
-        store.putString(
-            KEY_THREAD_ROW_AFFORDANCES,
-            affordances
-                .sortedBy { it.ordinal }
-                .joinToString(",") { it.storageKey }
-        )
-    }
-
     private companion object {
         const val KEY_MY_MESSAGE_ALIGNMENT = "chatLayout:my_message_alignment"
         const val KEY_LARGE_SCREEN_NAVIGATION = "chatLayout:large_screen_navigation"
@@ -570,7 +523,6 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_HOME_SERVER_AVATAR_ENABLED = "mobile:home_server_avatar_enabled"
         const val KEY_TRANSLATION_MODE = "settings.translationMode"
         const val KEY_TRANSLATION_TARGET_LANGUAGE = "settings.translationTargetLanguage"
-        const val KEY_THREAD_ROW_AFFORDANCES = "chatLayout:thread_row_affordances"
     }
 }
 
@@ -598,10 +550,6 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setHomeServerAvatarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot
     suspend fun setTranslationTargetLanguage(language: String): ChatLayoutPreferenceSnapshot
-    suspend fun setThreadRowAffordance(
-        affordance: ThreadRowAffordancePreference,
-        enabled: Boolean
-    ): ChatLayoutPreferenceSnapshot
 }
 
 class PersistentChatLayoutPreferenceRepository(
@@ -627,7 +575,6 @@ class PersistentChatLayoutPreferenceRepository(
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
-            threadRowAffordances = store.readThreadRowAffordances()
         )
 
     override suspend fun selectMyMessageAlignment(
@@ -653,7 +600,6 @@ class PersistentChatLayoutPreferenceRepository(
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
-            threadRowAffordances = store.readThreadRowAffordances()
         )
     }
 
@@ -680,7 +626,6 @@ class PersistentChatLayoutPreferenceRepository(
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
-            threadRowAffordances = store.readThreadRowAffordances()
         )
     }
 
@@ -705,7 +650,6 @@ class PersistentChatLayoutPreferenceRepository(
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
-            threadRowAffordances = store.readThreadRowAffordances()
         )
     }
 
@@ -750,7 +694,6 @@ class PersistentChatLayoutPreferenceRepository(
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
-            threadRowAffordances = store.readThreadRowAffordances()
         )
     }
 
@@ -775,7 +718,6 @@ class PersistentChatLayoutPreferenceRepository(
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
-            threadRowAffordances = store.readThreadRowAffordances()
         )
     }
 
@@ -800,7 +742,6 @@ class PersistentChatLayoutPreferenceRepository(
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
-            threadRowAffordances = store.readThreadRowAffordances()
         )
     }
 
@@ -855,7 +796,6 @@ class PersistentChatLayoutPreferenceRepository(
             homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = mode,
             translationTargetLanguage = store.readTranslationTargetLanguage(),
-            threadRowAffordances = store.readThreadRowAffordances()
         )
     }
 
@@ -864,40 +804,6 @@ class PersistentChatLayoutPreferenceRepository(
         return getChatLayoutPreference()
     }
 
-    override suspend fun setThreadRowAffordance(
-        affordance: ThreadRowAffordancePreference,
-        enabled: Boolean
-    ): ChatLayoutPreferenceSnapshot {
-        val current = store.readThreadRowAffordances()
-        val next =
-            if (enabled) {
-                current + affordance
-            } else {
-                current - affordance
-            }.filterTo(mutableSetOf()) { it in ThreadRowAffordancePreference.Supported }
-        store.saveThreadRowAffordances(next)
-        return ChatLayoutPreferenceSnapshot(
-            myMessageAlignment = store.readMyMessageAlignment(),
-            largeScreenNavigation = store.readLargeScreenNavigation(),
-            compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
-            longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
-            singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
-            inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
-            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
-            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
-            foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
-            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
-            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
-            composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
-            multiShellHostEnabled = store.readMultiShellHostEnabled(),
-            serverDrawerEnabled = store.readServerDrawerEnabled(),
-            newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
-            homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
-            translationMode = store.readTranslationMode(),
-            translationTargetLanguage = store.readTranslationTargetLanguage(),
-            threadRowAffordances = next
-        )
-    }
 }
 
 data class RecompositionProfilerPreferenceSnapshot(

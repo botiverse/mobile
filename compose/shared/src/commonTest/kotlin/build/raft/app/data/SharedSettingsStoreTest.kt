@@ -863,7 +863,6 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetServerDrawerEnabled(true))
         store.accept(SharedSettingsIntent.SetNewDesignSettingsEnabled(true))
         store.accept(SharedSettingsIntent.SetHomeServerAvatarEnabled(true))
-        store.accept(SharedSettingsIntent.SetThreadRowAffordance("reactions", false))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals(true, notificationRepository.enabled)
@@ -884,7 +883,6 @@ class SharedSettingsStoreTest {
         assertEquals(true, chatLayoutRepository.serverDrawerEnabled)
         assertEquals(true, chatLayoutRepository.newDesignSettingsEnabled)
         assertEquals(true, chatLayoutRepository.homeServerAvatarEnabled)
-        assertEquals(emptySet(), chatLayoutRepository.threadRowAffordances)
         assertEquals("Enabled", mobile.pushNotifications.statusLabel)
         assertEquals("Simplified Chinese / 简体中文", mobile.localePreference.statusLabel)
         assertEquals(
@@ -921,9 +919,6 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.newDesignSettings.statusLabel)
         assertEquals(true, mobile.homeServerAvatar.enabled)
         assertEquals("Enabled", mobile.homeServerAvatar.statusLabel)
-        assertEquals(emptySet(), mobile.threadRowAffordances.selectedKeys)
-        assertEquals("Off", mobile.threadRowAffordances.statusLabel)
-        assertEquals(listOf("reactions"), mobile.threadRowAffordances.options.map { it.key })
         assertNull(store.state.value.actionState?.errorCode)
 
         store.accept(SharedSettingsIntent.SetLocale("system"))
@@ -4017,9 +4012,7 @@ class SharedSettingsStoreTest {
         var newDesignSettingsEnabled: Boolean = false,
         var homeServerAvatarEnabled: Boolean = false,
         var translationMode: TranslationModePreference = TranslationModePreference.Automatic,
-        var translationTargetLanguage: String = TranslationTargetLanguages.Browser,
-        var threadRowAffordances: Set<ThreadRowAffordancePreference> =
-            ThreadRowAffordancePreference.Default
+        var translationTargetLanguage: String = TranslationTargetLanguages.Browser
     ) : ChatLayoutPreferenceRepository {
         override suspend fun getChatLayoutPreference(): ChatLayoutPreferenceSnapshot =
             ChatLayoutPreferenceSnapshot(
@@ -4040,7 +4033,6 @@ class SharedSettingsStoreTest {
                 homeServerAvatarEnabled = homeServerAvatarEnabled,
                 translationMode = translationMode,
                 translationTargetLanguage = translationTargetLanguage,
-                threadRowAffordances = threadRowAffordances
             )
 
         override suspend fun selectMyMessageAlignment(
@@ -4055,7 +4047,6 @@ class SharedSettingsStoreTest {
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
-                threadRowAffordances = threadRowAffordances
             )
         }
 
@@ -4071,7 +4062,6 @@ class SharedSettingsStoreTest {
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
-                threadRowAffordances = threadRowAffordances
             )
 
         override suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot {
@@ -4084,7 +4074,6 @@ class SharedSettingsStoreTest {
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
-                threadRowAffordances = threadRowAffordances
             )
         }
 
@@ -4118,7 +4107,6 @@ class SharedSettingsStoreTest {
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
-                threadRowAffordances = threadRowAffordances
             )
         }
 
@@ -4132,7 +4120,6 @@ class SharedSettingsStoreTest {
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
-                threadRowAffordances = threadRowAffordances
             )
         }
 
@@ -4146,7 +4133,6 @@ class SharedSettingsStoreTest {
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
-                threadRowAffordances = threadRowAffordances
             )
         }
 
@@ -4165,7 +4151,6 @@ class SharedSettingsStoreTest {
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
-                threadRowAffordances = threadRowAffordances
             )
         }
 
@@ -4199,7 +4184,6 @@ class SharedSettingsStoreTest {
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
-                threadRowAffordances = threadRowAffordances
             )
         }
 
@@ -4208,27 +4192,6 @@ class SharedSettingsStoreTest {
             return getChatLayoutPreference()
         }
 
-        override suspend fun setThreadRowAffordance(
-            affordance: ThreadRowAffordancePreference,
-            enabled: Boolean
-        ): ChatLayoutPreferenceSnapshot {
-            threadRowAffordances =
-                if (enabled) {
-                    threadRowAffordances + affordance
-                } else {
-                    threadRowAffordances - affordance
-                }
-            return ChatLayoutPreferenceSnapshot(
-                myMessageAlignment = alignment,
-                compactConsecutiveMessages = compactConsecutiveMessages,
-                imageAnnotationEnabled = imageAnnotationEnabled,
-                foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
-                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-                composerSendKeyEnabled = composerSendKeyEnabled,
-                translationMode = translationMode,
-                threadRowAffordances = threadRowAffordances
-            )
-        }
     }
 
     private class FakeRecompositionProfilerPreferenceRepository(

@@ -1581,14 +1581,6 @@
     <string name="settings_mobile_composer_key_new_line">改行</string>
     <string name="settings_mobile_composer_key_enabled">キーボードアクションでメッセージを送信</string>
     <string name="settings_mobile_composer_key_disabled">キーボードアクションで改行を挿入</string>
-    <string name="settings_mobile_message_row_actions">メッセージ行のアクション</string>
-    <string name="settings_mobile_message_row_actions_detail">会話で表示するメッセージ行のアクションを選択します。</string>
-    <string name="settings_mobile_reactions">リアクション</string>
-    <string name="settings_mobile_saved">保存済み</string>
-    <string name="settings_mobile_reactions_enabled">メッセージメニューにリアクション操作を表示</string>
-    <string name="settings_mobile_reactions_disabled">リアクション操作を非表示</string>
-    <string name="settings_mobile_saved_enabled">メッセージ行に保存済みバッジを表示</string>
-    <string name="settings_mobile_saved_disabled">メッセージ行に保存済み状態を表示しない</string>
     <string name="settings_mobile_image_annotation">画像注釈のサポート</string>
     <string name="settings_mobile_image_annotation_detail">コンポーザーの画像プレビューと注釈転送ページを有効にします。オフの場合、選択した画像は直接アップロードされます。</string>
     <string name="settings_mobile_image_annotation_enabled">コンポーザーの画像は注釈転送ページを開く</string>
