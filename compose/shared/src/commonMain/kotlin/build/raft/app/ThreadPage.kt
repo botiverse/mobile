@@ -27784,31 +27784,20 @@ private fun ThreadShareSelectionActionButton(
     backgroundColor: Color = SlockColor.SurfaceWhite,
     disabledBackgroundColor: Color = SlockColor.SurfaceCream
 ) {
-    Button(
+    SlockBrutalActionButton(
+        label = label,
         onClick = onClick,
         enabled = enabled,
-        pressFeedback = false,
-        modifier =
-            Modifier
-                .height(28.dp)
-                .background(if (enabled) backgroundColor else disabledBackgroundColor)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 8.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            SlockLucideIcon(icon, modifier = Modifier.size(13.dp), color = "#FF111111")
-            Text(
-                text = label,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
+        backgroundColor = backgroundColor,
+        disabledBackgroundColor = disabledBackgroundColor,
+        minWidth = 0.dp,
+        minHeight = 28.dp,
+        leadingIcon = icon,
+        leadingIconSize = 14.dp,
+        contentSpacing = 4.dp,
+        shadowOffset = SlockShadow.BrutalSmall,
+        textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp)
+    )
 }
 
 @Composable
