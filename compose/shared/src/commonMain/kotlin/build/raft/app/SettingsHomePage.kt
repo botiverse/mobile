@@ -3403,6 +3403,24 @@ private fun SlockAppShellReadyContent(
         is SharedAuthGateState.Ready -> Unit
     }
 
+    val setupAdmissionHost =
+        rememberServerSetupAdmissionHost(
+            session = readySession ?: return,
+            serverId = readyServerId?.trim()?.takeIf(String::isNotBlank) ?: return,
+            environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
+            webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
+            networkClient = appShellNetworkClient,
+            shellAuthStore = shellAuthStore,
+            authEvents = sharedStores.authStore,
+            bridge = bridge,
+            openExternalUrl = linkNavigator::open,
+            refreshSignal = pageVisibleTick,
+        )
+    if (setupAdmissionHost.state !is ServerSetupAdmissionState.Admitted) {
+        setupAdmissionHost.content()
+        return
+    }
+
     LaunchedEffect(readyServerId, authGateState) {
         val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         when (

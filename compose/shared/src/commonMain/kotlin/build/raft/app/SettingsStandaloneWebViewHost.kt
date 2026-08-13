@@ -148,6 +148,7 @@ private fun SettingsWebViewScreen() {
         }
     val computerSpec = remember(computerTarget) { computerTarget?.let(::settingsComputerWebViewSpec) }
     when (surface) {
+        SettingsWebViewSurface.Onboarding -> SettingsWebViewInvalidRoute(pager)
         SettingsWebViewSurface.Computers ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
@@ -509,6 +510,7 @@ internal fun SettingsWebViewContent(
     url: String,
     modifier: Modifier = Modifier,
     allowedNavigationSchemes: Set<String> = setOf("http", "https"),
+    allowNavigation: Boolean = true,
     bottomContentPadding: Dp = 0.dp,
     injectedJavaScript: String = "",
     controller: SlockWebViewController = rememberSlockWebViewController(),
@@ -517,6 +519,7 @@ internal fun SettingsWebViewContent(
     onLoadSuccess: () -> Unit = {},
     onUrlChange: (String) -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
+    onNavigationBlocked: (String) -> Unit = {},
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
     onDocumentReadyChange: (Boolean) -> Unit = {},
 ) {
@@ -574,7 +577,7 @@ internal fun SettingsWebViewContent(
                             .background(SlockColor.SurfaceCream)
                             .padding(bottom = bottomContentPadding)
                             .alpha(if (contentVisible) 1f else 0f),
-                    allowNavigation = true,
+                    allowNavigation = allowNavigation,
                     allowedNavigationSchemes = allowedNavigationSchemes,
                     domStorageEnabled = true,
                     cacheEnabled = true,
@@ -597,6 +600,7 @@ internal fun SettingsWebViewContent(
                         loadError = reason
                         onLoadFailure(reason)
                     },
+                    onNavigationBlocked = onNavigationBlocked,
                     onNavigationStateChange = { state ->
                         if (navigationAuthority.accepts(navigationOwner)) {
                             navigationState = state
@@ -630,7 +634,7 @@ internal fun SettingsWebViewLoadingCover() {
 }
 
 @Composable
-private fun SettingsWebViewErrorContent(
+internal fun SettingsWebViewErrorContent(
     actionLabel: String,
     actionIcon: SlockLucideIconName,
     onAction: () -> Unit,
