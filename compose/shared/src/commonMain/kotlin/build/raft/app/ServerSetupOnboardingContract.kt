@@ -57,7 +57,56 @@ internal fun serverSetupOnboardingUrl(
     encode: (String) -> String,
 ): String? {
     if (webBaseUrl.isBlank() || serverSlug.isBlank() || !generation.isValidServerSetupGeneration()) return null
-    return "${webBaseUrl.trimEnd('/')}/s/${encode(serverSlug)}/onboarding?generation=${encode(generation)}"
+    val origin = serverSetupCanonicalWebOrigin(webBaseUrl) ?: return null
+    return "$origin/s/${encode(serverSlug)}/onboarding?generation=${encode(generation)}"
+}
+
+/**
+ * Environment `webUrl` may point at a tenant route (for example `/s/botiverse/`). The onboarding
+ * route is rooted at the same trusted HTTP(S) origin, never appended to that candidate path.
+ */
+internal fun serverSetupCanonicalWebOrigin(webBaseUrl: String): String? {
+    val raw = webBaseUrl.trim()
+    if (raw.isEmpty() || raw.any(Char::isWhitespace) || '\\' in raw) return null
+    val schemeSeparator = raw.indexOf("://")
+    if (schemeSeparator <= 0) return null
+    val scheme = raw.substring(0, schemeSeparator).lowercase()
+    if (scheme != "http" && scheme != "https") return null
+    val remainder = raw.substring(schemeSeparator + 3)
+    val authority = remainder.substringBefore('/').substringBefore('?').substringBefore('#')
+    if (!serverSetupValidWebAuthority(authority)) return null
+    return "$scheme://$authority"
+}
+
+private fun serverSetupValidWebAuthority(authority: String): Boolean {
+    if (authority.isBlank() || '@' in authority) return false
+    if (authority.startsWith('[')) {
+        val closing = authority.indexOf(']')
+        if (closing <= 1) return false
+        val suffix = authority.substring(closing + 1)
+        return suffix.isEmpty() || serverSetupValidPortSuffix(suffix)
+    }
+    if (authority.count { it == ':' } > 1) return false
+    val host = authority.substringBefore(':')
+    val suffix = authority.removePrefix(host)
+    if (!serverSetupValidWebHost(host)) return false
+    return suffix.isEmpty() || serverSetupValidPortSuffix(suffix)
+}
+
+private fun serverSetupValidWebHost(host: String): Boolean {
+    if (host.isBlank() || host.length > 253 || host.any { !it.isLetterOrDigit() && it !in ".-" }) return false
+    return host.split('.').all { label ->
+        label.isNotEmpty() &&
+            label.length <= 63 &&
+            label.first().isLetterOrDigit() &&
+            label.last().isLetterOrDigit()
+    }
+}
+
+private fun serverSetupValidPortSuffix(value: String): Boolean {
+    if (!value.startsWith(':')) return false
+    val port = value.drop(1)
+    return port.isNotEmpty() && port.all(Char::isDigit) && port.toIntOrNull() in 1..65535
 }
 
 /**

@@ -9,7 +9,10 @@ class ServerSetupAdmissionProductionWiringTest {
     fun appShellReadyConsumerIsGatedByAuthoritativeRepositoryHost() {
         val source = repositoryFile("compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt").readText()
         assertTrue(source.contains("rememberServerSetupAdmissionHost("))
-        assertTrue(source.contains("setupAdmissionHost.state !is ServerSetupAdmissionState.Admitted"))
+        assertTrue(source.contains("setupAdmissionAllowsHome &&"))
+        assertTrue(source.contains("readyServerId, setupAdmissionAllowsHome"))
+        assertTrue(source.contains("readyServerId != null && setupAdmissionAllowsHome"))
+        assertTrue(source.contains("setupAdmissionHost != null && !setupAdmissionHost.allowsHome"))
         assertTrue(source.contains("setupAdmissionHost.content()"))
     }
 

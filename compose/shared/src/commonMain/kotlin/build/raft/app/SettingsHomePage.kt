@@ -2694,6 +2694,25 @@ private fun SlockAppShellReadyContent(
         remember(appShellServerMembersStore, readyServerId) {
             slockScopedAgentStatusResolver(appShellServerMembersStore, readyServerId)
         }
+    val setupAdmissionHost =
+        if (readySession != null && !readyServerId.isNullOrBlank()) {
+            rememberServerSetupAdmissionHost(
+                session = readySession,
+                serverId = readyServerId,
+                environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
+                webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
+                networkClient = appShellNetworkClient,
+                shellAuthStore = shellAuthStore,
+                authEvents = sharedStores.authStore,
+                featureFlags = sharedStores.serverFeatureFlags,
+                bridge = bridge,
+                openExternalUrl = linkNavigator::open,
+                refreshSignal = pageVisibleTick,
+            )
+        } else {
+            null
+        }
+    val setupAdmissionAllowsHome = setupAdmissionHost?.allowsHome == true
     val adaptiveRoomLeaseRegistry =
         remember(sharedStores, storeScope) { sharedStores.realtimeRoomLeaseRegistry(storeScope) }
     fun releaseAdaptiveHandoffLease(expectedGeneration: Long? = null) {
@@ -3000,6 +3019,7 @@ private fun SlockAppShellReadyContent(
             selectedTab == "home" &&
             selectedHomeDestination == null
     val parentShouldStartHome =
+        setupAdmissionAllowsHome &&
         appShellParentShouldStartHome(
             pageVisible = pageVisible,
             selectedTab = selectedTab,
@@ -3022,12 +3042,16 @@ private fun SlockAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Start))
         }
     }
-    LaunchedEffect(homeSurfaceVisible, readyServerId) {
+    LaunchedEffect(homeSurfaceVisible, readyServerId, setupAdmissionAllowsHome) {
         val delayMs = homeSurfaceVisibilityDispatchDelayMs(homeSurfaceVisible)
         if (delayMs > 0L) {
             delay(delayMs)
         }
-        homeShellStore.dispatch(SharedHomeShellIntent.SetSurfaceVisible(homeSurfaceVisible && readyServerId != null))
+        homeShellStore.dispatch(
+            SharedHomeShellIntent.SetSurfaceVisible(
+                homeSurfaceVisible && readyServerId != null && setupAdmissionAllowsHome
+            )
+        )
     }
     LaunchedEffect(readyServerId, readySession?.accessToken) {
         if (readyServerId.isNullOrBlank()) return@LaunchedEffect
@@ -3403,20 +3427,7 @@ private fun SlockAppShellReadyContent(
         is SharedAuthGateState.Ready -> Unit
     }
 
-    val setupAdmissionHost =
-        rememberServerSetupAdmissionHost(
-            session = readySession ?: return,
-            serverId = readyServerId?.trim()?.takeIf(String::isNotBlank) ?: return,
-            environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
-            webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
-            networkClient = appShellNetworkClient,
-            shellAuthStore = shellAuthStore,
-            authEvents = sharedStores.authStore,
-            bridge = bridge,
-            openExternalUrl = linkNavigator::open,
-            refreshSignal = pageVisibleTick,
-        )
-    if (setupAdmissionHost.state !is ServerSetupAdmissionState.Admitted) {
+    if (setupAdmissionHost != null && !setupAdmissionHost.allowsHome) {
         setupAdmissionHost.content()
         return
     }

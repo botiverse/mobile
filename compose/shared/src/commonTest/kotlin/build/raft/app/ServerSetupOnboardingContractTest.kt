@@ -54,6 +54,36 @@ class ServerSetupOnboardingContractTest {
     }
 
     @Test
+    fun tenantPathQueryAndFragmentAreDiscardedBeforeBuildingDedicatedRoute() {
+        val url = serverSetupOnboardingUrl(
+            "https://raft-app-staging.botiverse.dev/s/botiverse/?old=1#fragment",
+            "ysbbeiqoqjbde",
+            "native:7",
+        ) { it.replace(":", "%3A") }
+
+        assertEquals(
+            "https://raft-app-staging.botiverse.dev/s/ysbbeiqoqjbde/onboarding?generation=native%3A7",
+            url,
+        )
+    }
+
+    @Test
+    fun customHttpOriginsAreSupportedButMalformedOrUnsafeBasesFailClosed() {
+        assertEquals("http://localhost:3000", serverSetupCanonicalWebOrigin("http://localhost:3000/dev/path"))
+        assertEquals("http://[::1]:5173", serverSetupCanonicalWebOrigin("http://[::1]:5173/s/dev"))
+        listOf(
+            "file:///tmp/raft",
+            "https://user@example.com/s/raft",
+            "https://example.com:bad/s/raft",
+            "https://example.com:70000/s/raft",
+            "https://bad_host.example/s/raft",
+            "https://-bad.example/s/raft",
+            "https://example.com\\evil/s/raft",
+            "not a url",
+        ).forEach { assertNull(serverSetupCanonicalWebOrigin(it), it) }
+    }
+
+    @Test
     fun syntheticBridgeNavigationDecodesOnlyExactKeysAndPayload() {
         val payload = """{"contractVersion":"raft-onboarding-v1","serverId":"server-1","serverSlug":"raft","generation":"gen:1"}"""
         val encoded = payload.replace(":", "%3A").replace("{", "%7B").replace("}", "%7D").replace("\"", "%22")

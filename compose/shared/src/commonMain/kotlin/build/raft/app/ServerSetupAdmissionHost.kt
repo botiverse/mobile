@@ -13,6 +13,10 @@ import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.SlockServerSetupProjectionRepository
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.SharedServerFeatureFlags
+import build.raft.app.data.ServerFeatureFlagSnapshot
+import build.raft.app.data.WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY
+import build.raft.app.model.ServerId
 import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -22,10 +26,30 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.atomicfu.atomic
 
 internal data class ServerSetupAdmissionHost(
-    val state: ServerSetupAdmissionState,
+    val featureDecision: ServerSetupFeatureDecision,
+    val state: ServerSetupAdmissionState?,
     val retry: () -> Unit,
     val content: @Composable () -> Unit,
-)
+) {
+    val allowsHome: Boolean
+        get() = serverSetupAllowsHome(featureDecision, state)
+}
+
+internal enum class ServerSetupFeatureDecision { Checking, Bypassed, Enabled }
+
+internal fun serverSetupFeatureDecision(snapshot: ServerFeatureFlagSnapshot): ServerSetupFeatureDecision =
+    when {
+        !snapshot.resolved -> ServerSetupFeatureDecision.Checking
+        snapshot.isEnabled(WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY) -> ServerSetupFeatureDecision.Enabled
+        else -> ServerSetupFeatureDecision.Bypassed
+    }
+
+internal fun serverSetupAllowsHome(
+    featureDecision: ServerSetupFeatureDecision,
+    state: ServerSetupAdmissionState?,
+): Boolean =
+    featureDecision == ServerSetupFeatureDecision.Bypassed ||
+        (featureDecision == ServerSetupFeatureDecision.Enabled && state is ServerSetupAdmissionState.Admitted)
 
 @Composable
 internal fun rememberServerSetupAdmissionHost(
@@ -36,6 +60,7 @@ internal fun rememberServerSetupAdmissionHost(
     networkClient: SlockNetworkClient,
     shellAuthStore: SlockAuthSessionStore,
     authEvents: SlockAuthSessionEventSource,
+    featureFlags: SharedServerFeatureFlags,
     bridge: BridgeModule,
     openExternalUrl: (String) -> Unit,
     refreshSignal: Int,
@@ -56,79 +81,109 @@ internal fun rememberServerSetupAdmissionHost(
         SlockServerSetupProjectionRepository(NetworkSlockServerSetupProjectionApi(networkClient))
     }
     val controllerState = remember(repository) { ServerSetupAdmissionController(repository) }
+    var featureDecision by remember(identity) {
+        mutableStateOf(serverSetupFeatureDecision(featureFlags.snapshotFor(ServerId(serverId))))
+    }
     var refreshEpoch by remember(identity) { mutableStateOf(0) }
-    var state by remember(identity) { mutableStateOf<ServerSetupAdmissionState>(controllerState.begin(identity)) }
-    LaunchedEffect(repository, identity, refreshEpoch, refreshSignal) {
+    var state by remember(identity) { mutableStateOf<ServerSetupAdmissionState?>(null) }
+    LaunchedEffect(featureFlags, identity) {
+        if (featureDecision == ServerSetupFeatureDecision.Checking) {
+            featureDecision =
+                runCatching { featureFlags.prefetch(ServerId(serverId)) }
+                    .fold(
+                        onSuccess = ::serverSetupFeatureDecision,
+                        onFailure = { ServerSetupFeatureDecision.Bypassed },
+                    )
+            if (featureDecision == ServerSetupFeatureDecision.Checking) {
+                featureDecision = ServerSetupFeatureDecision.Bypassed
+            }
+        }
+    }
+    LaunchedEffect(repository, identity, featureDecision, refreshEpoch, refreshSignal) {
+        if (featureDecision != ServerSetupFeatureDecision.Enabled) {
+            state = null
+            return@LaunchedEffect
+        }
         state = controllerState.begin(identity)
         controllerState.load(identity)?.let { state = it }
     }
 
     val retry = { refreshEpoch += 1 }
     return ServerSetupAdmissionHost(
+        featureDecision = featureDecision,
         state = state,
         retry = retry,
         content = {
-            when (state) {
-                is ServerSetupAdmissionState.Loading -> SettingsWebViewLoadingCover()
-                is ServerSetupAdmissionState.Failed -> SettingsWebViewErrorContent(
-                    actionLabel = stringResource(MR.strings.common_retry),
-                    actionIcon = SlockLucideIconName.RefreshCw,
-                    onAction = retry,
-                )
-                is ServerSetupAdmissionState.Admitted -> Unit
-                is ServerSetupAdmissionState.Blocked -> {
-                    SlockBackHandler(enabled = true, label = "server_setup_onboarding") { }
-                    val binding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
-                    val url = remember(webBaseUrl, serverSlug, generation) {
-                        serverSetupOnboardingUrl(webBaseUrl, serverSlug, generation, bridge::urlEncode)
-                    }
-                    if (
-                        binding == null ||
-                        binding.accountId != accountId ||
-                        binding.serverId != serverId ||
-                        url == null
-                    ) {
-                        SettingsWebViewLoadingCover()
-                    } else {
-                        var documentReady by remember(identity) { mutableStateOf(false) }
-                        val injectedJavaScript = remember(session, binding) {
-                            """
-                                (function() {
-                                  try {
-                                    ${settingsWebViewAuthStorageJavaScript(session, binding)};
-                                    ${serverSetupHostBridgeJavaScript()}
-                                  } catch (_) {}
-                                })();
-                            """.trimIndent()
+            when {
+                featureDecision == ServerSetupFeatureDecision.Checking -> SettingsWebViewLoadingCover()
+                featureDecision == ServerSetupFeatureDecision.Bypassed -> Unit
+                else ->
+                    when (state) {
+                        null -> SettingsWebViewLoadingCover()
+                        is ServerSetupAdmissionState.Loading -> SettingsWebViewLoadingCover()
+                        is ServerSetupAdmissionState.Failed -> SettingsWebViewErrorContent(
+                            actionLabel = stringResource(MR.strings.common_retry),
+                            actionIcon = SlockLucideIconName.RefreshCw,
+                            onAction = retry,
+                        )
+                        is ServerSetupAdmissionState.Admitted -> Unit
+                        is ServerSetupAdmissionState.Blocked -> {
+                            SlockBackHandler(enabled = true, label = "server_setup_onboarding") { }
+                            val binding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
+                            val url = remember(webBaseUrl, serverSlug, generation) {
+                                serverSetupOnboardingUrl(webBaseUrl, serverSlug, generation, bridge::urlEncode)
+                            }
+                            if (
+                                binding == null ||
+                                binding.accountId != accountId ||
+                                binding.serverId != serverId ||
+                                url == null
+                            ) {
+                                SettingsWebViewLoadingCover()
+                            } else {
+                                var documentReady by remember(identity) { mutableStateOf(false) }
+                                val injectedJavaScript = remember(session, binding) {
+                                    """
+                                        (function() {
+                                          try {
+                                            ${settingsWebViewAuthStorageJavaScript(session, binding)};
+                                            ${serverSetupHostBridgeJavaScript()}
+                                          } catch (_) {}
+                                        })();
+                                    """.trimIndent()
+                                }
+                                Box(Modifier.fillMaxSize().background(SlockColor.SurfaceCream)) {
+                                    SettingsWebViewContent(
+                                        url = url,
+                                        allowNavigation = false,
+                                        allowedNavigationSchemes = setOf("http", "https"),
+                                        injectedJavaScript = injectedJavaScript,
+                                        controller = controller,
+                                        generationKey = generation,
+                                        onNavigationBlocked = { blockedUrl ->
+                                            val wake = decodeServerSetupBridgeNavigation(blockedUrl, bridge::urlDecode)
+                                            if (
+                                                wake?.matches(identity, serverSlug) == true &&
+                                                controllerState.acceptsWake(identity)
+                                            ) {
+                                                refreshEpoch += 1
+                                            } else if (!blockedUrl.startsWith("$SERVER_SETUP_BRIDGE_SCHEME:")) {
+                                                openExternalUrl(blockedUrl)
+                                            }
+                                        },
+                                        onDocumentReadyChange = { documentReady = it },
+                                    )
+                                    SettingsWebViewAccessTokenSyncEffect(
+                                        snapshot = authSnapshot,
+                                        documentReady = documentReady,
+                                        controller = controller,
+                                        binding = binding,
+                                        surface = SettingsWebViewSurface.Onboarding,
+                                    )
+                                }
+                            }
                         }
-                        Box(Modifier.fillMaxSize().background(SlockColor.SurfaceCream)) {
-                            SettingsWebViewContent(
-                                url = url,
-                                allowNavigation = false,
-                                allowedNavigationSchemes = setOf("http", "https"),
-                                injectedJavaScript = injectedJavaScript,
-                                controller = controller,
-                                generationKey = generation,
-                                onNavigationBlocked = { blockedUrl ->
-                                    val wake = decodeServerSetupBridgeNavigation(blockedUrl, bridge::urlDecode)
-                                    if (wake?.matches(identity, serverSlug) == true && controllerState.acceptsWake(identity)) {
-                                        refreshEpoch += 1
-                                    } else if (!blockedUrl.startsWith("$SERVER_SETUP_BRIDGE_SCHEME:")) {
-                                        openExternalUrl(blockedUrl)
-                                    }
-                                },
-                                onDocumentReadyChange = { documentReady = it },
-                            )
-                            SettingsWebViewAccessTokenSyncEffect(
-                                snapshot = authSnapshot,
-                                documentReady = documentReady,
-                                controller = controller,
-                                binding = binding,
-                                surface = SettingsWebViewSurface.Onboarding,
-                            )
-                        }
                     }
-                }
             }
         },
     )
