@@ -43,9 +43,11 @@ internal sealed interface ServerSetupAdmissionState {
  */
 internal class ServerSetupAdmissionReducer {
     private var activeIdentity: ServerSetupAdmissionIdentity? = null
+    private var switchClaimed = false
 
     fun begin(identity: ServerSetupAdmissionIdentity): ServerSetupAdmissionState {
         activeIdentity = identity.takeIf(ServerSetupAdmissionIdentity::valid)
+        switchClaimed = false
         return ServerSetupAdmissionState.Loading(identity)
     }
 
@@ -80,5 +82,11 @@ internal class ServerSetupAdmissionReducer {
     }
 
     fun acceptsWake(identity: ServerSetupAdmissionIdentity): Boolean =
-        identity.valid && activeIdentity == identity
+        identity.valid && activeIdentity == identity && !switchClaimed
+
+    fun claimSwitch(identity: ServerSetupAdmissionIdentity): Boolean {
+        if (!acceptsWake(identity)) return false
+        switchClaimed = true
+        return true
+    }
 }

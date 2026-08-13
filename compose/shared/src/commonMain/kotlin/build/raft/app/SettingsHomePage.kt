@@ -2705,6 +2705,7 @@ private fun SlockAppShellReadyContent(
                 shellAuthStore = shellAuthStore,
                 authEvents = sharedStores.authStore,
                 featureFlags = sharedStores.serverFeatureFlags,
+                authDataSource = authDataSource,
                 bridge = bridge,
                 openExternalUrl = linkNavigator::open,
                 refreshSignal = pageVisibleTick,

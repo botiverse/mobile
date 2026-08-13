@@ -1,12 +1,15 @@
 package build.raft.app
 
+import build.raft.app.data.StoredAuthSession
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 internal const val SERVER_SETUP_HOST_VERSION = "raft-host-v1"
 internal const val SERVER_SETUP_COMPLETION_KIND = "onboarding:completed"
+internal const val SERVER_SETUP_SERVER_SWITCH_KIND = "onboarding:server-switch-request"
 internal const val SERVER_SETUP_CONTRACT_VERSION = "raft-onboarding-v1"
 internal const val SERVER_SETUP_BRIDGE_SCHEME = "raft-onboarding-wake"
 
@@ -15,6 +18,17 @@ internal data class ServerSetupCompletionWake(
     val serverSlug: String,
     val generation: String,
 )
+
+internal data class ServerSetupSwitchIntent(
+    val sourceServerId: String,
+    val targetServerId: String,
+    val generation: String,
+)
+
+internal sealed interface ServerSetupHostEvent {
+    data class StateMayHaveChanged(val wake: ServerSetupCompletionWake) : ServerSetupHostEvent
+    data class SwitchServer(val intent: ServerSetupSwitchIntent) : ServerSetupHostEvent
+}
 
 internal fun decodeServerSetupCompletionWake(kind: String, payload: Any?): ServerSetupCompletionWake? {
     if (kind != SERVER_SETUP_COMPLETION_KIND) return null
@@ -38,6 +52,14 @@ private data class ServerSetupCompletionWakeWire(
     val serverId: String,
     val serverSlug: String,
     val generation: String,
+)
+
+@Serializable
+private data class ServerSetupSwitchIntentWire(
+    val contractVersion: String,
+    val generation: String,
+    val sourceServerId: String,
+    val targetServerId: String,
 )
 
 private val serverSetupWakeJson = Json { ignoreUnknownKeys = false }
@@ -131,7 +153,7 @@ private fun serverSetupValidPortSuffix(value: String): Boolean {
  * The synthetic navigation is rejected by the WebView allowlist and returned through the existing
  * navigationBlocked event on Android, iOS, and OHOS.
  */
-internal fun serverSetupHostBridgeJavaScript(): String =
+internal fun serverSetupHostBridgeJavaScript(identity: ServerSetupAdmissionIdentity): String =
     """
         (function() {
           if (window.top !== window) return;
@@ -141,6 +163,11 @@ internal fun serverSetupHostBridgeJavaScript(): String =
             writable: false,
             value: Object.freeze({
               version: "$SERVER_SETUP_HOST_VERSION",
+              onboarding: Object.freeze({
+                contractVersion: "$SERVER_SETUP_CONTRACT_VERSION",
+                generation: ${serverSetupWakeJson.encodeToString(identity.generation)},
+                sourceServerId: ${serverSetupWakeJson.encodeToString(identity.serverId)}
+              }),
               emit: function(kind, payload) {
                 if (arguments.length !== 2 || typeof kind !== "string" || !payload || typeof payload !== "object" || Array.isArray(payload)) return;
                 try {
@@ -155,7 +182,13 @@ internal fun serverSetupHostBridgeJavaScript(): String =
 internal fun decodeServerSetupBridgeNavigation(
     url: String,
     decode: (String) -> String,
-): ServerSetupCompletionWake? {
+): ServerSetupCompletionWake? =
+    (decodeServerSetupHostBridgeNavigation(url, decode) as? ServerSetupHostEvent.StateMayHaveChanged)?.wake
+
+internal fun decodeServerSetupHostBridgeNavigation(
+    url: String,
+    decode: (String) -> String,
+): ServerSetupHostEvent? {
     val prefix = "$SERVER_SETUP_BRIDGE_SCHEME://emit?"
     if (!url.startsWith(prefix)) return null
     val parameters = url.removePrefix(prefix).split('&').mapNotNull { part ->
@@ -164,5 +197,53 @@ internal fun decodeServerSetupBridgeNavigation(
     }.toMap()
     if (parameters.keys != setOf("kind", "payload")) return null
     val payload = runCatching { JSONObject(parameters.getValue("payload")) }.getOrNull() ?: return null
-    return decodeServerSetupCompletionWake(parameters.getValue("kind"), payload)
+    return decodeServerSetupHostEvent(parameters.getValue("kind"), payload)
+}
+
+internal fun decodeServerSetupHostEvent(kind: String, payload: Any?): ServerSetupHostEvent? {
+    if (kind == SERVER_SETUP_COMPLETION_KIND) {
+        return decodeServerSetupCompletionWake(kind, payload)?.let(ServerSetupHostEvent::StateMayHaveChanged)
+    }
+    if (kind != SERVER_SETUP_SERVER_SWITCH_KIND) return null
+    val json = payload as? JSONObject ?: return null
+    val wire = try {
+        serverSetupWakeJson.decodeFromString(ServerSetupSwitchIntentWire.serializer(), json.toString())
+    } catch (_: SerializationException) {
+        return null
+    }
+    val sourceServerId = wire.sourceServerId.trim()
+    val targetServerId = wire.targetServerId.trim()
+    if (
+        wire.contractVersion != SERVER_SETUP_CONTRACT_VERSION ||
+        !wire.generation.isValidServerSetupGeneration() ||
+        sourceServerId.isBlank() || targetServerId.isBlank() ||
+        sourceServerId == targetServerId
+    ) return null
+    return ServerSetupHostEvent.SwitchServer(
+        ServerSetupSwitchIntent(sourceServerId, targetServerId, wire.generation)
+    )
+}
+
+internal fun ServerSetupSwitchIntent.matchesSource(identity: ServerSetupAdmissionIdentity): Boolean =
+    sourceServerId == identity.serverId && generation == identity.generation
+
+internal fun serverSetupSwitchTargetId(
+    session: StoredAuthSession,
+    identity: ServerSetupAdmissionIdentity,
+    intent: ServerSetupSwitchIntent,
+    activeOwner: Boolean,
+    controlledDocument: Boolean,
+): String? =
+    intent.targetServerId.takeIf {
+        activeOwner &&
+            controlledDocument &&
+            identity.accountId == session.user.id.trim() &&
+            intent.matchesSource(identity) &&
+            session.servers.any { server -> server.id == intent.targetServerId }
+    }
+
+internal fun serverSetupControlledDocumentMatchesOrigin(documentUrl: String, webBaseUrl: String): Boolean {
+    val expected = serverSetupCanonicalWebOrigin(webBaseUrl) ?: return false
+    val actual = serverSetupCanonicalWebOrigin(documentUrl) ?: return false
+    return actual == expected
 }

@@ -35,6 +35,16 @@ class ServerSetupAdmissionProductionWiringTest {
         assertTrue(!source.contains("bridge::urlEncode"))
     }
 
+    @Test
+    fun hostedSwitchUsesCanonicalShellSelectionAndOriginGenerationFences() {
+        val host = repositoryFile("compose/shared/src/commonMain/kotlin/build/raft/app/ServerSetupAdmissionHost.kt").readText()
+        assertTrue(host.contains("serverSetupControlledDocumentMatchesOrigin(currentDocumentUrl, webBaseUrl)"))
+        assertTrue(host.contains("serverSetupSwitchTargetId("))
+        assertTrue(host.contains("controllerState.claimSwitch(identity)"))
+        assertTrue(host.contains("authDataSource.selectServer(targetId)"))
+        assertTrue(host.contains("state = ServerSetupAdmissionState.Loading(identity)"))
+    }
+
     private fun repositoryFile(relativePath: String): File {
         val start = File(System.getProperty("user.dir") ?: ".")
         return generateSequence(start) { it.parentFile }

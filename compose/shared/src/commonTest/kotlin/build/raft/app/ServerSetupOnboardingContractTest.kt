@@ -1,11 +1,15 @@
 package build.raft.app
 
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.data.StoredAuthServer
+import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthUser
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertIs
 
 class ServerSetupOnboardingContractTest {
     private val identity = ServerSetupAdmissionIdentity("env", "account", "server-1", "gen:1")
@@ -97,6 +101,78 @@ class ServerSetupOnboardingContractTest {
         }
         assertEquals(ServerSetupCompletionWake("server-1", "raft", "gen:1"), wake)
         assertNull(decodeServerSetupBridgeNavigation("$url&extra=1") { it })
+    }
+
+    @Test
+    fun switchIntentRequiresExactSourceTargetGenerationAndSlug() {
+        val payload = JSONObject()
+            .put("contractVersion", SERVER_SETUP_CONTRACT_VERSION)
+            .put("generation", "gen:1")
+            .put("sourceServerId", "server-1")
+            .put("targetServerId", "server-2")
+        val event = assertIs<ServerSetupHostEvent.SwitchServer>(
+            decodeServerSetupHostEvent(SERVER_SETUP_SERVER_SWITCH_KIND, payload)
+        )
+
+        assertTrue(event.intent.matchesSource(identity))
+        assertFalse(event.intent.matchesSource(identity.copy(generation = "gen:2")))
+        assertNull(
+            decodeServerSetupHostEvent(
+                SERVER_SETUP_SERVER_SWITCH_KIND,
+                JSONObject(payload.toString()).put("sourceServerId", "server-2"),
+            )
+        )
+    }
+
+    @Test
+    fun hostContextIsImmutableAndControlledDocumentMustStayOnConfiguredOrigin() {
+        val script = serverSetupHostBridgeJavaScript(identity)
+        assertTrue(script.contains("onboarding: Object.freeze"))
+        assertTrue(script.contains("generation: \"gen:1\""))
+        assertTrue(script.contains("sourceServerId: \"server-1\""))
+        assertTrue(
+            serverSetupControlledDocumentMatchesOrigin(
+                "https://raft.test/s/other/onboarding",
+                "https://raft.test/s/tenant/",
+            )
+        )
+        assertFalse(
+            serverSetupControlledDocumentMatchesOrigin(
+                "https://evil.test/s/other/onboarding",
+                "https://raft.test/s/tenant/",
+            )
+        )
+    }
+
+    @Test
+    fun switchTargetRequiresActiveControlledCurrentAccountMembership() {
+        val session = StoredAuthSession(
+            user = StoredAuthUser(id = "account", email = "a@raft.test"),
+            accessToken = "access",
+            refreshToken = "refresh",
+            servers = listOf(
+                StoredAuthServer(id = "server-1", name = "One", slug = "one"),
+                StoredAuthServer(id = "server-2", name = "Two", slug = "two"),
+            ),
+            selectedServerId = "server-1",
+            selectedServerSlug = "one",
+        )
+        val current = ServerSetupSwitchIntent("server-1", "server-2", "gen:1")
+
+        assertEquals("server-2", serverSetupSwitchTargetId(session, identity, current, true, true))
+        assertNull(serverSetupSwitchTargetId(session, identity, current.copy(generation = "old"), true, true))
+        assertNull(serverSetupSwitchTargetId(session, identity, current.copy(targetServerId = "unknown"), true, true))
+        assertNull(serverSetupSwitchTargetId(session, identity, current, activeOwner = false, controlledDocument = true))
+        assertNull(serverSetupSwitchTargetId(session, identity, current, activeOwner = true, controlledDocument = false))
+        assertNull(
+            serverSetupSwitchTargetId(
+                session.copy(user = session.user.copy(id = "other")),
+                identity,
+                current,
+                true,
+                true,
+            )
+        )
     }
 
 }

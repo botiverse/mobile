@@ -15,4 +15,5 @@ internal class ServerSetupAdmissionController(
         reducer.resolve(identity, repository.load(ServerId(identity.serverId)))
 
     fun acceptsWake(identity: ServerSetupAdmissionIdentity): Boolean = reducer.acceptsWake(identity)
+    fun claimSwitch(identity: ServerSetupAdmissionIdentity): Boolean = reducer.claimSwitch(identity)
 }

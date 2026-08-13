@@ -5,11 +5,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.NetworkSlockServerSetupProjectionApi
 import build.raft.app.data.SlockAuthSessionEventSource
 import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.SharedAuthDataSource
+import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.SlockServerSetupProjectionRepository
 import build.raft.app.data.StoredAuthSession
@@ -25,6 +28,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 internal data class ServerSetupAdmissionHost(
     val featureDecision: ServerSetupFeatureDecision,
@@ -75,10 +79,12 @@ internal fun rememberServerSetupAdmissionHost(
     shellAuthStore: SlockAuthSessionStore,
     authEvents: SlockAuthSessionEventSource,
     featureFlags: SharedServerFeatureFlags,
+    authDataSource: SharedAuthDataSource,
     bridge: BridgeModule,
     openExternalUrl: (String) -> Unit,
     refreshSignal: Int,
 ): ServerSetupAdmissionHost {
+    val scope = rememberCoroutineScope()
     val controller = rememberSlockWebViewController()
     val authSnapshot = rememberSettingsWebViewAuthSnapshot(shellAuthStore, authEvents)
     val accountId = session.user.id.trim()
@@ -148,12 +154,13 @@ internal fun rememberServerSetupAdmissionHost(
                                 SettingsWebViewLoadingCover()
                             } else {
                                 var documentReady by remember(identity) { mutableStateOf(false) }
+                                var currentDocumentUrl by remember(identity) { mutableStateOf(url) }
                                 val injectedJavaScript = remember(session, binding) {
                                     """
                                         (function() {
                                           try {
                                             ${settingsWebViewAuthStorageJavaScript(session, binding)};
-                                            ${serverSetupHostBridgeJavaScript()}
+                                            ${serverSetupHostBridgeJavaScript(identity)}
                                           } catch (_) {}
                                         })();
                                     """.trimIndent()
@@ -167,16 +174,49 @@ internal fun rememberServerSetupAdmissionHost(
                                         controller = controller,
                                         generationKey = generation,
                                         onNavigationBlocked = { blockedUrl ->
-                                            val wake = decodeServerSetupBridgeNavigation(blockedUrl, bridge::urlDecode)
-                                            if (
-                                                wake?.matches(identity, serverSlug) == true &&
-                                                controllerState.acceptsWake(identity)
-                                            ) {
-                                                refreshEpoch += 1
-                                            } else if (!blockedUrl.startsWith("$SERVER_SETUP_BRIDGE_SCHEME:")) {
-                                                openExternalUrl(blockedUrl)
+                                            val event = decodeServerSetupHostBridgeNavigation(blockedUrl, bridge::urlDecode)
+                                            when (event) {
+                                                is ServerSetupHostEvent.StateMayHaveChanged ->
+                                                    if (
+                                                        serverSetupControlledDocumentMatchesOrigin(currentDocumentUrl, webBaseUrl) &&
+                                                        event.wake.matches(identity, serverSlug) &&
+                                                        controllerState.acceptsWake(identity)
+                                                    ) refreshEpoch += 1
+                                                is ServerSetupHostEvent.SwitchServer -> {
+                                                    val targetId = serverSetupSwitchTargetId(
+                                                        session = session,
+                                                        identity = identity,
+                                                        intent = event.intent,
+                                                        activeOwner = controllerState.acceptsWake(identity),
+                                                        controlledDocument = serverSetupControlledDocumentMatchesOrigin(
+                                                            currentDocumentUrl,
+                                                            webBaseUrl,
+                                                        ),
+                                                    )
+                                                    if (targetId != null && controllerState.claimSwitch(identity)) {
+                                                        state = ServerSetupAdmissionState.Loading(identity)
+                                                        scope.launch {
+                                                            when (authDataSource.selectServer(targetId)) {
+                                                                is SharedAuthResult.Success<*> -> Unit
+                                                                else -> state = controllerState.begin(identity).let {
+                                                                    ServerSetupAdmissionState.Failed(
+                                                                        identity,
+                                                                        build.raft.app.data.ScreenError(
+                                                                            code = "server_setup_switch_failed",
+                                                                            retryable = true,
+                                                                        ),
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                null -> if (!blockedUrl.startsWith("$SERVER_SETUP_BRIDGE_SCHEME:")) {
+                                                    openExternalUrl(blockedUrl)
+                                                }
                                             }
                                         },
+                                        onUrlChange = { currentDocumentUrl = it },
                                         onDocumentReadyChange = { documentReady = it },
                                     )
                                     SettingsWebViewAccessTokenSyncEffect(
