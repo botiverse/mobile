@@ -2576,7 +2576,7 @@ internal fun KuiklyThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<Stri
         }
     }
 
-private fun KuiklyThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet(): Set<String> =
+internal fun KuiklyThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet(): Set<String> =
     buildSet {
         knownMarkdownDirectMessagePeerNames.forEach { name -> addKnownThreadMentionValue(name) }
     }

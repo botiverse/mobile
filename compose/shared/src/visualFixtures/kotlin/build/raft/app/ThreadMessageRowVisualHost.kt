@@ -405,20 +405,47 @@ internal fun ThreadMessageVisualScreenContent() {
         remember(payload.knownMarkdownMentionNames, payload.members, payload.memberCandidates, payload.originMessage, payload.messages) {
             payload.toKnownMarkdownMentionNameSet()
         }
+    // main added knownDirectMessagePeerNames to both of these (task #126's quoted
+    // permalink work). Mirror the production call site in ThreadPage.kt rather than
+    // dropping the argument, so the visual host validates tags the same way the real
+    // thread page does.
+    val knownMarkdownDirectMessagePeerNames =
+        remember(payload) {
+            payload.toKnownMarkdownDirectMessagePeerNameSet()
+        }
     val knownMarkdownTaskNumbers =
         remember(payload.knownMarkdownTaskNumbers) {
             payload.toKnownMarkdownTaskNumberSetOrNull()
         }
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean =
-        remember(knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) {
-            { tag -> tag.isKnownThreadMarkdownTag(knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) }
+        remember(
+            knownMarkdownChannelNames,
+            knownMarkdownMentionNames,
+            knownMarkdownDirectMessagePeerNames,
+            knownMarkdownTaskNumbers
+        ) {
+            { tag ->
+                tag.isKnownThreadMarkdownTag(
+                    knownMarkdownChannelNames,
+                    knownMarkdownMentionNames,
+                    knownMarkdownDirectMessagePeerNames,
+                    knownMarkdownTaskNumbers
+                )
+            }
         }
     val markdownTagContextSignature =
-        remember(highlightedMentions, knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) {
+        remember(
+            highlightedMentions,
+            knownMarkdownChannelNames,
+            knownMarkdownMentionNames,
+            knownMarkdownDirectMessagePeerNames,
+            knownMarkdownTaskNumbers
+        ) {
             threadMarkdownTagContextSignature(
                 highlightedMentions = highlightedMentions,
                 knownChannelNames = knownMarkdownChannelNames,
                 knownMentionNames = knownMarkdownMentionNames,
+                knownDirectMessagePeerNames = knownMarkdownDirectMessagePeerNames,
                 knownTaskNumbers = knownMarkdownTaskNumbers
             )
         }
