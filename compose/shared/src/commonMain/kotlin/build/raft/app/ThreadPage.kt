@@ -4047,45 +4047,52 @@ private fun ThreadMessageVisualScreenContent() {
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION) {
         val messages = payload.toThreadTimelineSlice().messages
         // task #415: measure unbounded (see the default fixture Column below).
-        Column(modifier = Modifier.width(390.dp).wrapContentHeight(align = Alignment.Top, unbounded = true).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
-            messages.forEach { selectedMessage ->
-                ThreadMessageCard(
-                    message = selectedMessage,
-                    messageBodyTextStyle = messageBodyTextStyle,
-                    replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(selectedMessage),
-                    highlightedMentions = highlightedMentions,
-                    shareSelectionActive = true,
-                    selectedForShare = true,
-                    onToggleShareSelection = {},
-                    alignOwnMessageRight = payload.alignOwnMessagesRight && selectedMessage.isOwn,
-                    showReplyAction = payload.showReplyActions,
-                    taskOpenEnabled = payload.showTaskOpenActions,
-                    taskStatusActionsEnabled = payload.showTaskStatusActions,
-                    showReactionAddAction = payload.showReactionActions,
-                    timestampLabel = selectedMessage.timestampLabel,
-                    onShowActions = {},
-                    onOpenMember = {},
-                    onOpenThread = {},
-                    onOpenTask = {},
-                    onOpenTaskStatusMenu = {},
-                    isMarkdownTagValid = isMarkdownTagValid,
-                    markdownTagContextSignature = markdownTagContextSignature,
-                    onToggleReaction = {},
-                    onOpenAttachment = {},
-                    onOpenMarkdownTag = { _, _ -> },
-                    onOpenMarkdownUrl = {},
-                    outerPadding = 0.dp
-                )
+        Column(
+            modifier =
+                Modifier
+                    .width(390.dp)
+                    .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                    .background(SlockColor.SurfaceWhite)
+        ) {
+            Column(modifier = Modifier.padding(SlockSpacing.Md)) {
+                messages.forEach { selectedMessage ->
+                    ThreadMessageCard(
+                        message = selectedMessage,
+                        messageBodyTextStyle = messageBodyTextStyle,
+                        replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(selectedMessage),
+                        highlightedMentions = highlightedMentions,
+                        shareSelectionActive = true,
+                        selectedForShare = true,
+                        onToggleShareSelection = {},
+                        alignOwnMessageRight = payload.alignOwnMessagesRight && selectedMessage.isOwn,
+                        showReplyAction = payload.showReplyActions,
+                        taskOpenEnabled = payload.showTaskOpenActions,
+                        taskStatusActionsEnabled = payload.showTaskStatusActions,
+                        showReactionAddAction = payload.showReactionActions,
+                        timestampLabel = selectedMessage.timestampLabel,
+                        onShowActions = {},
+                        onOpenMember = {},
+                        onOpenThread = {},
+                        onOpenTask = {},
+                        onOpenTaskStatusMenu = {},
+                        isMarkdownTagValid = isMarkdownTagValid,
+                        markdownTagContextSignature = markdownTagContextSignature,
+                        onToggleReaction = {},
+                        onOpenAttachment = {},
+                        onOpenMarkdownTag = { _, _ -> },
+                        onOpenMarkdownUrl = {},
+                        outerPadding = 0.dp
+                    )
+                }
             }
-            Spacer(Modifier.height(SlockSpacing.Sm))
             ThreadShareSelectionToolbar(
                 selectedCount = messages.size,
                 selectableCount = messages.size,
                 onCancel = {},
-                onSelectAll = {},
                 onForward = {},
                 onExportImage = {},
-                onCopyLinks = {}
+                onCopyLinks = {},
+                onCopyMarkdown = {}
             )
         }
         return
@@ -14356,13 +14363,21 @@ private fun ThreadPageContent(
                         selectedCount = selectedShareMessages.size,
                         selectableCount = selectableShareMessageIds.size,
                         onCancel = clearShareSelection,
-                        onSelectAll = {
-                            selectedShareMessageIds = selectableShareMessageIds
-                        },
+                        onSelectAll =
+                            if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+                                { selectedShareMessageIds = selectableShareMessageIds }
+                            } else {
+                                null
+                            },
                         onForward = {
                             openForwardPickerForMessageIds(selectedShareMessageIds)
                         },
                         forwardEnabled = writeActionsEnabled,
+                        onCopyMarkdown = {
+                            if (selectedShareMarkdown.isNotBlank()) {
+                                onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
+                            }
+                        },
                         onExportImage = {
                             if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
                                 diagnosticsLogger(
@@ -28195,14 +28210,34 @@ private fun ThreadShareSelectionToolbar(
     selectedCount: Int,
     selectableCount: Int,
     onCancel: () -> Unit,
-    onSelectAll: () -> Unit,
+    onSelectAll: (() -> Unit)? = null,
     onForward: () -> Unit,
     forwardEnabled: Boolean = true,
     onExportImage: () -> Unit,
-    onCopyLinks: () -> Unit
+    onCopyLinks: () -> Unit,
+    onCopyMarkdown: (() -> Unit)? = null
 ) {
     val hasSelection = selectedCount > 0
     val bottomSafeArea = slockBottomSafeAreaPadding()
+    var moreMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    val moreAnchor = remember { SlockLiveRootAnchorRef(identity = "thread_share_selection_more") }
+    val moreItems =
+        listOfNotNull(
+            SlockBrutalDropdownMenuItem(
+                id = "generate-image",
+                label = stringResource(MR.strings.thread_share_generate_image),
+                icon = SlockLucideIconName.Image,
+                enabled = hasSelection
+            ),
+            onCopyMarkdown?.let {
+                SlockBrutalDropdownMenuItem(
+                    id = "copy-md",
+                    label = stringResource(MR.strings.thread_share_copy_markdown),
+                    icon = SlockLucideIconName.Copy,
+                    enabled = hasSelection
+                )
+            }
+        )
     Column(
         modifier =
             Modifier
@@ -28234,24 +28269,27 @@ private fun ThreadShareSelectionToolbar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.X,
-                    onClick = onCancel,
-                    size = 28.dp,
-                    shadowOffset = SlockShadow.BrutalSmall,
-                    iconSize = 14.dp
-                )
+                if (onSelectAll != null) {
+                    ThreadShareSelectionActionButton(
+                        label = stringResource(MR.strings.thread_comments_filter_all),
+                        icon = SlockLucideIconName.Check,
+                        onClick = onSelectAll,
+                        enabled = hasSelection && selectedCount < selectableCount
+                    )
+                }
                 ThreadShareSelectionActionButton(
-                    label = stringResource(MR.strings.thread_comments_filter_all),
-                    icon = SlockLucideIconName.Check,
-                    onClick = onSelectAll,
-                    enabled = hasSelection && selectedCount < selectableCount
+                    label = stringResource(MR.strings.common_cancel),
+                    icon = SlockLucideIconName.X,
+                    onClick = onCancel,
+                    enabled = true
                 )
                 ThreadShareSelectionActionButton(
                     label = stringResource(MR.strings.thread_action_forward),
                     icon = SlockLucideIconName.Send,
                     onClick = onForward,
-                    enabled = hasSelection && forwardEnabled
+                    enabled = hasSelection && forwardEnabled,
+                    backgroundColor = SlockColor.AccentPink,
+                    disabledBackgroundColor = SlockColor.AccentPink
                 )
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.Copy,
@@ -28262,17 +28300,34 @@ private fun ThreadShareSelectionToolbar(
                     iconSize = 14.dp
                 )
                 SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.Download,
-                    onClick = onExportImage,
+                    iconName = SlockLucideIconName.Ellipsis,
+                    onClick = {
+                        moreAnchor.resolve(SlockPopoverLocalPoint.BottomEnd)?.let { moreMenuAnchor = it }
+                    },
                     enabled = hasSelection,
                     size = 28.dp,
                     shadowOffset = SlockShadow.BrutalSmall,
                     iconSize = 14.dp,
-                    backgroundColor = SlockColor.AccentPink,
-                    disabledBackgroundColor = SlockColor.AccentPink
+                    modifier = Modifier.slockCaptureLiveRootAnchor(moreAnchor),
+                    contentDescription = stringResource(MR.strings.thread_inline_selection_more)
                 )
             }
         }
+    }
+    moreMenuAnchor?.let { anchor ->
+        SlockBrutalDropdownMenu(
+            anchor = anchor,
+            items = moreItems,
+            onSelect = { id ->
+                moreMenuAnchor = null
+                when (id) {
+                    "generate-image" -> onExportImage()
+                    "copy-md" -> onCopyMarkdown?.invoke()
+                }
+            },
+            onDismiss = { moreMenuAnchor = null },
+            verticalPlacement = SlockFloatingVerticalPlacement.Above
+        )
     }
 }
 
@@ -28281,7 +28336,9 @@ private fun ThreadShareSelectionActionButton(
     label: String,
     icon: SlockLucideIconName,
     onClick: () -> Unit,
-    enabled: Boolean
+    enabled: Boolean,
+    backgroundColor: Color = SlockColor.SurfaceWhite,
+    disabledBackgroundColor: Color = SlockColor.SurfaceCream
 ) {
     Button(
         onClick = onClick,
@@ -28290,7 +28347,7 @@ private fun ThreadShareSelectionActionButton(
         modifier =
             Modifier
                 .height(28.dp)
-                .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
+                .background(if (enabled) backgroundColor else disabledBackgroundColor)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .padding(horizontal = 8.dp)
     ) {
