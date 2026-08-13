@@ -676,7 +676,7 @@ internal fun settingsWebViewFrameIsReady(
     positionY: Float,
     width: Int,
     height: Int,
-): Boolean = positionY > 0f && width > 0 && height > 0
+): Boolean = positionY.isFinite() && positionY >= 0f && width > 0 && height > 0
 
 private const val SETTINGS_WEB_VIEW_HEADER_SETTLE_FRAMES = 1
 internal const val SETTINGS_WEB_VIEW_HEADER_Z_INDEX = 1f
