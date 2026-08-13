@@ -16,6 +16,18 @@ class ServerSetupAdmissionProductionWiringTest {
         assertTrue(source.contains("setupAdmissionHost.content()"))
     }
 
+    @Test
+    fun shellServerChooserMutationsUseOriginatingShellAuthority() {
+        val source = repositoryFile("compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt").readText()
+        assertTrue(source.contains("if (fromShell) sharedStores.authStore(sourceStoreScope) else sharedStores.authStore"))
+        assertTrue(
+            source.contains(
+                "sharedStores.createAuthDataSourceForCurrentEnvironment(sourceStoreScope, avatarNativeCache)"
+            )
+        )
+        assertTrue(source.contains("runCatchingPreservingCancellation { authSessionStore.readSession() }"))
+    }
+
     private fun repositoryFile(relativePath: String): File {
         val start = File(System.getProperty("user.dir") ?: ".")
         return generateSequence(start) { it.parentFile }
