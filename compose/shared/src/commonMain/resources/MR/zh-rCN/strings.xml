@@ -642,6 +642,7 @@
     <string name="thread_share_export_failed_detail">请在所选消息可见后重试。</string>
     <string name="thread_share_image_description">所选消息的图片预览</string>
     <string name="thread_share_copy_markdown">复制 Markdown</string>
+    <string name="thread_share_generate_image">生成图片</string>
     <string name="thread_share_download">下载</string>
     <string name="thread_task_candidate_current">当前</string>
     <string name="thread_task_candidate_untitled">未命名任务</string>

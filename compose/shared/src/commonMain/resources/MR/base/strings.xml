@@ -642,6 +642,7 @@
     <string name="thread_share_export_failed_detail">TRY AGAIN AFTER THE SELECTED MESSAGES ARE VISIBLE.</string>
     <string name="thread_share_image_description">Selected messages image preview</string>
     <string name="thread_share_copy_markdown">Copy MD</string>
+    <string name="thread_share_generate_image">Generate image</string>
     <string name="thread_share_download">Download</string>
     <string name="thread_task_candidate_current">Current</string>
     <string name="thread_task_candidate_untitled">Untitled task</string>

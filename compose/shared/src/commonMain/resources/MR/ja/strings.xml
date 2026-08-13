@@ -642,6 +642,7 @@
     <string name="thread_share_export_failed_detail">選択したメッセージが表示されている状態で、もう一度お試しください。</string>
     <string name="thread_share_image_description">選択したメッセージの画像プレビュー</string>
     <string name="thread_share_copy_markdown">MD をコピー</string>
+    <string name="thread_share_generate_image">画像を生成</string>
     <string name="thread_share_download">ダウンロード</string>
     <string name="thread_task_candidate_current">現在</string>
     <string name="thread_task_candidate_untitled">無題のタスク</string>
