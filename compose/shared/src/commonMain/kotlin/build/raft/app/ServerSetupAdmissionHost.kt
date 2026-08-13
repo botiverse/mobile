@@ -52,6 +52,19 @@ internal fun serverSetupAllowsHome(
     featureDecision == ServerSetupFeatureDecision.Bypassed ||
         (featureDecision == ServerSetupFeatureDecision.Enabled && state is ServerSetupAdmissionState.Admitted)
 
+internal suspend fun resolveServerSetupFeatureDecision(
+    featureFlags: SharedServerFeatureFlags,
+    serverId: ServerId,
+): ServerSetupFeatureDecision =
+    try {
+        serverSetupFeatureDecision(featureFlags.prefetch(serverId))
+            .let { if (it == ServerSetupFeatureDecision.Checking) ServerSetupFeatureDecision.Bypassed else it }
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (_: Throwable) {
+        ServerSetupFeatureDecision.Bypassed
+    }
+
 @Composable
 internal fun rememberServerSetupAdmissionHost(
     session: StoredAuthSession,
@@ -89,17 +102,7 @@ internal fun rememberServerSetupAdmissionHost(
     var state by remember(identity) { mutableStateOf<ServerSetupAdmissionState?>(null) }
     LaunchedEffect(featureFlags, identity) {
         if (featureDecision == ServerSetupFeatureDecision.Checking) {
-            featureDecision =
-                try {
-                    serverSetupFeatureDecision(featureFlags.prefetch(ServerId(serverId)))
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    ServerSetupFeatureDecision.Bypassed
-                }
-            if (featureDecision == ServerSetupFeatureDecision.Checking) {
-                featureDecision = ServerSetupFeatureDecision.Bypassed
-            }
+            featureDecision = resolveServerSetupFeatureDecision(featureFlags, ServerId(serverId))
         }
     }
     LaunchedEffect(repository, identity, featureDecision, refreshEpoch, refreshSignal) {
