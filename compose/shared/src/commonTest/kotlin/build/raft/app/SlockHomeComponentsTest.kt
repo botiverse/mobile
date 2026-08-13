@@ -44,6 +44,12 @@ class SlockHomeComponentsTest {
     private val errorStrings = englishErrorPresentationStringsForTest()
 
     @Test
+    fun homeServerIdentityChevronUsesCompactNameBoundSpacing() {
+        assertEquals(4.dp, HomeServerIdentityNameChevronGap)
+        assertEquals(18.dp, HomeServerIdentityChevronSize)
+    }
+
+    @Test
     fun homeInlineAndDrawerErrorsKeepDiagnosticCodesOutOfVisibleCopy() {
         val inlineError =
             SlockHomeInlineError(

@@ -63,7 +63,6 @@ import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.TasksUiState
 import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.ThreadMessagesPage
-import build.raft.app.data.ThreadRowAffordancePreference
 import build.raft.app.data.WireActionCardAction
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.toWireJsonObject
@@ -3536,12 +3535,10 @@ class ThreadPayloadTest {
                 surfaceKind = KuiklyThreadSurfaceKind.Channel,
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
-                showReactionActions = false,
-                showInlineSaveAction = true
+                showReactionActions = false
             ).toInitialPayload("fallback")
 
         assertFalse(payload.showReactionActions)
-        assertTrue(payload.showInlineSaveAction)
     }
 
     @Test
@@ -9088,7 +9085,6 @@ class ThreadPayloadTest {
         timeContext: AppShellThreadTimeContext? = null,
         alignOwnMessagesRight: Boolean = false,
         compactConsecutiveMessages: Boolean = false,
-        threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
         anchorMessageId: String? = null,
         originFallback: ThreadLaunchOriginFallback? = null
     ): KuiklyThreadScreenPayload =
@@ -9097,7 +9093,6 @@ class ThreadPayloadTest {
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages,
-            threadRowAffordances = threadRowAffordances,
             anchorMessageId = anchorMessageId,
             originFallback = originFallback,
             accessState =
@@ -9112,7 +9107,6 @@ class ThreadPayloadTest {
         timeContext: AppShellThreadTimeContext?,
         alignOwnMessagesRight: Boolean = false,
         compactConsecutiveMessages: Boolean = false,
-        threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
         anchorMessageId: String? = null
     ): WireThreadLaunchPayload =
         requireNotNull(buildStandaloneConversationThreadLaunchPayload(
@@ -9120,7 +9114,6 @@ class ThreadPayloadTest {
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages,
-            threadRowAffordances = threadRowAffordances,
             anchorMessageId = anchorMessageId
         ))
 

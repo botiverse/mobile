@@ -230,7 +230,6 @@ class SharedThreadStoreTest {
                 settingsActions = listOf(KuiklyThreadSettingsAction(id = "archive")),
                 showSettingsAction = true,
                 showMessageSaveAction = true,
-                showInlineSaveAction = true,
                 showReactionActions = true,
                 showTaskStatusActions = true
             ).withThreadWriteActionsEnabled(false)
@@ -239,7 +238,6 @@ class SharedThreadStoreTest {
         assertEquals(emptyList(), gatedPayload.settingsActions)
         assertFalse(gatedPayload.showSettingsAction)
         assertFalse(gatedPayload.showMessageSaveAction)
-        assertFalse(gatedPayload.showInlineSaveAction)
         assertFalse(gatedPayload.showReactionActions)
         assertFalse(gatedPayload.showTaskStatusActions)
 
@@ -247,7 +245,6 @@ class SharedThreadStoreTest {
             basePayload().toThreadTimelineSlice().copy(canConvertMessagesToTasks = true)
                 .withThreadWriteActionsEnabled(false)
         assertFalse(gatedTimeline.showMessageSaveAction)
-        assertFalse(gatedTimeline.showInlineSaveAction)
         assertFalse(gatedTimeline.showReactionActions)
         assertFalse(gatedTimeline.showTaskStatusActions)
         assertFalse(gatedTimeline.canConvertMessagesToTasks)
@@ -13478,6 +13475,12 @@ class SharedThreadStoreTest {
             createdThreads += channelId to parentMessageId
             return HomeNetworkResponse(code = 200, bodyText = """{"threadChannelId":"thread-$parentMessageId","parentMessageId":"$parentMessageId","created":true}""")
         }
+
+        override suspend fun messageContext(messageId: String, channelId: String?): HomeNetworkResponse =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText = """{"channelId":"$channelId","targetMessageId":"$messageId","messages":[],"historyLimited":false}"""
+            )
     }
 
     private class ParkableReadSessionStore(

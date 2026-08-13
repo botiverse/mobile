@@ -1612,7 +1612,7 @@ private fun threadComposerVisualFixture(
                             mimeType = "application/json",
                             status = "failed",
                             uploadProgress = 0,
-                            errorCode = "too_large"
+                            errorCode = "attachment_too_large"
                         )
                     )
             )

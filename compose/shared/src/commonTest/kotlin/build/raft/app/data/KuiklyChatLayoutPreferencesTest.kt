@@ -56,9 +56,8 @@ class KuiklyChatLayoutPreferencesTest {
             repository.setHomeServerAvatarEnabled(true)
             repository.setTranslationMode(TranslationModePreference.Automatic)
             repository.setTranslationTargetLanguage("ja")
-            repository.setThreadRowAffordance(ThreadRowAffordancePreference.Reactions, false)
 
-            assertEquals(19, firstSnapshots.size)
+            assertEquals(18, firstSnapshots.size)
             assertEquals(firstSnapshots, secondSnapshots)
             firstSnapshots.last().let { snapshot ->
                 assertEquals(MyMessageAlignmentPreference.Right, snapshot.myMessageAlignment)
@@ -79,7 +78,6 @@ class KuiklyChatLayoutPreferencesTest {
                 assertTrue(snapshot.homeServerAvatarEnabled)
                 assertEquals(TranslationModePreference.Automatic, snapshot.translationMode)
                 assertEquals("ja", snapshot.translationTargetLanguage)
-                assertTrue(snapshot.threadRowAffordances.isEmpty())
             }
         } finally {
             firstSubscription.close()

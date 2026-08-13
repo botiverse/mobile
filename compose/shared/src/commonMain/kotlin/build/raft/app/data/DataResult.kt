@@ -167,7 +167,7 @@ internal fun String?.errorPresentationKeyOrNull(): ErrorPresentationKey? {
             ErrorPresentationKey.ItemNotFound
         lower.isHttpStatusPresentationCode(403) || "permission" in lower || "forbidden" in lower ||
             "admin_required" in lower || "no_permission" in lower -> ErrorPresentationKey.PermissionDenied
-        "too_large" in lower || "attachment_size" in lower ->
+        lower == "attachment_too_large" || lower == "upload_too_large" ->
             ErrorPresentationKey.AttachmentTooLarge
         "rate" in lower || "too_many" in lower ->
             ErrorPresentationKey.TooManyAttempts

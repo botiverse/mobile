@@ -23,8 +23,6 @@ private const val KEY_NEW_DESIGN_SETTINGS_ENABLED = "newDesignSettingsEnabled"
 private const val KEY_HOME_SERVER_AVATAR_ENABLED = "homeServerAvatarEnabled"
 private const val KEY_TRANSLATION_MODE = "translationMode"
 private const val KEY_TRANSLATION_TARGET_LANGUAGE = "translationTargetLanguage"
-private const val KEY_THREAD_ROW_AFFORDANCES = "threadRowAffordances"
-private const val THREAD_ROW_AFFORDANCE_SEPARATOR = "\u001F"
 private val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS =
     setOf(
         KEY_MY_MESSAGE_ALIGNMENT,
@@ -45,7 +43,6 @@ private val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS =
         KEY_HOME_SERVER_AVATAR_ENABLED,
         KEY_TRANSLATION_MODE,
         KEY_TRANSLATION_TARGET_LANGUAGE,
-        KEY_THREAD_ROW_AFFORDANCES,
     )
 
 /**
@@ -164,11 +161,6 @@ fun kuiklyChatLayoutPreferenceRepository(
         override suspend fun setTranslationTargetLanguage(language: String): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setTranslationTargetLanguage(language) }
 
-        override suspend fun setThreadRowAffordance(
-            affordance: ThreadRowAffordancePreference,
-            enabled: Boolean
-        ): ChatLayoutPreferenceSnapshot =
-            persistAndPublish { delegate.setThreadRowAffordance(affordance, enabled) }
     }
 
 private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JSONObject =
@@ -191,10 +183,6 @@ private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JSONObject =
         .put(KEY_HOME_SERVER_AVATAR_ENABLED, homeServerAvatarEnabled)
         .put(KEY_TRANSLATION_MODE, translationMode.storageKey)
         .put(KEY_TRANSLATION_TARGET_LANGUAGE, translationTargetLanguage)
-        .put(
-            KEY_THREAD_ROW_AFFORDANCES,
-            threadRowAffordances.joinToString(THREAD_ROW_AFFORDANCE_SEPARATOR) { it.storageKey }
-        )
 
 internal fun JSONObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPreferenceSnapshot? {
     if (CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS.any { !has(it) }) return null
@@ -218,12 +206,6 @@ internal fun JSONObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPrefer
         translationMode = TranslationModePreference.fromStorageKey(optString(KEY_TRANSLATION_MODE)),
         translationTargetLanguage =
             optString(KEY_TRANSLATION_TARGET_LANGUAGE).ifBlank { TranslationTargetLanguages.Browser },
-        threadRowAffordances =
-            ThreadRowAffordancePreference.fromStorageKeys(
-                optString(KEY_THREAD_ROW_AFFORDANCES)
-                    .split(THREAD_ROW_AFFORDANCE_SEPARATOR)
-                    .filterTo(linkedSetOf()) { it.isNotBlank() }
-            )
     )
 }
 

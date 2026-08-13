@@ -86,7 +86,7 @@ internal actual fun slockFirstComposedCharacterEnd(text: String): Int? {
     }
 }
 
-// Hands iOS SDK ios-v0.2.x uploads >10MB attachments via presigned R2 PUT.
-internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 200L * 1024L * 1024L
+// Cross-platform Hands contract is bounded by the OHOS SDK's current 50MB cap.
+internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024L
 
 internal actual fun slockSlugSlashCenteringOffsetDp(): Float = 0f

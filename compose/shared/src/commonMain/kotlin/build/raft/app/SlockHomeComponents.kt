@@ -197,6 +197,8 @@ private val HomeServerBadgeHorizontalInset = 14.dp
 private val HomeServerBadgeVerticalInset = 6.dp
 private val HomeServerBadgeContentGap = 6.dp
 private val HomeServerBadgeChevronSize = 16.dp
+internal val HomeServerIdentityNameChevronGap = 4.dp
+internal val HomeServerIdentityChevronSize = 18.dp
 private val SlockSortEdgeScrollZone = 56.dp
 private val SlockSortEdgeScrollStep = 10.dp
 private const val SharedListMaxBeyondBoundsItemCount = 96
@@ -933,6 +935,13 @@ private fun SlockHomeConversationItem.toThreadLaunchConversationIdentity(): Thre
 
 @Composable
 internal fun HomeTitlebarVisualScreen() {
+    val compactServer =
+        SlockServerSwitcherItem(
+            id = "srv_mobile",
+            name = "Raft Mobile",
+            slug = "raft-mobile",
+            avatarUrl = "pixel:robot"
+        )
     val designServer =
         SlockServerSwitcherItem(
             id = "srv_design",
@@ -960,10 +969,10 @@ internal fun HomeTitlebarVisualScreen() {
             onServerBadgeClick = {},
             onNotificationToggle = {}
         )
-        HomeTitlebarDesignLabel("SETTING ON · 32DP SQUARE · CUSTOM · 15SP")
+        HomeTitlebarDesignLabel("SETTING ON · SHORT NAME · 4DP CHEVRON GAP")
         HomeTitlebar(
-            serverName = designServer.name,
-            serverIdentity = designServer,
+            serverName = compactServer.name,
+            serverIdentity = compactServer,
             hasOtherServerUnread = false,
             notifications = visualHomeNotifications(),
             refreshing = false,
@@ -971,7 +980,7 @@ internal fun HomeTitlebarVisualScreen() {
             onServerBadgeClick = {},
             onNotificationToggle = {}
         )
-        HomeTitlebarDesignLabel("SETTING ON · 32DP SQUARE · FALLBACK · 15SP")
+        HomeTitlebarDesignLabel("SETTING ON · LONG NAME ELLIPSIS · CHEVRON VISIBLE")
         HomeTitlebar(
             serverName = fallbackServer.name,
             serverIdentity = fallbackServer,
@@ -3474,12 +3483,12 @@ private fun HomeServerIdentityCluster(
             style = SlockType.ButtonBold.copy(fontSize = 15.sp, lineHeight = 20.sp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f, fill = false)
         )
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(HomeServerIdentityNameChevronGap))
         SlockLucideIcon(
             SlockLucideIconName.ChevronDown,
-            Modifier.size(16.dp),
+            Modifier.size(HomeServerIdentityChevronSize),
             color = SlockColor.TextBlackArgb
         )
     }

@@ -88,6 +88,7 @@ class ThreadFailureReasonTest {
             "server_missing" to ThreadUserFacingErrorReason.ServerUnavailable,
             "message_not_found" to ThreadUserFacingErrorReason.ItemNotFound,
             "attachment_too_large" to ThreadUserFacingErrorReason.AttachmentTooLarge,
+            "upload_too_large" to ThreadUserFacingErrorReason.AttachmentTooLarge,
             "rate_limited" to ThreadUserFacingErrorReason.RateLimited,
             "response_parse_failed" to ThreadUserFacingErrorReason.ResponseUnreadable,
             "thread_send_cancelled" to ThreadUserFacingErrorReason.RequestCancelled,
@@ -96,6 +97,14 @@ class ThreadFailureReasonTest {
             assertEquals(expected, threadUserFacingErrorCodeReason(code), code)
         }
         assertEquals(null, threadUserFacingErrorCodeReason("  "))
+        assertEquals(
+            ThreadUserFacingErrorReason.Generic,
+            threadUserFacingErrorCodeReason("body_too_large")
+        )
+        assertEquals(
+            ThreadUserFacingErrorReason.Generic,
+            threadUserFacingErrorCodeReason("attachment_size_unavailable")
+        )
     }
 
     @Test

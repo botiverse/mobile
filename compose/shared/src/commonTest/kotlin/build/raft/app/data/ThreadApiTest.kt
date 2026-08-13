@@ -481,6 +481,7 @@ class ThreadApiTest {
         var attachmentCommentsBody: String = """{"comments":[],"threadChannelId":"thread-comments"}""",
         var reactionBody: String = """{"id":"m1","reactions":[]}""",
         var createThreadBody: String = """{"threadChannelId":"thread-1"}""",
+        var contextBody: String = """{"channelId":"c1","targetMessageId":"m1","messages":[],"historyLimited":false}""",
         var mentionActionBody: String = """{"results":[]}"""
     ) : SharedThreadNetworkApi {
         val unsavedMessageIds = mutableListOf<String>()
@@ -550,6 +551,9 @@ class ThreadApiTest {
 
         override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = createThreadBody)
+
+        override suspend fun messageContext(messageId: String, channelId: String?): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = contextBody)
     }
 
     private class RecordingThreadNetworkClient : SlockNetworkClient {

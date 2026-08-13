@@ -15,6 +15,45 @@ internal data class SlockMessagePermalinkTarget(
 )
 
 /**
+ * Scans a message body for the first same-server Raft permalink, mirroring
+ * web's `extractFirstQuotedMessagePermalink`: fenced/inline code is
+ * protected, markdown-link targets (`[text](url)`) are skipped, trailing
+ * punctuation is trimmed, and only the current server's slug is accepted.
+ */
+internal fun String.extractFirstQuotedMessagePermalink(
+    currentServerSlug: String?,
+    configuredWebUrl: String? = null
+): SlockMessagePermalinkTarget? {
+    if (currentServerSlug == null || !contains("http")) return null
+    val placeholders = mutableListOf<String>()
+    var protectedText =
+        FENCED_CODE_PATTERN.replace(this) { match ->
+            placeholders += match.value
+            "\u0000CODE${placeholders.lastIndex}\u0000"
+        }
+    protectedText =
+        INLINE_CODE_PATTERN.replace(protectedText) { match ->
+            placeholders += match.value
+            "\u0000CODE${placeholders.lastIndex}\u0000"
+        }
+    for (match in URL_PATTERN.findAll(protectedText)) {
+        val raw = match.value
+        if (match.range.first > 0 && protectedText[match.range.first - 1] == '(') continue
+        val trailing = TRAILING_PUNCTUATION.find(raw)?.value.orEmpty()
+        val candidate = if (trailing.isEmpty()) raw else raw.removeSuffix(trailing)
+        val parsed = candidate.toSlockMessagePermalinkTarget(configuredWebUrl) ?: continue
+        if (parsed.serverSlug != currentServerSlug) continue
+        return parsed
+    }
+    return null
+}
+
+private val URL_PATTERN = Regex("""https?:\/\/[^\s<>"'，。、；：！？）》」』】》〉”’（《「『【〈“‘]+""")
+private val TRAILING_PUNCTUATION = Regex("""[),.!?;:，。！？；：]+$""")
+private val FENCED_CODE_PATTERN = Regex("""```[\s\S]*?```""")
+private val INLINE_CODE_PATTERN = Regex("""``[^`]+``|`[^`]+`""")
+
+/**
  * Parses the canonical `/s/{serverSlug}/{channel|dm}/{channelId}` contract.
  * The configured web origin is an exact additional allow-list entry.
  */

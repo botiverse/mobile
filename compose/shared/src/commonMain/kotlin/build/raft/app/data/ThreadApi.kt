@@ -4,6 +4,7 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
+import build.raft.app.model.ThreadId
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -44,6 +45,7 @@ internal interface SlockThreadApi {
         afterSeq: Long? = null
     ): ThreadApiResult<ThreadMessagesPage>
     suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int = 50): ThreadApiResult<ThreadMessagesPage>
+    suspend fun messageContext(messageId: String, channelId: String? = null): ThreadApiResult<SharedMessagesPayload>
     suspend fun sendMessage(
         channelId: String,
         body: String,
@@ -105,6 +107,29 @@ internal class SlockThreadApiClient(
                     canLoadMoreAfter = false,
                 )
             }
+
+    override suspend fun messageContext(
+        messageId: String,
+        channelId: String?
+    ): ThreadApiResult<SharedMessagesPayload> {
+        val response = transport.messageContext(messageId = messageId, channelId = channelId)
+        if (!response.isSuccessful) {
+            return ThreadApiResult.Failure(code = response.code, contractCode = "message_context_contract_mismatch")
+        }
+        val body =
+            response.bodyText?.takeIf { it.isNotBlank() }
+                ?: return ThreadApiResult.Failure(code = response.code, contractCode = "message_context_contract_mismatch")
+        val payload =
+            parseSharedMessageContext(
+                bodyText = body,
+                fallbackThreadId = ThreadId(channelId?.takeIf { it.isNotBlank() } ?: messageId),
+                diagnostics = diagnosticsLogger
+            )
+        if (payload.messages.isEmpty()) {
+            return ThreadApiResult.Failure(code = response.code, contractCode = "message_context_contract_mismatch")
+        }
+        return ThreadApiResult.Success(payload)
+    }
 
     override suspend fun sendMessage(
         channelId: String,
@@ -281,6 +306,13 @@ internal class NetworkSlockThreadApi(
                     asTask = asTask,
                     randomId = randomId
                 )
+        )
+
+    override suspend fun messageContext(messageId: String, channelId: String?): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Background,
+            path = "messages/context/${messageId.trim()}",
+            query = channelId?.takeIf { it.isNotBlank() }?.let { listOf("channelId" to it.trim()) } ?: emptyList()
         )
 
     override suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): HomeNetworkResponse =

@@ -498,7 +498,6 @@ sealed interface SharedSettingsIntent {
     data class SetServerDrawerEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetNewDesignSettingsEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetHomeServerAvatarEnabled(val enabled: Boolean) : SharedSettingsIntent
-    data class SetThreadRowAffordance(val affordance: String, val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
@@ -1259,20 +1258,6 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
-    suspend fun setThreadRowAffordance(
-        affordanceKey: String,
-        enabled: Boolean
-    ): DataResult<SettingsMobileSnapshot> {
-        val repository =
-            chatLayoutPreferenceRepository
-                ?: return DataResult.Error(ScreenError("settings_thread_row_affordances_unavailable", retryable = false))
-        val affordance =
-            ThreadRowAffordancePreference.entries.firstOrNull {
-                it.storageKey == affordanceKey || it.name.equals(affordanceKey, ignoreCase = true)
-            } ?: return DataResult.Error(ScreenError("settings_thread_row_affordance_unknown", retryable = false))
-        repository.setThreadRowAffordance(affordance, enabled)
-        return loadMobilePreferences()
-    }
 
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
         platformCapabilities.loadStorage()
@@ -1680,13 +1665,6 @@ class SharedSettingsDataSource(
                         statusLabel = "Unsupported",
                         detail = "The Home workspace avatar preference is not available on this platform."
                     ),
-            threadRowAffordances =
-                chatLayout?.toSettingsMobileThreadRowAffordancesSnapshot()
-                    ?: threadRowAffordances.copy(
-                        available = false,
-                        statusLabel = "Unsupported",
-                        detail = "Message row actions preference is not available on this platform."
-                    )
         )
     }
 
@@ -2540,19 +2518,6 @@ class SharedSettingsStore(
                     )
                 dataSource.setHomeServerAvatarEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_HOME_SERVER_AVATAR)
-            }
-            is SharedSettingsIntent.SetThreadRowAffordance -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState =
-                            SharedSettingsActionState(
-                                MOBILE_ACTION_THREAD_ROW_AFFORDANCES,
-                                itemId = intent.affordance,
-                                inProgress = true
-                            )
-                    )
-                dataSource.setThreadRowAffordance(intent.affordance, intent.enabled)
-                    .applyMobileActionResult(MOBILE_ACTION_THREAD_ROW_AFFORDANCES, intent.affordance)
             }
             SharedSettingsIntent.RefreshStorage -> {
                 _state.value = _state.value.copy(route = SharedSettingsRoute(SharedSettingsDestination.Storage))
@@ -3721,7 +3686,6 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetServerDrawerEnabled,
             is SharedSettingsIntent.SetNewDesignSettingsEnabled,
             is SharedSettingsIntent.SetHomeServerAvatarEnabled,
-            is SharedSettingsIntent.SetThreadRowAffordance,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
@@ -3927,7 +3891,6 @@ internal const val MOBILE_ACTION_MULTI_SHELL_HOST = "multiShellHost"
 internal const val MOBILE_ACTION_SERVER_DRAWER = "serverDrawer"
 internal const val MOBILE_ACTION_NEW_DESIGN_SETTINGS = "newDesignSettings"
 internal const val MOBILE_ACTION_HOME_SERVER_AVATAR = "homeServerAvatar"
-internal const val MOBILE_ACTION_THREAD_ROW_AFFORDANCES = "threadRowAffordances"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
 internal const val COMPUTER_ACTION_DESCRIPTION = "updateComputerDescription"
@@ -4234,26 +4197,6 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileHomeServerAvatarSnapsho
         detail = "Show the current workspace avatar in the Home header. When off, keep the existing compact title badge."
     )
 
-private fun ChatLayoutPreferenceSnapshot.toSettingsMobileThreadRowAffordancesSnapshot(): SettingsMobileMultiSelectionSnapshot =
-    SettingsMobileMultiSelectionSnapshot(
-        selectedKeys = threadRowAffordances.map { it.storageKey }.toSet(),
-        statusLabel =
-            if (threadRowAffordances.isEmpty()) {
-                "Off"
-            } else {
-                supportedThreadRowAffordances
-                    .filter { it in threadRowAffordances }
-                    .joinToString(", ") { it.mobileLabel() }
-            },
-        detail = "Choose which message row actions are visible in conversations.",
-        options =
-            supportedThreadRowAffordances.map {
-                SettingsMobileSelectionOptionSnapshot(
-                    key = it.storageKey,
-                    label = it.mobileLabel()
-                )
-            }
-    )
 
 private fun AppLocale.mobileLabel(): String =
     if (nativeLabel == englishLabel) {
@@ -4266,12 +4209,6 @@ private fun MyMessageAlignmentPreference.mobileLabel(): String =
     when (this) {
         MyMessageAlignmentPreference.Left -> "Left"
         MyMessageAlignmentPreference.Right -> "Right"
-    }
-
-private fun ThreadRowAffordancePreference.mobileLabel(): String =
-    when (this) {
-        ThreadRowAffordancePreference.Reactions -> "Reactions"
-        ThreadRowAffordancePreference.Saved -> "Saved"
     }
 
 private fun SettingsMobileSnapshot.withSystemNotificationResult(

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.DataResult
+import build.raft.app.data.SharedMessagesPayload
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InMemorySlockAuthSessionStore
 import build.raft.app.data.MessageMutationSummary
@@ -773,6 +774,7 @@ class SharedThreadReplyCacheProvenanceTest {
                 override suspend fun removeReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary> = unused()
                 override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): ThreadApiResult<TaskSummary?> = unused()
                 override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): ThreadApiResult<ThreadActionResult> = unused()
+                override suspend fun messageContext(messageId: String, channelId: String?): ThreadApiResult<SharedMessagesPayload> = unused()
             }
     }
 }

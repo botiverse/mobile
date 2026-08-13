@@ -211,6 +211,8 @@ interface ConversationRepository {
     suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult>
     suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult>
     suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult>
+    suspend fun getAttachmentUploadCapabilities(): DataResult<AttachmentUploadCapabilities> =
+        DataResult.Error(ScreenError(code = "attachment_upload_capabilities_unavailable", retryable = true))
     suspend fun uploadAttachments(request: AttachmentUploadRequest): DataResult<AttachmentUploadResult>
     suspend fun getAttachmentOpenTarget(
         attachmentId: AttachmentId

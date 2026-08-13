@@ -341,6 +341,8 @@
     <string name="thread_error_attachment_upload">Attachment upload failed</string>
     <string name="thread_state_preparing_attachment">Preparing attachment preview…</string>
     <string name="thread_error_attachment_upload_detail">Attachment upload failed: %1$s</string>
+    <string name="thread_error_attachment_limit_unavailable">The upload size limit could not be checked. Try again in a moment.</string>
+    <string name="thread_error_attachment_too_large_detail">Max %2$s per file. Current largest file is %1$s.</string>
     <string name="thread_error_open_replies">Unable to open replies</string>
     <string name="thread_error_open_parent_message">Unable to open parent message</string>
     <string name="thread_error_open_task">Unable to open task</string>
@@ -469,7 +471,10 @@
     <string name="thread_add_member_select_before_adding">SELECT A MEMBER BEFORE ADDING.</string>
     <string name="thread_add_member_failed">UNABLE TO ADD MEMBER</string>
     <string name="thread_member_role_agent">Agent</string>
-    <string name="thread_member_role_member">Member</string>
+    <string name="thread_quoted_permalink_loading">Loading message…</string>
+    <string name="thread_quoted_permalink_no_content">(no content)</string>
+    <string name="thread_quoted_permalink_unavailable">Message preview unavailable</string>
+<string name="thread_member_role_member">Member</string>
     <string name="thread_member_role_system">System</string>
     <string name="thread_settings_edit_channel">EDIT CHANNEL</string>
     <string name="thread_settings_name">Name</string>
@@ -1579,14 +1584,6 @@
     <string name="settings_mobile_composer_key_new_line">New line</string>
     <string name="settings_mobile_composer_key_enabled">Keyboard action sends messages</string>
     <string name="settings_mobile_composer_key_disabled">Keyboard action inserts a new line</string>
-    <string name="settings_mobile_message_row_actions">Message row actions</string>
-    <string name="settings_mobile_message_row_actions_detail">Choose which message row actions are visible in conversations.</string>
-    <string name="settings_mobile_reactions">Reactions</string>
-    <string name="settings_mobile_saved">Saved</string>
-    <string name="settings_mobile_reactions_enabled">Show reaction actions in message menus</string>
-    <string name="settings_mobile_reactions_disabled">Hide reaction actions</string>
-    <string name="settings_mobile_saved_enabled">Show saved badges on message rows</string>
-    <string name="settings_mobile_saved_disabled">Keep saved state out of message rows</string>
     <string name="settings_mobile_image_annotation">Support image annotation</string>
     <string name="settings_mobile_image_annotation_detail">Enable the composer image preview and annotation transfer page. When off, selected images upload directly.</string>
     <string name="settings_mobile_image_annotation_enabled">Composer images open the annotation transfer page</string>

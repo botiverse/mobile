@@ -4,6 +4,7 @@ import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageId
+import build.raft.app.model.MessageType
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.network.MultipartFile
@@ -789,6 +790,88 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
+    fun attachmentUploadCapabilitiesUseServerMaxBytesWithoutClientFallback() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET attachments/upload-capabilities" to
+                            """{"directUploadEnabled":false,"directUploadThresholdBytes":null,"maxBytes":143654912,"sessionExpiresInSeconds":null}"""
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val capability = assertIs<DataResult.Content<AttachmentUploadCapabilities>>(
+            repository.getAttachmentUploadCapabilities()
+        ).data
+
+        assertEquals(143654912L, capability.maxBytes)
+        assertEquals("attachments/upload-capabilities", network.requests.single().path)
+    }
+
+    @Test
+    fun attachmentUploadCapabilitiesRejectNonPositiveServerValue() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses = mapOf("GET attachments/upload-capabilities" to """{"maxBytes":0}""")
+            )
+
+        val result = RealConversationRepository(sampleStore(), network).getAttachmentUploadCapabilities()
+
+        assertEquals("network_parse_failed", assertIs<DataResult.Error>(result).error.code)
+    }
+
+    @Test
+    fun legacyMultipartTooLargeUsesStructuredServerErrorCode() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                uploadResponse =
+                    HomeNetworkResponse(
+                        code = 413,
+                        bodyText = null,
+                        errorBodyText =
+                            """{"error":"Max 90MB per file","errorCode":"ATTACHMENT_TOO_LARGE","maxBytes":94371840}"""
+                    )
+            )
+        val result =
+            RealConversationRepository(sampleStore(), network).uploadAttachments(
+                AttachmentUploadRequest(
+                    channelId = ChannelId("channel-1"),
+                    files = listOf(PlatformFile(id = "local-1", fileName = "large.bin", sizeBytes = 94371841L))
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("ATTACHMENT_TOO_LARGE", error.code)
+        assertEquals("Max 90MB per file", error.serverMessage)
+    }
+
+    @Test
+    fun uploadSessionTooLargeUsesStructuredServerCode() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                uploadResponse =
+                    HomeNetworkResponse(
+                        code = 413,
+                        bodyText = null,
+                        errorBodyText =
+                            """{"error":"Upload exceeds the active limit","code":"UPLOAD_TOO_LARGE","maxBytes":94371840}"""
+                    )
+            )
+        val result =
+            RealConversationRepository(sampleStore(), network).uploadAttachments(
+                AttachmentUploadRequest(
+                    channelId = ChannelId("channel-1"),
+                    files = listOf(PlatformFile(id = "local-1", fileName = "large.bin", sizeBytes = 94371841L))
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("UPLOAD_TOO_LARGE", error.code)
+        assertEquals(ErrorPresentationKey.AttachmentTooLarge, error.errorPresentation().key)
+    }
+
+    @Test
     fun pagingContextFilesAndUploadConsumeCanonicalDtosWithoutJoiningSummaries() = runBlocking {
         val network =
             FakeConversationNetworkClient(
@@ -859,6 +942,43 @@ class ConversationRepositoryDataSourceTest {
         )
     }
 
+    @Test
+    fun channelLatestAndOlderPagesKeepMembershipSystemEventsInCanonicalOrder() = runBlocking {
+        val latestOrdinary = messageJson("chat-30", "channel-1", seq = 30, content = "latest")
+        val latestSystem = systemMessageJson("join-29", "channel-1", seq = 29, content = "@agent joined")
+        val olderOrdinary = messageJson("chat-20", "channel-1", seq = 20, content = "older")
+        val olderSystem = systemMessageJson("remove-19", "channel-1", seq = 19, content = "@agent removed")
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/channel-1" to
+                            """{"messages":[$latestSystem,$latestOrdinary],"historyLimited":false}""",
+                    ),
+                responseForRequest = { request ->
+                    if (
+                        request.path == "messages/channel/channel-1" &&
+                        request.query == listOf("limit" to "30", "before" to "29")
+                    ) {
+                        """{"messages":[$olderSystem,$olderOrdinary],"historyLimited":false}"""
+                    } else {
+                        null
+                    }
+                },
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val latest = assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("channel-1"))).data
+        val older = assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.loadOlderMessages(ThreadId("channel-1"), beforeSeq = 29),
+        ).data
+
+        assertEquals(listOf("join-29", "chat-30"), latest.messages.map { it.id.value })
+        assertEquals(listOf(MessageType.System, MessageType.Chat), latest.messages.map { it.messageType })
+        assertEquals(listOf("remove-19", "chat-20"), older.messages.map { it.id.value })
+        assertEquals(listOf(MessageType.System, MessageType.Chat), older.messages.map { it.messageType })
+    }
+
     private fun sampleStore(): SlockAuthSessionStore =
         InMemorySlockAuthSessionStore(
             StoredAuthSession(
@@ -911,8 +1031,10 @@ class ConversationRepositoryDataSourceTest {
         private val responses: Map<String, String> = emptyMap(),
         private val failures: Map<String, String> = emptyMap(),
         private val uploadBody: String = """{"attachments":[]}""",
+        private val uploadResponse: HomeNetworkResponse? = null,
         private val requestStarted: Map<String, CompletableDeferred<Unit>> = emptyMap(),
         private val requestRelease: Map<String, CompletableDeferred<Unit>> = emptyMap(),
+        private val responseForRequest: (RecordedConversationRequest) -> String? = { null },
     ) : SlockNetworkClient {
         val requests = mutableListOf<RecordedConversationRequest>()
         val serverOverrides = mutableListOf<String?>()
@@ -937,7 +1059,10 @@ class ConversationRepositoryDataSourceTest {
             failures[requestKey]?.let { message ->
                 return HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = message)
             }
-            return HomeNetworkResponse(code = 200, bodyText = responses[requestKey] ?: """{"threads":[]}""")
+            return HomeNetworkResponse(
+                code = 200,
+                bodyText = responseForRequest(requests.last()) ?: responses[requestKey] ?: """{"threads":[]}""",
+            )
         }
 
         override suspend fun uploadAttachments(
@@ -947,7 +1072,7 @@ class ConversationRepositoryDataSourceTest {
         ): HomeNetworkResponse {
             requests += RecordedConversationRequest(priority, "POST", "messages/channels/${channelId.value}/attachments", emptyList())
             uploadedFileNames += files.map { it.fileName }
-            return HomeNetworkResponse(code = 200, bodyText = uploadBody)
+            return uploadResponse ?: HomeNetworkResponse(code = 200, bodyText = uploadBody)
         }
     }
 
@@ -971,5 +1096,13 @@ class ConversationRepositoryDataSourceTest {
                 if (threadId != null) append(""","threadId":"$threadId"""")
                 append("}")
             }
+
+        fun systemMessageJson(
+            id: String,
+            channelId: String,
+            seq: Long,
+            content: String,
+        ): String =
+            """{"id":"$id","seq":$seq,"channelId":"$channelId","senderType":"user","senderId":"system","senderName":"System","messageType":"system","content":"$content","createdAt":"2026-05-22T10:00:00.000Z"}"""
     }
 }
