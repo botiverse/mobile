@@ -746,6 +746,59 @@ internal fun sharedSettingsWebUrl(webUrl: String?, path: String): String {
     return if (cleanPath.isBlank()) baseUrl else "$baseUrl/$cleanPath"
 }
 
+/**
+ * Developer environment `webUrl` may point at a tenant route (for example
+ * `/s/botiverse/`). Standalone Settings routes belong to the same Web origin,
+ * but must never be appended to that candidate path or the server segment is
+ * duplicated (`/s/botiverse/s/{selectedSlug}/...`).
+ */
+internal fun sharedSettingsCanonicalWebOrigin(webUrl: String?): String? {
+    val candidate = sharedSettingsResolvedWebBaseUrl(webUrl)
+    if (candidate.any(Char::isWhitespace) || '\\' in candidate) return null
+    val schemeSeparator = candidate.indexOf("://")
+    if (schemeSeparator <= 0) return null
+    val scheme = candidate.substring(0, schemeSeparator).lowercase()
+    if (scheme != "http" && scheme != "https") return null
+    val authority =
+        candidate.substring(schemeSeparator + 3)
+            .substringBefore('/')
+            .substringBefore('?')
+            .substringBefore('#')
+    if (!sharedSettingsValidWebAuthority(authority)) return null
+    return "$scheme://$authority"
+}
+
+private fun sharedSettingsValidWebAuthority(authority: String): Boolean {
+    if (authority.isBlank() || '@' in authority) return false
+    if (authority.startsWith('[')) {
+        val closing = authority.indexOf(']')
+        if (closing <= 1) return false
+        val suffix = authority.substring(closing + 1)
+        return suffix.isEmpty() || sharedSettingsValidPortSuffix(suffix)
+    }
+    if (authority.count { it == ':' } > 1) return false
+    val host = authority.substringBefore(':')
+    val suffix = authority.removePrefix(host)
+    if (!sharedSettingsValidWebHost(host)) return false
+    return suffix.isEmpty() || sharedSettingsValidPortSuffix(suffix)
+}
+
+private fun sharedSettingsValidWebHost(host: String): Boolean {
+    if (host.isBlank() || host.length > 253 || host.any { !it.isLetterOrDigit() && it !in ".-" }) return false
+    return host.split('.').all { label ->
+        label.isNotEmpty() &&
+            label.length <= 63 &&
+            label.first().isLetterOrDigit() &&
+            label.last().isLetterOrDigit()
+    }
+}
+
+private fun sharedSettingsValidPortSuffix(value: String): Boolean {
+    if (!value.startsWith(':')) return false
+    val port = value.drop(1)
+    return port.isNotEmpty() && port.all(Char::isDigit) && port.toIntOrNull() in 1..65535
+}
+
 internal const val SharedSettingsEmbedContract = "raft-settings-v1"
 internal const val SharedSettingsEmbedHostShell = "host"
 
@@ -760,7 +813,10 @@ internal fun sharedSettingsHostShellWebUrl(
             "shell" to SharedSettingsEmbedHostShell
         ) + extraQueryParameters
     val query = queryParameters.joinToString(separator = "&") { (key, value) -> "$key=$value" }
-    return "${sharedSettingsWebUrl(webUrl, path)}?$query"
+    val origin = sharedSettingsCanonicalWebOrigin(webUrl) ?: return ""
+    val cleanPath = path.trim().trimStart('/')
+    val route = if (cleanPath.isBlank()) origin else "$origin/$cleanPath"
+    return "$route?$query"
 }
 
 internal fun ScreenLoadState<SharedSettingsDeveloperSnapshot>.configuredWebBaseUrlOrNull(): String? =

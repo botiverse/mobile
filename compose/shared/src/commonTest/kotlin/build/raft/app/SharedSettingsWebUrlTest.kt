@@ -24,4 +24,20 @@ class SharedSettingsWebUrlTest {
             sharedSettingsWebUrl("https://staging.raft.build/", "/settings/billing")
         )
     }
+
+    @Test
+    fun hostShellWebUrlRootsPathAtConfiguredCanonicalOrigin() {
+        assertEquals(
+            "https://raft-app-staging.botiverse.dev/s/workspace/computers?embed=raft-settings-v1&shell=host",
+            sharedSettingsHostShellWebUrl(
+                "https://raft-app-staging.botiverse.dev/s/botiverse/",
+                "/s/workspace/computers",
+            ),
+        )
+    }
+
+    @Test
+    fun hostShellWebUrlFailsClosedForInvalidConfiguredAuthority() {
+        assertEquals("", sharedSettingsHostShellWebUrl("https://user@example.test/s/workspace", "/computers"))
+    }
 }

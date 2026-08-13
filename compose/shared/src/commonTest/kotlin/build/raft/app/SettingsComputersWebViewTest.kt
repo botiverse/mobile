@@ -19,6 +19,17 @@ class SettingsComputersWebViewTest {
     }
 
     @Test
+    fun authenticatedComputersUrlIgnoresConfiguredTenantPath() {
+        assertEquals(
+            "https://raft-app-staging.botiverse.dev/s/workspace/computers?embed=raft-settings-v1&shell=host",
+            settingsComputersWebViewUrl(
+                "https://raft-app-staging.botiverse.dev/s/botiverse/",
+                computersSession(),
+            ),
+        )
+    }
+
+    @Test
     fun computersUrlFallsBackToUnscopedWebRouteWithoutSession() {
         assertEquals(
             "https://app.raft.build/computers?embed=raft-settings-v1&shell=host",

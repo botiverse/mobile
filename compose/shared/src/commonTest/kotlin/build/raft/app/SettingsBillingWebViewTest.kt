@@ -10,6 +10,18 @@ import kotlin.test.assertFalse
 
 class SettingsBillingWebViewTest {
     @Test
+    fun billingUrlIgnoresConfiguredTenantPath() {
+        assertEquals(
+            "https://raft-app-staging.botiverse.dev/s/workspace/settings/billing?embed=raft-settings-v1&shell=host&lang=zh-Hans",
+            settingsBillingWebViewUrl(
+                "https://raft-app-staging.botiverse.dev/s/botiverse/",
+                billingSession(),
+                "zh-Hans",
+            ),
+        )
+    }
+
+    @Test
     fun billingUrlCarriesExplicitAppLocaleToEmbeddedWebApp() {
         val session =
             StoredAuthSession(

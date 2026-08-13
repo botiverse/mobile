@@ -10,6 +10,18 @@ import kotlin.test.assertFalse
 
 class SettingsAdministrationWebViewTest {
     @Test
+    fun administrationUrlIgnoresConfiguredTenantPath() {
+        assertEquals(
+            "https://raft-app-staging.botiverse.dev/s/workspace/settings/administration?embed=raft-settings-v1&shell=host&lang=zh-Hans",
+            settingsAdministrationWebViewUrl(
+                "https://raft-app-staging.botiverse.dev/s/botiverse/",
+                administrationSession(),
+                "zh-Hans",
+            ),
+        )
+    }
+
+    @Test
     fun administrationUrlCarriesLocaleAndEmbedFlag() {
         val session =
             StoredAuthSession(

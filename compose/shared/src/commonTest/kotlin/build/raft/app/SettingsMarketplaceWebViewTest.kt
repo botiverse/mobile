@@ -20,6 +20,17 @@ class SettingsMarketplaceWebViewTest {
     }
 
     @Test
+    fun marketplaceUrlIgnoresConfiguredTenantPath() {
+        assertEquals(
+            "https://raft-app-staging.botiverse.dev/s/workspace/settings/integrations?embed=raft-settings-v1&shell=host",
+            settingsMarketplaceWebViewUrl(
+                "https://raft-app-staging.botiverse.dev/s/botiverse/",
+                marketplaceSession(),
+            ),
+        )
+    }
+
+    @Test
     fun marketplaceUrlFallsBackToUnscopedIntegrationsRouteWithoutServerSlug() {
         assertEquals(
             "https://app.raft.build/settings/integrations?embed=raft-settings-v1&shell=host",
