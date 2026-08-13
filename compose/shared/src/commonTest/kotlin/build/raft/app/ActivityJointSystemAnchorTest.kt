@@ -6,14 +6,13 @@ import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
-import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ActivityJointSystemAnchorTest {
     @Test
-    fun jointSystemActivityOpensCanonicalChannelTailWithoutChangingMessageAnchors() {
+    fun jointSystemActivityKeepsExactEventAnchor() {
         val item =
             requireNotNull(
                 parseSharedInboxSnapshot(
@@ -40,16 +39,10 @@ class ActivityJointSystemAnchorTest {
             )
 
         assertEquals(ConversationKind.Joint, jointSystemRequest.conversationIdentity.kind)
-        assertEquals(null, jointSystemRequest.anchorMessageId)
+        assertEquals("system-event", jointSystemRequest.anchorMessageId)
         assertEquals(
             "system-event",
             item.resolveInboxAnchorMessageId()?.value
-        )
-        assertEquals(
-            "system-event",
-            item.copy(lastMessageSenderKind = MemberKind.Agent)
-                .toHomeMessageOpenRequestForTest("server-1", directory)
-                .anchorMessageId
         )
         assertEquals(
             "system-event",
