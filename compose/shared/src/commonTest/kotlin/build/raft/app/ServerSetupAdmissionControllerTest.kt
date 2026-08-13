@@ -9,11 +9,11 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 
 class ServerSetupAdmissionControllerTest {
     @Test
-    fun lateOldServerResponseCannotAdmitNewIdentity() = runTest {
+    fun lateOldServerResponseCannotAdmitNewIdentity() = runBlocking {
         val oldResponse = CompletableDeferred<HomeNetworkResponse>()
         val api = object : SlockServerSetupProjectionApi {
             override suspend fun projection(serverId: ServerId): HomeNetworkResponse =

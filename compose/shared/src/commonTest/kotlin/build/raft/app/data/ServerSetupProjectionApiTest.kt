@@ -6,11 +6,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 
 class ServerSetupProjectionApiTest {
     @Test
-    fun decodesCanonicalProjectionAndBindsServerAuthority() = runTest {
+    fun decodesCanonicalProjectionAndBindsServerAuthority() = runBlocking {
         val transport = RecordingSetupApi(
             HomeNetworkResponse(
                 code = 200,
@@ -28,7 +28,7 @@ class ServerSetupProjectionApiTest {
     }
 
     @Test
-    fun phaseNullDoesNotFabricateCompletion() = runTest {
+    fun phaseNullDoesNotFabricateCompletion() = runBlocking {
         val result = SlockServerSetupProjectionRepository(
             RecordingSetupApi(
                 HomeNetworkResponse(
@@ -44,7 +44,7 @@ class ServerSetupProjectionApiTest {
     }
 
     @Test
-    fun missingBlocksChatFailsClosedAsContractMismatch() = runTest {
+    fun missingBlocksChatFailsClosedAsContractMismatch() = runBlocking {
         val result = SlockServerSetupProjectionRepository(
             RecordingSetupApi(HomeNetworkResponse(code = 200, bodyText = """{"surface":"none"}"""))
         ).load(ServerId("server-a"))
@@ -65,4 +65,3 @@ private class RecordingSetupApi(
         return response
     }
 }
-
