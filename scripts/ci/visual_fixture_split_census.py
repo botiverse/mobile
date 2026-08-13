@@ -160,6 +160,27 @@ fun render() {
         )
         return 1
 
+    # Failure shape 4: a visual-only constant left declared in production while the
+    # moved data declares it too. This slipped through once: the census printed it
+    # under the informational `unreachable` list and still returned clean, and the
+    # duplicate was only caught at compile time by review.
+    dup_production = production_clean + "private const val VISUAL_ONLY_CONST = 3\n"
+    dup_moved = moved + "\ninternal const val VISUAL_ONLY_CONST = 3\n"
+    dup = classify(dup_production, dup_moved)
+    if "VISUAL_ONLY_CONST" not in dup.duplicated:
+        print(
+            "self-test: census accepted a symbol declared in both production and moved data",
+            file=sys.stderr,
+        )
+        return 1
+    freed_dup = classify(production_clean, dup_moved)
+    if freed_dup.duplicated:
+        print(
+            f"self-test: census reported a duplicate after production removal: {freed_dup.duplicated}",
+            file=sys.stderr,
+        )
+        return 1
+
     dirty = classify(production_with_left_behind, moved)
     if "OnlyTheVisualFilesUseThis" not in dirty.left_behind:
         print(
@@ -176,6 +197,7 @@ class Census:
     left_behind: list[str]
     unreachable: list[str]
     widened: list[tuple[str, int]]
+    duplicated: list[str]
 
 
 def classify(production: str, moved_text: str) -> Census:
@@ -192,7 +214,16 @@ def classify(production: str, moved_text: str) -> Census:
             left_behind.append(name)
         else:
             widened.append((name, remaining))
-    return Census(left_behind, unreachable, widened)
+    # Declared in BOTH the production file and a moved file. This is a hard
+    # failure and deliberately separate from `unreachable`: that one compares a
+    # declaration against a *usage* and false-positives on identifier reuse, while
+    # this compares declaration against declaration, so it cannot. Under flag=true
+    # both land in commonMain and conflict outright; under flag=false the moved
+    # copy joins commonTest alongside the production one in the same package.
+    moved_decls = declarations(moved_text)
+    prod_decls = declarations(production)
+    duplicated = sorted(set(moved_decls) & set(prod_decls))
+    return Census(left_behind, unreachable, widened, duplicated)
 
 
 def base_production(rev: str = "origin/main") -> str | None:
@@ -232,6 +263,7 @@ def main() -> int:
     moved_text = "\n".join(p.read_text(encoding="utf-8") for p in MOVED)
     result = classify(production, moved_text)
     left_behind, unreachable, widened = result.left_behind, result.unreachable, result.widened
+    duplicated = result.duplicated
 
     print("== visual-only symbols still declared in the production file ==")
     print("   (expect none; each should have moved with the cluster)")
@@ -294,13 +326,27 @@ def main() -> int:
             print(f"   {name:<62} was {vis}")
         print(f"   migrated total={len(migrated)}")
     print()
-    print(f"total widened={len(widened)} left-behind={len(left_behind)} unreachable={len(unreachable)}")
+    print("== symbols declared in BOTH the production file and a moved file ==")
+    print("   (hard failure: duplicate declaration in the same package)")
+    for n in duplicated:
+        print(f"   DUPLICATED  {n}")
+    print()
+    print(
+        f"total widened={len(widened)} left-behind={len(left_behind)} "
+        f"unreachable={len(unreachable)} duplicated={len(duplicated)}"
+    )
 
-    if left_behind:
-        print(
-            "\nFAIL: visual-only symbols are still declared in the production file",
-            file=sys.stderr,
-        )
+    if left_behind or duplicated:
+        if left_behind:
+            print(
+                "\nFAIL: visual-only symbols are still declared in the production file",
+                file=sys.stderr,
+            )
+        if duplicated:
+            print(
+                "\nFAIL: symbols are declared in both the production file and a moved file",
+                file=sys.stderr,
+            )
         return 1
     print("census clean")
     return 0

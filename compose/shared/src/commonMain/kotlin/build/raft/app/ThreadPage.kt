@@ -10422,7 +10422,6 @@ private fun String.toSharedThreadTaskStatus(): TaskStatus? =
 
 
 /** Leading messages of the inline-selection fixture that form its compact group. */
-private const val THREAD_INLINE_SELECTION_TARGET_GROUP_SIZE = 3
 
 /**
  * Gives the inline-selection fixture's compact target group [count] replies.
