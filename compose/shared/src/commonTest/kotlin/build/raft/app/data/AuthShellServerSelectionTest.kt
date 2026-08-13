@@ -304,6 +304,46 @@ class AuthShellServerSelectionTest {
     }
 
     @Test
+    fun logoutCannotCutIntoExpectedSourceCommitRememberAndEventSequence() = runBlocking {
+        val initial =
+            authSessionFixture(
+                userId = "user-1",
+                servers = authServerFixtures(),
+                selectedServerId = "server-1",
+            )
+        val processStore = PausingRememberedSelectionStore(InMemorySlockAuthSessionStore(initial))
+        val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("logout-race-shell"))
+        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+        shellStore.readSession()
+        val events = mutableListOf<AuthSessionEvent>()
+        val observer = launch(start = CoroutineStart.UNDISPATCHED) { shellStore.authSessionEvents.collect { events += it } }
+
+        val selection =
+            async(start = CoroutineStart.UNDISPATCHED) {
+                selectStoredAuthServer(
+                    sessionStore = shellStore,
+                    expectedSession = initial,
+                    expectedSelectedServerId = "server-1",
+                    serverId = "server-2",
+                )
+            }
+        processStore.rememberEntered.await()
+        val logout = async(start = CoroutineStart.UNDISPATCHED) { shellStore.clearSession("test", "test") }
+        yield()
+        assertEquals(false, logout.isCompleted)
+
+        processStore.releaseRemember.complete(Unit)
+        assertEquals("server-2", assertIs<SharedAuthResult.Success<StoredAuthSession>>(selection.await()).data.selectedServerId)
+        logout.await()
+        yield()
+
+        assertNull(shellStore.readSession())
+        assertNull(selectedServerStore.selectedServerId.value)
+        assertEquals(1, events.filterIsInstance<AuthSessionEvent.BindingMetadataChanged>().size)
+        observer.cancel()
+    }
+
+    @Test
     fun staleMetadataCompletionCannotRollbackExplicitSelection() = runBlocking {
         val initial =
             authSessionFixture(
@@ -326,15 +366,19 @@ class AuthShellServerSelectionTest {
         delayedStore.firstMetadataEntered.await()
 
         val selected =
-            selectStoredAuthServer(
-                sessionStore = shellStore,
-                expectedSession = initial,
-                serverId = "server-2",
-            )
+            async(start = CoroutineStart.UNDISPATCHED) {
+                selectStoredAuthServer(
+                    sessionStore = shellStore,
+                    expectedSession = initial,
+                    serverId = "server-2",
+                )
+            }
+        yield()
+        assertEquals(false, selected.isCompleted)
         delayedStore.releaseFirstMetadata.complete(Unit)
         staleMetadata.await()
 
-        assertEquals("server-2", assertIs<SharedAuthResult.Success<StoredAuthSession>>(selected).data.selectedServerId)
+        assertEquals("server-2", assertIs<SharedAuthResult.Success<StoredAuthSession>>(selected.await()).data.selectedServerId)
         assertEquals("server-2", selectedServerStore.selectedServerId.value)
         assertEquals("server-2", shellStore.readSession()?.selectedServerId)
         assertEquals("server-2", processStore.readSession()?.selectedServerId)
@@ -392,6 +436,25 @@ class AuthShellServerSelectionTest {
                 releaseFirstMetadata.await()
             }
             delegate.updateMetadata(expectedAccountId, transform)
+        }
+    }
+
+    private class PausingRememberedSelectionStore(
+        private val delegate: InMemorySlockAuthSessionStore,
+    ) : SlockAuthSessionStore by delegate, SlockAuthServerSelectionMemory {
+        val rememberEntered = CompletableDeferred<Unit>()
+        val releaseRemember = CompletableDeferred<Unit>()
+
+        override suspend fun readRememberedServerSelection(user: StoredAuthUser): StoredAuthServerSelection? =
+            delegate.readRememberedServerSelection(user)
+
+        override suspend fun saveRememberedServerSelection(
+            user: StoredAuthUser,
+            selection: StoredAuthServerSelection?,
+        ) {
+            rememberEntered.complete(Unit)
+            releaseRemember.await()
+            delegate.saveRememberedServerSelection(user, selection)
         }
     }
 
