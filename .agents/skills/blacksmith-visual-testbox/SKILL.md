@@ -24,11 +24,11 @@ Stamp, RC, or release gates, and it must never produce a product PASS/FAIL.
 - Stop the Testbox explicitly and delete any temporary exact-ref branch after
   the session.
 
-The setup hydrates the Kuikly artifacts and connected-test APKs, then stops all
-Gradle daemons and removes `compose/github-packages.properties` before the
-interactive action begins. Do not recreate that credential inside Testbox. A
-change that needs a previously uncached private dependency requires a fresh,
-reviewed workflow setup; it never authorizes exposing the token interactively.
+The setup hydrates the Raft artifacts and connected-test APKs, then stops all
+Gradle daemons and removes checkout credentials before the interactive action
+begins. Do not add credentials inside Testbox. A change that needs a previously
+uncached private dependency requires a fresh, reviewed workflow setup; it never
+authorizes exposing a token interactively.
 
 The workflow/job are:
 

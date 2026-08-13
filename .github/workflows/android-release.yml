@@ -364,18 +364,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
-
-      - name: Write GitHub Packages credentials (for KuiklyBase)
-        # The release helper's githubPackagesCredentials() reads
-        # githubPackagesUsername / githubPackagesToken from
-        # compose/github-packages.properties (untracked, .gitignore'd).
-        shell: bash
-        run: |
-          {
-            echo "githubPackagesUsername=${{ secrets.SLOCK_GITHUB_PACKAGES_USERNAME }}"
-            echo "githubPackagesToken=${{ secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}"
-          } > compose/github-packages.properties
-
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
 
