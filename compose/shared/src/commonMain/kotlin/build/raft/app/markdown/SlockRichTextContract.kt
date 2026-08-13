@@ -180,6 +180,7 @@ const val SLOCK_RICHTEXT_REFERENCE_UNDERLINE_OFFSET_SP = 2f
 enum class SlockRichTextRefKind(val wireValue: String) {
     Channel("channel"),
     Thread("thread"),
+    DirectMessageThread("directMessageThread"),
     Task("task"),
     UserMention("userMention")
 }
@@ -190,7 +191,8 @@ data class SlockRichTextAction(
     val refKind: SlockRichTextRefKind,
     val label: String,
     val channelName: String? = null,
-    val threadShortId: String? = null
+    val threadShortId: String? = null,
+    val directMessagePeerName: String? = null
 )
 
 enum class SlockRichTextActionKind(val wireValue: String) {
@@ -212,7 +214,8 @@ data class SlockRichTextContext(
     val highlightedMentions: Set<String> = emptySet(),
     val knownTaskNumbers: Set<Int>? = null,
     val activeTagKey: String? = null,
-    val inlineContentScope: String? = null
+    val inlineContentScope: String? = null,
+    val knownDirectMessagePeers: Set<String> = emptySet()
 )
 
 /**
@@ -392,12 +395,17 @@ private sealed class SlockRichTextTokenSource {
 private fun SlockRichTextContext.toMarkdownTagValidator(): (ThreadMarkdownTag) -> Boolean {
     val channelKeys = knownChannels.mapTo(mutableSetOf()) { it.trim().lowercase() }
     val mentionKeys = knownMentions.mapTo(mutableSetOf()) { it.removePrefix("@").trim().lowercase() }
+    val directMessagePeerKeys =
+        knownDirectMessagePeers.mapTo(mutableSetOf()) { it.removePrefix("@").trim().lowercase() }
     return { tag ->
         when (tag.kind) {
             ThreadMarkdownTagKind.Task ->
                 knownTaskNumbers?.contains(tag.label.removePrefix("#").toIntOrNull()) ?: true
             ThreadMarkdownTagKind.UserMention ->
                 mentionKeys.contains(tag.label.removePrefix("@").trim().lowercase())
+            ThreadMarkdownTagKind.DirectMessageThread ->
+                directMessagePeerKeys.contains(tag.directMessagePeerName.orEmpty().trim().lowercase()) &&
+                    !tag.threadShortId.isNullOrBlank()
             ThreadMarkdownTagKind.Channel ->
                 channelKeys.contains(tag.channelName.orEmpty().trim().lowercase())
             ThreadMarkdownTagKind.ChannelThread ->
@@ -429,7 +437,8 @@ private fun ThreadMarkdownTag.toRichTextAction(id: String): SlockRichTextAction 
         refKind = kind.toRichTextRefKind(),
         label = label,
         channelName = channelName,
-        threadShortId = threadShortId
+        threadShortId = threadShortId,
+        directMessagePeerName = directMessagePeerName
     )
 
 private fun ThreadMarkdownTag.toRichTextChromeKind(
@@ -442,6 +451,7 @@ private fun ThreadMarkdownTag.toRichTextChromeKind(
         kind == ThreadMarkdownTagKind.UserMention -> SlockRichTextChromeKind.OrdinaryMention
         kind == ThreadMarkdownTagKind.Channel -> SlockRichTextChromeKind.Channel
         kind == ThreadMarkdownTagKind.ChannelThread -> SlockRichTextChromeKind.Thread
+        kind == ThreadMarkdownTagKind.DirectMessageThread -> SlockRichTextChromeKind.Thread
         kind == ThreadMarkdownTagKind.Task -> SlockRichTextChromeKind.Task
         else -> SlockRichTextChromeKind.OrdinaryMention
     }
@@ -450,6 +460,7 @@ private fun ThreadMarkdownTagKind.toRichTextRefKind(): SlockRichTextRefKind =
     when (this) {
         ThreadMarkdownTagKind.Channel -> SlockRichTextRefKind.Channel
         ThreadMarkdownTagKind.ChannelThread -> SlockRichTextRefKind.Thread
+        ThreadMarkdownTagKind.DirectMessageThread -> SlockRichTextRefKind.DirectMessageThread
         ThreadMarkdownTagKind.Task -> SlockRichTextRefKind.Task
         ThreadMarkdownTagKind.UserMention -> SlockRichTextRefKind.UserMention
     }
@@ -525,6 +536,10 @@ private fun SlockRichTextAction.toGoldenJson(): String =
         threadShortId?.let {
             append(",")
             appendJsonField("threadShortId", it)
+        }
+        directMessagePeerName?.let {
+            append(",")
+            appendJsonField("directMessagePeerName", it)
         }
         append("}")
     }

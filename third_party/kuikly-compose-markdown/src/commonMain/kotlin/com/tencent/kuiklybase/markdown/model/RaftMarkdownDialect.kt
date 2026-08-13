@@ -14,8 +14,8 @@ data class RaftMarkdownInlineRef(
 )
 
 /**
- * Raft's GFM extension for `@member`, `#channel`, `#channel:thread`, and
- * numeric `#task` references.
+ * Raft's GFM extension for `@member`, `#channel`, `#channel:thread`,
+ * `dm:@peer:thread`, and numeric `#task` references.
  *
  * GFM parses first and therefore owns nesting. Raft recognition runs only on
  * source ranges not claimed by Markdown links/definitions, images, code,
@@ -83,9 +83,37 @@ internal fun String.raftMarkdownSyntaxCandidateRanges(start: Int = 0, end: Int =
 }
 
 private fun String.raftInlineRefRange(start: Int): IntRange? {
-    if (start >= length || (this[start] != '#' && this[start] != '@')) return null
+    if (start >= length || (this[start] != '#' && this[start] != '@' && !startsWith("dm:@", start, ignoreCase = true))) {
+        return null
+    }
     if (isRaftMarkdownEscaped(start) || !isRaftInlineRefBoundary(start - 1)) return null
-    return if (this[start] == '@') raftMentionRange(start) else raftHashRange(start)
+    return when {
+        startsWith("dm:@", start, ignoreCase = true) -> raftDirectMessageThreadRange(start)
+        this[start] == '@' -> raftMentionRange(start)
+        else -> raftHashRange(start)
+    }
+}
+
+private fun String.raftDirectMessageThreadRange(start: Int): IntRange? {
+    val peerStart = start + 4
+    if (peerStart >= length || !this[peerStart].isRaftAsciiWordCharacter()) return null
+    var peerEnd = peerStart + 1
+    var count = 1
+    while (peerEnd < length && count < 64 && this[peerEnd].isRaftDirectMessagePeerPart()) {
+        peerEnd++
+        count++
+    }
+    // A DM thread is an atomic form. A missing or malformed suffix must fall
+    // back to the ordinary @mention candidate inside it, never a partial DM ref.
+    if (peerEnd >= length || this[peerEnd] != ':') return null
+    val shortStart = peerEnd + 1
+    var shortEnd = shortStart
+    while (shortEnd < length && shortEnd - shortStart < 8 && this[shortEnd].isRaftShortIdPart()) {
+        shortEnd++
+    }
+    val shortLength = shortEnd - shortStart
+    if (shortLength !in 6..8 || (shortEnd < length && this[shortEnd].isRaftShortIdPart())) return null
+    return start until shortEnd
 }
 
 private fun String.raftMentionRange(start: Int): IntRange? {
@@ -151,6 +179,9 @@ private fun String.isRaftMarkdownEscaped(index: Int): Boolean {
 }
 
 private fun Char.isRaftMentionPart(): Boolean = isLetterOrDigit() || this == '_' || this == '.' || this == '-'
+private fun Char.isRaftDirectMessagePeerPart(): Boolean = isRaftAsciiWordCharacter() || this == '.' || this == '-'
+private fun Char.isRaftAsciiWordCharacter(): Boolean =
+    this in 'a'..'z' || this in 'A'..'Z' || isDigit() || this == '_'
 private fun Char.isRaftChannelPart(): Boolean = isLetterOrDigit() || this == '_' || this == '-'
 private fun Char.isRaftShortIdPart(): Boolean = isDigit() || this in 'a'..'f' || this in 'A'..'F'
 private fun Char.isRaftTaskTrailingPart(): Boolean = isLetterOrDigit() || this == '_'

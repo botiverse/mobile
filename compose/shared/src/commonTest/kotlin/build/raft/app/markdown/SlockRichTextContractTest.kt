@@ -207,6 +207,50 @@ class SlockRichTextContractTest {
     }
 
     @Test
+    fun directMessageThreadActionRoundTripPreservesIdentityAndThreadChrome() {
+        val document =
+            buildSlockRichTextDocument(
+                "Open dm:@artin:1c50c30a",
+                SlockRichTextContext(knownDirectMessagePeers = setOf("artin"))
+            )
+
+        val token = document.inlineTokens.single { it.kind == SlockRichTextInlineKind.SlockRef }
+        val action = document.actions.single()
+        assertEquals("dm:@artin:1c50c30a", token.sourceText)
+        assertEquals(SlockRichTextChromeKind.Thread, token.chrome)
+        assertEquals(SlockRichTextRefKind.DirectMessageThread, token.refKind)
+        assertEquals(SlockRichTextRefKind.DirectMessageThread, action.refKind)
+        assertEquals("artin", action.directMessagePeerName)
+        assertEquals("1c50c30a", action.threadShortId)
+    }
+
+    @Test
+    fun unknownPeerDoesNotBecomeDirectMessageThreadAction() {
+        val document =
+            buildSlockRichTextDocument(
+                "Open dm:@unknown:1c50c30a",
+                SlockRichTextContext(knownDirectMessagePeers = setOf("artin"))
+            )
+
+        assertFalse(document.actions.any { it.refKind == SlockRichTextRefKind.DirectMessageThread })
+        assertFalse(document.inlineTokens.any { it.refKind == SlockRichTextRefKind.DirectMessageThread })
+    }
+
+    @Test
+    fun directMessagePeerValidityDoesNotMakeTheSameNameAnOrdinaryMention() {
+        val document =
+            buildSlockRichTextDocument(
+                "Open dm:@artin:1c50c30a then @artin",
+                SlockRichTextContext(knownDirectMessagePeers = setOf("artin"))
+            )
+
+        assertEquals(
+            listOf(SlockRichTextRefKind.DirectMessageThread),
+            document.actions.map { it.refKind }
+        )
+    }
+
+    @Test
     fun richTextDocumentGoldenJsonIsStable() {
         val body = "Ping @artin in #markdown专修 for #42 and `code #99`"
         val document =

@@ -57,6 +57,37 @@ class RaftMarkdownDialectTest {
     }
 
     @Test
+    fun recognizesCompleteDmThreadAsOneRefAndLeavesBareMentionSuffixSeparate() {
+        val source = "Open dm:@artin:1c50c30a; keep @artin:1c50c30a as a profile mention."
+
+        assertEquals(
+            listOf("dm:@artin:1c50c30a", "@artin"),
+            source.raftRefs(),
+        )
+    }
+
+    @Test
+    fun rejectsMalformedDmThreadFormsWithoutConsumingTheirMentionFallback() {
+        val source =
+            "dm:@artin:12345 dm:@artin:123456789 dm:@artin:12zzzz " +
+                "dm:@发布者:DEADBEEF dm:@release.bot:DEADBEEF"
+
+        assertEquals(
+            listOf("@artin", "@artin", "@artin", "@发布者", "dm:@release.bot:DEADBEEF"),
+            source.raftRefs(),
+        )
+    }
+
+    @Test
+    fun markdownOwnedRangesSuppressDmThreadRefs() {
+        val source =
+            "`dm:@artin:1c50c30a` [dm:@artin:1c50c30a](https://example.test) " +
+                "outside dm:@artin:1c50c30a"
+
+        assertEquals(listOf("dm:@artin:1c50c30a"), source.raftRefs())
+    }
+
+    @Test
     fun flavourParseEmitsFirstClassRaftReferenceTokens() {
         val source = "**Review #1487 with @artin**"
         val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(source)
