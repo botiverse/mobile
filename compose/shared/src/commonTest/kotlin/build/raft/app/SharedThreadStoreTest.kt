@@ -13475,6 +13475,12 @@ class SharedThreadStoreTest {
             createdThreads += channelId to parentMessageId
             return HomeNetworkResponse(code = 200, bodyText = """{"threadChannelId":"thread-$parentMessageId","parentMessageId":"$parentMessageId","created":true}""")
         }
+
+        override suspend fun messageContext(messageId: String, channelId: String?): HomeNetworkResponse =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText = """{"channelId":"$channelId","targetMessageId":"$messageId","messages":[],"historyLimited":false}"""
+            )
     }
 
     private class ParkableReadSessionStore(

@@ -4,6 +4,7 @@ import build.raft.app.components.SlockAnchoredMetaChip
 import build.raft.app.components.SlockAttachmentPreviewCard
 import build.raft.app.components.SlockAttachmentPreviewCardWidth
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockChipLoadingIndicator
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalSearchField
 import build.raft.app.components.SlockBrutalTextField
@@ -37,6 +38,7 @@ import build.raft.app.data.ForwardMessageTargetRequiredAction
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.NetworkSlockTasksApi
 import build.raft.app.data.NetworkSlockThreadApi
+import build.raft.app.data.SlockThreadApiClient
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealSettingsRepository
@@ -3285,6 +3287,23 @@ private fun ThreadPageScreen(
                     }
                 }
             )
+        }
+    val quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)? =
+        remember(networkClient) {
+            val client = SlockThreadApiClient(NetworkSlockThreadApi(networkClient))
+            val loader: suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem? = { target ->
+                when (val result = client.messageContext(target.messageId.value, target.channelId.value)) {
+                    is ThreadApiResult.Success -> {
+                        val payload = result.data
+                        val targetId = payload.targetMessageId?.value ?: target.messageId.value
+                        payload.messages
+                            .firstOrNull { it.id.value == targetId }
+                            ?.toKuiklyThreadMessageItem(null)
+                    }
+                    is ThreadApiResult.Failure -> null
+                }
+            }
+            loader
         }
     val selectedServerStore =
         remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
@@ -15321,6 +15340,7 @@ private fun ThreadChatTab(
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
+    quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)? = null,
     diagnosticsLogger: (String) -> Unit = {},
     onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit = { _, _ -> },
     onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject? = { _, _, _, _, _ -> null },
@@ -15412,6 +15432,7 @@ private fun ThreadChatTab(
                     onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
+                    quotedPermalinkLoader = quotedPermalinkLoader,
                     diagnosticsLogger = diagnosticsLogger,
                     onComposerLayoutProbe = onComposerLayoutProbe,
                     onComposerPixelProbe = onComposerPixelProbe,
@@ -15490,6 +15511,7 @@ private fun ThreadChatTab(
                     onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
+                    quotedPermalinkLoader = quotedPermalinkLoader,
                     diagnosticsLogger = diagnosticsLogger,
                     onComposerLayoutProbe = onComposerLayoutProbe,
                     onComposerPixelProbe = onComposerPixelProbe,
@@ -15558,6 +15580,7 @@ private fun ThreadChatTab(
                 onMentionAuthor = onMentionAuthor,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
+                quotedPermalinkLoader = quotedPermalinkLoader,
                 diagnosticsLogger = diagnosticsLogger,
                 onComposerLayoutProbe = onComposerLayoutProbe,
                 onComposerPixelProbe = onComposerPixelProbe,
@@ -15869,6 +15892,7 @@ private fun ThreadMessagesList(
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
+    quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)? = null,
     diagnosticsLogger: (String) -> Unit = {},
     onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit = { _, _ -> },
     onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject? = { _, _, _, _, _ -> null },
@@ -18564,6 +18588,7 @@ private fun ThreadMessagesList(
                                 writeActionsEnabled = writeActionsEnabled,
                                 onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
                                 currentServerSlug = currentServerSlug,
+                                quotedPermalinkLoader = quotedPermalinkLoader,
                                 onOpenMarkdownTag = onOpenMarkdownTag,
                                 onOpenMarkdownUrl = onOpenMarkdownUrl,
                                 onMentionAuthor = onMentionAuthor,
@@ -20836,6 +20861,77 @@ private fun ThreadMessageGeometryTintBox(tint: Color?, content: @Composable () -
     }
 }
 
+internal sealed interface ThreadQuotedPermalinkUiState {
+    data object Loading : ThreadQuotedPermalinkUiState
+    data class Loaded(val item: KuiklyThreadMessageItem) : ThreadQuotedPermalinkUiState
+    data object Unavailable : ThreadQuotedPermalinkUiState
+}
+
+@Composable
+private fun ThreadQuotedPermalinkCard(
+    state: ThreadQuotedPermalinkUiState,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier =
+            modifier
+                .background(SlockColor.SurfaceCream, RoundedCornerShape(SlockRadius.Sm))
+                .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sm))
+                .clickable(enabled = state is ThreadQuotedPermalinkUiState.Loaded, onClick = onOpen)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        when (state) {
+            ThreadQuotedPermalinkUiState.Loading -> {
+                SlockChipLoadingIndicator(size = 14.dp)
+                Text(
+                    text = stringResource(MR.strings.thread_quoted_permalink_loading),
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray
+                )
+            }
+            is ThreadQuotedPermalinkUiState.Loaded -> {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = state.item.authorName,
+                            style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = state.item.timestampLabel,
+                            style = SlockType.Caption,
+                            color = SlockColor.TextMutedGray
+                        )
+                    }
+                    Text(
+                        text = state.item.body.takeIf { it.isNotBlank() }?.lineSequence()
+                            ?.firstOrNull { it.isNotBlank() }
+                            ?: stringResource(MR.strings.thread_quoted_permalink_no_content),
+                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            ThreadQuotedPermalinkUiState.Unavailable -> {
+                Text(
+                    text = stringResource(MR.strings.thread_quoted_permalink_unavailable),
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
@@ -20913,6 +21009,7 @@ private fun ThreadMessageCard(
     onInlineSelectionMore: (SlockPopoverAnchor) -> Unit = {},
     onLongPressInputReady: ((String) -> Unit)? = null,
     longPressGestureInstanceKey: Any = message.id,
+    quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)? = null,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val localizedAuthorName =
@@ -20934,6 +21031,19 @@ private fun ThreadMessageCard(
         } else {
             null
         }
+    val quotedPermalinkState = remember(message.id, message.body) { mutableStateOf<ThreadQuotedPermalinkUiState?>(null) }
+    var quotedPermalinkTarget by remember(message.id, message.body) { mutableStateOf<SlockMessagePermalinkTarget?>(null) }
+    LaunchedEffect(message.id, message.body, currentServerSlug, quotedPermalinkLoader) {
+        quotedPermalinkState.value = null
+        quotedPermalinkTarget = null
+        val loader = quotedPermalinkLoader ?: return@LaunchedEffect
+        val target = message.body.extractFirstQuotedMessagePermalink(currentServerSlug) ?: return@LaunchedEffect
+        quotedPermalinkTarget = target
+        quotedPermalinkState.value = ThreadQuotedPermalinkUiState.Loading
+        quotedPermalinkState.value =
+            loader(target)?.let { ThreadQuotedPermalinkUiState.Loaded(it) }
+                ?: ThreadQuotedPermalinkUiState.Unavailable
+    }
     val avatarWireValue =
         resolveThreadRowAvatarWireValue(
             rememberSlockMemberAvatarWireValue(memberAvatarResolver, message.authorId)
@@ -21538,6 +21648,16 @@ private fun ThreadMessageCard(
                                     ThreadLongMessageToggle(
                                         expanded = longMessageExpanded,
                                         onClick = onToggleLongMessage
+                                    )
+                                }
+                                quotedPermalinkState.value?.let { state ->
+                                    ThreadQuotedPermalinkCard(
+                                        state = state,
+                                        onOpen = {
+                                            quotedPermalinkTarget?.let { target ->
+                                                onOpenMarkdownUrl(target.rawUrl)
+                                            }
+                                        }
                                     )
                                 }
                             }
