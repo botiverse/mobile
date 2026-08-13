@@ -77,6 +77,9 @@ jobs:
       - name: Validate remote Touchlab dependency contract
         run: python3 scripts/ci/test_remote_touchlab_ci_contract.py
 
+      - name: Validate no-local-Ktor dependency contract
+        run: python3 scripts/ci/test_no_local_ktor_ci_contract.py
+
       # Incident-born gate (task #976): PR #1920 imported kotlinx.coroutines.test
       # into commonTest; the OHOS test targets have no such KLIB, so only the
       # post-merge OHOS shared compile went red. This contract runs on every PR.
@@ -231,8 +234,8 @@ jobs:
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
 
-  # Parallel sibling of kuikly-artifacts: the remaining sqldelight/ktor fork
-  # stack. Stately and SQLiter resolve directly from immutable Raft artifacts.
+  # Parallel sibling of kuikly-artifacts: the remaining SQLDelight fork.
+  # Stately and SQLiter resolve from Raft; NetworkKMM has no Ktor dependency.
   fork-deps:
     name: Shared fork dependencies (prebuild)
     needs: [plan]
@@ -256,12 +259,6 @@ jobs:
         uses: ./.github/actions/git-safe-workspace
         with:
           scope: all
-
-      - name: Set up JDK 8 for Ktor toolchain
-        uses: actions/setup-java@v5
-        with:
-          distribution: zulu
-          java-version: "8"
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -331,7 +328,7 @@ jobs:
         run: |
           sqldelight="$(git rev-parse HEAD:third_party/sqldelight)"
           test -n "$sqldelight"
-          echo "forkdeps=sqldelight-ktor-mavenlocal-${HARMONY_CACHE_EPOCH}-$sqldelight-${{ hashFiles('scripts/prepare_ktor_ohos_fork.sh', 'third_party/ktor-ohos/**') }}" >> "$GITHUB_OUTPUT"
+          echo "forkdeps=sqldelight-mavenlocal-${HARMONY_CACHE_EPOCH}-$sqldelight" >> "$GITHUB_OUTPUT"
 
       - name: Cache shared fork dependencies mavenLocal artifacts
         id: forkdeps-cache
@@ -349,8 +346,8 @@ jobs:
           stage="$GITHUB_WORKSPACE/.ci-cache/maven/fork-deps"
           dst="$userhome/.m2/repository"
           test ! -e "$stage/co/touchlab"
+          test ! -e "$stage/io/ktor"
           test -d "$stage/app/cash/sqldelight"
-          test -d "$stage/io/ktor"
           mkdir -p "$dst"
           cp -a "$stage/." "$dst/"
 
@@ -362,9 +359,13 @@ jobs:
           gradlehome="${GRADLE_USER_HOME:-$userhome/.gradle}"
           rm -rf \
             "$userhome/.m2/repository/co/touchlab" \
-            "$gradlehome/caches/modules-2/files-2.1/co.touchlab"
+            "$userhome/.m2/repository/io/ktor" \
+            "$gradlehome/caches/modules-2/files-2.1/co.touchlab" \
+            "$gradlehome/caches/modules-2/files-2.1/io.ktor"
           test ! -e "$userhome/.m2/repository/co/touchlab"
+          test ! -e "$userhome/.m2/repository/io/ktor"
           test ! -e "$gradlehome/caches/modules-2/files-2.1/co.touchlab"
+          test ! -e "$gradlehome/caches/modules-2/files-2.1/io.ktor"
 
       # Retried: the KBA artifacts resolve only from CN mirrors
       # (mirrors.tencent.com), whose reachability from hosted runners is
@@ -373,7 +374,7 @@ jobs:
       # The attempt runs as its own `bash` process: a shell function called from
       # an `if` has errexit suppressed for its whole body, so one failing gradlew
       # would silently fall through to the next command and the step would pass
-      # with a half-empty ~/.m2 (this shipped a 2.6MB ktor-only cache once).
+      # with a half-empty ~/.m2 (this previously shipped an incomplete cache).
       - name: Publish shared fork dependencies
         if: steps.forkdeps-cache.outputs.cache-hit != 'true'
         shell: bash
@@ -397,8 +398,6 @@ jobs:
             :runtime:publishOhosArm64PublicationToMavenLocal \
             :drivers:native-driver:publishOhosArm64PublicationToMavenLocal
           popd
-
-          scripts/prepare_ktor_ohos_fork.sh --publish
           SCRIPT
           for i in 1 2 3; do
             if bash /tmp/publish-forkdeps.sh; then exit 0; fi
@@ -420,14 +419,14 @@ jobs:
           for probe in \
             "app/cash/sqldelight/app.cash.sqldelight.gradle.plugin" \
             "app/cash/sqldelight/runtime-ohosarm64" \
-            "app/cash/sqldelight/native-driver-ohosarm64" \
-            "io/ktor/ktor-client-core-ohosarm64"; do
+            "app/cash/sqldelight/native-driver-ohosarm64"; do
             if ! find "$repo/$probe" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | grep -q .; then
               echo "MISSING: $probe" >&2
               missing=1
             fi
           done
           test ! -e "$repo/co/touchlab"
+          test ! -e "$repo/io/ktor"
           exit $missing
 
       - name: Stage shared fork dependencies for cache
@@ -439,12 +438,11 @@ jobs:
           repo="$userhome/.m2/repository"
           stage="$GITHUB_WORKSPACE/.ci-cache/maven/fork-deps"
           rm -rf "$stage"
-          mkdir -p "$stage/app/cash" "$stage/io"
+          mkdir -p "$stage/app/cash"
           cp -a "$repo/app/cash/sqldelight" "$stage/app/cash/"
-          cp -a "$repo/io/ktor" "$stage/io/"
           test ! -e "$stage/co/touchlab"
+          test ! -e "$stage/io/ktor"
           test -d "$stage/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin"
-          test -d "$stage/io/ktor/ktor-client-core-ohosarm64"
 
       - name: Gradle failure diagnostics
         if: failure()
@@ -1269,14 +1267,16 @@ jobs:
           dst="$userhome/.m2/repository"
           forkdeps="$GITHUB_WORKSPACE/.ci-cache/maven/fork-deps"
           test ! -e "$forkdeps/co/touchlab"
+          test ! -e "$forkdeps/io/ktor"
           test -d "$forkdeps/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin"
-          test -d "$forkdeps/io/ktor/ktor-client-core-ohosarm64"
           rm -rf "$dst/co/touchlab" "$dst/app/cash/sqldelight" "$dst/io/ktor"
           gradlehome="${GRADLE_USER_HOME:-$userhome/.gradle}"
-          rm -rf "$gradlehome/caches/modules-2/files-2.1/co.touchlab"
-          mkdir -p "$dst/app/cash" "$dst/io"
+          rm -rf \
+            "$gradlehome/caches/modules-2/files-2.1/co.touchlab" \
+            "$gradlehome/caches/modules-2/files-2.1/io.ktor"
+          mkdir -p "$dst/app/cash"
           cp -a "$forkdeps/app/cash/sqldelight" "$dst/app/cash/"
-          cp -a "$forkdeps/io/ktor" "$dst/io/"
+          test ! -e "$dst/io/ktor"
 
       - name: Detect OHOS native-bridge changes
         id: ohos_native
@@ -1516,14 +1516,16 @@ jobs:
           dst="$userhome/.m2/repository"
           forkdeps="$GITHUB_WORKSPACE/.ci-cache/maven/fork-deps"
           test ! -e "$forkdeps/co/touchlab"
+          test ! -e "$forkdeps/io/ktor"
           test -d "$forkdeps/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin"
-          test -d "$forkdeps/io/ktor/ktor-client-core-ohosarm64"
           rm -rf "$dst/co/touchlab" "$dst/app/cash/sqldelight" "$dst/io/ktor"
           gradlehome="${GRADLE_USER_HOME:-$userhome/.gradle}"
-          rm -rf "$gradlehome/caches/modules-2/files-2.1/co.touchlab"
-          mkdir -p "$dst/app/cash" "$dst/io"
+          rm -rf \
+            "$gradlehome/caches/modules-2/files-2.1/co.touchlab" \
+            "$gradlehome/caches/modules-2/files-2.1/io.ktor"
+          mkdir -p "$dst/app/cash"
           cp -a "$forkdeps/app/cash/sqldelight" "$dst/app/cash/"
-          cp -a "$forkdeps/io/ktor" "$dst/io/"
+          test ! -e "$dst/io/ktor"
 
       # This gate compiles the host ArkTS/.ets — the layer the KMP-only jobs
       # cannot see (e.g. the tabbar host regression). It deliberately stops
