@@ -24,6 +24,7 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.CancellationException
 
 internal data class ServerSetupAdmissionHost(
     val featureDecision: ServerSetupFeatureDecision,
@@ -89,11 +90,13 @@ internal fun rememberServerSetupAdmissionHost(
     LaunchedEffect(featureFlags, identity) {
         if (featureDecision == ServerSetupFeatureDecision.Checking) {
             featureDecision =
-                runCatching { featureFlags.prefetch(ServerId(serverId)) }
-                    .fold(
-                        onSuccess = ::serverSetupFeatureDecision,
-                        onFailure = { ServerSetupFeatureDecision.Bypassed },
-                    )
+                try {
+                    serverSetupFeatureDecision(featureFlags.prefetch(ServerId(serverId)))
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    ServerSetupFeatureDecision.Bypassed
+                }
             if (featureDecision == ServerSetupFeatureDecision.Checking) {
                 featureDecision = ServerSetupFeatureDecision.Bypassed
             }
