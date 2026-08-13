@@ -933,10 +933,12 @@ internal class SlockShellAuthSessionStore(
     }
 
     override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
-        val selection = selectedServerStore.select(serverId, serverSlug)
-        emitAuthSessionEvent { generation -> AuthSessionEvent.BindingMetadataChanged(generation) }
-        // The process-level value is intentionally only the next-launch default.
-        delegate.updateSelectedServer(selection.serverId, selection.serverSlug)
+        selectionMutationMutex.withLock {
+            val selection = selectedServerStore.select(serverId, serverSlug)
+            // The process-level value is intentionally only the next-launch default.
+            delegate.updateSelectedServer(selection.serverId, selection.serverSlug)
+            emitAuthSessionEvent { generation -> AuthSessionEvent.BindingMetadataChanged(generation) }
+        }
     }
 
     override suspend fun clearSession(reason: String, source: String) {

@@ -276,6 +276,34 @@ class AuthShellServerSelectionTest {
     }
 
     @Test
+    fun directCanonicalSelectionAndExpectedSourceSelectionShareOneMutationOrder() = runBlocking {
+        val initial =
+            authSessionFixture(
+                userId = "user-1",
+                servers = authServerFixtures() + StoredAuthServer(id = "server-3", name = "Three", slug = "three"),
+                selectedServerId = "server-1",
+            )
+        val processStore = InMemorySlockAuthSessionStore(initial)
+        val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("direct-source-race-shell"))
+        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+        shellStore.readSession()
+
+        shellStore.updateSelectedServer("server-3", "three")
+        val stale =
+            selectStoredAuthServer(
+                sessionStore = shellStore,
+                expectedSession = initial,
+                expectedSelectedServerId = "server-1",
+                serverId = "server-2",
+            )
+
+        assertIs<SharedAuthResult.Unauthenticated>(stale)
+        assertEquals("server-3", selectedServerStore.selectedServerId.value)
+        assertEquals("server-3", shellStore.readSession()?.selectedServerId)
+        assertEquals("server-3", processStore.readSession()?.selectedServerId)
+    }
+
+    @Test
     fun staleMetadataCompletionCannotRollbackExplicitSelection() = runBlocking {
         val initial =
             authSessionFixture(
