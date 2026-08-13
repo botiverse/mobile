@@ -370,6 +370,8 @@ private class ThreadNewerAutoPaginationNetworkApi(
                 "{\"threadChannelId\":\"$ThreadNewerAutoChannelId\",\"parentMessageId\":\"$parentMessageId\",\"created\":false}",
         )
 
+    override suspend fun messageContext(messageId: String, channelId: String?): HomeNetworkResponse = okResponse()
+
     private fun okResponse(): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = "{}")
 }
 

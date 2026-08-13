@@ -215,6 +215,7 @@ private class UnusedThreadNetworkApi : SharedThreadNetworkApi {
     override suspend fun removeReaction(messageId: String, emoji: String) = unused()
     override suspend fun updateTaskStatus(taskId: String, status: TaskStatus) = unused()
     override suspend fun createOrOpenThread(channelId: String, parentMessageId: String) = unused()
+    override suspend fun messageContext(messageId: String, channelId: String?) = unused()
 
     private fun unused(): HomeNetworkResponse = error("unused")
 }

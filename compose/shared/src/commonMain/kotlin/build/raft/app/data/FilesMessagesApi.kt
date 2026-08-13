@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
+import build.raft.app.model.ThreadId
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -102,6 +103,31 @@ internal class SlockFilesMessagesApiClient(
                 historyLimited = wire.historyLimited ?: false,
             )
         }
+
+    /**
+     * Same `GET /api/messages/context/:messageId` wire, parsed into full
+     * [SharedMessagesPayload] (messages preserved) for quoted-permalink
+     * previews. Mirrors `parseSharedMessageContext`; the count-only
+     * [messageContext] above keeps the legacy summary shape.
+     */
+    suspend fun messageContextPayload(
+        messageId: MessageId,
+        channelId: ChannelId? = null,
+        fallbackThreadId: ThreadId,
+    ): DataResult<SharedMessagesPayload> {
+        val response = transport.messageContext(messageId, channelId)
+        if (!response.isSuccessful) {
+            return DataResult.Error(ScreenError("message_context_contract_mismatch", retryable = response.code >= 500))
+        }
+        val body =
+            response.bodyText?.takeIf { it.isNotBlank() }
+                ?: return DataResult.Error(ScreenError("message_context_contract_mismatch", retryable = false))
+        val payload = parseSharedMessageContext(body, fallbackThreadId)
+        if (payload.messages.isEmpty()) {
+            return DataResult.Error(ScreenError("message_context_contract_mismatch", retryable = false))
+        }
+        return DataResult.Content(payload)
+    }
 
     suspend fun addReaction(messageId: MessageId, emoji: String): DataResult<MessageMutationSummary> =
         transport.addReaction(messageId, emoji).mapMessageMutation("message_reaction_contract_mismatch")

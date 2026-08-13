@@ -471,7 +471,10 @@
     <string name="thread_add_member_select_before_adding">请先选择要添加的成员。</string>
     <string name="thread_add_member_failed">无法添加成员</string>
     <string name="thread_member_role_agent">Agent</string>
-    <string name="thread_member_role_member">成员</string>
+    <string name="thread_quoted_permalink_loading">正在加载消息…</string>
+    <string name="thread_quoted_permalink_no_content">（无内容）</string>
+    <string name="thread_quoted_permalink_unavailable">消息预览不可用</string>
+<string name="thread_member_role_member">成员</string>
     <string name="thread_member_role_system">系统</string>
     <string name="thread_settings_edit_channel">编辑频道</string>
     <string name="thread_settings_name">名称</string>

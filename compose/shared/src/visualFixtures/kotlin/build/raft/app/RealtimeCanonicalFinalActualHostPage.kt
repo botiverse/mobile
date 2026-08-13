@@ -1220,6 +1220,9 @@ private class ActualHostThreadApi(
     override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse =
         HomeNetworkResponse(code = 200, bodyText = """{"threadChannelId":"host-thread","parentMessageId":"$parentMessageId","created":true}""")
 
+    override suspend fun messageContext(messageId: String, channelId: String?): HomeNetworkResponse =
+        HomeNetworkResponse(code = 200, bodyText = """{"channelId":"$channelId","targetMessageId":"$messageId","messages":[],"historyLimited":false}""")
+
     private fun okResponse(): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = "{}")
 }
 
