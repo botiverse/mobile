@@ -41,7 +41,7 @@ class ServerSetupAdmissionProductionWiringTest {
         assertTrue(host.contains("serverSetupControlledDocumentMatchesOrigin(currentDocumentUrl, webBaseUrl)"))
         assertTrue(host.contains("serverSetupSwitchTargetId("))
         assertTrue(host.contains("controllerState.claimSwitch(identity)"))
-        assertTrue(host.contains("authDataSource.selectServer(targetId)"))
+        assertTrue(host.contains("expectedSelectedServerId = serverId"))
         assertTrue(host.contains("state = ServerSetupAdmissionState.Loading(identity)"))
     }
 

@@ -217,10 +217,11 @@ interface SlockAuthSessionStore {
 
     /**
      * Atomically selects [serverId] only while the latest session still matches the
-     * complete captured account/token generation. The generation comparison and target
+     * complete captured account/token generation and, when supplied, the captured selected
+     * Server. The generation/source comparison and target
      * resolution from the latest server list both run inside the real store's metadata
      * write lock, so a removed server, account switch, or same-account login/token
-     * successor fails closed instead of publishing a stale selection.
+     * successor or intervening selection fails closed instead of publishing a stale selection.
      *
      * Shell-scoped stores override this primitive so the same explicit action updates
      * both the shell selection authority and the process next-launch default.
@@ -229,13 +230,15 @@ interface SlockAuthSessionStore {
         expectedAccountId: String,
         expectedAccessToken: String,
         expectedRefreshToken: String,
+        expectedSelectedServerId: String? = null,
         serverId: String,
     ): StoredAuthSession? {
         var selected: StoredAuthSession? = null
         updateMetadata(expectedAccountId = expectedAccountId) { latest ->
             if (
                 latest.accessToken != expectedAccessToken ||
-                latest.refreshToken != expectedRefreshToken
+                latest.refreshToken != expectedRefreshToken ||
+                (expectedSelectedServerId != null && latest.selectedServerId != expectedSelectedServerId)
             ) {
                 return@updateMetadata latest
             }

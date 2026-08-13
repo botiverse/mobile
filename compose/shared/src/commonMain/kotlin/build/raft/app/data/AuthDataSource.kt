@@ -1090,11 +1090,15 @@ class SharedAuthDataSource(
         return SharedAuthResult.Success(updated)
     }
 
-    suspend fun selectServer(serverId: String): SharedAuthResult<StoredAuthSession> {
+    suspend fun selectServer(
+        serverId: String,
+        expectedSelectedServerId: String? = null,
+    ): SharedAuthResult<StoredAuthSession> {
         val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         return selectStoredAuthServer(
             sessionStore = sessionStore,
             expectedSession = session,
+            expectedSelectedServerId = expectedSelectedServerId,
             serverId = serverId,
             serverSelectionMemory = serverSelectionMemory,
         )
@@ -1616,6 +1620,7 @@ class SharedAuthDataSource(
 internal suspend fun selectStoredAuthServer(
     sessionStore: SlockAuthSessionStore,
     expectedSession: StoredAuthSession,
+    expectedSelectedServerId: String? = null,
     serverId: String,
     serverSelectionMemory: SlockAuthServerSelectionMemory? = null,
 ): SharedAuthResult<StoredAuthSession> {
@@ -1630,6 +1635,7 @@ internal suspend fun selectStoredAuthServer(
             expectedAccountId = expectedSession.user.id,
             expectedAccessToken = expectedSession.accessToken,
             expectedRefreshToken = expectedSession.refreshToken,
+            expectedSelectedServerId = expectedSelectedServerId,
             serverId = serverId,
         ) ?: return SharedAuthResult.Unauthenticated
     updated.rememberSelectedServer(serverSelectionMemory)

@@ -196,7 +196,12 @@ internal fun rememberServerSetupAdmissionHost(
                                                     if (targetId != null && controllerState.claimSwitch(identity)) {
                                                         state = ServerSetupAdmissionState.Loading(identity)
                                                         scope.launch {
-                                                            when (authDataSource.selectServer(targetId)) {
+                                                            when (
+                                                                authDataSource.selectServer(
+                                                                    serverId = targetId,
+                                                                    expectedSelectedServerId = serverId,
+                                                                )
+                                                            ) {
                                                                 is SharedAuthResult.Success<*> -> Unit
                                                                 else -> state = controllerState.begin(identity).let {
                                                                     ServerSetupAdmissionState.Failed(

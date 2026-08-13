@@ -237,6 +237,45 @@ class AuthShellServerSelectionTest {
     }
 
     @Test
+    fun staleSourceSelectionCannotOverwriteConcurrentCanonicalSwitch() = runBlocking {
+        val initial =
+            authSessionFixture(
+                userId = "user-1",
+                servers = authServerFixtures() + StoredAuthServer(id = "server-3", name = "Three", slug = "three"),
+                selectedServerId = "server-1",
+            )
+        val processStore = InMemorySlockAuthSessionStore(initial)
+        val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("source-race-shell"))
+        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+        shellStore.readSession()
+
+        val concurrent =
+            selectStoredAuthServer(
+                sessionStore = shellStore,
+                expectedSession = initial,
+                expectedSelectedServerId = "server-1",
+                serverId = "server-3",
+            )
+        val stale =
+            selectStoredAuthServer(
+                sessionStore = shellStore,
+                expectedSession = initial,
+                expectedSelectedServerId = "server-1",
+                serverId = "server-2",
+            )
+
+        assertEquals("server-3", assertIs<SharedAuthResult.Success<StoredAuthSession>>(concurrent).data.selectedServerId)
+        assertIs<SharedAuthResult.Unauthenticated>(stale)
+        assertEquals("server-3", selectedServerStore.selectedServerId.value)
+        assertEquals("server-3", shellStore.readSession()?.selectedServerId)
+        assertEquals("server-3", processStore.readSession()?.selectedServerId)
+        assertEquals(
+            StoredAuthServerSelection(serverId = "server-3", serverSlug = "three"),
+            processStore.readRememberedServerSelection(initial.user),
+        )
+    }
+
+    @Test
     fun staleMetadataCompletionCannotRollbackExplicitSelection() = runBlocking {
         val initial =
             authSessionFixture(
@@ -340,6 +379,7 @@ class AuthShellServerSelectionTest {
             expectedAccountId: String,
             expectedAccessToken: String,
             expectedRefreshToken: String,
+            expectedSelectedServerId: String?,
             serverId: String,
         ): StoredAuthSession? {
             val selected =
@@ -347,6 +387,7 @@ class AuthShellServerSelectionTest {
                     expectedAccountId = expectedAccountId,
                     expectedAccessToken = expectedAccessToken,
                     expectedRefreshToken = expectedRefreshToken,
+                    expectedSelectedServerId = expectedSelectedServerId,
                     serverId = serverId,
                 ) ?: return null
             events.emit(AuthSessionEvent.BindingMetadataChanged(++generation))

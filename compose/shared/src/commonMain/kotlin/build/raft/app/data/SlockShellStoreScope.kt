@@ -105,6 +105,11 @@ internal data class SelectedServerSelectionUpdate(
     val changed: Boolean,
 )
 
+internal data class SelectedServerSelectionCommit(
+    val processSession: StoredAuthSession,
+    val update: SelectedServerSelectionUpdate,
+)
+
 internal data class SelectedServerAuthoritySnapshot(
     val ownerUserId: String,
     val selection: SelectedServerSelection,
@@ -272,6 +277,38 @@ internal class SelectedServerStore internal constructor(
             SelectedServerSelectionUpdate(
                 selection = updated,
                 changed = updated != previous,
+            )
+        }
+
+    internal suspend fun selectIfAccountAndSourceMatch(
+        expectedAccountId: String,
+        expectedServerId: String?,
+        serverId: String,
+        commitProcessSelection: suspend () -> StoredAuthSession?,
+    ): SelectedServerSelectionCommit? =
+        mutex.withLock {
+            // Keep the source comparison and process/shell commit under this shell's one
+            // canonical selection lock. A check before entering this block would leave an A→C
+            // switch window where a stale A→B intent could overwrite C.
+            if (_disposed.value) return@withLock null
+            if (ownerUserId != null && ownerUserId != expectedAccountId) return@withLock null
+            if (expectedServerId != null && selectedServerId.value != expectedServerId) return@withLock null
+            val processSession = commitProcessSelection() ?: return@withLock null
+            val target = processSession.servers.firstOrNull { it.id == serverId } ?: return@withLock null
+            val before = authorityState()
+            val previous = selection()
+            mutationRevision += 1L
+            ownerUserId = expectedAccountId
+            selectionInitialized = true
+            setSelectedServerId(target.id)
+            selectedServerSlug = target.slug
+            advanceAuthorityIfChanged(before)
+            SelectedServerSelectionCommit(
+                processSession = processSession,
+                update = SelectedServerSelectionUpdate(
+                    selection = selection(),
+                    changed = selection() != previous,
+                ),
             )
         }
 
@@ -852,23 +889,26 @@ internal class SlockShellAuthSessionStore(
         expectedAccountId: String,
         expectedAccessToken: String,
         expectedRefreshToken: String,
+        expectedSelectedServerId: String?,
         serverId: String,
     ): StoredAuthSession? =
         selectionMutationMutex.withLock {
-            val processSession =
-                delegate.selectServerIfSessionMatches(
+            val committed =
+                selectedServerStore.selectIfAccountAndSourceMatch(
                     expectedAccountId = expectedAccountId,
-                    expectedAccessToken = expectedAccessToken,
-                    expectedRefreshToken = expectedRefreshToken,
+                    expectedServerId = expectedSelectedServerId,
                     serverId = serverId,
-                ) ?: return@withLock null
+                ) {
+                    delegate.selectServerIfSessionMatches(
+                        expectedAccountId = expectedAccountId,
+                        expectedAccessToken = expectedAccessToken,
+                        expectedRefreshToken = expectedRefreshToken,
+                        serverId = serverId,
+                    )
+                } ?: return@withLock null
+            val processSession = committed.processSession
+            val update = committed.update
             val target = processSession.servers.firstOrNull { it.id == serverId } ?: return@withLock null
-            val update =
-                selectedServerStore.selectIfAccountMatches(
-                    expectedAccountId = expectedAccountId,
-                    serverId = target.id,
-                    serverSlug = target.slug,
-                ) ?: return@withLock null
             (delegate as? SlockAuthServerSelectionMemory)?.saveRememberedServerSelection(
                 processSession.user,
                 StoredAuthServerSelection(serverId = target.id, serverSlug = target.slug),
