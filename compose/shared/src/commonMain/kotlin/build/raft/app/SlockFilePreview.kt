@@ -10,16 +10,24 @@ import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.AttachmentPreview
 import build.raft.app.data.AttachmentPreviewContent
+import build.raft.app.data.AuthenticatedRouteAuthorityGateway
+import build.raft.app.data.AuthenticatedRouteOperationRunner
+import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.parseSharedAttachmentPreview
 import build.raft.app.data.DataResult
 import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
+import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.data.SlockEventBus
+import build.raft.app.data.SlockEventBuses
 import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockThreadApiClient
+import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
@@ -116,6 +124,8 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -124,6 +134,7 @@ import kotlin.math.floor
 import kotlin.math.ceil
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.random.Random
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
@@ -239,8 +250,12 @@ internal fun reduceSlockFilePreviewExportIsolationState(
     event: SlockFilePreviewExportIsolationEvent
 ): SlockFilePreviewExportIsolationState =
     state.copy(exportInProgress = event == SlockFilePreviewExportIsolationEvent.Started)
-private const val SlockFilePreviewSourceThreadAttachment = "thread_attachment"
-private const val SlockFilePreviewSourceAgentWorkspace = "agent_workspace"
+internal const val SlockFilePreviewSourceThreadAttachment = "thread_attachment"
+internal const val SlockFilePreviewSourceAgentWorkspace = "agent_workspace"
+internal const val SlockFilePreviewRouteThreadAttachment = "thread_attachment"
+internal const val SlockFilePreviewRouteAgentWorkspace = "agent_workspace"
+internal const val SlockFilePreviewRouteEphemeral = "ephemeral"
+private const val SlockFilePreviewLaunchContractVersion = 1
 private const val SlockFilePreviewMarkdownMaxChars = 80_000
 private const val SlockFilePreviewTextMaxChars = 96_000
 private const val SlockFilePreviewVideoSeekProp = "seekToTimeMs"
@@ -303,18 +318,33 @@ internal data class SlockFilePreviewVideoSeekRequest(
 
 @Serializable
 internal data class WireSlockFilePreviewLaunchPayload(
-    val previewId: String = ""
+    val version: Int = SlockFilePreviewLaunchContractVersion,
+    val sessionId: String = "",
+    val routeKind: String = "",
+    val attachmentId: String = "",
+    val previewKind: String = "",
+    val attachmentCommentsEnabled: Boolean = false,
+    val commentsInitiallyOpen: Boolean = false,
+    val galleryAttachmentIds: List<String> = emptyList(),
+    val galleryIndex: Int = 0,
+    val agentId: String = "",
+    val workspacePath: String = ""
 )
 
+internal fun newSlockFilePreviewSessionId(
+    randomLong: () -> Long = { Random.nextLong() }
+): String =
+    "file-preview-${randomLong().toULong().toString(36)}-${randomLong().toULong().toString(36)}"
+
 internal class SlockFilePreviewStore(
-    private val maxEntries: Int = 32
+    private val maxEntries: Int = 32,
+    private val idFactory: () -> String = { newSlockFilePreviewSessionId() }
 ) {
-    private var nextId = 0
     private val entries = LinkedHashMap<String, SlockFilePreviewPayload>()
 
     fun put(payload: SlockFilePreviewPayload): String {
-        nextId += 1
-        val id = "file-preview-$nextId"
+        var id = idFactory()
+        while (id in entries) id = idFactory()
         entries[id] = payload
         while (entries.size > maxEntries) {
             val firstKey = entries.keys.firstOrNull() ?: break
@@ -325,7 +355,596 @@ internal class SlockFilePreviewStore(
 
     fun get(id: String): SlockFilePreviewPayload? =
         entries[id]
+
+    fun retire(id: String): Boolean = entries.remove(id) != null
 }
+
+internal data class SlockFilePreviewEphemeralSessionRegistration(
+    val sessionId: String,
+    val threadKey: String,
+    val actionIds: Set<String>,
+    val ownedTemporaryFileRefs: Set<String>
+)
+
+internal data class SlockFilePreviewEphemeralSessionRetirement(
+    val cleanupFileRefs: Set<String> = emptySet(),
+    val pendingFileRefs: Set<String> = emptySet(),
+    val retiredSession: Boolean = false
+)
+
+internal sealed interface SlockFilePreviewEphemeralActionClaim {
+    data object Rejected : SlockFilePreviewEphemeralActionClaim
+
+    data class Accepted(val sessionComplete: Boolean) : SlockFilePreviewEphemeralActionClaim
+}
+
+/**
+ * Process-local admission for composer/editor result events.
+ *
+ * The launch route is deliberately not an authority for a callback. A result must first move
+ * through this registry, which is lost on process death and atomically consumes each action once.
+ * A pending delivery survives ordinary page disposal long enough for the destination consumer to
+ * claim it, but it cannot be reconstructed from a restored route or an old cross-process replay.
+ */
+internal class SlockFilePreviewEphemeralActionRegistry(
+    private val maxSessions: Int = 64
+) {
+    private data class ActiveSession(
+        val registration: SlockFilePreviewEphemeralSessionRegistration,
+        val ownedTemporaryFileRefs: MutableSet<String>
+    )
+
+    private data class PendingSession(
+        val threadKey: String,
+        val expectedFileRefByActionId: Map<String, String>,
+        val remainingActionIds: MutableSet<String>,
+        val claimedActionIds: MutableSet<String>,
+        val transferredActionIds: MutableSet<String>,
+        val ownedTemporaryFileRefs: Set<String>
+    )
+
+    private val lock = SynchronizedObject()
+    private val active = LinkedHashMap<String, ActiveSession>()
+    private val pending = LinkedHashMap<String, PendingSession>()
+    private val sessionOrder = linkedSetOf<String>()
+
+    fun register(
+        sessionId: String,
+        threadKey: String,
+        actionIds: Set<String>,
+        ownedTemporaryFileRefs: Set<String>
+    ): SlockFilePreviewEphemeralSessionRetirement {
+        val normalizedSessionId = sessionId.trim()
+        val normalizedThreadKey = threadKey.trim()
+        val normalizedActions = actionIds.map(String::trim).filter(String::isNotBlank).toSet()
+        val normalizedRefs = ownedTemporaryFileRefs.map(String::trim).filter(String::isNotBlank).toSet()
+        require(normalizedSessionId.isNotBlank()) { "sessionId must not be blank" }
+        require(normalizedThreadKey.isNotBlank()) { "threadKey must not be blank" }
+        require(normalizedActions.isNotEmpty()) { "actionIds must not be empty" }
+        require(normalizedActions.size == actionIds.size) { "actionIds must be unique" }
+        val registration =
+            SlockFilePreviewEphemeralSessionRegistration(
+                sessionId = normalizedSessionId,
+                threadKey = normalizedThreadKey,
+                actionIds = normalizedActions,
+                ownedTemporaryFileRefs = normalizedRefs
+        )
+        return synchronized(lock) {
+            var cleanupRefs =
+                active.remove(normalizedSessionId)?.ownedTemporaryFileRefs.orEmpty() +
+                    pending.remove(normalizedSessionId)?.cleanupFileRefs().orEmpty()
+            sessionOrder.remove(normalizedSessionId)
+            active[normalizedSessionId] =
+                ActiveSession(
+                    registration = registration,
+                    ownedTemporaryFileRefs = normalizedRefs.toMutableSet()
+                )
+            sessionOrder.add(normalizedSessionId)
+            while (sessionOrder.size > maxSessions.coerceAtLeast(1)) {
+                val evictedId = sessionOrder.firstOrNull() ?: break
+                sessionOrder.remove(evictedId)
+                cleanupRefs += active.remove(evictedId)?.ownedTemporaryFileRefs.orEmpty()
+                cleanupRefs += pending.remove(evictedId)?.cleanupFileRefs().orEmpty()
+            }
+            SlockFilePreviewEphemeralSessionRetirement(cleanupFileRefs = cleanupRefs)
+        }
+    }
+
+    fun trackOwnedTemporaryFileRef(
+        sessionId: String,
+        threadKey: String,
+        fileRef: String
+    ): Boolean {
+        val normalizedSessionId = sessionId.trim()
+        val normalizedThreadKey = threadKey.trim()
+        val normalizedFileRef = fileRef.trim()
+        if (normalizedSessionId.isBlank() || normalizedThreadKey.isBlank() || normalizedFileRef.isBlank()) {
+            return false
+        }
+        return synchronized(lock) {
+            val session = active[normalizedSessionId] ?: return@synchronized false
+            if (session.registration.threadKey != normalizedThreadKey) return@synchronized false
+            session.ownedTemporaryFileRefs += normalizedFileRef
+            true
+        }
+    }
+
+    fun prepareDeliveryBatch(
+        sessionId: String,
+        threadKey: String,
+        fileRefByActionId: Map<String, String>
+    ): SlockFilePreviewEphemeralSessionRetirement? {
+        val normalizedSessionId = sessionId.trim()
+        val normalizedThreadKey = threadKey.trim()
+        val normalizedDeliveries =
+            fileRefByActionId
+                .mapKeys { it.key.trim() }
+                .mapValues { it.value.trim() }
+                .filter { (actionId, fileRef) -> actionId.isNotBlank() && fileRef.isNotBlank() }
+        if (normalizedDeliveries.size != fileRefByActionId.size) return null
+        return synchronized(lock) {
+            val activeSession = active[normalizedSessionId] ?: return@synchronized null
+            if (
+                activeSession.registration.threadKey != normalizedThreadKey ||
+                normalizedDeliveries.keys != activeSession.registration.actionIds
+            ) {
+                return@synchronized null
+            }
+            val existing = pending[normalizedSessionId]
+            if (existing != null) return@synchronized null
+            active.remove(normalizedSessionId)
+            val deliveredFileRefs = normalizedDeliveries.values.toSet()
+            val pendingOwnedFileRefs = activeSession.ownedTemporaryFileRefs intersect deliveredFileRefs
+            pending[normalizedSessionId] =
+                PendingSession(
+                    threadKey = normalizedThreadKey,
+                    expectedFileRefByActionId = normalizedDeliveries,
+                    remainingActionIds = normalizedDeliveries.keys.toMutableSet(),
+                    claimedActionIds = mutableSetOf(),
+                    transferredActionIds = mutableSetOf(),
+                    ownedTemporaryFileRefs = pendingOwnedFileRefs
+                )
+            SlockFilePreviewEphemeralSessionRetirement(
+                cleanupFileRefs = activeSession.ownedTemporaryFileRefs - deliveredFileRefs,
+                pendingFileRefs = pendingOwnedFileRefs
+            )
+        }
+    }
+
+    fun claim(
+        sessionId: String,
+        threadKey: String,
+        actionId: String,
+        fileRef: String
+    ): SlockFilePreviewEphemeralActionClaim {
+        val normalizedSessionId = sessionId.trim()
+        val normalizedThreadKey = threadKey.trim()
+        val normalizedActionId = actionId.trim()
+        val normalizedFileRef = fileRef.trim()
+        return synchronized(lock) {
+            val session = pending[normalizedSessionId] ?: return@synchronized SlockFilePreviewEphemeralActionClaim.Rejected
+            if (
+                session.threadKey != normalizedThreadKey ||
+                normalizedFileRef.isBlank() ||
+                session.expectedFileRefByActionId[normalizedActionId] != normalizedFileRef ||
+                normalizedActionId !in session.remainingActionIds
+            ) {
+                return@synchronized SlockFilePreviewEphemeralActionClaim.Rejected
+            }
+            session.remainingActionIds.remove(normalizedActionId)
+            session.claimedActionIds.add(normalizedActionId)
+            val complete = session.remainingActionIds.isEmpty()
+            SlockFilePreviewEphemeralActionClaim.Accepted(sessionComplete = complete)
+        }
+    }
+
+    fun markTransferred(
+        sessionId: String,
+        threadKey: String,
+        actionId: String,
+        fileRef: String
+    ): Boolean {
+        val normalizedSessionId = sessionId.trim()
+        val normalizedThreadKey = threadKey.trim()
+        val normalizedActionId = actionId.trim()
+        val normalizedFileRef = fileRef.trim()
+        return synchronized(lock) {
+            val session = pending[normalizedSessionId] ?: return@synchronized false
+            if (
+                session.threadKey != normalizedThreadKey ||
+                session.expectedFileRefByActionId[normalizedActionId] != normalizedFileRef ||
+                normalizedActionId !in session.claimedActionIds
+            ) {
+                return@synchronized false
+            }
+            session.transferredActionIds.add(normalizedActionId)
+            true
+        }
+    }
+
+    fun markAllClaimedTransferred(sessionId: String): Boolean {
+        val normalizedSessionId = sessionId.trim()
+        return synchronized(lock) {
+            val session = pending[normalizedSessionId] ?: return@synchronized false
+            if (
+                session.remainingActionIds.isNotEmpty() ||
+                session.claimedActionIds != session.expectedFileRefByActionId.keys
+            ) {
+                return@synchronized false
+            }
+            session.transferredActionIds.addAll(session.claimedActionIds)
+            true
+        }
+    }
+
+    fun completePending(sessionId: String): Boolean {
+        val normalizedSessionId = sessionId.trim()
+        return synchronized(lock) {
+            val session = pending[normalizedSessionId] ?: return@synchronized false
+            if (
+                session.remainingActionIds.isNotEmpty() ||
+                session.transferredActionIds != session.expectedFileRefByActionId.keys
+            ) {
+                return@synchronized false
+            }
+            pending.remove(normalizedSessionId)
+            sessionOrder.remove(normalizedSessionId)
+            true
+        }
+    }
+
+    fun retireActive(sessionId: String): SlockFilePreviewEphemeralSessionRetirement {
+        val normalizedSessionId = sessionId.trim()
+        return synchronized(lock) {
+            val activeSession = active.remove(normalizedSessionId)
+            if (activeSession != null) sessionOrder.remove(normalizedSessionId)
+            if (activeSession == null) {
+                SlockFilePreviewEphemeralSessionRetirement()
+            } else {
+                SlockFilePreviewEphemeralSessionRetirement(
+                    cleanupFileRefs = activeSession.ownedTemporaryFileRefs,
+                    retiredSession = true
+                )
+            }
+        }
+    }
+
+    fun retirePending(sessionId: String): SlockFilePreviewEphemeralSessionRetirement {
+        val normalizedSessionId = sessionId.trim()
+        return synchronized(lock) {
+            val pendingSession = pending.remove(normalizedSessionId)
+            if (pendingSession != null) sessionOrder.remove(normalizedSessionId)
+            if (pendingSession == null) {
+                SlockFilePreviewEphemeralSessionRetirement()
+            } else {
+                SlockFilePreviewEphemeralSessionRetirement(
+                    cleanupFileRefs = pendingSession.cleanupFileRefs(),
+                    retiredSession = true
+                )
+            }
+        }
+    }
+
+    fun retirePendingIfUnclaimed(sessionId: String): SlockFilePreviewEphemeralSessionRetirement {
+        val normalizedSessionId = sessionId.trim()
+        return synchronized(lock) {
+            val pendingSession = pending[normalizedSessionId]
+            if (pendingSession == null || pendingSession.claimedActionIds.isNotEmpty()) {
+                SlockFilePreviewEphemeralSessionRetirement()
+            } else {
+                pending.remove(normalizedSessionId)
+                sessionOrder.remove(normalizedSessionId)
+                SlockFilePreviewEphemeralSessionRetirement(
+                    cleanupFileRefs = pendingSession.cleanupFileRefs(),
+                    retiredSession = true
+                )
+            }
+        }
+    }
+
+    fun activeSessionIds(): Set<String> =
+        synchronized(lock) { active.keys.toSet() + pending.keys }
+
+    fun hasSession(sessionId: String): Boolean =
+        synchronized(lock) {
+            val normalizedSessionId = sessionId.trim()
+            normalizedSessionId in active || normalizedSessionId in pending
+        }
+
+    private fun PendingSession.cleanupFileRefs(): Set<String> {
+        val transferredFileRefs =
+            transferredActionIds.mapNotNullTo(mutableSetOf()) { actionId ->
+                expectedFileRefByActionId[actionId]
+            }
+        return ownedTemporaryFileRefs - transferredFileRefs
+    }
+}
+
+/** Small persistent ledger for cache-owned refs; it never participates in route serialization. */
+internal class SlockFilePreviewEphemeralCleanupLedger(
+    private val store: SharedPreferenceStore,
+    private val maxEntries: Int = 64
+) {
+    private val lock = SynchronizedObject()
+
+    fun register(sessionId: String, fileRefs: Set<String>): Set<String> {
+        val id = sessionId.trim()
+        val refs = fileRefs.map(String::trim).filter(String::isNotBlank).toSet()
+        if (id.isBlank() || refs.isEmpty()) return emptySet()
+        return synchronized(lock) {
+            val index = readIndex().toMutableList().apply { remove(id); add(id) }
+            store.putString(recordKey(id), encode(refs))
+            val evicted = mutableSetOf<String>()
+            while (index.size > maxEntries.coerceAtLeast(1)) {
+                val evictedId = index.removeAt(0)
+                evicted += readRecord(evictedId)
+                store.putString(recordKey(evictedId), null)
+            }
+            writeIndex(index)
+            evicted
+        }
+    }
+
+    fun addFileRefs(sessionId: String, fileRefs: Set<String>): Set<String> {
+        val id = sessionId.trim()
+        val refs = fileRefs.map(String::trim).filter(String::isNotBlank).toSet()
+        if (id.isBlank() || refs.isEmpty()) return emptySet()
+        return synchronized(lock) {
+            registerLocked(id, readRecord(id) + refs)
+        }
+    }
+
+    fun replace(sessionId: String, fileRefs: Set<String>): Set<String> {
+        val id = sessionId.trim()
+        return synchronized(lock) {
+            if (id.isBlank()) return@synchronized emptySet()
+            val refs = fileRefs.map(String::trim).filter(String::isNotBlank).toSet()
+            if (refs.isEmpty()) {
+                removeLocked(id)
+                emptySet()
+            } else {
+                registerLocked(id, refs)
+            }
+        }
+    }
+
+    fun take(sessionId: String): Set<String> =
+        synchronized(lock) {
+            val id = sessionId.trim()
+            if (id.isBlank()) emptySet() else readRecord(id).also { removeLocked(id) }
+        }
+
+    fun discard(sessionId: String, fileRefs: Set<String>) {
+        val id = sessionId.trim()
+        val refs = fileRefs.map(String::trim).filter(String::isNotBlank).toSet()
+        if (id.isBlank() || refs.isEmpty()) return
+        synchronized(lock) {
+            val remaining = readRecord(id) - refs
+            if (remaining.isEmpty()) {
+                removeLocked(id)
+            } else {
+                store.putString(recordKey(id), encode(remaining))
+            }
+        }
+    }
+
+    fun takeOrphans(activeSessionIds: Set<String>): Set<String> =
+        synchronized(lock) {
+            val activeIds = activeSessionIds.map(String::trim).toSet()
+            val orphanIds = readIndex().filterNot { it in activeIds }
+            val refs = orphanIds.flatMapTo(mutableSetOf(), ::readRecord)
+            orphanIds.forEach { removeLocked(it) }
+            refs
+        }
+
+    private fun readIndex(): List<String> =
+        runCatching {
+            SlockFilePreviewJson.decodeFromString(
+                SlockFilePreviewCleanupIndex.serializer(),
+                store.getString(INDEX_KEY).orEmpty()
+            ).sessionIds.filter(String::isNotBlank).distinct()
+        }.getOrDefault(emptyList())
+
+    private fun writeIndex(ids: List<String>) {
+        store.putString(
+            INDEX_KEY,
+            SlockFilePreviewJson.encodeToString(SlockFilePreviewCleanupIndex.serializer(), SlockFilePreviewCleanupIndex(ids))
+        )
+    }
+
+    private fun readRecord(sessionId: String): Set<String> =
+        runCatching {
+            SlockFilePreviewJson.decodeFromString(
+                SlockFilePreviewCleanupRecord.serializer(),
+                store.getString(recordKey(sessionId)).orEmpty()
+            ).fileRefs.map(String::trim).filter(String::isNotBlank).toSet()
+        }.getOrDefault(emptySet())
+
+    private fun removeLocked(sessionId: String) {
+        store.putString(recordKey(sessionId), null)
+        writeIndex(readIndex().filterNot { it == sessionId })
+    }
+
+    private fun encode(fileRefs: Set<String>): String =
+        SlockFilePreviewJson.encodeToString(
+            SlockFilePreviewCleanupRecord.serializer(),
+            SlockFilePreviewCleanupRecord(fileRefs = fileRefs.toList())
+        )
+
+    private fun registerLocked(sessionId: String, fileRefs: Set<String>): Set<String> {
+        val index = readIndex().toMutableList().apply { remove(sessionId); add(sessionId) }
+        store.putString(recordKey(sessionId), encode(fileRefs))
+        val evicted = mutableSetOf<String>()
+        while (index.size > maxEntries.coerceAtLeast(1)) {
+            val evictedId = index.removeAt(0)
+            evicted += readRecord(evictedId)
+            store.putString(recordKey(evictedId), null)
+        }
+        writeIndex(index)
+        return evicted
+    }
+
+    private fun recordKey(sessionId: String): String = "$RECORD_KEY_PREFIX$sessionId"
+
+    private companion object {
+        const val INDEX_KEY = "slock:file-preview:ephemeral-cleanup:index"
+        const val RECORD_KEY_PREFIX = "slock:file-preview:ephemeral-cleanup:"
+    }
+}
+
+@Serializable
+private data class SlockFilePreviewCleanupIndex(val sessionIds: List<String> = emptyList())
+
+@Serializable
+private data class SlockFilePreviewCleanupRecord(
+    val fileRefs: List<String> = emptyList()
+)
+
+private val ProcessSlockFilePreviewEphemeralActionRegistry = SlockFilePreviewEphemeralActionRegistry()
+private val ProcessSlockFilePreviewEphemeralCleanupLedger: SlockFilePreviewEphemeralCleanupLedger by lazy {
+    SlockFilePreviewEphemeralCleanupLedger(slockSharedPreferenceStore())
+}
+
+internal fun slockFilePreviewEphemeralActionRegistry(): SlockFilePreviewEphemeralActionRegistry =
+    ProcessSlockFilePreviewEphemeralActionRegistry
+
+internal fun slockFilePreviewEphemeralCleanupLedger(): SlockFilePreviewEphemeralCleanupLedger =
+    ProcessSlockFilePreviewEphemeralCleanupLedger
+
+internal fun slockFilePreviewPostComposerImageEvents(
+    events: List<JSONObject>,
+    eventBus: SlockEventBus = SlockEventBuses.inProcess()
+): Boolean {
+    var posted = true
+    events.forEach { event ->
+        val currentPosted =
+            runCatching {
+                eventBus.post(
+                    SLOCK_COMPOSER_IMAGE_EDIT_EVENT,
+                    event,
+                    crossProcess = false
+                )
+            }.isSuccess
+        posted = currentPosted && posted
+    }
+    return posted
+}
+
+internal sealed interface SlockFilePreviewComposerImageEventAdmission {
+    data class Rejected(
+        val sessionId: String = "",
+        val orphanedTemporaryFileRefs: Set<String> = emptySet()
+    ) : SlockFilePreviewComposerImageEventAdmission
+
+    data class Accepted(
+        val sessionId: String,
+        val threadKey: String,
+        val actionId: String,
+        val fileRef: String,
+        val sessionComplete: Boolean
+    ) : SlockFilePreviewComposerImageEventAdmission
+}
+
+internal fun slockFilePreviewClaimComposerImageEvent(
+    eventData: JSONObject,
+    expectedThreadKey: String,
+    registry: SlockFilePreviewEphemeralActionRegistry = slockFilePreviewEphemeralActionRegistry(),
+    cleanupLedger: SlockFilePreviewEphemeralCleanupLedger = slockFilePreviewEphemeralCleanupLedger()
+): SlockFilePreviewComposerImageEventAdmission {
+    val sessionId = eventData.optString("previewSessionId").trim()
+    val threadKey = eventData.optString("threadKey").trim()
+    val actionId = eventData.optString("actionId").trim()
+    val fileRef = eventData.optString("fileRef").trim()
+    val expectedKey = expectedThreadKey.trim()
+    if (
+        sessionId.isBlank() ||
+        expectedKey.isBlank() ||
+        threadKey != expectedKey ||
+        actionId.isBlank() ||
+        fileRef.isBlank()
+    ) {
+        return SlockFilePreviewComposerImageEventAdmission.Rejected(
+            sessionId = sessionId,
+            orphanedTemporaryFileRefs =
+                if (sessionId.isNotBlank() && !registry.hasSession(sessionId)) {
+                    cleanupLedger.take(sessionId)
+                } else {
+                    emptySet()
+                }
+        )
+    }
+    return when (val claim = registry.claim(sessionId, threadKey, actionId, fileRef)) {
+        SlockFilePreviewEphemeralActionClaim.Rejected ->
+            SlockFilePreviewComposerImageEventAdmission.Rejected(
+                sessionId = sessionId,
+                orphanedTemporaryFileRefs =
+                    if (registry.hasSession(sessionId)) {
+                        emptySet()
+                    } else {
+                        cleanupLedger.take(sessionId)
+                    }
+            )
+        is SlockFilePreviewEphemeralActionClaim.Accepted ->
+            SlockFilePreviewComposerImageEventAdmission.Accepted(
+                sessionId = sessionId,
+                threadKey = threadKey,
+                actionId = actionId,
+                fileRef = fileRef,
+                sessionComplete = claim.sessionComplete
+            )
+    }
+}
+
+internal fun slockFilePreviewMarkComposerImageEventTransferred(
+    admission: SlockFilePreviewComposerImageEventAdmission.Accepted,
+    registry: SlockFilePreviewEphemeralActionRegistry = slockFilePreviewEphemeralActionRegistry(),
+    cleanupLedger: SlockFilePreviewEphemeralCleanupLedger = slockFilePreviewEphemeralCleanupLedger()
+): Boolean {
+    val recorded =
+        registry.markTransferred(
+            sessionId = admission.sessionId,
+            threadKey = admission.threadKey,
+            actionId = admission.actionId,
+            fileRef = admission.fileRef
+        )
+    if (recorded) {
+        cleanupLedger.discard(admission.sessionId, setOf(admission.fileRef))
+    }
+    return recorded
+}
+
+/**
+ * Finishes a fully claimed batch. Successful transfer drops cleanup ownership without deleting;
+ * a rejected transfer returns every cache ref that the host must retire.
+ */
+internal fun slockFilePreviewFinishComposerImageEventSession(
+    sessionId: String,
+    transferred: Boolean,
+    registry: SlockFilePreviewEphemeralActionRegistry = slockFilePreviewEphemeralActionRegistry(),
+    cleanupLedger: SlockFilePreviewEphemeralCleanupLedger = slockFilePreviewEphemeralCleanupLedger()
+): Set<String> {
+    return if (transferred) {
+        val marked = registry.markAllClaimedTransferred(sessionId)
+        val completed = marked && registry.completePending(sessionId)
+        if (completed) {
+            cleanupLedger.take(sessionId)
+            emptySet()
+        } else {
+            cleanupLedger.take(sessionId) + registry.retirePending(sessionId).cleanupFileRefs
+        }
+    } else {
+        cleanupLedger.take(sessionId) + registry.retirePending(sessionId).cleanupFileRefs
+    }
+}
+
+internal fun slockFilePreviewAbortComposerImageEventSession(
+    sessionId: String,
+    registry: SlockFilePreviewEphemeralActionRegistry = slockFilePreviewEphemeralActionRegistry(),
+    cleanupLedger: SlockFilePreviewEphemeralCleanupLedger = slockFilePreviewEphemeralCleanupLedger()
+): Set<String> =
+    cleanupLedger.take(sessionId) +
+        registry.retireActive(sessionId).cleanupFileRefs +
+        registry.retirePending(sessionId).cleanupFileRefs
 
 internal object SlockFilePreviewLaunchPayloadStore {
     private val store = SlockFilePreviewStore()
@@ -335,7 +954,102 @@ internal object SlockFilePreviewLaunchPayloadStore {
 
     fun get(id: String): SlockFilePreviewPayload? =
         store.get(id)
+
+    fun retire(id: String): Boolean =
+        store.retire(id)
 }
+
+/**
+ * File Preview's route-local authenticated operation boundary. The durable
+ * owner is identity-only; every network operation captures a fresh transient
+ * receipt and drops a late result when environment/account/token/selection
+ * authority changes while the request is in flight.
+ */
+internal class SlockFilePreviewRemoteOperationScope(
+    owner: AuthenticatedRouteOwner,
+    gateway: AuthenticatedRouteAuthorityGateway
+) {
+    private val runner = AuthenticatedRouteOperationRunner(owner, gateway)
+
+    suspend fun <T> run(
+        block: suspend (SlockNetworkClient) -> DataResult<T>
+    ): DataResult<T> =
+        runner.run { _, networkClient -> block(networkClient) }
+}
+
+private fun filePreviewThreadApi(
+    networkClient: SlockNetworkClient,
+    diagnosticsLogger: (String) -> Unit
+): SlockThreadApiClient =
+    SlockThreadApiClient(
+        transport = NetworkSlockThreadApi(networkClient),
+        diagnosticsLogger = diagnosticsLogger
+    )
+
+private fun filePreviewMemberRepository(
+    authStore: SlockAuthSessionStore,
+    networkClient: SlockNetworkClient,
+    warningLogger: (String) -> Unit,
+    logger: (String) -> Unit
+): RealMemberRepository =
+    RealMemberRepository(
+        sessionStore = authStore,
+        networkClient = networkClient,
+        warningLogger = warningLogger,
+        logger = logger
+    )
+
+private suspend fun <T> SlockFilePreviewRemoteOperationScope.runThreadApi(
+    diagnosticsLogger: (String) -> Unit,
+    block: suspend (SlockThreadApiClient) -> T
+): DataResult<T> =
+    run { networkClient ->
+        DataResult.Content(
+            block(filePreviewThreadApi(networkClient, diagnosticsLogger))
+        )
+    }
+
+private suspend fun SlockFilePreviewRemoteOperationScope.loadPreview(
+    payload: SlockFilePreviewPayload,
+    authStore: SlockAuthSessionStore,
+    truncatedPreviewHint: String,
+    errorStrings: ErrorPresentationStrings,
+    diagnosticsLogger: (String) -> Unit,
+    memberWarningLogger: (String) -> Unit,
+    memberLogger: (String) -> Unit
+): DataResult<SlockFilePreviewPayload?> =
+    run { networkClient ->
+        val next =
+            when (payload.source) {
+                SlockFilePreviewSourceThreadAttachment ->
+                    payload.loadThreadAttachmentPreview(
+                        threadApi = filePreviewThreadApi(networkClient, diagnosticsLogger),
+                        networkClient = networkClient,
+                        truncatedPreviewHint = truncatedPreviewHint
+                    )
+                SlockFilePreviewSourceAgentWorkspace ->
+                    payload.loadAgentWorkspacePreview(
+                        memberRepository =
+                            filePreviewMemberRepository(
+                                authStore = authStore,
+                                networkClient = networkClient,
+                                warningLogger = memberWarningLogger,
+                                logger = memberLogger
+                            ),
+                        errorStrings = errorStrings
+                    )
+                else -> null
+            }
+        DataResult.Content(next)
+    }
+
+private suspend fun SlockFilePreviewRemoteOperationScope.resolveExternalUrl(
+    payload: SlockFilePreviewPayload,
+    diagnosticsLogger: (String) -> Unit
+): DataResult<String?> =
+    runThreadApi(diagnosticsLogger) { threadApi ->
+        payload.threadAttachmentExternalUrl(threadApi)
+    }
 
 internal data class SlockFilePreviewPayload(
     val kind: String = "unsupported",
@@ -374,6 +1088,8 @@ internal data class SlockFilePreviewPayload(
     val composerImageMimeType: String = "",
     val composerImageSizeBytes: Long? = null,
     val composerImagePreviewUri: String = "",
+    /** Cache-owned refs are kept process/persistence-local and never serialized into route data. */
+    val composerImageOwnedTemporaryFileRefs: List<String> = emptyList(),
     val composerImageReplaceAttachmentId: String = "",
     val composerImageCanComplete: Boolean = false,
     val composerImageCanEdit: Boolean = false
@@ -388,8 +1104,58 @@ internal data class SlockFilePreviewGalleryImage(
     val thumbnailUrl: String? = null,
     val composerImageFileRef: String = "",
     val composerImagePreviewUri: String = "",
-    val composerImageSizeBytes: Long? = null
+    val composerImageSizeBytes: Long? = null,
+    val composerImageOwnedTemporary: Boolean = false
 )
+
+internal fun slockFilePreviewComposerImageGalleryActionId(
+    baseActionId: String,
+    attachmentId: String,
+    index: Int
+): String = "$baseActionId-gallery-$index-$attachmentId"
+
+private fun SlockFilePreviewPayload.ephemeralComposerActionIds(): Set<String> {
+    val baseActionId = composerImageActionId.trim().takeIf(String::isNotBlank) ?: return emptySet()
+    return if (imageGallery.isEmpty()) {
+        setOf(baseActionId)
+    } else {
+        imageGallery.mapIndexedTo(linkedSetOf()) { index, image ->
+            slockFilePreviewComposerImageGalleryActionId(
+                baseActionId = baseActionId,
+                attachmentId = image.attachmentId,
+                index = index
+            )
+        }
+    }
+}
+
+private fun SlockFilePreviewPayload.ownedEphemeralComposerFileRefs(): Set<String> =
+    buildSet {
+        composerImageOwnedTemporaryFileRefs
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .forEach(::add)
+        imageGallery
+            .filter(SlockFilePreviewGalleryImage::composerImageOwnedTemporary)
+            .map(SlockFilePreviewGalleryImage::composerImageFileRef)
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .forEach(::add)
+    }
+
+private fun SlockFilePreviewPayload.toEphemeralSessionRegistrationOrNull(
+    sessionId: String
+): SlockFilePreviewEphemeralSessionRegistration? {
+    val actionIds = ephemeralComposerActionIds()
+    val threadKey = composerImageThreadKey.trim()
+    if (actionIds.isEmpty() || threadKey.isBlank()) return null
+    return SlockFilePreviewEphemeralSessionRegistration(
+        sessionId = sessionId.trim(),
+        threadKey = threadKey,
+        actionIds = actionIds,
+        ownedTemporaryFileRefs = ownedEphemeralComposerFileRefs()
+    )
+}
 
 @Page(SLOCK_FILE_PREVIEW_PAGE, supportInLocal = true)
 internal class ComposeSlockFilePreviewPage : AuthenticatedProductPager(AuthenticatedProductRoute.FilePreview) {
@@ -403,51 +1169,83 @@ internal class ComposeSlockFilePreviewPage : AuthenticatedProductPager(Authentic
 private fun SlockFilePreviewStandalonePageContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    val params = pager.pageData.params
     val publicDownloadRepository =
         remember(bridge) { BridgeSlockFilePreviewPublicDownloadRepository(bridge) }
     val supportsPublicDownloadReadback = slockPlatformSupportsPublicAttachmentDownloadReadback()
     val supportsPrivateAttachmentExport = slockPlatformSupportsPrivateAttachmentExport()
-    val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
-        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+    val storeScope = remember(params.toString(), pager.pagerId) {
+        params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
     val attachmentOwnerVersion by ProcessAttachmentAuthScopes.version.collectAsState()
     val attachmentOwner = remember(attachmentOwnerVersion, storeScope.shellInstanceId) {
         currentAttachmentOwnerLease(storeScope)
     }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
-    val eventBus = sharedStores.eventBus
-    val networkClient = sharedStores.networkClient
-    val threadApi =
-        remember(networkClient) {
-            SlockThreadApiClient(
-                transport = NetworkSlockThreadApi(networkClient),
-                diagnosticsLogger = { message -> bridge.log("file_preview_thread_api $message") }
-            )
-        }
-    val memberRepository =
-        remember(networkClient) {
-            RealMemberRepository(
-                sessionStore = sharedStores.authStore,
-                networkClient = networkClient,
-                warningLogger = { message -> bridge.log("file_preview_member_warning $message") },
-                logger = { message -> bridge.log("file_preview_member $message") }
-            )
-        }
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val coroutineScope = rememberCoroutineScope()
     val errorStrings = localizedErrorPresentationStrings()
+    val ephemeralActionRegistry = remember { slockFilePreviewEphemeralActionRegistry() }
+    val ephemeralCleanupLedger = remember { slockFilePreviewEphemeralCleanupLedger() }
     val launchPayloadTrace =
-        remember(pager.pageData.params.toString()) {
-            val source = pager.pageData.params.optString("payload")
-            slockFilePreviewResolveLaunchPayload(source, SlockFilePreviewLaunchPayloadStore::get)
+        remember(params.toString()) {
+            val source = params.optString("payload")
+            slockFilePreviewResolveLaunchPayload(
+                source = source,
+                loadPreviewPayload = SlockFilePreviewLaunchPayloadStore::get,
+                retireEphemeralSession = { sessionId ->
+                    SlockFilePreviewLaunchPayloadStore.retire(sessionId)
+                    val active = ephemeralActionRegistry.retireActive(sessionId)
+                    val pending = ephemeralActionRegistry.retirePending(sessionId)
+                    active.cleanupFileRefs + pending.cleanupFileRefs
+                }
+            )
         }
+    val routeOwner = remember(params.toString()) { params.authenticatedRouteOwnerOrNull() }
+    val liveRouteOwner by
+        remember(sharedStores, storeScope) {
+            sharedStores.authenticatedRouteOwnerFlow(storeScope)
+        }.collectAsState(sharedStores.currentAuthenticatedRouteOwner(storeScope))
+    val remoteAuthorityCurrent =
+        !launchPayloadTrace.requiresAuthenticatedRouteAuthority() ||
+            (routeOwner != null && liveRouteOwner == routeOwner)
+    val remoteOperationScope =
+        remember(routeOwner, sharedStores, storeScope) {
+            routeOwner?.let { owner ->
+                SlockFilePreviewRemoteOperationScope(
+                    owner = owner,
+                    gateway = sharedStores.authenticatedRouteAuthorityGateway(storeScope)
+                )
+            }
+        }
+    val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     LaunchedEffect(launchPayloadTrace.durationMs, launchPayloadTrace.responseBytes, launchPayloadTrace.result) {
         bridge.log(
             "file_preview_launch_payload_parse source=pageData result=${launchPayloadTrace.result} " +
                 "responseBytes=${launchPayloadTrace.responseBytes} durationMs=${launchPayloadTrace.durationMs} dispatcher=caller"
         )
     }
-    var payload by remember(launchPayloadTrace.payload) {
-        mutableStateOf(launchPayloadTrace.payload)
+    LaunchedEffect(launchPayloadTrace.sessionId, launchPayloadTrace.result) {
+        val cleanupRefs =
+            launchPayloadTrace.temporaryFileRefsToCleanup +
+                ephemeralCleanupLedger.takeOrphans(ephemeralActionRegistry.activeSessionIds())
+        if (cleanupRefs.isNotEmpty()) {
+            bridge.retireFilePreviewTemporaryFiles(
+                sessionId = launchPayloadTrace.sessionId,
+                fileRefs = cleanupRefs.toList()
+            )
+        }
+    }
+    var payload by remember(launchPayloadTrace.payload, remoteAuthorityCurrent) {
+        mutableStateOf(
+            if (
+                launchPayloadTrace.requiresAuthenticatedRouteAuthority() &&
+                !remoteAuthorityCurrent
+            ) {
+                launchPayloadTrace.payload.withFilePreviewAuthorityRejected()
+            } else {
+                launchPayloadTrace.payload
+            }
+        )
     }
     var attachmentCommentsState by remember(payload.attachmentId) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
@@ -664,8 +1462,21 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     fun loadAttachmentComments(state: ThreadAttachmentCommentsDialogState) {
         coroutineScope.launch {
+            val operationScope =
+                remoteOperationScope?.takeIf { remoteAuthorityCurrent }
+                    ?: run {
+                        payload = payload.withFilePreviewAuthorityRejected()
+                        attachmentCommentsState = null
+                        return@launch
+                    }
+            val authorityResult =
+                operationScope.runThreadApi(
+                    diagnosticsLogger = { message -> bridge.log("file_preview_thread_api $message") }
+                ) { threadApi ->
+                    threadApi.attachmentComments(state.attachment.id)
+                }
             val next =
-                when (val result = threadApi.attachmentComments(state.attachment.id)) {
+                when (val result = (authorityResult as? DataResult.Content)?.data) {
                     is ThreadApiResult.Success ->
                         state.copy(
                             status = "loaded",
@@ -683,6 +1494,11 @@ private fun SlockFilePreviewStandalonePageContent() {
                             errorCode = failure.errorCode,
                             serverMessage = failure.serverMessage
                         )
+                    }
+                    null -> {
+                        payload = payload.withFilePreviewAuthorityRejected()
+                        attachmentCommentsState = null
+                        return@launch
                     }
                 }
             setAttachmentCommentsState(next)
@@ -716,7 +1532,20 @@ private fun SlockFilePreviewStandalonePageContent() {
         if (body.isBlank() || current.sending) return
         attachmentCommentsState = current.copy(sending = true).clearAttachmentCommentsError()
         coroutineScope.launch {
-            when (val result = threadApi.sendAttachmentComment(current.attachment.id, body)) {
+            val operationScope =
+                remoteOperationScope?.takeIf { remoteAuthorityCurrent }
+                    ?: run {
+                        payload = payload.withFilePreviewAuthorityRejected()
+                        attachmentCommentsState = null
+                        return@launch
+                    }
+            val authorityResult =
+                operationScope.runThreadApi(
+                    diagnosticsLogger = { message -> bridge.log("file_preview_thread_api $message") }
+                ) { threadApi ->
+                    threadApi.sendAttachmentComment(current.attachment.id, body)
+                }
+            when (val result = (authorityResult as? DataResult.Content)?.data) {
                 is ThreadApiResult.Success -> {
                     val loading =
                         current.withAttachmentCommentDraftProjection("").copy(
@@ -739,6 +1568,10 @@ private fun SlockFilePreviewStandalonePageContent() {
                             )
                     bridge.toast(unableToSendComment)
                 }
+                null -> {
+                    payload = payload.withFilePreviewAuthorityRejected()
+                    attachmentCommentsState = null
+                }
             }
         }
     }
@@ -750,7 +1583,20 @@ private fun SlockFilePreviewStandalonePageContent() {
             current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id)
                 .clearAttachmentCommentsError()
         coroutineScope.launch {
-            when (val result = threadApi.addReaction(comment.id, "✅")) {
+            val operationScope =
+                remoteOperationScope?.takeIf { remoteAuthorityCurrent }
+                    ?: run {
+                        payload = payload.withFilePreviewAuthorityRejected()
+                        attachmentCommentsState = null
+                        return@launch
+                    }
+            val authorityResult =
+                operationScope.runThreadApi(
+                    diagnosticsLogger = { message -> bridge.log("file_preview_thread_api $message") }
+                ) { threadApi ->
+                    threadApi.addReaction(comment.id, "✅")
+                }
+            when (val result = (authorityResult as? DataResult.Content)?.data) {
                 is ThreadApiResult.Success -> {
                     val loading =
                         attachmentCommentsState
@@ -776,10 +1622,35 @@ private fun SlockFilePreviewStandalonePageContent() {
                             }
                     bridge.toast(unableToResolveComment)
                 }
+                null -> {
+                    payload = payload.withFilePreviewAuthorityRejected()
+                    attachmentCommentsState = null
+                }
             }
         }
     }
-    LaunchedEffect(payload.source, payload.attachmentId, payload.agentId, payload.path, payload.kind) {
+    LaunchedEffect(
+        payload.source,
+        payload.attachmentId,
+        payload.agentId,
+        payload.path,
+        payload.kind,
+        remoteAuthorityCurrent,
+        remoteOperationScope
+    ) {
+        if (
+            payload.source == SlockFilePreviewSourceThreadAttachment ||
+            payload.source == SlockFilePreviewSourceAgentWorkspace
+        ) {
+            if (!remoteAuthorityCurrent) {
+                payload = payload.withFilePreviewAuthorityRejected()
+                return@LaunchedEffect
+            }
+            if (remoteOperationScope == null) {
+                payload = payload.withFilePreviewAuthorityRejected()
+                return@LaunchedEffect
+            }
+        }
         if (payload.isPendingThreadImageGalleryResolution()) {
             imageGalleryResolutionState.resolvedPayloadByAttachmentId[payload.attachmentId]
                 ?.let(payload::withResolvedImageGalleryPayload)
@@ -800,14 +1671,25 @@ private fun SlockFilePreviewStandalonePageContent() {
                 "file_preview_image_resolve status=start attachment=${requestPayload.attachmentId.take(8)} " +
                     "kind=${requestPayload.kind} thumbnail=${requestPayload.currentImageThumbnailUrl()?.let(::binaryDownloadUrlDiagnostics) ?: "none"}"
             )
+            val resolutionOperationScope = remoteOperationScope ?: return@LaunchedEffect
             val resolutionJob = coroutineScope.launch(start = CoroutineStart.LAZY) {
                 try {
+                    val loadResult =
+                        resolutionOperationScope.loadPreview(
+                            payload = requestPayload,
+                            authStore = authStore,
+                            truncatedPreviewHint = truncatedPreviewHint,
+                            errorStrings = errorStrings,
+                            diagnosticsLogger = { message -> bridge.log("file_preview_thread_api $message") },
+                            memberWarningLogger = { message -> bridge.log("file_preview_member_warning $message") },
+                            memberLogger = { message -> bridge.log("file_preview_member $message") }
+                        )
                     val nextPayload =
-                        requestPayload.loadThreadAttachmentPreview(
-                            threadApi = threadApi,
-                            networkClient = networkClient,
-                            truncatedPreviewHint = truncatedPreviewHint
-                        ) ?: return@launch
+                        (loadResult as? DataResult.Content)?.data
+                            ?: run {
+                                payload = requestPayload.withFilePreviewAuthorityRejected()
+                                return@launch
+                            }
                     if (
                         !imageGalleryResolutionJobs.ownsImageGalleryResolution(
                             requestPayload.attachmentId,
@@ -876,16 +1758,27 @@ private fun SlockFilePreviewStandalonePageContent() {
         }
         val nextPayload =
             when (payload.source) {
-                SlockFilePreviewSourceThreadAttachment ->
-                    payload.loadThreadAttachmentPreview(
-                        threadApi = threadApi,
-                        networkClient = networkClient,
-                        truncatedPreviewHint = truncatedPreviewHint
-                    )
-                SlockFilePreviewSourceAgentWorkspace ->
-                    payload.loadAgentWorkspacePreview(memberRepository, errorStrings)
+                SlockFilePreviewSourceThreadAttachment,
+                SlockFilePreviewSourceAgentWorkspace -> {
+                    val scope = remoteOperationScope ?: return@LaunchedEffect
+                    when (
+                        val result =
+                            scope.loadPreview(
+                                payload = payload,
+                                authStore = authStore,
+                                truncatedPreviewHint = truncatedPreviewHint,
+                                errorStrings = errorStrings,
+                                diagnosticsLogger = { message -> bridge.log("file_preview_thread_api $message") },
+                                memberWarningLogger = { message -> bridge.log("file_preview_member_warning $message") },
+                                memberLogger = { message -> bridge.log("file_preview_member $message") }
+                            )
+                    ) {
+                        is DataResult.Content -> result.data
+                        else -> payload.withFilePreviewAuthorityRejected()
+                    }
+                }
                 else -> null
-        }
+            }
         if (nextPayload != null) {
             payload = nextPayload
             if (nextPayload.source == SlockFilePreviewSourceThreadAttachment && nextPayload.requestedKind == "image") {
@@ -966,6 +1859,23 @@ private fun SlockFilePreviewStandalonePageContent() {
             observedFor = observedPublicDownloadQuery,
             observedState = publicDownloadState
         )
+    suspend fun resolveRemoteExternalUrl(
+        currentPayload: SlockFilePreviewPayload
+    ): String? {
+        if (
+            currentPayload.source != SlockFilePreviewSourceThreadAttachment ||
+            currentPayload.attachmentId.isBlank()
+        ) {
+            return null
+        }
+        val operationScope = remoteOperationScope?.takeIf { remoteAuthorityCurrent } ?: return null
+        return (
+            operationScope.resolveExternalUrl(
+                payload = currentPayload,
+                diagnosticsLogger = { message -> bridge.log("file_preview_thread_api $message") }
+            ) as? DataResult.Content
+        )?.data
+    }
     suspend fun openPayloadExternally(
         currentPayload: SlockFilePreviewPayload,
         policy: SlockFilePreviewExternalOpenPolicy,
@@ -985,9 +1895,12 @@ private fun SlockFilePreviewStandalonePageContent() {
                         // Public-only open is identity/journal driven and must remain usable offline.
                         // Native code will fail closed before private materialization if readback misses.
                         currentPayload.externalUrl.orEmpty()
+                    } else if (currentPayload.source == SlockFilePreviewSourceThreadAttachment) {
+                        // A URL hydrated for rendering is not durable action authority. Resolve a
+                        // fresh attachment URL inside the authenticated pre/post-operation fence.
+                        resolveRemoteExternalUrl(currentPayload)
                     } else {
                         currentPayload.externalUrl?.takeIf { it.isNotBlank() }
-                            ?: currentPayload.threadAttachmentExternalUrl(threadApi)
                     }
                 },
                 onUrlResolved = { externalUrl ->
@@ -1065,9 +1978,11 @@ private fun SlockFilePreviewStandalonePageContent() {
         val externalUrl =
             if (exportPrivateDownload) {
                 null
+            } else if (currentPayload.source == SlockFilePreviewSourceThreadAttachment) {
+                resolveRemoteExternalUrl(currentPayload)
+                    ?: return unableToDownloadAttachment
             } else {
                 currentPayload.externalUrl?.takeIf { it.isNotBlank() }
-                    ?: currentPayload.threadAttachmentExternalUrl(threadApi)
                     ?: return unableToDownloadAttachment
             }
         val downloadId =
@@ -1414,6 +2329,147 @@ private fun SlockFilePreviewStandalonePageContent() {
             activeDownloadId = null
         }
     }
+    fun retireCurrentEphemeralSession(cleanupPending: Boolean = false) {
+        val sessionId = launchPayloadTrace.sessionId
+        SlockFilePreviewLaunchPayloadStore.retire(sessionId)
+        val activeRetirement = ephemeralActionRegistry.retireActive(sessionId)
+        val pendingRetirement =
+            if (cleanupPending) {
+                // A synchronous listener may already have claimed a file and be suspending while
+                // it transfers ownership. Only a wholly unclaimed batch is safe to abort here.
+                ephemeralActionRegistry.retirePendingIfUnclaimed(sessionId)
+            } else {
+                SlockFilePreviewEphemeralSessionRetirement()
+            }
+        val ledgerRefs =
+            if (
+                activeRetirement.retiredSession ||
+                pendingRetirement.retiredSession ||
+                !ephemeralActionRegistry.hasSession(sessionId)
+            ) {
+                ephemeralCleanupLedger.take(sessionId)
+            } else {
+                emptySet()
+            }
+        val cleanupRefs =
+            activeRetirement.cleanupFileRefs +
+                pendingRetirement.cleanupFileRefs +
+                ledgerRefs
+        if (cleanupRefs.isNotEmpty()) {
+            bridge.retireFilePreviewTemporaryFiles(sessionId, cleanupRefs.toList())
+        }
+    }
+    fun trackEphemeralTemporaryFileRef(fileRef: String) {
+        val cleanRef = fileRef.trim()
+        if (cleanRef.isBlank()) return
+        val tracked =
+            ephemeralActionRegistry.trackOwnedTemporaryFileRef(
+                sessionId = launchPayloadTrace.sessionId,
+                threadKey = payload.composerImageThreadKey,
+                fileRef = cleanRef
+            )
+        if (!tracked) {
+            bridge.retireFilePreviewTemporaryFiles(
+                sessionId = launchPayloadTrace.sessionId,
+                fileRefs = listOf(cleanRef)
+            )
+            return
+        }
+        val evictedRefs =
+            ephemeralCleanupLedger.addFileRefs(
+                sessionId = launchPayloadTrace.sessionId,
+                fileRefs = setOf(cleanRef)
+            )
+        if (evictedRefs.isNotEmpty()) {
+            bridge.retireFilePreviewTemporaryFiles(
+                sessionId = launchPayloadTrace.sessionId,
+                fileRefs = evictedRefs.toList()
+            )
+        }
+    }
+    fun composerImageEventData(
+        fileRef: String,
+        previewUri: String?,
+        actionId: String = payload.composerImageActionId,
+        fileName: String = payload.composerImageFileName.ifBlank { payload.externalFileName.ifBlank { payload.name.ifBlank { "image.png" } } },
+        mimeType: String = payload.composerImageMimeType.ifBlank { payload.externalMimeType.ifBlank { "image/png" } },
+        sizeBytes: Long? = payload.composerImageSizeBytes,
+        replaceAttachmentId: String = payload.composerImageReplaceAttachmentId,
+        // task #113 whole-group contract: groupId + ordinal within the gallery + total count.
+        // Blank groupId keeps legacy single-shot semantics (index/total ignored).
+        // When groupId is set but this is a single image with no gallery, total must be 1
+        // (single-image N=1 contract), never 0.
+        groupId: String = payload.composerImageGroupId,
+        groupIndex: Int = payload.imageGalleryIndex.coerceAtLeast(0),
+        groupTotal: Int = SlockImageEditGroupReconcile.resolveGroupTotal(payload.composerImageGroupId, payload.imageGallery.size)
+    ): JSONObject? {
+        if (actionId.isBlank() || fileRef.isBlank()) return null
+        return JSONObject().apply {
+            put("previewSessionId", launchPayloadTrace.sessionId)
+            put("threadKey", payload.composerImageThreadKey)
+            put("actionId", actionId)
+            put("action", if (replaceAttachmentId.isBlank()) "complete" else "replace")
+            put("fileRef", fileRef)
+            put("previewUri", previewUri.orEmpty())
+            put("fileName", fileName)
+            put("mimeType", mimeType)
+            sizeBytes?.takeIf { it > 0L }?.let { put("sizeBytes", it) }
+            put("replaceAttachmentId", replaceAttachmentId)
+            if (groupId.isNotBlank()) {
+                put("groupId", groupId)
+                put("groupIndex", groupIndex)
+                put("groupTotal", groupTotal)
+            }
+        }
+    }
+    fun postComposerImageEvents(
+        events: List<JSONObject>,
+        closePage: Boolean = true
+    ): Boolean {
+        if (events.isEmpty()) return false
+        val fileRefByActionId =
+            events.associate { event ->
+                event.optString("actionId") to event.optString("fileRef")
+            }
+        if (fileRefByActionId.size != events.size) return false
+        val retirement =
+            ephemeralActionRegistry.prepareDeliveryBatch(
+                sessionId = launchPayloadTrace.sessionId,
+                threadKey = payload.composerImageThreadKey,
+                fileRefByActionId = fileRefByActionId
+            )
+        if (retirement == null) {
+            // A duplicate/late native callback can arrive after the first delivery
+            // already moved this session to pending. Retire only an active session;
+            // never abort or delete a batch that a consumer may already own.
+            retireCurrentEphemeralSession(cleanupPending = false)
+            return false
+        }
+        val ledgerEvictedRefs = ephemeralCleanupLedger.replace(
+            sessionId = launchPayloadTrace.sessionId,
+            fileRefs = retirement.pendingFileRefs
+        )
+        val cleanupBeforePost = retirement.cleanupFileRefs + ledgerEvictedRefs
+        if (cleanupBeforePost.isNotEmpty()) {
+            bridge.retireFilePreviewTemporaryFiles(
+                sessionId = launchPayloadTrace.sessionId,
+                fileRefs = cleanupBeforePost.toList()
+            )
+        }
+        // Editor results are admitted by a process-local exactly-once registry. Relaying them
+        // through the platform cannot add a valid consumer, but can replay an already delivered
+        // event. Attempt every action even if an unrelated local listener throws on an earlier one.
+        val posted = slockFilePreviewPostComposerImageEvents(events)
+        if (!posted) {
+            retireCurrentEphemeralSession(cleanupPending = true)
+            return false
+        }
+        SlockFilePreviewLaunchPayloadStore.retire(launchPayloadTrace.sessionId)
+        if (closePage) {
+            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+        }
+        return true
+    }
     fun postComposerImageResult(
         fileRef: String,
         previewUri: String?,
@@ -1423,38 +2479,24 @@ private fun SlockFilePreviewStandalonePageContent() {
         sizeBytes: Long? = payload.composerImageSizeBytes,
         replaceAttachmentId: String = payload.composerImageReplaceAttachmentId,
         closePage: Boolean = true,
-        // task #113 whole-group contract: groupId + ordinal within the gallery + total count.
-        // Blank groupId keeps legacy single-shot semantics (index/total ignored).
-        // When groupId is set but this is a single image with no gallery, total must be 1
-        // (single-image N=1 contract), never 0.
         groupId: String = payload.composerImageGroupId,
         groupIndex: Int = payload.imageGalleryIndex.coerceAtLeast(0),
         groupTotal: Int = SlockImageEditGroupReconcile.resolveGroupTotal(payload.composerImageGroupId, payload.imageGallery.size)
     ) {
-        if (actionId.isBlank() || fileRef.isBlank()) return
-        eventBus.post(
-            SLOCK_COMPOSER_IMAGE_EDIT_EVENT,
-            JSONObject().apply {
-                put("threadKey", payload.composerImageThreadKey)
-                put("actionId", actionId)
-                put("action", if (replaceAttachmentId.isBlank()) "complete" else "replace")
-                put("fileRef", fileRef)
-                put("previewUri", previewUri.orEmpty())
-                put("fileName", fileName)
-                put("mimeType", mimeType)
-                sizeBytes?.takeIf { it > 0L }?.let { put("sizeBytes", it) }
-                put("replaceAttachmentId", replaceAttachmentId)
-                if (groupId.isNotBlank()) {
-                    put("groupId", groupId)
-                    put("groupIndex", groupIndex)
-                    put("groupTotal", groupTotal)
-                }
-            },
-            crossProcess = true
-        )
-        if (closePage) {
-            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
-        }
+        val event =
+            composerImageEventData(
+                fileRef = fileRef,
+                previewUri = previewUri,
+                actionId = actionId,
+                fileName = fileName,
+                mimeType = mimeType,
+                sizeBytes = sizeBytes,
+                replaceAttachmentId = replaceAttachmentId,
+                groupId = groupId,
+                groupIndex = groupIndex,
+                groupTotal = groupTotal
+            ) ?: return
+        postComposerImageEvents(listOf(event), closePage = closePage)
     }
     fun postComposerImageSelection() {
         val gallery = payload.imageGallery.takeIf { it.isNotEmpty() }
@@ -1465,22 +2507,33 @@ private fun SlockFilePreviewStandalonePageContent() {
             )
             return
         }
-        gallery.forEachIndexed { index, image ->
-            postComposerImageResult(
-                fileRef = image.composerImageFileRef,
-                previewUri = image.composerImagePreviewUri.ifBlank { image.thumbnailUrl.orEmpty() },
-                actionId = "${payload.composerImageActionId}-${image.attachmentId.take(12)}-$index",
-                fileName = image.name.ifBlank { "image.png" },
-                mimeType = image.mimeType.ifBlank { "image/png" },
-                sizeBytes = image.composerImageSizeBytes,
-                replaceAttachmentId = "",
-                closePage = false,
-                groupId = payload.composerImageGroupId,
-                groupIndex = index,
-                groupTotal = gallery.size
-            )
+        val events =
+            gallery.mapIndexedNotNull { index, image ->
+                composerImageEventData(
+                    fileRef = image.composerImageFileRef,
+                    previewUri = image.composerImagePreviewUri.ifBlank { image.thumbnailUrl.orEmpty() },
+                    actionId =
+                        slockFilePreviewComposerImageGalleryActionId(
+                            baseActionId = payload.composerImageActionId,
+                            attachmentId = image.attachmentId,
+                            index = index
+                        ),
+                    fileName = image.name.ifBlank { "image.png" },
+                    mimeType = image.mimeType.ifBlank { "image/png" },
+                    sizeBytes = image.composerImageSizeBytes,
+                    replaceAttachmentId = "",
+                    groupId = payload.composerImageGroupId,
+                    groupIndex = index,
+                    groupTotal = gallery.size
+                )
+            }
+        if (events.size != gallery.size) {
+            // Do not tear down a pending batch if a late duplicate callback reaches
+            // this page after the first batch was already admitted.
+            retireCurrentEphemeralSession(cleanupPending = false)
+            return
         }
-        pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+        postComposerImageEvents(events)
     }
     fun requestComposerImageEditSave() {
         if (composerImageEditSaving) return
@@ -1495,6 +2548,7 @@ private fun SlockFilePreviewStandalonePageContent() {
             val fileRef = result?.optString("data").orEmpty()
             composerImageEditSaving = false
             if (code == 0 && fileRef.isNotBlank()) {
+                trackEphemeralTemporaryFileRef(fileRef)
                 val currentGalleryIndex = payload.imageGalleryIndex.coerceIn(0, payload.imageGallery.lastIndex.coerceAtLeast(0))
                 val currentGalleryImage = payload.imageGallery.getOrNull(currentGalleryIndex)
                 if (payload.composerImageCanComplete && currentGalleryImage != null) {
@@ -1514,6 +2568,15 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
         }
     }
+    DisposableEffect(launchPayloadTrace.sessionId, launchPayloadTrace.routeKind) {
+        onDispose {
+            if (launchPayloadTrace.routeKind == SlockFilePreviewRouteEphemeral) {
+                retireCurrentEphemeralSession(cleanupPending = false)
+            } else {
+                SlockFilePreviewLaunchPayloadStore.retire(launchPayloadTrace.sessionId)
+            }
+        }
+    }
     val downloadUiState = slockFilePreviewDownloadUiState(visiblePublicDownloadState, downloadStatus)
     val downloadActive = downloadUiState == SlockFilePreviewDownloadUiState.Downloading
     SlockFilePreviewPageScaffold(
@@ -1524,6 +2587,11 @@ private fun SlockFilePreviewStandalonePageContent() {
             if (composerImageEditMode && !composerImageEditSaving) {
                 composerImageEditMode = false
             } else if (!composerImageEditMode) {
+                if (launchPayloadTrace.routeKind == SlockFilePreviewRouteEphemeral) {
+                    retireCurrentEphemeralSession(cleanupPending = false)
+                } else {
+                    SlockFilePreviewLaunchPayloadStore.retire(launchPayloadTrace.sessionId)
+                }
                 pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
             }
         },
@@ -3252,12 +4320,16 @@ internal data class FilePreviewLaunchPayloadTrace(
     val payload: SlockFilePreviewPayload,
     val responseBytes: Int,
     val durationMs: Long,
-    val result: String
+    val result: String,
+    val routeKind: String = "",
+    val sessionId: String = "",
+    val temporaryFileRefsToCleanup: Set<String> = emptySet()
 )
 
 internal fun slockFilePreviewResolveLaunchPayload(
     source: String,
-    loadPreviewPayload: (String) -> SlockFilePreviewPayload?
+    loadPreviewPayload: (String) -> SlockFilePreviewPayload?,
+    retireEphemeralSession: (String) -> Set<String> = { emptySet() }
 ): FilePreviewLaunchPayloadTrace {
     val startedAt = TimeSource.Monotonic.markNow()
     val parsedLaunch =
@@ -3266,41 +4338,392 @@ internal fun slockFilePreviewResolveLaunchPayload(
             ?.let {
                 runCatching { SlockFilePreviewJson.decodeFromString(WireSlockFilePreviewLaunchPayload.serializer(), it) }
             }
-    val previewId = parsedLaunch?.getOrNull()?.previewId.orEmpty()
-    val resolvedPayload = previewId.takeIf { it.isNotBlank() }?.let(loadPreviewPayload)
+    val launch = parsedLaunch?.getOrNull()?.normalizedOrNull()
+    // Remote routes never consume the process-local payload candidate. Even in the
+    // opening process it may contain an old signed URL or display snapshot, so the
+    // durable identity must reconstruct a loading payload and hydrate canonically.
+    // Only an ephemeral route may use its unguessable process-local capability.
+    val candidate =
+        launch
+            ?.takeIf { it.routeKind == SlockFilePreviewRouteEphemeral }
+            ?.sessionId
+            ?.let(loadPreviewPayload)
+    val candidateMatches =
+        launch != null && candidate != null && candidate.matchesFilePreviewLaunch(launch)
+    var temporaryFileRefsToCleanup = emptySet<String>()
+    val restoredPayload =
+        when {
+            candidateMatches -> candidate
+            launch?.routeKind == SlockFilePreviewRouteThreadAttachment ->
+                launch.toRestoredThreadAttachmentPayload()
+            launch?.routeKind == SlockFilePreviewRouteAgentWorkspace ->
+                agentWorkspaceLazyPreviewPayload(
+                    agentId = launch.agentId,
+                    path = launch.workspacePath
+                )
+            launch?.routeKind == SlockFilePreviewRouteEphemeral -> {
+                temporaryFileRefsToCleanup = retireEphemeralSession(launch.sessionId)
+                null
+            }
+            else -> null
+        }
+    val result =
+        when {
+            candidateMatches -> "success"
+            restoredPayload != null && launch?.routeKind == SlockFilePreviewRouteThreadAttachment ->
+                "restored_thread_attachment"
+            restoredPayload != null && launch?.routeKind == SlockFilePreviewRouteAgentWorkspace ->
+                "restored_agent_workspace"
+            launch?.routeKind == SlockFilePreviewRouteEphemeral -> "ephemeral_expired"
+            parsedLaunch?.isSuccess == true -> "invalid_launch"
+            else -> "failure"
+        }
     return FilePreviewLaunchPayloadTrace(
         payload =
-            resolvedPayload ?: SlockFilePreviewPayload(
+            restoredPayload ?: SlockFilePreviewPayload(
                 titleDesc = MR.strings.file_preview_unavailable.desc(),
                 messageDesc = MR.strings.file_preview_error_load_payload.desc(),
-                error = if (parsedLaunch?.isSuccess == true) "preview_not_found" else "payload_parse_failed"
+                error =
+                    when {
+                        launch?.routeKind == SlockFilePreviewRouteEphemeral ->
+                            "ephemeral_preview_expired"
+                        parsedLaunch?.isSuccess == true -> "invalid_file_preview_launch"
+                        else -> "payload_parse_failed"
+                    }
             ),
         responseBytes = source.encodeToByteArray().size,
         durationMs = startedAt.elapsedNow().inWholeMilliseconds,
-        result =
-            when {
-                resolvedPayload != null -> "success"
-                parsedLaunch?.isSuccess == true -> "missing_preview"
-                else -> "failure"
-            }
+        result = result,
+        routeKind = launch?.routeKind.orEmpty(),
+        sessionId = launch?.sessionId.orEmpty(),
+        temporaryFileRefsToCleanup = temporaryFileRefsToCleanup
     )
 }
+
+internal fun FilePreviewLaunchPayloadTrace.requiresAuthenticatedRouteAuthority(): Boolean =
+    routeKind == SlockFilePreviewRouteThreadAttachment ||
+        routeKind == SlockFilePreviewRouteAgentWorkspace
+
+private fun SlockFilePreviewPayload.withFilePreviewAuthorityRejected(): SlockFilePreviewPayload =
+    copy(
+        kind = "error",
+        titleDesc = MR.strings.file_preview_unavailable.desc(),
+        subtitle = "",
+        name = "",
+        path = "",
+        meta = "",
+        content = "",
+        imageUrl = null,
+        externalUrl = null,
+        videoUrl = null,
+        externalFileName = "",
+        externalMimeType = "",
+        source = "",
+        attachmentId = "",
+        attachmentCommentsEnabled = false,
+        commentsInitiallyOpen = false,
+        agentId = "",
+        imageGallery = emptyList(),
+        imageGalleryIndex = 0,
+        message = "",
+        messageDesc = MR.strings.file_preview_error_load_payload.desc(),
+        error = "authenticated_route_authority_changed",
+        composerImageThreadKey = "",
+        composerImageActionId = "",
+        composerImageGroupId = "",
+        composerImageFileRef = "",
+        composerImagePreviewUri = "",
+        composerImageOwnedTemporaryFileRefs = emptyList(),
+        composerImageCanComplete = false,
+        composerImageCanEdit = false
+    )
+
+private fun WireSlockFilePreviewLaunchPayload.normalizedOrNull(): WireSlockFilePreviewLaunchPayload? {
+    if (version != SlockFilePreviewLaunchContractVersion) return null
+    val cleanSessionId = sessionId.trim().takeIf { it.isNotBlank() } ?: return null
+    return when (routeKind) {
+        SlockFilePreviewRouteThreadAttachment -> {
+            val cleanAttachmentId = attachmentId.trim().takeIf { it.isNotBlank() } ?: return null
+            val cleanPreviewKind = previewKind.normalizedRemotePreviewKindOrNull() ?: return null
+            val cleanGalleryIds = galleryAttachmentIds.map(String::trim)
+            if (cleanGalleryIds.any(String::isBlank) || cleanGalleryIds.distinct().size != cleanGalleryIds.size) {
+                return null
+            }
+            val cleanGalleryIndex =
+                if (cleanGalleryIds.isEmpty()) {
+                    if (galleryIndex != 0) return null
+                    0
+                } else {
+                    if (galleryIndex !in cleanGalleryIds.indices) return null
+                    if (cleanGalleryIds[galleryIndex] != cleanAttachmentId) return null
+                    galleryIndex
+                }
+            if (agentId.isNotBlank() || workspacePath.isNotBlank()) return null
+            if (commentsInitiallyOpen && !attachmentCommentsEnabled) return null
+            copy(
+                sessionId = cleanSessionId,
+                routeKind = SlockFilePreviewRouteThreadAttachment,
+                attachmentId = cleanAttachmentId,
+                previewKind = cleanPreviewKind,
+                galleryAttachmentIds = cleanGalleryIds,
+                galleryIndex = cleanGalleryIndex,
+                agentId = "",
+                workspacePath = ""
+            )
+        }
+        SlockFilePreviewRouteAgentWorkspace -> {
+            val cleanAgentId = agentId.trim().takeIf { it.isNotBlank() } ?: return null
+            val cleanPath = workspacePath.trim().takeIf { it.isNotBlank() } ?: return null
+            if (
+                attachmentId.isNotBlank() ||
+                previewKind.isNotBlank() ||
+                attachmentCommentsEnabled ||
+                commentsInitiallyOpen ||
+                galleryAttachmentIds.isNotEmpty() ||
+                galleryIndex != 0
+            ) {
+                return null
+            }
+            copy(
+                sessionId = cleanSessionId,
+                routeKind = SlockFilePreviewRouteAgentWorkspace,
+                attachmentId = "",
+                previewKind = "",
+                galleryAttachmentIds = emptyList(),
+                galleryIndex = 0,
+                agentId = cleanAgentId,
+                workspacePath = cleanPath
+            )
+        }
+        SlockFilePreviewRouteEphemeral -> {
+            if (
+                attachmentId.isNotBlank() ||
+                previewKind.isNotBlank() ||
+                attachmentCommentsEnabled ||
+                commentsInitiallyOpen ||
+                galleryAttachmentIds.isNotEmpty() ||
+                galleryIndex != 0 ||
+                agentId.isNotBlank() ||
+                workspacePath.isNotBlank()
+            ) {
+                return null
+            }
+            copy(
+                sessionId = cleanSessionId,
+                routeKind = SlockFilePreviewRouteEphemeral,
+                attachmentId = "",
+                previewKind = "",
+                galleryAttachmentIds = emptyList(),
+                galleryIndex = 0,
+                agentId = "",
+                workspacePath = ""
+            )
+        }
+        else -> null
+    }
+}
+
+private fun String.normalizedRemotePreviewKindOrNull(): String? =
+    trim().lowercase().takeIf {
+        it in setOf("image", "markdown", "text", "html", "video", "audio", "file")
+    }
+
+private fun SlockFilePreviewPayload.matchesFilePreviewLaunch(
+    launch: WireSlockFilePreviewLaunchPayload
+): Boolean =
+    when (launch.routeKind) {
+        SlockFilePreviewRouteThreadAttachment ->
+            composerImageActionId.isBlank() &&
+                source == SlockFilePreviewSourceThreadAttachment &&
+                attachmentId.trim() == launch.attachmentId &&
+                durableRemotePreviewKind() == launch.previewKind &&
+                attachmentCommentsEnabled == launch.attachmentCommentsEnabled &&
+                commentsInitiallyOpen == launch.commentsInitiallyOpen &&
+                imageGallery.map { it.attachmentId.trim() } == launch.galleryAttachmentIds &&
+                (imageGallery.isEmpty() || imageGalleryIndex == launch.galleryIndex)
+        SlockFilePreviewRouteAgentWorkspace ->
+            composerImageActionId.isBlank() &&
+                source == SlockFilePreviewSourceAgentWorkspace &&
+                agentId.trim() == launch.agentId &&
+                path.trim() == launch.workspacePath
+        SlockFilePreviewRouteEphemeral ->
+            toFilePreviewLaunchRouteKind() == SlockFilePreviewRouteEphemeral
+        else -> false
+    }
+
+private fun WireSlockFilePreviewLaunchPayload.toRestoredThreadAttachmentPayload(): SlockFilePreviewPayload {
+    val gallery = galleryAttachmentIds.map { SlockFilePreviewGalleryImage(attachmentId = it) }
+    return SlockFilePreviewPayload(
+        kind = "loading",
+        requestedKind = previewKind,
+        titleDesc = previewKind.filePreviewTitleDesc(),
+        messageDesc = MR.strings.common_loading.desc(),
+        source = SlockFilePreviewSourceThreadAttachment,
+        attachmentId = attachmentId,
+        attachmentCommentsEnabled = attachmentCommentsEnabled,
+        commentsInitiallyOpen = commentsInitiallyOpen,
+        imageGallery = gallery,
+        imageGalleryIndex = galleryIndex
+    )
+}
+
+private fun String.filePreviewTitleDesc(): StringDesc =
+    when (this) {
+        "image" -> MR.strings.file_preview_image.desc()
+        "markdown" -> MR.strings.file_preview_markdown.desc()
+        "text" -> MR.strings.file_preview_text.desc()
+        "html" -> MR.strings.file_preview_html.desc()
+        "video" -> MR.strings.file_preview_video.desc()
+        "audio" -> MR.strings.file_preview_audio.desc()
+        else -> MR.strings.file_preview_title.desc()
+    }
+
+internal fun slockFilePreviewLaunchDescriptor(
+    sessionId: String,
+    payload: SlockFilePreviewPayload
+): WireSlockFilePreviewLaunchPayload {
+    val cleanSessionId = sessionId.trim()
+    return when (payload.toFilePreviewLaunchRouteKind()) {
+        SlockFilePreviewRouteThreadAttachment -> {
+            val galleryIds = payload.imageGallery.map { it.attachmentId.trim() }
+            val matchingGalleryIndex = galleryIds.indexOf(payload.attachmentId.trim())
+            val durableGalleryIds =
+                galleryIds.takeIf {
+                    it.isNotEmpty() &&
+                        it.none(String::isBlank) &&
+                        it.distinct().size == it.size &&
+                        matchingGalleryIndex >= 0
+                }.orEmpty()
+            WireSlockFilePreviewLaunchPayload(
+                sessionId = cleanSessionId,
+                routeKind = SlockFilePreviewRouteThreadAttachment,
+                attachmentId = payload.attachmentId.trim(),
+                previewKind = payload.durableRemotePreviewKind(),
+                attachmentCommentsEnabled = payload.attachmentCommentsEnabled,
+                commentsInitiallyOpen = payload.commentsInitiallyOpen,
+                galleryAttachmentIds = durableGalleryIds,
+                galleryIndex = if (durableGalleryIds.isEmpty()) 0 else matchingGalleryIndex
+            )
+        }
+        SlockFilePreviewRouteAgentWorkspace ->
+            WireSlockFilePreviewLaunchPayload(
+                sessionId = cleanSessionId,
+                routeKind = SlockFilePreviewRouteAgentWorkspace,
+                agentId = payload.agentId.trim(),
+                workspacePath = payload.path.trim()
+            )
+        else ->
+            WireSlockFilePreviewLaunchPayload(
+                sessionId = cleanSessionId,
+                routeKind = SlockFilePreviewRouteEphemeral
+            )
+    }
+}
+
+private fun SlockFilePreviewPayload.toFilePreviewLaunchRouteKind(): String =
+    when {
+        composerImageActionId.isNotBlank() -> SlockFilePreviewRouteEphemeral
+        source == SlockFilePreviewSourceThreadAttachment && attachmentId.isNotBlank() ->
+            SlockFilePreviewRouteThreadAttachment
+        source == SlockFilePreviewSourceAgentWorkspace && agentId.isNotBlank() && path.isNotBlank() ->
+            SlockFilePreviewRouteAgentWorkspace
+        else -> SlockFilePreviewRouteEphemeral
+    }
+
+private fun SlockFilePreviewPayload.durableRemotePreviewKind(): String =
+    when {
+        requestedKind == "image" -> "image"
+        requestedKind == "html" -> "html"
+        requestedKind == "audio" -> "audio"
+        slockFilePreviewIsMarkdownAttachment(
+            fileName = name.ifBlank { path.ifBlank { externalFileName } },
+            mimeType = externalMimeType
+        ) -> "markdown"
+        slockFilePreviewIsHtmlAttachment(
+            fileName = name.ifBlank { path.ifBlank { externalFileName } },
+            mimeType = externalMimeType
+        ) -> "html"
+        slockFilePreviewIsMp3AudioAttachment(
+            fileName = name.ifBlank { path.ifBlank { externalFileName } },
+            mimeType = externalMimeType
+        ) -> "audio"
+        requestedKind == "video" -> "video"
+        requestedKind == "markdown" -> "markdown"
+        requestedKind == "text" -> "text"
+        else -> "file"
+    }
 
 internal fun Pager.openSlockFilePreviewPage(
     payload: SlockFilePreviewPayload,
     sourceStoreScope: SlockShellStoreScope? = null
 ): Boolean {
-    val storeScope = resolveSlockFilePreviewSourceStoreScope(pageData.params, sourceStoreScope)
-    if (storeScope == null) {
+    val sourceScope = resolveSlockFilePreviewSourceStoreScope(pageData.params, sourceStoreScope)
+    if (sourceScope == null) {
         slockLogWarn(
             tag = SlockScopedNavigationLogTag,
             message = "slock_scoped_navigation_rejected reason=missing_source_scope target=$SLOCK_FILE_PREVIEW_PAGE"
         )
         return false
     }
-    val previewId = SlockFilePreviewLaunchPayloadStore.put(payload)
-    val launchPageData = slockFilePreviewLaunchPageData(previewId, storeScope)
-    return openSlockPage(SLOCK_FILE_PREVIEW_PAGE, launchPageData, storeScopeOverride = storeScope)
+    val sharedStores = SlockSharedStoreRegistry.currentOrNull()
+    val storeScope = sharedStores?.currentNavigationStoreScope(sourceScope) ?: sourceScope
+    val sessionId = SlockFilePreviewLaunchPayloadStore.put(payload)
+    val launch = slockFilePreviewLaunchDescriptor(sessionId, payload)
+    val targetServerId =
+        resolveSlockFilePreviewTargetServerId(
+            sourcePageData = pageData.params,
+            storeScope = storeScope,
+            liveAuthorityAvailable = sharedStores != null,
+            liveOwner = sharedStores?.currentAuthenticatedRouteOwner(storeScope)
+        )
+    val ephemeralActionRegistry = slockFilePreviewEphemeralActionRegistry()
+    val ephemeralCleanupLedger = slockFilePreviewEphemeralCleanupLedger()
+    val ephemeralRegistration = payload.toEphemeralSessionRegistrationOrNull(sessionId)
+    val registrationCleanupRefs =
+        if (ephemeralRegistration != null) {
+            val retired =
+                ephemeralActionRegistry.register(
+                    sessionId = ephemeralRegistration.sessionId,
+                    threadKey = ephemeralRegistration.threadKey,
+                    actionIds = ephemeralRegistration.actionIds,
+                    ownedTemporaryFileRefs = ephemeralRegistration.ownedTemporaryFileRefs
+                )
+            retired.cleanupFileRefs +
+                ephemeralCleanupLedger.register(
+                    sessionId = sessionId,
+                    fileRefs = ephemeralRegistration.ownedTemporaryFileRefs
+                )
+        } else {
+            emptySet()
+        }
+    if (registrationCleanupRefs.isNotEmpty()) {
+        Utils.bridgeModule(pagerId).retireFilePreviewTemporaryFiles(
+            sessionId = sessionId,
+            fileRefs = registrationCleanupRefs.toList()
+        )
+    }
+    val launchPageData = slockFilePreviewLaunchPageData(launch, storeScope, targetServerId)
+    val opened =
+        openSlockPage(
+            SLOCK_FILE_PREVIEW_PAGE,
+            launchPageData,
+            storeScopeOverride = storeScope,
+            authenticatedRouteAuthorityRequired = launch.requiresAuthenticatedRouteAuthority()
+        )
+    if (!opened) {
+        SlockFilePreviewLaunchPayloadStore.retire(sessionId)
+        val cleanupRefs =
+            ephemeralActionRegistry.retireActive(sessionId).cleanupFileRefs +
+                ephemeralActionRegistry.retirePending(sessionId).cleanupFileRefs +
+                ephemeralCleanupLedger.take(sessionId)
+        if (cleanupRefs.isNotEmpty()) {
+            Utils.bridgeModule(pagerId).retireFilePreviewTemporaryFiles(
+                sessionId = sessionId,
+                fileRefs = cleanupRefs.toList()
+            )
+        }
+    }
+    return opened
 }
 
 internal fun resolveSlockFilePreviewSourceStoreScope(
@@ -3309,20 +4732,41 @@ internal fun resolveSlockFilePreviewSourceStoreScope(
 ): SlockShellStoreScope? =
     sourceStoreScope ?: sourcePageData.slockShellStoreScopeOrNull()
 
+internal fun resolveSlockFilePreviewTargetServerId(
+    sourcePageData: JSONObject,
+    storeScope: SlockShellStoreScope,
+    liveAuthorityAvailable: Boolean,
+    liveOwner: AuthenticatedRouteOwner?
+): String? =
+    if (liveAuthorityAvailable) {
+        liveOwner?.serverId
+    } else {
+        sourcePageData.optString("serverId").trim().takeIf(String::isNotBlank)
+            ?: storeScope.initialServerId
+    }
+
 internal fun slockFilePreviewLaunchPageData(
-    previewId: String,
-    storeScope: SlockShellStoreScope
+    launch: WireSlockFilePreviewLaunchPayload,
+    storeScope: SlockShellStoreScope,
+    targetServerId: String? = storeScope.initialServerId
 ): JSONObject =
     JSONObject().apply {
         put("pageName", SLOCK_FILE_PREVIEW_PAGE)
+        if (launch.requiresAuthenticatedRouteAuthority()) {
+            put("serverId", targetServerId.orEmpty())
+        }
         put(
             "payload",
             SlockFilePreviewJson.encodeToString(
                 WireSlockFilePreviewLaunchPayload.serializer(),
-                WireSlockFilePreviewLaunchPayload(previewId = previewId)
+                launch
             )
         )
     }.withSlockShellStoreScope(storeScope)
+
+internal fun WireSlockFilePreviewLaunchPayload.requiresAuthenticatedRouteAuthority(): Boolean =
+    routeKind == SlockFilePreviewRouteThreadAttachment ||
+        routeKind == SlockFilePreviewRouteAgentWorkspace
 
 internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
     kind: String,
@@ -3409,36 +4853,41 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
 ): SlockFilePreviewPayload? {
     if (source != SlockFilePreviewSourceThreadAttachment || attachmentId.isBlank() || kind != "loading") return null
     val wantsMarkdown =
-        slockFilePreviewIsMarkdownAttachment(
-            fileName = name.ifBlank { path.ifBlank { externalFileName } },
-            mimeType = externalMimeType
-        )
+        requestedKind == "markdown" ||
+            slockFilePreviewIsMarkdownAttachment(
+                fileName = name.ifBlank { path.ifBlank { externalFileName } },
+                mimeType = externalMimeType
+            )
     val previewFileName = name.ifBlank { path.ifBlank { externalFileName } }
     val wantsImage =
         requestedKind == "image" ||
             slockFilePreviewIsImageAttachment(fileName = previewFileName, mimeType = externalMimeType)
     val wantsVideo =
-        slockFilePreviewIsPreviewableVideoAttachment(
-            fileName = previewFileName,
-            mimeType = externalMimeType
-        )
+        requestedKind == "video" ||
+            slockFilePreviewIsPreviewableVideoAttachment(
+                fileName = previewFileName,
+                mimeType = externalMimeType
+            )
     val wantsMp3Audio =
-        slockFilePreviewIsMp3AudioAttachment(
-            fileName = previewFileName,
-            mimeType = externalMimeType
-        )
+        requestedKind == "audio" ||
+            slockFilePreviewIsMp3AudioAttachment(
+                fileName = previewFileName,
+                mimeType = externalMimeType
+            )
     val wantsHtml =
-        slockFilePreviewIsHtmlAttachment(
-            fileName = previewFileName,
-            mimeType = externalMimeType
-        )
+        requestedKind == "html" ||
+            slockFilePreviewIsHtmlAttachment(
+                fileName = previewFileName,
+                mimeType = externalMimeType
+            )
     val wantsText =
-        !wantsMarkdown &&
+        requestedKind == "text" ||
+            (!wantsMarkdown &&
             !wantsHtml &&
             slockFilePreviewIsTextLikeAttachment(
                 fileName = name.ifBlank { path.ifBlank { externalFileName } },
                 mimeType = externalMimeType
-            )
+            ))
     return when {
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
         wantsImage -> loadThreadImageAttachmentPreview(threadApi)

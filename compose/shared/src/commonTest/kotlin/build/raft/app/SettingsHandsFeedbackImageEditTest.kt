@@ -157,7 +157,15 @@ class SettingsHandsFeedbackImageEditTest {
                 sourcePageData = JSONObject(),
                 sourceStoreScope = request.sourceStoreScope
             )
-        val pageData = slockFilePreviewLaunchPageData("ohos-preview", requireNotNull(resolvedScope))
+        val pageData =
+            slockFilePreviewLaunchPageData(
+                launch =
+                    slockFilePreviewLaunchDescriptor(
+                        sessionId = "ohos-preview",
+                        payload = request.previewPayload
+                    ),
+                storeScope = requireNotNull(resolvedScope)
+            )
 
         assertEquals(SLOCK_FILE_PREVIEW_PAGE, pageData.optString("pageName"))
         assertEquals("legacy", pageData.optString(SLOCK_SHELL_INSTANCE_ID))

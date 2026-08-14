@@ -641,6 +641,27 @@ internal class BridgeModule : Module() {
             expectedRecordVersion
         )
 
+    /**
+     * Best-effort retirement for cache files owned by an ephemeral File Preview session.
+     * Hosts must independently fence every ref to their app-owned cache roots before deletion.
+     */
+    fun retireFilePreviewTemporaryFiles(
+        sessionId: String,
+        fileRefs: List<String>
+    ) {
+        val cleanSessionId = sessionId.trim()
+        val cleanRefs = fileRefs.map(String::trim).filter(String::isNotBlank).distinct()
+        if (cleanRefs.isEmpty()) return
+        callNativeMethod(
+            RETIRE_FILE_PREVIEW_TEMPORARY_FILES,
+            JSONObject().apply {
+                put("sessionId", cleanSessionId)
+                put("fileRefs", JSONArray().apply { cleanRefs.forEach(::put) })
+            },
+            null
+        )
+    }
+
     suspend fun exportDownloadedAttachment(
         attachmentId: String,
         fileName: String,
@@ -1200,6 +1221,7 @@ internal class BridgeModule : Module() {
         const val CANCEL_ATTACHMENT_EXPORT = "cancelAttachmentExport"
         const val ATTACHMENT_CACHE_STATUS = "attachmentCacheStatus"
         const val DELETE_ATTACHMENT_CACHE = "deleteAttachmentCache"
+        const val RETIRE_FILE_PREVIEW_TEMPORARY_FILES = "retireFilePreviewTemporaryFiles"
         const val EXPORT_DOWNLOADED_ATTACHMENT = "exportDownloadedAttachment"
         const val ATTACHMENT_DOWNLOAD_CONTROL = "attachmentDownloadControl"
         const val ATTACHMENT_DOWNLOAD_OWNER_CHANGED = "attachmentDownloadOwnerChanged"
