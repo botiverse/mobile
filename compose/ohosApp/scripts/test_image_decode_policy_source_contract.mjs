@@ -51,9 +51,26 @@ function sha256(bytes) {
   return crypto.createHash('sha256').update(bytes).digest('hex');
 }
 
+// Markers are matched with the Kotlin visibility keyword made optional. Pinning
+// the literal `private fun ...` made this contract fail whenever a declaration was
+// legitimately widened to `internal` - which is exactly what the visual-fixture
+// split does when a visual host in another file needs to call it (task #193). The
+// contract is about the image-decode path inside the function, not about who may
+// call it, so visibility must not be part of the anchor.
+function markerPattern(marker) {
+  const withoutVisibility = marker.replace(/^(?:private|internal|public) /, '');
+  const escaped = withoutVisibility.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:private |internal |public )?${escaped}`);
+}
+
 function functionBody(source, startMarker, endMarker) {
-  const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker, start + startMarker.length);
+  const startMatch = markerPattern(startMarker).exec(source);
+  const start = startMatch ? startMatch.index : -1;
+  const endMatch =
+    start >= 0
+      ? markerPattern(endMarker).exec(source.slice(start + startMatch[0].length))
+      : null;
+  const end = endMatch ? start + startMatch[0].length + endMatch.index : -1;
   assertContract(start >= 0 && end > start, `unable to isolate ${startMarker}`);
   return source.slice(start, end);
 }
