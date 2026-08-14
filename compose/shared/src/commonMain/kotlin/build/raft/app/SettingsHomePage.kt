@@ -21088,8 +21088,6 @@ private fun Pager.openHomeSecondaryPage(
         JSONObject().apply {
             put("pageName", pageName)
             put("destination", retainedDestination)
-            put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-            storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
             if (retainedDestination == HomeDestinationSearch) {
                 put(HOME_SEARCH_FOCUS_INPUT, true)
             }
@@ -21098,7 +21096,11 @@ private fun Pager.openHomeSecondaryPage(
             timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
             put("timeFormat", timeContext?.timeFormat ?: SlockTimeFormat24Hour)
         }
-    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
+    openSlockPage(
+        pageName = pageName,
+        pageData = pageData,
+        storeScopeOverride = storeScope
+    )
 }
 
 private fun Pager.openStandaloneHomeMessageRequest(

@@ -1,10 +1,24 @@
 package build.raft.app
 
+import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.HomeNetworkResponse
+import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.NetworkSlockThreadApi
+import build.raft.app.data.SelectedServerStore
+import build.raft.app.data.SlockNetworkClient
+import build.raft.app.data.SlockShellAuthSessionStore
+import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.StoredAuthServer
+import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthUser
+import build.raft.app.data.childNavigationStoreScope
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SlockShellStoreLaunchTest {
     @Test
@@ -72,6 +86,73 @@ class SlockShellStoreLaunchTest {
         assertEquals("server-owner", pageData.optString(SLOCK_SHELL_SERVER_ID))
         assertEquals("", pageData.optString("displayName"))
         assertEquals("", pageData.optString("avatarUrl"))
+    }
+
+    @Test
+    fun explicitUnselectedOwnerDoesNotFallBackToFeatureServerIdentity() {
+        val pageData =
+            JSONObject()
+                .put("serverId", "server-feature-target")
+                .withSlockShellStoreScope(SlockShellStoreScope.create("shell-unselected"))
+
+        assertTrue(pageData.has(SLOCK_SHELL_SERVER_ID))
+        assertNull(pageData.slockShellStoreScopeOrNull()?.initialServerId)
+        assertEquals("server-feature-target", pageData.optString("serverId"))
+    }
+
+    @Test
+    fun childThreadRestoreSerializesLiveServerAndMakesNoRequestToBootstrapServer() = runBlocking {
+        val sourceScope = SlockShellStoreScope.create("shell-thread-restore", "server-a")
+        val liveSelection = SelectedServerStore(sourceScope)
+        liveSelection.select("server-b", "two")
+
+        val childPageData =
+            JSONObject()
+                .put("pageName", THREAD_PAGE)
+                .withSlockShellStoreScope(childNavigationStoreScope(sourceScope, liveSelection))
+        val restoredScope = childPageData.slockShellStoreScopeOrNull()
+        assertEquals("server-b", restoredScope?.initialServerId)
+
+        val processAuth =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@example.com"),
+                    accessToken = "access",
+                    refreshToken = "refresh",
+                    selectedServerId = "server-b",
+                    selectedServerSlug = "two",
+                    servers =
+                        listOf(
+                            StoredAuthServer(id = "server-a", name = "A", slug = "one"),
+                            StoredAuthServer(id = "server-b", name = "B", slug = "two")
+                        )
+                )
+            )
+        val restoredAuth =
+            SlockShellAuthSessionStore(
+                delegate = processAuth,
+                selectedServerStore = SelectedServerStore(requireNotNull(restoredScope))
+            )
+        val requestedServers = mutableListOf<String?>()
+        val network =
+            object : SlockNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: build.raft.app.model.ServerId?,
+                    bodyText: String?
+                ): HomeNetworkResponse {
+                    requestedServers += serverIdOverride?.value ?: restoredAuth.readSession()?.currentServerId
+                    return HomeNetworkResponse(code = 404, bodyText = null)
+                }
+            }
+
+        NetworkSlockThreadApi(network).messageContext("parent-message", "thread-stream")
+
+        assertEquals(listOf<String?>("server-b"), requestedServers)
+        assertFalse(requestedServers.contains("server-a"))
     }
 
     @Test

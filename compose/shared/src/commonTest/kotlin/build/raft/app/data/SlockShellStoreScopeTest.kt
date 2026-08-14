@@ -97,6 +97,30 @@ class SlockShellStoreScopeTest {
     }
 
     @Test
+    fun childNavigationScopeUsesLiveSelectionAndDoesNotResurrectBootstrapServer() = runBlocking {
+        val sourceScope = SlockShellStoreScope.create("shell-child-route", "server-a")
+        val selectedServerStore = SelectedServerStore(sourceScope)
+
+        selectedServerStore.select("server-b", "two")
+        assertEquals(
+            "server-b",
+            childNavigationStoreScope(sourceScope, selectedServerStore).initialServerId
+        )
+
+        selectedServerStore.clearActiveSelection()
+        assertEquals(
+            null,
+            childNavigationStoreScope(sourceScope, selectedServerStore).initialServerId
+        )
+        // No live store is a legacy/bootstrap path; preserve its source hint
+        // only in that case.
+        assertEquals(
+            "server-a",
+            childNavigationStoreScope(sourceScope, null).initialServerId
+        )
+    }
+
+    @Test
     fun cacheCreatesOneValueForConcurrentSameScopeCallers() = runBlocking {
         val scope = SlockShellStoreScope.create("shell-concurrent", "server-1")
         val contenderCount = 2

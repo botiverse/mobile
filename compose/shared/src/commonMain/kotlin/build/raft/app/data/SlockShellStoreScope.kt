@@ -71,6 +71,26 @@ internal class SlockShellScopedStoreCache<Value>(
         get() = synchronized(lock) { values.size }
 }
 
+/**
+ * Selects the shell scope that should be serialized for a child route.
+ *
+ * [SlockShellStoreScope.initialServerId] is only bootstrap data. Once a live
+ * selected-server store exists, its value is the current shell authority,
+ * including `null` (the shell currently has no selected server). In
+ * particular, do not fall back to an older initial value after an in-process
+ * server switch or an explicit selection clear.
+ */
+internal fun childNavigationStoreScope(
+    sourceScope: SlockShellStoreScope,
+    selectedServerStore: SelectedServerStore?
+): SlockShellStoreScope =
+    selectedServerStore?.let { selected ->
+        SlockShellStoreScope.create(
+            shellInstanceId = sourceScope.shellInstanceId,
+            initialServerId = selected.selectedServerId.value
+        )
+    } ?: sourceScope
+
 internal data class SelectedServerSelection(
     val serverId: String?,
     val serverSlug: String?
