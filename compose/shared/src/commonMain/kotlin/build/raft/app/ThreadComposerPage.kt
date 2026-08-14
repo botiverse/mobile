@@ -773,6 +773,16 @@ internal fun threadComposerEnterAction(
     }
 }
 
+internal fun threadComposerUsesImeAction(
+    composerSendKeyEnabled: Boolean,
+    panelState: ThreadComposerSuggestionPanelState,
+    memberCount: Int,
+    channelCount: Int
+): Boolean =
+    composerSendKeyEnabled ||
+        (panelState == ThreadComposerSuggestionPanelState.MemberItems && memberCount > 0) ||
+        (panelState == ThreadComposerSuggestionPanelState.ChannelItems && channelCount > 0)
+
 internal fun threadComposerSuggestionRefreshRequest(
     focused: Boolean,
     trigger: KuiklyComposerSuggestionTrigger
@@ -2210,8 +2220,15 @@ internal fun ThreadComposerContentLeaf(
             state.composerMode != "no_permission" &&
             !state.pendingAttachments.hasFailedThreadAttachmentUpload() &&
             (text.isNotBlank() || state.pendingAttachments.isNotEmpty())
+    val composerUsesImeAction =
+        threadComposerUsesImeAction(
+            composerSendKeyEnabled = composerSendKeyEnabled,
+            panelState = suggestionPanelState,
+            memberCount = filteredMemberSuggestions.size,
+            channelCount = filteredChannelSuggestions.size
+        )
     val composerKeyboardOptions =
-        if (composerSendKeyEnabled) {
+        if (composerUsesImeAction) {
             KeyboardOptions(imeAction = ImeAction.Send)
         } else {
             KeyboardOptions(imeAction = ImeAction.None)
@@ -2375,7 +2392,7 @@ internal fun ThreadComposerContentLeaf(
         }
     }
     val composerKeyboardActions =
-        if (composerSendKeyEnabled) {
+        if (composerUsesImeAction) {
             KeyboardActions(onSend = { handleKeyboardSend() })
         } else {
             KeyboardActions.Default
