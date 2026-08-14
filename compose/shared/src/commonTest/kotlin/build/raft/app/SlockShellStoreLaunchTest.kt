@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.InMemorySlockAuthSessionStore
 import build.raft.app.data.NetworkSlockThreadApi
@@ -21,6 +22,46 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SlockShellStoreLaunchTest {
+    @Test
+    fun authenticatedChildOwnerSerializesOnlyEnvironmentAccountAndServerIdentity() {
+        val pageData =
+            JSONObject()
+                .put("pageName", CHANNEL_SETTINGS_PAGE)
+                .put("channelId", "channel-1")
+                .withAuthenticatedRouteOwner(
+                    AuthenticatedRouteOwner(
+                        environmentId = " https://api.raft.build/api/ ",
+                        accountId = " account-a ",
+                        serverId = " server-a ",
+                    )
+                )
+
+        assertEquals(
+            AuthenticatedRouteOwner(
+                environmentId = "https://api.raft.build/api",
+                accountId = "account-a",
+                serverId = "server-a",
+            ),
+            pageData.authenticatedRouteOwnerOrNull(),
+        )
+        val serialized = pageData.toString()
+        assertFalse(serialized.contains("accessToken"))
+        assertFalse(serialized.contains("refreshToken"))
+        assertFalse(serialized.contains("authGeneration"))
+        assertFalse(serialized.contains("selectionGeneration"))
+    }
+
+    @Test
+    fun authenticatedChildOwnerRejectsMissingIdentity() {
+        assertNull(JSONObject().authenticatedRouteOwnerOrNull())
+        assertNull(
+            JSONObject()
+                .put(SLOCK_ROUTE_ENVIRONMENT_ID, "https://api.raft.build/api")
+                .put(SLOCK_ROUTE_ACCOUNT_ID, "account-a")
+                .authenticatedRouteOwnerOrNull()
+        )
+    }
+
     @Test
     fun launchScopeReadsOnlyShellAndServerIdentity() {
         val scope =

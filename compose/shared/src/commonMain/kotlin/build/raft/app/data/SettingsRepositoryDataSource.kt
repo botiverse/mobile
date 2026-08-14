@@ -1146,8 +1146,15 @@ class RealSettingsRepository(
         request: SettingsServerSidebarOrderUpdateRequest
     ): DataResult<SettingsServerSidebarOrderSnapshot> {
         val serverId = selectedServerId() ?: return serverRequired()
+        return updateServerSidebarOrder(ServerId(serverId), request)
+    }
+
+    internal suspend fun updateServerSidebarOrder(
+        serverId: ServerId,
+        request: SettingsServerSidebarOrderUpdateRequest,
+    ): DataResult<SettingsServerSidebarOrderSnapshot> {
         if (!request.hasAtLeastOneField()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        return settingsUpdateServerSidebarOrder(serverId, request)
+        return settingsUpdateServerSidebarOrder(serverId.value, request)
     }
 
     override suspend fun getServerOrder(): DataResult<SettingsServerOrderSnapshot> =

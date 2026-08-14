@@ -33,6 +33,27 @@ class SlockNetworkAuthMiddlewareTest {
     }
 
     @Test
+    fun expectedAuthorityRejectsChangedLiveSelectionEvenWhenOverrideMatchesOldRoute() = runBlocking {
+        val original = sampleSession(accessToken = "access-a", refreshToken = "refresh-a")
+        val store = InMemorySlockAuthSessionStore(original.copy(selectedServerId = "server-2"))
+        val middleware = SlockNetworkAuthMiddleware(store, FakeAuthApi(refreshResult = null))
+        var calls = 0
+
+        val response =
+            middleware.request(
+                serverIdOverride = ServerId("server-1"),
+                expectedAuthority = original.expectedBinding(),
+            ) {
+                calls += 1
+                HomeNetworkResponse(code = 200, bodyText = "{}")
+            }
+
+        assertEquals(409, response.code)
+        assertEquals(0, calls)
+        assertEquals(true, response.errorBodyText?.contains("auth_authority_changed"))
+    }
+
+    @Test
     fun expectedAuthorityNeverRetriesOldMutationAfterTokenRefresh() = runBlocking {
         val store = InMemorySlockAuthSessionStore(sampleSession(accessToken = "access-a", refreshToken = "refresh-a"))
         val middleware =
@@ -64,6 +85,67 @@ class SlockNetworkAuthMiddlewareTest {
         assertEquals(1, calls)
         assertEquals("access-a-prime", store.readSession()?.accessToken)
         assertEquals("refresh-a-prime", store.readSession()?.refreshToken)
+        assertEquals(true, response.errorBodyText?.contains("auth_authority_changed"))
+    }
+
+    @Test
+    fun expectedAuthorityDropsSuccessfulResponseWhenAccountChangesDuringTransport() = runBlocking {
+        val original = sampleSession(accessToken = "access-a", refreshToken = "refresh-a")
+        val store = InMemorySlockAuthSessionStore(original)
+        val middleware = SlockNetworkAuthMiddleware(store, FakeAuthApi(refreshResult = null))
+
+        val response =
+            middleware.request(
+                serverIdOverride = ServerId("server-1"),
+                expectedAuthority = original.expectedBinding(),
+            ) {
+                store.saveSession(
+                    original.copy(user = StoredAuthUser(id = "user-2", email = "other@raft.build"))
+                )
+                HomeNetworkResponse(code = 200, bodyText = "{}")
+            }
+
+        assertEquals(409, response.code)
+        assertEquals(true, response.errorBodyText?.contains("auth_authority_changed"))
+    }
+
+    @Test
+    fun expectedAuthorityDropsResponseWhenLiveSelectionChangesDuringTransport() = runBlocking {
+        val original = sampleSession(accessToken = "access-a", refreshToken = "refresh-a")
+        val store = InMemorySlockAuthSessionStore(original)
+        val middleware = SlockNetworkAuthMiddleware(store, FakeAuthApi(refreshResult = null))
+
+        val response =
+            middleware.request(
+                serverIdOverride = ServerId("server-1"),
+                expectedAuthority = original.expectedBinding(),
+            ) {
+                store.saveSession(original.copy(selectedServerId = "server-2"))
+                HomeNetworkResponse(code = 200, bodyText = "{}")
+            }
+
+        assertEquals(409, response.code)
+        assertEquals(true, response.errorBodyText?.contains("auth_authority_changed"))
+    }
+
+    @Test
+    fun expectedAuthoritySkipsRefreshWhenAccountChangesDuringFailedTransport() = runBlocking {
+        val original = sampleSession(accessToken = "access-a", refreshToken = "refresh-a")
+        val store = InMemorySlockAuthSessionStore(original)
+        val middleware = SlockNetworkAuthMiddleware(store, FakeAuthApi(refreshResult = null))
+
+        val response =
+            middleware.request(
+                serverIdOverride = ServerId("server-1"),
+                expectedAuthority = original.expectedBinding(),
+            ) {
+                store.saveSession(
+                    original.copy(user = StoredAuthUser(id = "user-2", email = "other@raft.build"))
+                )
+                HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
+            }
+
+        assertEquals(409, response.code)
         assertEquals(true, response.errorBodyText?.contains("auth_authority_changed"))
     }
 
@@ -548,5 +630,13 @@ class SlockNetworkAuthMiddlewareTest {
             selectedServerId = "server-1",
             selectedServerSlug = "slock",
             servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
+        )
+
+    private fun StoredAuthSession.expectedBinding(): SlockExpectedAuthBinding =
+        SlockExpectedAuthBinding(
+            accountId = user.id,
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            serverId = requireNotNull(currentServerId),
         )
 }

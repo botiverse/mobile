@@ -3583,14 +3583,16 @@ private fun ThreadPageScreen(
             pager.openSlockPage(
                 pageName = THREAD_MEMBERS_PAGE,
                 pageData = currentPayload.toThreadMembersPageData(serverId, channelId),
-                storeScopeOverride = currentStoreScope
+                storeScopeOverride = currentStoreScope,
+                authenticatedRouteAuthorityRequired = true,
             )
         },
         onOpenChannelSettings = { serverId, channelId, currentStoreScope ->
             pager.openSlockPage(
                 pageName = CHANNEL_SETTINGS_PAGE,
                 pageData = channelSettingsPageData(serverId, channelId),
-                storeScopeOverride = currentStoreScope
+                storeScopeOverride = currentStoreScope,
+                authenticatedRouteAuthorityRequired = true,
             )
         }
     )
@@ -3623,48 +3625,75 @@ private fun ThreadMembersPageScreen() {
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
-    val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
-    val agentDetailStore = remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
-    val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
-    val sharedHomeStateFlow = remember(sharedHomeStore) { sharedHomeStore?.state ?: flowOf(SharedHomeState()) }
-    val sharedHomeState by sharedHomeStateFlow.collectAsState(SharedHomeState())
-    val memberScope = rememberCoroutineScope()
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
-    val slice by remember(serverMembersStore, route.serverId, route.channelId) {
-        serverMembersStore
-            .channelMemberSliceFlow(route.serverId, route.channelId)
-            .onStart {
-                serverMembersStore.loadChannelMembers(
-                    serverId = route.serverId,
-                    channelId = route.channelId,
-                    priority = DataRequestPriority.Visible,
-                    force = false
+    val routeOwner =
+        remember(pager.pageData.params.toString()) {
+            pager.pageData.params.authenticatedRouteOwnerOrNull()
+        }
+    if (routeOwner == null || routeOwner.serverId != route.serverId.value) {
+        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                SlockTopPageHeader(
+                    title = stringResource(MR.strings.thread_members_title, 0),
+                    iconName = SlockLucideIconName.Users,
+                    leadingContent = {
+                        SlockTopPageHeaderAction(
+                            icon = SlockLucideIconName.ArrowLeft,
+                            onClick = router::closePage,
+                        )
+                    },
                 )
+                ThreadStateMessage(title = stringResource(MR.strings.common_error), detail = null)
             }
-    }.collectAsState(
-        SharedServerChannelMembersSlice(
-            serverId = route.serverId.value,
-            channelId = route.channelId.value
-        )
-    )
-    val serverMembersEntry by remember(serverMembersStore, route.serverId) {
-        serverMembersStore.serverMembersEntryFlow(route.serverId)
-    }.collectAsState(SharedServerMembersEntry(serverId = route.serverId.value))
-    LaunchedEffect(serverMembersStore, route.serverId) {
-        serverMembersStore.refreshMembers(route.serverId, DataRequestPriority.Background, force = false)
+        }
+        return
     }
-    val members = remember(slice.members, route.serverId) {
-        slice.members
+    val agentDetailStore = remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
+    val memberScope = rememberCoroutineScope()
+    val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
+    val authorityGateway = remember(sharedStores, storeScope) {
+        sharedStores.authenticatedRouteAuthorityGateway(storeScope)
+    }
+    val dataSource = remember(route, routeOwner, authStore, authorityGateway) {
+        RealThreadMembersRouteDataSource(
+            route = route,
+            authStore = authStore,
+            owner = routeOwner,
+            gateway = authorityGateway,
+            logger = { message -> bridge.log("thread_members_route $message") },
+        )
+    }
+    val routeStore = remember(route, dataSource, memberScope) {
+        ThreadMembersRouteStore(route = route, dataSource = dataSource, scope = memberScope)
+    }
+    val routeState by routeStore.state.collectAsState()
+    val liveOwner by
+        remember(sharedStores, storeScope) {
+            sharedStores.authenticatedRouteOwnerFlow(storeScope)
+        }.collectAsState(sharedStores.currentAuthenticatedRouteOwner(storeScope))
+    LaunchedEffect(routeStore, liveOwner, routeOwner) {
+        if (liveOwner == routeOwner) {
+            routeStore.dispatch(ThreadMembersRouteIntent.Load)
+        } else {
+            routeStore.invalidateAuthority()
+        }
+    }
+    val members = remember(routeState.channelMembers, route.serverId) {
+        routeState.channelMembers
             .distinctBy { it.threadMemberKey }
             .map { it.toKuiklyThreadMemberItem(route.serverId) }
     }
     val memberKeys = remember(members) { members.map { it.memberKey }.toSet() }
-    val candidates = remember(serverMembersEntry.members, route.serverId, memberKeys) {
-        serverMembersEntry
-            .members
+    val candidates = remember(routeState.serverMembers, route.serverId, memberKeys) {
+        routeState.serverMembers
             .filterNot { it.threadMemberKey in memberKeys }
             .map { it.toKuiklyThreadMemberItem(route.serverId) }
     }
+    // These resolvers are read-only projections. Destination requests remain
+    // owned by routeStore/dataSource; using the scoped shared store here keeps
+    // the established avatar/presence rendering without making it a source of
+    // member mutations or route hydration.
+    val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val agentStatusResolver = remember(serverMembersStore, route.serverId) {
         slockAgentStatusResolver(serverMembersStore, route.serverId.value)
     }
@@ -3672,7 +3701,7 @@ private fun ThreadMembersPageScreen() {
         slockMemberAvatarResolver(
             serverMembersStore = serverMembersStore,
             serverId = route.serverId.value,
-            diagnosticsLogger = { message -> bridge.log("thread_members_pager_avatar $message") }
+            diagnosticsLogger = { message -> bridge.log("thread_members_pager_avatar $message") },
         )
     }
     var addDialogVisible by remember { mutableStateOf(false) }
@@ -3682,33 +3711,44 @@ private fun ThreadMembersPageScreen() {
         remember(route.serverId, route.channelId) { mutableStateOf(ThreadMemberRemovalGateState()) }
     val unableToOpenProfileLabel = stringResource(MR.strings.thread_error_open_profile)
     val memberRemovedLabel = stringResource(MR.strings.thread_feedback_member_removed)
-    val channelName =
-        remember(sharedHomeState, route.serverId, route.channelId) {
-            threadMembersRemovalChannelName(
-                snapshot = (sharedHomeState.content as? SharedHomeContentState.Content)?.snapshot,
-                serverId = route.serverId,
-                channelId = route.channelId
-            )
+    val channelName = routeState.channelName
+
+    LaunchedEffect(routeState.status, liveOwner, routeOwner) {
+        if (
+            liveOwner != routeOwner ||
+            routeState.status == ThreadMembersRouteStatus.AuthorityRejected
+        ) {
+            addDialogVisible = false
+            addMemberStatus = "idle"
+            addMemberErrorCode = null
+            removalGate = ThreadMemberRemovalGateState()
         }
+    }
 
     fun openMember(member: KuiklyThreadMemberItem) {
         val identity = member.memberDetailIdentity() ?: return
         val pageData = route.toMemberDetailPageData(identity) ?: return
-        member.toMemberProfile()
-            ?.let { profile ->
-                agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(profile))
+        memberScope.launch {
+            if (authorityGateway.capture(routeOwner) == null) {
+                routeStore.invalidateAuthority()
+                return@launch
             }
-        pager.openSlockPage(
-            pageName = MEMBER_DETAIL_PAGE,
-            pageData = pageData,
-            onMissingScope = {
-                bridge.toast(unableToOpenProfileLabel)
-                bridge.logWarn(
-                    "thread_member_profile_skip reason=missing_shell_scope memberId=${identity.memberId.value} " +
-                        "instanceId=${route.instanceId}"
-                )
-            }
-        )
+            member.toMemberProfile()
+                ?.let { profile ->
+                    agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(profile))
+                }
+            pager.openSlockPage(
+                pageName = MEMBER_DETAIL_PAGE,
+                pageData = pageData,
+                onMissingScope = {
+                    bridge.toast(unableToOpenProfileLabel)
+                    bridge.logWarn(
+                        "thread_member_profile_skip reason=missing_shell_scope memberId=${identity.memberId.value} " +
+                            "instanceId=${route.instanceId}"
+                    )
+                }
+            )
+        }
     }
 
     fun requestRemoveMember(member: KuiklyThreadMemberItem) {
@@ -3734,63 +3774,56 @@ private fun ThreadMembersPageScreen() {
             )
         removalGate = confirmed.state
         val confirmation = confirmed.execute ?: return
-        memberScope.launch {
-            when (
-                val result =
-                    serverMembersStore.removeChannelMember(
-                        serverId = confirmation.serverId,
-                        request = confirmation.request
-                    )
-            ) {
-                is DataResult.Content -> {
-                    val applied = removalGate.inFlight && removalGate.pending == confirmation
+        routeStore.dispatch(ThreadMembersRouteIntent.Remove(confirmation.request))
+    }
+
+    LaunchedEffect(routeState.effect) {
+        when (val effect = routeState.effect) {
+            is ThreadMembersRouteEffect.Added -> {
+                addMemberStatus = "idle"
+                addMemberErrorCode = null
+                addDialogVisible = false
+            }
+            is ThreadMembersRouteEffect.Removed -> {
+                val confirmation = removalGate.pending
+                if (confirmation != null && confirmation.request.memberId.value == effect.memberId) {
+                    val applied = removalGate.inFlight
                     removalGate =
                         reduceThreadMemberRemovalGate(
                             state = removalGate,
-                            intent = ThreadMemberRemovalGateIntent.CompleteSuccess(confirmation)
+                            intent = ThreadMemberRemovalGateIntent.CompleteSuccess(confirmation),
                         ).state
-                    if (applied) {
-                        bridge.toast(memberRemovedLabel)
-                    }
-                }
-                is DataResult.Empty -> {
-                    removalGate =
-                        reduceThreadMemberRemovalGate(
-                            state = removalGate,
-                            intent =
-                                ThreadMemberRemovalGateIntent.CompleteFailure(
-                                    confirmation = confirmation,
-                                    failure = ThreadMemberRemovalFailure.Failed,
-                                    errorCode = "member_remove_empty"
-                                )
-                        ).state
-                }
-                is DataResult.Error -> {
-                    removalGate =
-                        reduceThreadMemberRemovalGate(
-                            state = removalGate,
-                            intent =
-                                ThreadMemberRemovalGateIntent.CompleteFailure(
-                                    confirmation = confirmation,
-                                    failure = ThreadMemberRemovalFailure.Failed,
-                                    errorCode = result.error.code
-                                )
-                        ).state
-                }
-                is DataResult.NoPermission -> {
-                    removalGate =
-                        reduceThreadMemberRemovalGate(
-                            state = removalGate,
-                            intent =
-                                ThreadMemberRemovalGateIntent.CompleteFailure(
-                                    confirmation = confirmation,
-                                    failure = ThreadMemberRemovalFailure.NoPermission,
-                                    errorCode = result.blocker.code
-                                )
-                        ).state
+                    if (applied) bridge.toast(memberRemovedLabel)
                 }
             }
+            is ThreadMembersRouteEffect.Failure -> {
+                if (effect.action == ThreadMembersRouteAction.Add) {
+                    addMemberStatus = if (effect.noPermission) "no_permission" else "failed"
+                    addMemberErrorCode = effect.code
+                } else {
+                    val confirmation = removalGate.pending
+                    if (confirmation != null) {
+                        removalGate =
+                            reduceThreadMemberRemovalGate(
+                                state = removalGate,
+                                intent =
+                                    ThreadMemberRemovalGateIntent.CompleteFailure(
+                                        confirmation = confirmation,
+                                        failure =
+                                            if (effect.noPermission) {
+                                                ThreadMemberRemovalFailure.NoPermission
+                                            } else {
+                                                ThreadMemberRemovalFailure.Failed
+                                            },
+                                        errorCode = effect.code,
+                                    ),
+                            ).state
+                    }
+                }
+            }
+            null -> Unit
         }
+        if (routeState.effect != null) routeStore.dispatch(ThreadMembersRouteIntent.ConsumeEffect)
     }
 
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
@@ -3799,7 +3832,7 @@ private fun ThreadMembersPageScreen() {
                 title = stringResource(MR.strings.thread_members_title, members.size),
                 iconName = SlockLucideIconName.Users,
                 backgroundColor = SlockColor.SurfaceWhite,
-                refreshing = slice.status == SharedServerMembersLoadStatus.InFlight && members.isNotEmpty(),
+                refreshing = routeState.refreshing && members.isNotEmpty(),
                 leadingContent = {
                     SlockTopPageHeaderAction(
                         icon = SlockLucideIconName.ArrowLeft,
@@ -3807,7 +3840,7 @@ private fun ThreadMembersPageScreen() {
                     )
                 },
                 trailingContent =
-                    if (slice.canAddMembers) {
+                    if (routeState.canAddMembers) {
                         {
                             SlockTopPageHeaderAction(
                                 icon = SlockLucideIconName.UserPlus,
@@ -3836,7 +3869,28 @@ private fun ThreadMembersPageScreen() {
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (members.isEmpty()) {
+                if (
+                    routeState.status == ThreadMembersRouteStatus.Error ||
+                    routeState.status == ThreadMembersRouteStatus.AuthorityRejected
+                ) {
+                    item {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                        ) {
+                            ThreadModalEmptyState(
+                                title = stringResource(MR.strings.common_error),
+                                detail = stringResource(MR.strings.thread_members_refresh_detail),
+                            )
+                            SlockBrutalActionButton(
+                                label = stringResource(MR.strings.common_retry),
+                                onClick = { routeStore.dispatch(ThreadMembersRouteIntent.Refresh) },
+                                minWidth = 0.dp,
+                            )
+                        }
+                    }
+                } else if (members.isEmpty()) {
                     item {
                         ThreadModalEmptyState(
                             title = stringResource(MR.strings.thread_state_no_members),
@@ -3879,43 +3933,18 @@ private fun ThreadMembersPageScreen() {
             ThreadAddMemberModal(
                 members = members,
                 candidates = candidates,
-                canAddMembers = slice.canAddMembers,
+                canAddMembers = routeState.canAddMembers,
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
                 addMemberStatus = addMemberStatus,
                 addMemberErrorCode = addMemberErrorCode,
                 onDismiss = { addDialogVisible = false },
                 onSubmit = { member ->
-                    val identity = member.memberDetailIdentity() ?: return@ThreadAddMemberModal
+                    val profile = member.toMemberProfile() ?: return@ThreadAddMemberModal
                     if (addMemberStatus == "adding") return@ThreadAddMemberModal
                     addMemberStatus = "adding"
                     addMemberErrorCode = null
-                    memberScope.launch {
-                        when (
-                            val result =
-                                serverMembersStore.addChannelMember(
-                                    serverId = route.serverId,
-                                    request = AddChannelMemberRequest(route.channelId, identity.memberId, identity.kind)
-                                )
-                        ) {
-                            is DataResult.Content -> {
-                                addMemberStatus = "idle"
-                                addDialogVisible = false
-                            }
-                            is DataResult.Empty -> {
-                                addMemberStatus = "failed"
-                                addMemberErrorCode = "member_add_empty"
-                            }
-                            is DataResult.Error -> {
-                                addMemberStatus = "failed"
-                                addMemberErrorCode = result.error.code
-                            }
-                            is DataResult.NoPermission -> {
-                                addMemberStatus = "no_permission"
-                                addMemberErrorCode = result.blocker.code
-                            }
-                        }
-                    }
+                    routeStore.dispatch(ThreadMembersRouteIntent.Add(profile))
                 }
             )
         }
@@ -24646,7 +24675,8 @@ internal fun Pager.openThreadForwardBundlePage(route: ThreadForwardBundleRoute) 
         // Product state crosses this boundary by identity only. Platform hosts
         // inject the legacy offset as a rollback fallback; the live provider
         // refreshes it through the KuiklyBase datetime foundation.
-        pageData = route.toThreadForwardBundlePageData()
+        pageData = route.toThreadForwardBundlePageData(),
+        authenticatedRouteAuthorityRequired = true,
     )
 }
 
@@ -24674,28 +24704,44 @@ private fun ThreadForwardBundleScreen() {
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val messageBodyFontSizeState by sharedStores.messageBodyFontSizeStore.state.collectAsState()
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
-    val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
-    val messageBodySettingsRepository =
-        remember(authStore, networkClient) {
+    val routeOwner = remember(params.toString()) { params.authenticatedRouteOwnerOrNull() }
+    val authorityGateway = remember(sharedStores, storeScope) {
+        sharedStores.authenticatedRouteAuthorityGateway(storeScope)
+    }
+    val liveOwner by
+        remember(sharedStores, storeScope) {
+            sharedStores.authenticatedRouteOwnerFlow(storeScope)
+        }.collectAsState(sharedStores.currentAuthenticatedRouteOwner(storeScope))
+    val productionAuthorityValid =
+        route != null &&
+            routeOwner != null &&
+            routeOwner.serverId == route.serverId.value &&
+            liveOwner == routeOwner
+    val messageBodyOwnerKey =
+        remember(routeOwner) {
+            routeOwner?.let { owner ->
+                messageBodyFontSizeOwnerKey(owner.environmentId, owner.accountId)
+            }
+        }
+    LaunchedEffect(routeOwner, productionAuthorityValid) {
+        if (!productionAuthorityValid) return@LaunchedEffect
+        val owner = routeOwner ?: return@LaunchedEffect
+        val receipt = authorityGateway.capture(owner) ?: return@LaunchedEffect
+        val messageBodySettingsRepository =
             RealSettingsRepository(
                 sessionStore = authStore,
-                networkClient = networkClient,
+                networkClient = authorityGateway.networkClient(receipt),
                 logger = { message -> bridge.log("forward_bundle_message_body_font_repository $message") },
                 warningLogger = { message -> bridge.logWarn("forward_bundle_message_body_font_repository $message") },
             )
-        }
-    var messageBodyOwnerKey by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(authStore, messageBodySettingsRepository) {
-        messageBodyOwnerKey =
-            authStore.readSession()?.user?.id?.let { accountId ->
-                messageBodyFontSizeOwnerKey(
-                    sharedStores.apiEnvironmentStore.current().apiBaseUrl,
-                    accountId,
-                )
-            }
         val ownerKey = messageBodyOwnerKey ?: return@LaunchedEffect
         sharedStores.messageBodyFontSizeStore.ensureLoaded(ownerKey) {
-            messageBodySettingsRepository.getAppearanceSettings()
+            val result = messageBodySettingsRepository.getAppearanceSettings()
+            if (authorityGateway.isCurrent(receipt)) {
+                result
+            } else {
+                build.raft.app.data.authenticatedRouteAuthorityChanged()
+            }
         }
     }
     val selectedMessageBodyFontSize = messageBodyFontSizeState.selectedKey(messageBodyOwnerKey)
@@ -24704,32 +24750,39 @@ private fun ThreadForwardBundleScreen() {
             slockMessageBodyTextStyle(selectedMessageBodyFontSize)
         }
     val repository =
-        remember(sharedStores, authStore, networkClient) {
-            RealThreadForwardBundleDetailRepository(
-                messageStore = sharedStores.threadMessageStore,
-                conversationRepository =
-                    RealConversationRepository(
-                        sessionStore = authStore,
-                        networkClient = networkClient,
-                        warningLogger = { message -> bridge.log("thread_forward_bundle_repository $message") }
-                    )
-            )
+        if (routeOwner != null && route != null && routeOwner.serverId == route.serverId.value) {
+            remember(sharedStores, authStore, routeOwner, authorityGateway) {
+                AuthenticatedThreadForwardBundleDetailRepository(
+                    messageStore = sharedStores.threadMessageStore,
+                    authStore = authStore,
+                    owner = routeOwner,
+                    gateway = authorityGateway,
+                    logger = { message -> bridge.log("thread_forward_bundle_repository $message") },
+                )
+            }
+        } else {
+            null
         }
     val detailViewModel: ThreadForwardBundleDetailViewModel? =
-        route?.let { resolvedRoute ->
+        route?.takeIf { repository != null }?.let { resolvedRoute ->
             viewModel(
                 key =
                     "thread-forward-bundle-${resolvedRoute.serverId.value}-" +
                         "${resolvedRoute.channelId.value}-${resolvedRoute.messageId.value}"
             ) {
-                ThreadForwardBundleDetailViewModel(route = resolvedRoute, repository = repository)
+                ThreadForwardBundleDetailViewModel(route = resolvedRoute, repository = requireNotNull(repository))
             }
         }
     val detailState by
         detailViewModel?.state?.collectAsState()
             ?: remember { mutableStateOf(ThreadForwardBundleDetailState(status = ThreadForwardBundleDetailStatus.Empty)) }
-    LaunchedEffect(detailViewModel, visualFixture) {
-        if (!visualFixture) detailViewModel?.dispatch(ThreadForwardBundleDetailIntent.Load)
+    LaunchedEffect(detailViewModel, visualFixture, productionAuthorityValid) {
+        if (!visualFixture && productionAuthorityValid) {
+            // Retry is intentional: if this retained page was hidden while a
+            // different authority owned the shell, the prior Content state is
+            // only an old candidate and must be revalidated before display.
+            detailViewModel?.dispatch(ThreadForwardBundleDetailIntent.Retry)
+        }
     }
     val bundle = if (visualFixture) threadForwardBundleVisualFixtureBundle() else detailState.bundle
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
@@ -24749,7 +24802,16 @@ private fun ThreadForwardBundleScreen() {
             }
         )
         when {
-            visualFixture || detailState.status == ThreadForwardBundleDetailStatus.Content -> {
+            !visualFixture && !productionAuthorityValid ->
+                ThreadForwardBundleLoadFailure(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    onRetry = {},
+                )
+            threadForwardBundleContentAdmitted(
+                visualFixture = visualFixture,
+                productionAuthorityValid = productionAuthorityValid,
+                status = detailState.status,
+            ) -> {
                 val messages = bundle?.messages.orEmpty()
                 // Rows reuse the STANDARD chat message renderer (artin, task #64
                 // follow-up): same avatar/author/timestamp/markdown chrome and spacing
@@ -24803,6 +24865,14 @@ private fun ThreadForwardBundleScreen() {
         }
     }
 }
+
+internal fun threadForwardBundleContentAdmitted(
+    visualFixture: Boolean,
+    productionAuthorityValid: Boolean,
+    status: ThreadForwardBundleDetailStatus,
+): Boolean =
+    visualFixture ||
+        (productionAuthorityValid && status == ThreadForwardBundleDetailStatus.Content)
 
 @Composable
 private fun ThreadForwardBundleLoadFailure(

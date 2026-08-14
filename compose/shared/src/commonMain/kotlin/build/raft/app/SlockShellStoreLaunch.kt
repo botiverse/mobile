@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.AuthenticatedRouteOwner
+import build.raft.app.data.normalizedOrNull
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.pager.Pager
@@ -10,6 +12,9 @@ internal const val SLOCK_SHELL_INSTANCE_ID = "slockShellInstanceId"
 internal const val SLOCK_SHELL_SERVER_ID = "slockShellServerId"
 private const val LEGACY_SLOCK_SHELL_SERVER_ID = "serverId"
 internal const val SLOCK_DOCUMENT_SHELL = "slockDocumentShell"
+internal const val SLOCK_ROUTE_ENVIRONMENT_ID = "slockRouteEnvironmentId"
+internal const val SLOCK_ROUTE_ACCOUNT_ID = "slockRouteAccountId"
+internal const val SLOCK_ROUTE_SERVER_ID = "slockRouteServerId"
 
 internal fun appLifecycleEventTargetsShell(
     eventShellInstanceId: String,
@@ -50,6 +55,18 @@ internal fun JSONObject.withSlockShellStoreScope(storeScope: SlockShellStoreScop
     put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
         .put(SLOCK_SHELL_SERVER_ID, storeScope.initialServerId)
 
+internal fun JSONObject.authenticatedRouteOwnerOrNull(): AuthenticatedRouteOwner? =
+    AuthenticatedRouteOwner(
+        environmentId = optString(SLOCK_ROUTE_ENVIRONMENT_ID),
+        accountId = optString(SLOCK_ROUTE_ACCOUNT_ID),
+        serverId = optString(SLOCK_ROUTE_SERVER_ID),
+    ).normalizedOrNull()
+
+internal fun JSONObject.withAuthenticatedRouteOwner(owner: AuthenticatedRouteOwner): JSONObject =
+    put(SLOCK_ROUTE_ENVIRONMENT_ID, owner.environmentId)
+        .put(SLOCK_ROUTE_ACCOUNT_ID, owner.accountId)
+        .put(SLOCK_ROUTE_SERVER_ID, owner.serverId)
+
 /**
  * The only production boundary for opening shell-owned child pages.
  * Feature page data carries target identity/intent; this facade inherits source ownership.
@@ -58,6 +75,7 @@ internal fun Pager.openSlockPage(
     pageName: String,
     pageData: JSONObject,
     storeScopeOverride: SlockShellStoreScope? = null,
+    authenticatedRouteAuthorityRequired: Boolean = false,
     onMissingScope: () -> Unit = {}
 ): Boolean {
     val sourceStoreScope = storeScopeOverride ?: sourcePageDataParams().slockShellStoreScopeOrNull()
@@ -72,12 +90,26 @@ internal fun Pager.openSlockPage(
     // The route's server id is only bootstrap metadata. Refresh it from the
     // live shell selection immediately before serializing the child page so a
     // retained route cannot carry an old server across process death.
-    val storeScope =
-        SlockSharedStoreRegistry.currentOrNull()
-            ?.currentNavigationStoreScope(sourceStoreScope)
-            ?: sourceStoreScope
+    val sharedStores = SlockSharedStoreRegistry.currentOrNull()
+    val storeScope = sharedStores?.currentNavigationStoreScope(sourceStoreScope) ?: sourceStoreScope
+    var launchPageData = pageData.withSlockShellStoreScope(storeScope)
+    if (authenticatedRouteAuthorityRequired) {
+        val owner = sharedStores?.currentAuthenticatedRouteOwner(storeScope)
+        val targetServerId = pageData.optString("serverId").trim()
+        if (owner == null || targetServerId.isBlank() || targetServerId != owner.serverId) {
+            slockLogWarn(
+                tag = "SlockScopedNavigation",
+                message =
+                    "slock_scoped_navigation_rejected reason=authenticated_route_authority " +
+                        "target=$pageName"
+            )
+            onMissingScope()
+            return false
+        }
+        launchPageData = launchPageData.withAuthenticatedRouteOwner(owner)
+    }
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-        .openPage(pageName, pageData.withSlockShellStoreScope(storeScope))
+        .openPage(pageName, launchPageData)
     return true
 }
 

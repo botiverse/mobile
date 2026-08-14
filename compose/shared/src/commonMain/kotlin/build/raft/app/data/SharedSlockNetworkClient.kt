@@ -46,10 +46,10 @@ internal class SharedSlockNetworkClient(
     private val platformFileResolver: SlockPlatformFileResolver? = null,
     private val executor: SlockHttpExecutor = createPlatformSlockHttpExecutor(warningLogger)
 ) : SlockNetworkClient, AuthorityBoundSlockNetworkClient, ProgressiveAttachmentNetworkClient {
-    private fun authMiddleware(): SlockNetworkAuthMiddleware =
+    private fun authMiddleware(authBaseUrl: String = currentBaseUrl()): SlockNetworkAuthMiddleware =
         SlockNetworkAuthMiddleware(
             sessionStore = sessionStore,
-            authApi = SlockAuthApiClient(SharedSlockAuthTransport(currentBaseUrl(), executor, warningLogger)),
+            authApi = SlockAuthApiClient(SharedSlockAuthTransport(authBaseUrl, executor, warningLogger)),
             logger = warningLogger,
             warningLogger = warningLogger,
             criticalLogger = criticalWarningLogger,
@@ -63,30 +63,94 @@ internal class SharedSlockNetworkClient(
         query: List<Pair<String, String>>,
         serverIdOverride: ServerId?,
         bodyText: String?
+    ): HomeNetworkResponse =
+        requestInternal(
+            priority = priority,
+            path = path,
+            method = method,
+            query = query,
+            serverIdOverride = serverIdOverride,
+            bodyText = bodyText,
+            expectedAuthority = null
+        )
+
+    override suspend fun requestBound(
+        priority: DataRequestPriority,
+        path: String,
+        method: String,
+        query: List<Pair<String, String>>,
+        serverIdOverride: ServerId?,
+        bodyText: String?,
+        expectedAuthority: SlockExpectedAuthBinding
+    ): HomeNetworkResponse =
+        requestInternal(
+            priority = priority,
+            path = path,
+            method = method,
+            query = query,
+            serverIdOverride = serverIdOverride,
+            bodyText = bodyText,
+            expectedAuthority = expectedAuthority
+        )
+
+    private suspend fun requestInternal(
+        priority: DataRequestPriority,
+        path: String,
+        method: String,
+        query: List<Pair<String, String>>,
+        serverIdOverride: ServerId?,
+        bodyText: String?,
+        expectedAuthority: SlockExpectedAuthBinding?
     ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val category = path.networkDiagnosticsCategory()
         val normalizedPath = path.networkDiagnosticsPath()
+        val requestBaseUrl = expectedAuthority?.environmentId?.normalizedEnvironmentId() ?: currentBaseUrl()
+        if (!expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
+            return routeEnvironmentChangedResponse()
+        }
         return try {
             requestScheduler.run(
                 priority = priority.toNetworkPriority(),
                 key = path,
                 reason = method.uppercase()
-            ) {
+            ) scheduled@{
+                if (!expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
+                    return@scheduled routeEnvironmentChangedResponse()
+                }
+                val transportResponse =
+                    authMiddleware(requestBaseUrl).request(
+                        serverIdOverride = serverIdOverride,
+                        expectedAuthority = expectedAuthority,
+                        caller = "shared_network:$normalizedPath"
+                    ) authenticated@{ auth ->
+                        if (!expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
+                            return@authenticated routeEnvironmentChangedResponse()
+                        }
+                        val response =
+                            executor.execute(
+                                priority = priority.toNetworkPriority(),
+                                url = absoluteUrl(requestBaseUrl, path, query),
+                                method = method.uppercase(),
+                                headers =
+                                    buildMap {
+                                        put(HEADER_AUTHORIZATION, auth.authorization)
+                                        put(HEADER_SERVER_ID, auth.serverId)
+                                    },
+                                bodyText = bodyText,
+                                jsonBody = bodyText != null
+                            ).toHomeNetworkResponse()
+                        if (expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
+                            response
+                        } else {
+                            routeEnvironmentChangedResponse()
+                        }
+                    }
                 val response =
-                    authMiddleware().request(serverIdOverride, caller = "shared_network:$normalizedPath") { auth ->
-                        executor.execute(
-                            priority = priority.toNetworkPriority(),
-                            url = absoluteUrl(path, query),
-                            method = method.uppercase(),
-                            headers =
-                                buildMap {
-                                    put(HEADER_AUTHORIZATION, auth.authorization)
-                                    put(HEADER_SERVER_ID, auth.serverId)
-                                },
-                            bodyText = bodyText,
-                            jsonBody = bodyText != null
-                        ).toHomeNetworkResponse()
+                    if (expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
+                        transportResponse
+                    } else {
+                        routeEnvironmentChangedResponse()
                     }
                 val endpointDiagnostic =
                     "endpoint category=$category path=$normalizedPath method=${method.uppercase()} " +
@@ -376,6 +440,10 @@ internal class SharedSlockNetworkClient(
         onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null
     ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
+        val requestBaseUrl = expectedAuthority?.environmentId?.normalizedEnvironmentId() ?: currentBaseUrl()
+        if (!expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
+            return routeEnvironmentChangedResponse()
+        }
         // task #788: same files instance and same predicate the executor uses.
         // The transport's per-attempt 180s budget is the single authoritative
         // deadline; the scheduler carries only the strictly-higher derived
@@ -388,25 +456,43 @@ internal class SharedSlockNetworkClient(
                 key = key,
                 reason = "multipart",
                 timeoutMillis = schedulerTimeoutMillis
-            ) {
-                val response =
-                    authMiddleware().request(
+            ) scheduled@{
+                if (!expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
+                    return@scheduled routeEnvironmentChangedResponse()
+                }
+                val transportResponse =
+                    authMiddleware(requestBaseUrl).request(
                         serverIdOverride = expectedAuthority?.serverId?.let(::ServerId),
                         expectedAuthority = expectedAuthority,
                         caller = "shared_network:$diagnosticPath"
-                    ) { auth ->
-                        executor.executeMultipart(
-                            priority = priority.toNetworkPriority(),
-                            url = absoluteUrl(path),
-                            fields = fields,
-                            files = files,
-                            headers =
-                                mapOf(
-                                    HEADER_AUTHORIZATION to auth.authorization,
-                                    HEADER_SERVER_ID to auth.serverId
-                                ),
-                            onUploadProgress = onUploadProgress
-                        ).toHomeNetworkResponse()
+                    ) authenticated@{ auth ->
+                        if (!expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
+                            return@authenticated routeEnvironmentChangedResponse()
+                        }
+                        val response =
+                            executor.executeMultipart(
+                                priority = priority.toNetworkPriority(),
+                                url = absoluteUrl(requestBaseUrl, path),
+                                fields = fields,
+                                files = files,
+                                headers =
+                                    mapOf(
+                                        HEADER_AUTHORIZATION to auth.authorization,
+                                        HEADER_SERVER_ID to auth.serverId
+                                    ),
+                                onUploadProgress = onUploadProgress
+                            ).toHomeNetworkResponse()
+                        if (expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
+                            response
+                        } else {
+                            routeEnvironmentChangedResponse()
+                        }
+                    }
+                val response =
+                    if (expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
+                        transportResponse
+                    } else {
+                        routeEnvironmentChangedResponse()
                     }
                 warningLogger(
                     "endpoint category=$category path=$diagnosticPath method=POST " +
@@ -438,12 +524,31 @@ internal class SharedSlockNetworkClient(
     private fun currentBaseUrl(): String =
         baseUrlProvider().ifBlank { baseUrl }
 
-    private fun absoluteUrl(path: String, query: List<Pair<String, String>> = emptyList()): String {
-        val url = "${currentBaseUrl().trimEnd('/')}/${path.trimStart('/')}"
+    private fun absoluteUrl(path: String, query: List<Pair<String, String>> = emptyList()): String =
+        absoluteUrl(currentBaseUrl(), path, query)
+
+    private fun absoluteUrl(
+        requestBaseUrl: String,
+        path: String,
+        query: List<Pair<String, String>> = emptyList(),
+    ): String {
+        val url = "${requestBaseUrl.trimEnd('/')}/${path.trimStart('/')}"
         if (query.isEmpty()) return url
         return "$url?${query.joinToString("&") { (key, value) -> "${key.percentEncode()}=${value.percentEncode()}" }}"
     }
 }
+
+private fun SlockExpectedAuthBinding?.matchesCurrentEnvironment(currentBaseUrl: String): Boolean {
+    val expected = this?.environmentId?.normalizedEnvironmentId() ?: return true
+    return expected.isNotBlank() && expected == currentBaseUrl.normalizedEnvironmentId()
+}
+
+private fun routeEnvironmentChangedResponse(): HomeNetworkResponse =
+    HomeNetworkResponse(
+        code = 409,
+        bodyText = null,
+        errorBodyText = """{"error":"auth_authority_changed"}""",
+    )
 
 class SharedSlockAuthTransport internal constructor(
     private val baseUrlProvider: () -> String,

@@ -99,6 +99,16 @@ internal fun interface ProgressiveAttachmentNetworkClient {
 }
 
 internal interface AuthorityBoundSlockNetworkClient {
+    suspend fun requestBound(
+        priority: DataRequestPriority,
+        path: String,
+        method: String = "GET",
+        query: List<Pair<String, String>> = emptyList(),
+        serverIdOverride: ServerId? = null,
+        bodyText: String? = null,
+        expectedAuthority: SlockExpectedAuthBinding
+    ): HomeNetworkResponse
+
     suspend fun uploadAttachmentsBound(
         priority: DataRequestPriority,
         channelId: ChannelId,
@@ -106,6 +116,53 @@ internal interface AuthorityBoundSlockNetworkClient {
         expectedAuthority: SlockExpectedAuthBinding
     ): HomeNetworkResponse
 }
+
+/**
+ * A request-only repository client pinned to one captured authenticated route
+ * receipt. Every JSON request reaches the auth middleware with the same
+ * account/token/server witness; unsupported carriers fail closed before I/O.
+ */
+internal fun SlockNetworkClient.boundTo(expectedAuthority: SlockExpectedAuthBinding): SlockNetworkClient {
+    val bound = this as? AuthorityBoundSlockNetworkClient
+    return object : SlockNetworkClient {
+        override suspend fun request(
+            priority: DataRequestPriority,
+            path: String,
+            method: String,
+            query: List<Pair<String, String>>,
+            serverIdOverride: ServerId?,
+            bodyText: String?
+        ): HomeNetworkResponse =
+            bound?.requestBound(
+                priority = priority,
+                path = path,
+                method = method,
+                query = query,
+                serverIdOverride = serverIdOverride,
+                bodyText = bodyText,
+                expectedAuthority = expectedAuthority
+            ) ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun uploadAttachments(
+            priority: DataRequestPriority,
+            channelId: ChannelId,
+            files: List<MultipartFile>
+        ): HomeNetworkResponse =
+            bound?.uploadAttachmentsBound(
+                priority = priority,
+                channelId = channelId,
+                files = files,
+                expectedAuthority = expectedAuthority
+            ) ?: authorityBindingUnsupportedResponse()
+    }
+}
+
+private fun authorityBindingUnsupportedResponse(): HomeNetworkResponse =
+    HomeNetworkResponse(
+        code = 409,
+        bodyText = null,
+        errorBodyText = """{"error":"auth_authority_binding_unsupported"}"""
+    )
 
 private suspend fun SlockNetworkClient.serverMembers(priority: DataRequestPriority, serverId: ServerId): HomeNetworkResponse =
     request(priority, "servers/${serverId.value}/members", serverIdOverride = serverId)
