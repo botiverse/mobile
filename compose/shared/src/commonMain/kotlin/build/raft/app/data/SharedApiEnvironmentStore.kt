@@ -118,7 +118,7 @@ class SharedApiEnvironmentStore(
                 label = "Staging",
                 apiBaseUrl = "https://api-aws-staging.botiverse.dev/api/",
                 socketBaseUrl = "https://api-aws-staging.botiverse.dev",
-                webUrl = "https://raft-app-staging.botiverse.dev/s/botiverse/"
+                webUrl = "https://raft-app-staging.botiverse.dev"
             )
 
         val predefined: List<SharedSettingsApiEnvironmentOption> = listOf(Production, Staging)
