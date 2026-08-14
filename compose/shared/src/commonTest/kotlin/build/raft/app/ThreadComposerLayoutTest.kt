@@ -271,13 +271,13 @@ class ThreadComposerLayoutTest {
 
     @Test
     fun threadComposerBottomPaddingDoesNotDoubleCountSafeAreaWhenKeyboardOpen() {
-        assertEquals(142.dp, threadComposerBottomPadding(keyboardInsetDp = 120f, bottomSafeArea = 24.dp))
+        assertEquals(134.dp, threadComposerBottomPadding(keyboardInsetDp = 120f, bottomSafeArea = 24.dp))
     }
 
     @Test
     fun threadComposerBottomPaddingRestoresSafeAreaExcludedByAndroidKeyboardWatcher() {
         assertEquals(
-            166.dp,
+            158.dp,
             threadComposerBottomPadding(
                 keyboardInsetDp = 120f,
                 bottomSafeArea = 24.dp,
@@ -287,10 +287,10 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
-    fun threadComposerBottomPaddingKeepsVisibleGapAboveOpenKeyboard() {
+    fun threadComposerBottomPaddingDoesNotAddAnExtraGapAboveOpenKeyboard() {
         val closedPadding = threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 0.dp)
         val openPadding = threadComposerBottomPadding(keyboardInsetDp = 1f, bottomSafeArea = 0.dp)
-        assertEquals(8.dp, openPadding - closedPadding - 1.dp)
+        assertEquals(0.dp, openPadding - closedPadding - 1.dp)
     }
 
     @Test
