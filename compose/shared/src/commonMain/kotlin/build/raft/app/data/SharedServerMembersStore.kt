@@ -189,14 +189,19 @@ data class SharedServerMembersState(
     fun canonicalMentionHandle(
         serverId: ServerId,
         mentionChannelId: String?,
-        memberId: String?
+        memberId: String?,
+        fallbackChannelId: String? = null
     ): String? {
         val cleanServerId = serverId.value.normalizedServerMembersId() ?: return null
         val cleanMemberId = memberId.normalizedServerMembersId() ?: return null
         val channelHandle =
-            mentionChannelId
-                .normalizedServerMembersId()
-                ?.let { channelId ->
+            listOfNotNull(
+                mentionChannelId.normalizedServerMembersId(),
+                fallbackChannelId.normalizedServerMembersId()
+            )
+                .distinct()
+                .asSequence()
+                .mapNotNull { channelId ->
                     channelMemberSlices[
                         SharedServerChannelMembersScope(
                             serverId = cleanServerId,
@@ -204,11 +209,10 @@ data class SharedServerMembersState(
                         )
                     ]
                 }
-                ?.members
-                ?.asSequence()
-                ?.filter { member -> member.id.value.trim() == cleanMemberId }
-                ?.mapNotNull { member -> member.handle.canonicalServerMembersMentionHandle(member.id.value) }
-                ?.firstOrNull()
+                .flatMap { slice -> slice.members.asSequence() }
+                .filter { member -> member.id.value.trim() == cleanMemberId }
+                .mapNotNull { member -> member.handle.canonicalServerMembersMentionHandle(member.id.value) }
+                .firstOrNull()
         if (channelHandle != null) return channelHandle
         return entriesByServerId[cleanServerId]
             ?.visibleDirectoryMembers()
@@ -408,11 +412,13 @@ class SharedServerMembersStore internal constructor(
     fun currentCanonicalMentionHandle(
         serverId: ServerId,
         mentionChannelId: String?,
-        memberId: String?
+        memberId: String?,
+        fallbackChannelId: String? = null
     ): String? =
         _state.value.canonicalMentionHandle(
             serverId = serverId,
             mentionChannelId = mentionChannelId,
+            fallbackChannelId = fallbackChannelId,
             memberId = memberId
         )
 

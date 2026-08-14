@@ -7829,6 +7829,7 @@ internal fun SharedThreadRouteContent(
                             serverMembersStore?.currentCanonicalMentionHandle(
                                 serverId = serverId,
                                 mentionChannelId = memberSuggestionScopeChannelId,
+                                fallbackChannelId = threadMembersChannelId?.value,
                                 memberId = message.authorId
                             )
                         }
