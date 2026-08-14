@@ -37,14 +37,18 @@ internal fun JSONObject.slockShellStoreScopeOrNull(): SlockShellStoreScope? {
 }
 
 private fun JSONObject.slockShellServerIdOrNull(): String? =
-    optString(SLOCK_SHELL_SERVER_ID).trim().takeIf { it.isNotBlank() }
-        ?: optString(LEGACY_SLOCK_SHELL_SERVER_ID).trim().takeIf { it.isNotBlank() }
+    if (has(SLOCK_SHELL_SERVER_ID)) {
+        // Presence is significant: a serialized null means the live shell has
+        // no selected server and must not fall back to a feature route's
+        // legacy `serverId` field.
+        optString(SLOCK_SHELL_SERVER_ID).trim().takeIf { it.isNotBlank() }
+    } else {
+        optString(LEGACY_SLOCK_SHELL_SERVER_ID).trim().takeIf { it.isNotBlank() }
+    }
 
 internal fun JSONObject.withSlockShellStoreScope(storeScope: SlockShellStoreScope): JSONObject =
     put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-        .also { data ->
-            storeScope.initialServerId?.let { data.put(SLOCK_SHELL_SERVER_ID, it) }
-        }
+        .put(SLOCK_SHELL_SERVER_ID, storeScope.initialServerId)
 
 /**
  * The only production boundary for opening shell-owned child pages.
@@ -56,8 +60,8 @@ internal fun Pager.openSlockPage(
     storeScopeOverride: SlockShellStoreScope? = null,
     onMissingScope: () -> Unit = {}
 ): Boolean {
-    val storeScope = storeScopeOverride ?: sourcePageDataParams().slockShellStoreScopeOrNull()
-    if (storeScope == null) {
+    val sourceStoreScope = storeScopeOverride ?: sourcePageDataParams().slockShellStoreScopeOrNull()
+    if (sourceStoreScope == null) {
         slockLogWarn(
             tag = "SlockScopedNavigation",
             message = "slock_scoped_navigation_rejected reason=missing_source_scope target=$pageName"
@@ -65,6 +69,13 @@ internal fun Pager.openSlockPage(
         onMissingScope()
         return false
     }
+    // The route's server id is only bootstrap metadata. Refresh it from the
+    // live shell selection immediately before serializing the child page so a
+    // retained route cannot carry an old server across process death.
+    val storeScope =
+        SlockSharedStoreRegistry.currentOrNull()
+            ?.currentNavigationStoreScope(sourceStoreScope)
+            ?: sourceStoreScope
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(pageName, pageData.withSlockShellStoreScope(storeScope))
     return true

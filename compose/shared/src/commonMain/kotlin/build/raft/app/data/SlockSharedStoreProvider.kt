@@ -618,6 +618,14 @@ internal class SlockSharedStoreProvider private constructor(
     fun sharedHomeStore(scope: SlockShellStoreScope): SharedHomeStore? =
         homeStores.get(scope)
 
+    /**
+     * Returns the live shell owner scope for child navigation. A route's
+     * initial server is a bootstrap hint and may be stale after an in-process
+     * server switch; an existing selected-server store is authoritative.
+     */
+    internal fun currentNavigationStoreScope(scope: SlockShellStoreScope): SlockShellStoreScope =
+        childNavigationStoreScope(scope, selectedServerStores.get(scope))
+
     fun selectedServerStore(scope: SlockShellStoreScope): SelectedServerStore =
         selectedServerStores.getOrPut(scope) {
             SelectedServerStore(
