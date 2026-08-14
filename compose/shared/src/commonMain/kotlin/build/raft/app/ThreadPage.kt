@@ -24250,7 +24250,7 @@ private fun forwardAttachmentKindLabel(mimeType: String?): String {
 internal const val ThreadForwardBundleInlinePreviewLimit = 3
 
 @Composable
-private fun ThreadForwardBundleCard(
+internal fun ThreadForwardBundleCard(
     bundle: ForwardMessageBundle,
     messageBodyTextStyle: TextStyle,
     modifier: Modifier = Modifier,
@@ -24831,28 +24831,6 @@ private fun ForwardMessageItem.toThreadMessageItemForBundlePage(): KuiklyThreadM
         body = body
     )
 
-@Page("compose_thread_forward_bundle_visual", supportInLocal = true)
-internal class ComposeThreadForwardBundleVisualPage : build.raft.app.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ThreadForwardBundleVisualScreen() }
-    }
-}
-
-@Composable
-internal fun ThreadForwardBundleVisualScreen() {
-    // Pins the forward-bundle metadata with a fixture (task #427). Space Mono is
-    // reserved for the per-row timestamp only, matching the react
-    // ForwardedBundleCard convention. Five messages so the inline card's
-    // three-message preview cap and the "View all N" row both render (task #64);
-    // bodies keep markdown so rendered ink stays proven (task #63).
-    val bundle = remember { threadForwardBundleVisualFixtureBundle() }
-    ThreadForwardBundleCard(
-        bundle = bundle,
-        messageBodyTextStyle = slockMessageBodyTextStyle("md"),
-        onOpenAll = {},
-    )
-}
 
 internal fun threadForwardBundleVisualFixtureBundle(): ForwardMessageBundle =
     ForwardMessageBundle(
@@ -26467,116 +26445,6 @@ private fun ThreadStateActionMessage(
                 )
             }
             ThreadHeaderAction(label = actionLabel, onClick = onClick)
-        }
-    }
-}
-
-// task #800 rendering-evidence fixture: four right-aligned own-message cards
-// separated by pure-red full-width markers so the connected test can segment
-// screenshot bands and measure real bubble edges — long (cap reference),
-// single-character (must hug End), the same single character in sending state
-// (in-flow spinner, End edge must match), and failed (status row, End edge
-// must match). Deterministic content, no network.
-@Page("compose_thread_align_right_visual", supportInLocal = true)
-internal class ComposeThreadAlignRightVisualPage : build.raft.app.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ThreadAlignRightVisualScreen() }
-    }
-}
-
-private fun threadAlignRightVisualFixtureMessage(
-    id: String,
-    body: String,
-    deliveryState: String = ThreadMessageDeliverySent,
-    pending: Boolean = false
-): KuiklyThreadMessageItem =
-    KuiklyThreadMessageItem(
-        id = id,
-        authorId = "member-own",
-        authorName = "You",
-        isOwn = true,
-        avatarLabel = "Y",
-        timestampLabel = "10:0${id.last()}",
-        body = body,
-        deliveryState = deliveryState,
-        pendingSendContext =
-            if (pending) {
-                KuiklyThreadPendingSendContext(channelId = "channel-align-right", body = body)
-            } else {
-                null
-            }
-    )
-
-// task #800 rendering-evidence fixture (oracle v3, LiBai/ZhangYi frozen bars):
-// five right-aligned own-message cards between SIX pure-red markers. Geometry
-// is measured ONLY through the fixture tints — body pure blue, status slot
-// pure magenta, 82% cap container pure green, retry button pure yellow — so
-// the connected test reads exactly the body/status/cap/retry geometry and
-// never whole-card extremes. Band order: long cap reference / sent single
-// char / sending / failed(+retry) / retry-returned-to-sending.
-@Composable
-internal fun ThreadAlignRightVisualScreen() {
-    val fixtures =
-        listOf(
-            threadAlignRightVisualFixtureMessage(
-                id = "align-right-long-1",
-                // The fenced code block is a fill-width child, so the wrapped
-                // body root deterministically expands to the FULL cap — the
-                // >=0.98 cap-reach bar cannot flake on word-wrap line fill.
-                body = "This deliberately long reference message wraps across multiple lines so its bubble reaches the width cap for the band.\n\n```\ncap reference block\n```"
-            ),
-            threadAlignRightVisualFixtureMessage(id = "align-right-short-2", body = "W"),
-            threadAlignRightVisualFixtureMessage(
-                id = "align-right-sending-3",
-                body = "W",
-                deliveryState = ThreadMessageDeliverySending,
-                pending = true
-            ),
-            threadAlignRightVisualFixtureMessage(
-                id = "align-right-failed-4",
-                body = "W",
-                deliveryState = ThreadMessageDeliveryFailed,
-                pending = true
-            ),
-            // The retry affordance returns a failed message to the sending
-            // state; this card IS that post-retry state re-rendered, so its
-            // measured geometry must be 0px-equal to the sending band.
-            threadAlignRightVisualFixtureMessage(
-                id = "align-right-retry-5",
-                body = "W",
-                deliveryState = ThreadMessageDeliverySending,
-                pending = true
-            )
-        )
-    CompositionLocalProvider(
-        LocalThreadMessageGeometryTints provides
-            ThreadMessageGeometryTints(
-                bodyTint = Color(0xFF0000FF),
-                statusTint = Color(0xFFFF00FF),
-                capTint = Color(0xFF00FF00),
-                retryTint = Color(0xFFFFFF00)
-            )
-    ) {
-        Column(Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-            fixtures.forEach { message ->
-                Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFFFF0000)))
-                ThreadMessageCard(
-                    message = message,
-                    messageBodyTextStyle = slockMessageBodyTextStyle("md"),
-                    alignOwnMessageRight = true,
-                    onShowActions = {},
-                    onOpenMember = {},
-                    onOpenThread = {},
-                    onOpenTask = {},
-                    onOpenTaskStatusMenu = {},
-                    onToggleReaction = {},
-                    onOpenAttachment = {},
-                    onOpenMarkdownTag = { _, _ -> },
-                    onOpenMarkdownUrl = {}
-                )
-            }
-            Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFFFF0000)))
         }
     }
 }
