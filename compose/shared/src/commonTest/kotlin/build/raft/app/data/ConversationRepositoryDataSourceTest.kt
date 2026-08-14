@@ -179,7 +179,8 @@ class ConversationRepositoryDataSourceTest {
                               "peerId":"agent-deleted",
                               "peerName":"removed-search-peer",
                               "peerDisplayName":"Removed Search Peer",
-                              "peerDescription":"Historical agent conversation"
+                              "peerDescription":"Historical agent conversation",
+                              "peerAvatarUrl":"pixel:removed-agent"
                             }
                             """.trimIndent()
                     )
@@ -188,12 +189,15 @@ class ConversationRepositoryDataSourceTest {
 
         val result = repository.getMessageContext(MessageId("message-1"))
 
-        val conversation = assertIs<DataResult.Content<ThreadSnapshot>>(result).data.conversation
+        val snapshot = assertIs<DataResult.Content<ThreadSnapshot>>(result).data
+        val conversation = snapshot.conversation
         assertEquals(ConversationKind.DirectMessage, conversation.kind)
         assertEquals("dm-deleted-agent", conversation.channelId?.value)
         assertEquals("Removed Search Peer", conversation.name)
         assertEquals("agent", conversation.directMessagePeerType)
         assertEquals("agent-deleted", conversation.presenceMemberId?.value)
+        assertEquals("pixel:removed-agent", conversation.directMessagePeerAvatarWireValue)
+        assertEquals(conversation, snapshot.canonicalConversationDetail)
         assertEquals(
             listOf(
                 RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/context/message-1"),
@@ -201,6 +205,119 @@ class ConversationRepositoryDataSourceTest {
             ),
             network.requests
         )
+    }
+
+    @Test
+    fun initialDirectMessageHydratesCanonicalNameAndAvatarWithoutHomeStore() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/dm-1" to
+                            """{"messages":[${messageJson("message-1", "dm-1")}]}""",
+                        "GET channels/dm-1" to
+                            """
+                            {
+                              "id":"dm-1",
+                              "name":"dm-1",
+                              "type":"dm",
+                              "peerType":"user",
+                              "peerId":"peer-1",
+                              "peerName":"cindy",
+                              "peerDisplayName":"Cindy",
+                              "peerAvatarUrl":"pixel:cindy"
+                            }
+                            """.trimIndent(),
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val snapshot =
+            assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("dm-1"))).data
+
+        assertEquals(ConversationKind.DirectMessage, snapshot.conversation.kind)
+        assertEquals("Cindy", snapshot.conversation.name)
+        assertEquals("pixel:cindy", snapshot.conversation.directMessagePeerAvatarWireValue)
+        assertEquals(snapshot.conversation, snapshot.canonicalConversationDetail)
+        assertEquals(
+            setOf("messages/channel/dm-1", "channels/dm-1"),
+            network.requests.map { it.path }.toSet(),
+        )
+    }
+
+    @Test
+    fun emptyDirectMessageStillReturnsCanonicalHeaderContent() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/dm-empty" to """{"messages":[]}""",
+                        "GET channels/dm-empty" to
+                            """
+                            {
+                              "id":"dm-empty",
+                              "name":"dm-empty",
+                              "type":"dm",
+                              "peerType":"agent",
+                              "peerId":"agent-1",
+                              "peerName":"helper",
+                              "peerDisplayName":"Helper",
+                              "peerAvatarUrl":"https://example.test/helper.png"
+                            }
+                            """.trimIndent(),
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val snapshot =
+            assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("dm-empty"))).data
+
+        assertTrue(snapshot.messages.isEmpty())
+        assertEquals("Helper", snapshot.conversation.name)
+        assertEquals("https://example.test/helper.png", snapshot.conversation.directMessagePeerAvatarWireValue)
+        assertEquals(snapshot.conversation, snapshot.canonicalConversationDetail)
+    }
+
+    @Test
+    fun replyThreadRetainsCanonicalParentDirectMessageDetail() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "POST channels/dm-parent/threads" to
+                            """{"threadChannelId":"thread-1","replyCount":1,"ok":true}""",
+                        "GET messages/channel/thread-1" to
+                            """{"messages":[${messageJson("reply-1", "thread-1")}]}""",
+                        "GET channels/dm-parent" to
+                            """
+                            {
+                              "id":"dm-parent",
+                              "name":"dm-parent",
+                              "type":"dm",
+                              "peerType":"user",
+                              "peerId":"peer-1",
+                              "peerName":"cindy",
+                              "peerDisplayName":"Cindy",
+                              "peerAvatarUrl":"pixel:cindy"
+                            }
+                            """.trimIndent(),
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val snapshot =
+            assertIs<DataResult.Content<ThreadSnapshot>>(
+                repository.getReplyThread(
+                    parentChannelId = ChannelId("dm-parent"),
+                    parentMessageId = MessageId("parent-1"),
+                )
+            ).data
+
+        assertEquals(ConversationKind.Thread, snapshot.conversation.kind)
+        assertEquals("dm-parent", snapshot.conversation.thread?.parentChannelId?.value)
+        assertEquals(ConversationKind.DirectMessage, snapshot.canonicalConversationDetail?.kind)
+        assertEquals("Cindy", snapshot.canonicalConversationDetail?.name)
+        assertEquals("pixel:cindy", snapshot.canonicalConversationDetail?.directMessagePeerAvatarWireValue)
     }
 
     @Test
@@ -272,7 +389,7 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun getThreadInitialLoadAdmitsEmbeddedThreadSummaryWithoutSecondRequest() = runBlocking {
+    fun getThreadInitialLoadAdmitsEmbeddedThreadSummaryWithoutSecondSummaryRequest() = runBlocking {
         val network =
             FakeConversationNetworkClient(
                 responses =
@@ -325,7 +442,8 @@ class ConversationRepositoryDataSourceTest {
         assertEquals("明启", summary.latestReplies.single().senderDisplayName)
         assertEquals(
             listOf(
-                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30"))
+                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30")),
+                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "channels/channel-1")
             ),
             network.requests
         )
@@ -424,6 +542,7 @@ class ConversationRepositoryDataSourceTest {
         assertEquals(
             listOf(
                 RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30")),
+                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "channels/channel-1"),
                 RecordedConversationRequest(
                     DataRequestPriority.Visible,
                     "GET",
@@ -532,7 +651,8 @@ class ConversationRepositoryDataSourceTest {
         assertEquals(
             listOf(
                 RecordedConversationRequest(DataRequestPriority.Foreground, "POST", "channels/channel-1/threads"),
-                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/thread-1", listOf("limit" to "25"))
+                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/thread-1", listOf("limit" to "25")),
+                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "channels/channel-1")
             ),
             network.requests
         )

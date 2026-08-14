@@ -388,6 +388,14 @@ class HomeParserTest {
             )
 
         assertTrue(result is DataResult.Content)
+        val directMessage = result.data.directMessages.single()
+        assertEquals("https://cdn.slock.ai/a.png", directMessage.directMessagePeerAvatarWireValue)
+        assertEquals(
+            "https://cdn.slock.ai/a.png",
+            directMessage
+                .toSharedConversationDirectoryProjection(ServerId("server-1"))
+                ?.avatarWireValue,
+        )
         val profile = payload.directMessagePeerProfiles(ServerId("server-1")).single()
         assertEquals("agent-1", profile.id.value)
         assertEquals("https://cdn.slock.ai/a.png", profile.avatarUrl)

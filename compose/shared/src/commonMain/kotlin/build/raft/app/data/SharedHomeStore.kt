@@ -141,7 +141,9 @@ internal class SharedHomeStore(
     private val nowMillis: () -> Long = { defaultNowMillis() },
     private val beforeRealtimeHomeStateCommit: () -> Unit = {},
     private val onReadReceiptPredictionOwnerEntered: () -> Unit = {},
-    private val beforeNotificationPublicationCommit: suspend () -> Unit = {}
+    private val beforeNotificationPublicationCommit: suspend () -> Unit = {},
+    private val conversationIdentityPublicationSink:
+        (SharedConversationIdentityCandidatePublication) -> Unit = {},
 ) : SharedConversationIdentityProvider {
     private val _state = MutableStateFlow(SharedHomeState())
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
@@ -150,6 +152,8 @@ internal class SharedHomeStore(
         linkedMapOf<String, MutableMap<SharedConversationIdentitySupplementSource, SharedConversationDirectoryState>>()
     private val conversationIdentityStates =
         MutableStateFlow<Map<String, SharedConversationDirectoryState>>(emptyMap())
+    private val conversationIdentityAccountByServer = linkedMapOf<String, String>()
+    private val conversationIdentityRevisionByServer = linkedMapOf<String, Long>()
 
     private var loadJob: Job? = null
     private var agentDirectMessageStatusJob: Job? = null
@@ -303,6 +307,8 @@ internal class SharedHomeStore(
         backgroundUnreadByScope.clear()
         homeConversationIdentityStates.clear()
         supplementalConversationIdentityStates.clear()
+        conversationIdentityAccountByServer.clear()
+        conversationIdentityRevisionByServer.clear()
         conversationIdentityStates.value = emptyMap()
         hiddenHomeSnapshotDirty = false
         synchronized(readProjectionOwnerLock) {
@@ -378,6 +384,7 @@ internal class SharedHomeStore(
         }
 
         val serverKey = authority.serverId.value
+        val ownerChanged = bindConversationIdentityOwner(serverKey, authority.accountId.value)
         val sources = supplementalConversationIdentityStates.getOrPut(serverKey) { linkedMapOf() }
         val existing = sources[SharedConversationIdentitySupplementSource.DirectMessageOpen]
         sources[SharedConversationIdentitySupplementSource.DirectMessageOpen] =
@@ -385,7 +392,7 @@ internal class SharedHomeStore(
                 existing,
                 listOf(projection).toSharedConversationDirectoryState(logger = diagnosticsLogger)
             ).mergedSharedConversationDirectoryState(logger = diagnosticsLogger)
-        publishConversationIdentity(serverKey)
+        publishConversationIdentity(serverKey, forcePublication = ownerChanged)
         diagnosticsLogger(
             "conversation_directory_dm_open_accept " +
                 "serverId=$serverKey channelId=${projection.canonicalChannelId}"
@@ -2978,12 +2985,32 @@ internal class SharedHomeStore(
 
     private fun updateConversationIdentity(snapshot: HomeSnapshot) {
         val serverKey = snapshot.server.id.value
+        val accountId = snapshot.currentMember.id.value
+        val ownerChanged = bindConversationIdentityOwner(serverKey, accountId)
         homeConversationIdentityStates[serverKey] =
             snapshot.toSharedConversationDirectoryState(logger = diagnosticsLogger)
-        publishConversationIdentity(serverKey)
+        publishConversationIdentity(serverKey, forcePublication = ownerChanged)
     }
 
-    private fun publishConversationIdentity(serverKey: String) {
+    /**
+     * A retained Home store can outlive an auth owner. Never merge rows collected for the old
+     * account into the first candidate published for its successor, even when both accounts use
+     * the same server id.
+     */
+    private fun bindConversationIdentityOwner(serverKey: String, accountId: String): Boolean {
+        val normalizedAccountId = accountId.trim()
+        if (serverKey.isBlank() || normalizedAccountId.isBlank()) return false
+        val previous = conversationIdentityAccountByServer[serverKey]
+        if (previous == normalizedAccountId) return false
+        homeConversationIdentityStates.remove(serverKey)
+        supplementalConversationIdentityStates.remove(serverKey)
+        conversationIdentityRevisionByServer.remove(serverKey)
+        conversationIdentityStates.value = conversationIdentityStates.value - serverKey
+        conversationIdentityAccountByServer[serverKey] = normalizedAccountId
+        return true
+    }
+
+    private fun publishConversationIdentity(serverKey: String, forcePublication: Boolean = false) {
         val supplements =
             supplementalConversationIdentityStates[serverKey]
                 .orEmpty()
@@ -2994,8 +3021,23 @@ internal class SharedHomeStore(
             (supplements + listOfNotNull(homeConversationIdentityStates[serverKey]))
                 .mergedSharedConversationDirectoryState(logger = diagnosticsLogger)
         val next = conversationIdentityStates.value + (serverKey to merged)
-        if (next != conversationIdentityStates.value) {
+        val changed = next != conversationIdentityStates.value
+        if (changed) {
             conversationIdentityStates.value = next
+        }
+        if (changed || forcePublication) {
+            val accountId = conversationIdentityAccountByServer[serverKey]?.takeIf { it.isNotBlank() }
+                ?: return
+            val revision = (conversationIdentityRevisionByServer[serverKey] ?: 0L) + 1L
+            conversationIdentityRevisionByServer[serverKey] = revision
+            conversationIdentityPublicationSink(
+                SharedConversationIdentityCandidatePublication(
+                    serverId = ServerId(serverKey),
+                    accountId = accountId,
+                    revision = revision,
+                    state = merged,
+                )
+            )
         }
     }
 

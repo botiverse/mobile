@@ -265,7 +265,8 @@ class RealConversationRepository(
             },
             source = "messages_channel",
             includeChannelSummaries = includeFollowedSummaries,
-            includeFollowedSummaries = includeFollowedSummaries
+            includeFollowedSummaries = includeFollowedSummaries,
+            hydrateConversationDetail = true,
         )
     }
 
@@ -843,6 +844,14 @@ class RealConversationRepository(
             }
         }
         val resolvedThreadChannelId = createOrOpen.data.threadChannelId
+        val detailDeferred =
+            async {
+                loadConversationDetail(
+                    channelId = parentChannelId,
+                    priority = priority,
+                    serverId = context.server.id,
+                )
+            }
         val messagesResult =
             executeConversation(
                 emptyReason = EmptyReason.NoMessages,
@@ -880,6 +889,9 @@ class RealConversationRepository(
                 parentChannelId = parentChannelId,
                 parentMessageId = parentMessageId,
                 streamChannelId = resolvedThreadChannelId
+            ).withConversationDetail(
+                detail = detailDeferred.await(),
+                canonicalReplyThread = true,
             )
         warningLogger(
             "reply_thread_load_result source=$source " +
@@ -903,7 +915,8 @@ class RealConversationRepository(
         block: suspend () -> HomeNetworkResponse,
         source: String,
         includeChannelSummaries: Boolean = false,
-        includeFollowedSummaries: Boolean = false
+        includeFollowedSummaries: Boolean = false,
+        hydrateConversationDetail: Boolean = false,
     ): DataResult<ThreadSnapshot> = coroutineScope {
         val loadStartedAt = TimeSource.Monotonic.markNow()
         warningLogger(
@@ -937,6 +950,18 @@ class RealConversationRepository(
                         "durationMs=${branchStartedAt.elapsedNow().inWholeMilliseconds}"
                 )
                 result
+            }
+        val conversationDetailDeferred =
+            if (hydrateConversationDetail) {
+                async {
+                    loadConversationDetail(
+                        channelId = ChannelId(threadId.value),
+                        priority = DataRequestPriority.Foreground,
+                        serverId = context.server.id,
+                    )
+                }
+            } else {
+                null
             }
         val messagesResult = messagesDeferred.await()
         val visibleParentMessageIds =
@@ -1024,7 +1049,26 @@ class RealConversationRepository(
             }
         val threadSummaries = threadSummariesDeferred?.await()
         val followedSummaries = followedSummariesDeferred?.await()
-        if (messagesResult !is DataResult.Content) {
+        val canonicalDetail = conversationDetailDeferred?.await()
+        if (
+            messagesResult is DataResult.Empty &&
+            messagesResult.reason == EmptyReason.NoMessages &&
+            canonicalDetail != null
+        ) {
+            warningLogger(
+                "thread_load_result source=$source threadId=${threadId.value} " +
+                    "result=content:canonical_empty messages=0 tasks=0 channelSummaries=0 " +
+                    "followedSummaries=0 mergedSummaries=0 " +
+                    "durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation = canonicalDetail,
+                    canonicalConversationDetail = canonicalDetail,
+                    messages = emptyList(),
+                )
+            )
+        } else if (messagesResult !is DataResult.Content) {
             warningLogger(
                 "thread_load_result source=$source threadId=${threadId.value} " +
                     "result=${messagesResult.conversationDiagnosticsResult()} messages=0 tasks=0 " +
@@ -1034,6 +1078,11 @@ class RealConversationRepository(
             )
             messagesResult
         } else {
+            val messagesSnapshot =
+                messagesResult.data.withConversationDetail(
+                    detail = canonicalDetail,
+                    canonicalReplyThread = false,
+                )
             val channelThreads = if (threadSummaries is DataResult.Content) threadSummaries.data.threads else emptyList()
             val followedForChannel =
                 if (followedSummaries is DataResult.Content) {
@@ -1062,12 +1111,12 @@ class RealConversationRepository(
                     ThreadReplySummariesAuthority.EmbeddedInvalid
                 ) {
                     DataResult.Content(
-                        messagesResult.data.copy(
+                        messagesSnapshot.copy(
                             replySummariesAuthority = ThreadReplySummariesAuthority.Unavailable,
                         )
                     )
                 } else {
-                    messagesResult
+                    DataResult.Content(messagesSnapshot)
                 }
             } else {
                 warningLogger(
@@ -1083,7 +1132,7 @@ class RealConversationRepository(
                 val authority =
                     when {
                         threadSummaries is DataResult.Content -> ThreadReplySummariesAuthority.Targeted
-                        messagesResult.data.replySummariesAuthority == ThreadReplySummariesAuthority.Embedded ->
+                        messagesSnapshot.replySummariesAuthority == ThreadReplySummariesAuthority.Embedded ->
                             ThreadReplySummariesAuthority.Embedded
                         else -> ThreadReplySummariesAuthority.Unavailable
                     }
@@ -1091,10 +1140,10 @@ class RealConversationRepository(
                     if (authority == ThreadReplySummariesAuthority.Targeted) {
                         mergedThreads
                     } else {
-                        messagesResult.data.replySummaries.threads
+                        messagesSnapshot.replySummaries.threads
                     }
                 DataResult.Content(
-                    messagesResult.data.withReplySummaries(
+                    messagesSnapshot.withReplySummaries(
                         threads = authoritativeThreads,
                         followedThreadKeys = followedThreadKeys,
                         authority = authority,
@@ -1276,6 +1325,7 @@ private fun ThreadSnapshot.withConversationDetail(
     if (snapshotChannelId != detailChannelId) return this
     if (canonicalReplyThread) {
         return copy(
+            canonicalConversationDetail = detail,
             conversation =
                 conversation.copy(
                     name = detail.name,
@@ -1284,6 +1334,7 @@ private fun ThreadSnapshot.withConversationDetail(
         )
     }
     return copy(
+        canonicalConversationDetail = detail,
         conversation =
             detail.copy(
                 lastMessageId = conversation.lastMessageId ?: detail.lastMessageId,

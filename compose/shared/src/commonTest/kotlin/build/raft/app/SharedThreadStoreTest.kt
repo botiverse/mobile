@@ -4134,7 +4134,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun contentSliceDoesNotOwnAgentDirectMessageHeaderMetadata() {
+    fun canonicalContentSliceOverridesAgentDirectMessageHeaderMetadata() {
         val current =
             directMessagePayload().copy(
                 title = "Product-UX-Designer",
@@ -4170,7 +4170,7 @@ class SharedThreadStoreTest {
 
         assertEquals("Product-UX-Designer", payload.title)
         assertEquals("Product-UX-Designer", payload.dmPeerName)
-        assertEquals("pixel:tree", payload.dmPeerAvatarUrl)
+        assertEquals("https://www.gravatar.com/avatar/agent-hash?s=52&d=404", payload.dmPeerAvatarUrl)
         assertEquals("PU", payload.dmPeerAvatarLabel)
         assertEquals("network body", payload.messages.single().body)
     }

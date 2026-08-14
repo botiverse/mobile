@@ -2778,7 +2778,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun contentSliceDoesNotOverwriteHeaderTitleFromNetworkPayload() {
+    fun contentSliceRejectsIdentityLikeTitleAndUsesSafeSameRouteHeaderMetadata() {
         val payload =
             KuiklyThreadScreenPayload(
                 instanceId = "thread-channel-1",
@@ -2808,7 +2808,7 @@ class ThreadPayloadTest {
         val merged = payload.withContentSliceFrom(networkPatch)
 
         assertEquals("Channel", merged.title)
-        assertEquals(null, merged.subtitle)
+        assertEquals("network subtitle", merged.subtitle)
         assertEquals("content", merged.status)
         assertEquals(listOf("m1"), merged.messages.map { it.id })
     }
@@ -4525,7 +4525,7 @@ class ThreadPayloadTest {
 
         assertEquals("content", payload.status)
         assertEquals(ThreadReplyPageTitle, payload.title)
-        assertEquals("#seeded", payload.subtitle)
+        assertEquals("#general", payload.subtitle)
         assertEquals(listOf("reply-message-1"), payload.messages.map { it.id })
         assertEquals(null, payload.originParentMessageId)
         assertEquals("none", payload.originStatus)
@@ -4552,6 +4552,9 @@ class ThreadPayloadTest {
                 showMembersAction = false,
                 showSettingsAction = false,
                 showOpenInChannelAction = true,
+                dmPeerName = "Current peer",
+                dmPeerAvatarUrl = "pixel:current",
+                dmPeerAvatarLabel = "CP",
                 messages =
                     listOf(
                         KuiklyThreadMessageItem(
@@ -4588,6 +4591,9 @@ class ThreadPayloadTest {
                 showMembersAction = true,
                 showSettingsAction = true,
                 showOpenInChannelAction = false,
+                dmPeerName = "Wrong peer",
+                dmPeerAvatarUrl = "pixel:wrong",
+                dmPeerAvatarLabel = "WP",
                 messages =
                     listOf(
                         KuiklyThreadMessageItem(
@@ -4617,6 +4623,9 @@ class ThreadPayloadTest {
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
         assertEquals(true, payload.showOpenInChannelAction)
+        assertEquals("Current peer", payload.dmPeerName)
+        assertEquals("pixel:current", payload.dmPeerAvatarUrl)
+        assertEquals("CP", payload.dmPeerAvatarLabel)
         assertEquals("none", payload.originStatus)
         assertEquals(null, payload.originMessage)
         assertEquals(listOf("channel-message-1"), payload.messages.map { it.id })

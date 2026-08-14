@@ -1125,6 +1125,8 @@ internal class SharedThreadDataSource(
     private val readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
     private val threadPageSizeProvider: (ServerId?) -> Int? = { null },
     private val replyOriginHydrationGraceMillis: Long = SharedThreadZeroReplyOriginHydrationGraceMillis,
+    private val canonicalConversationIdentityPublisher:
+        suspend (ReplyCacheProvenance, build.raft.app.model.ConversationSummary) -> Boolean = { _, _ -> false },
     private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
     /**
      * Task #43: shared create-agent coordinator used by the action-card
@@ -1218,6 +1220,8 @@ internal class SharedThreadDataSource(
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
         threadPageSizeProvider: (ServerId?) -> Int? = { null },
         replyOriginHydrationGraceMillis: Long = SharedThreadZeroReplyOriginHydrationGraceMillis,
+        canonicalConversationIdentityPublisher:
+            suspend (ReplyCacheProvenance, build.raft.app.model.ConversationSummary) -> Boolean = { _, _ -> false },
         createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator? = null,
         diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
     ) : this(
@@ -1242,6 +1246,7 @@ internal class SharedThreadDataSource(
         readReceiptOwnerFactory = readReceiptOwnerFactory,
         threadPageSizeProvider = threadPageSizeProvider,
         replyOriginHydrationGraceMillis = replyOriginHydrationGraceMillis,
+        canonicalConversationIdentityPublisher = canonicalConversationIdentityPublisher,
         diagnosticsLogger = diagnosticsLogger,
         createAgentCoordinator = createAgentCoordinator
     )
@@ -1362,7 +1367,9 @@ internal class SharedThreadDataSource(
                 current != null &&
                 current.environmentId == source.environmentId &&
                 current.principalId == source.principalId &&
-                current.serverId == source.serverId
+                current.serverId == source.serverId &&
+                current.authGeneration == source.authGeneration &&
+                current.selectionGeneration == source.selectionGeneration
             if (sameIdentity) {
                 if (captureSequence > latestPublishedReplyCacheCapture) {
                     latestPublishedReplyCacheCapture = captureSequence
@@ -4072,6 +4079,7 @@ internal class SharedThreadDataSource(
         val repository =
             conversationRepository
                 ?: return DataResult.Error(ScreenError(code = fallbackCode, retryable = true))
+        val producerProvenance = replyCacheProvenance.value
         val result =
             try {
                 call(repository)
@@ -4080,6 +4088,31 @@ internal class SharedThreadDataSource(
             } catch (_: Throwable) {
                 return DataResult.Error(ScreenError(code = fallbackCode, retryable = true))
             }
+        val detail = (result as? DataResult.Content)?.data?.canonicalConversationDetail
+        if (producerProvenance != null && detail != null) {
+            if (!isCurrentReplyCacheProvenance(producerProvenance)) {
+                diagnosticsLogger(
+                    "conversation_directory_canonical_drop reason=stale_producer " +
+                        "serverId=${producerProvenance.serverId} channelId=${detail.channelId?.value.orEmpty()}"
+                )
+            } else {
+                try {
+                    val published = canonicalConversationIdentityPublisher(producerProvenance, detail)
+                    diagnosticsLogger(
+                        "conversation_directory_canonical_publish " +
+                            "serverId=${producerProvenance.serverId} channelId=${detail.channelId?.value.orEmpty()} " +
+                            "accepted=$published"
+                    )
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (throwable: Throwable) {
+                    diagnosticsLogger(
+                        "conversation_directory_canonical_publish_failed " +
+                            "serverId=${producerProvenance.serverId} error=${throwable::class.simpleName.orEmpty()}"
+                    )
+                }
+            }
+        }
         return result
     }
 
@@ -9023,7 +9056,37 @@ private fun List<String>.cleanActionCardIds(): List<String> =
         .distinct()
 
 internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+    val acceptsPatchHeader =
+        resolveThreadRouteIdentity().canRetainThreadPageFor(patch.resolveThreadRouteIdentity())
+    val patchTitle =
+        if (acceptsPatchHeader) {
+            threadHeaderSafeTitleOrNull(
+                patch.title,
+                patch.conversationHeaderLookupIds().toSet()
+            )?.takeUnless { it.isGenericThreadHeaderFallbackLabel() }
+        } else {
+            null
+        }
+    val patchDmPeerName =
+        if (acceptsPatchHeader) {
+            threadHeaderSafeTitleOrNull(
+                patch.dmPeerName,
+                patch.conversationHeaderLookupIds().toSet()
+            )?.takeUnless { it.isGenericThreadHeaderFallbackLabel() }
+        } else {
+            null
+        }
     return copy(
+        // Only a content response for this retained destination may enrich header
+        // metadata. Even then, a neutral route fallback (for example "Direct Message")
+        // must never erase a valid canonical detail/directory value.
+        title = patchTitle ?: title,
+        subtitle =
+            if (acceptsPatchHeader) {
+                patch.subtitle?.takeIf { it.isNotBlank() } ?: subtitle
+            } else {
+                subtitle
+            },
         status = patch.status,
         backgroundRefreshing = patch.backgroundRefreshing,
         messages = patch.messages,
@@ -9044,9 +9107,19 @@ internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadS
         emptyTitle = patch.emptyTitle,
         emptyDetail = patch.emptyDetail,
         replySummariesAuthority = patch.replySummariesAuthority,
-        dmPeerName = dmPeerName,
-        dmPeerAvatarUrl = dmPeerAvatarUrl,
-        dmPeerAvatarLabel = dmPeerAvatarLabel
+        dmPeerName = patchDmPeerName ?: dmPeerName,
+        dmPeerAvatarUrl =
+            if (acceptsPatchHeader) {
+                patch.dmPeerAvatarUrl?.takeIf { it.isNotBlank() } ?: dmPeerAvatarUrl
+            } else {
+                dmPeerAvatarUrl
+            },
+        dmPeerAvatarLabel =
+            if (acceptsPatchHeader) {
+                patch.dmPeerAvatarLabel?.takeIf { it.isNotBlank() } ?: dmPeerAvatarLabel
+            } else {
+                dmPeerAvatarLabel
+            }
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
 
@@ -9839,7 +9912,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         membersCount = conversation.memberCount ?: base.membersCount,
         errorCode = null,
         dmPeerName = safeDirectMessagePeerName,
-        dmPeerAvatarUrl = null,
+        dmPeerAvatarUrl = conversation.directMessagePeerAvatarWireValue?.takeIf { it.isNotBlank() },
         dmPeerAvatarLabel = safeDirectMessagePeerName?.take(2)?.uppercase(),
         activityMuted = conversation.activityMuted,
         muteFromSeq = conversation.muteFromSeq,

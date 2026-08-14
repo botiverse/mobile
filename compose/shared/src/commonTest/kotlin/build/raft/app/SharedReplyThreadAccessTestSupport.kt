@@ -35,9 +35,13 @@ internal class ReplyThreadAccessConversationRepositoryRecorder(
     var parentResult: DataResult<ThreadSnapshot> =
         DataResult.Error(ScreenError(code = "reply_access_parent_context_unavailable", retryable = false)),
     var releaseParent: CompletableDeferred<Unit>? = null,
+    var threadResult: DataResult<ThreadSnapshot> =
+        DataResult.Error(ScreenError(code = "reply_access_thread_unavailable", retryable = false)),
+    var releaseThread: CompletableDeferred<Unit>? = null,
 ) : ConversationRepository {
     val replyStarted = CompletableDeferred<Unit>()
     val parentStarted = CompletableDeferred<Unit>()
+    val threadStarted = CompletableDeferred<Unit>()
     val replyRequests = mutableListOf<Pair<ChannelId, MessageId>>()
     val parentRequests = mutableListOf<Pair<MessageId, ChannelId?>>()
     val replyPriorities = mutableListOf<DataRequestPriority>()
@@ -79,7 +83,11 @@ internal class ReplyThreadAccessConversationRepositoryRecorder(
         threadId: ThreadId,
         includeFollowedSummaries: Boolean,
         limit: Int
-    ): DataResult<ThreadSnapshot> = error("unused")
+    ): DataResult<ThreadSnapshot> {
+        threadStarted.complete(Unit)
+        releaseThread?.await()
+        return threadResult
+    }
 
     override suspend fun loadOlderMessages(
         threadId: ThreadId,
