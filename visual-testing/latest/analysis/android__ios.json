@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-13T22:17:19.998Z",
+  "generatedAt": "2026-08-14T22:08:51.205Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 81,
-    "pending": 5
+    "ready": 79,
+    "pending": 7
   },
   "cases": [
     {
@@ -1141,7 +1141,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05947529738998936
+      "metricMismatch": 0.05947833542620273
     },
     {
       "id": "components.thread.header.states",
@@ -1471,38 +1471,21 @@
     },
     {
       "id": "components.home.search.results",
-      "status": "ready",
-      "imageHash": "p1:1ffe1ffe97fc07fc8000000080000000800000009f321f12ffffffffffffffff80fe80ff9ffe9fff80ff80ff80fe80ffdfffdfffffffffff800280038002800383fe83ff87fe87ffc9fec9ff9ffe9fff827ec27fffffdbffd03fc03f81fe83effffffc3ff81ff81ffc3ffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-08-13T22:15:18.453Z",
-      "severity": "low",
-      "summary": [
-        "Avatar sizes for DM/Channel items appear visually consistent between Android and iOS; no notable size or position drift observed on the result cards.",
-        "Highlight rendering and match positions on result titles/body text look aligned across both platforms; no clipping of highlight chips.",
-        "Filter chip row appears with the same chip set and single-row non-wrapping layout on both ends at this canvas size — no extra sort/Recent chip or wrap is present in this view.",
-        "Time stamps, meta lines (e.g., '2 hits', 'Agent · @Android-Developer · Members'), and divider/border colors match between ends.",
-        "Overall layout (header, chips, channels/DMs section, messages list, 'Load more results' CTA) is structurally isomorphic; remaining 8.71% pixel mismatch is consistent with native font/anti-aliasing differences only."
-      ],
-      "likelyCauses": [
-        "Remaining pixel mismatch is dominated by platform-native font hinting and anti-aliasing rather than structural or color differences."
-      ],
-      "suggestedOwner": "kuikly-renderer",
-      "suggestedFixes": [
-        "No structural fixes required; parity is within tolerance for this case.",
-        "If desired, tune the iOS text rendering pipeline (e.g., consistent subpixel anti-aliasing / weight mapping) to reduce the ~8.7% pixel mismatch to near zero.",
-        "Keep the known intentional filter-row platform difference documented and excluded from regression thresholds."
-      ],
-      "intentional": [
-        "Filter chip row count and single-row (non-wrapping) layout on both ends is the intentional mobile layout for this case; no sort/Recent chip wrap divergence is present in the captured canvas."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.08706404180337834
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffe97fc07fc8000000080000000800000009ffa1f7effffffffffffffff80ff80ff9fff9fff80ff80ff80fe80ffdfffdfffffffffff800380038003800383ff83ff87ff87ffc9ffd9ff9fff9fff827fc27ffffffffff83ff03f81ff83effffffc3ff81ff81ffc3ffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "generatedAt": "2026-08-14T22:08:50.529Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.0884537745912154
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:0ffe0ffe87fe07fc8000000080000000800000019c3cdc78fcfcfcfcfc00fc04813c813c9d3c9d3c81fc81fe80008000de00dc00ffffffff800380038003800387ff87ff8fff87ffdfffdfffbfff9fff967fc67ffffffffff83ff03fc3ffc3fffffffffff81ff81ffc3ffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:0ffe0ffe87fe07fc8000000080000000800000019c3cdc78fcfcfc7cfc00fc04813c813c9d3c9d3c81fc81fe80008000de00dc00ffffffff800380038003800387ff87ff8fff87ffdfffdfffbfff9fff967fc67ffffffffff83ff03fc3ffc3fffffffffff81ff81ffc3ffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-13T22:15:18.489Z",
       "severity": "medium",
       "summary": [
@@ -1530,7 +1513,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10332935013029798
+      "metricMismatch": 0.10406725537057293
     },
     {
       "id": "components.home.saved.results",
@@ -1758,34 +1741,16 @@
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000007ffc7ffc7ffc7ffc3ffc7ffc21fc41fc7ffc7ffc7ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc3ffc7ffc7ffc7f7c7ffc7cfc7ffc00007dfcce630000ffff0000ffff0000ffff0000ffff0000bffd0000bffd00008ff100008ff00000ffff00009ffb0000ffffffffffff",
-      "generatedAt": "2026-08-13T22:15:24.222Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows the software keyboard, shrinking the visible app region and pushing the dialog upward; Android has no keyboard visible and a much larger dark background area below the dialog.",
-        "The description textarea is taller and extends lower on iOS, with its right side clipped by the dialog/viewport boundary; Android shows the full bordered textarea.",
-        "On iOS the character counter and action buttons sit inside the textarea/clipping area, with buttons partially clipped at the right edge; on Android they are fully visible below the textarea.",
-        "The iOS Name field is actively focused, displaying a caret, while the Android field has no caret; the keyboard confirms the input state difference."
-      ],
-      "likelyCauses": [
-        "Platform keyboard presentation reduces the iOS layout viewport and triggers viewport resizing rather than overlay behavior.",
-        "iOS dialog or scroll-content height does not account for the keyboard, causing lower content to be pushed into or beyond the visible bounds.",
-        "Textarea sizing and action-button positioning use different platform-specific constraints or clipping behavior.",
-        "The iOS Name field received focus during capture, whereas the Android field did not."
-      ],
-      "suggestedOwner": "Mobile UI/layout team",
-      "suggestedFixes": [
-        "Use a shared dialog scroll/viewport strategy that accounts for keyboard insets on both platforms.",
-        "Ensure the dialog content scrolls or resizes so the textarea counter and action buttons remain fully visible when the keyboard is open.",
-        "Constrain textarea and action-button widths to the dialog's inner bounds and prevent right-edge clipping on iOS.",
-        "Normalize focus and keyboard timing in the test harness or explicitly capture both focused and non-focused states."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.4738647871349293
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003ffc7dfc3df86df83f6c3ffc01ec00cc3ffc3ffc3ffc3ffc3ffc39fc3ffc3ffc3ffc1ffc3ffc31fc3ffc03fc03fc07fc3ffc3ffc3ffc7ffc3ff47f7c3ffc78743ffc000023fc80012ffcdef33ffcffff2ffcffff3ffcffff3ffcbff83ffc1ff83ffc8ff03ffc0ff03f7c80013800800100008001ffffffff",
+      "generatedAt": "2026-08-14T22:08:50.717Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3641980934634963
     },
     {
       "id": "components.members.agent-detail.profile",
@@ -2128,7 +2093,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-13T22:17:19.474Z",
+      "generatedAt": "2026-08-14T22:08:50.845Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2141,7 +2106,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-13T22:17:19.474Z",
+      "generatedAt": "2026-08-14T22:08:50.845Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2154,7 +2119,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-13T22:17:19.474Z",
+      "generatedAt": "2026-08-14T22:08:50.845Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2167,7 +2132,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-13T22:17:19.474Z",
+      "generatedAt": "2026-08-14T22:08:50.845Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2180,7 +2145,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-13T22:17:19.474Z",
+      "generatedAt": "2026-08-14T22:08:50.845Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2254,7 +2219,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09859068875656551
+      "metricMismatch": 0.09865516263620533
     },
     {
       "id": "components.members.avatar-management",
