@@ -143,7 +143,10 @@ import build.raft.app.data.SlockAuthSessionTerminalSource
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
-import build.raft.app.data.SharedComputersOwner
+import build.raft.app.data.SharedComputersState
+import build.raft.app.data.SharedComputersLoadStatus
+import build.raft.app.data.ComputerSummary
+import build.raft.app.data.selectComputerServerSlice
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.SharedTasksViewModel
@@ -801,6 +804,18 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                 SlockLucideIcon(SlockLucideIconName.Hash, color = "#FF000000", modifier = Modifier.size(15.dp))
             }
 
+        SearchEntityType.Computer ->
+            Box(
+                modifier =
+                    Modifier
+                        .size(32.dp)
+                        .background(SlockColor.AccentLime)
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon(SlockLucideIconName.Monitor, color = "#FF000000", modifier = Modifier.size(15.dp))
+            }
+
         else ->
             run {
                 val memberAvatarWireValue =
@@ -931,6 +946,7 @@ private data class HomeSecondaryRouteEnvironment(
     val authStore: SlockAuthSessionStore,
     val networkClient: SlockNetworkClient,
     val serverMembersStore: SharedServerMembersStore,
+    val computersStore: SharedComputersStore,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val homeSavedStateCache: SharedHomeSavedStateCache,
@@ -979,6 +995,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
+    val computersStore = remember(sharedStores, storeScope) { sharedStores.computersStore(storeScope) }
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
     val chatLayoutPreferenceRepository =
         remember(sharedPreferenceStore) {
@@ -1023,6 +1040,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
         networkClient,
         settingsCapabilities,
         serverMembersStore,
+        computersStore,
         sharedStores.composerDraftPersistSlice,
         sharedStores.homeSavedStateCache,
         timeContextProvider,
@@ -1042,6 +1060,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
             authStore = authStore,
             networkClient = networkClient,
             serverMembersStore = serverMembersStore,
+            computersStore = computersStore,
             composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
             settingsCapabilities = settingsCapabilities,
             homeSavedStateCache = sharedStores.homeSavedStateCache,
@@ -1218,6 +1237,21 @@ private fun HomeSearchRouterContent(
         val serverId = searchServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         environment.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
     }
+    LaunchedEffect(environment.computersStore, searchServerId, routeVisibleTick) {
+        environment.computersStore.reconcileOwner()
+        val serverId = searchServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        environment.computersStore.dispatch(
+            SharedComputersIntent.EnsureComputerPicker(
+                serverId = serverId,
+                priority = DataRequestPriority.Background
+            )
+        )
+    }
+    val computersState by environment.computersStore.state.collectAsState()
+    val computerDirectory =
+        remember(searchServerId, computersState) {
+            computersState.toHomeSearchComputerDirectory(searchServerId)
+        }
     val listState = rememberLazyListState()
     val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
     val draftProjection =
@@ -1258,6 +1292,7 @@ private fun HomeSearchRouterContent(
         homeState = homeState,
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
+        computerDirectory = computerDirectory,
         draftProjection = draftProjection,
         onIntent = searchSavedViewModel::dispatch,
         onClose = { environment.pager.closeHomeSecondaryPage() },
@@ -1296,6 +1331,13 @@ private fun HomeSearchRouterContent(
                 compactConsecutiveMessages = environment.compactConsecutiveMessages,
                     storeScope = environment.storeScope
             )
+        },
+        onRefreshComputers = {
+            searchServerId?.trim()?.takeIf { it.isNotBlank() }?.let { serverId ->
+                environment.computersStore.dispatch(
+                    SharedComputersIntent.RefreshComputerPicker(serverId = serverId)
+                )
+            }
         },
         pinnedItems = pinnedItems,
         onTogglePin =
@@ -3226,22 +3268,7 @@ private fun SlockAppShellReadyContent(
             )
         }
     val appShellComputersStore =
-        remember(computersApiClient, appShellCoroutineScope) {
-            SharedComputersStore(
-                computersApiClient = computersApiClient,
-                scope = appShellCoroutineScope,
-                logger = slockLogger("SlockComputers", "app_shell"),
-                ownerProvider = {
-                    shellAuthStore.readSession()?.let { session ->
-                        SharedComputersOwner(
-                            environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
-                            accountId = session.user.id.trim(),
-                            sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
-                        )
-                    }
-                }
-            )
-        }
+        remember(sharedStores, storeScope) { sharedStores.computersStore(storeScope) }
     val settingsRepository =
         remember(sharedStores, shellAuthStore, appShellNetworkClient) {
             RealSettingsRepository(
@@ -17912,6 +17939,7 @@ private fun SharedHomeSearchPanel(
     homeState: SharedHomeState,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    computerDirectory: HomeSearchComputerDirectory = HomeSearchComputerDirectory(),
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     onClose: (() -> Unit)? = null,
@@ -17922,6 +17950,7 @@ private fun SharedHomeSearchPanel(
     initialFocusInput: Boolean = false,
     onOpenItem: (InboxItem) -> Unit,
     onOpenEntity: (SearchEntityResult) -> Unit,
+    onRefreshComputers: () -> Unit = {},
     pinnedItems: List<SettingsServerSidebarPinnedItem> = emptyList(),
     onTogglePin: ((SearchEntityPinTarget) -> Unit)? = null,
     bottomContentPadding: Dp,
@@ -17936,6 +17965,7 @@ private fun SharedHomeSearchPanel(
     val agentEntityLabel = stringResource(MR.strings.search_entity_agent)
     val personEntityLabel = stringResource(MR.strings.search_entity_person)
     val membersEntityLabel = stringResource(MR.strings.search_entity_members)
+    val computerEntityLabel = stringResource(MR.strings.search_entity_computer)
     val threadDiscussionLabel = stringResource(MR.strings.search_thread_discussion)
     val entityResults = remember(
         state.query,
@@ -17945,7 +17975,9 @@ private fun SharedHomeSearchPanel(
         dmEntityLabel,
         agentEntityLabel,
         personEntityLabel,
-        membersEntityLabel
+        membersEntityLabel,
+        computerEntityLabel,
+        computerDirectory
     ) {
         homeSearchEntityResults(
             query = state.query,
@@ -17955,9 +17987,12 @@ private fun SharedHomeSearchPanel(
             dmLabel = dmEntityLabel,
             agentLabel = agentEntityLabel,
             personLabel = personEntityLabel,
-            membersLabel = membersEntityLabel
+            membersLabel = membersEntityLabel,
+            computerLabel = computerEntityLabel,
+            computerDirectory = computerDirectory
         )
     }
+    val computerSearchEligible = state.query.trim().firstOrNull() !in setOf('#', '@') && state.query.trim().isNotBlank()
     val projectedItems =
         remember(state.items, draftProjection) {
             state.items.map { item -> item.withComposerDraftProjection(draftProjection) }
@@ -18068,20 +18103,33 @@ private fun SharedHomeSearchPanel(
             ) {
                 item {
                     val hasSearchRows = projectedItems.isNotEmpty() || entityResults.isNotEmpty()
-                    if (state.loading && !hasSearchRows) {
+                    if ((state.loading || (computerSearchEligible && computerDirectory.initialLoadInFlight)) && !hasSearchRows) {
                         SlockCenteredLoading(modifier = Modifier.fillParentMaxSize())
-                    } else if (state.noPermissionCode != null || (state.errorCode != null && !hasSearchRows)) {
+                    } else if (
+                        state.noPermissionCode != null ||
+                            (state.errorCode != null && !hasSearchRows) ||
+                            (computerSearchEligible && computerDirectory.initialLoadError != null && !hasSearchRows)
+                    ) {
                         HomeInlineErrorCard(
-                            error = localizedSharedHomeSearchErrorDisplay(state.noPermissionCode ?: state.errorCode.orEmpty()),
+                            error = localizedSharedHomeSearchErrorDisplay(
+                                state.noPermissionCode ?: state.errorCode ?: computerDirectory.initialLoadError?.code.orEmpty()
+                            ),
                             modifier = Modifier.padding(horizontal = SearchMessagesHorizontalPadding),
-                            onAction = { onIntent(SharedHomeSearchSavedIntent.RefreshSearch) }
+                            onAction = {
+                                onIntent(SharedHomeSearchSavedIntent.RefreshSearch)
+                                onRefreshComputers()
+                            }
                         )
                     } else if (!state.searched && projectedItems.isEmpty() && entityResults.isEmpty()) {
                         SharedHomeSearchEmptyState(
                             title = stringResource(MR.strings.search_empty_title),
                             detail = stringResource(MR.strings.search_empty_detail)
                         )
-                    } else if (state.empty || (state.searched && projectedItems.isEmpty() && entityResults.isEmpty())) {
+                    } else if (
+                        (state.empty || state.searched) &&
+                            projectedItems.isEmpty() &&
+                            entityResults.isEmpty()
+                    ) {
                         val trimmedQuery = state.query.trim()
                         SharedHomeSearchEmptyState(
                             title =
@@ -18106,7 +18154,7 @@ private fun SharedHomeSearchPanel(
                 }
                 if (entityResults.isNotEmpty()) {
                     item {
-                        SharedHomeSearchSectionLabel(stringResource(MR.strings.search_section_channels_dms))
+                        SharedHomeSearchSectionLabel(stringResource(MR.strings.search_section_entities))
                     }
                     items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
                         SharedHomeSearchEntityRow(
@@ -19568,6 +19616,7 @@ internal fun searchEntityPinTarget(result: SearchEntityResult): SearchEntityPinT
                     id = it
                 )
             }
+        SearchEntityType.Computer -> null
     }
 }
 
@@ -19608,6 +19657,7 @@ private fun SharedHomeEntityTypeBadge(type: SearchEntityType) {
                 SearchEntityType.DirectMessage -> stringResource(MR.strings.search_entity_dm)
                 SearchEntityType.Human -> stringResource(MR.strings.search_entity_dm)
                 SearchEntityType.Agent -> stringResource(MR.strings.search_entity_dm)
+                SearchEntityType.Computer -> stringResource(MR.strings.search_entity_computer)
             },
         compact = true
     )
@@ -20170,7 +20220,33 @@ internal enum class SearchEntityType {
     Channel,
     DirectMessage,
     Human,
-    Agent
+    Agent,
+    Computer
+}
+
+internal data class HomeSearchComputerDirectory(
+    val serverId: String? = null,
+    val machines: List<ComputerSummary> = emptyList(),
+    val status: SharedComputersLoadStatus = SharedComputersLoadStatus.Idle,
+    val hasSnapshot: Boolean = false,
+    val refreshing: Boolean = false,
+    val initialLoadError: ScreenError? = null,
+) {
+    val initialLoadInFlight: Boolean
+        get() = !hasSnapshot && status == SharedComputersLoadStatus.InFlight
+}
+
+internal fun SharedComputersState.toHomeSearchComputerDirectory(serverId: String?): HomeSearchComputerDirectory {
+    val normalizedServerId = serverId?.trim()?.takeIf { it.isNotBlank() } ?: return HomeSearchComputerDirectory()
+    val slice = selectComputerServerSlice(normalizedServerId)
+    return HomeSearchComputerDirectory(
+        serverId = normalizedServerId,
+        machines = slice.machines,
+        status = slice.status,
+        hasSnapshot = slice.hasSnapshot,
+        refreshing = slice.refreshing,
+        initialLoadError = slice.error.takeIf { !slice.hasSnapshot && slice.status == SharedComputersLoadStatus.Error },
+    )
 }
 
 internal data class SearchEntityResult(
@@ -20181,6 +20257,7 @@ internal data class SearchEntityResult(
     val threadId: String?,
     val memberIdentity: MemberDetailIdentity?,
     val conversationIdentity: ThreadLaunchConversationIdentity?,
+    val computerIdentity: SettingsComputerRouteIdentity? = null,
     val avatarWireValue: String? = null,
     val showPresence: Boolean = false,
     val archived: Boolean = false
@@ -20192,9 +20269,15 @@ internal data class SearchEntityResult(
 internal sealed interface HomeSearchEntityDestination {
     data class Conversation(val identity: ThreadLaunchConversationIdentity) : HomeSearchEntityDestination
     data class Member(val identity: MemberDetailIdentity) : HomeSearchEntityDestination
+    data class Computer(val identity: SettingsComputerRouteIdentity) : HomeSearchEntityDestination
 }
 
 internal fun SearchEntityResult.destinationOrNull(): HomeSearchEntityDestination? {
+    computerIdentity?.let { identity ->
+        settingsComputerRouteIdentity(identity.serverId, identity.machineId)?.let {
+            return HomeSearchEntityDestination.Computer(it)
+        }
+    }
     conversationIdentity?.let { return HomeSearchEntityDestination.Conversation(it) }
     val identity = memberIdentity ?: return null
     if (identity.memberId.value.isBlank() || identity.sourceServerId?.value.isNullOrBlank()) return null
@@ -20273,7 +20356,9 @@ internal fun homeSearchEntityResults(
     dmLabel: String,
     agentLabel: String,
     personLabel: String,
-    membersLabel: String
+    membersLabel: String,
+    computerLabel: String = "Computer",
+    computerDirectory: HomeSearchComputerDirectory = HomeSearchComputerDirectory(),
 ): List<SearchEntityResult> {
     val trimmedQuery = query.trim()
     if (trimmedQuery.isBlank()) return emptyList()
@@ -20342,8 +20427,45 @@ internal fun homeSearchEntityResults(
                     )
             )
         }
+    val computerEntries =
+        computerDirectory.machines
+            .takeIf { computerDirectory.serverId == snapshot.server.id.value }
+            .orEmpty()
+            .asSequence()
+            .filter { it.isComputer }
+            .distinctBy { it.id }
+            .mapIndexedNotNull { offset, machine ->
+                val computerIdentity =
+                    settingsComputerRouteIdentity(
+                        serverId = computerDirectory.serverId,
+                        machineId = machine.id,
+                    ) ?: return@mapIndexedNotNull null
+                val title = machine.name.trim().ifBlank { machine.hostname?.trim().orEmpty().ifBlank { machine.id } }
+                ThreadComposerSuggestionSearchEntry(
+                    index = conversationEntries.size + memberEntries.size + offset,
+                    suggestion =
+                        SearchEntityResult(
+                            key = "computer:${computerIdentity.serverId}:${computerIdentity.machineId}",
+                            type = SearchEntityType.Computer,
+                            title = title,
+                            subtitle = machine.hostname?.trim().orEmpty().ifBlank { computerLabel },
+                            threadId = null,
+                            memberIdentity = null,
+                            conversationIdentity = null,
+                            computerIdentity = computerIdentity,
+                        ),
+                    fields =
+                        listOf(
+                            ThreadComposerSuggestionSearchField(machine.name, priority = 0),
+                            ThreadComposerSuggestionSearchField(machine.hostname.orEmpty(), priority = 1),
+                            ThreadComposerSuggestionSearchField(machine.description.orEmpty(), priority = 3),
+                            ThreadComposerSuggestionSearchField(machine.os.orEmpty(), priority = 4),
+                        ),
+                )
+            }
+            .toList()
     val entries =
-        (conversationEntries + memberEntries).let { candidates ->
+        (conversationEntries + memberEntries + computerEntries).let { candidates ->
             when (trimmedQuery.firstOrNull()) {
                 '#' -> candidates.filter { it.suggestion.type == SearchEntityType.Channel }
                 '@' ->
@@ -21199,6 +21321,11 @@ private fun Pager.openHomeSearchEntity(
                 storeScopeOverride = storeScope
             )
         }
+        is HomeSearchEntityDestination.Computer ->
+            openSettingsComputerPage(
+                storeScope = storeScope,
+                target = destination.identity,
+            )
         null -> Unit
     }
 }

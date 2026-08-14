@@ -1457,14 +1457,15 @@
     <string name="search_error_timeout_detail">服务器未及时响应，请稍后重试搜索。</string>
     <string name="search_error_offline_detail">请检查网络后重试搜索。</string>
     <string name="search_error_network_detail">无法连接当前服务器，请在恢复连接后重试搜索。</string>
-    <string name="search_placeholder">搜索频道、私信和消息…</string>
+    <string name="search_placeholder">搜索频道、成员、电脑和消息…</string>
     <string name="search_empty_title">搜索所有内容</string>
-    <string name="search_empty_detail">搜索频道、私信、成员、Agent 和消息历史。</string>
+    <string name="search_empty_detail">搜索频道、私信、成员、Agent、电脑和消息历史。</string>
     <string name="search_empty_results_query">没有关于“%1$s”的结果</string>
     <string name="search_empty_results">没有匹配的消息</string>
     <string name="search_empty_query_detail">请尝试其他关键词或更短的短语。</string>
     <string name="search_empty_filters_detail">请尝试其他筛选组合。</string>
     <string name="search_section_channels_dms">频道和私信</string>
+    <string name="search_section_entities">频道、成员和电脑</string>
     <string name="search_section_messages">消息</string>
     <string name="search_action_load_more_results">加载更多结果</string>
     <string name="search_filter_scope">范围</string>
@@ -1495,6 +1496,7 @@
     <string name="search_entity_agent">Agent</string>
     <string name="search_entity_person">人类</string>
     <string name="search_entity_members">成员</string>
+    <string name="search_entity_computer">电脑</string>
     <string name="search_meta_thread">消息列</string>
     <string name="search_hits_count">%1$d 条命中</string>
     <string name="search_state_no_preview">暂无预览</string>

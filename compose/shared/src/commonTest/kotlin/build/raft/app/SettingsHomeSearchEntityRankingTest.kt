@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.ComputerStatus
+import build.raft.app.data.ComputerSummary
 import build.raft.app.data.SearchSenderFilterItem
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
@@ -93,9 +95,74 @@ class SettingsHomeSearchEntityRankingTest {
         assertEquals(emptyList(), results)
     }
 
+    @Test
+    fun computersUseWebFieldPriorityAndStayOutOfPrefixSearches() {
+        val directory =
+            HomeSearchComputerDirectory(
+                serverId = "server-1",
+                machines =
+                    listOf(
+                        computer(
+                            id = "machine-1",
+                            name = "Orion Workstation",
+                            hostname = "build-host",
+                            description = "Render Farm",
+                            os = "Darwin",
+                        ),
+                        computer(id = "agent-runtime", name = "Orion Agent", isComputer = false),
+                    ),
+                hasSnapshot = true,
+            )
+
+        listOf("Orion Workstation", "build-host", "Render Farm", "Darwin").forEach { query ->
+            val result = resultsFor(query, directory).single { it.type == SearchEntityType.Computer }
+            assertEquals("computer:server-1:machine-1", result.key)
+            assertEquals("build-host", result.subtitle)
+        }
+        assertTrue(resultsFor("#Orion", directory).none { it.type == SearchEntityType.Computer })
+        assertTrue(resultsFor("@Orion", directory).none { it.type == SearchEntityType.Computer })
+        assertTrue(resultsFor("Orion Agent", directory).none { it.type == SearchEntityType.Computer })
+    }
+
+    @Test
+    fun computersAreServerFencedDeduplicatedAndNavigateByAtomicIdentity() {
+        val machine = computer(id = "machine-1", name = "Build Mac", hostname = "build.local")
+        val matching =
+            resultsFor(
+                query = "Build Mac",
+                computerDirectory =
+                    HomeSearchComputerDirectory(
+                        serverId = "server-1",
+                        machines = listOf(machine, machine),
+                        hasSnapshot = true,
+                    ),
+            ).filter { it.type == SearchEntityType.Computer }
+        assertEquals(1, matching.size)
+        assertEquals(
+            HomeSearchEntityDestination.Computer(SettingsComputerRouteIdentity("server-1", "machine-1")),
+            matching.single().destinationOrNull(),
+        )
+        assertNull(searchEntityPinTarget(matching.single()))
+
+        val leaked =
+            resultsFor(
+                query = "Build Mac",
+                computerDirectory =
+                    HomeSearchComputerDirectory(
+                        serverId = "server-2",
+                        machines = listOf(machine),
+                        hasSnapshot = true,
+                    ),
+            )
+        assertTrue(leaked.none { it.type == SearchEntityType.Computer })
+    }
+
     private fun keysFor(query: String): List<String> = resultsFor(query).map { it.key }
 
-    private fun resultsFor(query: String): List<SearchEntityResult> =
+    private fun resultsFor(
+        query: String,
+        computerDirectory: HomeSearchComputerDirectory = HomeSearchComputerDirectory(),
+    ): List<SearchEntityResult> =
         homeSearchEntityResults(
             query = query,
             homeState = entityHomeState,
@@ -104,7 +171,34 @@ class SettingsHomeSearchEntityRankingTest {
             dmLabel = "DM",
             agentLabel = "Agent",
             personLabel = "Person",
-            membersLabel = "Members"
+            membersLabel = "Members",
+            computerLabel = "Computer",
+            computerDirectory = computerDirectory,
+        )
+
+    private fun computer(
+        id: String,
+        name: String,
+        hostname: String? = null,
+        description: String? = null,
+        os: String? = null,
+        isComputer: Boolean = true,
+    ) =
+        ComputerSummary(
+            id = id,
+            name = name,
+            status = ComputerStatus.Unknown,
+            statusVersion = 0,
+            apiKeyPrefix = null,
+            runtimes = emptyList(),
+            daemonVersion = null,
+            computerVersion = null,
+            isComputer = isComputer,
+            hostname = hostname,
+            os = os,
+            description = description,
+            lastHeartbeat = null,
+            createdAt = null,
         )
 
     private companion object {

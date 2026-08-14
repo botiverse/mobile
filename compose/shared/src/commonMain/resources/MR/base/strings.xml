@@ -1457,14 +1457,15 @@
     <string name="search_error_timeout_detail">The server did not respond in time. Retry search after a moment.</string>
     <string name="search_error_offline_detail">Check your connection, then retry search.</string>
     <string name="search_error_network_detail">The current server could not be reached. Retry search after it reconnects.</string>
-    <string name="search_placeholder">Search channels, DMs, messages…</string>
+    <string name="search_placeholder">Search channels, people, computers, messages…</string>
     <string name="search_empty_title">Search everything</string>
-    <string name="search_empty_detail">Search channels, DMs, people, agents, and message history.</string>
+    <string name="search_empty_detail">Search channels, DMs, people, agents, computers, and message history.</string>
     <string name="search_empty_results_query">No results for “%1$s”</string>
     <string name="search_empty_results">No matching messages</string>
     <string name="search_empty_query_detail">Try different keywords or a shorter phrase.</string>
     <string name="search_empty_filters_detail">Try a different filter set.</string>
     <string name="search_section_channels_dms">Channels &amp; DMs</string>
+    <string name="search_section_entities">Channels, people &amp; computers</string>
     <string name="search_section_messages">Messages</string>
     <string name="search_action_load_more_results">Load more results</string>
     <string name="search_filter_scope">Scope</string>
@@ -1495,6 +1496,7 @@
     <string name="search_entity_agent">Agent</string>
     <string name="search_entity_person">Person</string>
     <string name="search_entity_members">Members</string>
+    <string name="search_entity_computer">Computer</string>
     <string name="search_meta_thread">Thread</string>
     <string name="search_hits_count">%1$d hits</string>
     <string name="search_state_no_preview">No preview</string>
