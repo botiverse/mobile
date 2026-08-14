@@ -3367,6 +3367,9 @@ private fun ThreadPageScreen(
                 replyCacheIdentityTransitionWaiter = { transitionAnchor ->
                     sharedStores.awaitThreadReplyCacheIdentityTransition(storeScope, transitionAnchor)
                 },
+                canonicalConversationIdentityPublisher = { provenance, detail ->
+                    sharedStores.publishCanonicalConversationIdentity(storeScope, provenance, detail)
+                },
                 payloadStore = sharedStores.threadPayloadStore,
                 agentsApiClient = SlockAgentsApiClient(
                     transport = SlockAgentsNetworkApi(networkClient),
@@ -4844,9 +4847,13 @@ internal fun SharedThreadRouteContent(
     val emptyConversationDirectoryProjectionFlow =
         remember { MutableStateFlow(emptyMap<String, SharedConversationDirectoryProjection>()) }
     val headerProjectionServerId =
-        remember(currentSession?.currentServerId, storeScope.initialServerId) {
+        remember(replyCacheProvenance?.serverId, currentSession?.currentServerId, storeScope.initialServerId) {
             threadHeaderProjectionServerId(
-                sessionServerId = currentSession?.currentServerId,
+                sessionServerId =
+                    replyCacheProvenance
+                        ?.serverId
+                        ?.takeIf { it.isNotBlank() }
+                        ?: currentSession?.currentServerId,
                 scopeInitialServerId = storeScope.initialServerId
             )?.let(::ServerId)
         }

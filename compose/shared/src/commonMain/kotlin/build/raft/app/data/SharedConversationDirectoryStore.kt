@@ -10,13 +10,19 @@ import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
+import build.raft.app.model.ConversationSummary
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.conversationDisplayTitleCandidate
 import build.raft.app.model.conversationIdentityLikeTitle
 import build.raft.app.model.conversationSafeDisplayTitleOrNull
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 internal enum class SharedConversationAliasKind(val resolvesUniqueConversation: Boolean) {
     Channel(true),
@@ -95,6 +101,190 @@ internal interface SharedConversationIdentityProvider {
         id: String
     ): SharedConversationDirectoryProjection?
 }
+
+/**
+ * Immutable owner witness attached to a conversation-directory publication. Directory rows are
+ * useful launch candidates, but they are not allowed to cross an environment/account/auth
+ * revision boundary. Canonical destination hydration additionally carries the selected-server
+ * generation so a late A-route response cannot overwrite a newer B/A selection.
+ */
+internal data class SharedConversationIdentityAuthority(
+    val environmentId: String,
+    val accountId: String,
+    val serverId: String,
+    val authGeneration: Long,
+    val selectionGeneration: Long = 0L,
+)
+
+internal data class SharedConversationIdentityCandidatePublication(
+    val serverId: ServerId,
+    val accountId: String,
+    val revision: Long,
+    val state: SharedConversationDirectoryState,
+)
+
+/**
+ * Provider-owned directory for one shell scope. Home and the opened-DM fast path publish only
+ * candidates; a destination-owned canonical detail publication is merged last and therefore wins
+ * over those candidates. The hub exists before Home is created, which is the important cold
+ * process-restore property.
+ */
+internal class SharedConversationIdentityHub(
+    private val diagnosticsLogger: (String) -> Unit = {}
+) : SharedConversationIdentityProvider {
+    private data class Binding(
+        val environmentId: String,
+        val accountId: String,
+        val authGeneration: Long,
+    )
+
+    private data class CandidateEntry(
+        val revision: Long,
+        val state: SharedConversationDirectoryState,
+    )
+
+    private data class CanonicalEntry(
+        val authority: SharedConversationIdentityAuthority,
+        val projection: SharedConversationDirectoryProjection,
+    )
+
+    private val lock = SynchronizedObject()
+    private val candidateByServer = linkedMapOf<String, CandidateEntry>()
+    private val canonicalByServer = linkedMapOf<String, MutableMap<String, CanonicalEntry>>()
+    private val latestSelectionGenerationByServer = linkedMapOf<String, Long>()
+    private var binding: Binding? = null
+    private val state = MutableStateFlow<Map<String, SharedConversationDirectoryState>>(emptyMap())
+
+    /** Publish a Home/Activity/open-DM candidate. Lower or duplicate revisions are ignored. */
+    fun publishCandidate(
+        authority: SharedConversationIdentityAuthority,
+        revision: Long,
+        next: SharedConversationDirectoryState,
+    ): Boolean = synchronized(lock) {
+        if (!admitBinding(authority)) return@synchronized false
+        val serverId = authority.serverId.trim().takeIf { it.isNotBlank() } ?: return@synchronized false
+        val previous = candidateByServer[serverId]
+        if (previous != null && revision <= previous.revision) return@synchronized false
+        candidateByServer[serverId] = CandidateEntry(revision = revision, state = next)
+        recompute(serverId)
+        true
+    }
+
+    /** Publish destination-owned canonical detail; it always merges after candidates. */
+    fun publishCanonical(
+        authority: SharedConversationIdentityAuthority,
+        projection: SharedConversationDirectoryProjection,
+    ): Boolean = synchronized(lock) {
+        if (!admitBinding(authority)) return@synchronized false
+        val serverId = authority.serverId.trim().takeIf { it.isNotBlank() } ?: return@synchronized false
+        if (projection.serverId != serverId) return@synchronized false
+        val latestSelection = latestSelectionGenerationByServer[serverId]
+        if (latestSelection != null && authority.selectionGeneration < latestSelection) {
+            diagnosticsLogger(
+                "conversation_directory_canonical_drop reason=stale_selection " +
+                    "serverId=$serverId incoming=${authority.selectionGeneration} current=$latestSelection"
+            )
+            return@synchronized false
+        }
+        if (latestSelection == null || authority.selectionGeneration > latestSelection) {
+            latestSelectionGenerationByServer[serverId] = authority.selectionGeneration
+            canonicalByServer[serverId]?.clear()
+        }
+        canonicalByServer
+            .getOrPut(serverId) { linkedMapOf() }[projection.canonicalChannelId] =
+            CanonicalEntry(authority = authority, projection = projection)
+        recompute(serverId)
+        true
+    }
+
+    fun clear() = synchronized(lock) {
+        candidateByServer.clear()
+        canonicalByServer.clear()
+        latestSelectionGenerationByServer.clear()
+        binding = null
+        state.value = emptyMap()
+    }
+
+    override fun observeServer(serverId: ServerId): Flow<SharedConversationDirectoryState> =
+        state
+            .map { byServer -> byServer[serverId.value] ?: SharedConversationDirectoryState() }
+            .distinctUntilChanged()
+
+    override fun projectionFlow(
+        serverId: ServerId,
+        ids: Collection<String>
+    ): Flow<Map<String, SharedConversationDirectoryProjection>> =
+        observeServer(serverId)
+            .map { current ->
+                ids
+                    .filter { it.isNotBlank() }
+                    .associateWith { id -> current.resolve(id) }
+                    .filterValues { it != null }
+                    .mapValues { (_, value) -> value!! }
+            }
+            .distinctUntilChanged()
+
+    override fun resolveProjection(serverId: ServerId, id: String): SharedConversationDirectoryProjection? =
+        state.value[serverId.value]?.resolve(id)
+
+    private fun admitBinding(authority: SharedConversationIdentityAuthority): Boolean {
+        val environment = authority.environmentId.trim().trimEnd('/')
+        val account = authority.accountId.trim()
+        if (environment.isBlank() || account.isBlank() || authority.authGeneration < 0L) return false
+        val current = binding
+        if (current == null) {
+            binding = Binding(environment, account, authority.authGeneration)
+            return true
+        }
+        if (current.environmentId != environment || current.accountId != account) {
+            if (authority.authGeneration <= current.authGeneration) return false
+            clearRowsKeepingBinding()
+            binding = Binding(environment, account, authority.authGeneration)
+            return true
+        }
+        if (authority.authGeneration < current.authGeneration) return false
+        if (authority.authGeneration > current.authGeneration) {
+            clearRowsKeepingBinding()
+            binding = Binding(environment, account, authority.authGeneration)
+        }
+        return true
+    }
+
+    private fun clearRowsKeepingBinding() {
+        candidateByServer.clear()
+        canonicalByServer.clear()
+        latestSelectionGenerationByServer.clear()
+        state.value = emptyMap()
+    }
+
+    private fun recompute(serverId: String) {
+        val candidate = candidateByServer[serverId]?.state
+        val canonical = canonicalByServer[serverId].orEmpty().values.map { it.projection }
+        val projections = buildList {
+            candidate?.projectionsByCanonicalId?.values?.let(::addAll)
+            addAll(canonical)
+        }
+        val next = state.value.toMutableMap()
+        if (projections.isEmpty()) {
+            next.remove(serverId)
+        } else {
+            next[serverId] = projections.toSharedConversationDirectoryState(logger = diagnosticsLogger)
+        }
+        state.value = next
+    }
+}
+
+internal fun ConversationSummary.toCanonicalConversationDirectoryProjection(
+    serverId: ServerId
+): SharedConversationDirectoryProjection? =
+    when (kind) {
+        ConversationKind.DirectMessage -> toHomeDirectMessageRow().toSharedConversationDirectoryProjection(serverId)
+        ConversationKind.Channel,
+        ConversationKind.Joint -> toHomeChannelRow().toSharedConversationDirectoryProjection(serverId)
+        ConversationKind.Thread,
+        ConversationKind.Inbox,
+        ConversationKind.System -> null
+    }
 
 internal fun HomeSnapshot.toSharedConversationDirectoryState(
     logger: (String) -> Unit = {}
@@ -233,7 +423,7 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         channelKind = toDirectoryChannelType(),
         title = title,
         subtitle = subtitle?.takeIf { it.isNotBlank() },
-        avatarWireValue = null,
+        avatarWireValue = directMessagePeerAvatarWireValue?.takeIf { it.isNotBlank() },
         avatarLabel = title.take(2).uppercase(),
         peerIdentity =
             if (kind == ConversationKind.DirectMessage) {

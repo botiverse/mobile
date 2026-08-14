@@ -6,6 +6,7 @@ import build.raft.app.SharedThreadComposerDraftPersistence
 import build.raft.app.CoroutineThreadComposerDraftPersistenceScheduler
 import build.raft.app.KeyValuePixelAvatarStore
 import build.raft.app.ProcessAttachmentAuthScopes
+import build.raft.app.ReplyCacheProvenance
 import build.raft.app.SharedThreadMessageStore
 import build.raft.app.SharedThreadPayloadStore
 import build.raft.app.SlockPixelAvatarRuntime
@@ -403,6 +404,8 @@ internal class SlockSharedStoreProvider private constructor(
     private val shellNavigationCoordinators = SlockShellScopedStoreCache<SharedWindowNavigationCoordinator>()
     private val shellConversationForwardHistories = SlockShellScopedStoreCache<SharedConversationForwardHistory>()
     private val shellForegroundBannerStores = SlockShellScopedStoreCache<SharedForegroundBannerStore>()
+    private val shellConversationIdentityHubs =
+        SlockShellScopedStoreCache<SharedConversationIdentityHub>()
     private val shellRealtimeRoomLeaseRegistries =
         SlockShellScopedStoreCache<SharedRealtimeRoomLeaseRegistry>()
     private val shellAdaptiveWorkspaceStores =
@@ -521,6 +524,7 @@ internal class SlockSharedStoreProvider private constructor(
                     homeSavedStateCache.clear()
                 }
             if (committed) {
+                shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.clear() }
                 clearActiveServerSelectionsIfUnchanged(selectionReceipts)
             }
         }
@@ -557,6 +561,7 @@ internal class SlockSharedStoreProvider private constructor(
                 val stillCurrent =
                     processAuthTerminalSource.runIfAuthSessionTerminalRevision(snapshot.generation) {}
                 if (stillCurrent) {
+                    shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.clear() }
                     clearActiveServerSelectionsIfUnchanged(receipts)
                 }
                 updateNetworkKmmRecoveryEnvironment()
@@ -613,7 +618,48 @@ internal class SlockSharedStoreProvider private constructor(
         get() = sharedHomeStore(SlockShellStoreScope.Legacy)
 
     fun conversationIdentityProvider(scope: SlockShellStoreScope): SharedConversationIdentityProvider? =
-        homeStores.get(scope)
+        conversationIdentityHub(scope)
+
+    private fun conversationIdentityHub(scope: SlockShellStoreScope): SharedConversationIdentityHub =
+        shellConversationIdentityHubs.getOrPut(scope) {
+            SharedConversationIdentityHub(
+                diagnosticsLogger =
+                    sharedInfoLogger("SlockConversationDirectory", "conversation_directory_hub")
+            )
+        }
+
+    internal suspend fun publishCanonicalConversationIdentity(
+        scope: SlockShellStoreScope,
+        provenance: ReplyCacheProvenance,
+        detail: build.raft.app.model.ConversationSummary,
+    ): Boolean {
+        val current = captureThreadReplyCacheIdentity(scope) ?: return false
+        if (
+            current.environmentId != provenance.environmentId ||
+            current.principalId != provenance.principalId ||
+            current.serverId != provenance.serverId ||
+            current.authGeneration != provenance.authGeneration ||
+            current.selectionGeneration != provenance.selectionGeneration
+        ) {
+            sharedWarnLogger("SlockConversationDirectory", "conversation_directory_canonical_drop")(
+                "reason=authority_changed serverId=${provenance.serverId}"
+            )
+            return false
+        }
+        val serverId = ServerId(provenance.serverId)
+        val projection = detail.toCanonicalConversationDirectoryProjection(serverId) ?: return false
+        return conversationIdentityHub(scope).publishCanonical(
+            authority =
+                SharedConversationIdentityAuthority(
+                    environmentId = provenance.environmentId,
+                    accountId = provenance.principalId,
+                    serverId = provenance.serverId,
+                    authGeneration = provenance.authGeneration,
+                    selectionGeneration = provenance.selectionGeneration,
+                ),
+            projection = projection,
+        )
+    }
 
     fun sharedHomeStore(scope: SlockShellStoreScope): SharedHomeStore? =
         homeStores.get(scope)
@@ -995,7 +1041,31 @@ internal class SlockSharedStoreProvider private constructor(
                 readReceiptOwnerFactory = ::readReceiptOwner,
                 readStateV1Canary = processReadStateV1Canary,
                 pinUpdateFailureCallback = pinUpdateFailureCallback,
-                persistSlices = listOf(homeIdentityPersistSlice)
+                persistSlices = listOf(homeIdentityPersistSlice),
+                conversationIdentityPublicationSink = publication@{ publication ->
+                    // Capture the authority in the same synchronous turn as the Home state that
+                    // produced this candidate. Looking it up later in a launched coroutine could
+                    // re-endorse an old same-account row with a successor auth revision.
+                    val context = replyCacheAuthContext.value ?: return@publication
+                    val environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+                    if (
+                        environmentId != context.environmentId ||
+                        publication.accountId != context.accountId
+                    ) {
+                        return@publication
+                    }
+                    conversationIdentityHub(scope).publishCandidate(
+                        authority =
+                            SharedConversationIdentityAuthority(
+                                environmentId = environmentId,
+                                accountId = context.accountId,
+                                serverId = publication.serverId.value,
+                                authGeneration = context.authorityGeneration,
+                            ),
+                        revision = publication.revision,
+                        next = publication.state,
+                    )
+                },
             )
         }
     }
@@ -1248,6 +1318,7 @@ internal class SlockSharedStoreProvider private constructor(
         shellNavigationCoordinators.remove(scope)?.clear()
         shellConversationForwardHistories.remove(scope)?.release()
         shellForegroundBannerStores.remove(scope)?.clear()
+        shellConversationIdentityHubs.remove(scope)?.clear()
         selectedServerStores.remove(scope)
     }
 

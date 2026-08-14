@@ -98,6 +98,7 @@ data class ConversationSummary(
     val name: String,
     val subtitle: String? = null,
     val directMessagePeerType: String? = null,
+    val directMessagePeerAvatarWireValue: String? = null,
     val unreadCount: Int = 0,
     val unreadCountKnown: Boolean = false,
     val mentionCount: Int = 0,

@@ -359,6 +359,7 @@ private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) 
             peerDescription?.takeIf { it.isNotBlank() }
                 ?: description?.takeIf { it.isNotBlank() },
         directMessagePeerType = peerType.takeIf { it.isNotBlank() },
+        directMessagePeerAvatarWireValue = peerAvatarUrl?.takeIf { it.isNotBlank() },
         presenceMemberId = MemberId(peerId),
         lastMessageAt = lastMessageAt,
         readStateV1Hydrate = readStateV1HydrateCarrier(),

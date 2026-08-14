@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.DataResult
+import build.raft.app.data.ConversationRepository
 import build.raft.app.data.SharedMessagesPayload
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InMemorySlockAuthSessionStore
@@ -8,6 +9,7 @@ import build.raft.app.data.MessageMutationSummary
 import build.raft.app.data.PendingMentionActionExecuteResult
 import build.raft.app.data.SlockThreadApi
 import build.raft.app.data.ProcessPresenceAuthContext
+import build.raft.app.data.ScreenError
 import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.SlockShellScopedStoreCache
 import build.raft.app.data.SlockShellStoreScope
@@ -24,6 +26,7 @@ import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.ThreadAttachmentOpenTarget
 import build.raft.app.data.ThreadMessagesPage
+import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.toHomeChannelRow
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -255,6 +258,107 @@ class SharedThreadReplyCacheProvenanceTest {
                 ParentMessageId
             )
         )
+    }
+
+    @Test
+    fun sameAccountAndServerWithNewAuthorityRevisionMintsFreshToken() = runBlocking {
+        val authStore = InMemorySlockAuthSessionStore(session("account-a"))
+        val messageStore = SharedThreadMessageStore()
+        var authGeneration = 7L
+        var selectionGeneration = 11L
+        val dataSource =
+            dataSource(
+                authStore = authStore,
+                messageStore = messageStore,
+                authority = {
+                    ThreadReplyCacheIdentitySnapshot(
+                        session = requireNotNull(authStore.readSession()),
+                        environmentId = "https://prod.example.test",
+                        principalId = "account-a",
+                        serverId = "server-1",
+                        authGeneration = authGeneration,
+                        selectionGeneration = selectionGeneration,
+                    )
+                },
+            )
+        val first = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+
+        authGeneration += 1L
+        selectionGeneration += 1L
+        val second = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+
+        assertNotEquals(first, second)
+        assertEquals(authGeneration, second.authGeneration)
+        assertEquals(selectionGeneration, second.selectionGeneration)
+        assertTrue(second.generation > first.generation)
+        assertFalse(
+            dataSource.rememberReplyParentCandidate(
+                provenance = first,
+                serverId = "server-1",
+                parentChannelId = "channel-1",
+                parentMessage = parentMessage(),
+                threadChannelId = "thread-parent-1",
+            )
+        )
+    }
+
+    @Test
+    fun canonicalConversationDetailPublishesWithCurrentReplyCacheProvenance() = runBlocking {
+        val detail = directMessageDetail("Cindy", "pixel:cindy")
+        val repository = canonicalConversationRepository(detail)
+        val published = mutableListOf<Pair<ReplyCacheProvenance, ConversationSummary>>()
+        val dataSource =
+            dataSource(
+                authStore = InMemorySlockAuthSessionStore(session("account-a")),
+                messageStore = SharedThreadMessageStore(),
+                conversationRepository = repository,
+                canonicalConversationIdentityPublisher = { provenance, canonical ->
+                    published += provenance to canonical
+                    true
+                },
+            )
+
+        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+            dataSource.fetchThreadPayload(directMessagePayload(), persistResult = false)
+        )
+
+        assertEquals(1, published.size)
+        assertEquals("https://prod.example.test", published.single().first.environmentId)
+        assertEquals("account-a", published.single().first.principalId)
+        assertEquals("server-1", published.single().first.serverId)
+        assertEquals("Cindy", published.single().second.name)
+        assertEquals("pixel:cindy", published.single().second.directMessagePeerAvatarWireValue)
+    }
+
+    @Test
+    fun lateCanonicalConversationDetailFromRetiredReplyCacheScopeIsNotPublished() = runBlocking {
+        val authStore = InMemorySlockAuthSessionStore(session("account-a"))
+        val release = CompletableDeferred<Unit>()
+        val repository =
+            canonicalConversationRepository(directMessageDetail("Late Cindy", "pixel:late"))
+                .also { it.releaseThread = release }
+        val published = mutableListOf<Pair<ReplyCacheProvenance, ConversationSummary>>()
+        val dataSource =
+            dataSource(
+                authStore = authStore,
+                messageStore = SharedThreadMessageStore(),
+                conversationRepository = repository,
+                canonicalConversationIdentityPublisher = { provenance, canonical ->
+                    published += provenance to canonical
+                    true
+                },
+            )
+        val request =
+            async {
+                dataSource.fetchThreadPayload(directMessagePayload(), persistResult = false)
+            }
+        repository.threadStarted.await()
+        authStore.saveSession(session("account-b"))
+        assertEquals("account-b", dataSource.captureReplyCacheProducerContext()?.provenance?.principalId)
+        release.complete(Unit)
+
+        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(request.await())
+        assertTrue(published.isEmpty())
     }
 
     @Test
@@ -675,11 +779,15 @@ class SharedThreadReplyCacheProvenanceTest {
         authority: (suspend () -> ThreadReplyCacheIdentitySnapshot?)? = null,
         transitionWaiter:
             (suspend (ThreadReplyCacheIdentityTransitionAnchor?) -> Boolean)? = null,
+        conversationRepository: ConversationRepository? = null,
+        canonicalConversationIdentityPublisher:
+            suspend (ReplyCacheProvenance, ConversationSummary) -> Boolean = { _, _ -> false },
     ): SharedThreadDataSource =
         SharedThreadDataSource(
             api = UnusedThreadApi,
             sessionStore = authStore,
             messageStore = messageStore,
+            conversationRepository = conversationRepository,
             cacheEnvironmentIdProvider = environment,
             replyCacheIdentityAuthority = authority ?: {
                 authStore.readSession()?.let { session ->
@@ -694,7 +802,43 @@ class SharedThreadReplyCacheProvenanceTest {
                 }
             },
             replyCacheIdentityTransitionWaiter = transitionWaiter,
+            canonicalConversationIdentityPublisher = canonicalConversationIdentityPublisher,
             homeSnapshotProvider = { homeSnapshot() }
+        )
+
+    private fun canonicalConversationRepository(
+        detail: ConversationSummary,
+    ): ReplyThreadAccessConversationRepositoryRecorder =
+        ReplyThreadAccessConversationRepositoryRecorder(
+            replyResult = DataResult.Error(ScreenError("unused", retryable = false)),
+            threadResult =
+                DataResult.Content(
+                    ThreadSnapshot(
+                        conversation = detail,
+                        canonicalConversationDetail = detail,
+                        messages = emptyList(),
+                    )
+                ),
+        )
+
+    private fun directMessageDetail(name: String, avatar: String): ConversationSummary =
+        ConversationSummary(
+            threadId = ThreadId("dm-1"),
+            channelId = ChannelId("dm-1"),
+            kind = ConversationKind.DirectMessage,
+            name = name,
+            directMessagePeerType = "human",
+            directMessagePeerAvatarWireValue = avatar,
+            presenceMemberId = MemberId("peer-1"),
+        )
+
+    private fun directMessagePayload(): KuiklyThreadScreenPayload =
+        KuiklyThreadScreenPayload(
+            status = "loading",
+            surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+            channelKind = KuiklyThreadSurfaceKind.DirectMessage,
+            sourceThreadId = "dm-1",
+            streamChannelId = "dm-1",
         )
 
     private fun channelPayload(): KuiklyThreadScreenPayload =

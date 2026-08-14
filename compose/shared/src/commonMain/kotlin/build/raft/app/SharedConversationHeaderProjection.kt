@@ -245,8 +245,10 @@ internal fun KuiklyThreadScreenPayload.threadHeaderFallbackDisplayModel(): Threa
                 subtitle = null,
                 surfaceKind = surfaceKind,
                 channelKind = channelKind,
-                dmPeerAvatarWireValue = null,
-                dmPeerAvatarLabel = displayTitle.take(2).uppercase(),
+                dmPeerAvatarWireValue = dmPeerAvatarUrl?.takeIf { it.isNotBlank() },
+                dmPeerAvatarLabel =
+                    dmPeerAvatarLabel?.takeIf { it.isNotBlank() }
+                        ?: displayTitle.take(2).uppercase(),
                 dmPeerIdentity = dmPeerIdentity
             )
         }

@@ -65,6 +65,7 @@ sealed interface HomeConversationRow {
     val name: String
     val subtitle: String?
     val directMessagePeerType: String?
+    val directMessagePeerAvatarWireValue: String?
     val unreadCount: Int
     val unreadCountKnown: Boolean
     val mentionCount: Int
@@ -110,6 +111,7 @@ data class HomeChannelRow(
     override val name: String,
     override val subtitle: String? = null,
     override val directMessagePeerType: String? = null,
+    override val directMessagePeerAvatarWireValue: String? = null,
     override val unreadCount: Int = 0,
     override val unreadCountKnown: Boolean = false,
     override val mentionCount: Int = 0,
@@ -149,6 +151,7 @@ data class HomeDirectMessageRow(
     override val name: String,
     override val subtitle: String? = null,
     override val directMessagePeerType: String? = null,
+    override val directMessagePeerAvatarWireValue: String? = null,
     override val unreadCount: Int = 0,
     override val unreadCountKnown: Boolean = false,
     override val mentionCount: Int = 0,
@@ -188,6 +191,7 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         name = name,
         subtitle = subtitle,
         directMessagePeerType = directMessagePeerType,
+        directMessagePeerAvatarWireValue = directMessagePeerAvatarWireValue,
         unreadCount = unreadCount,
         unreadCountKnown = unreadCountKnown,
         mentionCount = mentionCount,
@@ -225,6 +229,7 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         name = name,
         subtitle = subtitle,
         directMessagePeerType = directMessagePeerType,
+        directMessagePeerAvatarWireValue = directMessagePeerAvatarWireValue,
         unreadCount = unreadCount,
         unreadCountKnown = unreadCountKnown,
         mentionCount = mentionCount,
@@ -262,6 +267,7 @@ fun ConversationSummary.toHomeDirectMessageRow(): HomeDirectMessageRow =
         name = name,
         subtitle = subtitle,
         directMessagePeerType = directMessagePeerType,
+        directMessagePeerAvatarWireValue = directMessagePeerAvatarWireValue,
         unreadCount = unreadCount,
         unreadCountKnown = unreadCountKnown,
         mentionCount = mentionCount,
@@ -358,6 +364,13 @@ data class ThreadSnapshot(
      */
     @Transient
     val replySummariesAuthority: ThreadReplySummariesAuthority = ThreadReplySummariesAuthority.Unavailable,
+    /**
+     * Destination-owned channel/DM detail loaded with this snapshot. Reply Threads keep their
+     * stream identity in [conversation], so this separate witness retains the canonical parent
+     * conversation without turning the reply stream into its parent.
+     */
+    @Transient
+    val canonicalConversationDetail: ConversationSummary? = null,
 )
 
 data class ThreadListSnapshot(
