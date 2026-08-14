@@ -309,7 +309,7 @@ internal fun homeServerSwitcherBadgePresentation(
                 activityLabel = activityLabel,
                 muted = server.serverPushMuted
             )
-        server.activityUnreadCount == 0 ->
+        server.activityUnreadCount == 0L ->
             HomeServerSwitcherBadgePresentation(
                 kind = HomeServerSwitcherBadgeKind.None,
                 muted = server.serverPushMuted
