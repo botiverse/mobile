@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-14 22:08:53 UTC
+Generated: 2026-08-14 22:14:07 UTC
 Latest run: 10736100-20260814220635
 Latest commit: 10736100-20260814220635
 Commit subject: fix(file-preview): restore durable identities safely
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 86, same 0, pass 0, basic-pass 0, different 85, missing 1
-AI analysis: ready 74 / total 86, pending 12
+AI analysis: ready 85 / total 86, pending 1
 Visual coverage matrix: active 95 / total 114, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

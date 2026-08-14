@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T22:08:53.037Z",
+  "generatedAt": "2026-08-14T22:14:07.754Z",
   "runId": "10736100-20260814220635",
   "cases": [
     {
@@ -26,17 +26,30 @@
         "currentHeight": 288
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-14T22:08:45.057Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-14T22:11:01.789Z",
+        "severity": "low",
+        "summary": [
+          "Android segmented control items are slightly narrower than React, reducing internal horizontal padding around labels.",
+          "Android selected (Mentions 3) button has slightly smaller left/right padding, making the yellow background appear tighter against the text.",
+          "Spacing between segments and overall positioning is near-identical; remaining diffs appear to be minor sub-pixel/rendering artifacts."
+        ],
+        "likelyCauses": [
+          "Android implementation applies a different default horizontal padding inside segmented control buttons compared to the React design spec.",
+          "Possible DP-to-pixel rounding differences between React (web) and Android native rendering at the same logical size."
+        ],
+        "suggestedOwner": "android-ui",
+        "suggestedFixes": [
+          "Match Android segmented control item horizontal padding to the React baseline (increase inner padding by ~1–2 dp).",
+          "Verify the selected-state container width includes consistent label insets across platforms.",
+          "Re-run visual diff after padding alignment to confirm pixel-perfect similarity improves above ~95%."
+        ],
+        "intentional": [
+          "Slight platform-specific rendering differences may be acceptable if spacing remains within the 1 dp layout tolerance."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -123,17 +136,30 @@
             "currentHeight": 288
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:45.057Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:01.789Z",
+            "severity": "low",
+            "summary": [
+              "Android segmented control items are slightly narrower than React, reducing internal horizontal padding around labels.",
+              "Android selected (Mentions 3) button has slightly smaller left/right padding, making the yellow background appear tighter against the text.",
+              "Spacing between segments and overall positioning is near-identical; remaining diffs appear to be minor sub-pixel/rendering artifacts."
+            ],
+            "likelyCauses": [
+              "Android implementation applies a different default horizontal padding inside segmented control buttons compared to the React design spec.",
+              "Possible DP-to-pixel rounding differences between React (web) and Android native rendering at the same logical size."
+            ],
+            "suggestedOwner": "android-ui",
+            "suggestedFixes": [
+              "Match Android segmented control item horizontal padding to the React baseline (increase inner padding by ~1–2 dp).",
+              "Verify the selected-state container width includes consistent label insets across platforms.",
+              "Re-run visual diff after padding alignment to confirm pixel-perfect similarity improves above ~95%."
+            ],
+            "intentional": [
+              "Slight platform-specific rendering differences may be acceptable if spacing remains within the 1 dp layout tolerance."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -156,17 +182,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:48.019Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:28.875Z",
+            "severity": "low",
+            "summary": [
+              "iOS segment labels and counts appear at a smaller relative scale (or with slightly tighter spacing) compared to React within the same segment cell padding",
+              "Vertical alignment of label text ('All','Mentions','Unread') inside cells looks visually consistent; no clipping or cropping observed",
+              "Selected segment (Mentions 3) yellow fill and black border weight match between platforms",
+              "Typography weight of the label vs. count looks comparable; no obvious weight divergence"
+            ],
+            "likelyCauses": [
+              "Minor font rendering/scaling differences between web (React) and iOS native text rendering",
+              "Possible slight inset/padding delta between web and iOS segmented control implementations",
+              "Image scaling of the iOS canvas to compare view makes the iOS control appear slightly smaller relative to frame"
+            ],
+            "suggestedOwner": "iOS engineer",
+            "suggestedFixes": [
+              "Verify segment label font and size tokens match the React design tokens (e.g., font-size, line-height)",
+              "Confirm segment cell horizontal padding matches React values to keep label/count spacing identical",
+              "Re-snap the iOS comparison view to the component bounds (instead of full canvas) for fairer pixel diff",
+              "If differences are within tolerance (pixelMismatch ~1.25%), consider accepting as platform-acceptable rendering variance"
+            ],
+            "intentional": [
+              "Slight font metric differences due to platform text rendering may be acceptable",
+              "Comparison canvas size disparity (342x96 vs 1170x2532) inflates perceived scale difference"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -241,17 +284,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:48.019Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:28.875Z",
+            "severity": "low",
+            "summary": [
+              "iOS segment labels and counts appear at a smaller relative scale (or with slightly tighter spacing) compared to React within the same segment cell padding",
+              "Vertical alignment of label text ('All','Mentions','Unread') inside cells looks visually consistent; no clipping or cropping observed",
+              "Selected segment (Mentions 3) yellow fill and black border weight match between platforms",
+              "Typography weight of the label vs. count looks comparable; no obvious weight divergence"
+            ],
+            "likelyCauses": [
+              "Minor font rendering/scaling differences between web (React) and iOS native text rendering",
+              "Possible slight inset/padding delta between web and iOS segmented control implementations",
+              "Image scaling of the iOS canvas to compare view makes the iOS control appear slightly smaller relative to frame"
+            ],
+            "suggestedOwner": "iOS engineer",
+            "suggestedFixes": [
+              "Verify segment label font and size tokens match the React design tokens (e.g., font-size, line-height)",
+              "Confirm segment cell horizontal padding matches React values to keep label/count spacing identical",
+              "Re-snap the iOS comparison view to the component bounds (instead of full canvas) for fairer pixel diff",
+              "If differences are within tolerance (pixelMismatch ~1.25%), consider accepting as platform-acceptable rendering variance"
+            ],
+            "intentional": [
+              "Slight font metric differences due to platform text rendering may be acceptable",
+              "Comparison canvas size disparity (342x96 vs 1170x2532) inflates perceived scale difference"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -5364,17 +5424,28 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:48.262Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:29.160Z",
+            "severity": "low",
+            "summary": [
+              "Pixel-perfect similarity is 99.77% with only 0.23% mismatch, indicating near-identical rendering.",
+              "Header layout, status dot colors, and \"Waiting pulse\" label align closely between React and iOS.",
+              "\"Waiting pulse\" pulse animation ring on iOS may render at slightly different phase/opacity than React in the captured frame."
+            ],
+            "likelyCauses": [
+              "Animated pulse state captured at a different keyframe/phase between React and iOS platforms.",
+              "Minor platform-specific animation timing differences in the pulse effect."
+            ],
+            "suggestedOwner": "iOS engineer",
+            "suggestedFixes": [
+              "If the pulse animation mismatch is unintentional, normalize the animation timing/duration across platforms.",
+              "Re-run the comparison on a static frame (paused animation) to isolate non-animation differences.",
+              "Confirm the status dot fill colors and stroke widths match the design tokens on both platforms."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -5448,17 +5519,28 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:48.262Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:29.160Z",
+            "severity": "low",
+            "summary": [
+              "Pixel-perfect similarity is 99.77% with only 0.23% mismatch, indicating near-identical rendering.",
+              "Header layout, status dot colors, and \"Waiting pulse\" label align closely between React and iOS.",
+              "\"Waiting pulse\" pulse animation ring on iOS may render at slightly different phase/opacity than React in the captured frame."
+            ],
+            "likelyCauses": [
+              "Animated pulse state captured at a different keyframe/phase between React and iOS platforms.",
+              "Minor platform-specific animation timing differences in the pulse effect."
+            ],
+            "suggestedOwner": "iOS engineer",
+            "suggestedFixes": [
+              "If the pulse animation mismatch is unintentional, normalize the animation timing/duration across platforms.",
+              "Re-run the comparison on a static frame (paused animation) to isolate non-animation differences.",
+              "Confirm the status dot fill colors and stroke widths match the design tokens on both platforms."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -8511,17 +8593,35 @@
         "currentHeight": 582
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-14T22:08:45.179Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-14T22:11:02.016Z",
+        "severity": "medium",
+        "summary": [
+          "Typography weight differs: React Select text is bold while Android Select text is regular weight",
+          "Disabled/placeholder state styling differs: React uses lighter/gray text with thinner border, Android uses heavier gray fill background with solid black border",
+          "Border weight is inconsistent across states on Android (both states have identical heavy black borders vs React's variable weight)",
+          "Vertical spacing between the two select components is larger on Android",
+          "Dropdown chevron icon appears slightly larger/bolder on Android side"
+        ],
+        "likelyCauses": [
+          "Android Select component not mapping typography weight (fontWeight: bold) from design tokens",
+          "Android disabled state styling using background fill instead of opacity/text-color approach used in React",
+          "Border width token not being applied or using default thicker value on Android component",
+          "Inconsistent padding/margin tokens between React and Android implementations",
+          "Design token parity issue: Android component not honoring state-specific variants"
+        ],
+        "suggestedOwner": "android-engineering",
+        "suggestedFixes": [
+          "Update Android Select typography to use bold (700) font weight matching React baseline for the selected state",
+          "Align Android disabled state styling with React approach: lighter text color and reduced border opacity instead of gray fill background",
+          "Normalize border width across both states to match React's variable stroke weights",
+          "Tighten vertical gap between Select components to match React spacing (reduce ~16px)",
+          "Verify chevron icon size token matches across platforms; consider using a shared icon asset"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -8608,17 +8708,35 @@
             "currentHeight": 582
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:45.179Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:02.016Z",
+            "severity": "medium",
+            "summary": [
+              "Typography weight differs: React Select text is bold while Android Select text is regular weight",
+              "Disabled/placeholder state styling differs: React uses lighter/gray text with thinner border, Android uses heavier gray fill background with solid black border",
+              "Border weight is inconsistent across states on Android (both states have identical heavy black borders vs React's variable weight)",
+              "Vertical spacing between the two select components is larger on Android",
+              "Dropdown chevron icon appears slightly larger/bolder on Android side"
+            ],
+            "likelyCauses": [
+              "Android Select component not mapping typography weight (fontWeight: bold) from design tokens",
+              "Android disabled state styling using background fill instead of opacity/text-color approach used in React",
+              "Border width token not being applied or using default thicker value on Android component",
+              "Inconsistent padding/margin tokens between React and Android implementations",
+              "Design token parity issue: Android component not honoring state-specific variants"
+            ],
+            "suggestedOwner": "android-engineering",
+            "suggestedFixes": [
+              "Update Android Select typography to use bold (700) font weight matching React baseline for the selected state",
+              "Align Android disabled state styling with React approach: lighter text color and reduced border opacity instead of gray fill background",
+              "Normalize border width across both states to match React's variable stroke weights",
+              "Tighten vertical gap between Select components to match React spacing (reduce ~16px)",
+              "Verify chevron icon size token matches across platforms; consider using a shared icon asset"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -8641,17 +8759,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:48.423Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:29.392Z",
+            "severity": "medium",
+            "summary": [
+              "iOS select component bounds are wider (~40% of viewport) than React baseline (~72% of capture width) due to different canvas widths",
+              "iOS placeholder 'Select…' text uses lighter, thinner font weight versus React's bolder heavy weight",
+              "iOS dropdown renders with a light gray/lavender filled background on the placeholder state; React uses a transparent background with only an outlined border",
+              "iOS selected 'Codex' text appears lighter weight and slightly smaller than React's bold heavy weight",
+              "Caret/chevron icon on iOS is smaller and thinner than React's larger down-chevron"
+            ],
+            "likelyCauses": [
+              "iOS SwiftUI dropdown uses system default font (SF) with lighter weight instead of mapped design-system font weight",
+              "iOS implementation applies a default fill/background to the picker that React baseline does not",
+              "Component width was not constrained to match design spec on iOS, stretching to available frame",
+              "Design tokens for font-weight and surface fill not shared between React and iOS implementations"
+            ],
+            "suggestedOwner": "iOS engineering / design-system team",
+            "suggestedFixes": [
+              "Map iOS select font weight to match React (semibold/bold) and apply consistent font size token",
+              "Remove the default background fill on iOS placeholder state or set it to transparent to match React outline-only style",
+              "Constrain iOS select component width to match the React component-bounds crop (or apply consistent max-width token)",
+              "Sync shared design tokens (font-weight, surface-fill, border-color) between React and iOS",
+              "Verify chevron icon size/stroke matches the React baseline"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -8722,17 +8857,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:48.423Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:29.392Z",
+            "severity": "medium",
+            "summary": [
+              "iOS select component bounds are wider (~40% of viewport) than React baseline (~72% of capture width) due to different canvas widths",
+              "iOS placeholder 'Select…' text uses lighter, thinner font weight versus React's bolder heavy weight",
+              "iOS dropdown renders with a light gray/lavender filled background on the placeholder state; React uses a transparent background with only an outlined border",
+              "iOS selected 'Codex' text appears lighter weight and slightly smaller than React's bold heavy weight",
+              "Caret/chevron icon on iOS is smaller and thinner than React's larger down-chevron"
+            ],
+            "likelyCauses": [
+              "iOS SwiftUI dropdown uses system default font (SF) with lighter weight instead of mapped design-system font weight",
+              "iOS implementation applies a default fill/background to the picker that React baseline does not",
+              "Component width was not constrained to match design spec on iOS, stretching to available frame",
+              "Design tokens for font-weight and surface fill not shared between React and iOS implementations"
+            ],
+            "suggestedOwner": "iOS engineering / design-system team",
+            "suggestedFixes": [
+              "Map iOS select font weight to match React (semibold/bold) and apply consistent font size token",
+              "Remove the default background fill on iOS placeholder state or set it to transparent to match React outline-only style",
+              "Constrain iOS select component width to match the React component-bounds crop (or apply consistent max-width token)",
+              "Sync shared design tokens (font-weight, surface-fill, border-color) between React and iOS",
+              "Verify chevron icon size/stroke matches the React baseline"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -13420,17 +13572,37 @@
         "currentHeight": 360
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-14T22:08:45.271Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-14T22:11:02.131Z",
+        "severity": "medium",
+        "summary": [
+          "Android (right) is missing three action icons that exist on React (left): search (magnifier), notifications (bell), and an unnamed square icon — these three are omitted between the channel (#) and settings (gear) buttons.",
+          "Android title text '首页专修' is not truncated, while React shows '首页专…' with ellipsis, indicating React applies text truncation React baseline.",
+          "Android subtitle is longer and not truncated ('Home shell, server badg…') whereas React shows truncated 'Home she…', React ellipsizes earlier.",
+          "Android notification/member badge shows '4' while React shows '0', suggesting the badge count differs or is rendered with a different numeric value.",
+          "Bottom tab row on Android renders only Chat, Tasks, Files (3 tabs visible) while React shows the same three tabs but with different relative spacing — React tabs appear wider/more padded; Android tabs are tighter to the right edge."
+        ],
+        "likelyCauses": [
+          "Android implementation is not rendering the full set of header action icons defined in the design spec (search, notifications, square).",
+          "Different truncation rules or container widths between React and Android causing subtitle and title to ellipsize at different points.",
+          "Badge count source data differs between platforms, or Android reads a different value (4 vs 0).",
+          "Inconsistent tab list ordering/sizing — Android may be omitting a fourth tab or using smaller tab widths."
+        ],
+        "suggestedOwner": "android-ui",
+        "suggestedFixes": [
+          "Verify the Android thread header renders all six trailing action icons (search, bell, square, settings, members+badge) in the same order as the React baseline.",
+          "Align title and subtitle truncation policies (e.g., maxLines=1 + ellipsize=end) and ensure the title container has the same width constraints on both platforms.",
+          "Reconcile notification badge source so both platforms render identical counts; ensure badge typography and padding match the React baseline.",
+          "Audit bottom tab implementation: confirm the same tab set and identical padding/gap values as the React version, especially the trailing tab's right margin.",
+          "Run a focused visual diff on the header region only (excluding tabs) to confirm whether the action-icon omission alone accounts for the 21.37% pixel mismatch."
+        ],
+        "intentional": [
+          "Badge count difference (0 vs 4) may reflect intentional state difference captured by the test fixture for header.states.",
+          "Longer subtitle on Android may be intentional if Android allows wrapping while React enforces single-line ellipsis."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -13517,17 +13689,37 @@
             "currentHeight": 360
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:45.271Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:02.131Z",
+            "severity": "medium",
+            "summary": [
+              "Android (right) is missing three action icons that exist on React (left): search (magnifier), notifications (bell), and an unnamed square icon — these three are omitted between the channel (#) and settings (gear) buttons.",
+              "Android title text '首页专修' is not truncated, while React shows '首页专…' with ellipsis, indicating React applies text truncation React baseline.",
+              "Android subtitle is longer and not truncated ('Home shell, server badg…') whereas React shows truncated 'Home she…', React ellipsizes earlier.",
+              "Android notification/member badge shows '4' while React shows '0', suggesting the badge count differs or is rendered with a different numeric value.",
+              "Bottom tab row on Android renders only Chat, Tasks, Files (3 tabs visible) while React shows the same three tabs but with different relative spacing — React tabs appear wider/more padded; Android tabs are tighter to the right edge."
+            ],
+            "likelyCauses": [
+              "Android implementation is not rendering the full set of header action icons defined in the design spec (search, notifications, square).",
+              "Different truncation rules or container widths between React and Android causing subtitle and title to ellipsize at different points.",
+              "Badge count source data differs between platforms, or Android reads a different value (4 vs 0).",
+              "Inconsistent tab list ordering/sizing — Android may be omitting a fourth tab or using smaller tab widths."
+            ],
+            "suggestedOwner": "android-ui",
+            "suggestedFixes": [
+              "Verify the Android thread header renders all six trailing action icons (search, bell, square, settings, members+badge) in the same order as the React baseline.",
+              "Align title and subtitle truncation policies (e.g., maxLines=1 + ellipsize=end) and ensure the title container has the same width constraints on both platforms.",
+              "Reconcile notification badge source so both platforms render identical counts; ensure badge typography and padding match the React baseline.",
+              "Audit bottom tab implementation: confirm the same tab set and identical padding/gap values as the React version, especially the trailing tab's right margin.",
+              "Run a focused visual diff on the header region only (excluding tabs) to confirm whether the action-icon omission alone accounts for the 21.37% pixel mismatch."
+            ],
+            "intentional": [
+              "Badge count difference (0 vs 4) may reflect intentional state difference captured by the test fixture for header.states.",
+              "Longer subtitle on Android may be intentional if Android allows wrapping while React enforces single-line ellipsis."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -13550,17 +13742,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:48.677Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:29.744Z",
+            "severity": "medium",
+            "summary": [
+              "iOS header is missing 3 icon buttons present in React: search (magnifying glass), notifications (bell), and an unnamed square/placeholder icon between bell and settings.",
+              "iOS header has larger title typography and more vertical spacing than the React baseline; the title row is taller in iOS.",
+              "iOS subtitle text 'Home shell, server badg…' is wider and shown without truncation while React shows 'Home she…' (truncated).",
+              "iOS member count badge shows '4' whereas React shows '0' — state/data mismatch in the people/avatar badge.",
+              "iOS shows a bottom horizontal divider line under the tabs row that is not present (or is thinner) in React."
+            ],
+            "likelyCauses": [
+              "iOS implementation omitted the search/notification/secondary action buttons defined in the design tokens.",
+              "iOS view model uses a different hardcoded header height/larger font scale than the React component spec.",
+              "Badge count is wired to a different data source or initial value on iOS (4 vs 0).",
+              "iOS added an extra separator hairline below the tab bar that React does not render.",
+              "Tab bar on iOS uses platform-default control sizes (e.g., segmented control scale) rather than the shared design-system sized icons."
+            ],
+            "suggestedOwner": "mobile-ios",
+            "suggestedFixes": [
+              "Add the missing search, notifications, and square icon buttons to the iOS thread header to match the React baseline (5 trailing icons total).",
+              "Constrain iOS title/subtitle typography to the design-system sizes and reduce header vertical padding to match React's 390×120 bounds.",
+              "Align the subtitle truncation behavior (e.g., single line with ellipsis) with React so both render 'Home she…'.",
+              "Fix the member badge so its count matches the design intent (currently 4 vs 0); verify the data binding.",
+              "Remove the extra horizontal divider rendered below the iOS tab bar, or make it consistent with React's bottom border."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -13636,17 +13846,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:48.677Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:29.744Z",
+            "severity": "medium",
+            "summary": [
+              "iOS header is missing 3 icon buttons present in React: search (magnifying glass), notifications (bell), and an unnamed square/placeholder icon between bell and settings.",
+              "iOS header has larger title typography and more vertical spacing than the React baseline; the title row is taller in iOS.",
+              "iOS subtitle text 'Home shell, server badg…' is wider and shown without truncation while React shows 'Home she…' (truncated).",
+              "iOS member count badge shows '4' whereas React shows '0' — state/data mismatch in the people/avatar badge.",
+              "iOS shows a bottom horizontal divider line under the tabs row that is not present (or is thinner) in React."
+            ],
+            "likelyCauses": [
+              "iOS implementation omitted the search/notification/secondary action buttons defined in the design tokens.",
+              "iOS view model uses a different hardcoded header height/larger font scale than the React component spec.",
+              "Badge count is wired to a different data source or initial value on iOS (4 vs 0).",
+              "iOS added an extra separator hairline below the tab bar that React does not render.",
+              "Tab bar on iOS uses platform-default control sizes (e.g., segmented control scale) rather than the shared design-system sized icons."
+            ],
+            "suggestedOwner": "mobile-ios",
+            "suggestedFixes": [
+              "Add the missing search, notifications, and square icon buttons to the iOS thread header to match the React baseline (5 trailing icons total).",
+              "Constrain iOS title/subtitle typography to the design-system sizes and reduce header vertical padding to match React's 390×120 bounds.",
+              "Align the subtitle truncation behavior (e.g., single line with ellipsis) with React so both render 'Home she…'.",
+              "Fix the member badge so its count matches the design intent (currently 4 vs 0); verify the data binding.",
+              "Remove the extra horizontal divider rendered below the iOS tab bar, or make it consistent with React's bottom border."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -17474,17 +17702,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:52.204Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:12:25.749Z",
+            "severity": "low",
+            "summary": [
+              "Image dimension/scale causes minor proportional differences: iOS render is 1170×2532 vs Android 390×844 (3x scale), but visual layout appears consistent after normalization",
+              "Highlight color (yellow) coverage on matched terms like 'android', 'Android', '#android-artifacts' appears slightly wider/larger on iOS, possibly due to font-rendering metrics",
+              "Search input field, filter chips, result cards, and thread/message items are structurally isomorphic with no missing or clipped elements"
+            ],
+            "likelyCauses": [
+              "Platform font rendering differences (San Francisco on iOS vs Roboto on Android) leading to minor glyph-width and highlight-box differences",
+              "Screenshot scale factor (3x vs 1x) not normalized before pixel comparison, inflating the pixelMismatchRatio",
+              "iOS Kuikly runtime may use slightly different default text-measurement or highlight-paint padding for matched search terms"
+            ],
+            "suggestedOwner": "mobile-platform",
+            "suggestedFixes": [
+              "Normalize both screenshots to the same pixel ratio before diffing to reduce false-positive mismatch from scale",
+              "Tighten highlight-paint padding to a consistent dp on both Kuikly targets so the yellow span matches the text metrics exactly",
+              "Cross-check default font + line-height tokens for matched-term highlighting on iOS vs Android Kuikly runtimes",
+              "Verify search-result card vertical rhythm (title, subtitle, meta) matches the Android reference within 1dp layout tolerance"
+            ],
+            "intentional": [
+              "Filter chip row count and wrap behavior differ between Android (single row, fewer chips) and iOS (more chips, wraps) — declared platform-difference and not a defect"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -17564,17 +17807,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:52.204Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:12:25.749Z",
+            "severity": "low",
+            "summary": [
+              "Image dimension/scale causes minor proportional differences: iOS render is 1170×2532 vs Android 390×844 (3x scale), but visual layout appears consistent after normalization",
+              "Highlight color (yellow) coverage on matched terms like 'android', 'Android', '#android-artifacts' appears slightly wider/larger on iOS, possibly due to font-rendering metrics",
+              "Search input field, filter chips, result cards, and thread/message items are structurally isomorphic with no missing or clipped elements"
+            ],
+            "likelyCauses": [
+              "Platform font rendering differences (San Francisco on iOS vs Roboto on Android) leading to minor glyph-width and highlight-box differences",
+              "Screenshot scale factor (3x vs 1x) not normalized before pixel comparison, inflating the pixelMismatchRatio",
+              "iOS Kuikly runtime may use slightly different default text-measurement or highlight-paint padding for matched search terms"
+            ],
+            "suggestedOwner": "mobile-platform",
+            "suggestedFixes": [
+              "Normalize both screenshots to the same pixel ratio before diffing to reduce false-positive mismatch from scale",
+              "Tighten highlight-paint padding to a consistent dp on both Kuikly targets so the yellow span matches the text metrics exactly",
+              "Cross-check default font + line-height tokens for matched-term highlighting on iOS vs Android Kuikly runtimes",
+              "Verify search-result card vertical rhythm (title, subtitle, meta) matches the Android reference within 1dp layout tolerance"
+            ],
+            "intentional": [
+              "Filter chip row count and wrap behavior differ between Android (single row, fewer chips) and iOS (more chips, wraps) — declared platform-difference and not a defect"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -19948,17 +20206,34 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-14T22:08:45.624Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-14T22:11:02.622Z",
+        "severity": "high",
+        "summary": [
+          "Android dialog starts about 16 px farther right and 24 px lower, with a slightly wider body; the 24 px dark shadow makes its visible right and bottom bounds appear even farther out.",
+          "Android has materially smaller typography and tighter component heights than React, including the title, warning, labels, field values, required asterisks, counters, and buttons.",
+          "Android omits React-only content: the \"MORE\" disclosure and the model-loading error message with \"Retry model check\" link.",
+          "Android's runtime and model values differ: \"Codex CLI\" and \"GPT-5.6 Sol\" replace React's placeholder \"Select...\" and selected \"opus\"; Android also adds a refresh icon beside MODEL.",
+          "The primary action is disabled in Android: its pink React fill becomes light gray, its dark text becomes light gray, and the surrounding shadow is gray rather than dark."
+        ],
+        "likelyCauses": [
+          "Android dialog container does not share the React modal's intended inset or width.",
+          "Separate Android text styles and spacing tokens are mapped to smaller values or converted with incompatible density/inset handling.",
+          "Android renders a different runtime state, model state, model-load status, and agent-limit/disabled state.",
+          "Android field and button components use platform-specific padding, border thickness, or minimum-height defaults."
+        ],
+        "suggestedOwner": "Android parity team",
+        "suggestedFixes": [
+          "Align the Android dialog bounds to the React contract, using 16 px left and top insets and matching the React width and shadow offset.",
+          "Adopt React-equivalent dialog type scale, weights, line heights, and spacing tokens for all text, labels, fields, and buttons.",
+          "Restore the \"MORE\" row and loading-error block only when the corresponding model state is present; use React values and states as the reference.",
+          "Match the model refresh icon exactly, or hide it if it is not part of the React design contract.",
+          "Style the Create Agent button with the React pink disabled-state fill, text color, border, padding, and shadow."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -20045,17 +20320,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:45.624Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:02.622Z",
+            "severity": "high",
+            "summary": [
+              "Android dialog starts about 16 px farther right and 24 px lower, with a slightly wider body; the 24 px dark shadow makes its visible right and bottom bounds appear even farther out.",
+              "Android has materially smaller typography and tighter component heights than React, including the title, warning, labels, field values, required asterisks, counters, and buttons.",
+              "Android omits React-only content: the \"MORE\" disclosure and the model-loading error message with \"Retry model check\" link.",
+              "Android's runtime and model values differ: \"Codex CLI\" and \"GPT-5.6 Sol\" replace React's placeholder \"Select...\" and selected \"opus\"; Android also adds a refresh icon beside MODEL.",
+              "The primary action is disabled in Android: its pink React fill becomes light gray, its dark text becomes light gray, and the surrounding shadow is gray rather than dark."
+            ],
+            "likelyCauses": [
+              "Android dialog container does not share the React modal's intended inset or width.",
+              "Separate Android text styles and spacing tokens are mapped to smaller values or converted with incompatible density/inset handling.",
+              "Android renders a different runtime state, model state, model-load status, and agent-limit/disabled state.",
+              "Android field and button components use platform-specific padding, border thickness, or minimum-height defaults."
+            ],
+            "suggestedOwner": "Android parity team",
+            "suggestedFixes": [
+              "Align the Android dialog bounds to the React contract, using 16 px left and top insets and matching the React width and shadow offset.",
+              "Adopt React-equivalent dialog type scale, weights, line heights, and spacing tokens for all text, labels, fields, and buttons.",
+              "Restore the \"MORE\" row and loading-error block only when the corresponding model state is present; use React values and states as the reference.",
+              "Match the model refresh icon exactly, or hide it if it is not part of the React design contract.",
+              "Style the Create Agent button with the React pink disabled-state fill, text color, border, padding, and shadow."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -20078,17 +20370,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:49.048Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:30.529Z",
+            "severity": "high",
+            "summary": [
+              "iOS view shows an on-screen keyboard occupying the bottom half, which is not present in the React baseline; this hides Runtime, Model, Model-error message, More section, and the Cancel/Create-Agent footer actions.",
+              "Cancel and Create Agent buttons on iOS are repositioned just above the keyboard and appear visually smaller/closer together, while the React baseline places them at the bottom of the modal with full spacing.",
+              "Character counter '72/3000' visible under the Description textarea in React is missing/clipped on iOS (likely behind the keyboard).",
+              "Form fields and the title 'CREATE AGENT' render at a larger relative scale on iOS, increasing field heights and reducing vertical gaps between labels and inputs versus the React baseline.",
+              "iOS modal does not appear to be vertically scrollable in the visible region, so the lower form sections (Runtime, Model, Retry model check, More) are completely inaccessible behind the keyboard."
+            ],
+            "likelyCauses": [
+              "iOS native keyboard is presented because a text field has focus, reducing visible viewport without the React web baseline showing a keyboard.",
+              "Modal sheet on iOS is not auto-scrolling or resizing the form to keep lower fields/buttons above the keyboard.",
+              "Different default font sizes, input padding, and line-height between React (web) and iOS native components cause the same content to take more vertical space.",
+              "Button row isn't pinned to the safe-area bottom or wrapped in a keyboard-avoiding container on iOS."
+            ],
+            "suggestedOwner": "iOS",
+            "suggestedFixes": [
+              "Wrap the dialog in a ScrollView (or UIScrollView equivalent) with keyboard-avoiding insets so all fields and the Cancel/Create Agent buttons can scroll above the keyboard.",
+              "Dismiss the keyboard or use a 'done' accessory; ensure tapping outside inputs or pressing Return dismisses focus during screenshot capture.",
+              "Pin the action button row to the keyboard's top inset (or use a safe-area bottom constraint) so primary actions remain visible while typing.",
+              "Standardize form typography and input heights between React and iOS (label size, input padding, gap between fields) so the layout fits without overlapping the keyboard.",
+              "Consider collapsing the Description textarea or moving Model/Runtime into a more compact layout when the keyboard is open."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -20167,17 +20476,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:49.048Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:30.529Z",
+            "severity": "high",
+            "summary": [
+              "iOS view shows an on-screen keyboard occupying the bottom half, which is not present in the React baseline; this hides Runtime, Model, Model-error message, More section, and the Cancel/Create-Agent footer actions.",
+              "Cancel and Create Agent buttons on iOS are repositioned just above the keyboard and appear visually smaller/closer together, while the React baseline places them at the bottom of the modal with full spacing.",
+              "Character counter '72/3000' visible under the Description textarea in React is missing/clipped on iOS (likely behind the keyboard).",
+              "Form fields and the title 'CREATE AGENT' render at a larger relative scale on iOS, increasing field heights and reducing vertical gaps between labels and inputs versus the React baseline.",
+              "iOS modal does not appear to be vertically scrollable in the visible region, so the lower form sections (Runtime, Model, Retry model check, More) are completely inaccessible behind the keyboard."
+            ],
+            "likelyCauses": [
+              "iOS native keyboard is presented because a text field has focus, reducing visible viewport without the React web baseline showing a keyboard.",
+              "Modal sheet on iOS is not auto-scrolling or resizing the form to keep lower fields/buttons above the keyboard.",
+              "Different default font sizes, input padding, and line-height between React (web) and iOS native components cause the same content to take more vertical space.",
+              "Button row isn't pinned to the safe-area bottom or wrapped in a keyboard-avoiding container on iOS."
+            ],
+            "suggestedOwner": "iOS",
+            "suggestedFixes": [
+              "Wrap the dialog in a ScrollView (or UIScrollView equivalent) with keyboard-avoiding insets so all fields and the Cancel/Create Agent buttons can scroll above the keyboard.",
+              "Dismiss the keyboard or use a 'done' accessory; ensure tapping outside inputs or pressing Return dismisses focus during screenshot capture.",
+              "Pin the action button row to the keyboard's top inset (or use a safe-area bottom constraint) so primary actions remain visible while typing.",
+              "Standardize form typography and input heights between React and iOS (label size, input padding, gap between fields) so the layout fits without overlapping the keyboard.",
+              "Consider collapsing the Description textarea or moving Model/Runtime into a more compact layout when the keyboard is open."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -20272,17 +20598,36 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-14T22:08:45.638Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-14T22:11:02.639Z",
+        "severity": "high",
+        "summary": [
+          "Android shows additional Provider field with helper text below it that is absent in React baseline",
+          "React has a 'Models could not be loaded from this Computer' error block with 'Retry model check' link that Android does not render",
+          "Android model select is partially clipped at the bottom of the viewport, while React fully fits with a '> MORE' expandable affordance",
+          "Dialog vertical scroll position differs: React is scrolled to top, Android scrolled lower revealing Provider/Model sections",
+          "Runtime select state differs: React shows 'Select...' placeholder, Android shows 'Claude Code' as selected value"
+        ],
+        "likelyCauses": [
+          "Android implementation renders extra Provider dropdown and helper copy not present in React source",
+          "Missing error/empty-state UI for failed model loading in Android",
+          "Layout/scroll container height not accounting for new Provider block, causing bottom clipping",
+          "Inconsistent default values or hydration between web and native runtime state"
+        ],
+        "suggestedOwner": "Android engineering",
+        "suggestedFixes": [
+          "Hide the Provider field on Android to match React baseline, or update React baseline if Provider is intentional and add it to both",
+          "Implement the 'Models could not be loaded' error block with Retry action on Android",
+          "Increase dialog max-height or enable proper scroll so Model dropdown and action buttons are not clipped",
+          "Align initial Runtime value ('Select...' vs 'Claude Code') across platforms",
+          "If Provider field is intended, ensure accompanying helper text and Model reload icon exist on React baseline as well"
+        ],
+        "intentional": [
+          "Android may intentionally include Provider selector as a native-only advanced option"
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -20369,17 +20714,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:45.638Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:02.639Z",
+            "severity": "high",
+            "summary": [
+              "Android shows additional Provider field with helper text below it that is absent in React baseline",
+              "React has a 'Models could not be loaded from this Computer' error block with 'Retry model check' link that Android does not render",
+              "Android model select is partially clipped at the bottom of the viewport, while React fully fits with a '> MORE' expandable affordance",
+              "Dialog vertical scroll position differs: React is scrolled to top, Android scrolled lower revealing Provider/Model sections",
+              "Runtime select state differs: React shows 'Select...' placeholder, Android shows 'Claude Code' as selected value"
+            ],
+            "likelyCauses": [
+              "Android implementation renders extra Provider dropdown and helper copy not present in React source",
+              "Missing error/empty-state UI for failed model loading in Android",
+              "Layout/scroll container height not accounting for new Provider block, causing bottom clipping",
+              "Inconsistent default values or hydration between web and native runtime state"
+            ],
+            "suggestedOwner": "Android engineering",
+            "suggestedFixes": [
+              "Hide the Provider field on Android to match React baseline, or update React baseline if Provider is intentional and add it to both",
+              "Implement the 'Models could not be loaded' error block with Retry action on Android",
+              "Increase dialog max-height or enable proper scroll so Model dropdown and action buttons are not clipped",
+              "Align initial Runtime value ('Select...' vs 'Claude Code') across platforms",
+              "If Provider field is intended, ensure accompanying helper text and Model reload icon exist on React baseline as well"
+            ],
+            "intentional": [
+              "Android may intentionally include Provider selector as a native-only advanced option"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -20402,17 +20766,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:49.058Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:30.582Z",
+            "severity": "high",
+            "summary": [
+              "iOS modal is substantially taller and positioned higher, showing only the upper form fields while React displays Runtime, Model, retry guidance, and More.",
+              "The iOS viewport includes the on-screen keyboard and enlarged input text/caret; the Name field appears focused.",
+              "The Cancel and Create Agent actions are at the top of the keyboard area in iOS rather than below the full form in React.",
+              "Typography is visibly larger and bolder on iOS across the title, labels, field values, notice, and buttons.",
+              "The iOS modal and its fields have wider outer padding and larger control bounds; the lower fields are absent from the visible modal."
+            ],
+            "likelyCauses": [
+              "The iOS screenshot was captured with the software keyboard open, reducing available modal space and triggering view scrolling/resize.",
+              "No equivalent viewport/crop normalization was applied to the 1170×2532 current image.",
+              "Platform text scaling or missing maximum font-size constraints increased iOS typography.",
+              "The iOS form action bar was laid out outside the scrollable form, while React places actions after the complete form."
+            ],
+            "suggestedOwner": "iOS client team",
+            "suggestedFixes": [
+              "Dismiss the keyboard or capture the modal in a state where its complete scrollable content and actions are visible.",
+              "Keep the Cancel and Create Agent actions attached to the bottom of the modal content, or render a non-scrolling action footer above the keyboard.",
+              "Constrain form typography to the same design tokens or maximum scale as React.",
+              "Match React field heights, widths, vertical gaps, and modal insets using iOS-safe layout constraints.",
+              "Preserve the complete form viewport during keyboard presentation by using appropriate keyboard avoidance and allowing the modal body to scroll."
+            ],
+            "intentional": [
+              "iOS displays a native caret in the focused Name field.",
+              "The iOS screenshot includes the system keyboard, which is a platform state difference.",
+              "The disabled Create Agent button uses gray text in both views, although its background/shadow treatment differs."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -20491,17 +20876,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:49.058Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:30.582Z",
+            "severity": "high",
+            "summary": [
+              "iOS modal is substantially taller and positioned higher, showing only the upper form fields while React displays Runtime, Model, retry guidance, and More.",
+              "The iOS viewport includes the on-screen keyboard and enlarged input text/caret; the Name field appears focused.",
+              "The Cancel and Create Agent actions are at the top of the keyboard area in iOS rather than below the full form in React.",
+              "Typography is visibly larger and bolder on iOS across the title, labels, field values, notice, and buttons.",
+              "The iOS modal and its fields have wider outer padding and larger control bounds; the lower fields are absent from the visible modal."
+            ],
+            "likelyCauses": [
+              "The iOS screenshot was captured with the software keyboard open, reducing available modal space and triggering view scrolling/resize.",
+              "No equivalent viewport/crop normalization was applied to the 1170×2532 current image.",
+              "Platform text scaling or missing maximum font-size constraints increased iOS typography.",
+              "The iOS form action bar was laid out outside the scrollable form, while React places actions after the complete form."
+            ],
+            "suggestedOwner": "iOS client team",
+            "suggestedFixes": [
+              "Dismiss the keyboard or capture the modal in a state where its complete scrollable content and actions are visible.",
+              "Keep the Cancel and Create Agent actions attached to the bottom of the modal content, or render a non-scrolling action footer above the keyboard.",
+              "Constrain form typography to the same design tokens or maximum scale as React.",
+              "Match React field heights, widths, vertical gaps, and modal insets using iOS-safe layout constraints.",
+              "Preserve the complete form viewport during keyboard presentation by using appropriate keyboard avoidance and allowing the modal body to scroll."
+            ],
+            "intentional": [
+              "iOS displays a native caret in the focused Name field.",
+              "The iOS screenshot includes the system keyboard, which is a platform state difference.",
+              "The disabled Create Agent button uses gray text in both views, although its background/shadow treatment differs."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -20585,7 +20991,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-14T22:08:45.038Z",
+        "generatedAt": "2026-08-14T22:13:57.173Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20646,7 +21052,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:45.038Z",
+            "generatedAt": "2026-08-14T22:13:57.173Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20668,7 +21074,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:47.932Z",
+            "generatedAt": "2026-08-14T22:14:00.885Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20700,17 +21106,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:52.421Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:12:25.996Z",
+            "severity": "high",
+            "summary": [
+              "iOS render shows the soft keyboard overlay covering the bottom half of the dialog, while Android renders the full dialog (RUNTIME, PROVIDER, API URL visible) without a keyboard.",
+              "Cancel and Create Agent buttons appear mid-screen on iOS because the dialog is anchored above the keyboard; on Android they sit at the bottom of the dialog.",
+              "Cancel button gains a heavy black focus/selection outline on iOS that is not present on Android; Create Agent button is disabled (lighter fill) on both but the iOS frame styling differs.",
+              "A text cursor (caret) is visible at the end of the Name field on iOS but not on Android, indicating iOS captured an active/focused input state.",
+              "Toolbar/metadata tags differ: Android label badge vs iOS badge are visually offset; metadata caption sizes differ (1170×2532 vs 390×844)."
+            ],
+            "likelyCauses": [
+              "iOS screenshot captured while the Name input was focused, so the system soft keyboard pushed/scrolled the dialog upward and clipped lower fields (RUNTIME, PROVIDER, API URL).",
+              "Android screenshot captured without the keyboard, so the dialog is fully visible in its default position.",
+              "Different default safe-area / keyboard avoidance behavior between Android and iOS Kuikly renderers, or the iOS build does not apply adjustResize/scroll-into-view on keyboard show.",
+              "iOS style adds a stronger focus ring to the Cancel button when the surrounding layout shifts (or due to native default focus styling)."
+            ],
+            "suggestedOwner": "kuikly-mobile / dialog-author",
+            "suggestedFixes": [
+              "Normalize keyboard handling so the dialog scrolls/resizes identically on both platforms; ensure fields like RUNTIME, PROVIDER, and API URL remain reachable when the keyboard is shown.",
+              "Dismissible focus ring on Cancel: align iOS the button outline weight/border style with Android (or use a shared token so no extra border appears on iOS).",
+              "Blur the Name input before capturing the iOS baseline screenshot, or capture keyboard-hidden and keyboard-shown states separately to avoid false regressions.",
+              "Unify the close (X) button sizing and the dialog outer frame border weight between Android and iOS; iOS outer frame appears slightly thicker/heavier.",
+              "Verify the Cancel/Create Agent button row is anchored to the dialog bottom (not viewport bottom) so it stays aligned when the keyboard appears."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -20726,7 +21149,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:47.932Z",
+            "generatedAt": "2026-08-14T22:14:00.885Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20759,17 +21182,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:52.421Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:12:25.996Z",
+            "severity": "high",
+            "summary": [
+              "iOS render shows the soft keyboard overlay covering the bottom half of the dialog, while Android renders the full dialog (RUNTIME, PROVIDER, API URL visible) without a keyboard.",
+              "Cancel and Create Agent buttons appear mid-screen on iOS because the dialog is anchored above the keyboard; on Android they sit at the bottom of the dialog.",
+              "Cancel button gains a heavy black focus/selection outline on iOS that is not present on Android; Create Agent button is disabled (lighter fill) on both but the iOS frame styling differs.",
+              "A text cursor (caret) is visible at the end of the Name field on iOS but not on Android, indicating iOS captured an active/focused input state.",
+              "Toolbar/metadata tags differ: Android label badge vs iOS badge are visually offset; metadata caption sizes differ (1170×2532 vs 390×844)."
+            ],
+            "likelyCauses": [
+              "iOS screenshot captured while the Name input was focused, so the system soft keyboard pushed/scrolled the dialog upward and clipped lower fields (RUNTIME, PROVIDER, API URL).",
+              "Android screenshot captured without the keyboard, so the dialog is fully visible in its default position.",
+              "Different default safe-area / keyboard avoidance behavior between Android and iOS Kuikly renderers, or the iOS build does not apply adjustResize/scroll-into-view on keyboard show.",
+              "iOS style adds a stronger focus ring to the Cancel button when the surrounding layout shifts (or due to native default focus styling)."
+            ],
+            "suggestedOwner": "kuikly-mobile / dialog-author",
+            "suggestedFixes": [
+              "Normalize keyboard handling so the dialog scrolls/resizes identically on both platforms; ensure fields like RUNTIME, PROVIDER, and API URL remain reachable when the keyboard is shown.",
+              "Dismissible focus ring on Cancel: align iOS the button outline weight/border style with Android (or use a shared token so no extra border appears on iOS).",
+              "Blur the Name input before capturing the iOS baseline screenshot, or capture keyboard-hidden and keyboard-shown states separately to avoid false regressions.",
+              "Unify the close (X) button sizing and the dialog outer frame border weight between Android and iOS; iOS outer frame appears slightly thicker/heavier.",
+              "Verify the Cancel/Create Agent button row is anchored to the dialog bottom (not viewport bottom) so it stays aligned when the keyboard appears."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20811,17 +21251,38 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-14T22:08:45.647Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-14T22:11:02.696Z",
+        "severity": "medium",
+        "summary": [
+          "Agent header card on Android has a QR/pattern avatar instead of the solid teal square avatar shown in React; React avatar is solid cyan, Android avatar is a black/teal pixelated pattern.",
+          "React shows a horizontal navigation tab bar (Profile/Activity/Chat/Reminders) with distinct segmented buttons and borders; Android tab bar appears with thinner borders and different paddings.",
+          "React shows a truncated in-card title 'Product...' with a 'Capturing determ...' status pill; Android shows the full agent name 'Product UX Designer' in a larger, two-line avatar+title layout and replaces the status text with 'Working' beneath the handle.",
+          "Android omits the edit (pencil) icons that appear in the React version next to DISPLAY NAME and RUNTIME CONFIG section headers.",
+          "React uses a 2-column Created/Creator row; Android uses a single column with Created above Creator, increasing vertical spacing."
+        ],
+        "likelyCauses": [
+          "Android layout was implemented from a different design spec or without parity to the React web version's profile card structure.",
+          "React renders a horizontal segmented tab bar component that was not ported equivalently to Android.",
+          "Avatar asset differs between platforms (placeholder QR/pattern image used on Android instead of solid color square).",
+          "Different responsive layout breakpoints chosen for Android — single-column Info section vs React's 2-column grid.",
+          "Environment variables list rendered with flex-direction:row on Android but column on React."
+        ],
+        "suggestedOwner": "android-ui",
+        "suggestedFixes": [
+          "Align the Android avatar with the React baseline: use the solid teal square asset or share a single avatar component across platforms.",
+          "Match the Profile/Activity/Chat/Reminders segmented control styling and padding on Android to mirror the React tab bar.",
+          "Render DISPLAY NAME and RUNTIME CONFIG section headers with the edit (pencil) affordance on Android.",
+          "Change Android Info section to a 2-column layout for Computer/Connection and Created/Creator rows to match React, reducing vertical spacing.",
+          "Render environment variables in a single column on Android (RAFT_PROFILE above SLOCK_VISUAL_PROVIDER)."
+        ],
+        "intentional": [
+          "The Android avatar QR/pattern may be an intentional placeholder for the screenshot fixture.",
+          "Platform-specific tab bar styling differences may be accepted per design system if documented."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -20908,17 +21369,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:45.647Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:02.696Z",
+            "severity": "medium",
+            "summary": [
+              "Agent header card on Android has a QR/pattern avatar instead of the solid teal square avatar shown in React; React avatar is solid cyan, Android avatar is a black/teal pixelated pattern.",
+              "React shows a horizontal navigation tab bar (Profile/Activity/Chat/Reminders) with distinct segmented buttons and borders; Android tab bar appears with thinner borders and different paddings.",
+              "React shows a truncated in-card title 'Product...' with a 'Capturing determ...' status pill; Android shows the full agent name 'Product UX Designer' in a larger, two-line avatar+title layout and replaces the status text with 'Working' beneath the handle.",
+              "Android omits the edit (pencil) icons that appear in the React version next to DISPLAY NAME and RUNTIME CONFIG section headers.",
+              "React uses a 2-column Created/Creator row; Android uses a single column with Created above Creator, increasing vertical spacing."
+            ],
+            "likelyCauses": [
+              "Android layout was implemented from a different design spec or without parity to the React web version's profile card structure.",
+              "React renders a horizontal segmented tab bar component that was not ported equivalently to Android.",
+              "Avatar asset differs between platforms (placeholder QR/pattern image used on Android instead of solid color square).",
+              "Different responsive layout breakpoints chosen for Android — single-column Info section vs React's 2-column grid.",
+              "Environment variables list rendered with flex-direction:row on Android but column on React."
+            ],
+            "suggestedOwner": "android-ui",
+            "suggestedFixes": [
+              "Align the Android avatar with the React baseline: use the solid teal square asset or share a single avatar component across platforms.",
+              "Match the Profile/Activity/Chat/Reminders segmented control styling and padding on Android to mirror the React tab bar.",
+              "Render DISPLAY NAME and RUNTIME CONFIG section headers with the edit (pencil) affordance on Android.",
+              "Change Android Info section to a 2-column layout for Computer/Connection and Created/Creator rows to match React, reducing vertical spacing.",
+              "Render environment variables in a single column on Android (RAFT_PROFILE above SLOCK_VISUAL_PROVIDER)."
+            ],
+            "intentional": [
+              "The Android avatar QR/pattern may be an intentional placeholder for the screenshot fixture.",
+              "Platform-specific tab bar styling differences may be accepted per design system if documented."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -20941,17 +21423,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:49.088Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:33.850Z",
+            "severity": "high",
+            "summary": [
+              "iOS header shows a full QR-style avatar glyph while React uses a plain solid cyan avatar square; the iOS avatar is also smaller and aligned differently relative to the title row.",
+              "React header subtitle is truncated ('Turns product feedback, s...') while iOS renders the full subtitle ('Turns product feedback, screensh...') and places it below the title rather than inline next to the avatar.",
+              "Tab row uses a yellow highlight bar in React but iOS uses a filled yellow tab pill with no bottom indicator; tab text/icon spacing and underline differ.",
+              "React INFO section stacks Role/Computer/Created/Creator vertically with edit pencil icons and a green 'Connected' dot; iOS lays the same fields out as a two-column key/value grid with no edit icons and no status dot, and reorders Creator below Created.",
+              "React 'Runtime Config' uses a 4-column row (Runtime / Model / Reasoning / Mode) with pill labels; iOS uses a 2x2 grid with stacked labels above values."
+            ],
+            "likelyCauses": [
+              "iOS build is rendering at a larger device pixel size (1170x2532 vs 390x844) without applying a consistent scale factor, causing layout reflow into a 2-column grid instead of the 1-column stack used in React.",
+              "Avatar asset differs between platforms: React uses a flat solid color placeholder while iOS uses a generated QR/pattern glyph.",
+              "Edit affordances (pencil icons) and the Connected status dot are missing on iOS, indicating component parity gaps in the iOS implementation.",
+              "Truncation logic differs: React header subtitle is truncated to fit next to the avatar while iOS allows it to wrap below, suggesting a different header layout component.",
+              "Created Agents row overflow handling differs: React allows vertical overflow/cropping while iOS constrains height to the viewport."
+            ],
+            "suggestedOwner": "mobile-ios",
+            "suggestedFixes": [
+              "Normalize avatar rendering so both platforms show the same placeholder style/size; if QR is intentional on iOS, align it identically in React.",
+              "Unify the header subtitle layout: either always inline with truncation or always wrap below, and keep the same avatar size in both.",
+              "Restore edit pencil icons on iOS for Display Name, Description, and Role fields to match React affordances.",
+              "Restore the green 'Connected' status dot (or equivalent) and 'computer v0.0.48' inline label on the iOS Computer field.",
+              "Use a single-column stack for INFO on iOS (or apply the same 2-column grid in React) so Created/Creator order and spacing match across platforms."
+            ],
+            "intentional": [
+              "The iOS canvas is a different raw pixel resolution (1170x2532) than React (390x844), so absolute pixel coordinates are not directly comparable.",
+              "The QR-pattern avatar may be an intentional iOS placeholder while the React side uses a color block placeholder during design."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -21026,17 +21529,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:49.088Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:33.850Z",
+            "severity": "high",
+            "summary": [
+              "iOS header shows a full QR-style avatar glyph while React uses a plain solid cyan avatar square; the iOS avatar is also smaller and aligned differently relative to the title row.",
+              "React header subtitle is truncated ('Turns product feedback, s...') while iOS renders the full subtitle ('Turns product feedback, screensh...') and places it below the title rather than inline next to the avatar.",
+              "Tab row uses a yellow highlight bar in React but iOS uses a filled yellow tab pill with no bottom indicator; tab text/icon spacing and underline differ.",
+              "React INFO section stacks Role/Computer/Created/Creator vertically with edit pencil icons and a green 'Connected' dot; iOS lays the same fields out as a two-column key/value grid with no edit icons and no status dot, and reorders Creator below Created.",
+              "React 'Runtime Config' uses a 4-column row (Runtime / Model / Reasoning / Mode) with pill labels; iOS uses a 2x2 grid with stacked labels above values."
+            ],
+            "likelyCauses": [
+              "iOS build is rendering at a larger device pixel size (1170x2532 vs 390x844) without applying a consistent scale factor, causing layout reflow into a 2-column grid instead of the 1-column stack used in React.",
+              "Avatar asset differs between platforms: React uses a flat solid color placeholder while iOS uses a generated QR/pattern glyph.",
+              "Edit affordances (pencil icons) and the Connected status dot are missing on iOS, indicating component parity gaps in the iOS implementation.",
+              "Truncation logic differs: React header subtitle is truncated to fit next to the avatar while iOS allows it to wrap below, suggesting a different header layout component.",
+              "Created Agents row overflow handling differs: React allows vertical overflow/cropping while iOS constrains height to the viewport."
+            ],
+            "suggestedOwner": "mobile-ios",
+            "suggestedFixes": [
+              "Normalize avatar rendering so both platforms show the same placeholder style/size; if QR is intentional on iOS, align it identically in React.",
+              "Unify the header subtitle layout: either always inline with truncation or always wrap below, and keep the same avatar size in both.",
+              "Restore edit pencil icons on iOS for Display Name, Description, and Role fields to match React affordances.",
+              "Restore the green 'Connected' status dot (or equivalent) and 'computer v0.0.48' inline label on the iOS Computer field.",
+              "Use a single-column stack for INFO on iOS (or apply the same 2-column grid in React) so Created/Creator order and spacing match across platforms."
+            ],
+            "intentional": [
+              "The iOS canvas is a different raw pixel resolution (1170x2532) than React (390x844), so absolute pixel coordinates are not directly comparable.",
+              "The QR-pattern avatar may be an intentional iOS placeholder while the React side uses a color block placeholder during design."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -23421,17 +23945,36 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-14T22:08:45.814Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-14T22:12:41.338Z",
+        "severity": "high",
+        "summary": [
+          "Section order is reversed: React shows 'Appearance' with 'Message font size' first then 'Live agent activity'; Android shows 'Activity sender avatars' first then 'Appearance' with 'Message font size'.",
+          "Android is missing the 'Live agent activity' toggle section entirely (no toggle, no description, no 'Saved on this device' label).",
+          "Android's font-size section title is just 'Appearance' (no 'Message font size' heading) and the descriptive copy is shorter/less detailed than React's.",
+          "Android's preview block uses a different sender ('Onboarding Assistant' with purple avatar) instead of React's 'Cindy' with green avatar, and uses a beige/cream background instead of white.",
+          "Android's 'Activity sender avatars' toggle is in the off (unchecked) state with a square checkbox, while React's 'Live agent activity' toggle is in the on (checked) state with a yellow/black filled switch in the same logical position."
+        ],
+        "likelyCauses": [
+          "Android implementation rendered settings in a different order or scrolled to a different position (manual-rect crop captured a different segment of the viewport).",
+          "Android Settings screen may be missing the 'Live agent activity' toggle component, or it is rendered below the viewport and was clipped by the manual-rect crop.",
+          "Platform-specific component mapping: Android uses a native checkbox/avatar style instead of the React toggle switch and green avatar asset.",
+          "The baseline crop used 'component-bounds' while the current crop used 'manual-rect viewport-bounds', so the two images are not aligned to the same content region."
+        ],
+        "suggestedOwner": "android-settings",
+        "suggestedFixes": [
+          "Re-capture the Android screenshot using the same 'component-bounds' contract as the React baseline so both crops cover the full settings page.",
+          "If 'Live agent activity' is intentionally absent on Android, add it to the Android settings screen to match the React parity; otherwise mark it as out-of-scope and update the baseline.",
+          "Align the 'Message font size' section heading and descriptive copy with the React wording (add 'Message font size' title and full description).",
+          "Match the toggle/checkbox visual style (yellow/black filled switch) and preview avatar (green 'Cindy') to the React baseline, or use neutral comparison assets.",
+          "Verify section ordering on Android matches React: 'Message font size' first, then 'Live agent activity'."
+        ],
+        "intentional": [
+          "Platform-specific avatar color (green vs purple) and preview background tint may be intentional design differences."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -23518,17 +24061,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:45.814Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:12:41.338Z",
+            "severity": "high",
+            "summary": [
+              "Section order is reversed: React shows 'Appearance' with 'Message font size' first then 'Live agent activity'; Android shows 'Activity sender avatars' first then 'Appearance' with 'Message font size'.",
+              "Android is missing the 'Live agent activity' toggle section entirely (no toggle, no description, no 'Saved on this device' label).",
+              "Android's font-size section title is just 'Appearance' (no 'Message font size' heading) and the descriptive copy is shorter/less detailed than React's.",
+              "Android's preview block uses a different sender ('Onboarding Assistant' with purple avatar) instead of React's 'Cindy' with green avatar, and uses a beige/cream background instead of white.",
+              "Android's 'Activity sender avatars' toggle is in the off (unchecked) state with a square checkbox, while React's 'Live agent activity' toggle is in the on (checked) state with a yellow/black filled switch in the same logical position."
+            ],
+            "likelyCauses": [
+              "Android implementation rendered settings in a different order or scrolled to a different position (manual-rect crop captured a different segment of the viewport).",
+              "Android Settings screen may be missing the 'Live agent activity' toggle component, or it is rendered below the viewport and was clipped by the manual-rect crop.",
+              "Platform-specific component mapping: Android uses a native checkbox/avatar style instead of the React toggle switch and green avatar asset.",
+              "The baseline crop used 'component-bounds' while the current crop used 'manual-rect viewport-bounds', so the two images are not aligned to the same content region."
+            ],
+            "suggestedOwner": "android-settings",
+            "suggestedFixes": [
+              "Re-capture the Android screenshot using the same 'component-bounds' contract as the React baseline so both crops cover the full settings page.",
+              "If 'Live agent activity' is intentionally absent on Android, add it to the Android settings screen to match the React parity; otherwise mark it as out-of-scope and update the baseline.",
+              "Align the 'Message font size' section heading and descriptive copy with the React wording (add 'Message font size' title and full description).",
+              "Match the toggle/checkbox visual style (yellow/black filled switch) and preview avatar (green 'Cindy') to the React baseline, or use neutral comparison assets.",
+              "Verify section ordering on Android matches React: 'Message font size' first, then 'Live agent activity'."
+            ],
+            "intentional": [
+              "Platform-specific avatar color (green vs purple) and preview background tint may be intentional design differences."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -23551,17 +24113,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:49.217Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:36.163Z",
+            "severity": "high",
+            "summary": [
+              "iOS adds an 'Activity sender avatars' toggle section at the top that is missing from React baseline",
+              "iOS relocates the 'Message font size' (Appearance) section to the bottom of the page instead of placing it first",
+              "iOS omits the 'Live agent activity' toggle section that appears in the React baseline",
+              "iOS preview avatar shows 'Onboarding Assistant' with purple avatar instead of 'Cindy' with green pixel-art avatar",
+              "iOS preview block has a cream/yellow tinted background instead of plain white"
+            ],
+            "likelyCauses": [
+              "Platform-specific component branching inserted the avatar toggle only on iOS",
+              "Reordering of sections between iOS and React implementations (page template divergence)",
+              "Different default preview fixture data used for iOS render harness",
+              "Live agent activity feature gated or not yet wired up on iOS build",
+              "Different styling tokens for surface/card backgrounds between platforms"
+            ],
+            "suggestedOwner": "ios-settings-appearance",
+            "suggestedFixes": [
+              "Reorder iOS sections to match React: Message font size first, then Activity sender avatars, then Live agent activity",
+              "Add the 'Live agent activity' toggle row to the iOS Appearance page (with toggle, description, and 'Saved on this device.' caption)",
+              "Match React baseline preview fixture: use 'Cindy 09:42 PM' with green pixel-art avatar and code-chip styling",
+              "Replace iOS preview card cream background with the white surface used on React",
+              "Align toggle control style with platform conventions but ensure visual parity of state (on/off) with React's two-tone switch"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -23635,17 +24215,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:49.217Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:36.163Z",
+            "severity": "high",
+            "summary": [
+              "iOS adds an 'Activity sender avatars' toggle section at the top that is missing from React baseline",
+              "iOS relocates the 'Message font size' (Appearance) section to the bottom of the page instead of placing it first",
+              "iOS omits the 'Live agent activity' toggle section that appears in the React baseline",
+              "iOS preview avatar shows 'Onboarding Assistant' with purple avatar instead of 'Cindy' with green pixel-art avatar",
+              "iOS preview block has a cream/yellow tinted background instead of plain white"
+            ],
+            "likelyCauses": [
+              "Platform-specific component branching inserted the avatar toggle only on iOS",
+              "Reordering of sections between iOS and React implementations (page template divergence)",
+              "Different default preview fixture data used for iOS render harness",
+              "Live agent activity feature gated or not yet wired up on iOS build",
+              "Different styling tokens for surface/card backgrounds between platforms"
+            ],
+            "suggestedOwner": "ios-settings-appearance",
+            "suggestedFixes": [
+              "Reorder iOS sections to match React: Message font size first, then Activity sender avatars, then Live agent activity",
+              "Add the 'Live agent activity' toggle row to the iOS Appearance page (with toggle, description, and 'Saved on this device.' caption)",
+              "Match React baseline preview fixture: use 'Cindy 09:42 PM' with green pixel-art avatar and code-chip styling",
+              "Replace iOS preview card cream background with the white surface used on React",
+              "Align toggle control style with platform conventions but ensure visual parity of state (on/off) with React's two-tone switch"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -24882,17 +25480,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-14T22:08:45.903Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-14T22:11:11.250Z",
+        "severity": "high",
+        "summary": [
+          "Header avatar differs: React shows a solid cyan square, Android shows a checkered/placeholder pattern with cyan and white blocks",
+          "Header title text is truncated/clipped on React ('Produc...' with 'Capturing determi...') vs Android renders full text 'Product UX Designer' and 'Working' status",
+          "Role field shows 'No role' on React vs 'Member' on Android - actual data/label difference",
+          "Computer value differs: React shows full 'Jiachengs-MacBook-Pro' on one line, Android shows truncated 'Jiachengs-MacB...' with 'Connected · daemon v0.61.1' on same line",
+          "Created date differs: React 'Jun 18, 2026' vs Android 'Jun 1, 2026'"
+        ],
+        "likelyCauses": [
+          "Different placeholder/avatar rendering between React and Android when image asset is missing or not yet loaded",
+          "Responsive text truncation (ellipsis) applied differently in React vs Android TextView/Compose",
+          "Layout grid change: React uses single-row flex layout for Runtime Config; Android uses label-value 2-column grid",
+          "Edit affordance icons (pencil) conditionally rendered or missing in Android implementation",
+          "Different data source or mocked values for Role, Created date, Computer status between platforms"
+        ],
+        "suggestedOwner": "android",
+        "suggestedFixes": [
+          "Replace avatar placeholder on Android with the same solid cyan fallback used on React, or load the actual avatar asset consistently",
+          "Ensure header title and subtitle TextViews use proper maxLines and ellipsizing to match React behavior, or prevent truncation if text fits",
+          "Verify Role field renders consistently - either 'No role' or 'Member' should match the data contract across platforms",
+          "Align Runtime Config layout in Android to a single 4-column row matching React, or accept the label-value grid as intentional and update baseline",
+          "Add pencil edit icons next to DISPLAY NAME, DESCRIPTION, and RUNTIME CONFIG section headers on Android to match React"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -24972,17 +25588,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:45.903Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:11.250Z",
+            "severity": "high",
+            "summary": [
+              "Header avatar differs: React shows a solid cyan square, Android shows a checkered/placeholder pattern with cyan and white blocks",
+              "Header title text is truncated/clipped on React ('Produc...' with 'Capturing determi...') vs Android renders full text 'Product UX Designer' and 'Working' status",
+              "Role field shows 'No role' on React vs 'Member' on Android - actual data/label difference",
+              "Computer value differs: React shows full 'Jiachengs-MacBook-Pro' on one line, Android shows truncated 'Jiachengs-MacB...' with 'Connected · daemon v0.61.1' on same line",
+              "Created date differs: React 'Jun 18, 2026' vs Android 'Jun 1, 2026'"
+            ],
+            "likelyCauses": [
+              "Different placeholder/avatar rendering between React and Android when image asset is missing or not yet loaded",
+              "Responsive text truncation (ellipsis) applied differently in React vs Android TextView/Compose",
+              "Layout grid change: React uses single-row flex layout for Runtime Config; Android uses label-value 2-column grid",
+              "Edit affordance icons (pencil) conditionally rendered or missing in Android implementation",
+              "Different data source or mocked values for Role, Created date, Computer status between platforms"
+            ],
+            "suggestedOwner": "android",
+            "suggestedFixes": [
+              "Replace avatar placeholder on Android with the same solid cyan fallback used on React, or load the actual avatar asset consistently",
+              "Ensure header title and subtitle TextViews use proper maxLines and ellipsizing to match React behavior, or prevent truncation if text fits",
+              "Verify Role field renders consistently - either 'No role' or 'Member' should match the data contract across platforms",
+              "Align Runtime Config layout in Android to a single 4-column row matching React, or accept the label-value grid as intentional and update baseline",
+              "Add pencil edit icons next to DISPLAY NAME, DESCRIPTION, and RUNTIME CONFIG section headers on Android to match React"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -24995,7 +25629,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:47.932Z",
+            "generatedAt": "2026-08-14T22:14:00.885Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25017,7 +25651,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:51.210Z",
+            "generatedAt": "2026-08-14T22:14:05.670Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25042,7 +25676,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:47.932Z",
+            "generatedAt": "2026-08-14T22:14:00.885Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25065,7 +25699,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:51.210Z",
+            "generatedAt": "2026-08-14T22:14:05.670Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25265,7 +25899,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:47.932Z",
+            "generatedAt": "2026-08-14T22:14:00.885Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25287,7 +25921,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:51.210Z",
+            "generatedAt": "2026-08-14T22:14:05.670Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25312,7 +25946,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:47.932Z",
+            "generatedAt": "2026-08-14T22:14:00.885Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25335,7 +25969,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:51.210Z",
+            "generatedAt": "2026-08-14T22:14:05.670Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25535,7 +26169,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:47.932Z",
+            "generatedAt": "2026-08-14T22:14:00.885Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25557,7 +26191,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:51.210Z",
+            "generatedAt": "2026-08-14T22:14:05.670Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25582,7 +26216,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:47.932Z",
+            "generatedAt": "2026-08-14T22:14:00.885Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25605,7 +26239,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:51.210Z",
+            "generatedAt": "2026-08-14T22:14:05.670Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25801,7 +26435,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:47.932Z",
+            "generatedAt": "2026-08-14T22:14:00.885Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25823,7 +26457,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:51.210Z",
+            "generatedAt": "2026-08-14T22:14:05.670Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25848,7 +26482,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:47.932Z",
+            "generatedAt": "2026-08-14T22:14:00.885Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25871,7 +26505,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:51.210Z",
+            "generatedAt": "2026-08-14T22:14:05.670Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25918,17 +26552,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-14T22:08:45.990Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-14T22:11:11.671Z",
+        "severity": "medium",
+        "summary": [
+          "Time format differs: React shows 12-hour format with AM/PM (e.g. '12:28:00 PM'), Android shows 24-hour format (e.g. '20:28:00')",
+          "Button label shortened: React 'Copy Diagnostic Info' vs Android 'Copy info'",
+          "Avatar rendering differs: React shows solid cyan/blue square, Android shows a black-and-cyan pixelated/checkered placeholder pattern",
+          "Description text truncation differs: React truncates at 's…' (shorter width), Android truncates at 'screensho…' (slightly more characters shown)",
+          "Activity item text styling differs: React uses monospace/code-like font for descriptions with wrapped multi-line text, Android uses proportional sans-serif with different wrapping/line spacing"
+        ],
+        "likelyCauses": [
+          "Time locale/formatting configuration not aligned between React (uses 'h:mm:ss a') and Android (uses 'HH:mm:ss')",
+          "Button label string inconsistency or localization difference not synchronized across platforms",
+          "Avatar component fallback rendering differs: React renders solid color block while Android uses image-error placeholder",
+          "Subtitle/truncation width or character limit differs between platform implementations",
+          "Typography stack differs: React likely uses monospace fallback for code-like content (command output), Android uses default sans-serif, causing different line breaks"
+        ],
+        "suggestedOwner": "android",
+        "suggestedFixes": [
+          "Align time formatting to use the same 12-hour AM/PM format on Android (use 'h:mm:ss a' pattern)",
+          "Update Android button label to 'Copy Diagnostic Info' to match React copy",
+          "Investigate avatar source/loading: ensure React and Android render the same avatar image or identical placeholder",
+          "Normalize description truncation width/max-chars across both platforms",
+          "Sync typography: apply monospace font to code-like content (e.g., 'Running command' description) on Android for consistent rendering"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -26008,17 +26660,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:45.990Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:11.671Z",
+            "severity": "medium",
+            "summary": [
+              "Time format differs: React shows 12-hour format with AM/PM (e.g. '12:28:00 PM'), Android shows 24-hour format (e.g. '20:28:00')",
+              "Button label shortened: React 'Copy Diagnostic Info' vs Android 'Copy info'",
+              "Avatar rendering differs: React shows solid cyan/blue square, Android shows a black-and-cyan pixelated/checkered placeholder pattern",
+              "Description text truncation differs: React truncates at 's…' (shorter width), Android truncates at 'screensho…' (slightly more characters shown)",
+              "Activity item text styling differs: React uses monospace/code-like font for descriptions with wrapped multi-line text, Android uses proportional sans-serif with different wrapping/line spacing"
+            ],
+            "likelyCauses": [
+              "Time locale/formatting configuration not aligned between React (uses 'h:mm:ss a') and Android (uses 'HH:mm:ss')",
+              "Button label string inconsistency or localization difference not synchronized across platforms",
+              "Avatar component fallback rendering differs: React renders solid color block while Android uses image-error placeholder",
+              "Subtitle/truncation width or character limit differs between platform implementations",
+              "Typography stack differs: React likely uses monospace fallback for code-like content (command output), Android uses default sans-serif, causing different line breaks"
+            ],
+            "suggestedOwner": "android",
+            "suggestedFixes": [
+              "Align time formatting to use the same 12-hour AM/PM format on Android (use 'h:mm:ss a' pattern)",
+              "Update Android button label to 'Copy Diagnostic Info' to match React copy",
+              "Investigate avatar source/loading: ensure React and Android render the same avatar image or identical placeholder",
+              "Normalize description truncation width/max-chars across both platforms",
+              "Sync typography: apply monospace font to code-like content (e.g., 'Running command' description) on Android for consistent rendering"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -26031,7 +26701,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:47.932Z",
+            "generatedAt": "2026-08-14T22:14:00.885Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26053,7 +26723,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:51.210Z",
+            "generatedAt": "2026-08-14T22:14:05.670Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26078,7 +26748,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:47.932Z",
+            "generatedAt": "2026-08-14T22:14:00.885Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26101,7 +26771,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-14T22:08:51.210Z",
+            "generatedAt": "2026-08-14T22:14:05.670Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26531,17 +27201,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-14T22:08:46.054Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-14T22:11:13.230Z",
+        "severity": "medium",
+        "summary": [
+          "Avatar image is missing on Android — only a solid cyan square is shown on React while Android displays a stylized agent icon",
+          "Profile/Activity tabs are positioned differently; Android tabs are clipped by the dropdown menu and lack proper horizontal padding",
+          "Dropdown menu (Stop Agent / Restart / Reset) overlaps the tab bar and avatar section on Android more severely than React",
+          "Created/Creator metadata fields are laid out vertically on Android but side-by-side on React",
+          "Runtime Config grid on React is a 4-column row (Runtime, Model, Reasoning, Mode) but Android is a 2-column grid, causing different visual flow"
+        ],
+        "likelyCauses": [
+          "React implementation uses CSS grid/flex with different breakpoint assumptions than Android Compose",
+          "Android layout is using a Column with IntrinsicSize or fixed two-column constraints for Info and Runtime Config sections",
+          "Dropdown menu positioning lacks z-index/stacking logic on Android, causing overlap with header tabs",
+          "Image/avatar component not yet implemented on Android for member profiles (placeholder QR-style icon used)",
+          "Inconsistent spacing tokens between React and Android design systems"
+        ],
+        "suggestedOwner": "android-ui-engineer",
+        "suggestedFixes": [
+          "Implement avatar image loading on Android to match React's rendering (replace placeholder icon)",
+          "Apply consistent horizontal layout for Info section (Created/Creator) — either both side-by-side or both stacked",
+          "Refactor Runtime Config to match React's 4-column header arrangement, or apply consistent grid token across platforms",
+          "Stack Environment Variables vertically on Android to match React layout, or align both to a 2-column grid via shared token",
+          "Adjust dropdown menu z-order/elevation so it does not overlap the Profile/Activity tab bar"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -26628,17 +27316,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:46.054Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:13.230Z",
+            "severity": "medium",
+            "summary": [
+              "Avatar image is missing on Android — only a solid cyan square is shown on React while Android displays a stylized agent icon",
+              "Profile/Activity tabs are positioned differently; Android tabs are clipped by the dropdown menu and lack proper horizontal padding",
+              "Dropdown menu (Stop Agent / Restart / Reset) overlaps the tab bar and avatar section on Android more severely than React",
+              "Created/Creator metadata fields are laid out vertically on Android but side-by-side on React",
+              "Runtime Config grid on React is a 4-column row (Runtime, Model, Reasoning, Mode) but Android is a 2-column grid, causing different visual flow"
+            ],
+            "likelyCauses": [
+              "React implementation uses CSS grid/flex with different breakpoint assumptions than Android Compose",
+              "Android layout is using a Column with IntrinsicSize or fixed two-column constraints for Info and Runtime Config sections",
+              "Dropdown menu positioning lacks z-index/stacking logic on Android, causing overlap with header tabs",
+              "Image/avatar component not yet implemented on Android for member profiles (placeholder QR-style icon used)",
+              "Inconsistent spacing tokens between React and Android design systems"
+            ],
+            "suggestedOwner": "android-ui-engineer",
+            "suggestedFixes": [
+              "Implement avatar image loading on Android to match React's rendering (replace placeholder icon)",
+              "Apply consistent horizontal layout for Info section (Created/Creator) — either both side-by-side or both stacked",
+              "Refactor Runtime Config to match React's 4-column header arrangement, or apply consistent grid token across platforms",
+              "Stack Environment Variables vertically on Android to match React layout, or align both to a 2-column grid via shared token",
+              "Adjust dropdown menu z-order/elevation so it does not overlap the Profile/Activity tab bar"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -26661,17 +27367,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:49.339Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:38.226Z",
+            "severity": "high",
+            "summary": [
+              "Stop Agent / Restart Reset menu positioning differs: React overlays the Profile/Activity tabs area near the top, while iOS appears offset right and lower, partially overlapping the Product UX Designer heading and description",
+              "Description text in React is wrapped onto 2 lines ('Turns product feedback, screenshots, and release\\nnotes into actionable UX specs.'), whereas iOS renders it on a single line",
+              "Info section layout differs: React uses a stacked two-column layout (Created + Creator side by side under Computer), iOS uses a fully stacked single-column layout (Computer, Created, Creator each on their own row)",
+              "Connected indicator styling differs: React shows a filled green dot with 'Connected' text inline, iOS shows just 'Connected' text without a visible status dot",
+              "Role section in React includes a pencil/edit icon next to the '?' icon; iOS only shows the '?' info icon"
+            ],
+            "likelyCauses": [
+              "Different layout frameworks (CSS grid/flex in React vs UIKit/Auto Layout in iOS) interpreting the same spec differently",
+              "Missing or divergent design tokens for spacing, typography wrapping, and component density between platforms",
+              "iOS implementation not honoring the same responsive breakpoints as React",
+              "Component-level differences in how status indicators (Connected dot, Working badge, Role edit icon) are conditionally rendered",
+              "Avatar/image rendering pipeline differs: React likely uses solid color placeholder while iOS renders a generated pattern"
+            ],
+            "suggestedOwner": "design-systems",
+            "suggestedFixes": [
+              "Unify description text wrapping behavior by enforcing a max-width or word-break policy across platforms",
+              "Align the Info section layout: standardize on a single column with consistent label/value row height",
+              "Add explicit Connected status dot rendering on iOS to match React's filled green circle",
+              "Remove or render the Working badge consistently across both platforms",
+              "Stack Environment Variables rows uniformly rather than using a 2-column grid on iOS"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -26748,17 +27472,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:49.339Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:38.226Z",
+            "severity": "high",
+            "summary": [
+              "Stop Agent / Restart Reset menu positioning differs: React overlays the Profile/Activity tabs area near the top, while iOS appears offset right and lower, partially overlapping the Product UX Designer heading and description",
+              "Description text in React is wrapped onto 2 lines ('Turns product feedback, screenshots, and release\\nnotes into actionable UX specs.'), whereas iOS renders it on a single line",
+              "Info section layout differs: React uses a stacked two-column layout (Created + Creator side by side under Computer), iOS uses a fully stacked single-column layout (Computer, Created, Creator each on their own row)",
+              "Connected indicator styling differs: React shows a filled green dot with 'Connected' text inline, iOS shows just 'Connected' text without a visible status dot",
+              "Role section in React includes a pencil/edit icon next to the '?' icon; iOS only shows the '?' info icon"
+            ],
+            "likelyCauses": [
+              "Different layout frameworks (CSS grid/flex in React vs UIKit/Auto Layout in iOS) interpreting the same spec differently",
+              "Missing or divergent design tokens for spacing, typography wrapping, and component density between platforms",
+              "iOS implementation not honoring the same responsive breakpoints as React",
+              "Component-level differences in how status indicators (Connected dot, Working badge, Role edit icon) are conditionally rendered",
+              "Avatar/image rendering pipeline differs: React likely uses solid color placeholder while iOS renders a generated pattern"
+            ],
+            "suggestedOwner": "design-systems",
+            "suggestedFixes": [
+              "Unify description text wrapping behavior by enforcing a max-width or word-break policy across platforms",
+              "Align the Info section layout: standardize on a single column with consistent label/value row height",
+              "Add explicit Connected status dot rendering on iOS to match React's filled green circle",
+              "Remove or render the Working badge consistently across both platforms",
+              "Stack Environment Variables rows uniformly rather than using a 2-column grid on iOS"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -26840,17 +27582,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-14T22:08:46.055Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-14T22:11:13.821Z",
+        "severity": "high",
+        "summary": [
+          "Header avatar differs: React shows a solid teal square placeholder; Android shows a pixel-art avatar with cyan/black pattern.",
+          "Header layout differs: React places avatar, title, subtitle and action icons on a single row; Android stacks the avatar with title and description on two rows, showing @Product-UX-Designer handle and a 'Working' status indicator missing in React.",
+          "Subtitle/description text is truncated with ellipsis on both, but React uses one-line truncation 'Turns product feedback, s…' while Android wraps onto a second line 'Turns product feedback, screensho…'.",
+          "Profile overview block order is reordered: React puts Display Name, Description, then Info (Role/Computer/Created/Creator); Android puts Display Name, Description, then a header/profile card with handle and status before Info, and visually swaps 'Created' above 'Creator'.",
+          "'CHOOSE AVATAR' avatar picker grid (3 rows × up to 7 columns of avatar tiles with an upload tile) is present in React but entirely missing in Android view."
+        ],
+        "likelyCauses": [
+          "Android implementation is rendering a different component variant (profile detail/full view vs. React's edit/management view) rather than the same avatar management screen.",
+          "Missing avatar picker grid on Android indicates the 'Choose Avatar' section was not ported or was conditionally hidden on the Android screen.",
+          "Section ordering (Display Name/Description/Info/Runtime Config vs. Android's interleaved profile header) suggests a different screen layout spec or a misunderstanding of the screen's purpose.",
+          "Data discrepancies (Created date, Computer name truncation, agent count, skills count) may indicate the Android screen loaded a different member record or test fixture.",
+          "Header avatar divergence (solid color placeholder vs. pixel-art image) suggests the Android version has the uploaded avatar asset but the React screenshot was taken before asset load or used a fallback."
+        ],
+        "suggestedOwner": "android-engineering",
+        "suggestedFixes": [
+          "Align Android's Members Avatar Management screen with React's screen contract: render one header row (avatar + title + subtitle + chat/menu icons) instead of a two-row profile header with @handle and status.",
+          "Add the 'CHOOSE AVATAR' grid section (avatar tiles + upload tile) to the Android screen, matching React's 3-row layout and selection state.",
+          "Reorder Info fields on Android to match React: Role (with help '?' and edit pencil) → Computer (full, non-truncated) → Created → Creator.",
+          "Unify Runtime Config layout: render Runtime/Model/Reasoning/Mode in a single horizontal row, and add the section edit pencil; remove or move 'Environment Variables' and 'Created Agents' / 'Skills' sections unless they are part of the same component's contract.",
+          "Truncate subtitle/description consistently (same number of characters and ellipsis behavior) across platforms."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -26937,17 +27697,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:46.055Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:13.821Z",
+            "severity": "high",
+            "summary": [
+              "Header avatar differs: React shows a solid teal square placeholder; Android shows a pixel-art avatar with cyan/black pattern.",
+              "Header layout differs: React places avatar, title, subtitle and action icons on a single row; Android stacks the avatar with title and description on two rows, showing @Product-UX-Designer handle and a 'Working' status indicator missing in React.",
+              "Subtitle/description text is truncated with ellipsis on both, but React uses one-line truncation 'Turns product feedback, s…' while Android wraps onto a second line 'Turns product feedback, screensho…'.",
+              "Profile overview block order is reordered: React puts Display Name, Description, then Info (Role/Computer/Created/Creator); Android puts Display Name, Description, then a header/profile card with handle and status before Info, and visually swaps 'Created' above 'Creator'.",
+              "'CHOOSE AVATAR' avatar picker grid (3 rows × up to 7 columns of avatar tiles with an upload tile) is present in React but entirely missing in Android view."
+            ],
+            "likelyCauses": [
+              "Android implementation is rendering a different component variant (profile detail/full view vs. React's edit/management view) rather than the same avatar management screen.",
+              "Missing avatar picker grid on Android indicates the 'Choose Avatar' section was not ported or was conditionally hidden on the Android screen.",
+              "Section ordering (Display Name/Description/Info/Runtime Config vs. Android's interleaved profile header) suggests a different screen layout spec or a misunderstanding of the screen's purpose.",
+              "Data discrepancies (Created date, Computer name truncation, agent count, skills count) may indicate the Android screen loaded a different member record or test fixture.",
+              "Header avatar divergence (solid color placeholder vs. pixel-art image) suggests the Android version has the uploaded avatar asset but the React screenshot was taken before asset load or used a fallback."
+            ],
+            "suggestedOwner": "android-engineering",
+            "suggestedFixes": [
+              "Align Android's Members Avatar Management screen with React's screen contract: render one header row (avatar + title + subtitle + chat/menu icons) instead of a two-row profile header with @handle and status.",
+              "Add the 'CHOOSE AVATAR' grid section (avatar tiles + upload tile) to the Android screen, matching React's 3-row layout and selection state.",
+              "Reorder Info fields on Android to match React: Role (with help '?' and edit pencil) → Computer (full, non-truncated) → Created → Creator.",
+              "Unify Runtime Config layout: render Runtime/Model/Reasoning/Mode in a single horizontal row, and add the section edit pencil; remove or move 'Environment Variables' and 'Created Agents' / 'Skills' sections unless they are part of the same component's contract.",
+              "Truncate subtitle/description consistently (same number of characters and ellipsis behavior) across platforms."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -26970,17 +27748,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:49.344Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:38.293Z",
+            "severity": "high",
+            "summary": [
+              "Header avatar differs: React shows a solid teal placeholder square while iOS shows a selected pixelated avatar (blue/teal pattern).",
+              "React includes a full avatar picker grid (Choose Avatar section, 16 thumbnails) that is entirely missing from the iOS layout.",
+              "React header subtitle is truncated ('Turns product feedback, s…') while iOS shows fuller text 'Turns product feedback, screensh…' with different font weight.",
+              "iOS shows an additional secondary avatar/title block beneath the header (avatar + 'Product UX Designer' + @Product-UX-Designer + Working status) that is absent on React.",
+              "iOS adds extra sections not present on React: Created Agents (Visual QA card), Environment Variables (RAFT_PROFILE, SLOCK_VISUAL_PROVIDER), and Skills (2)."
+            ],
+            "likelyCauses": [
+              "iOS implementation skipped or conditionally hid the avatar selection UI ('Choose Avatar' grid).",
+              "Different content state between snapshots (created date, computer name, daemon version) indicates non-deterministic test data rather than a layout regression.",
+              "iOS layout adds downstream sections (Environment Variables, Created Agents, Skills) that React either does not implement yet or has not reached in the scroll region.",
+              "Header avatar state differs because React uses an unselected default placeholder while iOS reflects a selected avatar value."
+            ],
+            "suggestedOwner": "ios-ui",
+            "suggestedFixes": [
+              "Add the 'Choose Avatar' grid component to iOS, mirroring React's 4-row avatar picker (including upload tile) and binding it to the selected avatar shown in the header.",
+              "Hide or guard the iOS-only sections (Environment Variables, Created Agents, Skills) or align them with React's spec so both platforms show identical surface area.",
+              "Normalize displayed metadata (computer name truncation, daemon version, created date) by sourcing from the same shared mock/fixture.",
+              "Add edit-pencil affordances next to iOS Display Name and Description labels, or remove them from React for parity.",
+              "Match the header subtitle truncation behavior and font weight between platforms; ensure only one avatar/title block is shown (remove the duplicate in iOS)."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -27055,17 +27850,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-14T22:08:49.344Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-14T22:11:38.293Z",
+            "severity": "high",
+            "summary": [
+              "Header avatar differs: React shows a solid teal placeholder square while iOS shows a selected pixelated avatar (blue/teal pattern).",
+              "React includes a full avatar picker grid (Choose Avatar section, 16 thumbnails) that is entirely missing from the iOS layout.",
+              "React header subtitle is truncated ('Turns product feedback, s…') while iOS shows fuller text 'Turns product feedback, screensh…' with different font weight.",
+              "iOS shows an additional secondary avatar/title block beneath the header (avatar + 'Product UX Designer' + @Product-UX-Designer + Working status) that is absent on React.",
+              "iOS adds extra sections not present on React: Created Agents (Visual QA card), Environment Variables (RAFT_PROFILE, SLOCK_VISUAL_PROVIDER), and Skills (2)."
+            ],
+            "likelyCauses": [
+              "iOS implementation skipped or conditionally hid the avatar selection UI ('Choose Avatar' grid).",
+              "Different content state between snapshots (created date, computer name, daemon version) indicates non-deterministic test data rather than a layout regression.",
+              "iOS layout adds downstream sections (Environment Variables, Created Agents, Skills) that React either does not implement yet or has not reached in the scroll region.",
+              "Header avatar state differs because React uses an unselected default placeholder while iOS reflects a selected avatar value."
+            ],
+            "suggestedOwner": "ios-ui",
+            "suggestedFixes": [
+              "Add the 'Choose Avatar' grid component to iOS, mirroring React's 4-row avatar picker (including upload tile) and binding it to the selected avatar shown in the header.",
+              "Hide or guard the iOS-only sections (Environment Variables, Created Agents, Skills) or align them with React's spec so both platforms show identical surface area.",
+              "Normalize displayed metadata (computer name truncation, daemon version, created date) by sourcing from the same shared mock/fixture.",
+              "Add edit-pencil affordances next to iOS Display Name and Description labels, or remove them from React for parity.",
+              "Match the header subtitle truncation behavior and font weight between platforms; ensure only one avatar/title block is shown (remove the duplicate in iOS)."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {

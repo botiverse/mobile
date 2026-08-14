@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-14T22:08:51.205Z",
+  "generatedAt": "2026-08-14T22:14:05.661Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 79,
-    "pending": 7
+    "ready": 81,
+    "pending": 5
   },
   "cases": [
     {
@@ -1471,15 +1471,33 @@
     },
     {
       "id": "components.home.search.results",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffe97fc07fc8000000080000000800000009ffa1f7effffffffffffffff80ff80ff9fff9fff80ff80ff80fe80ffdfffdfffffffffff800380038003800383ff83ff87ff87ffc9ffd9ff9fff9fff827fc27ffffffffff83ff03f81ff83effffffc3ff81ff81ffc3ffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-08-14T22:08:50.529Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-14T22:12:25.749Z",
+      "severity": "low",
+      "summary": [
+        "Image dimension/scale causes minor proportional differences: iOS render is 1170×2532 vs Android 390×844 (3x scale), but visual layout appears consistent after normalization",
+        "Highlight color (yellow) coverage on matched terms like 'android', 'Android', '#android-artifacts' appears slightly wider/larger on iOS, possibly due to font-rendering metrics",
+        "Search input field, filter chips, result cards, and thread/message items are structurally isomorphic with no missing or clipped elements"
+      ],
+      "likelyCauses": [
+        "Platform font rendering differences (San Francisco on iOS vs Roboto on Android) leading to minor glyph-width and highlight-box differences",
+        "Screenshot scale factor (3x vs 1x) not normalized before pixel comparison, inflating the pixelMismatchRatio",
+        "iOS Kuikly runtime may use slightly different default text-measurement or highlight-paint padding for matched search terms"
+      ],
+      "suggestedOwner": "mobile-platform",
+      "suggestedFixes": [
+        "Normalize both screenshots to the same pixel ratio before diffing to reduce false-positive mismatch from scale",
+        "Tighten highlight-paint padding to a consistent dp on both Kuikly targets so the yellow span matches the text metrics exactly",
+        "Cross-check default font + line-height tokens for matched-term highlighting on iOS vs Android Kuikly runtimes",
+        "Verify search-result card vertical rhythm (title, subtitle, meta) matches the Android reference within 1dp layout tolerance"
+      ],
+      "intentional": [
+        "Filter chip row count and wrap behavior differ between Android (single row, fewer chips) and iOS (more chips, wraps) — declared platform-difference and not a defect"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0884537745912154
     },
     {
@@ -1741,15 +1759,35 @@
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc7dfc3df86df83f6c3ffc01ec00cc3ffc3ffc3ffc3ffc3ffc39fc3ffc3ffc3ffc1ffc3ffc31fc3ffc03fc03fc07fc3ffc3ffc3ffc7ffc3ff47f7c3ffc78743ffc000023fc80012ffcdef33ffcffff2ffcffff3ffcffff3ffcbff83ffc1ff83ffc8ff03ffc0ff03f7c80013800800100008001ffffffff",
-      "generatedAt": "2026-08-14T22:08:50.717Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-14T22:12:25.996Z",
+      "severity": "high",
+      "summary": [
+        "iOS render shows the soft keyboard overlay covering the bottom half of the dialog, while Android renders the full dialog (RUNTIME, PROVIDER, API URL visible) without a keyboard.",
+        "Cancel and Create Agent buttons appear mid-screen on iOS because the dialog is anchored above the keyboard; on Android they sit at the bottom of the dialog.",
+        "Cancel button gains a heavy black focus/selection outline on iOS that is not present on Android; Create Agent button is disabled (lighter fill) on both but the iOS frame styling differs.",
+        "A text cursor (caret) is visible at the end of the Name field on iOS but not on Android, indicating iOS captured an active/focused input state.",
+        "Toolbar/metadata tags differ: Android label badge vs iOS badge are visually offset; metadata caption sizes differ (1170×2532 vs 390×844)."
+      ],
+      "likelyCauses": [
+        "iOS screenshot captured while the Name input was focused, so the system soft keyboard pushed/scrolled the dialog upward and clipped lower fields (RUNTIME, PROVIDER, API URL).",
+        "Android screenshot captured without the keyboard, so the dialog is fully visible in its default position.",
+        "Different default safe-area / keyboard avoidance behavior between Android and iOS Kuikly renderers, or the iOS build does not apply adjustResize/scroll-into-view on keyboard show.",
+        "iOS style adds a stronger focus ring to the Cancel button when the surrounding layout shifts (or due to native default focus styling)."
+      ],
+      "suggestedOwner": "kuikly-mobile / dialog-author",
+      "suggestedFixes": [
+        "Normalize keyboard handling so the dialog scrolls/resizes identically on both platforms; ensure fields like RUNTIME, PROVIDER, and API URL remain reachable when the keyboard is shown.",
+        "Dismissible focus ring on Cancel: align iOS the button outline weight/border style with Android (or use a shared token so no extra border appears on iOS).",
+        "Blur the Name input before capturing the iOS baseline screenshot, or capture keyboard-hidden and keyboard-shown states separately to avoid false regressions.",
+        "Unify the close (X) button sizing and the dialog outer frame border weight between Android and iOS; iOS outer frame appears slightly thicker/heavier.",
+        "Verify the Cancel/Create Agent button row is anchored to the dialog bottom (not viewport bottom) so it stays aligned when the keyboard appears."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3641980934634963
     },
     {
@@ -2093,7 +2131,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:08:50.845Z",
+      "generatedAt": "2026-08-14T22:14:05.106Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2106,7 +2144,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:08:50.845Z",
+      "generatedAt": "2026-08-14T22:14:05.106Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2119,7 +2157,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:08:50.845Z",
+      "generatedAt": "2026-08-14T22:14:05.106Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2132,7 +2170,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:08:50.845Z",
+      "generatedAt": "2026-08-14T22:14:05.106Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2145,7 +2183,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:08:50.845Z",
+      "generatedAt": "2026-08-14T22:14:05.106Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

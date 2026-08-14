@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-14T22:08:53.037Z",
+  "generatedAt": "2026-08-14T22:14:07.754Z",
   "latestRunId": "10736100-20260814220635",
   "latest": {
     "runId": "10736100-20260814220635",
     "commit": "10736100-20260814220635",
     "commitSubject": "fix(file-preview): restore durable identities safely",
-    "generatedAt": "2026-08-14T22:08:53.037Z",
+    "generatedAt": "2026-08-14T22:14:07.754Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 86,
-      "ready": 74,
-      "pending": 12
+      "ready": 85,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "10736100-20260814220635",
       "commit": "10736100-20260814220635",
       "commitSubject": "fix(file-preview): restore durable identities safely",
-      "generatedAt": "2026-08-14T22:08:53.037Z",
+      "generatedAt": "2026-08-14T22:14:07.754Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 74,
-        "pending": 12
+        "ready": 85,
+        "pending": 1
       },
       "comparisons": [
         "react__android",

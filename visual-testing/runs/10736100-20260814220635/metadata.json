@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T22:08:53.037Z",
+  "generatedAt": "2026-08-14T22:14:07.754Z",
   "runId": "10736100-20260814220635",
   "commit": "10736100-20260814220635",
   "commitSubject": "fix(file-preview): restore durable identities safely",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 74,
-        "pending": 12
+        "ready": 85,
+        "pending": 1
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 70,
-        "pending": 16
+        "ready": 80,
+        "pending": 6
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 79,
-        "pending": 7
+        "ready": 81,
+        "pending": 5
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 86,
-    "ready": 74,
-    "pending": 12
+    "ready": 85,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 114,
