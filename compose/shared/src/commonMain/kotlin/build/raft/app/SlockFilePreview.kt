@@ -4297,7 +4297,7 @@ private fun SlockFilePreviewImageGalleryCacheKeepAlive(
     }
 }
 
-private fun SlockFilePreviewPayload.previewIconName(): SlockLucideIconName =
+internal fun SlockFilePreviewPayload.previewIconName(): SlockLucideIconName =
     when (kind) {
         "markdown", "text" -> SlockLucideIconName.FileText
         "image" -> SlockLucideIconName.Image
@@ -4944,7 +4944,7 @@ private fun SlockFilePreviewPayload.imageGalleryDragOffsetWithResistance(dragDis
 }
 
 @Composable
-private fun SlockFilePreviewPayload.previewHeaderTitle(): String {
+internal fun SlockFilePreviewPayload.previewHeaderTitle(): String {
     val fallbackFile = stringResource(MR.strings.file_preview_fallback_file)
     val source =
         name
@@ -4957,7 +4957,7 @@ private fun SlockFilePreviewPayload.previewHeaderTitle(): String {
 }
 
 @Composable
-private fun SlockFilePreviewPayload.previewHeaderSubtitle(): String? {
+internal fun SlockFilePreviewPayload.previewHeaderSubtitle(): String? {
     val headerTitle = previewHeaderTitle()
     return slockFilePreviewVisibleSubtitle(headerTitle)
 }
