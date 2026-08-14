@@ -194,7 +194,7 @@ class SlockFilePreviewCommentsTest {
     fun inlineVideoKeepsConversationCommentExperience() {
         listOf(
             "demo.mp4" to "video/mp4",
-            "camera.MOV" to "video/quicktime"
+            "DEMO.MP4" to "application/octet-stream"
         ).forEach { (name, mimeType) ->
             val payload =
                 KuiklyThreadAttachmentItem(
@@ -212,7 +212,7 @@ class SlockFilePreviewCommentsTest {
         assertFalse(agentWorkspaceLazyPreviewPayload(agentId = "agent-1", path = "notes.md").supportsAttachmentComments())
         listOf(
             "demo.mp4" to "video/mp4",
-            "camera.MOV" to "video/quicktime"
+            "DEMO.MP4" to "application/octet-stream"
         ).forEach { (name, mimeType) ->
             assertFalse(
                 KuiklyThreadAttachmentItem(

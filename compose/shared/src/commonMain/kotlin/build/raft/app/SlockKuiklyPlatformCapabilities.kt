@@ -45,6 +45,17 @@ internal expect fun slockPlatformDefaultAppTabBarRenderer(): String?
 // keep the shared controls until their native players grow an equivalent.
 internal expect fun slockPlatformUsesNativeVideoController(): Boolean
 
+/**
+ * Whether the platform's concrete video host can demux the detected attachment container.
+ *
+ * This is intentionally a container gate, not a codec promise: Media3, AVPlayer, and ArkUI
+ * still depend on the device decoder for the samples inside the container. Playback failure
+ * therefore remains a first-class Retry + Download state in the shared preview.
+ */
+internal expect fun slockPlatformSupportsVideoAttachmentContainer(
+    container: SlockPreviewableVideoContainer
+): Boolean
+
 internal expect fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean
 
 // Each host owns its system gallery implementation: Android MediaStore Images, iOS PhotoKit
