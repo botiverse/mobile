@@ -1431,7 +1431,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun mp4AttachmentsUseInlineVideoPreviewWithoutWideningOtherFiles() {
+    fun mp4AndQuickTimeMovAttachmentsUseInlineVideoPreviewWithoutWideningOtherFiles() {
         val mp4ByMime =
             KuiklyThreadAttachmentItem(
                 id = "att-video-mime",
@@ -1442,6 +1442,18 @@ class ThreadPayloadTest {
             KuiklyThreadAttachmentItem(
                 id = "att-video-name",
                 name = "demo.MP4?download=1",
+                mimeType = "application/octet-stream"
+            )
+        val movByMime =
+            KuiklyThreadAttachmentItem(
+                id = "att-video-mov-mime",
+                name = "clip.bin",
+                mimeType = "video/quicktime; codecs=hvc1"
+            )
+        val movByName =
+            KuiklyThreadAttachmentItem(
+                id = "att-video-mov-name",
+                name = "camera.MOV?download=1",
                 mimeType = "application/octet-stream"
             )
         val otherVideo =
@@ -1457,10 +1469,12 @@ class ThreadPayloadTest {
                 mimeType = "application/zip"
             )
 
-        assertTrue(mp4ByMime.isMp4VideoAttachment())
-        assertTrue(mp4ByName.isMp4VideoAttachment())
-        assertFalse(otherVideo.isMp4VideoAttachment())
-        assertFalse(archive.isMp4VideoAttachment())
+        assertTrue(mp4ByMime.isPreviewableVideoAttachment())
+        assertTrue(mp4ByName.isPreviewableVideoAttachment())
+        assertTrue(movByMime.isPreviewableVideoAttachment())
+        assertTrue(movByName.isPreviewableVideoAttachment())
+        assertFalse(otherVideo.isPreviewableVideoAttachment())
+        assertFalse(archive.isPreviewableVideoAttachment())
     }
 
     @Test

@@ -84,6 +84,7 @@ internal val LocalThreadInlineVideoPreviewHost =
 internal fun ThreadInlineVideoAttachmentCard(
     attachment: KuiklyThreadAttachmentItem,
     commentsEnabled: Boolean,
+    onDownload: () -> Unit,
     onOpenComments: () -> Unit
 ) {
     val host = LocalThreadInlineVideoPreviewHost.current
@@ -111,7 +112,8 @@ internal fun ThreadInlineVideoAttachmentCard(
                 attachment = attachment,
                 previewState = previewState,
                 previewEnabled = host != null,
-                onRetry = { host?.requestPreview?.invoke(attachment.id, true) }
+                onRetry = { host?.requestPreview?.invoke(attachment.id, true) },
+                onDownload = onDownload
             )
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
@@ -156,7 +158,8 @@ private fun ThreadInlineVideoSurface(
     attachment: KuiklyThreadAttachmentItem,
     previewState: ThreadInlineVideoPreviewUiState?,
     previewEnabled: Boolean,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onDownload: () -> Unit
 ) {
     val source = previewState?.url.orEmpty()
     val renderMode = previewState.renderMode()
@@ -185,14 +188,21 @@ private fun ThreadInlineVideoSurface(
             !previewEnabled ->
                 ThreadInlineVideoOverlay(
                     iconName = SlockLucideIconName.TriangleAlert,
-                    label = stringResource(MR.strings.thread_video_preview_unavailable)
+                    label = stringResource(MR.strings.thread_video_preview_unavailable),
+                    secondaryActionIcon = SlockLucideIconName.Download,
+                    secondaryActionLabel = stringResource(MR.strings.file_preview_action_download),
+                    onSecondaryAction = onDownload
                 )
             renderMode == ThreadInlineVideoRenderMode.Error ->
                 ThreadInlineVideoOverlay(
                     iconName = SlockLucideIconName.TriangleAlert,
                     label = stringResource(MR.strings.thread_video_preview_unavailable),
                     actionIcon = SlockLucideIconName.RefreshCw,
-                    onAction = onRetry
+                    actionLabel = stringResource(MR.strings.common_retry),
+                    onAction = onRetry,
+                    secondaryActionIcon = SlockLucideIconName.Download,
+                    secondaryActionLabel = stringResource(MR.strings.file_preview_action_download),
+                    onSecondaryAction = onDownload
                 )
             renderMode == ThreadInlineVideoRenderMode.Loading ->
                 ThreadInlineVideoOverlay(
@@ -205,7 +215,11 @@ private fun ThreadInlineVideoSurface(
                     iconName = SlockLucideIconName.TriangleAlert,
                     label = stringResource(MR.strings.thread_video_playback_failed),
                     actionIcon = SlockLucideIconName.RefreshCw,
-                    onAction = onRetry
+                    actionLabel = stringResource(MR.strings.common_retry),
+                    onAction = onRetry,
+                    secondaryActionIcon = SlockLucideIconName.Download,
+                    secondaryActionLabel = stringResource(MR.strings.file_preview_action_download),
+                    onSecondaryAction = onDownload
                 )
             !nativeController ->
                 SlockBrutalIconButton(
@@ -239,8 +253,10 @@ private fun ThreadInlineVideoOverlay(
     label: String,
     spinning: Boolean = false,
     actionIcon: SlockLucideIconName? = null,
+    actionLabel: String? = null,
     onAction: () -> Unit = {},
     secondaryActionIcon: SlockLucideIconName? = null,
+    secondaryActionLabel: String? = null,
     onSecondaryAction: () -> Unit = {}
 ) {
     Column(
@@ -270,6 +286,7 @@ private fun ThreadInlineVideoOverlay(
                     SlockBrutalIconButton(
                         iconName = icon,
                         onClick = onAction,
+                        contentDescription = actionLabel,
                         backgroundColor = SlockColor.SurfaceWhite,
                         size = 34.dp,
                         shadowOffset = 0.dp
@@ -279,6 +296,7 @@ private fun ThreadInlineVideoOverlay(
                     SlockBrutalIconButton(
                         iconName = icon,
                         onClick = onSecondaryAction,
+                        contentDescription = secondaryActionLabel,
                         backgroundColor = SlockColor.SurfaceWhite,
                         size = 34.dp,
                         shadowOffset = 0.dp

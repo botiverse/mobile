@@ -6677,7 +6677,7 @@ internal fun SharedThreadRouteContent(
             when {
                 attachment.isMarkdownAttachment() -> "markdown"
                 attachment.isTextLikeAttachment() || attachment.isHtmlAttachment() -> "text"
-                attachment.isMp4VideoAttachment() -> "video"
+                attachment.isPreviewableVideoAttachment() -> "video"
                 else -> "file"
             }
         pager.openSlockFilePreviewPage(
@@ -16006,6 +16006,7 @@ private fun ThreadMessagesList(
                                 timestampLabel = message.timestampLabel,
                                 compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message),
                                 onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
+                                onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
                                 attachmentCommentsEnabled = attachmentCommentsEnabled,
                                 onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
                                 onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
@@ -18397,6 +18398,7 @@ internal fun ThreadMessageCard(
     onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null,
     onOpenCommentHost: (KuiklyThreadMessageCommentRef) -> Unit = {},
     onOpenAttachment: (String) -> Unit,
+    onDownloadAttachment: (String) -> Unit = {},
     attachmentCommentsEnabled: Boolean = false,
     onOpenAttachmentComments: (String) -> Unit = {},
     onRetryLocalSend: () -> Unit = {},
@@ -19110,7 +19112,8 @@ internal fun ThreadMessageCard(
                                     attachmentOpenStates = attachmentOpenStates,
                                     commentsEnabled = attachmentCommentsEnabled,
                                     onOpenComments = onOpenAttachmentComments,
-                                    onOpenAttachment = onOpenAttachment
+                                    onOpenAttachment = onOpenAttachment,
+                                    onDownloadAttachment = onDownloadAttachment
                                 )
                             }
                         }
@@ -22911,6 +22914,7 @@ private fun ThreadOriginCard(
                             onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },
                             timestampLabel = origin.timestampLabel,
                             onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
+                            onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
                             attachmentCommentsEnabled = attachmentCommentsEnabled,
                             onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", origin.id, it, null) },
                             attachmentOpenStates = if (contentExtrasVisible) attachmentOpenStates else emptyMap(),
@@ -23439,8 +23443,8 @@ internal fun KuiklyThreadAttachmentItem.isMarkdownAttachment(): Boolean =
 internal fun KuiklyThreadAttachmentItem.isTextLikeAttachment(): Boolean =
     !isMarkdownAttachment() && slockFilePreviewIsTextLikeAttachment(fileName = name, mimeType = mimeType)
 
-internal fun KuiklyThreadAttachmentItem.isMp4VideoAttachment(): Boolean =
-    slockFilePreviewIsMp4VideoAttachment(fileName = name, mimeType = mimeType)
+internal fun KuiklyThreadAttachmentItem.isPreviewableVideoAttachment(): Boolean =
+    slockFilePreviewIsPreviewableVideoAttachment(fileName = name, mimeType = mimeType)
 
 private fun KuiklyThreadAttachmentItem.isPreviewableDocumentAttachment(): Boolean =
     isPdfAttachment() ||
@@ -23451,7 +23455,7 @@ internal fun KuiklyThreadAttachmentItem.isHtmlAttachment(): Boolean =
     normalizedMimeType() == "text/html" || name.endsWith(".html", ignoreCase = true) || name.endsWith(".htm", ignoreCase = true)
 
 private fun KuiklyThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): Boolean =
-    isPreviewableDocumentAttachment() || isHtmlAttachment() || isMp4VideoAttachment()
+    isPreviewableDocumentAttachment() || isHtmlAttachment() || isPreviewableVideoAttachment()
 
 internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
     displaySizeLabel()
@@ -23474,7 +23478,7 @@ internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(htmlPreview
 
 internal fun KuiklyThreadAttachmentItem.threadAttachmentSummaryLine(): StringDesc? =
     when {
-        isMp4VideoAttachment() -> MR.strings.file_preview_video.desc()
+        isPreviewableVideoAttachment() -> MR.strings.file_preview_video.desc()
         isTextLikeAttachment() || isHtmlAttachment() -> MR.strings.file_preview_text.desc()
         isPreviewableDocumentAttachment() -> MR.strings.file_preview_document.desc()
         else -> null
@@ -23541,7 +23545,8 @@ private fun ThreadMessageAttachments(
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     commentsEnabled: Boolean = false,
     onOpenComments: (String) -> Unit = {},
-    onOpenAttachment: (String) -> Unit
+    onOpenAttachment: (String) -> Unit,
+    onDownloadAttachment: (String) -> Unit = {}
 ) {
     if (attachments.isEmpty()) return
 
@@ -23577,6 +23582,7 @@ private fun ThreadMessageAttachments(
                 openState = attachmentOpenStates[attachment.id],
                 commentsEnabled = commentsEnabled,
                 onOpen = { onOpenAttachment(attachment.id) },
+                onDownload = { onDownloadAttachment(attachment.id) },
                 onOpenComments = { onOpenComments(attachment.id) }
             )
         }
@@ -23629,12 +23635,14 @@ private fun ThreadAttachmentChip(
     openState: ThreadAttachmentOpenUiState?,
     commentsEnabled: Boolean = false,
     onOpen: () -> Unit,
+    onDownload: () -> Unit = {},
     onOpenComments: () -> Unit = {}
 ) {
-    if (attachment.isMp4VideoAttachment()) {
+    if (attachment.isPreviewableVideoAttachment()) {
         ThreadInlineVideoAttachmentCard(
             attachment = attachment,
             commentsEnabled = commentsEnabled,
+            onDownload = onDownload,
             onOpenComments = onOpenComments
         )
         return

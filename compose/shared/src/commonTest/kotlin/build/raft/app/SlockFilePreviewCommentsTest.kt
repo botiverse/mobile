@@ -192,26 +192,36 @@ class SlockFilePreviewCommentsTest {
 
     @Test
     fun inlineVideoKeepsConversationCommentExperience() {
-        val payload =
-            KuiklyThreadAttachmentItem(
-                id = "attachment-video",
-                name = "demo.mp4",
-                mimeType = "video/mp4"
-            ).toThreadAttachmentCommentsPreviewPayload(commentsEnabled = true)
+        listOf(
+            "demo.mp4" to "video/mp4",
+            "camera.MOV" to "video/quicktime"
+        ).forEach { (name, mimeType) ->
+            val payload =
+                KuiklyThreadAttachmentItem(
+                    id = "attachment-video",
+                    name = name,
+                    mimeType = mimeType
+                ).toThreadAttachmentCommentsPreviewPayload(commentsEnabled = true)
 
-        assertNull(payload)
+            assertNull(payload, "inline preview must keep comments outside the file viewer for $name")
+        }
     }
 
     @Test
     fun workspaceAndVideoPreviewsDoNotExposeAttachmentComments() {
         assertFalse(agentWorkspaceLazyPreviewPayload(agentId = "agent-1", path = "notes.md").supportsAttachmentComments())
-        assertFalse(
-            KuiklyThreadAttachmentItem(
-                id = "attachment-video",
-                name = "demo.mp4",
-                mimeType = "video/mp4"
-            ).toThreadAttachmentLazyPreviewPayload(kind = "video").supportsAttachmentComments()
-        )
+        listOf(
+            "demo.mp4" to "video/mp4",
+            "camera.MOV" to "video/quicktime"
+        ).forEach { (name, mimeType) ->
+            assertFalse(
+                KuiklyThreadAttachmentItem(
+                    id = "attachment-video",
+                    name = name,
+                    mimeType = mimeType
+                ).toThreadAttachmentLazyPreviewPayload(kind = "video").supportsAttachmentComments()
+            )
+        }
         assertNull(
             KuiklyThreadAttachmentItem(
                 id = "attachment-markdown",

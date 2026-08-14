@@ -3446,7 +3446,7 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentCommentsPreviewPayload
     commentsEnabled: Boolean
 ): SlockFilePreviewPayload? {
     if (!commentsEnabled) return null
-    if (isMp4VideoAttachment()) return null
+    if (isPreviewableVideoAttachment()) return null
     val kind =
         when {
             isImageAttachment() -> "image"
@@ -3464,7 +3464,7 @@ internal fun SlockFilePreviewPayload.supportsAttachmentComments(): Boolean =
     source == SlockFilePreviewSourceThreadAttachment &&
         attachmentId.isNotBlank() &&
         attachmentCommentsEnabled &&
-        !slockFilePreviewIsMp4VideoAttachment(externalFileName, externalMimeType)
+        !slockFilePreviewIsPreviewableVideoAttachment(externalFileName, externalMimeType)
 
 private fun SlockFilePreviewPayload.supportsSaveToPhotos(): Boolean =
     source == SlockFilePreviewSourceThreadAttachment &&
@@ -3499,8 +3499,8 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
     val wantsImage =
         requestedKind == "image" ||
             slockFilePreviewIsImageAttachment(fileName = previewFileName, mimeType = externalMimeType)
-    val wantsMp4Video =
-        slockFilePreviewIsMp4VideoAttachment(
+    val wantsVideo =
+        slockFilePreviewIsPreviewableVideoAttachment(
             fileName = previewFileName,
             mimeType = externalMimeType
         )
@@ -3524,7 +3524,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
     return when {
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
         wantsImage -> loadThreadImageAttachmentPreview(threadApi)
-        wantsMp4Video -> loadThreadVideoAttachmentPreview(threadApi)
+        wantsVideo -> loadThreadVideoAttachmentPreview(threadApi)
         wantsMp3Audio -> loadThreadVideoAttachmentPreview(threadApi, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
         wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
         wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
@@ -3880,15 +3880,18 @@ internal fun slockFilePreviewIsHtmlAttachment(fileName: String, mimeType: String
         normalizedName.endsWith(".htm", ignoreCase = true)
 }
 
-internal fun slockFilePreviewIsMp4VideoAttachment(fileName: String, mimeType: String): Boolean {
+internal fun slockFilePreviewIsPreviewableVideoAttachment(fileName: String, mimeType: String): Boolean {
     val normalizedMime = mimeType.substringBefore(';').trim()
     if (normalizedMime.equals("video/mp4", ignoreCase = true)) return true
-    return fileName.substringBefore('?').substringBefore('#').endsWith(".mp4", ignoreCase = true)
+    if (normalizedMime.equals("video/quicktime", ignoreCase = true)) return true
+    val normalizedName = fileName.substringBefore('?').substringBefore('#')
+    return normalizedName.endsWith(".mp4", ignoreCase = true) ||
+        normalizedName.endsWith(".mov", ignoreCase = true)
 }
 
 // task #556: mp3 attachments play through the same Media3-backed player as
-// video (audio-only source, blank surface). Scoped to mp3 like video is
-// scoped to mp4 — widen deliberately, per codec, when asked.
+// video (audio-only source, blank surface). Scoped to mp3; video is scoped to
+// MP4 and QuickTime MOV, widened deliberately for task #134.
 internal fun slockFilePreviewIsMp3AudioAttachment(fileName: String, mimeType: String): Boolean {
     val normalizedMime = mimeType.substringBefore(';').trim()
     if (normalizedMime.equals("audio/mpeg", ignoreCase = true)) return true

@@ -1640,12 +1640,15 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun mp4VideoClassifierAcceptsOnlyMp4ForMobilePreview() {
-        assertEquals(true, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.mp4", mimeType = ""))
-        assertEquals(true, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.bin", mimeType = "video/mp4"))
-        assertEquals(true, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.MP4?token=1", mimeType = ""))
-        assertEquals(false, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.webm", mimeType = "video/webm"))
-        assertEquals(false, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.mov", mimeType = "video/quicktime"))
+    fun videoClassifierAcceptsMp4AndQuickTimeMovForMobilePreview() {
+        assertEquals(true, slockFilePreviewIsPreviewableVideoAttachment(fileName = "clip.mp4", mimeType = ""))
+        assertEquals(true, slockFilePreviewIsPreviewableVideoAttachment(fileName = "clip.bin", mimeType = "video/mp4"))
+        assertEquals(true, slockFilePreviewIsPreviewableVideoAttachment(fileName = "clip.MP4?token=1", mimeType = ""))
+        assertEquals(true, slockFilePreviewIsPreviewableVideoAttachment(fileName = "clip.mov", mimeType = ""))
+        assertEquals(true, slockFilePreviewIsPreviewableVideoAttachment(fileName = "clip.bin", mimeType = "video/quicktime"))
+        assertEquals(true, slockFilePreviewIsPreviewableVideoAttachment(fileName = "clip.MOV?token=1", mimeType = "application/octet-stream"))
+        assertEquals(false, slockFilePreviewIsPreviewableVideoAttachment(fileName = "clip.webm", mimeType = "video/webm"))
+        assertEquals(false, slockFilePreviewIsPreviewableVideoAttachment(fileName = "clip.avi", mimeType = "video/x-msvideo"))
     }
 
     @Test
