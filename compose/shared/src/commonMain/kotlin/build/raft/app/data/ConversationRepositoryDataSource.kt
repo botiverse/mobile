@@ -235,6 +235,28 @@ class RealConversationRepository(
     private val routeServerIdProvider: (() -> String?)? = null,
     private val warningLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
 ) : ConversationRepository, ProgressiveConversationAttachmentUploader {
+    override suspend fun getConversationDetail(
+        channelId: ChannelId,
+        priority: DataRequestPriority,
+    ): DataResult<ConversationSummary> {
+        val context = currentContext() ?: return authRequired()
+        return executeConversation(
+            emptyReason = EmptyReason.NoMessages,
+            block = {
+                networkClient.request(
+                    priority = priority,
+                    path = "channels/${channelId.value}",
+                    serverIdOverride = context.server.id,
+                )
+            },
+            source = "conversation_detail",
+            mapper = { bodyText ->
+                parseSlockChannelDetail(bodyText, warningLogger)?.toConversationSummary()
+                    ?: throw IllegalStateException("Conversation detail response missing channel")
+            },
+        )
+    }
+
     override suspend fun getAttachmentUploadCapabilities(): DataResult<AttachmentUploadCapabilities> {
         currentContext() ?: return authRequired()
         return executeConversation(

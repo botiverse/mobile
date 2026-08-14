@@ -159,6 +159,12 @@ interface SettingsServerManagementRepository {
 }
 
 interface ConversationRepository {
+    suspend fun getConversationDetail(
+        channelId: ChannelId,
+        priority: DataRequestPriority = DataRequestPriority.Foreground,
+    ): DataResult<ConversationSummary> =
+        DataResult.Error(ScreenError(code = "conversation_detail_unavailable", retryable = true))
+
     suspend fun getThread(
         threadId: ThreadId,
         includeFollowedSummaries: Boolean = false,

@@ -102,6 +102,74 @@ class SharedApiEnvironmentNetworkClientTest {
     }
 
     @Test
+    fun boundJsonEnvironmentMismatchSkipsExecutor() = runBlocking {
+        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        environmentStore.select("staging")
+        val executor = RecordingHttpExecutor()
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = authenticatedSessionStore(),
+                baseUrlProvider = { environmentStore.current().apiBaseUrl },
+                executor = executor,
+            ).boundTo(
+                expectedBinding(
+                    environmentId = SharedApiEnvironmentStore.Production.apiBaseUrl,
+                )
+            )
+
+        val response = client.request(DataRequestPriority.Foreground, "channels/channel-1")
+
+        assertEquals(409, response.code)
+        assertEquals(emptyList(), executor.urls)
+    }
+
+    @Test
+    fun boundJsonRequestUsesCapturedEnvironmentBaseUrl() = runBlocking {
+        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val executor = RecordingHttpExecutor()
+        val capturedEnvironment = environmentStore.current().apiBaseUrl
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = authenticatedSessionStore(),
+                baseUrlProvider = { environmentStore.current().apiBaseUrl },
+                executor = executor,
+            ).boundTo(expectedBinding(environmentId = capturedEnvironment))
+
+        val response = client.request(DataRequestPriority.Foreground, "channels/channel-1")
+
+        assertEquals(200, response.code)
+        assertEquals(
+            listOf("${capturedEnvironment.trimEnd('/')}/channels/channel-1"),
+            executor.urls,
+        )
+    }
+
+    @Test
+    fun boundJsonEnvironmentChangeDuringTransportSkipsOldEnvironmentRefresh() = runBlocking {
+        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val capturedEnvironment = environmentStore.current().apiBaseUrl
+        val executor =
+            RecordingHttpExecutor(
+                responseCode = 401,
+                onExecute = { environmentStore.select("staging") },
+            )
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = authenticatedSessionStore(),
+                baseUrlProvider = { environmentStore.current().apiBaseUrl },
+                executor = executor,
+            ).boundTo(expectedBinding(environmentId = capturedEnvironment))
+
+        val response = client.request(DataRequestPriority.Foreground, "channels/channel-1")
+
+        assertEquals(409, response.code)
+        assertEquals(
+            listOf("${capturedEnvironment.trimEnd('/')}/channels/channel-1"),
+            executor.urls,
+        )
+    }
+
+    @Test
     fun currentEnvironmentAuthDataSourceTracksLatestApiEnvironmentWithoutRecreation() = runBlocking {
         val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
         val executor = RecordingHttpExecutor(responseCode = 500)
@@ -225,7 +293,8 @@ class SharedApiEnvironmentNetworkClientTest {
     }
 
     private class RecordingHttpExecutor(
-        private val responseCode: Int = 200
+        private val responseCode: Int = 200,
+        private val onExecute: (String) -> Unit = {},
     ) : SlockHttpExecutor {
         val urls = mutableListOf<String>()
         val headers = mutableListOf<Map<String, String>>()
@@ -241,6 +310,7 @@ class SharedApiEnvironmentNetworkClientTest {
         ): SlockHttpExecutorResponse {
             urls += url
             this.headers += headers
+            onExecute(url)
             return SlockHttpExecutorResponse(code = responseCode, bodyText = "{}", errorBodyText = null)
         }
 
@@ -257,4 +327,24 @@ class SharedApiEnvironmentNetworkClientTest {
             return SlockHttpExecutorResponse(code = responseCode, bodyText = "{}", errorBodyText = null)
         }
     }
+
+    private fun authenticatedSessionStore(): InMemorySlockAuthSessionStore =
+        InMemorySlockAuthSessionStore(
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-1", email = "user@raft.build"),
+                accessToken = "access-token",
+                refreshToken = "refresh-token",
+                selectedServerId = "server-1",
+                servers = listOf(StoredAuthServer(id = "server-1", name = "Raft")),
+            )
+        )
+
+    private fun expectedBinding(environmentId: String): SlockExpectedAuthBinding =
+        SlockExpectedAuthBinding(
+            accountId = "user-1",
+            accessToken = "access-token",
+            refreshToken = "refresh-token",
+            serverId = "server-1",
+            environmentId = environmentId,
+        )
 }

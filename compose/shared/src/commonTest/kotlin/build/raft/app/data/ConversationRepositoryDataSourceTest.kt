@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageType
 import build.raft.app.model.ServerId
@@ -18,6 +19,32 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class ConversationRepositoryDataSourceTest {
+    @Test
+    fun conversationDetailLoadsCanonicalChannelIdentityDirectly() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET channels/channel-1" to
+                            """{"id":"channel-1","name":"canonical","type":"channel","description":"standalone"}"""
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val detail =
+            assertIs<DataResult.Content<ConversationSummary>>(
+                repository.getConversationDetail(ChannelId("channel-1"), DataRequestPriority.Visible)
+            ).data
+
+        assertEquals(ChannelId("channel-1"), detail.channelId)
+        assertEquals("canonical", detail.name)
+        assertEquals("standalone", detail.subtitle)
+        assertEquals(
+            listOf(RecordedConversationRequest(DataRequestPriority.Visible, "GET", "channels/channel-1")),
+            network.requests,
+        )
+    }
+
     @Test
     fun canonicalMessagesCompleteWithoutAwaitingUnavailableSummaryFallback() = runBlocking {
         val releaseSummary = CompletableDeferred<Unit>()

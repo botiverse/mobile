@@ -11,15 +11,9 @@ import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockSwitchButton
-import build.raft.app.data.ChannelProfileUpdateRequest
-import build.raft.app.data.ChannelVisibility
-import build.raft.app.data.DataRequestPriority
-import build.raft.app.data.DataResult
 import build.raft.app.data.HomeChannelRow
-import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
-import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SlockSharedStoreRegistry
@@ -57,9 +51,6 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.launch
 
 internal const val CHANNEL_SETTINGS_PAGE = "compose_channel_settings"
 
@@ -142,64 +133,93 @@ private fun ChannelSettingsPageScreen() {
         params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
-    val homeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
-    val homeStateFlow = remember(homeStore) { homeStore?.state ?: flowOf(SharedHomeState()) }
-    val homeState by homeStateFlow.collectAsState(SharedHomeState())
-    val membersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
-    val memberSlice by remember(membersStore, route.serverId, route.channelId) {
-        membersStore
-            .channelMemberSliceFlow(route.serverId, route.channelId)
-            .onStart {
-                membersStore.loadChannelMembers(
-                    serverId = route.serverId,
-                    channelId = route.channelId,
-                    priority = DataRequestPriority.Visible,
-                    force = false
-                )
-            }
-    }.collectAsState(
-        SharedServerChannelMembersSlice(
-            serverId = route.serverId.value,
-            channelId = route.channelId.value
-        )
-    )
+    val routeOwner = remember(params.toString()) { params.authenticatedRouteOwnerOrNull() }
+    if (routeOwner == null || routeOwner.serverId != route.serverId.value) {
+        ChannelSettingsInvalidRouteScreen(onBack = router::closePage)
+        return
+    }
+    val liveOwner by
+        remember(sharedStores, storeScope) {
+            sharedStores.authenticatedRouteOwnerFlow(storeScope)
+        }.collectAsState(sharedStores.currentAuthenticatedRouteOwner(storeScope))
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
-    val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
-    val channelRepository = remember(authStore, networkClient) {
-        RealChannelRepository(
-            sessionStore = authStore,
-            networkClient = networkClient,
-            warningLogger = { bridge.log("channel_settings_repository $it") }
-        )
+    val authorityGateway = remember(sharedStores, storeScope) {
+        sharedStores.authenticatedRouteAuthorityGateway(storeScope)
     }
     val scope = rememberCoroutineScope()
-    val content = homeState.content
-    val channel = remember(content, route) { channelSettingsChannel(content, route) }
-    val canManage = remember(content) { channelSettingsCanManage(content) }
-    val pinnedIds = remember(content) {
-        (content as? SharedHomeContentState.Content)
-            ?.snapshot
-            ?.sidebarOrder
-            .pinnedChannelConversationIds()
+    val dataSource = remember(route, routeOwner, authStore, authorityGateway) {
+        RealChannelSettingsDataSource(
+            route = route,
+            authStore = authStore,
+            owner = routeOwner,
+            gateway = authorityGateway,
+            logger = { bridge.log("channel_settings_store $it") },
+        )
     }
-    val pinned = route.channelId.value in pinnedIds
+    val settingsStore = remember(route, dataSource, scope) {
+        ChannelSettingsStore(route = route, dataSource = dataSource, scope = scope)
+    }
+    val settingsState by settingsStore.state.collectAsState()
+    val homeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
+    val channel = settingsState.channel
+    val memberSlice = settingsState.memberSlice
+    val canManage = settingsState.canManage
+    val pinned = settingsState.isPinned(route.channelId.value)
     var dialog by remember(route) { mutableStateOf<ChannelSettingsDialog?>(null) }
-    var profileStatus by remember(route) { mutableStateOf(ChannelProfileUpdateStatus.Idle) }
-    var profileErrorCode by remember(route) { mutableStateOf<String?>(null) }
-    var actionInFlight by remember(route) { mutableStateOf(false) }
     val updateFailedLabel = stringResource(MR.strings.thread_settings_update_failed)
     val archiveFailedLabel = stringResource(MR.strings.thread_error_archive_channel)
     val deleteFailedLabel = stringResource(MR.strings.thread_error_delete_channel)
 
-    LaunchedEffect(homeStore, route.serverId) {
-        homeStore?.dispatch(SharedHomeIntent.Start)
+    LaunchedEffect(settingsStore, liveOwner, routeOwner) {
+        if (liveOwner == routeOwner) {
+            settingsStore.dispatch(ChannelSettingsIntent.Load)
+        } else {
+            dialog = null
+            settingsStore.invalidateAuthority()
+        }
     }
 
-    fun finishDestructiveAction() {
-        dialog = null
-        actionInFlight = false
-        homeStore?.dispatch(SharedHomeIntent.Refresh)
-        router.closePage()
+    LaunchedEffect(settingsState.status) {
+        if (settingsState.status == ChannelSettingsLoadStatus.AuthorityRejected) {
+            dialog = null
+        }
+    }
+
+    LaunchedEffect(settingsState.effect) {
+        when (val effect = settingsState.effect) {
+            ChannelSettingsEffect.ProfileSaved -> {
+                dialog = null
+                settingsState.channel?.let { updated ->
+                    homeStore?.dispatch(
+                        SharedHomeIntent.ChannelProfileUpdated(
+                            channelId = updated.channelId,
+                            name = updated.name.removePrefix("#"),
+                            description = updated.subtitle,
+                        )
+                    )
+                }
+            }
+            is ChannelSettingsEffect.Updated -> {
+                if (effect.action == ChannelSettingsAction.Visibility) dialog = null
+                homeStore?.dispatch(SharedHomeIntent.Refresh)
+            }
+            is ChannelSettingsEffect.Failure -> {
+                bridge.toast(
+                    when (effect.action) {
+                        ChannelSettingsAction.Delete -> deleteFailedLabel
+                        ChannelSettingsAction.Archive -> archiveFailedLabel
+                        else -> updateFailedLabel
+                    }
+                )
+            }
+            ChannelSettingsEffect.Close -> {
+                dialog = null
+                homeStore?.dispatch(SharedHomeIntent.Refresh)
+                router.closePage()
+            }
+            null -> Unit
+        }
+        if (settingsState.effect != null) settingsStore.dispatch(ChannelSettingsIntent.ConsumeEffect)
     }
 
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream)) {
@@ -208,7 +228,7 @@ private fun ChannelSettingsPageScreen() {
                 title = stringResource(MR.strings.channel_settings_title),
                 iconName = SlockLucideIconName.Settings,
                 backgroundColor = SlockColor.SurfaceWhite,
-                refreshing = (content as? SharedHomeContentState.Content)?.contentRefreshing == true,
+                refreshing = settingsState.refreshing,
                 leadingContent = {
                     SlockTopPageHeaderAction(
                         icon = SlockLucideIconName.ArrowLeft,
@@ -228,29 +248,22 @@ private fun ChannelSettingsPageScreen() {
                             pager.openSlockPage(
                                 pageName = THREAD_MEMBERS_PAGE,
                                 pageData = channelSettingsMembersPageData(route),
-                                storeScopeOverride = storeScope
+                                storeScopeOverride = storeScope,
+                                authenticatedRouteAuthorityRequired = true,
                             )
                         },
-                        onToggleMute = {
-                            homeStore?.dispatch(
-                                SharedHomeIntent.SetChannelActivityMuted(
-                                    conversationId = route.channelId.value,
-                                    muted = !channel.activityMuted
-                                )
-                            )
-                        },
-                        onTogglePin = {
-                            homeStore?.dispatch(SharedHomeIntent.TogglePinned(route.channelId.value))
-                        },
+                        onToggleMute = { settingsStore.dispatch(ChannelSettingsIntent.ToggleMute) },
+                        onTogglePin = { settingsStore.dispatch(ChannelSettingsIntent.TogglePin) },
                         onMakePrivate = { dialog = ChannelSettingsDialog.Visibility },
                         onArchive = { dialog = ChannelSettingsDialog.Archive },
                         onDelete = { dialog = ChannelSettingsDialog.Delete }
                     )
-                content is SharedHomeContentState.Error || content is SharedHomeContentState.Empty ->
+                settingsState.status == ChannelSettingsLoadStatus.Error ||
+                    settingsState.status == ChannelSettingsLoadStatus.AuthorityRejected ->
                     ChannelSettingsMessage(
                         title = stringResource(MR.strings.channel_settings_unavailable),
                         detail = stringResource(MR.strings.channel_settings_unavailable_detail),
-                        onRetry = { homeStore?.dispatch(SharedHomeIntent.Refresh) }
+                        onRetry = { settingsStore.dispatch(ChannelSettingsIntent.Refresh) }
                     )
                 else -> ChannelSettingsLoading()
             }
@@ -276,109 +289,25 @@ private fun ChannelSettingsPageScreen() {
                         ChannelSettingsDialog.Delete -> "delete"
                         else -> null
                     },
-                updateStatus = profileStatus,
-                updateErrorCode = profileErrorCode,
+                updateStatus = settingsState.profileStatus,
+                updateErrorCode = settingsState.profileErrorCode,
                 onDismiss = {
-                    if (!actionInFlight && profileStatus != ChannelProfileUpdateStatus.InFlight) {
+                    if (
+                        settingsState.actionInFlight == null &&
+                        settingsState.profileStatus != ChannelProfileUpdateStatus.InFlight
+                    ) {
                         dialog = null
-                        profileStatus = ChannelProfileUpdateStatus.Idle
-                        profileErrorCode = null
+                        settingsStore.dispatch(ChannelSettingsIntent.ClearProfileStatus)
                     }
                 },
                 onSave = { _, _, name, description ->
-                    if (profileStatus == ChannelProfileUpdateStatus.InFlight) return@ThreadSettingsModal
-                    profileStatus = ChannelProfileUpdateStatus.InFlight
-                    profileErrorCode = null
-                    scope.launch {
-                        when (
-                            val result = channelRepository.updateChannelProfile(
-                                ChannelProfileUpdateRequest(route.channelId, name, description)
-                            )
-                        ) {
-                            is DataResult.Content -> {
-                                homeStore?.dispatch(
-                                    SharedHomeIntent.ChannelProfileUpdated(
-                                        channelId = result.data.channelId,
-                                        name = result.data.name,
-                                        description = result.data.description
-                                    )
-                                )
-                                profileStatus = ChannelProfileUpdateStatus.Succeeded
-                                dialog = null
-                            }
-                            is DataResult.Error -> {
-                                profileStatus = ChannelProfileUpdateStatus.Failed
-                                profileErrorCode = result.error.code
-                                bridge.toast(updateFailedLabel)
-                            }
-                            is DataResult.NoPermission -> {
-                                profileStatus = ChannelProfileUpdateStatus.Failed
-                                profileErrorCode = result.blocker.code
-                                bridge.toast(updateFailedLabel)
-                            }
-                            is DataResult.Empty -> {
-                                profileStatus = ChannelProfileUpdateStatus.Failed
-                                profileErrorCode = "channel_update_empty"
-                                bridge.toast(updateFailedLabel)
-                            }
-                        }
-                    }
+                    settingsStore.dispatch(ChannelSettingsIntent.UpdateProfile(name, description))
                 },
                 onOpenAction = { actionId ->
-                    if (actionInFlight) return@ThreadSettingsModal
-                    actionInFlight = true
-                    scope.launch {
-                        val result =
-                            when (actionId) {
-                                "visibility" -> channelRepository.updateChannel(route.channelId, ChannelVisibility.Private)
-                                "archive" -> channelRepository.archiveChannel(route.channelId)
-                                "delete" -> channelRepository.deleteChannel(route.channelId)
-                                else -> null
-                            }
-                        when (result) {
-                            is DataResult.Content -> {
-                                if (actionId == "visibility") {
-                                    actionInFlight = false
-                                    dialog = null
-                                    homeStore?.dispatch(SharedHomeIntent.Refresh)
-                                } else {
-                                    finishDestructiveAction()
-                                }
-                            }
-                            is DataResult.Error -> {
-                                actionInFlight = false
-                                bridge.toast(
-                                    when (actionId) {
-                                        "delete" -> deleteFailedLabel
-                                        "visibility" -> updateFailedLabel
-                                        else -> archiveFailedLabel
-                                    }
-                                )
-                            }
-                            is DataResult.NoPermission -> {
-                                actionInFlight = false
-                                bridge.toast(
-                                    when (actionId) {
-                                        "delete" -> deleteFailedLabel
-                                        "visibility" -> updateFailedLabel
-                                        else -> archiveFailedLabel
-                                    }
-                                )
-                            }
-                            is DataResult.Empty -> {
-                                actionInFlight = false
-                                bridge.toast(
-                                    when (actionId) {
-                                        "delete" -> deleteFailedLabel
-                                        "visibility" -> updateFailedLabel
-                                        else -> archiveFailedLabel
-                                    }
-                                )
-                            }
-                            null -> {
-                                actionInFlight = false
-                            }
-                        }
+                    when (actionId) {
+                        "visibility" -> settingsStore.dispatch(ChannelSettingsIntent.MakePrivate)
+                        "archive" -> settingsStore.dispatch(ChannelSettingsIntent.Archive)
+                        "delete" -> settingsStore.dispatch(ChannelSettingsIntent.Delete)
                     }
                 }
             )

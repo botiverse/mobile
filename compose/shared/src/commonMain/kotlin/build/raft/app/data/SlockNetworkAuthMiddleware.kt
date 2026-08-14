@@ -45,6 +45,9 @@ internal class SlockNetworkAuthMiddleware(
         }
 
         val first = block(session.toRequestContext(serverId))
+        if (expectedAuthority != null && !expectedAuthority.isCurrent(serverIdOverride)) {
+            return authorityChangedResponse()
+        }
         if (!first.requiresTokenRefresh()) return first
 
         val refreshed =
@@ -83,6 +86,9 @@ internal class SlockNetworkAuthMiddleware(
         }
 
         val retry = block(refreshed.toRequestContext(retryServerId))
+        if (expectedAuthority != null && !expectedAuthority.isCurrent(serverIdOverride)) {
+            return authorityChangedResponse()
+        }
         if (retry.requiresTokenRefresh()) {
             terminalAuthLossReporter(refreshed, caller)
             return retry.asSessionExpired()
@@ -112,6 +118,14 @@ internal class SlockNetworkAuthMiddleware(
             serverId = serverId
         )
 
+    private suspend fun SlockExpectedAuthBinding.isCurrent(
+        serverIdOverride: ServerId?,
+    ): Boolean {
+        val current = sessionStore.readSession() ?: return false
+        val currentServerId = (serverIdOverride?.value ?: current.currentServerId).orEmpty()
+        return current.matchesExpectedAuthority(this, currentServerId)
+    }
+
 }
 
 internal data class SlockAuthenticatedRequestContext(
@@ -125,7 +139,8 @@ internal data class SlockExpectedAuthBinding(
     val accountId: String,
     val accessToken: String,
     val refreshToken: String,
-    val serverId: String
+    val serverId: String,
+    val environmentId: String? = null,
 )
 
 internal fun StoredAuthSession.matchesExpectedAuthority(
@@ -135,6 +150,7 @@ internal fun StoredAuthSession.matchesExpectedAuthority(
     user.id == expected.accountId &&
         accessToken == expected.accessToken &&
         refreshToken == expected.refreshToken &&
+        currentServerId == expected.serverId &&
         effectiveServerId == expected.serverId
 
 private const val SESSION_EXPIRED_ERROR = """{"error":"session_expired"}"""

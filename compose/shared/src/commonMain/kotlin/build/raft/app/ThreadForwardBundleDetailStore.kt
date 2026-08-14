@@ -1,11 +1,16 @@
 package build.raft.app
 
 import build.raft.app.data.ConversationRepository
+import build.raft.app.data.AuthenticatedRouteAuthorityGateway
+import build.raft.app.data.AuthenticatedRouteOperationRunner
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ThreadSnapshot
+import build.raft.app.data.RealConversationRepository
+import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.candidateCacheScopeId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
@@ -113,6 +118,57 @@ internal class RealThreadForwardBundleDetailRepository(
                 DataResult.Error(ScreenError(code = resolution.code, retryable = true))
         }
     }
+}
+
+/** Production repository: authority is admitted before even the message cache key is read. */
+internal class AuthenticatedThreadForwardBundleDetailRepository(
+    private val messageStore: SharedThreadMessageStore,
+    private val authStore: SlockAuthSessionStore,
+    owner: build.raft.app.data.AuthenticatedRouteOwner,
+    gateway: AuthenticatedRouteAuthorityGateway,
+    private val logger: (String) -> Unit = {},
+) : ThreadForwardBundleDetailRepository {
+    private val runner = AuthenticatedRouteOperationRunner(owner, gateway)
+
+    override suspend fun load(route: ThreadForwardBundleRoute): DataResult<ForwardMessageBundle> =
+        runner.run { receipt, networkClient ->
+            val conversationRepository =
+                RealConversationRepository(
+                    sessionStore = authStore,
+                    networkClient = networkClient,
+                    routeServerIdProvider = { route.serverId.value },
+                    warningLogger = logger,
+                )
+            val resolution =
+                messageStore.resolveScoped(
+                    scopeId = receipt.candidateCacheScopeId(),
+                    channelId = route.channelId,
+                    messageId = route.messageId,
+                ) {
+                    when (
+                        val result =
+                            conversationRepository.getMessageContext(
+                                messageId = route.messageId,
+                                channelId = route.channelId,
+                                priority = DataRequestPriority.Foreground,
+                            )
+                    ) {
+                        is DataResult.Content -> result.data.toForwardBundleMessageResolution(route)
+                        is DataResult.Empty -> SharedThreadMessageResolution.Missing
+                        is DataResult.Error -> SharedThreadMessageResolution.Error(result.error.code)
+                        is DataResult.NoPermission -> SharedThreadMessageResolution.Error(result.blocker.code)
+                    }
+                }
+            when (resolution) {
+                is SharedThreadMessageResolution.Loaded ->
+                    resolution.message.forwardBundle
+                        ?.let { bundle -> DataResult.Content(bundle) }
+                        ?: DataResult.Empty(EmptyReason.NoMessages)
+                SharedThreadMessageResolution.Missing -> DataResult.Empty(EmptyReason.NoMessages)
+                is SharedThreadMessageResolution.Error ->
+                    DataResult.Error(ScreenError(code = resolution.code, retryable = true))
+            }
+        }
 }
 
 private fun ThreadSnapshot.toForwardBundleMessageResolution(

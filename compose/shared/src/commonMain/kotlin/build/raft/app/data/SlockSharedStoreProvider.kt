@@ -87,6 +87,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.StateFlow
@@ -767,6 +768,79 @@ internal class SlockSharedStoreProvider private constructor(
             },
         ).capture()
     }
+
+    /**
+     * Synchronous identity-only owner used only while serializing a child
+     * route. The destination still performs the full async session/generation
+     * capture before any cache, network, or mutation work.
+     */
+    internal fun currentAuthenticatedRouteOwner(
+        scope: SlockShellStoreScope,
+    ): AuthenticatedRouteOwner? {
+        val authContext = replyCacheAuthContext.value ?: return null
+        val environmentId = apiEnvironmentStore.current().apiBaseUrl.normalizedEnvironmentId()
+        if (environmentId.isBlank() || environmentId != authContext.environmentId.normalizedEnvironmentId()) {
+            return null
+        }
+        val selectedServerStore = selectedServerStores.get(scope)
+        val serverId =
+            if (selectedServerStore != null) {
+                selectedServerStore.selectedServerId.value
+            } else {
+                scope.initialServerId
+            } ?: return null
+        return AuthenticatedRouteOwner(
+            environmentId = environmentId,
+            accountId = authContext.accountId,
+            serverId = serverId,
+        ).normalizedOrNull()
+    }
+
+    internal fun authenticatedRouteOwnerFlow(
+        scope: SlockShellStoreScope,
+    ): Flow<AuthenticatedRouteOwner?> =
+        combine(
+            apiEnvironmentStore.state,
+            replyCacheAuthContext,
+            selectedServerStore(scope).selectedServerId,
+        ) { environment, authContext, serverId ->
+            val environmentId = environment.apiBaseUrl.normalizedEnvironmentId()
+            if (
+                authContext == null ||
+                environmentId.isBlank() ||
+                environmentId != authContext.environmentId.normalizedEnvironmentId()
+            ) {
+                null
+            } else {
+                AuthenticatedRouteOwner(
+                    environmentId = environmentId,
+                    accountId = authContext.accountId,
+                    serverId = serverId.orEmpty(),
+                ).normalizedOrNull()
+            }
+        }.distinctUntilChanged()
+
+    internal fun authenticatedRouteAuthorityGateway(
+        scope: SlockShellStoreScope,
+    ): AuthenticatedRouteAuthorityGateway =
+        object : AuthenticatedRouteAuthorityGateway {
+            override suspend fun capture(
+                owner: AuthenticatedRouteOwner,
+            ): AuthenticatedRouteAuthorityReceipt? =
+                captureThreadReplyCacheIdentity(scope)
+                    ?.toAuthenticatedRouteAuthorityReceipt(owner)
+
+            override suspend fun isCurrent(
+                receipt: AuthenticatedRouteAuthorityReceipt,
+            ): Boolean =
+                captureThreadReplyCacheIdentity(scope)
+                    ?.matchesAuthenticatedRouteAuthority(receipt) == true
+
+            override fun networkClient(
+                receipt: AuthenticatedRouteAuthorityReceipt,
+            ): SlockNetworkClient =
+                networkClient(scope).boundTo(receipt.expectedAuthBinding)
+        }
 
     internal suspend fun awaitThreadReplyCacheIdentityTransition(
         scope: SlockShellStoreScope,
