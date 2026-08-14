@@ -47,6 +47,14 @@ internal fun slockIosAppTabBarRendererForMajorVersion(majorVersion: Long): Strin
 // Media3 PlayerView, task #556 phase 2).
 internal actual fun slockPlatformUsesNativeVideoController(): Boolean = true
 
+internal actual fun slockPlatformSupportsVideoAttachmentContainer(
+    container: SlockPreviewableVideoContainer
+): Boolean =
+    slockVideoPlayerFormatProfileSupports(
+        profile = SlockVideoPlayerFormatProfile.IosAvPlayer,
+        container = container
+    )
+
 internal actual fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean = true
 
 internal actual fun slockPlatformSupportsSaveImageToPhotos(): Boolean = true

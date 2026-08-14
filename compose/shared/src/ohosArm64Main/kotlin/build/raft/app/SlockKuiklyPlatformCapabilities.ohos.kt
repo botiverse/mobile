@@ -34,6 +34,14 @@ internal actual fun slockPlatformDefaultAppTabBarRenderer(): String? = null
 // player owns the surface — no more overlay-over-native-bar double controls.
 internal actual fun slockPlatformUsesNativeVideoController(): Boolean = true
 
+internal actual fun slockPlatformSupportsVideoAttachmentContainer(
+    container: SlockPreviewableVideoContainer
+): Boolean =
+    slockVideoPlayerFormatProfileSupports(
+        profile = SlockVideoPlayerFormatProfile.OhosArkUiVideo,
+        container = container
+    )
+
 internal actual fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean = false
 
 internal actual fun slockPlatformSupportsSaveImageToPhotos(): Boolean = true

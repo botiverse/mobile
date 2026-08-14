@@ -1,0 +1,26 @@
+package build.raft.app
+
+import kotlin.test.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class SlockVideoAttachmentPlatformAndroidTest {
+    @Test
+    fun media3ProgressiveVideoContainersArePreviewable() {
+        listOf(
+            "clip.mp4" to "video/mp4",
+            "camera.mov" to "video/quicktime",
+            "clip.m4v" to "video/x-m4v",
+            "clip.3gp" to "video/3gpp",
+            "clip.3g2" to "video/3gpp2",
+            "clip.webm" to "video/webm",
+            "clip.mkv" to "video/x-matroska",
+            "clip.ts" to "video/mp2t",
+            "clip.mpg" to "video/mpeg",
+            "clip.flv" to "video/x-flv"
+        ).forEach { (fileName, mimeType) ->
+            assertTrue(slockFilePreviewIsPreviewableVideoAttachment(fileName, mimeType), fileName)
+        }
+        assertFalse(slockFilePreviewIsPreviewableVideoAttachment("clip.avi", "video/x-msvideo"))
+    }
+}

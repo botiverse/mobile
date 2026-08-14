@@ -1640,12 +1640,65 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun mp4VideoClassifierAcceptsOnlyMp4ForMobilePreview() {
-        assertEquals(true, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.mp4", mimeType = ""))
-        assertEquals(true, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.bin", mimeType = "video/mp4"))
-        assertEquals(true, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.MP4?token=1", mimeType = ""))
-        assertEquals(false, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.webm", mimeType = "video/webm"))
-        assertEquals(false, slockFilePreviewIsMp4VideoAttachment(fileName = "clip.mov", mimeType = "video/quicktime"))
+    fun videoContainerDetectorCoversPlayerFormatsWithoutBlanketVideoMimeAdmission() {
+        val cases =
+            listOf(
+                Triple("clip.bin", "video/mp4; codecs=avc1", SlockPreviewableVideoContainer.Mp4),
+                Triple("camera.MOV?token=1", "application/octet-stream", SlockPreviewableVideoContainer.QuickTime),
+                Triple("clip.bin", "video/x-m4v", SlockPreviewableVideoContainer.M4v),
+                Triple("clip.3gp", "", SlockPreviewableVideoContainer.ThreeGpp),
+                Triple("clip.bin", "video/3gpp2", SlockPreviewableVideoContainer.ThreeGpp2),
+                Triple("clip.WEBM#frame", "", SlockPreviewableVideoContainer.WebM),
+                Triple("clip.bin", "video/x-matroska", SlockPreviewableVideoContainer.Matroska),
+                Triple("clip.m2ts", "application/octet-stream", SlockPreviewableVideoContainer.MpegTs),
+                Triple("clip.bin", "video/mpeg", SlockPreviewableVideoContainer.MpegPs),
+                Triple("clip.flv", "", SlockPreviewableVideoContainer.Flv)
+            )
+
+        cases.forEach { (fileName, mimeType, expected) ->
+            assertEquals(expected, slockFilePreviewVideoContainer(fileName, mimeType), "$fileName / $mimeType")
+        }
+        assertEquals(null, slockFilePreviewVideoContainer("clip.avi", "video/x-msvideo"))
+        assertEquals(null, slockFilePreviewVideoContainer("clip.bin", "video/vnd.future-container"))
+        assertEquals(null, slockFilePreviewVideoContainer("archive.zip", "application/zip"))
+    }
+
+    @Test
+    fun videoPlayerProfilesMatchTheThreeConcreteHosts() {
+        val all = SlockPreviewableVideoContainer.entries.toSet()
+        val apple =
+            setOf(
+                SlockPreviewableVideoContainer.Mp4,
+                SlockPreviewableVideoContainer.QuickTime,
+                SlockPreviewableVideoContainer.M4v,
+                SlockPreviewableVideoContainer.ThreeGpp,
+                SlockPreviewableVideoContainer.ThreeGpp2
+            )
+        val ohos =
+            setOf(
+                SlockPreviewableVideoContainer.Mp4,
+                SlockPreviewableVideoContainer.Matroska,
+                SlockPreviewableVideoContainer.MpegTs
+            )
+
+        assertEquals(
+            all,
+            all.filterTo(mutableSetOf()) {
+                slockVideoPlayerFormatProfileSupports(SlockVideoPlayerFormatProfile.AndroidMedia3, it)
+            }
+        )
+        assertEquals(
+            apple,
+            all.filterTo(mutableSetOf()) {
+                slockVideoPlayerFormatProfileSupports(SlockVideoPlayerFormatProfile.IosAvPlayer, it)
+            }
+        )
+        assertEquals(
+            ohos,
+            all.filterTo(mutableSetOf()) {
+                slockVideoPlayerFormatProfileSupports(SlockVideoPlayerFormatProfile.OhosArkUiVideo, it)
+            }
+        )
     }
 
     @Test

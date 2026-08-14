@@ -3446,7 +3446,7 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentCommentsPreviewPayload
     commentsEnabled: Boolean
 ): SlockFilePreviewPayload? {
     if (!commentsEnabled) return null
-    if (isMp4VideoAttachment()) return null
+    if (isPreviewableVideoAttachment()) return null
     val kind =
         when {
             isImageAttachment() -> "image"
@@ -3464,7 +3464,7 @@ internal fun SlockFilePreviewPayload.supportsAttachmentComments(): Boolean =
     source == SlockFilePreviewSourceThreadAttachment &&
         attachmentId.isNotBlank() &&
         attachmentCommentsEnabled &&
-        !slockFilePreviewIsMp4VideoAttachment(externalFileName, externalMimeType)
+        !slockFilePreviewIsPreviewableVideoAttachment(externalFileName, externalMimeType)
 
 private fun SlockFilePreviewPayload.supportsSaveToPhotos(): Boolean =
     source == SlockFilePreviewSourceThreadAttachment &&
@@ -3499,8 +3499,8 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
     val wantsImage =
         requestedKind == "image" ||
             slockFilePreviewIsImageAttachment(fileName = previewFileName, mimeType = externalMimeType)
-    val wantsMp4Video =
-        slockFilePreviewIsMp4VideoAttachment(
+    val wantsVideo =
+        slockFilePreviewIsPreviewableVideoAttachment(
             fileName = previewFileName,
             mimeType = externalMimeType
         )
@@ -3524,7 +3524,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
     return when {
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
         wantsImage -> loadThreadImageAttachmentPreview(threadApi)
-        wantsMp4Video -> loadThreadVideoAttachmentPreview(threadApi)
+        wantsVideo -> loadThreadVideoAttachmentPreview(threadApi)
         wantsMp3Audio -> loadThreadVideoAttachmentPreview(threadApi, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
         wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
         wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
@@ -3880,15 +3880,106 @@ internal fun slockFilePreviewIsHtmlAttachment(fileName: String, mimeType: String
         normalizedName.endsWith(".htm", ignoreCase = true)
 }
 
-internal fun slockFilePreviewIsMp4VideoAttachment(fileName: String, mimeType: String): Boolean {
-    val normalizedMime = mimeType.substringBefore(';').trim()
-    if (normalizedMime.equals("video/mp4", ignoreCase = true)) return true
-    return fileName.substringBefore('?').substringBefore('#').endsWith(".mp4", ignoreCase = true)
+internal enum class SlockPreviewableVideoContainer {
+    Mp4,
+    QuickTime,
+    M4v,
+    ThreeGpp,
+    ThreeGpp2,
+    WebM,
+    Matroska,
+    MpegTs,
+    MpegPs,
+    Flv
 }
 
+internal enum class SlockVideoPlayerFormatProfile {
+    AndroidMedia3,
+    IosAvPlayer,
+    OhosArkUiVideo
+}
+
+internal fun slockVideoPlayerFormatProfileSupports(
+    profile: SlockVideoPlayerFormatProfile,
+    container: SlockPreviewableVideoContainer
+): Boolean =
+    when (profile) {
+        // Media3 ExoPlayer 1.6.1 progressive extractors. QuickTime/M4V/3GPP are
+        // ISO-BMFF variants handled by its MP4 extractor; sample codecs remain
+        // device-dependent and can still reach the shared playback error state.
+        SlockVideoPlayerFormatProfile.AndroidMedia3 -> true
+        // AVPlayer's file-backed audiovisual families. WebM/Matroska/TS/PS/FLV
+        // are not admitted merely because a particular OS/device might decode
+        // their samples through another framework.
+        SlockVideoPlayerFormatProfile.IosAvPlayer ->
+            when (container) {
+                SlockPreviewableVideoContainer.Mp4,
+                SlockPreviewableVideoContainer.QuickTime,
+                SlockPreviewableVideoContainer.M4v,
+                SlockPreviewableVideoContainer.ThreeGpp,
+                SlockPreviewableVideoContainer.ThreeGpp2 -> true
+                else -> false
+            }
+        // ArkUI Video's documented file formats are MP4, MKV, and TS.
+        SlockVideoPlayerFormatProfile.OhosArkUiVideo ->
+            when (container) {
+                SlockPreviewableVideoContainer.Mp4,
+                SlockPreviewableVideoContainer.Matroska,
+                SlockPreviewableVideoContainer.MpegTs -> true
+                else -> false
+            }
+    }
+
+internal fun slockFilePreviewVideoContainer(
+    fileName: String,
+    mimeType: String
+): SlockPreviewableVideoContainer? {
+    val normalizedMime = mimeType.substringBefore(';').trim().lowercase()
+    val byMime =
+        when (normalizedMime) {
+            "video/mp4" -> SlockPreviewableVideoContainer.Mp4
+            "video/quicktime" -> SlockPreviewableVideoContainer.QuickTime
+            "video/x-m4v" -> SlockPreviewableVideoContainer.M4v
+            "video/3gpp" -> SlockPreviewableVideoContainer.ThreeGpp
+            "video/3gpp2" -> SlockPreviewableVideoContainer.ThreeGpp2
+            "video/webm" -> SlockPreviewableVideoContainer.WebM
+            "video/x-matroska", "application/x-matroska" -> SlockPreviewableVideoContainer.Matroska
+            "video/mp2t" -> SlockPreviewableVideoContainer.MpegTs
+            "video/mpeg" -> SlockPreviewableVideoContainer.MpegPs
+            "video/flv", "video/x-flv" -> SlockPreviewableVideoContainer.Flv
+            else -> null
+        }
+    if (byMime != null) return byMime
+
+    val extension =
+        fileName
+            .substringBefore('?')
+            .substringBefore('#')
+            .substringAfterLast('.', missingDelimiterValue = "")
+            .lowercase()
+    return when (extension) {
+        "mp4" -> SlockPreviewableVideoContainer.Mp4
+        "mov", "qt" -> SlockPreviewableVideoContainer.QuickTime
+        "m4v" -> SlockPreviewableVideoContainer.M4v
+        "3gp", "3gpp" -> SlockPreviewableVideoContainer.ThreeGpp
+        "3g2", "3gp2" -> SlockPreviewableVideoContainer.ThreeGpp2
+        "webm" -> SlockPreviewableVideoContainer.WebM
+        "mkv" -> SlockPreviewableVideoContainer.Matroska
+        "ts", "m2ts", "mts" -> SlockPreviewableVideoContainer.MpegTs
+        "mpg", "mpeg", "m2p", "ps" -> SlockPreviewableVideoContainer.MpegPs
+        "flv" -> SlockPreviewableVideoContainer.Flv
+        else -> null
+    }
+}
+
+internal fun slockFilePreviewIsPreviewableVideoAttachment(fileName: String, mimeType: String): Boolean =
+    slockFilePreviewVideoContainer(fileName = fileName, mimeType = mimeType)
+        ?.let(::slockPlatformSupportsVideoAttachmentContainer) == true
+
 // task #556: mp3 attachments play through the same Media3-backed player as
-// video (audio-only source, blank surface). Scoped to mp3 like video is
-// scoped to mp4 — widen deliberately, per codec, when asked.
+// video (audio-only source, blank surface). Scoped to mp3; video is scoped to
+// the concrete platform player's documented container matrix, widened deliberately
+// for task #134.
 internal fun slockFilePreviewIsMp3AudioAttachment(fileName: String, mimeType: String): Boolean {
     val normalizedMime = mimeType.substringBefore(';').trim()
     if (normalizedMime.equals("audio/mpeg", ignoreCase = true)) return true
