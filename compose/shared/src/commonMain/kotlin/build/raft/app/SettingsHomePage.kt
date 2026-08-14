@@ -11833,6 +11833,7 @@ internal fun SharedHandsFeedbackContent(
     val attachmentMaxBytes = slockFeedbackAttachmentMaxBytes()
     val attachmentMaxLabel = settingsFeedbackAttachmentMaxLabel(attachmentMaxBytes)
     val copy = settingsHandsFeedbackCopy(attachmentMaxLabel)
+    val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val chatLayoutPreferenceStore =
@@ -12075,17 +12076,64 @@ internal fun SharedHandsFeedbackContent(
             eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
                 val eventDataSnapshot = data?.toString() ?: return@observe
                 scope.launch {
-                    val session = pendingImageEditSession ?: return@launch
                     val eventData =
                         runCatching { JSONObject(eventDataSnapshot) }.getOrNull()
                             ?: return@launch
-                    if (eventData.optString("threadKey").orEmpty() != session.threadKey) {
+                    val session = pendingImageEditSession
+                    val eventSessionId = eventData.optString("previewSessionId").trim()
+                    val eventThreadKey = eventData.optString("threadKey").trim()
+                    if (
+                        (session != null && eventThreadKey != session.threadKey) ||
+                        (session == null && !eventThreadKey.startsWith("feedback-"))
+                    ) {
                         return@launch
                     }
                     val event = parseSettingsHandsFeedbackImageEditEvent(eventData)
                     if (event == null) {
-                        pendingImageEditSession = null
-                        error = copy.attachmentPickerFailed
+                        val cleanupRefs =
+                            slockFilePreviewAbortComposerImageEventSession(eventSessionId)
+                        if (cleanupRefs.isNotEmpty()) {
+                            bridge.retireFilePreviewTemporaryFiles(
+                                sessionId = eventSessionId,
+                                fileRefs = cleanupRefs.toList()
+                            )
+                        }
+                        if (session != null) {
+                            pendingImageEditSession = null
+                            error = copy.attachmentPickerFailed
+                        }
+                        return@launch
+                    }
+                    val admission =
+                        slockFilePreviewClaimComposerImageEvent(
+                            eventData = eventData,
+                            expectedThreadKey = session?.threadKey ?: event.threadKey
+                        )
+                    if (admission is SlockFilePreviewComposerImageEventAdmission.Rejected) {
+                        if (admission.orphanedTemporaryFileRefs.isNotEmpty()) {
+                            bridge.retireFilePreviewTemporaryFiles(
+                                sessionId = admission.sessionId,
+                                fileRefs = admission.orphanedTemporaryFileRefs.toList()
+                            )
+                        }
+                        return@launch
+                    }
+                    admission as SlockFilePreviewComposerImageEventAdmission.Accepted
+                    fun finishEventSession(transferred: Boolean) {
+                        val cleanupRefs =
+                            slockFilePreviewFinishComposerImageEventSession(
+                                sessionId = admission.sessionId,
+                                transferred = transferred
+                            )
+                        if (cleanupRefs.isNotEmpty()) {
+                            bridge.retireFilePreviewTemporaryFiles(
+                                sessionId = admission.sessionId,
+                                fileRefs = cleanupRefs.toList()
+                            )
+                        }
+                    }
+                    if (session == null) {
+                        finishEventSession(transferred = false)
                         return@launch
                     }
                     when (
@@ -12097,18 +12145,38 @@ internal fun SharedHandsFeedbackContent(
                                 currentPageGeneration = latestFeedbackPageGeneration
                             )
                     ) {
-                        is SettingsHandsFeedbackImageEditFoldResult.Ignored -> Unit
+                        is SettingsHandsFeedbackImageEditFoldResult.Ignored -> {
+                            pendingImageEditSession = null
+                            finishEventSession(transferred = false)
+                        }
                         is SettingsHandsFeedbackImageEditFoldResult.Pending -> {
-                            pendingImageEditSession = result.session
+                            if (admission.sessionComplete) {
+                                pendingImageEditSession = null
+                                finishEventSession(transferred = false)
+                                error = copy.attachmentPickerFailed
+                            } else {
+                                pendingImageEditSession = result.session
+                            }
                         }
                         is SettingsHandsFeedbackImageEditFoldResult.Failed -> {
                             pendingImageEditSession = null
+                            finishEventSession(transferred = false)
                             error = copy.attachmentPickerFailed
                         }
                         is SettingsHandsFeedbackImageEditFoldResult.Complete -> {
-                            if (!imageEditCommitGate.tryClaim(session)) return@launch
+                            if (!admission.sessionComplete) {
+                                pendingImageEditSession = null
+                                finishEventSession(transferred = false)
+                                error = copy.attachmentPickerFailed
+                                return@launch
+                            }
+                            if (!imageEditCommitGate.tryClaim(session)) {
+                                finishEventSession(transferred = false)
+                                return@launch
+                            }
                             pendingImageEditSession = null
                             val initialDraftResetGeneration = feedbackDraftResetGenerationState.value
+                            var transferred = false
                             try {
                                 when (
                                     val commit =
@@ -12161,6 +12229,7 @@ internal fun SharedHandsFeedbackContent(
                                     is SettingsHandsFeedbackEditedGroupCommitResult.Committed -> {
                                         val promotion = commit.promotion
                                         attachments = promotion.attachments
+                                        transferred = true
                                         error =
                                             if (promotion.trimmedByLimit) {
                                                 copy.attachmentLimitTrimmed(attachmentLimit)
@@ -12182,6 +12251,7 @@ internal fun SharedHandsFeedbackContent(
                                     }
                                 }
                             } finally {
+                                finishEventSession(transferred = transferred)
                                 imageEditCommitGate.release(session)
                             }
                         }

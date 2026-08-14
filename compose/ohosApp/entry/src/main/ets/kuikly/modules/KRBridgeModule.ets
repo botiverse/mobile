@@ -106,6 +106,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly SAVE_ATTACHMENT = "saveAttachment";
   static readonly ATTACHMENT_CACHE_STATUS = "attachmentCacheStatus";
   static readonly DELETE_ATTACHMENT_CACHE = "deleteAttachmentCache";
+  static readonly RETIRE_FILE_PREVIEW_TEMPORARY_FILES = "retireFilePreviewTemporaryFiles";
   static readonly EXPORT_DOWNLOADED_ATTACHMENT = "exportDownloadedAttachment";
   static readonly SAVE_IMAGE_TO_PHOTOS = "saveImageToPhotos";
   static readonly CANCEL_ATTACHMENT_EXPORT = "cancelAttachmentExport";
@@ -182,6 +183,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.DELETE_ATTACHMENT_CACHE: {
         this.deleteAttachmentCache(params, callback);
+        break;
+      }
+      case KRBridgeModule.RETIRE_FILE_PREVIEW_TEMPORARY_FILES: {
+        this.retireFilePreviewTemporaryFiles(params);
         break;
       }
       case KRBridgeModule.EXPORT_DOWNLOADED_ATTACHMENT: {
@@ -609,6 +614,74 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       callback({ "status": "ok", "cached": false, "deleted": true });
     } catch (_) {
       callback({ "status": "failed", "message": "Unable to delete downloaded attachment" });
+    }
+  }
+
+  private retireFilePreviewTemporaryFiles(params: KRAny) {
+    const records = this.parseRecord(params);
+    const rawRefs = records["fileRefs"];
+    const refs: Array<string> = [];
+    if (Array.isArray(rawRefs)) {
+      (rawRefs as Array<Object>).forEach((value: Object): void => {
+        if (typeof value === 'string' && value.trim().length > 0) refs.push(value.trim());
+      });
+    }
+    const context = getContext(this) as common.UIAbilityContext;
+    const cacheRoot = this.normalizeOhosTemporaryPath(context.cacheDir);
+    let admitted = 0;
+    let deleted = 0;
+    const seen = new Set<string>();
+    refs.forEach((fileRef: string): void => {
+      if (seen.has(fileRef)) return;
+      seen.add(fileRef);
+      let path = '';
+      try {
+        path = fileRef.startsWith('/')
+          ? fileRef
+          : fileRef.startsWith('file://')
+            ? new fileUri.FileUri(fileRef).path
+            : '';
+      } catch (_) {
+      }
+      const normalized = this.normalizeOhosTemporaryPath(path);
+      if (!this.isOhosCacheOwnedRegularFile(cacheRoot, normalized)) return;
+      try {
+        admitted += 1;
+        fs.unlinkSync(normalized);
+        try {
+          fs.statSync(normalized);
+        } catch (_) {
+          deleted += 1;
+        }
+      } catch (_) {
+      }
+    });
+    SlockOhosDiagnostics.record(
+      "SlockFilePreviewCleanup",
+      `requested=${seen.size} admitted=${admitted} deleted=${deleted} rejected=${seen.size - admitted}`
+    );
+  }
+
+  private isOhosCacheOwnedRegularFile(cacheRoot: string, targetPath: string): boolean {
+    if (cacheRoot.length === 0 || targetPath.length === 0 ||
+      !targetPath.startsWith(`${cacheRoot}/`)) return false;
+    try {
+      const rootStat = fs.lstatSync(cacheRoot);
+      if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) return false;
+      const relativeSegments = targetPath.substring(cacheRoot.length + 1).split('/');
+      let candidate = cacheRoot;
+      for (let index = 0; index < relativeSegments.length; index += 1) {
+        const segment = relativeSegments[index];
+        if (segment.length === 0) return false;
+        candidate = `${candidate}/${segment}`;
+        const stat = fs.lstatSync(candidate);
+        if (stat.isSymbolicLink()) return false;
+        const isLast = index === relativeSegments.length - 1;
+        if (isLast ? !stat.isFile() : !stat.isDirectory()) return false;
+      }
+      return relativeSegments.length > 0;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -1966,6 +2039,20 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       fs.unlinkSync(path);
     } catch (_) {
     }
+  }
+
+  private normalizeOhosTemporaryPath(value: string): string {
+    const normalizedSeparators = value.replace(/\\/g, '/');
+    if (!normalizedSeparators.startsWith('/')) return '';
+    const segments: Array<string> = [];
+    const rawSegments = normalizedSeparators.split('/');
+    for (let index = 0; index < rawSegments.length; index += 1) {
+      const segment = rawSegments[index];
+      if (segment.length === 0 || segment === '.') continue;
+      if (segment === '..') return '';
+      segments.push(segment);
+    }
+    return `/${segments.join('/')}`.replace(/\/$/, '');
   }
 
   private safeAttachmentPathSegment(value: string): string {

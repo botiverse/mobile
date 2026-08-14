@@ -3661,6 +3661,74 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     }
 }
 
+- (void)retireFilePreviewTemporaryFiles:(NSDictionary *)args {
+    NSDictionary *params = SlockBridgeParams(args);
+    NSArray *rawRefs = [params[@"fileRefs"] isKindOfClass:NSArray.class] ? params[@"fileRefs"] : @[];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NSFileManager *fileManager = NSFileManager.defaultManager;
+        NSMutableArray<NSString *> *cacheRoots = [NSMutableArray array];
+        NSArray<NSString *> *candidateRoots = @[
+            NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject ?: @"",
+            NSTemporaryDirectory() ?: @""
+        ];
+        for (NSString *candidateRoot in candidateRoots) {
+            if (candidateRoot.length == 0) continue;
+            NSString *root = [[[NSURL fileURLWithPath:candidateRoot isDirectory:YES] URLByResolvingSymlinksInPath] standardizedURL].path;
+            if (root.length > 0 && ![cacheRoots containsObject:root]) {
+                [cacheRoots addObject:root];
+            }
+        }
+
+        NSMutableSet<NSString *> *seenRefs = [NSMutableSet set];
+        NSUInteger admitted = 0;
+        NSUInteger deleted = 0;
+        for (id rawRef in rawRefs) {
+            if (![rawRef isKindOfClass:NSString.class]) continue;
+            NSString *fileRef = [(NSString *)rawRef stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+            if (fileRef.length == 0 || [seenRefs containsObject:fileRef]) continue;
+            [seenRefs addObject:fileRef];
+            NSURL *url = nil;
+            if ([fileRef hasPrefix:@"/"]) {
+                url = [NSURL fileURLWithPath:fileRef];
+            } else {
+                NSURL *candidate = [NSURL URLWithString:fileRef];
+                if (candidate.isFileURL && candidate.host.length == 0) {
+                    url = candidate;
+                }
+            }
+            if (!url) continue;
+            NSString *path = [[url URLByResolvingSymlinksInPath] standardizedURL].path;
+            NSDictionary<NSFileAttributeKey, id> *attributes =
+                path.length > 0 ? [fileManager attributesOfItemAtPath:path error:nil] : nil;
+            if (![attributes[NSFileType] isEqualToString:NSFileTypeRegular]) {
+                continue;
+            }
+            BOOL insideCache = NO;
+            for (NSString *root in cacheRoots) {
+                NSString *prefix = [root hasSuffix:@"/"] ? root : [root stringByAppendingString:@"/"];
+                if ([path hasPrefix:prefix]) {
+                    insideCache = YES;
+                    break;
+                }
+            }
+            if (!insideCache) continue;
+            admitted += 1;
+            if ([fileManager removeItemAtPath:path error:nil]) {
+                deleted += 1;
+            }
+        }
+        SlockDiagnosticsRecord(
+            @"info",
+            @"SlockFilePreviewCleanup",
+            [NSString stringWithFormat:@"requested=%lu admitted=%lu deleted=%lu rejected=%lu",
+                                       (unsigned long)seenRefs.count,
+                                       (unsigned long)admitted,
+                                       (unsigned long)deleted,
+                                       (unsigned long)(seenRefs.count - admitted)]
+        );
+    });
+}
+
 - (void)attachmentDownloadControl:(NSDictionary *)args {
     KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
     if (!callback) return;

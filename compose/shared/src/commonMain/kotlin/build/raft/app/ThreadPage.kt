@@ -7565,6 +7565,9 @@ internal fun SharedThreadRouteContent(
                 composerImageMimeType = firstFile.mimeType.orEmpty(),
                 composerImageSizeBytes = firstFile.sizeBytes,
                 composerImagePreviewUri = previewUri,
+                composerImageOwnedTemporaryFileRefs =
+                    files.filter(PlatformFile::isComposerImageOwnedTemporary)
+                        .mapNotNull(PlatformFile::fileRef),
                 composerImageCanComplete = true,
                 composerImageCanEdit = true
             )
@@ -7575,10 +7578,21 @@ internal fun SharedThreadRouteContent(
             eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
                 val eventDataSnapshot = data?.toString() ?: return@observe
                 coroutineScope.launch {
-                    val eventData = JSONObject(eventDataSnapshot)
-                    if (eventData.optString("threadKey").orEmpty() != threadInstanceKey) return@launch
-                    val fileRef = eventData.optString("fileRef").takeIf { it.isNotBlank() } ?: return@launch
-                    val actionId = eventData.optString("actionId").takeIf { it.isNotBlank() } ?: fileRef.hashCode().toString()
+                    val eventData = runCatching { JSONObject(eventDataSnapshot) }.getOrNull() ?: return@launch
+                    if (eventData.optString("threadKey").trim() != threadInstanceKey) return@launch
+                    val previewSessionId = eventData.optString("previewSessionId").trim()
+                    val fileRef = eventData.optString("fileRef").takeIf { it.isNotBlank() }
+                    val actionId = eventData.optString("actionId").takeIf { it.isNotBlank() }
+                    if (fileRef == null || actionId == null) {
+                        val cleanupRefs = slockFilePreviewAbortComposerImageEventSession(previewSessionId)
+                        if (cleanupRefs.isNotEmpty()) {
+                            bridge.retireFilePreviewTemporaryFiles(
+                                sessionId = previewSessionId,
+                                fileRefs = cleanupRefs.toList()
+                            )
+                        }
+                        return@launch
+                    }
                     val file =
                         PlatformFile(
                             id = "edited-$actionId",
@@ -7586,10 +7600,69 @@ internal fun SharedThreadRouteContent(
                             mimeType = eventData.optString("mimeType").takeIf { it.isNotBlank() } ?: "image/png",
                             sizeBytes = eventData.optLong("sizeBytes", 0L).takeIf { it > 0L },
                             previewUri = eventData.optString("previewUri").takeIf { it.isNotBlank() } ?: fileRef,
-                            fileRef = fileRef
+                            fileRef = fileRef,
+                            source = "composer_image_editor"
                         )
                     val replaceAttachmentId = eventData.optString("replaceAttachmentId").takeIf { it.isNotBlank() }
-                    uploadComposerAttachmentFiles(listOf(file), replaceAttachmentId = replaceAttachmentId)
+                    when (
+                        val admission =
+                            slockFilePreviewClaimComposerImageEvent(
+                                eventData = eventData,
+                                expectedThreadKey = threadInstanceKey
+                            )
+                    ) {
+                        is SlockFilePreviewComposerImageEventAdmission.Rejected -> {
+                            if (admission.orphanedTemporaryFileRefs.isNotEmpty()) {
+                                bridge.retireFilePreviewTemporaryFiles(
+                                    sessionId = admission.sessionId,
+                                    fileRefs = admission.orphanedTemporaryFileRefs.toList()
+                                )
+                            }
+                            bridge.logWarn(
+                                "composer_image_event_rejected cleanupRefs=${admission.orphanedTemporaryFileRefs.size}"
+                            )
+                        }
+                        is SlockFilePreviewComposerImageEventAdmission.Accepted -> {
+                            val transferred =
+                                uploadComposerAttachmentFiles(
+                                    files = listOf(file),
+                                    replaceAttachmentId = replaceAttachmentId
+                                )
+                            val transferRecorded =
+                                transferred &&
+                                    slockFilePreviewMarkComposerImageEventTransferred(admission)
+                            if (transferred && !transferRecorded) {
+                                bridge.logWarn(
+                                    "composer_image_event_transfer_unrecorded actionId=${admission.actionId}"
+                                )
+                            }
+                            if (!transferred) {
+                                val cleanupRefs =
+                                    slockFilePreviewFinishComposerImageEventSession(
+                                        sessionId = admission.sessionId,
+                                        transferred = transferred
+                                    )
+                                if (cleanupRefs.isNotEmpty()) {
+                                    bridge.retireFilePreviewTemporaryFiles(
+                                        sessionId = admission.sessionId,
+                                        fileRefs = cleanupRefs.toList()
+                                    )
+                                }
+                            } else if (admission.sessionComplete && transferRecorded) {
+                                val cleanupRefs =
+                                    slockFilePreviewFinishComposerImageEventSession(
+                                        sessionId = admission.sessionId,
+                                        transferred = true
+                                    )
+                                if (cleanupRefs.isNotEmpty()) {
+                                    bridge.retireFilePreviewTemporaryFiles(
+                                        sessionId = admission.sessionId,
+                                        fileRefs = cleanupRefs.toList()
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         onDispose {
@@ -23564,8 +23637,12 @@ internal fun PlatformFile.toComposerImageGalleryImage(): SlockFilePreviewGallery
         thumbnailUrl = composerLocalPreviewUri(),
         composerImageFileRef = fileRef.orEmpty(),
         composerImagePreviewUri = composerLocalPreviewUri().orEmpty(),
-        composerImageSizeBytes = sizeBytes
+        composerImageSizeBytes = sizeBytes,
+        composerImageOwnedTemporary = isComposerImageOwnedTemporary()
     )
+
+internal fun PlatformFile.isComposerImageOwnedTemporary(): Boolean =
+    !fileRef.isNullOrBlank() && source in setOf("platform_picker", "platform_camera")
 
 internal fun KuiklyThreadAttachmentItem.threadAttachmentCommentCountLabel(): String? =
     commentCount

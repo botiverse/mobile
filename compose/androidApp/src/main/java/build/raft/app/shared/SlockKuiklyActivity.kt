@@ -3311,6 +3311,12 @@ internal class SlockKuiklyBridgeModule(
                 }
                 null
             }
+            "retireFilePreviewTemporaryFiles" -> {
+                SlockKuiklyThreadAdapter.execute("file-preview-temp-retire") {
+                    retireFilePreviewTemporaryFiles(params)
+                }
+                null
+            }
             "attachmentDownloadControl" -> {
                 callback?.invoke(attachmentDownloadControl(params))
                 null
@@ -6499,6 +6505,29 @@ internal class SlockKuiklyBridgeModule(
                 .getOrElse {
                     mapOf("status" to "failed", "message" to "Unable to delete downloaded attachment")
                 }
+    }
+
+    private fun retireFilePreviewTemporaryFiles(params: String?) {
+        val request = runCatching { JSONObject(params ?: "{}") }.getOrNull() ?: return
+        val refsJson = request.optJSONArray("fileRefs")
+        val refs =
+            buildList {
+                if (refsJson != null) {
+                    for (index in 0 until refsJson.length()) {
+                        refsJson.optString(index).takeIf(String::isNotBlank)?.let(::add)
+                    }
+                }
+            }
+        val result =
+            retireFilePreviewTemporaryFiles(
+                cacheRoots = listOfNotNull(appContext.cacheDir, appContext.externalCacheDir),
+                fileRefs = refs
+            )
+        SlockAppLog.record(
+            "SlockFilePreviewCleanup",
+            "requested=${result.requestedCount} admitted=${result.admittedCount} " +
+                "deleted=${result.deletedCount} rejected=${result.rejectedCount}"
+        )
     }
 
     private fun attachmentDownloadControl(params: String?): Map<String, Any> {

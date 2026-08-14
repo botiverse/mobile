@@ -165,6 +165,9 @@ internal fun settingsHandsFeedbackImageEditRequest(
                 composerImageMimeType = firstFile.mimeType.orEmpty(),
                 composerImageSizeBytes = firstFile.sizeBytes,
                 composerImagePreviewUri = previewUri,
+                composerImageOwnedTemporaryFileRefs =
+                    files.filter(PlatformFile::isComposerImageOwnedTemporary)
+                        .mapNotNull(PlatformFile::fileRef),
                 composerImageCanComplete = true,
                 composerImageCanEdit = true
             )
