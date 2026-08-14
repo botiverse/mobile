@@ -482,7 +482,7 @@ jobs:
         shell: bash
         run: scripts/check_attachment_mapper_formatting.sh
 
-      # Both vector guards verify the vendored copy against a digest pinned in
+      # These fixture/vector guards verify the vendored copy against a digest pinned in
       # the script — fully local since task #18 (a pinned commit's content is
       # immutable, so the previous gh api fetch verified nothing and only added
       # a token/network failure surface).
@@ -493,6 +493,10 @@ jobs:
       - name: Guard Web/mobile canonical-message V2 reaction vector
         shell: bash
         run: scripts/check_canonical_message_v2_reaction_vector.sh
+
+      - name: Guard server/mobile Activity-unread fixture
+        shell: bash
+        run: scripts/check_server_activity_unread_fixture.sh
 
       - name: Guard read-state SyncCore registration boundary
         shell: bash

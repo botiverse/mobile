@@ -10,12 +10,15 @@ import build.raft.app.data.HomeServerDrawerNormalizedContent
 import build.raft.app.data.HomeServerDrawerNormalizedRow
 import build.raft.app.data.HomeServerDrawerSectionState
 import build.raft.app.data.HomeServerDrawerState
+import build.raft.app.data.HomeServerActivityUnreadProjection
+import build.raft.app.data.ReadReceiptOwner
 import build.raft.app.data.homeServerDrawerNormalizedContentForSnapshot
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.ScreenError
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.TasksViewMode
@@ -410,8 +413,8 @@ class SlockHomeComponentsTest {
                 currentServerId = "server-1",
                 servers =
                     listOf(
-                        SlockServerSwitcherItem(id = "server-1", name = "Current", slug = "current", unreadCount = 8),
-                        SlockServerSwitcherItem(id = "server-2", name = "Other", slug = "other", unreadCount = 0)
+                        SlockServerSwitcherItem(id = "server-1", name = "Current", slug = "current", broaderUnreadCount = 8),
+                        SlockServerSwitcherItem(id = "server-2", name = "Other", slug = "other", broaderUnreadCount = 0)
                     )
             )
         )
@@ -420,11 +423,106 @@ class SlockHomeComponentsTest {
                 currentServerId = "server-1",
                 servers =
                     listOf(
-                        SlockServerSwitcherItem(id = "server-1", name = "Current", slug = "current", unreadCount = 0),
-                        SlockServerSwitcherItem(id = "server-2", name = "Other", slug = "other", unreadCount = 3)
+                        SlockServerSwitcherItem(id = "server-1", name = "Current", slug = "current", broaderUnreadCount = 0),
+                        SlockServerSwitcherItem(id = "server-2", name = "Other", slug = "other", broaderUnreadCount = 3)
                     )
             )
         )
+    }
+
+    @Test
+    fun switcherProjectsExactActivityCountsForEveryServerFromOneOwnerFencedBatch() {
+        val expectedOwner = testActivityOwner()
+        val projection =
+            HomeServerActivityUnreadProjection(
+                requestOwner = expectedOwner,
+                countsByServer = mapOf("server-1" to 0, "server-2" to 78),
+                serverPushMutedByServer = mapOf("server-1" to false, "server-2" to true),
+            )
+
+        val compact =
+            sharedHomeSwitcherItems(
+                session = testServerSwitcherSession(),
+                selectedServer = ServerSummary(ServerId("server-1"), "Current", slug = "current"),
+                serverUnreadCounts = mapOf("server-1" to 21, "server-2" to 6),
+                activityExpectedOwner = expectedOwner,
+                activityProjection = projection,
+            )
+        val expanded =
+            HomeServerDrawerState(
+                sections =
+                    linkedMapOf(
+                        ServerId("server-1") to
+                            HomeServerDrawerSectionState(
+                                server = ServerSummary(ServerId("server-1"), "Current", slug = "current")
+                            ),
+                        ServerId("server-2") to
+                            HomeServerDrawerSectionState(
+                                server = ServerSummary(ServerId("server-2"), "Other", slug = "other")
+                            ),
+                    )
+            ).toSlockHomeServerDrawerSections(
+                serverUnreadCounts = mapOf("server-1" to 21, "server-2" to 6),
+                activityExpectedOwner = expectedOwner,
+                activityProjection = projection,
+            ).map { it.server }
+
+        assertEquals(compact.map(::homeServerSwitcherBadgePresentation), expanded.map(::homeServerSwitcherBadgePresentation))
+        assertEquals(HomeServerSwitcherBadgeKind.None, homeServerSwitcherBadgePresentation(compact[0]).kind)
+        assertEquals(
+            HomeServerSwitcherBadgePresentation(
+                kind = HomeServerSwitcherBadgeKind.ActivityNumber,
+                activityLabel = "78",
+                muted = true,
+            ),
+            homeServerSwitcherBadgePresentation(compact[1]),
+        )
+        assertTrue(homeServerSwitcherHasOtherUnread("server-1", compact))
+    }
+
+    @Test
+    fun knownZeroSuppressesLegacyFallbackWhileAbsentUsesOnlyANeutralDot() {
+        val knownZero =
+            SlockServerSwitcherItem(
+                id = "server-1",
+                broaderUnreadCount = 21,
+                activityUnreadCount = 0,
+            )
+        val absent = knownZero.copy(activityUnreadCount = null)
+
+        assertEquals(HomeServerSwitcherBadgeKind.None, homeServerSwitcherBadgePresentation(knownZero).kind)
+        assertEquals(HomeServerSwitcherBadgeKind.BroaderUnreadDot, homeServerSwitcherBadgePresentation(absent).kind)
+        assertNull(homeServerSwitcherBadgePresentation(absent).activityLabel)
+    }
+
+    @Test
+    fun activityProjectionRejectsOldEnvironmentAccountAndWrongServerValue() {
+        val owner = testActivityOwner()
+        val projection =
+            HomeServerActivityUnreadProjection(
+                requestOwner = owner,
+                countsByServer = mapOf("server-1" to 9),
+            )
+
+        assertNull(projection.countFor(owner.copy(environmentId = "https://other.example")))
+        assertNull(projection.countFor(owner.copy(accountId = "other-account")))
+        assertNull(projection.countFor(owner.copy(serverId = "server-2")))
+        assertEquals(9L, projection.countFor(owner))
+    }
+
+    @Test
+    fun muteNeverChangesActivityCountAuthorityOrSuppressesItsNumber() {
+        val muted =
+            SlockServerSwitcherItem(
+                id = "server-2",
+                activityUnreadCount = 3,
+                serverPushMuted = true,
+            )
+
+        assertEquals(3L, muted.activityUnreadCount)
+        assertEquals(HomeServerSwitcherBadgeKind.ActivityNumber, homeServerSwitcherBadgePresentation(muted).kind)
+        assertEquals("3", homeServerSwitcherBadgePresentation(muted).activityLabel)
+        assertTrue(homeServerSwitcherBadgePresentation(muted).muted)
     }
 
     @Test
@@ -2244,6 +2342,26 @@ class SlockHomeComponentsTest {
             channels = emptyList(),
             directMessages = emptyList(),
             unreadTotal = 0
+        )
+
+    private fun testActivityOwner(): ReadReceiptOwner =
+        ReadReceiptOwner(
+            environmentId = "https://raft.example",
+            accountId = "account-1",
+            serverId = "server-1",
+        )
+
+    private fun testServerSwitcherSession(): StoredAuthSession =
+        StoredAuthSession(
+            user = StoredAuthUser(id = "account-1", email = "artin@example.com", displayName = "Artin"),
+            accessToken = "token",
+            refreshToken = "refresh",
+            selectedServerId = "server-1",
+            servers =
+                listOf(
+                    StoredAuthServer(id = "server-1", name = "Current", slug = "current"),
+                    StoredAuthServer(id = "server-2", name = "Other", slug = "other"),
+                ),
         )
 
     private fun testAuthSession(): StoredAuthSession =

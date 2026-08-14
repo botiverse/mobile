@@ -1723,6 +1723,10 @@ internal class SharedHomeStore(
         forceNetwork: Boolean,
         refreshNotificationsAfterLoad: Boolean
     ) {
+        val activityUnreadRequestOwner =
+            activeServer?.let { server ->
+                readReceiptOwnerFactory?.invoke(server.value, activeSession.user.id)
+            }
         val dataResult = dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)
         val previousContent = _state.value.content as? SharedHomeContentState.Content
         val preparedHydrates =
@@ -1771,6 +1775,25 @@ internal class SharedHomeStore(
             ?: activeServer
         val latestSwitch = _state.value.serverSwitchState
         if (resultServerId == null || latestSwitch.isCurrent(request.requestGeneration, resultServerId)) {
+            val liveActivityUnreadOwner =
+                activeServer?.let { server ->
+                    authStore.readSession()?.let { liveSession ->
+                        readReceiptOwnerFactory?.invoke(server.value, liveSession.user.id)
+                    }
+                }
+            val nextActivityUnread =
+                if (
+                    activityUnreadRequestOwner != null &&
+                    activityUnreadRequestOwner == liveActivityUnreadOwner
+                ) {
+                    HomeServerActivityUnreadProjection(
+                        requestOwner = activityUnreadRequestOwner,
+                        countsByServer = freshSnapshot?.serverActivityUnreadCounts.orEmpty(),
+                        serverPushMutedByServer = freshSnapshot?.serverPushMutedByServer.orEmpty(),
+                    )
+                } else {
+                    _state.value.serverActivityUnread
+                }
             val nextContent = result
             // #81: derive the badge projection from the fresh snapshot.
             // - On success: source comes from the parser (SERVER_UNREAD_SUMMARY
@@ -1845,6 +1868,7 @@ internal class SharedHomeStore(
                         } else {
                             _state.value.serverUnreadCounts
                         },
+                    serverActivityUnread = nextActivityUnread,
                     appBadgeCount = nextBadge
                 )
             val published =
@@ -3927,6 +3951,7 @@ data class SharedHomeState(
     val notifications: List<SharedHomeNotification> = emptyList(),
     val homeRealtimeDirty: Boolean = false,
     val serverUnreadCounts: Map<String, Int> = emptyMap(),
+    val serverActivityUnread: HomeServerActivityUnreadProjection = HomeServerActivityUnreadProjection(),
     /**
      * #81: typed projection of the selected-server app badge. Derived from
      * the snapshot's [SharedHomeSnapshot.unreadTotal] (which is
@@ -3937,6 +3962,34 @@ data class SharedHomeState(
      */
     val appBadgeCount: AppBadgeCount = AppBadgeCount.UNKNOWN
 )
+
+/**
+ * One admitted `/servers/unread-summary` batch, fenced to the environment and
+ * account that requested it. [requestOwner]'s server id is the request witness;
+ * each returned value is additionally fenced by its map key when projected.
+ */
+data class HomeServerActivityUnreadProjection(
+    val requestOwner: ReadReceiptOwner? = null,
+    val countsByServer: Map<String, Long> = emptyMap(),
+    val serverPushMutedByServer: Map<String, Boolean> = emptyMap(),
+) {
+    fun countFor(expectedOwner: ReadReceiptOwner?): Long? =
+        expectedOwner?.takeIf(::hasSameEnvironmentAndAccount)
+            ?.serverId
+            ?.let(countsByServer::get)
+
+    fun serverPushMutedFor(expectedOwner: ReadReceiptOwner?): Boolean =
+        expectedOwner?.takeIf(::hasSameEnvironmentAndAccount)
+            ?.serverId
+            ?.let(serverPushMutedByServer::get)
+            ?: false
+
+    private fun hasSameEnvironmentAndAccount(expectedOwner: ReadReceiptOwner): Boolean =
+        requestOwner?.let { admitted ->
+            admitted.environmentId == expectedOwner.environmentId &&
+                admitted.accountId == expectedOwner.accountId
+        } == true
+}
 
 enum class SharedHomeTopAction {
     Search,

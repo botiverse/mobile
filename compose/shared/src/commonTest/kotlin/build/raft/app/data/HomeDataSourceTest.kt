@@ -629,6 +629,7 @@ class HomeDataSourceTest {
                 parseHome = { payload, session ->
                     // Guessed object shape rejected → not mis-accepted as summary data.
                     assertEquals(emptyList(), payload.serverUnreadSummary)
+                    assertFalse(payload.serverUnreadSummaryAvailable)
                     DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
                 }
             )
@@ -697,7 +698,10 @@ class HomeDataSourceTest {
             SharedHomeDataSource(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = UnreadAuxiliaryHomeApi(errorSummary = true),
-                parseHome = { _, session -> DataResult.Content(sampleHome(ServerId(session.currentServerId!!))) }
+                parseHome = { payload, session ->
+                    assertFalse(payload.serverUnreadSummaryAvailable)
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
             )
 
         val result = withTimeout(5_000L) { source.loadHome() }
@@ -715,7 +719,11 @@ class HomeDataSourceTest {
             SharedHomeDataSource(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = UnreadAuxiliaryHomeApi(errorCounts = true),
-                parseHome = { _, session -> DataResult.Content(sampleHome(ServerId(session.currentServerId!!))) }
+                parseHome = { payload, session ->
+                    assertTrue(payload.serverUnreadSummaryAvailable)
+                    assertFalse(payload.unreadEnrichmentAvailable)
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
             )
 
         val result = withTimeout(5_000L) { source.loadHome() }

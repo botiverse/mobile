@@ -167,6 +167,7 @@ import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeServerDrawerState
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedHomeState
+import build.raft.app.data.HomeServerActivityUnreadProjection
 import build.raft.app.data.SharedHomeTopAction
 import build.raft.app.data.SharedHomeViewModel
 import build.raft.app.data.toConversationSummary
@@ -3622,6 +3623,14 @@ private fun SlockAppShellReadyContent(
     val activityUnreadSummary by activityUnreadSummaryFlow.collectAsState(
         sharedStores.activityUnreadSummaryStore.currentProjection(activityUnreadServerId)
     )
+    val serverActivityExpectedOwner =
+        readySession?.user?.id
+            ?.takeIf { it.isNotBlank() }
+            ?.let { accountId ->
+                readyServerId?.takeIf { it.isNotBlank() }?.let { serverId ->
+                    sharedStores.readReceiptOwner(serverId, accountId)
+                }
+            }
     // Forward the process-owned selected-server Activity projection to the host badge. Source is
     // diagnostics-only; hosts display count and must not branch on provenance.
     LaunchedEffect(homeState.appBadgeCount, activityUnreadSummary) {
@@ -5547,6 +5556,7 @@ private fun SlockAppShellReadyContent(
                                 conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
                                 activityUnreadCount = activityUnreadSummary.totalUnreadCount,
                                 activityTotalCount = activityUnreadSummary.totalCount,
+                                serverActivityExpectedOwner = serverActivityExpectedOwner,
                                 savedCount = homeSearchSavedState.saved.totalCount,
                                 prefersChineseCommunity = prefersChineseCommunity,
                                 serverDrawerEnabled = serverDrawerEnabled,
@@ -5930,6 +5940,7 @@ private fun SlockAppShellReadyContent(
                 topSafeArea = shellScope.topSafeArea,
                 bottomSafeArea = shellScope.bottomSafeArea,
                 serverMembersStore = appShellServerMembersStore,
+                serverActivityExpectedOwner = serverActivityExpectedOwner,
                 selectedTab = selectedTab,
                 modalGestureBlocked =
                     appShellModalHostState.entries.isNotEmpty() ||
@@ -6002,7 +6013,8 @@ internal fun SharedHomeShellState.withoutServerDrawerRuntimeForAppShellRender():
 private data class AppShellServerDrawerProjection(
     val commandIntent: build.raft.app.data.HomeServerDrawerCommandIntent,
     val drawer: HomeServerDrawerState,
-    val unreadCounts: Map<String, Int>
+    val unreadCounts: Map<String, Int>,
+    val activityUnread: HomeServerActivityUnreadProjection,
 )
 
 private data class DrawerSettledObservation(
@@ -6023,6 +6035,7 @@ private fun AppShellServerDrawerHost(
     topSafeArea: Dp,
     bottomSafeArea: Dp,
     serverMembersStore: SharedServerMembersStore?,
+    serverActivityExpectedOwner: ReadReceiptOwner?,
     selectedTab: String,
     modalGestureBlocked: Boolean,
     dismissLabel: String,
@@ -6037,7 +6050,8 @@ private fun AppShellServerDrawerHost(
                     AppShellServerDrawerProjection(
                         commandIntent = shellState.home.serverDrawerCommandIntent,
                         drawer = shellState.home.serverDrawer,
-                        unreadCounts = shellState.home.serverUnreadCounts
+                        unreadCounts = shellState.home.serverUnreadCounts,
+                        activityUnread = shellState.home.serverActivityUnread,
                     )
                 }
                 .distinctUntilChanged()
@@ -6045,13 +6059,27 @@ private fun AppShellServerDrawerHost(
     val initialProjection =
         remember(homeShellStore) {
             val home = homeShellStore.state.value.home
-            AppShellServerDrawerProjection(home.serverDrawerCommandIntent, home.serverDrawer, home.serverUnreadCounts)
+            AppShellServerDrawerProjection(
+                home.serverDrawerCommandIntent,
+                home.serverDrawer,
+                home.serverUnreadCounts,
+                home.serverActivityUnread,
+            )
         }
     val projection by projectionFlow.collectAsState(initialProjection)
     val currentIntent by rememberUpdatedState(projection.commandIntent)
     val drawerSections =
-        remember(projection.drawer, projection.unreadCounts) {
-            projection.drawer.toSlockHomeServerDrawerHostedSections(projection.unreadCounts)
+        remember(
+            projection.drawer,
+            projection.unreadCounts,
+            projection.activityUnread,
+            serverActivityExpectedOwner,
+        ) {
+            projection.drawer.toSlockHomeServerDrawerHostedSections(
+                serverUnreadCounts = projection.unreadCounts,
+                activityExpectedOwner = serverActivityExpectedOwner,
+                activityProjection = projection.activityUnread,
+            )
         }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -17073,6 +17101,7 @@ private fun SharedHomeScreen(
     conversationIdentityProvider: SharedConversationIdentityProvider? = null,
     activityUnreadCount: Int = 0,
     activityTotalCount: Int = 0,
+    serverActivityExpectedOwner: ReadReceiptOwner? = null,
     savedCount: Int = 0,
     prefersChineseCommunity: Boolean = false,
     serverDrawerEnabled: Boolean = false,
@@ -17132,8 +17161,17 @@ private fun SharedHomeScreen(
     val serverSwitchState = state.serverSwitchState
     val serverSwitcherExpanded = state.serverSwitcherExpanded
     val serverDrawerSections =
-        remember(state.serverDrawer, state.serverUnreadCounts) {
-            state.serverDrawer.toSlockHomeServerDrawerSections(state.serverUnreadCounts)
+        remember(
+            state.serverDrawer,
+            state.serverUnreadCounts,
+            state.serverActivityUnread,
+            serverActivityExpectedOwner,
+        ) {
+            state.serverDrawer.toSlockHomeServerDrawerSections(
+                serverUnreadCounts = state.serverUnreadCounts,
+                activityExpectedOwner = serverActivityExpectedOwner,
+                activityProjection = state.serverActivityUnread,
+            )
         }
     val renderBranch = sharedHomeRenderBranch(state.content)
     LaunchedEffect(active, renderBranch, homeContentSummary, selectedConversationId, activityUnreadCount, savedCount) {
@@ -17154,6 +17192,8 @@ private fun SharedHomeScreen(
                     homeServerAvatarEnabled = homeServerAvatarEnabled,
                     serverDrawerSections = serverDrawerSections,
                     serverUnreadCounts = state.serverUnreadCounts,
+                    serverActivityExpectedOwner = serverActivityExpectedOwner,
+                    serverActivityProjection = state.serverActivityUnread,
                     prefersChineseCommunity = prefersChineseCommunity,
                     bottomContentPadding = bottomContentPadding,
                     loadingSkeletons = true,
@@ -17188,6 +17228,8 @@ private fun SharedHomeScreen(
                 homeServerAvatarEnabled = homeServerAvatarEnabled,
                 serverDrawerSections = serverDrawerSections,
                 serverUnreadCounts = state.serverUnreadCounts,
+                serverActivityExpectedOwner = serverActivityExpectedOwner,
+                serverActivityProjection = state.serverActivityUnread,
                 prefersChineseCommunity = prefersChineseCommunity,
                 bottomContentPadding = bottomContentPadding,
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
@@ -17218,6 +17260,8 @@ private fun SharedHomeScreen(
                     homeServerAvatarEnabled = homeServerAvatarEnabled,
                     serverDrawerSections = serverDrawerSections,
                     serverUnreadCounts = state.serverUnreadCounts,
+                    serverActivityExpectedOwner = serverActivityExpectedOwner,
+                    serverActivityProjection = state.serverActivityUnread,
                     prefersChineseCommunity = prefersChineseCommunity,
                     bottomContentPadding = bottomContentPadding,
                     inlineError = localizedSharedHomeErrorDisplay(current.code),
@@ -17314,18 +17358,20 @@ private fun SharedHomeScreen(
                     )
                 }
             val servers =
-                remember(current.session.servers, snapshot.server, state.serverUnreadCounts) {
-                    current.session.servers.map { server ->
-                        server.toServerSummary().let { summary ->
-                            if (summary.id == snapshot.server.id) {
-                                snapshot.server.copy(
-                                    avatarUrl = snapshot.server.avatarUrl ?: summary.avatarUrl
-                                )
-                            } else {
-                                summary
-                            }
-                        }.toSharedSwitcherItem(state.serverUnreadCounts)
-                    }.ifEmpty { listOf(snapshot.server.toSharedSwitcherItem(state.serverUnreadCounts)) }
+                remember(
+                    current.session.servers,
+                    snapshot.server,
+                    state.serverUnreadCounts,
+                    state.serverActivityUnread,
+                    serverActivityExpectedOwner,
+                ) {
+                    sharedHomeSwitcherItems(
+                        session = current.session,
+                        selectedServer = snapshot.server,
+                        serverUnreadCounts = state.serverUnreadCounts,
+                        activityExpectedOwner = serverActivityExpectedOwner,
+                        activityProjection = state.serverActivityUnread,
+                    )
                 }
             val channelItems =
                 remember(snapshot.channels, conversationRowProjector) {
@@ -20567,6 +20613,8 @@ private fun SharedHomeSessionShell(
     serverDrawerSections: List<SlockHomeServerDrawerSection> = emptyList(),
     scrollToTopRequest: Int = 0,
     serverUnreadCounts: Map<String, Int> = emptyMap(),
+    serverActivityExpectedOwner: ReadReceiptOwner? = null,
+    serverActivityProjection: HomeServerActivityUnreadProjection = HomeServerActivityUnreadProjection(),
     prefersChineseCommunity: Boolean = false,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     // #372: true only for the Loading-with-session branch — renders
@@ -20585,10 +20633,20 @@ private fun SharedHomeSessionShell(
     onCreateChannelClick: () -> Unit
 ) {
     val currentServer = session.currentServerSummary()
+    val currentServerId = currentServer?.id?.value ?: session.currentServerId.orEmpty()
     SlockStructuralHomeShell(
         currentServerName = currentServer?.name ?: "No server",
-        currentServerId = currentServer?.id?.value ?: session.currentServerId.orEmpty(),
-        servers = session.servers.map { it.toServerSummary().toSharedSwitcherItem(serverUnreadCounts) },
+        currentServerId = currentServerId,
+        servers =
+            currentServer?.let {
+                sharedHomeSwitcherItems(
+                    session = session,
+                    selectedServer = it,
+                    serverUnreadCounts = serverUnreadCounts,
+                    activityExpectedOwner = serverActivityExpectedOwner,
+                    activityProjection = serverActivityProjection,
+                )
+            }.orEmpty(),
         channels = emptyList(),
         directMessages = emptyList(),
         showLoadingSkeletons = loadingSkeletons,
@@ -20621,14 +20679,51 @@ internal fun StoredAuthSession.currentServerSummary(): ServerSummary? {
         ?: servers.firstOrNull()?.toServerSummary()
 }
 
-private fun ServerSummary.toSharedSwitcherItem(serverUnreadCounts: Map<String, Int> = emptyMap()): SlockServerSwitcherItem =
-    SlockServerSwitcherItem(
+private fun ServerSummary.toSharedSwitcherItem(
+    serverUnreadCounts: Map<String, Int> = emptyMap(),
+    activityExpectedOwner: ReadReceiptOwner? = null,
+    activityProjection: HomeServerActivityUnreadProjection = HomeServerActivityUnreadProjection(),
+): SlockServerSwitcherItem {
+    val serverOwner = activityExpectedOwner?.copy(serverId = id.value)
+    return SlockServerSwitcherItem(
         id = id.value,
         name = name,
         slug = slug ?: description?.removePrefix("/") ?: id.value,
         avatarUrl = avatarUrl,
-        unreadCount = serverUnreadCounts[id.value] ?: unreadCount
+        broaderUnreadCount = serverUnreadCounts[id.value] ?: unreadCount,
+        activityUnreadCount = activityProjection.countFor(serverOwner),
+        serverPushMuted = activityProjection.serverPushMutedFor(serverOwner),
     )
+}
+
+internal fun sharedHomeSwitcherItems(
+    session: StoredAuthSession,
+    selectedServer: ServerSummary,
+    serverUnreadCounts: Map<String, Int>,
+    activityExpectedOwner: ReadReceiptOwner?,
+    activityProjection: HomeServerActivityUnreadProjection,
+): List<SlockServerSwitcherItem> =
+    session.servers.map { server ->
+        server.toServerSummary().let { summary ->
+            if (summary.id == selectedServer.id) {
+                selectedServer.copy(avatarUrl = selectedServer.avatarUrl ?: summary.avatarUrl)
+            } else {
+                summary
+            }
+        }.toSharedSwitcherItem(
+            serverUnreadCounts = serverUnreadCounts,
+            activityExpectedOwner = activityExpectedOwner,
+            activityProjection = activityProjection,
+        )
+    }.ifEmpty {
+        listOf(
+            selectedServer.toSharedSwitcherItem(
+                serverUnreadCounts = serverUnreadCounts,
+                activityExpectedOwner = activityExpectedOwner,
+                activityProjection = activityProjection,
+            )
+        )
+    }
 
 internal data class SharedHomeConversationRowSeed(
     val id: String,
@@ -20661,14 +20756,21 @@ internal data class SharedHomeConversationRowProjector(
 }
 
 internal fun HomeServerDrawerState.toSlockHomeServerDrawerSections(
-    serverUnreadCounts: Map<String, Int> = emptyMap()
+    serverUnreadCounts: Map<String, Int> = emptyMap(),
+    activityExpectedOwner: ReadReceiptOwner? = null,
+    activityProjection: HomeServerActivityUnreadProjection = HomeServerActivityUnreadProjection(),
 ): List<SlockHomeServerDrawerSection> {
     val projector = SharedHomeConversationRowProjector()
     return sections.values.map { section ->
         val snapshot = section.content?.snapshot
         val sidebarOrder = snapshot?.sidebarOrder
         SlockHomeServerDrawerSection(
-            server = section.server.toSharedSwitcherItem(serverUnreadCounts),
+            server =
+                section.server.toSharedSwitcherItem(
+                    serverUnreadCounts = serverUnreadCounts,
+                    activityExpectedOwner = activityExpectedOwner,
+                    activityProjection = activityProjection,
+                ),
             expanded = section.server.id in expandedServerIds,
             status = section.status,
             requestGeneration = section.requestGeneration,
@@ -20690,13 +20792,20 @@ internal fun HomeServerDrawerState.toSlockHomeServerDrawerSections(
 }
 
 internal fun HomeServerDrawerState.toSlockHomeServerDrawerHostedSections(
-    serverUnreadCounts: Map<String, Int> = emptyMap()
+    serverUnreadCounts: Map<String, Int> = emptyMap(),
+    activityExpectedOwner: ReadReceiptOwner? = null,
+    activityProjection: HomeServerActivityUnreadProjection = HomeServerActivityUnreadProjection(),
 ): List<SlockHomeServerDrawerHostedSection> =
     sections.values.map { section ->
         SlockHomeServerDrawerHostedSection(
             header =
                 SlockHomeServerDrawerSection(
-                    server = section.server.toSharedSwitcherItem(serverUnreadCounts),
+                    server =
+                        section.server.toSharedSwitcherItem(
+                            serverUnreadCounts = serverUnreadCounts,
+                            activityExpectedOwner = activityExpectedOwner,
+                            activityProjection = activityProjection,
+                        ),
                     expanded = section.server.id in expandedServerIds,
                     status = section.status,
                     requestGeneration = section.requestGeneration,

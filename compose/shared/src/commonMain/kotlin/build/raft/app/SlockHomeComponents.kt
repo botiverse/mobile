@@ -279,8 +279,46 @@ data class SlockServerSwitcherItem(
     val name: String = "",
     val slug: String = "",
     val avatarUrl: String? = null,
-    val unreadCount: Int = 0
+    /** Legacy broader unread is presentation-only fallback when Activity is unknown. */
+    val broaderUnreadCount: Int = 0,
+    /** Present means known, including an authoritative zero. */
+    val activityUnreadCount: Long? = null,
+    val serverPushMuted: Boolean = false,
 )
+
+internal data class HomeServerSwitcherBadgePresentation(
+    val kind: HomeServerSwitcherBadgeKind,
+    val activityLabel: String? = null,
+    val muted: Boolean = false,
+)
+
+internal enum class HomeServerSwitcherBadgeKind {
+    None,
+    ActivityNumber,
+    BroaderUnreadDot
+}
+
+internal fun homeServerSwitcherBadgePresentation(
+    server: SlockServerSwitcherItem
+): HomeServerSwitcherBadgePresentation {
+    val activityLabel = server.activityUnreadCount?.let { count -> formatHomeSidebarBadgeCount(count) }
+    return when {
+        activityLabel != null ->
+            HomeServerSwitcherBadgePresentation(
+                kind = HomeServerSwitcherBadgeKind.ActivityNumber,
+                activityLabel = activityLabel,
+                muted = server.serverPushMuted
+            )
+        server.activityUnreadCount == 0 ->
+            HomeServerSwitcherBadgePresentation(
+                kind = HomeServerSwitcherBadgeKind.None,
+                muted = server.serverPushMuted
+            )
+        server.broaderUnreadCount > 0 ->
+            HomeServerSwitcherBadgePresentation(kind = HomeServerSwitcherBadgeKind.BroaderUnreadDot)
+        else -> HomeServerSwitcherBadgePresentation(kind = HomeServerSwitcherBadgeKind.None)
+    }
+}
 
 @Serializable
 data class SlockHomeConversationItem(
@@ -2777,6 +2815,9 @@ internal fun homeActivitySidebarTotalCount(
     activityTotalCount.takeIf { activityUnreadCount <= 0 && it > 0 } ?: 0
 
 internal fun formatHomeSidebarBadgeCount(count: Int): String? =
+    formatHomeSidebarBadgeCount(count.toLong())
+
+internal fun formatHomeSidebarBadgeCount(count: Long): String? =
     when {
         count <= 0 -> null
         count >= 100 -> "99+"
@@ -2827,7 +2868,7 @@ internal fun homeServerSwitcherHasOtherUnread(
 ): Boolean =
     servers.any { server ->
         server.id != currentServerId &&
-            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = server.unreadCount)).hasUnread
+            homeServerSwitcherBadgePresentation(server).kind != HomeServerSwitcherBadgeKind.None
     }
 
 private const val DefaultCommunityServerSlug = "community"
@@ -4345,11 +4386,7 @@ private fun HomeServerDrawerServerHeader(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        if (!unavailable) {
-            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = section.server.unreadCount)).label?.let {
-                HomeUnreadBadge(it)
-            }
-        }
+        if (!unavailable) ServerSwitcherUnreadIndicator(section.server)
         if (busy) {
             SlockLucideIcon(SlockLucideIconName.LoaderCircle, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
         } else if (failed) {
@@ -4771,10 +4808,7 @@ private fun ServerSwitcherRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        val badgeLabel =
-            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = server.unreadCount))
-                .label
-        if (badgeLabel != null) HomeUnreadBadge(badgeLabel)
+        ServerSwitcherUnreadIndicator(server)
         if (dragHandleVisible) {
             Box(modifier = Modifier.width(HomeServerSwitcherDragHandleWidth), contentAlignment = Alignment.Center) {
                 SlockLucideIcon(
@@ -4784,6 +4818,21 @@ private fun ServerSwitcherRow(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ServerSwitcherUnreadIndicator(server: SlockServerSwitcherItem) {
+    val presentation = homeServerSwitcherBadgePresentation(server)
+    when (presentation.kind) {
+        HomeServerSwitcherBadgeKind.ActivityNumber ->
+            presentation.activityLabel?.let { HomeUnreadBadge(it) }
+        HomeServerSwitcherBadgeKind.BroaderUnreadDot ->
+            SlockStatusIndicator(
+                color = SlockColor.TextMutedGray,
+                size = SlockStatusIndicatorTokens.ServerUnreadSize
+            )
+        HomeServerSwitcherBadgeKind.None -> Unit
     }
 }
 

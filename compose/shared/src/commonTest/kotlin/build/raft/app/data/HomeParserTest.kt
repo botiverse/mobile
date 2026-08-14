@@ -237,11 +237,15 @@ class HomeParserTest {
                             listOf(
                                 ServerUnreadSummaryDto(
                                     serverId = "server-1",
-                                    unreadCount = 9
+                                    unreadCount = 9,
+                                    serverPushMuted = false,
+                                    activityUnreadCount = 0,
                                 ),
                                 ServerUnreadSummaryDto(
                                     serverId = "server-2",
-                                    unreadCount = 5
+                                    unreadCount = 5,
+                                    serverPushMuted = true,
+                                    activityUnreadCount = 3,
                                 )
                             )
                     ),
@@ -253,6 +257,8 @@ class HomeParserTest {
         assertEquals(9, result.data.unreadTotal)
         assertEquals(9, result.data.server.unreadCount)
         assertEquals(mapOf("server-1" to 9, "server-2" to 5), result.data.serverUnreadCounts)
+        assertEquals(mapOf("server-1" to 0L, "server-2" to 3L), result.data.serverActivityUnreadCounts)
+        assertEquals(mapOf("server-1" to false, "server-2" to true), result.data.serverPushMutedByServer)
     }
 
     @Test
@@ -330,6 +336,23 @@ class HomeParserTest {
         assertEquals(4, result.data.channels.single().unreadCount)
         assertEquals(12, result.data.unreadTotal)
         assertEquals(12, result.data.server.unreadCount)
+    }
+
+    @Test
+    fun optionalActivityFieldKeepsAbsentAndInvalidValuesUnknown() {
+        val serverUnreadSummary =
+            json.decodeFromString(
+                ListSerializer(ServerUnreadSummaryDto.serializer()),
+                """[
+                    {"serverId":"known-zero","unreadCount":7,"serverPushMuted":true,"activityUnreadCount":0},
+                    {"serverId":"absent","unreadCount":5,"serverPushMuted":false},
+                    {"serverId":"invalid","unreadCount":4,"serverPushMuted":false,"activityUnreadCount":-1}
+                ]""".trimIndent()
+            )
+
+        assertEquals(0L, serverUnreadSummary[0].knownActivityUnreadCount)
+        assertNull(serverUnreadSummary[1].knownActivityUnreadCount)
+        assertNull(serverUnreadSummary[2].knownActivityUnreadCount)
     }
 
     @Test

@@ -498,6 +498,13 @@ data class HomeNetworkPayload(
     val directMessages: List<HomeDirectMessageWireDto>,
     val unreadCounts: Map<ChannelId, Int>,
     val serverUnreadSummary: List<ServerUnreadSummaryDto>,
+    /**
+     * True when `/servers/unread-summary` itself completed and decoded. This
+     * is intentionally independent from [unreadEnrichmentAvailable]: Activity
+     * counts can advance when the summary succeeds even if the auxiliary
+     * per-channel unread request fails.
+     */
+    val serverUnreadSummaryAvailable: Boolean = true,
     // task #831: false when the auxiliary unread endpoints were unavailable
     // (error/timeout/hung/contract-mismatch) so unreadCounts/serverUnreadSummary
     // are an honest empty, NOT an authoritative zero. Consumers must keep the
@@ -601,6 +608,7 @@ internal class SlockHomeApiClient(
         val serverUnreadSummaryResult = serverUnreadSummaryDeferred.awaitBestEffortHomeSection(startMark)
         val unreadEnrichmentAvailable =
             unreadCountsResult is DataResult.Content && serverUnreadSummaryResult is DataResult.Content
+        val serverUnreadSummaryAvailable = serverUnreadSummaryResult is DataResult.Content
         val unreadCounts =
             (unreadCountsResult as? DataResult.Content)?.data?.mapKeys { (key, _) -> ChannelId(key) }
                 ?: emptyMap()
@@ -615,6 +623,7 @@ internal class SlockHomeApiClient(
                 directMessages = directMessages,
                 unreadCounts = unreadCounts,
                 serverUnreadSummary = serverUnreadSummary,
+                serverUnreadSummaryAvailable = serverUnreadSummaryAvailable,
                 unreadEnrichmentAvailable = unreadEnrichmentAvailable
             )
         )
