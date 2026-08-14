@@ -138,13 +138,22 @@ private fun SettingsWebViewScreen() {
         remember(pager.pageData.params) {
             settingsWebViewSurfaceFromPageData(pager.pageData.params)
         }
+    val computerTarget =
+        remember(pager.pageData.params.toString(), surface) {
+            if (surface == SettingsWebViewSurface.Computers) {
+                settingsComputerRouteIdentityFromPageData(pager.pageData.params)
+            } else {
+                null
+            }
+        }
+    val computerSpec = remember(computerTarget) { computerTarget?.let(::settingsComputerWebViewSpec) }
     when (surface) {
         SettingsWebViewSurface.Computers ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
                 title = stringResource(MR.strings.settings_computers_title),
                 iconName = SlockLucideIconName.Monitor,
-                spec = settingsComputersWebViewSpec,
+                spec = computerSpec ?: settingsComputersWebViewSpec,
             )
         SettingsWebViewSurface.Billing ->
             StandaloneSettingsWebViewPage(

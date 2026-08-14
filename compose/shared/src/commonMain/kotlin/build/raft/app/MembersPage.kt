@@ -643,6 +643,24 @@ internal fun memberDetailAgentPanelTabOrderServerId(
     routeServerId.cleanMemberDetailServerId()
         ?: payloadSourceServerId.cleanMemberDetailServerId()
 
+internal fun membersAgentComputerNavigationTarget(
+    serverId: String?,
+    summaryMachineId: String?,
+    memberMachineId: String?,
+    accessMode: MemberDetailAccessMode,
+): SettingsComputerRouteIdentity? {
+    if (!accessMode.allowsPrivateAgentSurfaces) return null
+    val normalizedServerId = serverId.cleanMemberDetailServerId() ?: return null
+    val normalizedMachineId =
+        summaryMachineId?.trim()?.takeIf { it.isNotBlank() }
+            ?: memberMachineId?.trim()?.takeIf { it.isNotBlank() }
+            ?: return null
+    return SettingsComputerRouteIdentity(
+        serverId = normalizedServerId,
+        machineId = normalizedMachineId,
+    )
+}
+
 private fun String?.cleanMemberDetailServerId(): String? =
     this?.trim()?.takeIf { it.isNotBlank() }
 
@@ -2839,6 +2857,22 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 val agentMachineId =
                     selectedAgentDetail.summary?.machineId
                         ?: member.membersComputerId
+                val computerNavigationTarget =
+                    membersAgentComputerNavigationTarget(
+                        serverId = current.server.id.value,
+                        summaryMachineId = selectedAgentDetail.summary?.machineId,
+                        memberMachineId = member.membersComputerId,
+                        accessMode = current.accessMode,
+                    )
+                val onOpenComputer: (() -> Unit)? =
+                    computerNavigationTarget?.let { target ->
+                        {
+                            pager.openSettingsComputerPage(
+                                storeScope = provider.storeScope,
+                                target = target,
+                            )
+                        }
+                    }
                 val agentRuntimeModelsByRuntime =
                     agentMachineId
                         ?.let { machineId ->
@@ -3044,6 +3078,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                             )
                         }
                     },
+                    onOpenComputer = onOpenComputer,
                     onCopyMemberId = {
                         provider.copyMemberId(member, memberIdCopied)
                     },
@@ -4193,6 +4228,7 @@ private fun MembersDetailContent(
     canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
     onBack: () -> Unit,
     onOpenDirectMessage: () -> Unit,
+    onOpenComputer: (() -> Unit)? = null,
     onCopyMemberId: () -> Unit,
     onRemoveMember: (() -> Unit)? = null,
     humanActorRole: String? = null,
@@ -4764,6 +4800,7 @@ private fun MembersDetailContent(
                                             issueReportReferenceCopied = false
                                             reportIssueDialogOpen = true
                                         },
+                                        onOpenComputer = onOpenComputer,
                                         timeContext = timeContext,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
@@ -7141,6 +7178,7 @@ private fun MembersAgentProfileTab(
     onOpenRestartReset: () -> Unit = {},
     onCopyDiagnostics: () -> Unit = {},
     onReportIssue: () -> Unit = {},
+    onOpenComputer: (() -> Unit)? = null,
     timeContext: SlockTimeContext,
     modifier: Modifier = Modifier
 ) {
@@ -7904,8 +7942,22 @@ private fun MembersAgentProfileTab(
                 MembersAgentRoleHelpDialog(onDismiss = { roleHelpOpen = false })
             }
             // Computer row
+            val computerRowModifier =
+                if (onOpenComputer != null) {
+                    Modifier.fillMaxWidth().clickable(onClick = onOpenComputer)
+                } else {
+                    Modifier.fillMaxWidth()
+                }
+            val computerNameStyle =
+                SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp).let { baseStyle ->
+                    if (onOpenComputer != null) {
+                        baseStyle.copy(textDecoration = TextDecoration.Underline)
+                    } else {
+                        baseStyle
+                    }
+                }
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = computerRowModifier,
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -7917,7 +7969,7 @@ private fun MembersAgentProfileTab(
                 )
                 Text(
                     text = summary?.machineName.orBadgeFallback(member.membersComputerName),
-                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                    style = computerNameStyle,
                     color = SlockColor.TextBlack,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
