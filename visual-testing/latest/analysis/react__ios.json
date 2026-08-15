@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-15T22:05:00.760Z",
+  "generatedAt": "2026-08-15T22:08:30.801Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 78,
-    "pending": 8
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -773,15 +773,37 @@
     },
     {
       "id": "components.ui.surface-list-item.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ff81ffc0ffc0ffe03fc0ffe477c00060000000200000002000000060001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-08-15T22:04:59.692Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-15T22:07:10.583Z",
+      "severity": "low",
+      "summary": [
+        "Typography on iOS appears slightly larger and heavier; serif/sans-serif rendering differs, with iOS text showing more prominent letterforms.",
+        "Vertical spacing between the two list items is greater on iOS than on the React baseline.",
+        "Both list items on iOS occupy a wider horizontal proportion of the canvas compared to the React baseline (iOS canvas is ~3.4× wider, 1170 vs 342, while each item spans ~84% width vs ~80% on React).",
+        "Item padding (inner) on iOS appears larger, increasing the height of both default and selected states.",
+        "Border styling on the selected (light-blue) item is consistent across both platforms; no clipping or missing elements detected."
+      ],
+      "likelyCauses": [
+        "Platform-default font metrics and line-height differ between web (React) and native (iOS) rendering pipelines.",
+        "Component is not scaled to the device canvas; iOS capture uses full 1170×2532 viewport while React capture is a tightly cropped 342×182 element bounds, causing relative spacing to appear larger.",
+        "Default list-item vertical rhythm (margin/gap) on iOS implementation may use larger pt values than the React web token."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Normalize the iOS preview to the same component-bounds crop as React before running the diff, so spacing comparisons are not inflated by viewport size.",
+        "Audit iOS list-item font, font-size, and line-height against the React design tokens; align to a shared type scale (e.g., ensure iOS uses the same body/title sizes as the web token).",
+        "Reduce or standardize vertical spacing between list items to match the React baseline (target ~8–12px equivalent).",
+        "Verify inner padding of list items on iOS matches the React token to reduce height delta of the selected state.",
+        "Re-run the comparison with tolerance adjusted for expected font-rendering anti-aliasing differences (current 0.955 pixel-perfect is acceptable, but verify intentionally)."
+      ],
+      "intentional": [
+        "Font rendering differences between web and native text engines are expected and likely intentional.",
+        "Relative widths differ because the iOS capture is a full device canvas vs. an element-bounds crop on React."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.044147392014690645
     },
     {
@@ -1471,15 +1493,33 @@
     },
     {
       "id": "components.home.notification-center.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe07fefffe7ffe80067ffe81c200028013000280b20002a002000a4073407a801300028012001aa312001a0072407a8003000280060002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00066002fffe3fff",
-      "generatedAt": "2026-08-15T22:05:00.119Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-15T22:07:10.991Z",
+      "severity": "medium",
+      "summary": [
+        "iOS version uses single-line titles for both notification headings while React wraps them onto two lines, reducing vertical spacing within the card body.",
+        "iOS title and subtitle text never break/wrap, making the cards visibly shorter than the React baseline.",
+        "iOS icons and action buttons appear smaller relative to the card, leaving more whitespace between the icon column and the text block.",
+        "iOS 'NOTIFICATIONS' header and '2 items' counter sit closer to the top edge of the card with reduced internal padding compared to React.",
+        "Action buttons ('View', 'Open', 'Dismiss') in iOS appear narrower with less horizontal padding than the React baseline."
+      ],
+      "likelyCauses": [
+        "iOS native font (SF Pro) uses a narrower glyph width and different line-breaking rules than the React web font, so long titles fit on one line instead of wrapping.",
+        "iOS design tokens for card padding, line-height, and title font-weight appear to differ from the shared design system used by React.",
+        "iOS layout is using UIKit default metrics instead of the cross-platform spacing tokens (e.g., compact content insets and smaller font sizes)."
+      ],
+      "suggestedOwner": "iOS",
+      "suggestedFixes": [
+        "Match the React title font-weight (bold) and verify the iOS font size matches the design spec so long titles wrap onto two lines.",
+        "Align iOS card internal padding, icon size, and button min-width to the React values from the shared design tokens.",
+        "Re-export the iOS baseline at the same logical point size as React (or apply a font scale) so card heights and column spacing match.",
+        "Confirm the iOS notification card uses the shared component spec rather than UIKit defaults; audit SF Pro vs. the web font for width differences."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.09948859723741243
     },
     {
@@ -1802,7 +1842,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-15T22:05:00.199Z",
+      "generatedAt": "2026-08-15T22:08:30.189Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2191,7 +2231,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-15T22:05:00.374Z",
+      "generatedAt": "2026-08-15T22:08:30.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2204,7 +2244,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-15T22:05:00.374Z",
+      "generatedAt": "2026-08-15T22:08:30.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2217,7 +2257,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-15T22:05:00.374Z",
+      "generatedAt": "2026-08-15T22:08:30.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2230,7 +2270,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-15T22:05:00.374Z",
+      "generatedAt": "2026-08-15T22:08:30.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2243,7 +2283,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-15T22:05:00.374Z",
+      "generatedAt": "2026-08-15T22:08:30.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>10736100-20260815220257</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-15T22:05:05.615Z" data-timestamp="2026-08-15T22:05:05.615Z" title="2026-08-15T22:05:05.615Z">2026-08-15 22:05:05 UTC</time></p>
+    <p class="runMeta"><code>10736100-20260815220257</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-15T22:08:35.658Z" data-timestamp="2026-08-15T22:08:35.658Z" title="2026-08-15T22:08:35.658Z">2026-08-15 22:08:35 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 85</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 82/86 ready</span>
+      <span class="pill">AI 85/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1668,7 +1668,12 @@
       <p><code>RGB 89.2%</code><br/><code>Pixel 75.54%</code><br/><code>Mismatch 24.46%</code><br/><code>Raw 1026×546 / 1026×546</code><br/><code>Canvas 1026×546</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×182 / component-bounds 342×182</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-platform</summary>
+    <ul><li>In the Android version, the two list items are stacked vertically with a narrow vertical gap, whereas in the React baseline they are stacked tightly with no visible gap (or a much smaller one).</li><li>On Android, the selected ('Active integration') item is positioned with its top edge clipped/offset by ~12px below the expected baseline, suggesting a downward offset or extra top padding/margin.</li><li>The outer page/container on Android has a pale cream/beige background fill, while the React baseline background is pure white.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align the vertical spacing/padding between Android list items to match the React baseline (reduce inter-item gap).</li><li>Remove or normalize the outer top offset on the selected list item so its top edge aligns with React.</li><li>Override or set the Android page/canvas background to white (#FFFFFF) to match React baseline.</li><li>Verify the list item height/padding values against the React token (e.g., paddingVertical) and reduce if items render taller on Android.</li><li>Re-capture the Android snapshot with the same crop/bounds contract and re-run pixel-diff to confirm alignment.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.surface-list-item.states.png" data-current-src="android/components.ui.surface-list-item.states.png" data-overlay-width="1026" data-overlay-height="546">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -1992,7 +1997,12 @@
       <p><code>RGB 84.3%</code><br/><code>Pixel 79.42%</code><br/><code>Mismatch 20.58%</code><br/><code>Raw 1026×300 / 1026×300</code><br/><code>Canvas 1026×300</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×100 / component-bounds 342×100</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-platform</summary>
+    <ul><li>Composer toolbar icons (image, attachment) and send button have darker, heavier shadow borders on Android vs React baseline</li><li>Android toolbar icons appear slightly larger and positioned closer to the left edge than React</li><li>Send (paper airplane) button on Android shows a more saturated/pink fill compared to React's softer pink</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align Android elevation/shadow values for icon buttons with the React baseline (or unify both to a shared design token)</li><li>Resize Android toolbar icon drawables to match React icon dimensions</li><li>Normalize the send-button background color to use the shared primary token used by React</li><li>Add a shared spacing token for the checkbox-to-label and icon-cluster gaps so both platforms match</li><li>Verify border-stroke weight on the composer container matches the design spec on Android</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.states.png" data-current-src="android/components.thread.composer.states.png" data-overlay-width="1026" data-overlay-height="300">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -3590,7 +3600,12 @@
       <p><code>RGB 94.0%</code><br/><code>Pixel 88.57%</code><br/><code>Mismatch 11.43%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-platform</summary>
+    <ul><li>Notification item titles use bolder/heavier font weight on React (baseline) versus a lighter regular weight on Android (current).</li><li>Notification body text ('Last heartbeat was 4 minutes ago.', 'Two visual cases changed...') is bolder on React than on Android.</li><li>'NOTIFICATIONS' header label appears bolder on React; '2 items' counter appears heavier on Android.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Apply the brand/design-system bold (e.g., 700 / Medium-Semibold) weight to notification titles, the 'NOTIFICATIONS' header, and body copy on Android to match React.</li><li>Verify TextAppearance / Typography tokens on Android: titleText, bodyText, and labelSmall should be set to the same weight and size used on React.</li><li>Align card padding, item spacing, and container bounds on Android with the React card metrics; check outer container width vs. viewport.</li><li>Use the same font family across platforms (or a weight-equivalent fallback) so character widths and perceived weight match.</li><li>Re-align the crop contract so both baseline and current are captured at the same logical bounds (component-bounds vs viewport-bounds) before comparing.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.home.notification-center.states.png" data-current-src="android/components.home.notification-center.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

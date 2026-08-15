@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>10736100-20260815220257</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-15T22:05:05.615Z" data-timestamp="2026-08-15T22:05:05.615Z" title="2026-08-15T22:05:05.615Z">2026-08-15 22:05:05 UTC</time></p>
+    <p class="runMeta"><code>10736100-20260815220257</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-15T22:08:35.658Z" data-timestamp="2026-08-15T22:08:35.658Z" title="2026-08-15T22:08:35.658Z">2026-08-15 22:08:35 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 13</span>
       <span class="pill">Different 56</span>
       <span class="pill">Missing 6</span>
-      <span class="pill">AI 78/86 ready</span>
+      <span class="pill">AI 80/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1668,7 +1668,12 @@
       <p><code>RGB 90.6%</code><br/><code>Pixel 95.59%</code><br/><code>Mismatch 4.41%</code><br/><code>Raw 1026×546 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×182 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · design-system</summary>
+    <ul><li>Typography on iOS appears slightly larger and heavier; serif/sans-serif rendering differs, with iOS text showing more prominent letterforms.</li><li>Vertical spacing between the two list items is greater on iOS than on the React baseline.</li><li>Both list items on iOS occupy a wider horizontal proportion of the canvas compared to the React baseline (iOS canvas is ~3.4× wider, 1170 vs 342, while each item spans ~84% width vs ~80% on React).</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize the iOS preview to the same component-bounds crop as React before running the diff, so spacing comparisons are not inflated by viewport size.</li><li>Audit iOS list-item font, font-size, and line-height against the React design tokens; align to a shared type scale (e.g., ensure iOS uses the same body/title sizes as the web token).</li><li>Reduce or standardize vertical spacing between list items to match the React baseline (target ~8–12px equivalent).</li><li>Verify inner padding of list items on iOS matches the React token to reduce height delta of the selected state.</li><li>Re-run the comparison with tolerance adjusted for expected font-rendering anti-aliasing differences (current 0.955 pixel-perfect is acceptable, but verify intentionally).</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.surface-list-item.states.png" data-current-src="ios/components.ui.surface-list-item.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3595,7 +3600,12 @@
       <p><code>RGB 94.1%</code><br/><code>Pixel 90.05%</code><br/><code>Mismatch 9.95%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · iOS</summary>
+    <ul><li>iOS version uses single-line titles for both notification headings while React wraps them onto two lines, reducing vertical spacing within the card body.</li><li>iOS title and subtitle text never break/wrap, making the cards visibly shorter than the React baseline.</li><li>iOS icons and action buttons appear smaller relative to the card, leaving more whitespace between the icon column and the text block.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Match the React title font-weight (bold) and verify the iOS font size matches the design spec so long titles wrap onto two lines.</li><li>Align iOS card internal padding, icon size, and button min-width to the React values from the shared design tokens.</li><li>Re-export the iOS baseline at the same logical point size as React (or apply a font scale) so card heights and column spacing match.</li><li>Confirm the iOS notification card uses the shared component spec rather than UIKit defaults; audit SF Pro vs. the web font for width differences.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.home.notification-center.states.png" data-current-src="ios/components.home.notification-center.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
