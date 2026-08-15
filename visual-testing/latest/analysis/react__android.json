@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-14T22:13:57.164Z",
+  "generatedAt": "2026-08-15T22:04:58.033Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 85,
-    "pending": 1
+    "ready": 82,
+    "pending": 4
   },
   "cases": [
     {
@@ -552,7 +552,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41497942386831277
+      "metricMismatch": 0.41496209659952354
     },
     {
       "id": "components.ui.spinner.states",
@@ -787,38 +787,16 @@
     },
     {
       "id": "components.ui.surface-list-item.states",
-      "status": "ready",
-      "imageHash": "p1:f003f003fffcfffc0ffc0ffc7fff7ffffffefffffffefffffffefffffffeffffc7fe83ffc3fec7fffffeffffcf7ec1ffeffefffffffefffffffedffbc00380018000bffcbffc80fc80fc80fc80fcbffcbbfc80fc807cfffc803c8001bffc80018000ffff8000fffefffeffff000000008007e001fffffffffff81fffffffffff",
-      "generatedAt": "2026-07-10T22:11:55.019Z",
-      "severity": "medium",
-      "summary": [
-        "Typography in Android version appears larger/heavier than React: 'Private app' and 'Active integration' titles are bolder, and subtitle text 'Available to this server' / 'Selected list item state' is visibly bigger on Android.",
-        "Android list-item cards extend closer to the right edge of the canvas; React cards are narrower with more right-side margin, indicating different horizontal padding/sizing.",
-        "Top 'Private app' card on Android is taller (more vertical padding) than the React counterpart, while bottom 'Active integration' cards have similar heights.",
-        "Both list items on Android lack the subtle inner spacing refinement seen in React; text sits higher and closer to the top edge of each card.",
-        "Overall positioning differs: Android items are shifted right and vertically redistributed vs. React's left-aligned, evenly-spaced layout."
-      ],
-      "likelyCauses": [
-        "Android implementation uses different default font scale, line-height, or font-weight tokens than the React baseline.",
-        "List-item container has different horizontal padding or max-width on Android (e.g., parent layout using match_parent vs. constrained width).",
-        "Vertical padding values inside the Android Surface card diverge from the shared design token.",
-        "State styling for selected/unselected items may map to different elevation, background, or border specs across platforms."
-      ],
-      "suggestedOwner": "android-platform",
-      "suggestedFixes": [
-        "Align Android text styles with React by reusing the shared typography token (size, weight, line-height) for list-item title and subtitle.",
-        "Normalize horizontal card padding so Android Surface list items use the same inset as React (avoid right-edge clipping/over-stretch).",
-        "Match vertical padding inside list-item cards across platforms using a single spacing token.",
-        "Verify selected-state background, border, and elevation tokens are consistent between React and Android implementations.",
-        "Re-run the visual diff after token alignment to confirm pixel-perfect similarity reaches the tolerance threshold (current 75.94%)."
-      ],
-      "intentional": [
-        "RGB similarity 89.5% suggests most of the layout aligns; differences may partly be platform-specific font rendering defaults."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.24135838170925894
+      "status": "pending",
+      "imageHash": "p1:f003f003fffcfffc0ffc0ffc7fff7ffffffefffffffefffffffefffffffeffffc3fe83ffc3fec7fffffeffffc77ec1ffeffefffffffefffffffedffbc00380018000bffcbffc80fc807c80fc807cbffcbffc80fc807cfffc803c8001bffc80018000ffff8000fffefffeffff000000008005e001fffffffffff81fffffffffff",
+      "generatedAt": "2026-08-15T22:04:57.017Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.24455726210112172
     },
     {
       "id": "components.ui.avatar-list-row.states",
@@ -954,38 +932,16 @@
     },
     {
       "id": "components.thread.composer.states",
-      "status": "ready",
-      "imageHash": "p1:fffffffffffffffffffcfffc0ffc0ffc8fff0fff0000000000000000ffffffff80010001fffe7ffdfffe7ffd8096000580060005fffefffdfffefffd8ff80ff987f80ff187d80f9187c00fc187d80f9187f80ff18ff80001800000018000ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-08-07T00:05:48.731Z",
-      "severity": "medium",
-      "summary": [
-        "Outer container border is consistently thicker/bolder on the Android side, increasing visual weight around the composer card",
-        "Header underline rule beneath 'Thread Composer States' is thicker and slightly darker on Android",
-        "Icon boxes (image and attachment) have heavier black stroke on Android, appearing chunkier than React's lighter outlines",
-        "The pink send button on Android has a heavier outline stroke, making it feel less pill-like",
-        "Overall stroke weight delta accounts for most of the 21% pixel mismatch"
-      ],
-      "likelyCauses": [
-        "Default border/outline stroke values differ between React CSS and Android Compose theme tokens",
-        "Lack of shared design-token contract between web (React) and mobile (Android) implementations for line/border weights",
-        "Android component using a default Material elevation/divider thickness rather than the design-spec 1px equivalent",
-        "No cross-platform style parity check (slock baseline ≠ Android component-bounds contract)"
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Extract border, divider, and icon-stroke weights into a shared design token (e.g. --border-hairline: 1px) and consume on both platforms",
-        "Reduce Android container border, header rule, icon-outline, and send-button stroke to match React's hairline 1–2px equivalents",
-        "Audit Compose theme to remove default elevation/divider thickness overrides in this composer card",
-        "Regenerate Android slock capture using element-bounds crop (not manual-rect) so the comparison region matches React baseline",
-        "Re-run visual diff with tolerance after token alignment; target >95% pixel-perfect match"
-      ],
-      "intentional": [
-        "The Android outer container appears slightly horizontally shifted (manual-rect crop x=24 vs element crop x=0), so horizontal position differences may be capture-side artifacts rather than true layout drift"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.20584795321637428
+      "status": "pending",
+      "imageHash": "p1:fffffffffffffffffffefffc0ffc0ffc8fff0fff0000000000000000ffffffff80010001fffefffdfffefffd8002000d80020005ffdefffdfffefffd8ff80ff987f80ff187980f9187c00fc187980f9187f80ff18ff80009800000018000ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
+      "generatedAt": "2026-08-15T22:04:57.043Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.20583820662768026
     },
     {
       "id": "components.thread.composer.pending-mention-actions",
@@ -1514,36 +1470,16 @@
     },
     {
       "id": "components.home.notification-center.states",
-      "status": "ready",
-      "imageHash": "p1:07fe07fcfffe7ffe80067ffe0202000280020002800200020072000200124072803200028012001200f200120072407280020002fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
-      "generatedAt": "2026-07-30T04:34:27.407Z",
-      "severity": "medium",
-      "summary": [
-        "Android version renders typography with lighter/regular weight compared to React's bolder headings and body text.",
-        "Notification card content on Android is vertically tighter: reduced line-height and tighter spacing between title, description, and button row.",
-        "Status icons (warning triangle, info circle) and their inline alignment differ: Android shows a narrower gap between icon and title and slightly different vertical baseline.",
-        "'NOTIFICATIONS' header and '2 items' counter font appears smaller and lighter on Android; React uses heavier uppercase tracking.",
-        "Button bounds and label spacing are slightly compressed on Android (smaller padding around View/Open/Dismiss labels)."
-      ],
-      "likelyCauses": [
-        "Android side is using a different font family/weight (e.g., system Roboto Regular vs React's bold sans-serif) without matching the design token.",
-        "Spacing token mismatch: Android card padding and item gaps not aligned to the React design system values.",
-        "Icon-to-text vertical alignment differs because Android uses different line-box metrics than web rendering."
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Apply the design system's bold/medium weights for headings and titles on Android to match React rendering.",
-        "Increase card vertical padding and inter-item spacing to match React baseline (verify dp values vs px).",
-        "Snap typography size for header and item counter to the shared token; ensure Roboto weight 700 for headings.",
-        "Align icon baseline to text cap-height and verify IconButton/Button padding matches the React button component."
-      ],
-      "intentional": [
-        "Viewport sizing is identical (390x844); the notification structure (2 items, same copy) is preserved across platforms."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.11986200564399618
+      "status": "pending",
+      "imageHash": "p1:07fe07fcfffe7ffe80067ffe81c200028013000280b20002a0020002407340728013000280120012a3120012007240728003000280060002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00064000fffe3fff",
+      "generatedAt": "2026-08-15T22:04:57.285Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11433581777183677
     },
     {
       "id": "components.home.search.results",
@@ -1579,7 +1515,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.269332037104549
+      "metricMismatch": 0.2693391258557135
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1613,12 +1549,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2691575188020686
+      "metricMismatch": 0.26916865826818437
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fcfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa7fff",
+      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fcfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa3fff",
       "generatedAt": "2026-07-30T04:34:27.469Z",
       "severity": "medium",
       "summary": [
@@ -1650,7 +1586,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1902549833364774
+      "metricMismatch": 0.19037969775094843
     },
     {
       "id": "components.home.activity.results",
@@ -1684,7 +1620,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18973988136410325
+      "metricMismatch": 0.18964608354817747
     },
     {
       "id": "components.tasks.panel.states",
@@ -1866,7 +1802,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:13:56.278Z",
+      "generatedAt": "2026-08-15T22:04:57.351Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1915,7 +1851,7 @@
     {
       "id": "components.channel.settings.panel",
       "status": "ready",
-      "imageHash": "p1:ffffffffffff000087fd0000fffd0000ffff0000ffff0000ffff7ffcffff7ff8cffd7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017c7c80017ffc80017ffc800140008001000080014000ffff0000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
+      "imageHash": "p1:ffffffffdfff000083fd0000fffd0000ffff0000ffff0000ffff7ffcffff7ff8cffd7ffcf7ff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017c7c80017ffc80017ffc800140008001000080014000ffff0000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
       "generatedAt": "2026-08-01T22:14:59.204Z",
       "severity": "high",
       "summary": [
@@ -1947,7 +1883,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.9019045111462173
+      "metricMismatch": 0.9020999581426121
     },
     {
       "id": "components.channel.members.add-panel",
@@ -2156,7 +2092,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19861701840374824
+      "metricMismatch": 0.19863254614439452
     },
     {
       "id": "components.settings.notifications.page",
@@ -2328,7 +2264,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.061298794237182874
+      "metricMismatch": 0.06128664209232926
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2432,7 +2368,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10116761858468015
+      "metricMismatch": 0.10116829370383873
     },
     {
       "id": "screens.members.human.profile",
@@ -2571,7 +2507,7 @@
     {
       "id": "screens.home.loading",
       "status": "ready",
-      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfff8ffe9ffefffe9ffec3fe9ffebffe9ffebffed7ffbffec3ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffebbfefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
+      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfff8ffe9ffefffe9ffec3fe9ffebffe9ffebffed7ffbffec3ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffe93fefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
       "generatedAt": "2026-07-13T22:11:37.533Z",
       "severity": "medium",
       "summary": [
@@ -2599,7 +2535,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.15699187156533123
+      "metricMismatch": 0.15698917108869714
     },
     {
       "id": "components.thread.message-row.rich-content",

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-14T22:14:05.661Z",
+  "generatedAt": "2026-08-15T22:05:03.957Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -1141,7 +1141,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05947833542620273
+      "metricMismatch": 0.0594840739390502
     },
     {
       "id": "components.thread.header.states",
@@ -2131,7 +2131,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:14:05.106Z",
+      "generatedAt": "2026-08-15T22:05:03.578Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2144,7 +2144,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:14:05.106Z",
+      "generatedAt": "2026-08-15T22:05:03.578Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2157,7 +2157,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:14:05.106Z",
+      "generatedAt": "2026-08-15T22:05:03.578Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2170,7 +2170,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:14:05.106Z",
+      "generatedAt": "2026-08-15T22:05:03.578Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2183,7 +2183,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:14:05.106Z",
+      "generatedAt": "2026-08-15T22:05:03.578Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2257,7 +2257,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09865516263620533
+      "metricMismatch": 0.0986558377553638
     },
     {
       "id": "components.members.avatar-management",

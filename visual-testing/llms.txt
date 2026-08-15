@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-14 22:14:07 UTC
-Latest run: 10736100-20260814220635
-Latest commit: 10736100-20260814220635
+Generated: 2026-08-15 22:05:05 UTC
+Latest run: 10736100-20260815220257
+Latest commit: 10736100-20260815220257
 Commit subject: fix(file-preview): restore durable identities safely
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 86, same 0, pass 0, basic-pass 0, different 85, missing 1
-AI analysis: ready 85 / total 86, pending 1
+AI analysis: ready 82 / total 86, pending 4
 Visual coverage matrix: active 95 / total 114, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 10736100-20260815220257: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/10736100-20260815220257/component-matrix.json, page runs/10736100-20260815220257/
 - 10736100-20260814220635: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/10736100-20260814220635/component-matrix.json, page runs/10736100-20260814220635/
 - 2b809ebf-20260813221008: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/2b809ebf-20260813221008/component-matrix.json, page runs/2b809ebf-20260813221008/
 - 0f9e9ba3-20260812221114: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/0f9e9ba3-20260812221114/component-matrix.json, page runs/0f9e9ba3-20260812221114/

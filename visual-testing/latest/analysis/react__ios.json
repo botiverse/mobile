@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-14T22:14:00.880Z",
+  "generatedAt": "2026-08-15T22:05:00.760Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 78,
+    "pending": 8
   },
   "cases": [
     {
@@ -549,7 +549,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062095097284670775
+      "metricMismatch": 0.062097122642146285
     },
     {
       "id": "components.ui.spinner.states",
@@ -773,37 +773,16 @@
     },
     {
       "id": "components.ui.surface-list-item.states",
-      "status": "ready",
-      "imageHash": "p1:000810040ffc0c0602fc0ff6447c00060000000200000002000000020000fffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
-      "generatedAt": "2026-08-02T22:43:45.921Z",
-      "severity": "low",
-      "summary": [
-        "Subtitle text on iOS uses a regular sans-serif (looks like SF Pro), while React shows a monospaced/typewriter-style font for the subtitle.",
-        "Selected ('Active integration') item is taller in the iOS render, giving more vertical padding around the title and subtitle.",
-        "Body copy on the unselected ('Private app') item appears slightly larger/bolder on iOS than on React.",
-        "Both list items share the same light-blue fill and the same heavy black outer drop-shadow/offset on iOS; React's selected item has the same fill and shadow, matching the iOS treatment closely.",
-        "Overall horizontal layout (left-aligned titles, indented subtitles, card widths) is consistent between the two sides; no clipping or missing elements."
-      ],
-      "likelyCauses": [
-        "iOS implementation is not honoring the design-token font family for the subtitle (falls back to SF Pro instead of the monospaced token used in React).",
-        "Vertical padding/height of list items is being driven by iOS default list-row insets rather than the tokenized spacing value used by the React reference.",
-        "Body text size on iOS may be reading from a UIFont preferred text style that is one step larger than the React token (e.g., `.body` vs the spec's `.callout`)."
-      ],
-      "suggestedOwner": "ios",
-      "suggestedFixes": [
-        "Wire the surface list-item subtitle to the shared `font.mono` (or whatever monospaced token the React side uses) instead of the system default.",
-        "Override the list-item content insets to match the React spec (reduce vertical padding so the selected item height equals the React baseline).",
-        "Pin the body/subtitle point size to the design token value rather than letting UIKit pick a dynamic-type step; verify against the React render at the same logical width.",
-        "Re-run the Slock comparison after font and padding fixes; pixel mismatch is currently driven almost entirely by font glyph shape, not color or layout."
-      ],
-      "intentional": [
-        "Light-blue selected fill and heavy black offset shadow match between React and iOS and appear intentional.",
-        "Left-aligned title with secondary subtitle line and the absence of trailing accessory views are consistent across both sides."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.04353742185495735
+      "status": "pending",
+      "imageHash": "p1:0ff81ffc0ffc0ffe03fc0ffe477c00060000000200000002000000060001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-08-15T22:04:59.692Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.044147392014690645
     },
     {
       "id": "components.ui.avatar-list-row.states",
@@ -943,7 +922,7 @@
     {
       "id": "components.thread.composer.states",
       "status": "ready",
-      "imageHash": "p1:0000000000010002000100020081080200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff80fff",
+      "imageHash": "p1:0000000000010002000100020001080200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
       "generatedAt": "2026-08-07T00:06:29.012Z",
       "severity": "low",
       "summary": [
@@ -969,7 +948,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.020929706593213693
+      "metricMismatch": 0.021197391339571436
     },
     {
       "id": "components.thread.composer.pending-mention-actions",
@@ -1492,40 +1471,16 @@
     },
     {
       "id": "components.home.notification-center.states",
-      "status": "ready",
-      "imageHash": "p1:07fe07fcfffe7ffe80067ffe0202000280020002800200020072000a0012407a803200028012001a00f2001a0072407a80020002fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-08-02T22:44:16.150Z",
-      "severity": "medium",
-      "summary": [
-        "iOS canvas is 1170x2532 (3x scale) vs React baseline 390x844, so proportional sizing differs after normalization",
-        "Notification cards on iOS appear narrower and positioned lower in the viewport compared to React",
-        "Notification header title and '2 items' count appear in lighter gray on iOS, more muted than React",
-        "Body text 'Last heartbeat was 4 minutes ago.' and 'Two visual cases changed in the latest run.' renders slightly bolder/heavier on iOS",
-        "Icon glyphs (warning triangle, info circle) on iOS appear smaller relative to the card width"
-      ],
-      "likelyCauses": [
-        "iOS render uses a different default font (San Francisco) and font scale than the React baseline",
-        "React uses a monospaced/hand-drawn style font that iOS SF does not replicate exactly",
-        "Canvas dimension mismatch (1170x2532 vs 390x844) causes proportional drift when normalizing",
-        "Missing design-token parity for spacing, font-weight, and stroke widths between web and iOS implementations",
-        "Different default border/stroke widths between CSS and UIKit rendering"
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "Normalize compare canvas dimensions before diffing (e.g., downscale iOS to match baseline aspect ratio)",
-        "Audit shared design tokens for font-family, font-weight, stroke-width, and spacing between React and iOS",
-        "Map iOS SF font weights to match React's hand-drawn/monospace typography intentionally or substitute an equivalent",
-        "Define explicit padding and gap values for card stack spacing to keep vertical rhythm consistent",
-        "Verify button border and shadow rendering parity between web CSS and UIKit styles"
-      ],
-      "intentional": [
-        "Use of platform-native font on iOS (San Francisco) may be intentional",
-        "3x device scale factor on iOS canvas may be expected and not a real visual bug"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.10395383535193958
+      "status": "pending",
+      "imageHash": "p1:07fe07fefffe7ffe80067ffe81c200028013000280b20002a002000a4073407a801300028012001aa312001a0072407a8003000280060002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00066002fffe3fff",
+      "generatedAt": "2026-08-15T22:05:00.119Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09948859723741243
     },
     {
       "id": "components.home.search.results",
@@ -1561,7 +1516,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.269332037104549
+      "metricMismatch": 0.2693350751407624
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1594,7 +1549,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2694589595063529
+      "metricMismatch": 0.2694690862937309
     },
     {
       "id": "components.home.saved.results",
@@ -1630,7 +1585,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11130858346498151
+      "metricMismatch": 0.1113737324637799
     },
     {
       "id": "components.home.activity.results",
@@ -1665,7 +1620,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10927512455948474
+      "metricMismatch": 0.10921503895437545
     },
     {
       "id": "components.tasks.panel.states",
@@ -1841,13 +1796,13 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.5135206113879099
+      "metricMismatch": 0.5135104846005321
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:14:00.165Z",
+      "generatedAt": "2026-08-15T22:05:00.199Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1896,7 +1851,7 @@
     {
       "id": "components.channel.settings.panel",
       "status": "ready",
-      "imageHash": "p1:ffffffffffff000087fd0000fffd0000ffff0000ffff0000ffff7ffcffff7df8cffd7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017c7c80017ffc80017ffc800140008001000080014000ffff0000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
+      "imageHash": "p1:ffffffffdfff000083fd0000fffd0000ffff0000ffff0000ffff7ffcffff7df8cffd7ffcf7ff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017c7c80017ffc80017ffc800140008001000080014000ffff0000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
       "generatedAt": "2026-08-02T22:44:32.224Z",
       "severity": "high",
       "summary": [
@@ -1926,7 +1881,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.9020182687244298
+      "metricMismatch": 0.9022008884568127
     },
     {
       "id": "components.channel.members.add-panel",
@@ -2101,7 +2056,7 @@
     {
       "id": "components.settings.appearance.page",
       "status": "ready",
-      "imageHash": "p1:0ffe0ffe8fff1ffe81fe01fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c07fc81fc3d0cbffc007c9ffc007c807400008004007cb3fc0004800020008000000081f0ffffbfdcffffa3fcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffffffff",
+      "imageHash": "p1:0ffe0ffe8fff1ffe81fe01fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c07fc81fc3d0cbffc007c9ffc007c807400008004007cb3fc0004800020008000000081f0ffffbfdcffffa3fcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffff7fff",
       "generatedAt": "2026-08-14T22:11:36.163Z",
       "severity": "high",
       "summary": [
@@ -2130,7 +2085,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19634220439907646
+      "metricMismatch": 0.19635165606729588
     },
     {
       "id": "components.settings.notifications.page",
@@ -2236,7 +2191,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:14:00.445Z",
+      "generatedAt": "2026-08-15T22:05:00.374Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2249,7 +2204,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:14:00.445Z",
+      "generatedAt": "2026-08-15T22:05:00.374Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2262,7 +2217,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:14:00.445Z",
+      "generatedAt": "2026-08-15T22:05:00.374Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2275,7 +2230,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:14:00.445Z",
+      "generatedAt": "2026-08-15T22:05:00.374Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2288,7 +2243,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-14T22:14:00.445Z",
+      "generatedAt": "2026-08-15T22:05:00.374Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2458,7 +2413,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19328999068335562
+      "metricMismatch": 0.19329201604083124
     },
     {
       "id": "components.thread.message-row.rich-content",
