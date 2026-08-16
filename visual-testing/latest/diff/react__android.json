@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-15T22:07:51.595Z",
+  "generatedAt": "2026-08-16T22:04:46.085Z",
   "baseline": "react",
   "current": "android",
   "key": "react__android",
@@ -50,7 +50,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:44.970Z"
+        "capturedAt": "2026-08-16T21:37:57.321Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -102,18 +102,18 @@
           "laidOutViews": 22,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4793,
+          "processId": 4446,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "28c42b76167be9ff33cf343940bcefc1",
-          "bootId": "a25f9151-9e3f-4210-8f6f-93a281781455",
-          "capturedAtEpochMs": 1786830232411,
-          "capturedAtMonotonicNs": 92769336508
+          "generation": "84975f5c98ec4f7a82ae09a9df7e0a4b",
+          "bootId": "a8c828c1-d00d-4f8c-9a19-6f1ed862f9ca",
+          "capturedAtEpochMs": 1786916637868,
+          "capturedAtMonotonicNs": 98130181033
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830232411"
+        "capturedAt": "1786916637868"
       },
       "status": "different",
       "baselineSha256": "e0b5eef61bcb8e2885324d4455f31ac285a40a9bae1f92f27655f842dca6d508",
@@ -179,7 +179,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:45.804Z"
+        "capturedAt": "2026-08-16T21:37:58.239Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -231,18 +231,18 @@
           "laidOutViews": 42,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4676,
+          "processId": 4629,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "375931a88d6b023f33bd7b36b8be9323",
-          "bootId": "3acff154-72bb-48b7-bd8f-788859723e49",
-          "capturedAtEpochMs": 1786830181843,
-          "capturedAtMonotonicNs": 41714055973
+          "generation": "4aa7fe37377a573824eba485ca676f20",
+          "bootId": "ac9e68ad-625e-43d4-8a18-1516b13e2378",
+          "capturedAtEpochMs": 1786916576319,
+          "capturedAtMonotonicNs": 45509860456
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830181843"
+        "capturedAt": "1786916576319"
       },
       "status": "different",
       "baselineSha256": "226a81817fc4e8cef746a9d21a3f5616f4cf08c03f4a1d766d70fdf75d6c5f8e",
@@ -308,7 +308,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:46.641Z"
+        "capturedAt": "2026-08-16T21:37:59.157Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -360,18 +360,18 @@
           "laidOutViews": 30,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4657,
+          "processId": 4694,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "62487c46dace8bba62749dbfd3bcff22",
-          "bootId": "113c56f2-075b-428e-9523-2cb9a7d6bf1f",
-          "capturedAtEpochMs": 1786830224210,
-          "capturedAtMonotonicNs": 84747780711
+          "generation": "de7435cd26731e7dcf024fb84475cdd7",
+          "bootId": "2389db7b-cd48-45b8-9012-11ca23382a22",
+          "capturedAtEpochMs": 1786916622000,
+          "capturedAtMonotonicNs": 90373078824
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830224210"
+        "capturedAt": "1786916622000"
       },
       "status": "different",
       "baselineSha256": "59c4a3a4912c48672ee7143668d47d09b9eacb277b7bcb06e36358f438cd0fbc",
@@ -437,7 +437,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:47.474Z"
+        "capturedAt": "2026-08-16T21:38:00.074Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -480,7 +480,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -489,18 +489,18 @@
           "laidOutViews": 19,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4710,
+          "processId": 4450,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "846aa82593f14f96677435a241d069ea",
-          "bootId": "9124cb8f-1516-4a0c-9344-b3a01f938029",
-          "capturedAtEpochMs": 1786830181624,
-          "capturedAtMonotonicNs": 41018492694
+          "generation": "e5f867513e12f49b188f2bf06d04198d",
+          "bootId": "06d3558b-9504-4059-a327-a9f318178b01",
+          "capturedAtEpochMs": 1786916572839,
+          "capturedAtMonotonicNs": 42470269659
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830181624"
+        "capturedAt": "1786916572839"
       },
       "status": "different",
       "baselineSha256": "b90aac6ce2e18999c5d56d304a57b37f385b6e6901260874c6e89b2164db5ca5",
@@ -566,7 +566,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:48.340Z"
+        "capturedAt": "2026-08-16T21:38:01.076Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -618,18 +618,18 @@
           "laidOutViews": 15,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4712,
+          "processId": 4595,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "c4306505a3308f587efcc3571b815ba2",
-          "bootId": "61086d8d-5ef0-448d-81c1-7713a72d6301",
-          "capturedAtEpochMs": 1786830298507,
-          "capturedAtMonotonicNs": 158380746087
+          "generation": "6d44b173b9bb6da701d3008e8dd0a61d",
+          "bootId": "fa4690f5-656c-4245-9456-8a484e8cdca1",
+          "capturedAtEpochMs": 1786916706504,
+          "capturedAtMonotonicNs": 167926176345
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830298507"
+        "capturedAt": "1786916706504"
       },
       "status": "different",
       "baselineSha256": "749c1d80d882312676aee4bd9e38e31899932363afcfd3a11438292a8b03a001",
@@ -695,7 +695,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:49.169Z"
+        "capturedAt": "2026-08-16T21:38:01.969Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -747,18 +747,18 @@
           "laidOutViews": 23,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4634,
+          "processId": 4517,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "95fd6d7111b679566b9390f63e09ad9e",
-          "bootId": "fd3fbe46-6189-4889-884b-f4e4f3180ced",
-          "capturedAtEpochMs": 1786830219326,
-          "capturedAtMonotonicNs": 73181189970
+          "generation": "bb6fae9a697a01458ac59d1f28e529db",
+          "bootId": "74cc269e-3269-4517-8813-e54e629ac8cf",
+          "capturedAtEpochMs": 1786916609268,
+          "capturedAtMonotonicNs": 80744738880
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830219326"
+        "capturedAt": "1786916609268"
       },
       "status": "different",
       "baselineSha256": "a4b0c031ff5c676246fc8335e6b77b71b378037e27b0930c18d90811db38765e",
@@ -824,7 +824,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:50.016Z"
+        "capturedAt": "2026-08-16T21:38:02.872Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -876,18 +876,18 @@
           "laidOutViews": 44,
           "visibleContentLeafViews": 3,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4676,
+          "processId": 4629,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "375931a88d6b023f33bd7b36b8be9323",
-          "bootId": "3acff154-72bb-48b7-bd8f-788859723e49",
-          "capturedAtEpochMs": 1786830263019,
-          "capturedAtMonotonicNs": 122889726040
+          "generation": "4aa7fe37377a573824eba485ca676f20",
+          "bootId": "ac9e68ad-625e-43d4-8a18-1516b13e2378",
+          "capturedAtEpochMs": 1786916667696,
+          "capturedAtMonotonicNs": 136886825864
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830263019"
+        "capturedAt": "1786916667696"
       },
       "status": "different",
       "baselineSha256": "86203a7f6348557e8a4f3c6b3027d92ba76932637f1524b5e0df9e7a08dfd91d",
@@ -953,7 +953,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:50.827Z"
+        "capturedAt": "2026-08-16T21:38:04.116Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1005,18 +1005,18 @@
           "laidOutViews": 38,
           "visibleContentLeafViews": 3,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4657,
+          "processId": 4694,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "62487c46dace8bba62749dbfd3bcff22",
-          "bootId": "113c56f2-075b-428e-9523-2cb9a7d6bf1f",
-          "capturedAtEpochMs": 1786830272247,
-          "capturedAtMonotonicNs": 132785601612
+          "generation": "de7435cd26731e7dcf024fb84475cdd7",
+          "bootId": "2389db7b-cd48-45b8-9012-11ca23382a22",
+          "capturedAtEpochMs": 1786916678380,
+          "capturedAtMonotonicNs": 146752582920
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830272247"
+        "capturedAt": "1786916678380"
       },
       "status": "different",
       "baselineSha256": "3bdecae2f9ec2f9e3e53bdf3e3d67a0848f9adce15fd330693f4e7975b665540",
@@ -1082,7 +1082,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:51.681Z"
+        "capturedAt": "2026-08-16T21:38:05.286Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1134,18 +1134,18 @@
           "laidOutViews": 32,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4793,
+          "processId": 4446,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "28c42b76167be9ff33cf343940bcefc1",
-          "bootId": "a25f9151-9e3f-4210-8f6f-93a281781455",
-          "capturedAtEpochMs": 1786830256176,
-          "capturedAtMonotonicNs": 116534127475
+          "generation": "84975f5c98ec4f7a82ae09a9df7e0a4b",
+          "bootId": "a8c828c1-d00d-4f8c-9a19-6f1ed862f9ca",
+          "capturedAtEpochMs": 1786916660515,
+          "capturedAtMonotonicNs": 120777383456
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830256176"
+        "capturedAt": "1786916660515"
       },
       "status": "different",
       "baselineSha256": "8e639885d5b88a77d093d42deded8166b782051eff54ca28b8937838bd47d702",
@@ -1211,7 +1211,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:52.514Z"
+        "capturedAt": "2026-08-16T21:38:06.609Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1263,18 +1263,18 @@
           "laidOutViews": 28,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4634,
+          "processId": 4517,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "95fd6d7111b679566b9390f63e09ad9e",
-          "bootId": "fd3fbe46-6189-4889-884b-f4e4f3180ced",
-          "capturedAtEpochMs": 1786830395225,
-          "capturedAtMonotonicNs": 249080633863
+          "generation": "bb6fae9a697a01458ac59d1f28e529db",
+          "bootId": "74cc269e-3269-4517-8813-e54e629ac8cf",
+          "capturedAtEpochMs": 1786916797622,
+          "capturedAtMonotonicNs": 269098917346
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830395225"
+        "capturedAt": "1786916797622"
       },
       "status": "different",
       "baselineSha256": "46d93c909302adeea38ff19231dbe5de45fd234b9dfe30ef397e6383a875c550",
@@ -1340,7 +1340,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:53.340Z"
+        "capturedAt": "2026-08-16T21:38:07.743Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1392,18 +1392,18 @@
           "laidOutViews": 23,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4793,
+          "processId": 4446,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "28c42b76167be9ff33cf343940bcefc1",
-          "bootId": "a25f9151-9e3f-4210-8f6f-93a281781455",
-          "capturedAtEpochMs": 1786830318386,
-          "capturedAtMonotonicNs": 178744926528
+          "generation": "84975f5c98ec4f7a82ae09a9df7e0a4b",
+          "bootId": "a8c828c1-d00d-4f8c-9a19-6f1ed862f9ca",
+          "capturedAtEpochMs": 1786916727031,
+          "capturedAtMonotonicNs": 187293064126
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830318386"
+        "capturedAt": "1786916727031"
       },
       "status": "different",
       "baselineSha256": "816930a2a6dd89619b6a3729a86a8f836903187bb612ae34929cb27288ab2e10",
@@ -1469,7 +1469,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:54.171Z"
+        "capturedAt": "2026-08-16T21:38:08.891Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1521,18 +1521,18 @@
           "laidOutViews": 23,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4634,
+          "processId": 4517,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "95fd6d7111b679566b9390f63e09ad9e",
-          "bootId": "fd3fbe46-6189-4889-884b-f4e4f3180ced",
-          "capturedAtEpochMs": 1786830226878,
-          "capturedAtMonotonicNs": 80733256394
+          "generation": "bb6fae9a697a01458ac59d1f28e529db",
+          "bootId": "74cc269e-3269-4517-8813-e54e629ac8cf",
+          "capturedAtEpochMs": 1786916617195,
+          "capturedAtMonotonicNs": 88672332290
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830226878"
+        "capturedAt": "1786916617195"
       },
       "status": "different",
       "baselineSha256": "bdbb32423442e7ddcb2f12e5059477f916385565f4977e7c3649d3d79ef9ac18",
@@ -1598,7 +1598,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:54.969Z"
+        "capturedAt": "2026-08-16T21:38:09.921Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1650,18 +1650,18 @@
           "laidOutViews": 26,
           "visibleContentLeafViews": 5,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4698,
+          "processId": 4668,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "de784f91260b2375af2eee14b81d13a4",
-          "bootId": "fae878a1-0294-479c-9a3d-8eb36be04725",
-          "capturedAtEpochMs": 1786830283924,
-          "capturedAtMonotonicNs": 148209838880
+          "generation": "6a0df13011beb22c3ea07b6fadf80d6d",
+          "bootId": "503b2350-62e0-4c2a-af0d-c68ce6e2cc10",
+          "capturedAtEpochMs": 1786916687496,
+          "capturedAtMonotonicNs": 156961997504
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830283924"
+        "capturedAt": "1786916687496"
       },
       "status": "different",
       "baselineSha256": "5f5b2207ce5cda5b38a63d5ab46cea13c98d6aaecf400acd4660ddee4b6f795a",
@@ -1727,7 +1727,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:55.735Z"
+        "capturedAt": "2026-08-16T21:38:10.768Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1779,18 +1779,18 @@
           "laidOutViews": 19,
           "visibleContentLeafViews": 3,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4698,
+          "processId": 4668,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "de784f91260b2375af2eee14b81d13a4",
-          "bootId": "fae878a1-0294-479c-9a3d-8eb36be04725",
-          "capturedAtEpochMs": 1786830260635,
-          "capturedAtMonotonicNs": 124920813381
+          "generation": "6a0df13011beb22c3ea07b6fadf80d6d",
+          "bootId": "503b2350-62e0-4c2a-af0d-c68ce6e2cc10",
+          "capturedAtEpochMs": 1786916662915,
+          "capturedAtMonotonicNs": 132380902419
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830260635"
+        "capturedAt": "1786916662915"
       },
       "status": "different",
       "baselineSha256": "37bf390344c1e8e62f9d693530e294fc003c2f39d7e59a3c6065ade3930ca7b0",
@@ -1856,7 +1856,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:56.536Z"
+        "capturedAt": "2026-08-16T21:38:11.653Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1891,7 +1891,7 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 302,
+            "uniqueColors": 304,
             "dominantRatio": 0.9576306
           },
           "readyTokenObserved": false,
@@ -1908,22 +1908,22 @@
           "laidOutViews": 18,
           "visibleContentLeafViews": 5,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4712,
+          "processId": 4595,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "c4306505a3308f587efcc3571b815ba2",
-          "bootId": "61086d8d-5ef0-448d-81c1-7713a72d6301",
-          "capturedAtEpochMs": 1786830182177,
-          "capturedAtMonotonicNs": 42051020096
+          "generation": "6d44b173b9bb6da701d3008e8dd0a61d",
+          "bootId": "fa4690f5-656c-4245-9456-8a484e8cdca1",
+          "capturedAtEpochMs": 1786916588122,
+          "capturedAtMonotonicNs": 49544282590
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830182177"
+        "capturedAt": "1786916588122"
       },
       "status": "different",
       "baselineSha256": "622848400f03a264c3489403248e043a39fdc853b999defc3af2cbfda66687fa",
-      "currentSha256": "ea79fd256d75e0f9ceda453605ffbdb4511edda386b40ac41c3c7b4f4685e8e8",
+      "currentSha256": "4fd27ec5e59fa2809f6543c4a0330f359b8108edf5034c6c6ca8e94b1c9a858d",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.status-dot.states.side-by-side.png",
       "metrics": {
@@ -1933,7 +1933,7 @@
         "currentHeight": 276,
         "comparisonWidth": 1026,
         "comparisonHeight": 276,
-        "rgbSimilarity": 0.9854936102003401,
+        "rgbSimilarity": 0.9853708476827087,
         "pixelPerfectSimilarity": 0.9597882588919965,
         "pixelMismatchRatio": 0.04021174110800352,
         "compositor": "sharp",
@@ -1985,7 +1985,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:57.319Z"
+        "capturedAt": "2026-08-16T21:38:12.502Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2028,7 +2028,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -2037,18 +2037,18 @@
           "laidOutViews": 24,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4710,
+          "processId": 4450,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "846aa82593f14f96677435a241d069ea",
-          "bootId": "9124cb8f-1516-4a0c-9344-b3a01f938029",
-          "capturedAtEpochMs": 1786830372063,
-          "capturedAtMonotonicNs": 231457988830
+          "generation": "e5f867513e12f49b188f2bf06d04198d",
+          "bootId": "06d3558b-9504-4059-a327-a9f318178b01",
+          "capturedAtEpochMs": 1786916776946,
+          "capturedAtMonotonicNs": 246576518067
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830372063"
+        "capturedAt": "1786916776946"
       },
       "status": "different",
       "baselineSha256": "60378d093f588b0fd24c2052373868793e0e6277cc6f4fff54a22e2e5f437552",
@@ -2114,7 +2114,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:58.135Z"
+        "capturedAt": "2026-08-16T21:38:13.403Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2166,18 +2166,18 @@
           "laidOutViews": 19,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4657,
+          "processId": 4694,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "62487c46dace8bba62749dbfd3bcff22",
-          "bootId": "113c56f2-075b-428e-9523-2cb9a7d6bf1f",
-          "capturedAtEpochMs": 1786830287260,
-          "capturedAtMonotonicNs": 147798415525
+          "generation": "de7435cd26731e7dcf024fb84475cdd7",
+          "bootId": "2389db7b-cd48-45b8-9012-11ca23382a22",
+          "capturedAtEpochMs": 1786916694268,
+          "capturedAtMonotonicNs": 162640898473
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830287260"
+        "capturedAt": "1786916694268"
       },
       "status": "different",
       "baselineSha256": "5f61b15068078864d052322c7348db3b3b6f12f113fc4fa278bf59a8c0fa7860",
@@ -2243,7 +2243,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:58.935Z"
+        "capturedAt": "2026-08-16T21:38:14.268Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2286,7 +2286,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -2295,18 +2295,18 @@
           "laidOutViews": 16,
           "visibleContentLeafViews": 5,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4710,
+          "processId": 4450,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "846aa82593f14f96677435a241d069ea",
-          "bootId": "9124cb8f-1516-4a0c-9344-b3a01f938029",
-          "capturedAtEpochMs": 1786830356106,
-          "capturedAtMonotonicNs": 215500713734
+          "generation": "e5f867513e12f49b188f2bf06d04198d",
+          "bootId": "06d3558b-9504-4059-a327-a9f318178b01",
+          "capturedAtEpochMs": 1786916760174,
+          "capturedAtMonotonicNs": 229805102254
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830356106"
+        "capturedAt": "1786916760174"
       },
       "status": "different",
       "baselineSha256": "b56585c35629cba1c7beaea5fc3e2713f4769bbb531d15660f93a31fc2d07c12",
@@ -2372,7 +2372,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:38:59.736Z"
+        "capturedAt": "2026-08-16T21:38:15.135Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2424,18 +2424,18 @@
           "laidOutViews": 26,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4810,
+          "processId": 4665,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "25eb0ed193cca1c118714d60c6b89334",
-          "bootId": "490aac9f-0924-4b4f-a1da-4bd58fa6310f",
-          "capturedAtEpochMs": 1786830345199,
-          "capturedAtMonotonicNs": 205614622512
+          "generation": "5e499e0b02d6893f281cfd7a9fce315a",
+          "bootId": "88861f88-da0a-42bf-aed6-abdc0166086b",
+          "capturedAtEpochMs": 1786916732300,
+          "capturedAtMonotonicNs": 202087263587
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830345199"
+        "capturedAt": "1786916732300"
       },
       "status": "different",
       "baselineSha256": "a7e276580d7f65dccf1794fecbe28898f04c26494dce1676011bce51e7aae639",
@@ -2501,7 +2501,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:00.502Z"
+        "capturedAt": "2026-08-16T21:38:15.968Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2553,18 +2553,18 @@
           "laidOutViews": 12,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4712,
+          "processId": 4595,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "c4306505a3308f587efcc3571b815ba2",
-          "bootId": "61086d8d-5ef0-448d-81c1-7713a72d6301",
-          "capturedAtEpochMs": 1786830224972,
-          "capturedAtMonotonicNs": 84846348652
+          "generation": "6d44b173b9bb6da701d3008e8dd0a61d",
+          "bootId": "fa4690f5-656c-4245-9456-8a484e8cdca1",
+          "capturedAtEpochMs": 1786916630758,
+          "capturedAtMonotonicNs": 92180072693
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830224972"
+        "capturedAt": "1786916630758"
       },
       "status": "different",
       "baselineSha256": "cdd04d1e2b5e1620a06e6ee0d7aa1bf17daa2870b466d61bd60378f6a9bd1f5c",
@@ -2630,7 +2630,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:01.484Z"
+        "capturedAt": "2026-08-16T21:38:16.851Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2682,18 +2682,18 @@
           "laidOutViews": 20,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4698,
+          "processId": 4668,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "de784f91260b2375af2eee14b81d13a4",
-          "bootId": "fae878a1-0294-479c-9a3d-8eb36be04725",
-          "capturedAtEpochMs": 1786830435492,
-          "capturedAtMonotonicNs": 299777910324
+          "generation": "6a0df13011beb22c3ea07b6fadf80d6d",
+          "bootId": "503b2350-62e0-4c2a-af0d-c68ce6e2cc10",
+          "capturedAtEpochMs": 1786916856059,
+          "capturedAtMonotonicNs": 325524886137
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830435492"
+        "capturedAt": "1786916856059"
       },
       "status": "different",
       "baselineSha256": "162b24dae483658828e77e810d3a89444248efa85155ad60b9e9dfe949c40379",
@@ -2759,7 +2759,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:02.325Z"
+        "capturedAt": "2026-08-16T21:38:17.792Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2811,18 +2811,18 @@
           "laidOutViews": 38,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4676,
+          "processId": 4629,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "375931a88d6b023f33bd7b36b8be9323",
-          "bootId": "3acff154-72bb-48b7-bd8f-788859723e49",
-          "capturedAtEpochMs": 1786830222456,
-          "capturedAtMonotonicNs": 82327081039
+          "generation": "4aa7fe37377a573824eba485ca676f20",
+          "bootId": "ac9e68ad-625e-43d4-8a18-1516b13e2378",
+          "capturedAtEpochMs": 1786916620358,
+          "capturedAtMonotonicNs": 89548447978
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830222456"
+        "capturedAt": "1786916620358"
       },
       "status": "different",
       "baselineSha256": "9004a607cd21e240b09f34c904599ad91b1726bf65f3e7be0bf35fc6364baef2",
@@ -2888,7 +2888,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:03.121Z"
+        "capturedAt": "2026-08-16T21:38:18.670Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2940,18 +2940,18 @@
           "laidOutViews": 22,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4810,
+          "processId": 4665,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "25eb0ed193cca1c118714d60c6b89334",
-          "bootId": "490aac9f-0924-4b4f-a1da-4bd58fa6310f",
-          "capturedAtEpochMs": 1786830193426,
-          "capturedAtMonotonicNs": 53841208579
+          "generation": "5e499e0b02d6893f281cfd7a9fce315a",
+          "bootId": "88861f88-da0a-42bf-aed6-abdc0166086b",
+          "capturedAtEpochMs": 1786916589763,
+          "capturedAtMonotonicNs": 59550620664
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830193426"
+        "capturedAt": "1786916589763"
       },
       "status": "different",
       "baselineSha256": "3b388eab789b2e81e85a514187772f8d8f8570913c0d72ad23699e16da34412f",
@@ -3017,7 +3017,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:03.937Z"
+        "capturedAt": "2026-08-16T21:38:19.554Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3069,18 +3069,18 @@
           "laidOutViews": 22,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4634,
+          "processId": 4517,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "95fd6d7111b679566b9390f63e09ad9e",
-          "bootId": "fd3fbe46-6189-4889-884b-f4e4f3180ced",
-          "capturedAtEpochMs": 1786830252348,
-          "capturedAtMonotonicNs": 106203378938
+          "generation": "bb6fae9a697a01458ac59d1f28e529db",
+          "bootId": "74cc269e-3269-4517-8813-e54e629ac8cf",
+          "capturedAtEpochMs": 1786916644197,
+          "capturedAtMonotonicNs": 115674207589
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830252348"
+        "capturedAt": "1786916644197"
       },
       "status": "different",
       "baselineSha256": "fd081086232ec0eb1a7d7bf405218f8ad2d9d541c49a8da7b677be9ac7b23f3c",
@@ -3146,7 +3146,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:04.705Z"
+        "capturedAt": "2026-08-16T21:38:20.387Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3198,21 +3198,21 @@
           "laidOutViews": 21,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4698,
+          "processId": 4668,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "de784f91260b2375af2eee14b81d13a4",
-          "bootId": "fae878a1-0294-479c-9a3d-8eb36be04725",
-          "capturedAtEpochMs": 1786830327216,
-          "capturedAtMonotonicNs": 191502236086
+          "generation": "6a0df13011beb22c3ea07b6fadf80d6d",
+          "bootId": "503b2350-62e0-4c2a-af0d-c68ce6e2cc10",
+          "capturedAtEpochMs": 1786916738555,
+          "capturedAtMonotonicNs": 208020843595
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830327216"
+        "capturedAt": "1786916738555"
       },
       "status": "different",
-      "baselineSha256": "116fb122946e04836056e4987936ab6c1fc963ba5f258357c1926ec322e4be5d",
+      "baselineSha256": "768889451e56f43fb9b3e08ce1fea3091c10dde428fa1af458cdfbfb14f18acc",
       "currentSha256": "ba513f39fcddf4a0aac69c8e0c129be81837316f1dfd2ff8d14c0bfdfc552645",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.surface-list-item.states.side-by-side.png",
@@ -3223,9 +3223,9 @@
         "currentHeight": 546,
         "comparisonWidth": 1026,
         "comparisonHeight": 546,
-        "rgbSimilarity": 0.891842932004612,
-        "pixelPerfectSimilarity": 0.7554427378988783,
-        "pixelMismatchRatio": 0.24455726210112172,
+        "rgbSimilarity": 0.8945438167603049,
+        "pixelPerfectSimilarity": 0.7586416182907411,
+        "pixelMismatchRatio": 0.24135838170925894,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -3275,7 +3275,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:05.504Z"
+        "capturedAt": "2026-08-16T21:38:21.253Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3327,18 +3327,18 @@
           "laidOutViews": 36,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4793,
+          "processId": 4446,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "28c42b76167be9ff33cf343940bcefc1",
-          "bootId": "a25f9151-9e3f-4210-8f6f-93a281781455",
-          "capturedAtEpochMs": 1786830180672,
-          "capturedAtMonotonicNs": 41030440300
+          "generation": "84975f5c98ec4f7a82ae09a9df7e0a4b",
+          "bootId": "a8c828c1-d00d-4f8c-9a19-6f1ed862f9ca",
+          "capturedAtEpochMs": 1786916583815,
+          "capturedAtMonotonicNs": 44076920037
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830180672"
+        "capturedAt": "1786916583815"
       },
       "status": "different",
       "baselineSha256": "615b46c5f3ec98215414b1216e1aa03c18bed3381d5cfc5244aac16eb69f0bad",
@@ -3404,7 +3404,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:06.416Z"
+        "capturedAt": "2026-08-16T21:38:22.168Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3456,18 +3456,18 @@
           "laidOutViews": 52,
           "visibleContentLeafViews": 4,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4676,
+          "processId": 4629,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "375931a88d6b023f33bd7b36b8be9323",
-          "bootId": "3acff154-72bb-48b7-bd8f-788859723e49",
-          "capturedAtEpochMs": 1786830314167,
-          "capturedAtMonotonicNs": 174037986587
+          "generation": "4aa7fe37377a573824eba485ca676f20",
+          "bootId": "ac9e68ad-625e-43d4-8a18-1516b13e2378",
+          "capturedAtEpochMs": 1786916721816,
+          "capturedAtMonotonicNs": 191006859467
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830314167"
+        "capturedAt": "1786916721816"
       },
       "status": "different",
       "baselineSha256": "d59fcf11a3ba01ea0a7ce19a4a27c255b153dd559db738d2e0bec022657a658e",
@@ -3533,7 +3533,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:07.252Z"
+        "capturedAt": "2026-08-16T21:38:23.034Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3585,18 +3585,18 @@
           "laidOutViews": 32,
           "visibleContentLeafViews": 4,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4712,
+          "processId": 4595,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "c4306505a3308f587efcc3571b815ba2",
-          "bootId": "61086d8d-5ef0-448d-81c1-7713a72d6301",
-          "capturedAtEpochMs": 1786830242790,
-          "capturedAtMonotonicNs": 102664088673
+          "generation": "6d44b173b9bb6da701d3008e8dd0a61d",
+          "bootId": "fa4690f5-656c-4245-9456-8a484e8cdca1",
+          "capturedAtEpochMs": 1786916649770,
+          "capturedAtMonotonicNs": 111191990247
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830242790"
+        "capturedAt": "1786916649770"
       },
       "status": "different",
       "baselineSha256": "9c9ef7e825dbf221d9242ecf8ccc8a55f281427f422c83d3a10cc31657e73707",
@@ -3662,7 +3662,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:08.104Z"
+        "capturedAt": "2026-08-16T21:38:23.935Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3714,18 +3714,18 @@
           "laidOutViews": 45,
           "visibleContentLeafViews": 4,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4698,
+          "processId": 4668,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "de784f91260b2375af2eee14b81d13a4",
-          "bootId": "fae878a1-0294-479c-9a3d-8eb36be04725",
-          "capturedAtEpochMs": 1786830390215,
-          "capturedAtMonotonicNs": 254500992886
+          "generation": "6a0df13011beb22c3ea07b6fadf80d6d",
+          "bootId": "503b2350-62e0-4c2a-af0d-c68ce6e2cc10",
+          "capturedAtEpochMs": 1786916809332,
+          "capturedAtMonotonicNs": 278797220842
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830390215"
+        "capturedAt": "1786916809332"
       },
       "status": "different",
       "baselineSha256": "e913320c61d588793f59108e76a59a6277118b4b14f5c7fa2fa145b256141554",
@@ -3791,7 +3791,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:08.956Z"
+        "capturedAt": "2026-08-16T21:38:24.902Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3843,21 +3843,21 @@
           "laidOutViews": 44,
           "visibleContentLeafViews": 4,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4793,
+          "processId": 4446,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "28c42b76167be9ff33cf343940bcefc1",
-          "bootId": "a25f9151-9e3f-4210-8f6f-93a281781455",
-          "capturedAtEpochMs": 1786830263597,
-          "capturedAtMonotonicNs": 123955240793
+          "generation": "84975f5c98ec4f7a82ae09a9df7e0a4b",
+          "bootId": "a8c828c1-d00d-4f8c-9a19-6f1ed862f9ca",
+          "capturedAtEpochMs": 1786916668546,
+          "capturedAtMonotonicNs": 128807945691
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830263597"
+        "capturedAt": "1786916668546"
       },
       "status": "different",
-      "baselineSha256": "7a48a45d99548c3046cde3896082293d943dfe04c17cc77126800ae6658ca61c",
+      "baselineSha256": "18d06275ab1cf3a96d478c77c7ea18e59a753b145881dd63122c58b6d3f81fdc",
       "currentSha256": "cb8a328e4e946a712829e59127e4e3d6782f7e6d829cc59c4b9f2b96eadf6d64",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.states.side-by-side.png",
@@ -3868,9 +3868,9 @@
         "currentHeight": 300,
         "comparisonWidth": 1026,
         "comparisonHeight": 300,
-        "rgbSimilarity": 0.8433735640238309,
-        "pixelPerfectSimilarity": 0.7941617933723197,
-        "pixelMismatchRatio": 0.20583820662768026,
+        "rgbSimilarity": 0.843179286269411,
+        "pixelPerfectSimilarity": 0.7941520467836257,
+        "pixelMismatchRatio": 0.20584795321637428,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -3920,7 +3920,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:10.011Z"
+        "capturedAt": "2026-08-16T21:38:26.025Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3972,18 +3972,18 @@
           "laidOutViews": 74,
           "visibleContentLeafViews": 7,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4657,
+          "processId": 4694,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "62487c46dace8bba62749dbfd3bcff22",
-          "bootId": "113c56f2-075b-428e-9523-2cb9a7d6bf1f",
-          "capturedAtEpochMs": 1786830249642,
-          "capturedAtMonotonicNs": 110180463228
+          "generation": "de7435cd26731e7dcf024fb84475cdd7",
+          "bootId": "2389db7b-cd48-45b8-9012-11ca23382a22",
+          "capturedAtEpochMs": 1786916654303,
+          "capturedAtMonotonicNs": 122675791042
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830249642"
+        "capturedAt": "1786916654303"
       },
       "status": "different",
       "baselineSha256": "62cc53cdb5fc0424cf683fe806b3c2df5f1e890c5450cdec04f98fc2d4408cc8",
@@ -4049,7 +4049,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:11.021Z"
+        "capturedAt": "2026-08-16T21:38:27.068Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4092,7 +4092,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -4101,18 +4101,18 @@
           "laidOutViews": 46,
           "visibleContentLeafViews": 5,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4710,
+          "processId": 4450,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "846aa82593f14f96677435a241d069ea",
-          "bootId": "9124cb8f-1516-4a0c-9344-b3a01f938029",
-          "capturedAtEpochMs": 1786830268397,
-          "capturedAtMonotonicNs": 127791900829
+          "generation": "e5f867513e12f49b188f2bf06d04198d",
+          "bootId": "06d3558b-9504-4059-a327-a9f318178b01",
+          "capturedAtEpochMs": 1786916667818,
+          "capturedAtMonotonicNs": 137448847376
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830268397"
+        "capturedAt": "1786916667818"
       },
       "status": "different",
       "baselineSha256": "d2e8f601e526a0ea05867a3cc561235c988f695fd17f207418c9aac7ae48cf9e",
@@ -4178,7 +4178,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:12.114Z"
+        "capturedAt": "2026-08-16T21:38:28.143Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4230,18 +4230,18 @@
           "laidOutViews": 87,
           "visibleContentLeafViews": 5,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4676,
+          "processId": 4629,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "375931a88d6b023f33bd7b36b8be9323",
-          "bootId": "3acff154-72bb-48b7-bd8f-788859723e49",
-          "capturedAtEpochMs": 1786830368599,
-          "capturedAtMonotonicNs": 228470311636
+          "generation": "4aa7fe37377a573824eba485ca676f20",
+          "bootId": "ac9e68ad-625e-43d4-8a18-1516b13e2378",
+          "capturedAtEpochMs": 1786916782671,
+          "capturedAtMonotonicNs": 251861700452
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830368599"
+        "capturedAt": "1786916782671"
       },
       "status": "different",
       "baselineSha256": "a4eaaa7d8d6ed8f2a16c9d5a17cf1962f1d345f43bf7559d4cf56957f1c3a9b5",
@@ -4307,7 +4307,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:13.226Z"
+        "capturedAt": "2026-08-16T21:38:29.225Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4359,18 +4359,18 @@
           "laidOutViews": 77,
           "visibleContentLeafViews": 7,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4712,
+          "processId": 4595,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "c4306505a3308f587efcc3571b815ba2",
-          "bootId": "61086d8d-5ef0-448d-81c1-7713a72d6301",
-          "capturedAtEpochMs": 1786830410687,
-          "capturedAtMonotonicNs": 270561163608
+          "generation": "6d44b173b9bb6da701d3008e8dd0a61d",
+          "bootId": "fa4690f5-656c-4245-9456-8a484e8cdca1",
+          "capturedAtEpochMs": 1786916816347,
+          "capturedAtMonotonicNs": 277769471916
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830410687"
+        "capturedAt": "1786916816347"
       },
       "status": "different",
       "baselineSha256": "4e691e314ed0a77c9a88542bdce07c1ab0d624cb6447693316fa3d1ca7aa9575",
@@ -4436,7 +4436,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:24.372Z"
+        "capturedAt": "2026-08-16T21:38:40.371Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4488,18 +4488,18 @@
           "laidOutViews": 53,
           "visibleContentLeafViews": 6,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4634,
+          "processId": 4517,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "95fd6d7111b679566b9390f63e09ad9e",
-          "bootId": "fd3fbe46-6189-4889-884b-f4e4f3180ced",
-          "capturedAtEpochMs": 1786830202285,
-          "capturedAtMonotonicNs": 56140420751
+          "generation": "bb6fae9a697a01458ac59d1f28e529db",
+          "bootId": "74cc269e-3269-4517-8813-e54e629ac8cf",
+          "capturedAtEpochMs": 1786916590890,
+          "capturedAtMonotonicNs": 62367267821
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830202285"
+        "capturedAt": "1786916590890"
       },
       "status": "different",
       "baselineSha256": "bbe9721674a79c98a67b2c1999def1756559c63daf294458d0de847269f8668d",
@@ -4565,7 +4565,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:25.213Z"
+        "capturedAt": "2026-08-16T21:38:41.379Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4617,18 +4617,18 @@
           "laidOutViews": 97,
           "visibleContentLeafViews": 12,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4676,
+          "processId": 4629,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "375931a88d6b023f33bd7b36b8be9323",
-          "bootId": "3acff154-72bb-48b7-bd8f-788859723e49",
-          "capturedAtEpochMs": 1786830191580,
-          "capturedAtMonotonicNs": 51451593533
+          "generation": "4aa7fe37377a573824eba485ca676f20",
+          "bootId": "ac9e68ad-625e-43d4-8a18-1516b13e2378",
+          "capturedAtEpochMs": 1786916586803,
+          "capturedAtMonotonicNs": 55994004743
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830191580"
+        "capturedAt": "1786916586803"
       },
       "status": "different",
       "baselineSha256": "116ea55a8a83eecbc67e56a887c164f5a3bbc5e7b5195da6d1ca658e434badb8",
@@ -4694,7 +4694,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:26.053Z"
+        "capturedAt": "2026-08-16T21:38:42.436Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4746,18 +4746,18 @@
           "laidOutViews": 61,
           "visibleContentLeafViews": 7,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4793,
+          "processId": 4446,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "28c42b76167be9ff33cf343940bcefc1",
-          "bootId": "a25f9151-9e3f-4210-8f6f-93a281781455",
-          "capturedAtEpochMs": 1786830395572,
-          "capturedAtMonotonicNs": 255930650487
+          "generation": "84975f5c98ec4f7a82ae09a9df7e0a4b",
+          "bootId": "a8c828c1-d00d-4f8c-9a19-6f1ed862f9ca",
+          "capturedAtEpochMs": 1786916810542,
+          "capturedAtMonotonicNs": 270804539527
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830395572"
+        "capturedAt": "1786916810542"
       },
       "status": "different",
       "baselineSha256": "5288ca6af5cea6aa00f4fbeda23487449d8ea566fa4b4cbd8c5277378a0f1d9c",
@@ -4823,7 +4823,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:26.851Z"
+        "capturedAt": "2026-08-16T21:38:43.351Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4858,7 +4858,7 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 552,
+            "uniqueColors": 540,
             "dominantRatio": 0.82182115
           },
           "readyTokenObserved": false,
@@ -4875,22 +4875,22 @@
           "laidOutViews": 46,
           "visibleContentLeafViews": 4,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4634,
+          "processId": 4517,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "95fd6d7111b679566b9390f63e09ad9e",
-          "bootId": "fd3fbe46-6189-4889-884b-f4e4f3180ced",
-          "capturedAtEpochMs": 1786830278376,
-          "capturedAtMonotonicNs": 132231421781
+          "generation": "bb6fae9a697a01458ac59d1f28e529db",
+          "bootId": "74cc269e-3269-4517-8813-e54e629ac8cf",
+          "capturedAtEpochMs": 1786916676958,
+          "capturedAtMonotonicNs": 148435366918
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830278376"
+        "capturedAt": "1786916676958"
       },
       "status": "different",
-      "baselineSha256": "bbf5c0f326f8a7d401ba773d496e5e0e7160ca00564cd8635e4665f85011169d",
-      "currentSha256": "a648cf943e907069d9ffdbfee13a4f3fd1e4a184434b9747bce865eb6038d3fe",
+      "baselineSha256": "22d1f78f4285f4a05a7a19fa134769990fa1c78fb386e940b64115cce91f1fe4",
+      "currentSha256": "0d3ab8288fb33d5e81470e31b267ae3f0b163fd8a1661473c2072ebd628b3dc6",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message.row.side-by-side.png",
       "metrics": {
@@ -4900,7 +4900,7 @@
         "currentHeight": 324,
         "comparisonWidth": 1122,
         "comparisonHeight": 324,
-        "rgbSimilarity": 0.8519056240849738,
+        "rgbSimilarity": 0.8516899454336508,
         "pixelPerfectSimilarity": 0.6516774498800643,
         "pixelMismatchRatio": 0.34832255011993574,
         "compositor": "sharp",
@@ -4952,7 +4952,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:27.617Z"
+        "capturedAt": "2026-08-16T21:38:44.233Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5004,18 +5004,18 @@
           "laidOutViews": 46,
           "visibleContentLeafViews": 3,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4657,
+          "processId": 4694,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "62487c46dace8bba62749dbfd3bcff22",
-          "bootId": "113c56f2-075b-428e-9523-2cb9a7d6bf1f",
-          "capturedAtEpochMs": 1786830302138,
-          "capturedAtMonotonicNs": 162676423266
+          "generation": "de7435cd26731e7dcf024fb84475cdd7",
+          "bootId": "2389db7b-cd48-45b8-9012-11ca23382a22",
+          "capturedAtEpochMs": 1786916710266,
+          "capturedAtMonotonicNs": 178638538805
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830302138"
+        "capturedAt": "1786916710266"
       },
       "status": "different",
       "baselineSha256": "bd0e489efb02118b264da755028e437422fefd6f61a6b5250196cfb3ad11d0e9",
@@ -5081,7 +5081,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:28.457Z"
+        "capturedAt": "2026-08-16T21:38:45.544Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5133,22 +5133,22 @@
           "laidOutViews": 107,
           "visibleContentLeafViews": 19,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4712,
+          "processId": 4595,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "c4306505a3308f587efcc3571b815ba2",
-          "bootId": "61086d8d-5ef0-448d-81c1-7713a72d6301",
-          "capturedAtEpochMs": 1786830267155,
-          "capturedAtMonotonicNs": 127028840215
+          "generation": "6d44b173b9bb6da701d3008e8dd0a61d",
+          "bootId": "fa4690f5-656c-4245-9456-8a484e8cdca1",
+          "capturedAtEpochMs": 1786916672716,
+          "capturedAtMonotonicNs": 134137621833
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830267155"
+        "capturedAt": "1786916672716"
       },
       "status": "different",
-      "baselineSha256": "4e87679f9d880467410573e91804bf7354918c2a12dc9618900f1d00525602a3",
-      "currentSha256": "062f80f8fd272c65f9b06cefd20012e361ad6965ad40cc67231bebc32785b931",
+      "baselineSha256": "5c42f2040dfb747daf3a65af3c3f2d55962d7da22762513c91fec9dba68df698",
+      "currentSha256": "bfac4cef906e229184f4ee8967cd33509af044bdb4051a7e5f300546b7104be6",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.default.side-by-side.png",
       "metrics": {
@@ -5158,9 +5158,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9237832653933987,
-        "pixelPerfectSimilarity": 0.5858930476229054,
-        "pixelMismatchRatio": 0.4141069523770946,
+        "rgbSimilarity": 0.9236573786155593,
+        "pixelPerfectSimilarity": 0.585557175841536,
+        "pixelMismatchRatio": 0.414442824158464,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -5210,7 +5210,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:29.307Z"
+        "capturedAt": "2026-08-16T21:38:46.493Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5245,7 +5245,7 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 636,
+            "uniqueColors": 629,
             "dominantRatio": 0.61766315
           },
           "readyTokenObserved": false,
@@ -5262,22 +5262,22 @@
           "laidOutViews": 112,
           "visibleContentLeafViews": 20,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4793,
+          "processId": 4446,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "28c42b76167be9ff33cf343940bcefc1",
-          "bootId": "a25f9151-9e3f-4210-8f6f-93a281781455",
-          "capturedAtEpochMs": 1786830248265,
-          "capturedAtMonotonicNs": 108623289870
+          "generation": "84975f5c98ec4f7a82ae09a9df7e0a4b",
+          "bootId": "a8c828c1-d00d-4f8c-9a19-6f1ed862f9ca",
+          "capturedAtEpochMs": 1786916651876,
+          "capturedAtMonotonicNs": 112138363961
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830248265"
+        "capturedAt": "1786916651876"
       },
       "status": "different",
       "baselineSha256": "06708d5dbed1a7becd883d53233de4a132d6bee8d5c65847d63eb3bcd9fefb91",
-      "currentSha256": "a6fc8a6603057d9f18d8bed3654bd755d49ce0552abd4c74fbd71c67cb183042",
+      "currentSha256": "dee04eb11ead8bc656d060bb1d25e49b4fcf9b9a6a6a593d44f7fb1ebec669c3",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.task.side-by-side.png",
       "metrics": {
@@ -5287,9 +5287,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9202499048434952,
-        "pixelPerfectSimilarity": 0.5772349819743184,
-        "pixelMismatchRatio": 0.42276501802568156,
+        "rgbSimilarity": 0.9202461872755799,
+        "pixelPerfectSimilarity": 0.577235657093477,
+        "pixelMismatchRatio": 0.422764342906523,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -5339,7 +5339,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:30.139Z"
+        "capturedAt": "2026-08-16T21:38:47.414Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5391,18 +5391,18 @@
           "laidOutViews": 94,
           "visibleContentLeafViews": 8,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4810,
+          "processId": 4665,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "25eb0ed193cca1c118714d60c6b89334",
-          "bootId": "490aac9f-0924-4b4f-a1da-4bd58fa6310f",
-          "capturedAtEpochMs": 1786830306705,
-          "capturedAtMonotonicNs": 167120440421
+          "generation": "5e499e0b02d6893f281cfd7a9fce315a",
+          "bootId": "88861f88-da0a-42bf-aed6-abdc0166086b",
+          "capturedAtEpochMs": 1786916692700,
+          "capturedAtMonotonicNs": 162487567610
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830306705"
+        "capturedAt": "1786916692700"
       },
       "status": "different",
       "baselineSha256": "cdda3c72c4797f2e07cb978610ec5ff35c509c8d2264ef0f05ca66ca351297e1",
@@ -5468,7 +5468,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:30.960Z"
+        "capturedAt": "2026-08-16T21:38:48.329Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5511,7 +5511,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -5520,18 +5520,18 @@
           "laidOutViews": 85,
           "visibleContentLeafViews": 11,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4710,
+          "processId": 4450,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "846aa82593f14f96677435a241d069ea",
-          "bootId": "9124cb8f-1516-4a0c-9344-b3a01f938029",
-          "capturedAtEpochMs": 1786830300352,
-          "capturedAtMonotonicNs": 159747083581
+          "generation": "e5f867513e12f49b188f2bf06d04198d",
+          "bootId": "06d3558b-9504-4059-a327-a9f318178b01",
+          "capturedAtEpochMs": 1786916699972,
+          "capturedAtMonotonicNs": 169602587168
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830300352"
+        "capturedAt": "1786916699972"
       },
       "status": "different",
       "baselineSha256": "778642da9520bf88459497b01384ea3126828523641032b0a40874b82eaf68fd",
@@ -5597,7 +5597,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:31.839Z"
+        "capturedAt": "2026-08-16T21:38:49.263Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5649,18 +5649,18 @@
           "laidOutViews": 105,
           "visibleContentLeafViews": 7,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4810,
+          "processId": 4665,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "25eb0ed193cca1c118714d60c6b89334",
-          "bootId": "490aac9f-0924-4b4f-a1da-4bd58fa6310f",
-          "capturedAtEpochMs": 1786830403191,
-          "capturedAtMonotonicNs": 263606346251
+          "generation": "5e499e0b02d6893f281cfd7a9fce315a",
+          "bootId": "88861f88-da0a-42bf-aed6-abdc0166086b",
+          "capturedAtEpochMs": 1786916794296,
+          "capturedAtMonotonicNs": 264083745320
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830403191"
+        "capturedAt": "1786916794296"
       },
       "status": "different",
       "baselineSha256": "1bf8c170fd01646a3ae283549497e5b1277e6aa524c6d562b785c1046671efc5",
@@ -5726,7 +5726,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:32.750Z"
+        "capturedAt": "2026-08-16T21:38:50.250Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5778,18 +5778,18 @@
           "laidOutViews": 88,
           "visibleContentLeafViews": 12,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4676,
+          "processId": 4629,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "375931a88d6b023f33bd7b36b8be9323",
-          "bootId": "3acff154-72bb-48b7-bd8f-788859723e49",
-          "capturedAtEpochMs": 1786830214727,
-          "capturedAtMonotonicNs": 74598671099
+          "generation": "4aa7fe37377a573824eba485ca676f20",
+          "bootId": "ac9e68ad-625e-43d4-8a18-1516b13e2378",
+          "capturedAtEpochMs": 1786916612241,
+          "capturedAtMonotonicNs": 81431248282
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830214727"
+        "capturedAt": "1786916612241"
       },
       "status": "different",
       "baselineSha256": "7f9a0ff0cb1de9579436bd1a02eae5912e984c0c78d30e32889efb2db6dedd9c",
@@ -5855,7 +5855,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:33.576Z"
+        "capturedAt": "2026-08-16T21:38:51.142Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5907,21 +5907,21 @@
           "laidOutViews": 53,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4676,
+          "processId": 4629,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "375931a88d6b023f33bd7b36b8be9323",
-          "bootId": "3acff154-72bb-48b7-bd8f-788859723e49",
-          "capturedAtEpochMs": 1786830343759,
-          "capturedAtMonotonicNs": 203630338519
+          "generation": "4aa7fe37377a573824eba485ca676f20",
+          "bootId": "ac9e68ad-625e-43d4-8a18-1516b13e2378",
+          "capturedAtEpochMs": 1786916752954,
+          "capturedAtMonotonicNs": 222145027213
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830343759"
+        "capturedAt": "1786916752954"
       },
       "status": "different",
-      "baselineSha256": "74bcc84678c1a8a4155d1444a9e719c07d8dbaa883e681aef49d246c5dd90237",
+      "baselineSha256": "eb7f2d4ee00cc406713e8e5607b1552462cd204be0f43ac86f60886010a21120",
       "currentSha256": "d015ad74ab750081c7dfb06cfa1d521b5e4d34fac25a87ef1808c81085acaf83",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.home.notification-center.states.side-by-side.png",
@@ -5932,9 +5932,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9397173051043473,
-        "pixelPerfectSimilarity": 0.8856641822281632,
-        "pixelMismatchRatio": 0.11433581777183677,
+        "rgbSimilarity": 0.9391868480963427,
+        "pixelPerfectSimilarity": 0.8801379943560038,
+        "pixelMismatchRatio": 0.11986200564399618,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -5984,7 +5984,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:35.330Z"
+        "capturedAt": "2026-08-16T21:38:52.946Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6036,21 +6036,21 @@
           "laidOutViews": 154,
           "visibleContentLeafViews": 14,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4657,
+          "processId": 4694,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "62487c46dace8bba62749dbfd3bcff22",
-          "bootId": "113c56f2-075b-428e-9523-2cb9a7d6bf1f",
-          "capturedAtEpochMs": 1786830216311,
-          "capturedAtMonotonicNs": 76849566413
+          "generation": "de7435cd26731e7dcf024fb84475cdd7",
+          "bootId": "2389db7b-cd48-45b8-9012-11ca23382a22",
+          "capturedAtEpochMs": 1786916613400,
+          "capturedAtMonotonicNs": 81772992292
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830216311"
+        "capturedAt": "1786916613400"
       },
       "status": "different",
-      "baselineSha256": "221f7f5e2e0c918eed75dc97b2e04ca2521529abe75c18dc6014fc797bd0652a",
+      "baselineSha256": "2f7f0990aa8192f94bfbed5e46d466d1f36b0cc0195060c8df04cd1b8342868e",
       "currentSha256": "f786951e6c5712b082696fcd2696f0abfbd7f73e045be859fc5ffdba5dce69a7",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.results.side-by-side.png",
@@ -6061,9 +6061,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8885347041699584,
-        "pixelPerfectSimilarity": 0.7306608741442865,
-        "pixelMismatchRatio": 0.2693391258557135,
+        "rgbSimilarity": 0.888534660927032,
+        "pixelPerfectSimilarity": 0.7306591863463902,
+        "pixelMismatchRatio": 0.26934081365360985,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6113,7 +6113,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:37.314Z"
+        "capturedAt": "2026-08-16T21:38:55.031Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6165,21 +6165,21 @@
           "laidOutViews": 200,
           "visibleContentLeafViews": 19,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4712,
+          "processId": 4595,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "c4306505a3308f587efcc3571b815ba2",
-          "bootId": "61086d8d-5ef0-448d-81c1-7713a72d6301",
-          "capturedAtEpochMs": 1786830203146,
-          "capturedAtMonotonicNs": 63020053057
+          "generation": "6d44b173b9bb6da701d3008e8dd0a61d",
+          "bootId": "fa4690f5-656c-4245-9456-8a484e8cdca1",
+          "capturedAtEpochMs": 1786916609720,
+          "capturedAtMonotonicNs": 71141753344
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830203146"
+        "capturedAt": "1786916609720"
       },
       "status": "different",
-      "baselineSha256": "405776329e5c98917da268f4e769b9245f8b6900c26cfe6b6195e0cb5ad650a2",
+      "baselineSha256": "e9815730e563e1484accd5438b83703c7cd81a4779e11f3ab4ef9012960f92e0",
       "currentSha256": "519e7dd06058bdaab3ed82fa8c38f03b3376108646af1bcb5bc7ec52c2149b5f",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.channel-dropdown.side-by-side.png",
@@ -6190,9 +6190,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8805331380690571,
-        "pixelPerfectSimilarity": 0.7308313417318156,
-        "pixelMismatchRatio": 0.26916865826818437,
+        "rgbSimilarity": 0.8805306944024561,
+        "pixelPerfectSimilarity": 0.7308239154210718,
+        "pixelMismatchRatio": 0.26917608457892817,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6242,7 +6242,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:39.203Z"
+        "capturedAt": "2026-08-16T21:38:57.000Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6294,21 +6294,21 @@
           "laidOutViews": 88,
           "visibleContentLeafViews": 6,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4810,
+          "processId": 4665,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "25eb0ed193cca1c118714d60c6b89334",
-          "bootId": "490aac9f-0924-4b4f-a1da-4bd58fa6310f",
-          "capturedAtEpochMs": 1786830395196,
-          "capturedAtMonotonicNs": 255611193223
+          "generation": "5e499e0b02d6893f281cfd7a9fce315a",
+          "bootId": "88861f88-da0a-42bf-aed6-abdc0166086b",
+          "capturedAtEpochMs": 1786916785808,
+          "capturedAtMonotonicNs": 255595474602
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830395196"
+        "capturedAt": "1786916785808"
       },
       "status": "different",
-      "baselineSha256": "2dfebd9361e831a4693b7ef54c5970f40943aa9ab5202ec2cc18762280b5db19",
+      "baselineSha256": "f53ce63ffbcffbf23c1180f4912245ac817b3dbcdfb417f37c2917e11265485b",
       "currentSha256": "483b190b58b2218bd7246c36f0445dab7917708a6b55d43e631c672abd0150a8",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.home.saved.results.side-by-side.png",
@@ -6319,9 +6319,9 @@
         "currentHeight": 1860,
         "comparisonWidth": 1026,
         "comparisonHeight": 1860,
-        "rgbSimilarity": 0.9097710116766105,
-        "pixelPerfectSimilarity": 0.8096203022490516,
-        "pixelMismatchRatio": 0.19037969775094843,
+        "rgbSimilarity": 0.909784786636104,
+        "pixelPerfectSimilarity": 0.8096596030099142,
+        "pixelMismatchRatio": 0.19034039699008576,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6371,7 +6371,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:40.970Z"
+        "capturedAt": "2026-08-16T21:38:58.923Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6423,21 +6423,21 @@
           "laidOutViews": 120,
           "visibleContentLeafViews": 8,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4712,
+          "processId": 4595,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "c4306505a3308f587efcc3571b815ba2",
-          "bootId": "61086d8d-5ef0-448d-81c1-7713a72d6301",
-          "capturedAtEpochMs": 1786830235446,
-          "capturedAtMonotonicNs": 95319777177
+          "generation": "6d44b173b9bb6da701d3008e8dd0a61d",
+          "bootId": "fa4690f5-656c-4245-9456-8a484e8cdca1",
+          "capturedAtEpochMs": 1786916641802,
+          "capturedAtMonotonicNs": 103223971082
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830235446"
+        "capturedAt": "1786916641802"
       },
       "status": "different",
-      "baselineSha256": "95f0e0f26eac00be31f577259d96c49d98a2eebe38ce37ef8440cda0958e610f",
+      "baselineSha256": "48273bf6b7fed8108bbcac0959f8b7e9d9e44e3a14e760bff425212e839b3589",
       "currentSha256": "ac79cd782e491f24f165064f22eff752178a79f636a56b22a372e0832a6d5dc2",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.home.activity.results.side-by-side.png",
@@ -6448,9 +6448,9 @@
         "currentHeight": 1860,
         "comparisonWidth": 1026,
         "comparisonHeight": 1860,
-        "rgbSimilarity": 0.9064326375711639,
-        "pixelPerfectSimilarity": 0.8103539164518225,
-        "pixelMismatchRatio": 0.18964608354817747,
+        "rgbSimilarity": 0.9064029422929953,
+        "pixelPerfectSimilarity": 0.8102244859460479,
+        "pixelMismatchRatio": 0.1897755140539521,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6500,7 +6500,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:42.033Z"
+        "capturedAt": "2026-08-16T21:39:00.099Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6552,18 +6552,18 @@
           "laidOutViews": 156,
           "visibleContentLeafViews": 17,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4712,
+          "processId": 4595,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "c4306505a3308f587efcc3571b815ba2",
-          "bootId": "61086d8d-5ef0-448d-81c1-7713a72d6301",
-          "capturedAtEpochMs": 1786830275819,
-          "capturedAtMonotonicNs": 135693624349
+          "generation": "6d44b173b9bb6da701d3008e8dd0a61d",
+          "bootId": "fa4690f5-656c-4245-9456-8a484e8cdca1",
+          "capturedAtEpochMs": 1786916682042,
+          "capturedAtMonotonicNs": 143463834614
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830275819"
+        "capturedAt": "1786916682042"
       },
       "status": "different",
       "baselineSha256": "2e14440e291532275e82dbae5302089b58e554ef539c7c2d0e684aae9acf7c54",
@@ -6629,7 +6629,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:43.009Z"
+        "capturedAt": "2026-08-16T21:39:01.223Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6681,18 +6681,18 @@
           "laidOutViews": 41,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4698,
+          "processId": 4668,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "de784f91260b2375af2eee14b81d13a4",
-          "bootId": "fae878a1-0294-479c-9a3d-8eb36be04725",
-          "capturedAtEpochMs": 1786830301742,
-          "capturedAtMonotonicNs": 166028643375
+          "generation": "6a0df13011beb22c3ea07b6fadf80d6d",
+          "bootId": "503b2350-62e0-4c2a-af0d-c68ce6e2cc10",
+          "capturedAtEpochMs": 1786916712124,
+          "capturedAtMonotonicNs": 181589858514
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830301742"
+        "capturedAt": "1786916712124"
       },
       "status": "different",
       "baselineSha256": "eaae081a36beb0a311f0b49b7a8787baa6f3e20e89c78790f9527f76694cd9c3",
@@ -6758,7 +6758,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:43.897Z"
+        "capturedAt": "2026-08-16T21:39:02.308Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6810,18 +6810,18 @@
           "laidOutViews": 125,
           "visibleContentLeafViews": 12,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4793,
+          "processId": 4446,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "28c42b76167be9ff33cf343940bcefc1",
-          "bootId": "a25f9151-9e3f-4210-8f6f-93a281781455",
-          "capturedAtEpochMs": 1786830342302,
-          "capturedAtMonotonicNs": 202660089323
+          "generation": "84975f5c98ec4f7a82ae09a9df7e0a4b",
+          "bootId": "a8c828c1-d00d-4f8c-9a19-6f1ed862f9ca",
+          "capturedAtEpochMs": 1786916752750,
+          "capturedAtMonotonicNs": 213012641363
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830342302"
+        "capturedAt": "1786916752750"
       },
       "status": "different",
       "baselineSha256": "9c24b89258e02e082866ec27f2c14f9713ce9b4f8ff1ea4df3f4462778934b56",
@@ -6887,7 +6887,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:44.797Z"
+        "capturedAt": "2026-08-16T21:39:03.399Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6939,18 +6939,18 @@
           "laidOutViews": 118,
           "visibleContentLeafViews": 9,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4810,
+          "processId": 4665,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "25eb0ed193cca1c118714d60c6b89334",
-          "bootId": "490aac9f-0924-4b4f-a1da-4bd58fa6310f",
-          "capturedAtEpochMs": 1786830384703,
-          "capturedAtMonotonicNs": 245118405182
+          "generation": "5e499e0b02d6893f281cfd7a9fce315a",
+          "bootId": "88861f88-da0a-42bf-aed6-abdc0166086b",
+          "capturedAtEpochMs": 1786916774861,
+          "capturedAtMonotonicNs": 244648228420
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830384703"
+        "capturedAt": "1786916774861"
       },
       "status": "different",
       "baselineSha256": "2327d4129db3b5f7d30b4370d66eea8b7228de1a424a44078345b9290b70b1aa",
@@ -7016,7 +7016,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:39:45.691Z"
+        "capturedAt": "2026-08-16T21:39:04.474Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7068,18 +7068,18 @@
           "laidOutViews": 128,
           "visibleContentLeafViews": 10,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4676,
+          "processId": 4629,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "375931a88d6b023f33bd7b36b8be9323",
-          "bootId": "3acff154-72bb-48b7-bd8f-788859723e49",
-          "capturedAtEpochMs": 1786830361213,
-          "capturedAtMonotonicNs": 221083812057
+          "generation": "4aa7fe37377a573824eba485ca676f20",
+          "bootId": "ac9e68ad-625e-43d4-8a18-1516b13e2378",
+          "capturedAtEpochMs": 1786916774436,
+          "capturedAtMonotonicNs": 243626991540
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830361213"
+        "capturedAt": "1786916774436"
       },
       "status": "different",
       "baselineSha256": "2327d4129db3b5f7d30b4370d66eea8b7228de1a424a44078345b9290b70b1aa",
@@ -7168,18 +7168,18 @@
           "laidOutViews": 169,
           "visibleContentLeafViews": 13,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4634,
+          "processId": 4517,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "95fd6d7111b679566b9390f63e09ad9e",
-          "bootId": "fd3fbe46-6189-4889-884b-f4e4f3180ced",
-          "capturedAtEpochMs": 1786830287419,
-          "capturedAtMonotonicNs": 141273891677
+          "generation": "bb6fae9a697a01458ac59d1f28e529db",
+          "bootId": "74cc269e-3269-4517-8813-e54e629ac8cf",
+          "capturedAtEpochMs": 1786916686553,
+          "capturedAtMonotonicNs": 158029623305
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830287419"
+        "capturedAt": "1786916686553"
       },
       "status": "missing"
     },
@@ -7226,7 +7226,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:17.258Z"
+        "capturedAt": "2026-08-16T21:39:36.037Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7261,7 +7261,7 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 536,
+            "uniqueColors": 531,
             "dominantRatio": 0.89087677
           },
           "readyTokenObserved": false,
@@ -7278,22 +7278,22 @@
           "laidOutViews": 230,
           "visibleContentLeafViews": 19,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4793,
+          "processId": 4446,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "28c42b76167be9ff33cf343940bcefc1",
-          "bootId": "a25f9151-9e3f-4210-8f6f-93a281781455",
-          "capturedAtEpochMs": 1786830387987,
-          "capturedAtMonotonicNs": 248345158660
+          "generation": "84975f5c98ec4f7a82ae09a9df7e0a4b",
+          "bootId": "a8c828c1-d00d-4f8c-9a19-6f1ed862f9ca",
+          "capturedAtEpochMs": 1786916802176,
+          "capturedAtMonotonicNs": 262438622756
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830387987"
+        "capturedAt": "1786916802176"
       },
       "status": "different",
-      "baselineSha256": "cab0b33a62412cdc711dec0614284295444ff41a6fc859ff5ff56ea36a07f583",
-      "currentSha256": "defaa707b1cd246db23c92756a7f5318e6c3373a6ca0564674fabb12310c94e5",
+      "baselineSha256": "3b6e536accf5aa7264d49660e0f1635a00bfa1a01470b04681bf4a1efd1d54ea",
+      "currentSha256": "07d8dc41fd2f7d5458e00e56f8ef3f93a4a4337b281e15f1bd49abf3e9d5cd7d",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-detail.profile.side-by-side.png",
       "metrics": {
@@ -7303,7 +7303,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9004322108441772,
+        "rgbSimilarity": 0.9003869222625064,
         "pixelPerfectSimilarity": 0.8144320222519275,
         "pixelMismatchRatio": 0.18556797774807254,
         "compositor": "sharp",
@@ -7355,7 +7355,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:18.214Z"
+        "capturedAt": "2026-08-16T21:39:37.096Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7407,21 +7407,21 @@
           "laidOutViews": 90,
           "visibleContentLeafViews": 7,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4810,
+          "processId": 4665,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "25eb0ed193cca1c118714d60c6b89334",
-          "bootId": "490aac9f-0924-4b4f-a1da-4bd58fa6310f",
-          "capturedAtEpochMs": 1786830209977,
-          "capturedAtMonotonicNs": 70392360495
+          "generation": "5e499e0b02d6893f281cfd7a9fce315a",
+          "bootId": "88861f88-da0a-42bf-aed6-abdc0166086b",
+          "capturedAtEpochMs": 1786916607971,
+          "capturedAtMonotonicNs": 77758685174
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830209977"
+        "capturedAt": "1786916607971"
       },
       "status": "different",
-      "baselineSha256": "3feee3e1aca6b6fd2f253afecc422b7176f8d2b27a2bf937ac29747fb1be0a46",
+      "baselineSha256": "0a26d0488bea6b56294982f4b627b9210b4ae0b8d17c03f7110aedc32e11aa5b",
       "currentSha256": "cf3c4bedd3feab8d100c8113d77e1764bf054785b5482e54282586d76439170b",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.channel.settings.panel.side-by-side.png",
@@ -7432,9 +7432,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.6432555618152511,
-        "pixelPerfectSimilarity": 0.09790004185738783,
-        "pixelMismatchRatio": 0.9020999581426121,
+        "rgbSimilarity": 0.643915204418614,
+        "pixelPerfectSimilarity": 0.09809548885378269,
+        "pixelMismatchRatio": 0.9019045111462173,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -7484,7 +7484,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:19.496Z"
+        "capturedAt": "2026-08-16T21:39:38.359Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7536,18 +7536,18 @@
           "laidOutViews": 74,
           "visibleContentLeafViews": 6,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4657,
+          "processId": 4694,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "62487c46dace8bba62749dbfd3bcff22",
-          "bootId": "113c56f2-075b-428e-9523-2cb9a7d6bf1f",
-          "capturedAtEpochMs": 1786830370122,
-          "capturedAtMonotonicNs": 230660227817
+          "generation": "de7435cd26731e7dcf024fb84475cdd7",
+          "bootId": "2389db7b-cd48-45b8-9012-11ca23382a22",
+          "capturedAtEpochMs": 1786916781741,
+          "capturedAtMonotonicNs": 250114311385
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830370122"
+        "capturedAt": "1786916781741"
       },
       "status": "different",
       "baselineSha256": "0fe98bd2375e30dcc20e051ecf90be9a612d1b2c9ce514756b7d2dfc605d422c",
@@ -7613,7 +7613,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:20.437Z"
+        "capturedAt": "2026-08-16T21:39:39.259Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7666,18 +7666,18 @@
           "laidOutViews": 97,
           "visibleContentLeafViews": 15,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4657,
+          "processId": 4694,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "62487c46dace8bba62749dbfd3bcff22",
-          "bootId": "113c56f2-075b-428e-9523-2cb9a7d6bf1f",
-          "capturedAtEpochMs": 1786830394635,
-          "capturedAtMonotonicNs": 255173463248
+          "generation": "de7435cd26731e7dcf024fb84475cdd7",
+          "bootId": "2389db7b-cd48-45b8-9012-11ca23382a22",
+          "capturedAtEpochMs": 1786916807494,
+          "capturedAtMonotonicNs": 275866916923
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830394635"
+        "capturedAt": "1786916807494"
       },
       "status": "different",
       "baselineSha256": "6b000e51d30aa50763292b87b4f42c97ac37ea1d90bcb098650f0375e2137f49",
@@ -7743,7 +7743,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:21.436Z"
+        "capturedAt": "2026-08-16T21:39:40.284Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7795,18 +7795,18 @@
           "laidOutViews": 113,
           "visibleContentLeafViews": 9,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4712,
+          "processId": 4595,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "c4306505a3308f587efcc3571b815ba2",
-          "bootId": "61086d8d-5ef0-448d-81c1-7713a72d6301",
-          "capturedAtEpochMs": 1786830306007,
-          "capturedAtMonotonicNs": 165880986167
+          "generation": "6d44b173b9bb6da701d3008e8dd0a61d",
+          "bootId": "fa4690f5-656c-4245-9456-8a484e8cdca1",
+          "capturedAtEpochMs": 1786916714662,
+          "capturedAtMonotonicNs": 176084095102
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830306007"
+        "capturedAt": "1786916714662"
       },
       "status": "different",
       "baselineSha256": "106885ca4d0cfa14ee159929b647a3157ae3caedf8a41ea2d2a12529d6cb98bd",
@@ -7872,7 +7872,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:22.403Z"
+        "capturedAt": "2026-08-16T21:39:41.218Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7915,7 +7915,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -7924,18 +7924,18 @@
           "laidOutViews": 166,
           "visibleContentLeafViews": 16,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4710,
+          "processId": 4450,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "846aa82593f14f96677435a241d069ea",
-          "bootId": "9124cb8f-1516-4a0c-9344-b3a01f938029",
-          "capturedAtEpochMs": 1786830210627,
-          "capturedAtMonotonicNs": 70021906331
+          "generation": "e5f867513e12f49b188f2bf06d04198d",
+          "bootId": "06d3558b-9504-4059-a327-a9f318178b01",
+          "capturedAtEpochMs": 1786916604826,
+          "capturedAtMonotonicNs": 74456661379
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830210627"
+        "capturedAt": "1786916604826"
       },
       "status": "different",
       "baselineSha256": "99a2602a2001c16cb63dd52e344dd6ad280788025600c05d30788791888990a7",
@@ -8001,7 +8001,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:23.368Z"
+        "capturedAt": "2026-08-16T21:39:42.125Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8053,18 +8053,18 @@
           "laidOutViews": 75,
           "visibleContentLeafViews": 6,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4712,
+          "processId": 4595,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "c4306505a3308f587efcc3571b815ba2",
-          "bootId": "61086d8d-5ef0-448d-81c1-7713a72d6301",
-          "capturedAtEpochMs": 1786830191485,
-          "capturedAtMonotonicNs": 51359003364
+          "generation": "6d44b173b9bb6da701d3008e8dd0a61d",
+          "bootId": "fa4690f5-656c-4245-9456-8a484e8cdca1",
+          "capturedAtEpochMs": 1786916597471,
+          "capturedAtMonotonicNs": 58893169145
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830191485"
+        "capturedAt": "1786916597471"
       },
       "status": "different",
       "baselineSha256": "8ef56cffe28486f185f367200f44e504102ef6c0e8e970711ddccabe8553a967",
@@ -8130,7 +8130,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:24.349Z"
+        "capturedAt": "2026-08-16T21:39:43.121Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8185,21 +8185,21 @@
           "laidOutViews": 68,
           "visibleContentLeafViews": 4,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4698,
+          "processId": 4668,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "de784f91260b2375af2eee14b81d13a4",
-          "bootId": "fae878a1-0294-479c-9a3d-8eb36be04725",
-          "capturedAtEpochMs": 1786830419821,
-          "capturedAtMonotonicNs": 284107120658
+          "generation": "6a0df13011beb22c3ea07b6fadf80d6d",
+          "bootId": "503b2350-62e0-4c2a-af0d-c68ce6e2cc10",
+          "capturedAtEpochMs": 1786916839263,
+          "capturedAtMonotonicNs": 308728917205
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830419821"
+        "capturedAt": "1786916839263"
       },
       "status": "different",
-      "baselineSha256": "45207207e01432e273ee184f7040b2fb2dc259889758f904da0054b466fe290b",
+      "baselineSha256": "75c3d6a32246bf9ae4f10d6383ada578b08e8f41270a15d676967f7389f84605",
       "currentSha256": "930dc551ec9b1524fedae82db3bfe7cef1218d64cb696960d7a3963724b99d19",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.appearance.page.side-by-side.png",
@@ -8210,9 +8210,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9136408986480524,
-        "pixelPerfectSimilarity": 0.8013674538556055,
-        "pixelMismatchRatio": 0.19863254614439452,
+        "rgbSimilarity": 0.9136464478627829,
+        "pixelPerfectSimilarity": 0.8013728548088738,
+        "pixelMismatchRatio": 0.19862714519112623,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -8262,7 +8262,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:25.338Z"
+        "capturedAt": "2026-08-16T21:39:44.067Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8315,18 +8315,18 @@
           "laidOutViews": 97,
           "visibleContentLeafViews": 7,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4676,
+          "processId": 4629,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "375931a88d6b023f33bd7b36b8be9323",
-          "bootId": "3acff154-72bb-48b7-bd8f-788859723e49",
-          "capturedAtEpochMs": 1786830303691,
-          "capturedAtMonotonicNs": 163562523778
+          "generation": "4aa7fe37377a573824eba485ca676f20",
+          "bootId": "ac9e68ad-625e-43d4-8a18-1516b13e2378",
+          "capturedAtEpochMs": 1786916710816,
+          "capturedAtMonotonicNs": 180006798056
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830303691"
+        "capturedAt": "1786916710816"
       },
       "status": "different",
       "baselineSha256": "b75a4b6660948ed06c742dbc9b0a10172e3c4a8e0e0d8a1715861b198dd71262",
@@ -8392,7 +8392,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:26.356Z"
+        "capturedAt": "2026-08-16T21:39:45.156Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8444,18 +8444,18 @@
           "laidOutViews": 70,
           "visibleContentLeafViews": 6,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4793,
+          "processId": 4446,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "28c42b76167be9ff33cf343940bcefc1",
-          "bootId": "a25f9151-9e3f-4210-8f6f-93a281781455",
-          "capturedAtEpochMs": 1786830192217,
-          "capturedAtMonotonicNs": 52575022103
+          "generation": "84975f5c98ec4f7a82ae09a9df7e0a4b",
+          "bootId": "a8c828c1-d00d-4f8c-9a19-6f1ed862f9ca",
+          "capturedAtEpochMs": 1786916595948,
+          "capturedAtMonotonicNs": 56210332166
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830192217"
+        "capturedAt": "1786916595948"
       },
       "status": "different",
       "baselineSha256": "8d267cbc606726f327f6a5b4850d865fa2369244168b3dd49257f94a18f549ec",
@@ -8521,7 +8521,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:27.279Z"
+        "capturedAt": "2026-08-16T21:39:46.177Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8573,18 +8573,18 @@
           "laidOutViews": 49,
           "visibleContentLeafViews": 4,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4634,
+          "processId": 4517,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "95fd6d7111b679566b9390f63e09ad9e",
-          "bootId": "fd3fbe46-6189-4889-884b-f4e4f3180ced",
-          "capturedAtEpochMs": 1786830237328,
-          "capturedAtMonotonicNs": 91183196162
+          "generation": "bb6fae9a697a01458ac59d1f28e529db",
+          "bootId": "74cc269e-3269-4517-8813-e54e629ac8cf",
+          "capturedAtEpochMs": 1786916628168,
+          "capturedAtMonotonicNs": 99644699540
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830237328"
+        "capturedAt": "1786916628168"
       },
       "status": "different",
       "baselineSha256": "354938e9645471507bc7de60a2c4a452ee1b5a1a6dba62f481f2cd78a66e46ed",
@@ -8650,7 +8650,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:28.417Z"
+        "capturedAt": "2026-08-16T21:39:47.334Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8685,7 +8685,7 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 531,
+            "uniqueColors": 537,
             "dominantRatio": 0.89087677
           },
           "readyTokenObserved": false,
@@ -8702,22 +8702,22 @@
           "laidOutViews": 230,
           "visibleContentLeafViews": 19,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4634,
+          "processId": 4517,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "95fd6d7111b679566b9390f63e09ad9e",
-          "bootId": "fd3fbe46-6189-4889-884b-f4e4f3180ced",
-          "capturedAtEpochMs": 1786830301984,
-          "capturedAtMonotonicNs": 155838973116
+          "generation": "bb6fae9a697a01458ac59d1f28e529db",
+          "bootId": "74cc269e-3269-4517-8813-e54e629ac8cf",
+          "capturedAtEpochMs": 1786916698897,
+          "capturedAtMonotonicNs": 170373720188
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830301984"
+        "capturedAt": "1786916698897"
       },
       "status": "different",
-      "baselineSha256": "4a6624e8fcf603ae88da5d93b3a206c7fa28ef129780db6cbe3085fa233f8fb1",
-      "currentSha256": "07d8dc41fd2f7d5458e00e56f8ef3f93a4a4337b281e15f1bd49abf3e9d5cd7d",
+      "baselineSha256": "75f4d8f94f454ed39b4d77bfce9a4aed63ce188f5c82c6963c2f2d4d4fe2b5db",
+      "currentSha256": "19e879e18d38ca8ce0066e3eabb6e1e27aaf605c9543d4adba13876ec0feebf0",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.side-by-side.png",
       "metrics": {
@@ -8727,7 +8727,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.900612563852952,
+        "rgbSimilarity": 0.9006490088148997,
         "pixelPerfectSimilarity": 0.813919606810602,
         "pixelMismatchRatio": 0.18608039318939795,
         "compositor": "sharp",
@@ -8779,7 +8779,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:29.558Z"
+        "capturedAt": "2026-08-16T21:39:48.471Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8831,21 +8831,21 @@
           "laidOutViews": 82,
           "visibleContentLeafViews": 10,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4676,
+          "processId": 4629,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "375931a88d6b023f33bd7b36b8be9323",
-          "bootId": "3acff154-72bb-48b7-bd8f-788859723e49",
-          "capturedAtEpochMs": 1786830287448,
-          "capturedAtMonotonicNs": 147319639907
+          "generation": "4aa7fe37377a573824eba485ca676f20",
+          "bootId": "ac9e68ad-625e-43d4-8a18-1516b13e2378",
+          "capturedAtEpochMs": 1786916693678,
+          "capturedAtMonotonicNs": 162868686965
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830287448"
+        "capturedAt": "1786916693678"
       },
       "status": "different",
-      "baselineSha256": "0d86828599f34b7da9fd1203e75cebb7ff14a743ce76e774e9f3a3a40792b889",
+      "baselineSha256": "0b60e30dd654d135e215ba8a7359fa146907940c43069d367fb2263624d9066c",
       "currentSha256": "25bdc0465d13e9c4b580aaa00d3123218bb5eb219f6e53477e874c64bdd6124d",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.reminders.side-by-side.png",
@@ -8856,9 +8856,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9672917383153565,
-        "pixelPerfectSimilarity": 0.9387133579076707,
-        "pixelMismatchRatio": 0.06128664209232926,
+        "rgbSimilarity": 0.9672971348560812,
+        "pixelPerfectSimilarity": 0.9386988428457623,
+        "pixelMismatchRatio": 0.06130115715423767,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -8908,7 +8908,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:30.612Z"
+        "capturedAt": "2026-08-16T21:39:49.589Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8960,18 +8960,18 @@
           "laidOutViews": 100,
           "visibleContentLeafViews": 13,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4657,
+          "processId": 4694,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "62487c46dace8bba62749dbfd3bcff22",
-          "bootId": "113c56f2-075b-428e-9523-2cb9a7d6bf1f",
-          "capturedAtEpochMs": 1786830378533,
-          "capturedAtMonotonicNs": 239070694947
+          "generation": "de7435cd26731e7dcf024fb84475cdd7",
+          "bootId": "2389db7b-cd48-45b8-9012-11ca23382a22",
+          "capturedAtEpochMs": 1786916790635,
+          "capturedAtMonotonicNs": 259008378041
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830378533"
+        "capturedAt": "1786916790635"
       },
       "status": "different",
       "baselineSha256": "d956d70f178625c355ee03cbb6a29f74b5facfee9cedab09edaab9b427b89a73",
@@ -9037,7 +9037,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:31.691Z"
+        "capturedAt": "2026-08-16T21:39:51.053Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -9089,18 +9089,18 @@
           "laidOutViews": 124,
           "visibleContentLeafViews": 11,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4712,
+          "processId": 4595,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "c4306505a3308f587efcc3571b815ba2",
-          "bootId": "61086d8d-5ef0-448d-81c1-7713a72d6301",
-          "capturedAtEpochMs": 1786830419174,
-          "capturedAtMonotonicNs": 279048038672
+          "generation": "6d44b173b9bb6da701d3008e8dd0a61d",
+          "bootId": "fa4690f5-656c-4245-9456-8a484e8cdca1",
+          "capturedAtEpochMs": 1786916825566,
+          "capturedAtMonotonicNs": 286988027150
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830419174"
+        "capturedAt": "1786916825566"
       },
       "status": "different",
       "baselineSha256": "4ebd04fc39eab58e2f36da95415b6b9ea6e9d67236106359bd9bb7ee7e87d444",
@@ -9166,7 +9166,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:32.801Z"
+        "capturedAt": "2026-08-16T21:39:52.551Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -9201,7 +9201,7 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 355,
+            "uniqueColors": 354,
             "dominantRatio": 0.94382066
           },
           "readyTokenObserved": false,
@@ -9209,7 +9209,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -9218,22 +9218,22 @@
           "laidOutViews": 118,
           "visibleContentLeafViews": 14,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4710,
+          "processId": 4450,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "846aa82593f14f96677435a241d069ea",
-          "bootId": "9124cb8f-1516-4a0c-9344-b3a01f938029",
-          "capturedAtEpochMs": 1786830338179,
-          "capturedAtMonotonicNs": 197573276913
+          "generation": "e5f867513e12f49b188f2bf06d04198d",
+          "bootId": "06d3558b-9504-4059-a327-a9f318178b01",
+          "capturedAtEpochMs": 1786916741505,
+          "capturedAtMonotonicNs": 211136149813
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830338179"
+        "capturedAt": "1786916741505"
       },
       "status": "different",
-      "baselineSha256": "469e878cc7dd40327291b0c486892a0ee88b612ee740ca331b2c2ede8e44d893",
-      "currentSha256": "65b9a42b93b12fb73743fe6c512da57746384d2d1e510cf64a3182d2e463c539",
+      "baselineSha256": "cb0cdf9c4c7662e53d7d9d45e4cfd970095c7b43f78f250a4d8876660d06b12f",
+      "currentSha256": "7ce160f3d90d58368239f342b27c9640a654766e9ea944c9e2256c2d1203b337",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.activity.side-by-side.png",
       "metrics": {
@@ -9243,7 +9243,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9481251707102485,
+        "rgbSimilarity": 0.9480773660962625,
         "pixelPerfectSimilarity": 0.8988317062961613,
         "pixelMismatchRatio": 0.10116829370383873,
         "compositor": "sharp",
@@ -9295,7 +9295,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:33.892Z"
+        "capturedAt": "2026-08-16T21:39:53.707Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -9338,7 +9338,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -9347,18 +9347,18 @@
           "laidOutViews": 71,
           "visibleContentLeafViews": 5,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4710,
+          "processId": 4450,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "846aa82593f14f96677435a241d069ea",
-          "bootId": "9124cb8f-1516-4a0c-9344-b3a01f938029",
-          "capturedAtEpochMs": 1786830327283,
-          "capturedAtMonotonicNs": 186677638463
+          "generation": "e5f867513e12f49b188f2bf06d04198d",
+          "bootId": "06d3558b-9504-4059-a327-a9f318178b01",
+          "capturedAtEpochMs": 1786916728387,
+          "capturedAtMonotonicNs": 198017475112
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830327283"
+        "capturedAt": "1786916728387"
       },
       "status": "different",
       "baselineSha256": "7b110b44411be642aaea7caaf6d27d8cb137c85e439783e25142e878d4d8a8f2",
@@ -9424,7 +9424,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:35.019Z"
+        "capturedAt": "2026-08-16T21:39:54.915Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -9459,7 +9459,7 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 549,
+            "uniqueColors": 551,
             "dominantRatio": 0.8861891
           },
           "readyTokenObserved": false,
@@ -9476,22 +9476,22 @@
           "laidOutViews": 250,
           "visibleContentLeafViews": 21,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4712,
+          "processId": 4595,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "c4306505a3308f587efcc3571b815ba2",
-          "bootId": "61086d8d-5ef0-448d-81c1-7713a72d6301",
-          "capturedAtEpochMs": 1786830340805,
-          "capturedAtMonotonicNs": 200679494793
+          "generation": "6d44b173b9bb6da701d3008e8dd0a61d",
+          "bootId": "fa4690f5-656c-4245-9456-8a484e8cdca1",
+          "capturedAtEpochMs": 1786916740603,
+          "capturedAtMonotonicNs": 202025443065
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830340805"
+        "capturedAt": "1786916740603"
       },
       "status": "different",
       "baselineSha256": "4ea2fe543511b0ed2919828ccfc260997873431c510d1bbd88ddd7c435e5947b",
-      "currentSha256": "acaf8861c54b567b211980294105f558e84d58d2add56c32975c9fd172b0a16f",
+      "currentSha256": "eeaec5050349ec40aad37e45e7ef30519a7c46bea2b3347883a57b64283e12e2",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png",
       "metrics": {
@@ -9501,7 +9501,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8911298202957904,
+        "rgbSimilarity": 0.891102256018931,
         "pixelPerfectSimilarity": 0.7979415616856376,
         "pixelMismatchRatio": 0.20205843831436243,
         "compositor": "sharp",
@@ -9553,7 +9553,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:36.220Z"
+        "capturedAt": "2026-08-16T21:39:56.130Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -9605,22 +9605,22 @@
           "laidOutViews": 230,
           "visibleContentLeafViews": 19,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4698,
+          "processId": 4668,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "de784f91260b2375af2eee14b81d13a4",
-          "bootId": "fae878a1-0294-479c-9a3d-8eb36be04725",
-          "capturedAtEpochMs": 1786830410524,
-          "capturedAtMonotonicNs": 274810476346
+          "generation": "6a0df13011beb22c3ea07b6fadf80d6d",
+          "bootId": "503b2350-62e0-4c2a-af0d-c68ce6e2cc10",
+          "capturedAtEpochMs": 1786916828757,
+          "capturedAtMonotonicNs": 298222378488
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830410524"
+        "capturedAt": "1786916828757"
       },
       "status": "different",
-      "baselineSha256": "5135dc1f4c0a5719d32f7693a0d18e8df046c4c51ebfe360738fab2100a65c5a",
-      "currentSha256": "0fba43b6b4953909f887c2b4161974522cc518fe1da91a221e16e5bfe9c38d0a",
+      "baselineSha256": "51b6b21199887118d2c8b524c21e46172fc15c0cf5e3ac094ce150cc24bd31b7",
+      "currentSha256": "0574118bf6c1346b31340312ece52ff820000bf0bc9ecc357d0749d9acdc5c66",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.members.avatar-management.side-by-side.png",
       "metrics": {
@@ -9630,7 +9630,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8647959128019052,
+        "rgbSimilarity": 0.8648043707653235,
         "pixelPerfectSimilarity": 0.7584403397199606,
         "pixelMismatchRatio": 0.2415596602800394,
         "compositor": "sharp",
@@ -9682,7 +9682,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:37.345Z"
+        "capturedAt": "2026-08-16T21:39:57.224Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -9725,7 +9725,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -9734,18 +9734,18 @@
           "laidOutViews": 80,
           "visibleContentLeafViews": 5,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4710,
+          "processId": 4450,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "846aa82593f14f96677435a241d069ea",
-          "bootId": "9124cb8f-1516-4a0c-9344-b3a01f938029",
-          "capturedAtEpochMs": 1786830218042,
-          "capturedAtMonotonicNs": 77436361306
+          "generation": "e5f867513e12f49b188f2bf06d04198d",
+          "bootId": "06d3558b-9504-4059-a327-a9f318178b01",
+          "capturedAtEpochMs": 1786916612996,
+          "capturedAtMonotonicNs": 82626793456
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830218042"
+        "capturedAt": "1786916612996"
       },
       "status": "different",
       "baselineSha256": "2c8c11276afc801400adbe12ac923e14b738fabdc84788879720d3a7a6a4ab7d",
@@ -9811,7 +9811,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:38.292Z"
+        "capturedAt": "2026-08-16T21:39:58.205Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -9863,18 +9863,18 @@
           "laidOutViews": 119,
           "visibleContentLeafViews": 22,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4634,
+          "processId": 4517,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "95fd6d7111b679566b9390f63e09ad9e",
-          "bootId": "fd3fbe46-6189-4889-884b-f4e4f3180ced",
-          "capturedAtEpochMs": 1786830377085,
-          "capturedAtMonotonicNs": 230940492420
+          "generation": "bb6fae9a697a01458ac59d1f28e529db",
+          "bootId": "74cc269e-3269-4517-8813-e54e629ac8cf",
+          "capturedAtEpochMs": 1786916778759,
+          "capturedAtMonotonicNs": 250236480446
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830377085"
+        "capturedAt": "1786916778759"
       },
       "status": "different",
       "baselineSha256": "551a2743638dcfe351a3e5d9ae4e07efe5a67055d90d267bc56960098b729e58",
@@ -9940,7 +9940,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:39.265Z"
+        "capturedAt": "2026-08-16T21:39:59.163Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -9992,18 +9992,18 @@
           "laidOutViews": 71,
           "visibleContentLeafViews": 7,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4793,
+          "processId": 4446,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "28c42b76167be9ff33cf343940bcefc1",
-          "bootId": "a25f9151-9e3f-4210-8f6f-93a281781455",
-          "capturedAtEpochMs": 1786830224276,
-          "capturedAtMonotonicNs": 84634131632
+          "generation": "84975f5c98ec4f7a82ae09a9df7e0a4b",
+          "bootId": "a8c828c1-d00d-4f8c-9a19-6f1ed862f9ca",
+          "capturedAtEpochMs": 1786916629901,
+          "capturedAtMonotonicNs": 90163599083
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830224276"
+        "capturedAt": "1786916629901"
       },
       "status": "different",
       "baselineSha256": "2277c15d2988e2bb573ade34d8f6b5b8c63d45e1c548f09fc14d8828ed396b5c",
@@ -10069,7 +10069,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:40.300Z"
+        "capturedAt": "2026-08-16T21:40:00.167Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -10112,7 +10112,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -10121,21 +10121,21 @@
           "laidOutViews": 104,
           "visibleContentLeafViews": 6,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4710,
+          "processId": 4450,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "846aa82593f14f96677435a241d069ea",
-          "bootId": "9124cb8f-1516-4a0c-9344-b3a01f938029",
-          "capturedAtEpochMs": 1786830292402,
-          "capturedAtMonotonicNs": 151796575557
+          "generation": "e5f867513e12f49b188f2bf06d04198d",
+          "bootId": "06d3558b-9504-4059-a327-a9f318178b01",
+          "capturedAtEpochMs": 1786916691572,
+          "capturedAtMonotonicNs": 161203278603
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830292402"
+        "capturedAt": "1786916691572"
       },
       "status": "different",
-      "baselineSha256": "b14c1d18adb4f8213aab59cf2f689a6382839c812587473cec51fdb0a09c2eb9",
+      "baselineSha256": "a73ab8efc37eee65d774c2865340ee79ab356dec9e39b751ca48e1389cfe2174",
       "currentSha256": "ba52f973e6ab41cf414d9122af734a5e8a9e16f02750175f27e1e750ad2b28eb",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.long-inline-code.side-by-side.png",
@@ -10146,7 +10146,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8668256148679907,
+        "rgbSimilarity": 0.8668252631882725,
         "pixelPerfectSimilarity": 0.6803877884446605,
         "pixelMismatchRatio": 0.3196122115553395,
         "compositor": "sharp",
@@ -10198,7 +10198,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:41.250Z"
+        "capturedAt": "2026-08-16T21:40:01.123Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -10250,21 +10250,21 @@
           "laidOutViews": 44,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4712,
+          "processId": 4595,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "c4306505a3308f587efcc3571b815ba2",
-          "bootId": "61086d8d-5ef0-448d-81c1-7713a72d6301",
-          "capturedAtEpochMs": 1786830363158,
-          "capturedAtMonotonicNs": 223032114707
+          "generation": "6d44b173b9bb6da701d3008e8dd0a61d",
+          "bootId": "fa4690f5-656c-4245-9456-8a484e8cdca1",
+          "capturedAtEpochMs": 1786916764800,
+          "capturedAtMonotonicNs": 226222166654
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830363158"
+        "capturedAt": "1786916764800"
       },
       "status": "different",
-      "baselineSha256": "c5cc90b267617e8034ff55032b322fb9e1dcddee8a226e24afd9f908a1c9b344",
+      "baselineSha256": "0d0fee81d983ce2fd0acde99add5a453d47296a6423090031223e4322319cf58",
       "currentSha256": "1d85ca7b78c6459d04b6ea81f5babc762dd17c0bc73bd5ec3376d32114abce4f",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-link-ref.side-by-side.png",
@@ -10275,7 +10275,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8830395536870423,
+        "rgbSimilarity": 0.883036876155635,
         "pixelPerfectSimilarity": 0.2295452397348132,
         "pixelMismatchRatio": 0.7704547602651868,
         "compositor": "sharp",
@@ -10327,7 +10327,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:42.196Z"
+        "capturedAt": "2026-08-16T21:40:02.059Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -10370,7 +10370,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -10379,18 +10379,18 @@
           "laidOutViews": 37,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4710,
+          "processId": 4450,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "846aa82593f14f96677435a241d069ea",
-          "bootId": "9124cb8f-1516-4a0c-9344-b3a01f938029",
-          "capturedAtEpochMs": 1786830379463,
-          "capturedAtMonotonicNs": 238857737798
+          "generation": "e5f867513e12f49b188f2bf06d04198d",
+          "bootId": "06d3558b-9504-4059-a327-a9f318178b01",
+          "capturedAtEpochMs": 1786916784794,
+          "capturedAtMonotonicNs": 254425120434
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830379463"
+        "capturedAt": "1786916784794"
       },
       "status": "different",
       "baselineSha256": "74904f7fd4dce89b096b9c6cd0a8d9076c7b6a0bf198362fa0e2fbba466a3fe4",
@@ -10456,7 +10456,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:43.097Z"
+        "capturedAt": "2026-08-16T21:40:02.995Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -10508,21 +10508,21 @@
           "laidOutViews": 71,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4657,
+          "processId": 4694,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "62487c46dace8bba62749dbfd3bcff22",
-          "bootId": "113c56f2-075b-428e-9523-2cb9a7d6bf1f",
-          "capturedAtEpochMs": 1786830196553,
-          "capturedAtMonotonicNs": 57090745172
+          "generation": "de7435cd26731e7dcf024fb84475cdd7",
+          "bootId": "2389db7b-cd48-45b8-9012-11ca23382a22",
+          "capturedAtEpochMs": 1786916592217,
+          "capturedAtMonotonicNs": 60590155630
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830196553"
+        "capturedAt": "1786916592217"
       },
       "status": "different",
-      "baselineSha256": "4afea929f3199659cbb7e528334583d07a476d1c7fe47fb811b43bb0abedd271",
+      "baselineSha256": "4d2c8031c0d658f5128981a7c8221a63e74c06634f9b15abc126750a973fcca9",
       "currentSha256": "4310161fce3c996cea61d8da26c11017c49ead38b6dfaf5502d124aa0f9927f6",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-slice1.side-by-side.png",
@@ -10533,7 +10533,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 780,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8751454782504173,
+        "rgbSimilarity": 0.8751446091999703,
         "pixelPerfectSimilarity": 0.7897187791145137,
         "pixelMismatchRatio": 0.2102812208854863,
         "compositor": "sharp",
@@ -10585,7 +10585,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:44.030Z"
+        "capturedAt": "2026-08-16T21:40:03.965Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -10637,18 +10637,18 @@
           "laidOutViews": 33,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4676,
+          "processId": 4629,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "375931a88d6b023f33bd7b36b8be9323",
-          "bootId": "3acff154-72bb-48b7-bd8f-788859723e49",
-          "capturedAtEpochMs": 1786830321675,
-          "capturedAtMonotonicNs": 181546083790
+          "generation": "4aa7fe37377a573824eba485ca676f20",
+          "bootId": "ac9e68ad-625e-43d4-8a18-1516b13e2378",
+          "capturedAtEpochMs": 1786916729682,
+          "capturedAtMonotonicNs": 198872764037
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830321675"
+        "capturedAt": "1786916729682"
       },
       "status": "different",
       "baselineSha256": "3ea1d5c75b5247a39a2a39db9486633e66c38edee1e928e84b3c3f922fa77c20",
@@ -10714,7 +10714,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:44.901Z"
+        "capturedAt": "2026-08-16T21:40:04.902Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -10766,18 +10766,18 @@
           "laidOutViews": 37,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4634,
+          "processId": 4517,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "95fd6d7111b679566b9390f63e09ad9e",
-          "bootId": "fd3fbe46-6189-4889-884b-f4e4f3180ced",
-          "capturedAtEpochMs": 1786830268938,
-          "capturedAtMonotonicNs": 122793456678
+          "generation": "bb6fae9a697a01458ac59d1f28e529db",
+          "bootId": "74cc269e-3269-4517-8813-e54e629ac8cf",
+          "capturedAtEpochMs": 1786916666064,
+          "capturedAtMonotonicNs": 137541077338
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830268938"
+        "capturedAt": "1786916666064"
       },
       "status": "different",
       "baselineSha256": "b274b8b70a0497257dd7b25acee919907dbcff89a99cdaeb62f86a81a52c621c",
@@ -10843,7 +10843,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:45.815Z"
+        "capturedAt": "2026-08-16T21:40:05.893Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -10895,18 +10895,18 @@
           "laidOutViews": 35,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4810,
+          "processId": 4665,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "25eb0ed193cca1c118714d60c6b89334",
-          "bootId": "490aac9f-0924-4b4f-a1da-4bd58fa6310f",
-          "capturedAtEpochMs": 1786830314309,
-          "capturedAtMonotonicNs": 174724377002
+          "generation": "5e499e0b02d6893f281cfd7a9fce315a",
+          "bootId": "88861f88-da0a-42bf-aed6-abdc0166086b",
+          "capturedAtEpochMs": 1786916700840,
+          "capturedAtMonotonicNs": 170627974805
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830314309"
+        "capturedAt": "1786916700840"
       },
       "status": "different",
       "baselineSha256": "f39795f05d05592af69bd0a7fa1842f08d2c41bf5d4c7c61b76edff1d5caa1df",
@@ -10972,7 +10972,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-15T21:40:46.727Z"
+        "capturedAt": "2026-08-16T21:40:06.842Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -11015,7 +11015,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -11024,18 +11024,18 @@
           "laidOutViews": 33,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4710,
+          "processId": 4450,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "846aa82593f14f96677435a241d069ea",
-          "bootId": "9124cb8f-1516-4a0c-9344-b3a01f938029",
-          "capturedAtEpochMs": 1786830235452,
-          "capturedAtMonotonicNs": 94846552706
+          "generation": "e5f867513e12f49b188f2bf06d04198d",
+          "bootId": "06d3558b-9504-4059-a327-a9f318178b01",
+          "capturedAtEpochMs": 1786916631219,
+          "capturedAtMonotonicNs": 100849349412
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1786830235452"
+        "capturedAt": "1786916631219"
       },
       "status": "different",
       "baselineSha256": "f1186ea7b3c531fc7d570d76e7424ca2d00a209e2e95bab952ea6338e8070c18",

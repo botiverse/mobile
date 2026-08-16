@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-15T22:08:28.068Z",
+  "generatedAt": "2026-08-16T22:05:23.071Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 85,
-    "pending": 1
+    "ready": 82,
+    "pending": 4
   },
   "cases": [
     {
@@ -460,7 +460,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe0ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe9ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-10T22:11:45.609Z",
       "severity": "low",
       "summary": [
@@ -787,39 +787,16 @@
     },
     {
       "id": "components.ui.surface-list-item.states",
-      "status": "ready",
-      "imageHash": "p1:f003f003fffcfffc0ffc0ffc7fff7ffffffefffffffefffffffefffffffeffffc3fe83ffc3fec7fffffeffffc77ec1ffeffefffffffefffffffedffbc00380018000bffcbffc80fc807c80fc807cbffcbffc80fc807cfffc803c8001bffc80018000ffff8000fffefffeffff000000008005e001fffffffffff81fffffffffff",
-      "generatedAt": "2026-08-15T22:06:58.205Z",
-      "severity": "medium",
-      "summary": [
-        "In the Android version, the two list items are stacked vertically with a narrow vertical gap, whereas in the React baseline they are stacked tightly with no visible gap (or a much smaller one).",
-        "On Android, the selected ('Active integration') item is positioned with its top edge clipped/offset by ~12px below the expected baseline, suggesting a downward offset or extra top padding/margin.",
-        "The outer page/container on Android has a pale cream/beige background fill, while the React baseline background is pure white.",
-        "Both list items on Android appear slightly taller than on React, increasing vertical padding inside the cards.",
-        "Typography weight and color appear consistent between the two; primary differences are layout/spacing and background fill."
-      ],
-      "likelyCauses": [
-        "Android Compose layout is applying extra vertical spacing/padding between items vs. the React CSS gap/padding.",
-        "The list item container on Android has an additional outer margin or vertical offset pushing the selected item down.",
-        "A theme-level background color (likely the Android Surface color) is being applied to the page background where React renders white.",
-        "Possible mismatch in density-independent pixel (dp) rounding causing items to be slightly taller."
-      ],
-      "suggestedOwner": "android-platform",
-      "suggestedFixes": [
-        "Align the vertical spacing/padding between Android list items to match the React baseline (reduce inter-item gap).",
-        "Remove or normalize the outer top offset on the selected list item so its top edge aligns with React.",
-        "Override or set the Android page/canvas background to white (#FFFFFF) to match React baseline.",
-        "Verify the list item height/padding values against the React token (e.g., paddingVertical) and reduce if items render taller on Android.",
-        "Re-capture the Android snapshot with the same crop/bounds contract and re-run pixel-diff to confirm alignment."
-      ],
-      "intentional": [
-        "Differences in font kerning/rendering between web and Android typefaces may be acceptable.",
-        "Minor anti-aliasing differences along card borders are expected."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.24455726210112172
+      "status": "pending",
+      "imageHash": "p1:f003f003fffcfffc0ffc0ffc7fff7ffffffefffffffefffffffefffffffeffffc7fe83ffc3fec7fffffeffffcf7ec1ffeffefffffffefffffffedffbc00380018000bffcbffc80fc80fc80fc80fcbffcbbfc80fc807cfffc803c8001bffc80018000ffff8000fffefffeffff000000008007e001fffffffffff81fffffffffff",
+      "generatedAt": "2026-08-16T22:05:22.012Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.24135838170925894
     },
     {
       "id": "components.ui.avatar-list-row.states",
@@ -955,36 +932,16 @@
     },
     {
       "id": "components.thread.composer.states",
-      "status": "ready",
-      "imageHash": "p1:fffffffffffffffffffefffc0ffc0ffc8fff0fff0000000000000000ffffffff80010001fffefffdfffefffd8002000d80020005ffdefffdfffefffd8ff80ff987f80ff187980f9187c00fc187980f9187f80ff18ff80009800000018000ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-08-15T22:06:58.276Z",
-      "severity": "medium",
-      "summary": [
-        "Composer toolbar icons (image, attachment) and send button have darker, heavier shadow borders on Android vs React baseline",
-        "Android toolbar icons appear slightly larger and positioned closer to the left edge than React",
-        "Send (paper airplane) button on Android shows a more saturated/pink fill compared to React's softer pink",
-        "'As Task' label checkbox and text spacing differ: Android checkbox sits farther from the label with more gap",
-        "Android overall composer container uses heavier outer border stroke than React"
-      ],
-      "likelyCauses": [
-        "Android is using elevation/shadow tokens that differ from React web's box-shadow spec",
-        "Icon asset swap rendered at different intrinsic size on Android",
-        "Color tokens for primary action (send) not aligned between web and Android themes",
-        "Spacing tokens (gaps between checkbox, label, and icon group) are not shared across platforms"
-      ],
-      "suggestedOwner": "android-platform",
-      "suggestedFixes": [
-        "Align Android elevation/shadow values for icon buttons with the React baseline (or unify both to a shared design token)",
-        "Resize Android toolbar icon drawables to match React icon dimensions",
-        "Normalize the send-button background color to use the shared primary token used by React",
-        "Add a shared spacing token for the checkbox-to-label and icon-cluster gaps so both platforms match",
-        "Verify border-stroke weight on the composer container matches the design spec on Android"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.20583820662768026
+      "status": "pending",
+      "imageHash": "p1:fffffffffffffffffffcfffc0ffc0ffc8fff0fff0000000000000000ffffffff80010001fffe7ffdfffe7ffd8096000580060005fffefffdfffefffd8ff80ff987f80ff187d80f9187c00fc187d80f9187f80ff18ff80001800000018000ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
+      "generatedAt": "2026-08-16T22:05:22.048Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.20584795321637428
     },
     {
       "id": "components.thread.composer.pending-mention-actions",
@@ -1300,7 +1257,7 @@
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80007ffe800e07fe800000022000e002803ce7fefc1e63befc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff01defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
+      "imageHash": "p1:01fe01fc80007ffe800607fe800000022000e002803ce7fefc1e63befc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff01defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
       "generatedAt": "2026-07-26T22:12:50.062Z",
       "severity": "high",
       "summary": [
@@ -1332,7 +1289,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4141069523770946
+      "metricMismatch": 0.414442824158464
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1368,7 +1325,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.42276501802568156
+      "metricMismatch": 0.422764342906523
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1513,37 +1470,16 @@
     },
     {
       "id": "components.home.notification-center.states",
-      "status": "ready",
-      "imageHash": "p1:07fe07fcfffe7ffe80067ffe81c200028013000280b20002a0020002407340728013000280120012a3120012007240728003000280060002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00064000fffe3fff",
-      "generatedAt": "2026-08-15T22:06:58.508Z",
-      "severity": "medium",
-      "summary": [
-        "Notification item titles use bolder/heavier font weight on React (baseline) versus a lighter regular weight on Android (current).",
-        "Notification body text ('Last heartbeat was 4 minutes ago.', 'Two visual cases changed...') is bolder on React than on Android.",
-        "'NOTIFICATIONS' header label appears bolder on React; '2 items' counter appears heavier on Android.",
-        "Notification card container and overall component appear slightly larger / wider on Android, with different internal padding.",
-        "Layout content sits higher (more top spacing) on Android relative to the viewport compared to React."
-      ],
-      "likelyCauses": [
-        "Android implementation is not applying the design-system bold/medium font weight tokens used on React.",
-        "Typography style mapping (e.g., TextAppearance) on Android defaults to a lighter font weight than the Web/React equivalent.",
-        "Different default padding/margin scale or container sizing between React (web) and Android (Compose/Views) implementations.",
-        "Possible use of different font families between platforms causing perceived weight and width differences.",
-        "Crop region contract mismatch (component-bounds vs viewport-bounds) causing baseline/current to be cropped to different effective bounds."
-      ],
-      "suggestedOwner": "android-platform",
-      "suggestedFixes": [
-        "Apply the brand/design-system bold (e.g., 700 / Medium-Semibold) weight to notification titles, the 'NOTIFICATIONS' header, and body copy on Android to match React.",
-        "Verify TextAppearance / Typography tokens on Android: titleText, bodyText, and labelSmall should be set to the same weight and size used on React.",
-        "Align card padding, item spacing, and container bounds on Android with the React card metrics; check outer container width vs. viewport.",
-        "Use the same font family across platforms (or a weight-equivalent fallback) so character widths and perceived weight match.",
-        "Re-align the crop contract so both baseline and current are captured at the same logical bounds (component-bounds vs viewport-bounds) before comparing."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.11433581777183677
+      "status": "pending",
+      "imageHash": "p1:07fe07fcfffe7ffe80067ffe0202000280020002800200020072000200124072803200028012001200f200120072407280020002fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
+      "generatedAt": "2026-08-16T22:05:22.283Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11986200564399618
     },
     {
       "id": "components.home.search.results",
@@ -1579,7 +1515,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2693391258557135
+      "metricMismatch": 0.26934081365360985
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1613,12 +1549,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26916865826818437
+      "metricMismatch": 0.26917608457892817
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fcfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa3fff",
+      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fcfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa7fff",
       "generatedAt": "2026-07-30T04:34:27.469Z",
       "severity": "medium",
       "summary": [
@@ -1650,7 +1586,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19037969775094843
+      "metricMismatch": 0.19034039699008576
     },
     {
       "id": "components.home.activity.results",
@@ -1684,7 +1620,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18964608354817747
+      "metricMismatch": 0.1897755140539521
     },
     {
       "id": "components.tasks.panel.states",
@@ -1866,7 +1802,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-15T22:08:27.411Z",
+      "generatedAt": "2026-08-16T22:05:22.354Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1915,7 +1851,7 @@
     {
       "id": "components.channel.settings.panel",
       "status": "ready",
-      "imageHash": "p1:ffffffffdfff000083fd0000fffd0000ffff0000ffff0000ffff7ffcffff7ff8cffd7ffcf7ff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017c7c80017ffc80017ffc800140008001000080014000ffff0000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
+      "imageHash": "p1:ffffffffffff000087fd0000fffd0000ffff0000ffff0000ffff7ffcffff7ff8cffd7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017c7c80017ffc80017ffc800140008001000080014000ffff0000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
       "generatedAt": "2026-08-01T22:14:59.204Z",
       "severity": "high",
       "summary": [
@@ -1947,7 +1883,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.9020999581426121
+      "metricMismatch": 0.9019045111462173
     },
     {
       "id": "components.channel.members.add-panel",
@@ -2156,7 +2092,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19863254614439452
+      "metricMismatch": 0.19862714519112623
     },
     {
       "id": "components.settings.notifications.page",
@@ -2328,7 +2264,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06128664209232926
+      "metricMismatch": 0.06130115715423767
     },
     {
       "id": "screens.members.agent-detail.workspace",

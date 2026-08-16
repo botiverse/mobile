@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-15T22:08:34.016Z",
+  "generatedAt": "2026-08-16T22:05:29.358Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 81,
-    "pending": 5
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -457,34 +457,16 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffebffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-12T22:17:54.763Z",
-      "severity": "low",
-      "summary": [
-        "Status dot row (4 dots: green, orange, gray, blue) appears slightly larger and with wider spacing on iOS compared to Android",
-        "Pink pulsing status dot before 'Waiting pulse' label appears noticeably larger on iOS",
-        "'Waiting pulse' text label appears rendered with slightly heavier weight and larger size on iOS",
-        "Top-left metadata text block (component ID, title, resolution) appears at the same proportional position but text is larger on iOS due to device pixel density",
-        "Overall layout is isomorphic; differences are subtle and likely driven by font metrics and dot sizing"
-      ],
-      "likelyCauses": [
-        "Platform-specific font rendering and weight differences (SF Pro on iOS vs Roboto on Android)",
-        "Default status dot diameter may not be pinned to a fixed dp, causing density-based scaling differences",
-        "Possible difference in pulse animation snapshot frame between platforms"
-      ],
-      "suggestedOwner": "kuikly-component-owner",
-      "suggestedFixes": [
-        "Pin status dot diameter to a fixed dp value to ensure consistent sizing across platforms",
-        "Normalize font weight/size for the 'Waiting pulse' label via explicit typography tokens",
-        "Verify pulse animation is captured at the same phase on both platforms for snapshot comparison",
-        "Confirm crop region is consistent — current (iOS) crop is null while baseline is manual-rect"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.002999216861776066
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03f407fe43fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
+      "generatedAt": "2026-08-16T22:05:27.980Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.0029988793021968885
     },
     {
       "id": "components.ui.progress-bar.states",
@@ -1307,7 +1289,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3719268575903647
+      "metricMismatch": 0.37192550735204766
     },
     {
       "id": "components.thread.message-share.selection",
@@ -2131,7 +2113,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-15T22:08:33.675Z",
+      "generatedAt": "2026-08-16T22:05:28.972Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2144,7 +2126,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-15T22:08:33.675Z",
+      "generatedAt": "2026-08-16T22:05:28.972Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2157,7 +2139,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-15T22:08:33.675Z",
+      "generatedAt": "2026-08-16T22:05:28.972Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2170,7 +2152,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-15T22:08:33.675Z",
+      "generatedAt": "2026-08-16T22:05:28.972Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2183,7 +2165,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-15T22:08:33.675Z",
+      "generatedAt": "2026-08-16T22:05:28.972Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
