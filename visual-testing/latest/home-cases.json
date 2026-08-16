@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-16T22:05:31.032Z",
+  "generatedAt": "2026-08-16T22:08:56.372Z",
   "runId": "10736100-20260816220319",
   "cases": [
     {
@@ -5468,17 +5468,29 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-16T22:05:29.685Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-16T22:07:40.149Z",
+            "severity": "low",
+            "summary": [
+              "Both Android and iOS renders show identical layout: header with title 'Raft UI Status Dot' and subtitle, four small status dots in a row (green, orange, gray, blue), and a pink 'Waiting pulse' indicator with label below.",
+              "All visual elements are isomorphic in placement, size, color, shape, and typography between the two platforms.",
+              "Pixel mismatch ratio is 0.30% and RGB similarity is 98.0%, consistent with sub-pixel/font-hinting differences rather than real divergence.",
+              "The iOS canvas extends much taller (1170×2532 vs cropped 342×92 on Android) but the component bounds themselves match.",
+              "No missing elements, clipping, or state indicator discrepancies detected."
+            ],
+            "likelyCauses": [
+              "Minor font hinting/anti-aliasing differences between Android and iOS text rasterizers at the captured scale.",
+              "Canvas size mismatch (Android component-bounds crop vs iOS full-canvas capture) is a snapshot framing artifact, not a UI divergence."
+            ],
+            "suggestedOwner": "ui-components",
+            "suggestedFixes": [
+              "No fixes required; the renders are isomorphic within tolerance.",
+              "If desired, normalize the snapshot framing on iOS to use the same component-bounds crop as Android for cleaner future comparisons."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -5549,17 +5561,29 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-16T22:05:29.685Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-16T22:07:40.149Z",
+            "severity": "low",
+            "summary": [
+              "Both Android and iOS renders show identical layout: header with title 'Raft UI Status Dot' and subtitle, four small status dots in a row (green, orange, gray, blue), and a pink 'Waiting pulse' indicator with label below.",
+              "All visual elements are isomorphic in placement, size, color, shape, and typography between the two platforms.",
+              "Pixel mismatch ratio is 0.30% and RGB similarity is 98.0%, consistent with sub-pixel/font-hinting differences rather than real divergence.",
+              "The iOS canvas extends much taller (1170×2532 vs cropped 342×92 on Android) but the component bounds themselves match.",
+              "No missing elements, clipping, or state indicator discrepancies detected."
+            ],
+            "likelyCauses": [
+              "Minor font hinting/anti-aliasing differences between Android and iOS text rasterizers at the captured scale.",
+              "Canvas size mismatch (Android component-bounds crop vs iOS full-canvas capture) is a snapshot framing artifact, not a UI divergence."
+            ],
+            "suggestedOwner": "ui-components",
+            "suggestedFixes": [
+              "No fixes required; the renders are isomorphic within tolerance.",
+              "If desired, normalize the snapshot framing on iOS to use the same component-bounds crop as Android for cleaner future comparisons."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -8934,17 +8958,32 @@
         "currentHeight": 546
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-16T22:05:23.243Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-16T22:07:25.017Z",
+        "severity": "medium",
+        "summary": [
+          "Active integration card on Android extends to the right edge of the canvas and appears clipped/cropped, while React version is fully contained within bounds",
+          "Android private app card has slightly more vertical padding (taller) than React equivalent",
+          "Typography weight and family appear consistent between platforms",
+          "Card background color (light blue) and selected border styling match between platforms",
+          "Vertical spacing between the two list items differs: React has more gap between cards than Android"
+        ],
+        "likelyCauses": [
+          "Android implementation not honoring component-bounds crop contract, causing overflow",
+          "Missing max-width or width constraint on the Android Surface List Item container",
+          "Vertical padding token for default state not aligned to React spec on Android"
+        ],
+        "suggestedOwner": "android-ui-engineering",
+        "suggestedFixes": [
+          "Constrain Android Surface List Item width to fit within parent container instead of expanding to full canvas width",
+          "Verify the manual-rect crop on Android side matches the element-bounds crop on React side",
+          "Align Android vertical padding for the default (unselected) state to match React values",
+          "Increase gap between list items on Android to match React spacing"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -9031,17 +9070,32 @@
             "currentHeight": 546
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-16T22:05:23.243Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-16T22:07:25.017Z",
+            "severity": "medium",
+            "summary": [
+              "Active integration card on Android extends to the right edge of the canvas and appears clipped/cropped, while React version is fully contained within bounds",
+              "Android private app card has slightly more vertical padding (taller) than React equivalent",
+              "Typography weight and family appear consistent between platforms",
+              "Card background color (light blue) and selected border styling match between platforms",
+              "Vertical spacing between the two list items differs: React has more gap between cards than Android"
+            ],
+            "likelyCauses": [
+              "Android implementation not honoring component-bounds crop contract, causing overflow",
+              "Missing max-width or width constraint on the Android Surface List Item container",
+              "Vertical padding token for default state not aligned to React spec on Android"
+            ],
+            "suggestedOwner": "android-ui-engineering",
+            "suggestedFixes": [
+              "Constrain Android Surface List Item width to fit within parent container instead of expanding to full canvas width",
+              "Verify the manual-rect crop on Android side matches the element-bounds crop on React side",
+              "Align Android vertical padding for the default (unselected) state to match React values",
+              "Increase gap between list items on Android to match React spacing"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -9064,17 +9118,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.544Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-16T22:07:32.025Z",
+            "severity": "low",
+            "summary": [
+              "Unselected list item card width is slightly narrower on iOS (~97% of React width), causing the right border to sit a few pixels inset from the React baseline.",
+              "Selected list item card on iOS has a slightly tighter vertical padding (reduced bottom padding) compared to the React baseline.",
+              "Both states otherwise match in color, border weight, typography weight/size, and alignment; differences are sub-perceptual in spacing only."
+            ],
+            "likelyCauses": [
+              "Independent padding/margin tokens not normalized between the React (web) and iOS (native) implementations of the Surface List Item component.",
+              "Minor rounding differences from native layout (Auto Layout) vs CSS box model at the device pixel density."
+            ],
+            "suggestedOwner": "design-system / Raft UI component owner (SurfaceListItem)",
+            "suggestedFixes": [
+              "Normalize the unselected card width token so iOS matches the React component-bounds width exactly.",
+              "Align the selected-state vertical padding between iOS and React so the selected card height matches.",
+              "Re-run the Slock visual diff after token alignment to confirm pixel mismatch drops below the 2% tolerance.",
+              "Document any intentional platform-specific spacing deviations in the component spec."
+            ],
+            "intentional": [
+              "Platform-specific density or safe-area adjustments that are documented as expected deviations."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -9151,17 +9219,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.544Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-16T22:07:32.025Z",
+            "severity": "low",
+            "summary": [
+              "Unselected list item card width is slightly narrower on iOS (~97% of React width), causing the right border to sit a few pixels inset from the React baseline.",
+              "Selected list item card on iOS has a slightly tighter vertical padding (reduced bottom padding) compared to the React baseline.",
+              "Both states otherwise match in color, border weight, typography weight/size, and alignment; differences are sub-perceptual in spacing only."
+            ],
+            "likelyCauses": [
+              "Independent padding/margin tokens not normalized between the React (web) and iOS (native) implementations of the Surface List Item component.",
+              "Minor rounding differences from native layout (Auto Layout) vs CSS box model at the device pixel density."
+            ],
+            "suggestedOwner": "design-system / Raft UI component owner (SurfaceListItem)",
+            "suggestedFixes": [
+              "Normalize the unselected card width token so iOS matches the React component-bounds width exactly.",
+              "Align the selected-state vertical padding between iOS and React so the selected card height matches.",
+              "Re-run the Slock visual diff after token alignment to confirm pixel mismatch drops below the 2% tolerance.",
+              "Document any intentional platform-specific spacing deviations in the component spec."
+            ],
+            "intentional": [
+              "Platform-specific density or safe-area adjustments that are documented as expected deviations."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -10754,17 +10836,33 @@
         "currentHeight": 300
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-16T22:05:23.267Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-16T22:07:25.091Z",
+        "severity": "medium",
+        "summary": [
+          "Android composer component bounds are shifted ~24px to the right relative to the React baseline (manual-rect crop offset x:24 vs element-crop x:0).",
+          "The Android card occupies a larger horizontal area (extends past the right margin) compared to React, causing edge clipping risk against the canvas boundary.",
+          "Pink send button, image/attachment icons, checkbox, and 'As Task' label render in matching positions and styling within the card itself — internal composer contents are consistent.",
+          "Card border thickness, typography weight of 'Review the Android composer crop', and icon sizes appear visually identical between platforms."
+        ],
+        "likelyCauses": [
+          "Android snapshot used a manual-rect crop with x:24 offset instead of an element-bounds crop, causing a positional mismatch rather than a true component difference.",
+          "Possible missing outset/padding configuration in the Android visual-regression contract.",
+          "Coordinate-system offset between the two platform harness implementations."
+        ],
+        "suggestedOwner": "android-visual-testing",
+        "suggestedFixes": [
+          "Switch Android crop mode from 'manual-rect' to 'element' with contract 'component-bounds' to match React baseline cropping behavior.",
+          "Verify the Android harness renders the composer at the same origin (x:0) as the React harness, or apply a consistent outset value.",
+          "Re-run the comparison after aligning crop strategies; if the 24px offset is intentional, document it in the contract and re-baseline.",
+          "Confirm the card's right-edge clipping is not a real layout bug by inspecting the underlying Compose layout for padding/end constraints."
+        ],
+        "intentional": [
+          "If the 24px x-offset is by design to account for platform-specific padding or status-bar inset, mark it intentional and update the baseline accordingly."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -10851,17 +10949,33 @@
             "currentHeight": 300
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-16T22:05:23.267Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-16T22:07:25.091Z",
+            "severity": "medium",
+            "summary": [
+              "Android composer component bounds are shifted ~24px to the right relative to the React baseline (manual-rect crop offset x:24 vs element-crop x:0).",
+              "The Android card occupies a larger horizontal area (extends past the right margin) compared to React, causing edge clipping risk against the canvas boundary.",
+              "Pink send button, image/attachment icons, checkbox, and 'As Task' label render in matching positions and styling within the card itself — internal composer contents are consistent.",
+              "Card border thickness, typography weight of 'Review the Android composer crop', and icon sizes appear visually identical between platforms."
+            ],
+            "likelyCauses": [
+              "Android snapshot used a manual-rect crop with x:24 offset instead of an element-bounds crop, causing a positional mismatch rather than a true component difference.",
+              "Possible missing outset/padding configuration in the Android visual-regression contract.",
+              "Coordinate-system offset between the two platform harness implementations."
+            ],
+            "suggestedOwner": "android-visual-testing",
+            "suggestedFixes": [
+              "Switch Android crop mode from 'manual-rect' to 'element' with contract 'component-bounds' to match React baseline cropping behavior.",
+              "Verify the Android harness renders the composer at the same origin (x:0) as the React harness, or apply a consistent outset value.",
+              "Re-run the comparison after aligning crop strategies; if the 24px offset is intentional, document it in the contract and re-baseline.",
+              "Confirm the card's right-edge clipping is not a real layout bug by inspecting the underlying Compose layout for padding/end constraints."
+            ],
+            "intentional": [
+              "If the 24px x-offset is by design to account for platform-specific padding or status-bar inset, mark it intentional and update the baseline accordingly."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -16954,17 +17068,34 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-16T22:05:23.521Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-16T22:07:25.335Z",
+        "severity": "medium",
+        "summary": [
+          "Notification card component bounds differ in width and internal padding between React and Android versions",
+          "Android version is positioned further right with greater horizontal margin from the left edge",
+          "Card body content (titles, descriptions, buttons) appears slightly larger in Android, with more whitespace between the icon and the title text",
+          "Header bar 'NOTIFICATIONS' / '2 items' row has increased vertical padding on Android, making the header taller",
+          "Inner content area between the two notification items shows a taller divider/gap on Android"
+        ],
+        "likelyCauses": [
+          "Android implementation uses different default padding/margin token values than the React design system",
+          "Typography scale on Android (likely sp units) renders at slightly different size than React (px/rem) at the same nominal size",
+          "Component container uses different horizontal insets on Android (e.g., Material default card padding vs. custom React styling)",
+          "Line-height and vertical-rhythm values not synchronized across platforms"
+        ],
+        "suggestedOwner": "android",
+        "suggestedFixes": [
+          "Align Android CardView padding and outer container margins to match React card bounds (reduce left/right insets)",
+          "Synchronize typography token values (font-size, line-height) between Android sp and React px/rem definitions",
+          "Reduce vertical padding inside the notifications header row to match React's tighter spacing",
+          "Match the gap between the two notification items and the bottom internal padding to the React baseline",
+          "Verify theme color tokens for the primary pink button are consistent across platforms"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -17051,17 +17182,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-16T22:05:23.521Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-16T22:07:25.335Z",
+            "severity": "medium",
+            "summary": [
+              "Notification card component bounds differ in width and internal padding between React and Android versions",
+              "Android version is positioned further right with greater horizontal margin from the left edge",
+              "Card body content (titles, descriptions, buttons) appears slightly larger in Android, with more whitespace between the icon and the title text",
+              "Header bar 'NOTIFICATIONS' / '2 items' row has increased vertical padding on Android, making the header taller",
+              "Inner content area between the two notification items shows a taller divider/gap on Android"
+            ],
+            "likelyCauses": [
+              "Android implementation uses different default padding/margin token values than the React design system",
+              "Typography scale on Android (likely sp units) renders at slightly different size than React (px/rem) at the same nominal size",
+              "Component container uses different horizontal insets on Android (e.g., Material default card padding vs. custom React styling)",
+              "Line-height and vertical-rhythm values not synchronized across platforms"
+            ],
+            "suggestedOwner": "android",
+            "suggestedFixes": [
+              "Align Android CardView padding and outer container margins to match React card bounds (reduce left/right insets)",
+              "Synchronize typography token values (font-size, line-height) between Android sp and React px/rem definitions",
+              "Reduce vertical padding inside the notifications header row to match React's tighter spacing",
+              "Match the gap between the two notification items and the bottom internal padding to the React baseline",
+              "Verify theme color tokens for the primary pink button are consistent across platforms"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -17084,17 +17232,33 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.954Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-16T22:07:32.436Z",
+            "severity": "medium",
+            "summary": [
+              "iOS (right) renders the notification card at a slightly larger overall size with increased internal padding/spacing between icon, title, body, and button row.",
+              "iOS title text 'Android-Developer lost connection' appears heavier/bolder with tighter letter-spacing than React baseline.",
+              "iOS button row (View/Dismiss, Open/Dismiss) buttons are taller with more vertical padding and slightly larger label text.",
+              "iOS card has a visibly thicker outer border/shadow offset on the right and bottom edges versus React's thinner border.",
+              "iOS body text wraps to fewer characters per line (e.g., 'latest run.' sits closer to the right margin) due to wider container width at higher pixel density."
+            ],
+            "likelyCauses": [
+              "iOS variant is rendered at native 3x resolution (1170×2532) vs React baseline at 1x (390×844), causing perceived size differences if not normalized via CSS pixel/dp units.",
+              "Button padding and border-radius tokens differ between iOS UIKit style and React web stylesheet.",
+              "Font weight mapping differs: iOS uses SF Pro/system-bold (semibold appearance) while React uses the web font's regular weight for headings."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "Normalize the compare canvas so both renders are evaluated at the same logical dp size; apply scale factor when cropping iOS output.",
+              "Align notification card padding, button height, and border-width tokens to a shared design-token value.",
+              "Unify title font-weight across platforms (e.g., map to 'semibold'/600 on both).",
+              "Verify button vertical padding matches shared spec; reduce iOS button height to match React baseline.",
+              "Tighten iOS card outer shadow/offset to match React's 1–2px border weight."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -17166,17 +17330,33 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.954Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-16T22:07:32.436Z",
+            "severity": "medium",
+            "summary": [
+              "iOS (right) renders the notification card at a slightly larger overall size with increased internal padding/spacing between icon, title, body, and button row.",
+              "iOS title text 'Android-Developer lost connection' appears heavier/bolder with tighter letter-spacing than React baseline.",
+              "iOS button row (View/Dismiss, Open/Dismiss) buttons are taller with more vertical padding and slightly larger label text.",
+              "iOS card has a visibly thicker outer border/shadow offset on the right and bottom edges versus React's thinner border.",
+              "iOS body text wraps to fewer characters per line (e.g., 'latest run.' sits closer to the right margin) due to wider container width at higher pixel density."
+            ],
+            "likelyCauses": [
+              "iOS variant is rendered at native 3x resolution (1170×2532) vs React baseline at 1x (390×844), causing perceived size differences if not normalized via CSS pixel/dp units.",
+              "Button padding and border-radius tokens differ between iOS UIKit style and React web stylesheet.",
+              "Font weight mapping differs: iOS uses SF Pro/system-bold (semibold appearance) while React uses the web font's regular weight for headings."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "Normalize the compare canvas so both renders are evaluated at the same logical dp size; apply scale factor when cropping iOS output.",
+              "Align notification card padding, button height, and border-width tokens to a shared design-token value.",
+              "Unify title font-weight across platforms (e.g., map to 'semibold'/600 on both).",
+              "Verify button vertical padding matches shared spec; reduce iOS button height to match React baseline.",
+              "Tighten iOS card outer shadow/offset to match React's 1–2px border weight."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -20773,7 +20953,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-16T22:05:23.080Z",
+        "generatedAt": "2026-08-16T22:08:48.435Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20834,7 +21014,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:23.080Z",
+            "generatedAt": "2026-08-16T22:08:48.435Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20856,7 +21036,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.003Z",
+            "generatedAt": "2026-08-16T22:08:51.311Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20931,7 +21111,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.003Z",
+            "generatedAt": "2026-08-16T22:08:51.311Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25411,7 +25591,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.003Z",
+            "generatedAt": "2026-08-16T22:08:51.311Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25433,7 +25613,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:29.363Z",
+            "generatedAt": "2026-08-16T22:08:54.671Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25458,7 +25638,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.003Z",
+            "generatedAt": "2026-08-16T22:08:51.311Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25481,7 +25661,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:29.363Z",
+            "generatedAt": "2026-08-16T22:08:54.671Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25681,7 +25861,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.003Z",
+            "generatedAt": "2026-08-16T22:08:51.311Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25703,7 +25883,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:29.363Z",
+            "generatedAt": "2026-08-16T22:08:54.671Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25728,7 +25908,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.003Z",
+            "generatedAt": "2026-08-16T22:08:51.311Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25751,7 +25931,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:29.363Z",
+            "generatedAt": "2026-08-16T22:08:54.671Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25951,7 +26131,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.003Z",
+            "generatedAt": "2026-08-16T22:08:51.311Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25973,7 +26153,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:29.363Z",
+            "generatedAt": "2026-08-16T22:08:54.671Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25998,7 +26178,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.003Z",
+            "generatedAt": "2026-08-16T22:08:51.311Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26021,7 +26201,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:29.363Z",
+            "generatedAt": "2026-08-16T22:08:54.671Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26217,7 +26397,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.003Z",
+            "generatedAt": "2026-08-16T22:08:51.311Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26239,7 +26419,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:29.363Z",
+            "generatedAt": "2026-08-16T22:08:54.671Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26264,7 +26444,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.003Z",
+            "generatedAt": "2026-08-16T22:08:51.311Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26287,7 +26467,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:29.363Z",
+            "generatedAt": "2026-08-16T22:08:54.671Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26483,7 +26663,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.003Z",
+            "generatedAt": "2026-08-16T22:08:51.311Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26505,7 +26685,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:29.363Z",
+            "generatedAt": "2026-08-16T22:08:54.671Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26530,7 +26710,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:26.003Z",
+            "generatedAt": "2026-08-16T22:08:51.311Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26553,7 +26733,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-16T22:05:29.363Z",
+            "generatedAt": "2026-08-16T22:08:54.671Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

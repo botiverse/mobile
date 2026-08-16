@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>10736100-20260816220319</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-16T22:05:31.032Z" data-timestamp="2026-08-16T22:05:31.032Z" title="2026-08-16T22:05:31.032Z">2026-08-16 22:05:31 UTC</time></p>
+    <p class="runMeta"><code>10736100-20260816220319</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-16T22:08:56.372Z" data-timestamp="2026-08-16T22:08:56.372Z" title="2026-08-16T22:08:56.372Z">2026-08-16 22:08:56 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 85</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 82/86 ready</span>
+      <span class="pill">AI 85/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1668,7 +1668,12 @@
       <p><code>RGB 89.5%</code><br/><code>Pixel 75.86%</code><br/><code>Mismatch 24.14%</code><br/><code>Raw 1026×546 / 1026×546</code><br/><code>Canvas 1026×546</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×182 / component-bounds 342×182</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-ui-engineering</summary>
+    <ul><li>Active integration card on Android extends to the right edge of the canvas and appears clipped/cropped, while React version is fully contained within bounds</li><li>Android private app card has slightly more vertical padding (taller) than React equivalent</li><li>Typography weight and family appear consistent between platforms</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Constrain Android Surface List Item width to fit within parent container instead of expanding to full canvas width</li><li>Verify the manual-rect crop on Android side matches the element-bounds crop on React side</li><li>Align Android vertical padding for the default (unselected) state to match React values</li><li>Increase gap between list items on Android to match React spacing</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.surface-list-item.states.png" data-current-src="android/components.ui.surface-list-item.states.png" data-overlay-width="1026" data-overlay-height="546">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -1992,7 +1997,12 @@
       <p><code>RGB 84.3%</code><br/><code>Pixel 79.42%</code><br/><code>Mismatch 20.58%</code><br/><code>Raw 1026×300 / 1026×300</code><br/><code>Canvas 1026×300</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×100 / component-bounds 342×100</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-visual-testing</summary>
+    <ul><li>Android composer component bounds are shifted ~24px to the right relative to the React baseline (manual-rect crop offset x:24 vs element-crop x:0).</li><li>The Android card occupies a larger horizontal area (extends past the right margin) compared to React, causing edge clipping risk against the canvas boundary.</li><li>Pink send button, image/attachment icons, checkbox, and 'As Task' label render in matching positions and styling within the card itself — internal composer contents are consistent.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Switch Android crop mode from 'manual-rect' to 'element' with contract 'component-bounds' to match React baseline cropping behavior.</li><li>Verify the Android harness renders the composer at the same origin (x:0) as the React harness, or apply a consistent outset value.</li><li>Re-run the comparison after aligning crop strategies; if the 24px offset is intentional, document it in the contract and re-baseline.</li><li>Confirm the card's right-edge clipping is not a real layout bug by inspecting the underlying Compose layout for padding/end constraints.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.states.png" data-current-src="android/components.thread.composer.states.png" data-overlay-width="1026" data-overlay-height="300">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -3590,7 +3600,12 @@
       <p><code>RGB 93.9%</code><br/><code>Pixel 88.01%</code><br/><code>Mismatch 11.99%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android</summary>
+    <ul><li>Notification card component bounds differ in width and internal padding between React and Android versions</li><li>Android version is positioned further right with greater horizontal margin from the left edge</li><li>Card body content (titles, descriptions, buttons) appears slightly larger in Android, with more whitespace between the icon and the title text</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align Android CardView padding and outer container margins to match React card bounds (reduce left/right insets)</li><li>Synchronize typography token values (font-size, line-height) between Android sp and React px/rem definitions</li><li>Reduce vertical padding inside the notifications header row to match React's tighter spacing</li><li>Match the gap between the two notification items and the bottom internal padding to the React baseline</li><li>Verify theme color tokens for the primary pink button are consistent across platforms</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.home.notification-center.states.png" data-current-src="android/components.home.notification-center.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

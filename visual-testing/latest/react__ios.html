@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>10736100-20260816220319</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-16T22:05:31.032Z" data-timestamp="2026-08-16T22:05:31.032Z" title="2026-08-16T22:05:31.032Z">2026-08-16 22:05:31 UTC</time></p>
+    <p class="runMeta"><code>10736100-20260816220319</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-16T22:08:56.372Z" data-timestamp="2026-08-16T22:08:56.372Z" title="2026-08-16T22:08:56.372Z">2026-08-16 22:08:56 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 13</span>
       <span class="pill">Different 56</span>
       <span class="pill">Missing 6</span>
-      <span class="pill">AI 78/86 ready</span>
+      <span class="pill">AI 80/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1668,7 +1668,12 @@
       <p><code>RGB 91.1%</code><br/><code>Pixel 95.65%</code><br/><code>Mismatch 4.35%</code><br/><code>Raw 1026×546 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×182 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · design-system / Raft UI component owner (SurfaceListItem)</summary>
+    <ul><li>Unselected list item card width is slightly narrower on iOS (~97% of React width), causing the right border to sit a few pixels inset from the React baseline.</li><li>Selected list item card on iOS has a slightly tighter vertical padding (reduced bottom padding) compared to the React baseline.</li><li>Both states otherwise match in color, border weight, typography weight/size, and alignment; differences are sub-perceptual in spacing only.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize the unselected card width token so iOS matches the React component-bounds width exactly.</li><li>Align the selected-state vertical padding between iOS and React so the selected card height matches.</li><li>Re-run the Slock visual diff after token alignment to confirm pixel mismatch drops below the 2% tolerance.</li><li>Document any intentional platform-specific spacing deviations in the component spec.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.surface-list-item.states.png" data-current-src="ios/components.ui.surface-list-item.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3595,7 +3600,12 @@
       <p><code>RGB 94.0%</code><br/><code>Pixel 89.60%</code><br/><code>Mismatch 10.40%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · design-system</summary>
+    <ul><li>iOS (right) renders the notification card at a slightly larger overall size with increased internal padding/spacing between icon, title, body, and button row.</li><li>iOS title text 'Android-Developer lost connection' appears heavier/bolder with tighter letter-spacing than React baseline.</li><li>iOS button row (View/Dismiss, Open/Dismiss) buttons are taller with more vertical padding and slightly larger label text.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize the compare canvas so both renders are evaluated at the same logical dp size; apply scale factor when cropping iOS output.</li><li>Align notification card padding, button height, and border-width tokens to a shared design-token value.</li><li>Unify title font-weight across platforms (e.g., map to 'semibold'/600 on both).</li><li>Verify button vertical padding matches shared spec; reduce iOS button height to match React baseline.</li><li>Tighten iOS card outer shadow/offset to match React's 1–2px border weight.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.home.notification-center.states.png" data-current-src="ios/components.home.notification-center.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">

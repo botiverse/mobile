@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-16T22:05:23.071Z",
+  "generatedAt": "2026-08-16T22:08:48.430Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 82,
-    "pending": 4
+    "ready": 85,
+    "pending": 1
   },
   "cases": [
     {
@@ -787,15 +787,33 @@
     },
     {
       "id": "components.ui.surface-list-item.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:f003f003fffcfffc0ffc0ffc7fff7ffffffefffffffefffffffefffffffeffffc7fe83ffc3fec7fffffeffffcf7ec1ffeffefffffffefffffffedffbc00380018000bffcbffc80fc80fc80fc80fcbffcbbfc80fc807cfffc803c8001bffc80018000ffff8000fffefffeffff000000008007e001fffffffffff81fffffffffff",
-      "generatedAt": "2026-08-16T22:05:22.012Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-16T22:07:25.017Z",
+      "severity": "medium",
+      "summary": [
+        "Active integration card on Android extends to the right edge of the canvas and appears clipped/cropped, while React version is fully contained within bounds",
+        "Android private app card has slightly more vertical padding (taller) than React equivalent",
+        "Typography weight and family appear consistent between platforms",
+        "Card background color (light blue) and selected border styling match between platforms",
+        "Vertical spacing between the two list items differs: React has more gap between cards than Android"
+      ],
+      "likelyCauses": [
+        "Android implementation not honoring component-bounds crop contract, causing overflow",
+        "Missing max-width or width constraint on the Android Surface List Item container",
+        "Vertical padding token for default state not aligned to React spec on Android"
+      ],
+      "suggestedOwner": "android-ui-engineering",
+      "suggestedFixes": [
+        "Constrain Android Surface List Item width to fit within parent container instead of expanding to full canvas width",
+        "Verify the manual-rect crop on Android side matches the element-bounds crop on React side",
+        "Align Android vertical padding for the default (unselected) state to match React values",
+        "Increase gap between list items on Android to match React spacing"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.24135838170925894
     },
     {
@@ -932,15 +950,34 @@
     },
     {
       "id": "components.thread.composer.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffffffffffffffffffcfffc0ffc0ffc8fff0fff0000000000000000ffffffff80010001fffe7ffdfffe7ffd8096000580060005fffefffdfffefffd8ff80ff987f80ff187d80f9187c00fc187d80f9187f80ff18ff80001800000018000ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-08-16T22:05:22.048Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-16T22:07:25.091Z",
+      "severity": "medium",
+      "summary": [
+        "Android composer component bounds are shifted ~24px to the right relative to the React baseline (manual-rect crop offset x:24 vs element-crop x:0).",
+        "The Android card occupies a larger horizontal area (extends past the right margin) compared to React, causing edge clipping risk against the canvas boundary.",
+        "Pink send button, image/attachment icons, checkbox, and 'As Task' label render in matching positions and styling within the card itself — internal composer contents are consistent.",
+        "Card border thickness, typography weight of 'Review the Android composer crop', and icon sizes appear visually identical between platforms."
+      ],
+      "likelyCauses": [
+        "Android snapshot used a manual-rect crop with x:24 offset instead of an element-bounds crop, causing a positional mismatch rather than a true component difference.",
+        "Possible missing outset/padding configuration in the Android visual-regression contract.",
+        "Coordinate-system offset between the two platform harness implementations."
+      ],
+      "suggestedOwner": "android-visual-testing",
+      "suggestedFixes": [
+        "Switch Android crop mode from 'manual-rect' to 'element' with contract 'component-bounds' to match React baseline cropping behavior.",
+        "Verify the Android harness renders the composer at the same origin (x:0) as the React harness, or apply a consistent outset value.",
+        "Re-run the comparison after aligning crop strategies; if the 24px offset is intentional, document it in the contract and re-baseline.",
+        "Confirm the card's right-edge clipping is not a real layout bug by inspecting the underlying Compose layout for padding/end constraints."
+      ],
+      "intentional": [
+        "If the 24px x-offset is by design to account for platform-specific padding or status-bar inset, mark it intentional and update the baseline accordingly."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.20584795321637428
     },
     {
@@ -1470,15 +1507,35 @@
     },
     {
       "id": "components.home.notification-center.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe07fcfffe7ffe80067ffe0202000280020002800200020072000200124072803200028012001200f200120072407280020002fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
-      "generatedAt": "2026-08-16T22:05:22.283Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-16T22:07:25.335Z",
+      "severity": "medium",
+      "summary": [
+        "Notification card component bounds differ in width and internal padding between React and Android versions",
+        "Android version is positioned further right with greater horizontal margin from the left edge",
+        "Card body content (titles, descriptions, buttons) appears slightly larger in Android, with more whitespace between the icon and the title text",
+        "Header bar 'NOTIFICATIONS' / '2 items' row has increased vertical padding on Android, making the header taller",
+        "Inner content area between the two notification items shows a taller divider/gap on Android"
+      ],
+      "likelyCauses": [
+        "Android implementation uses different default padding/margin token values than the React design system",
+        "Typography scale on Android (likely sp units) renders at slightly different size than React (px/rem) at the same nominal size",
+        "Component container uses different horizontal insets on Android (e.g., Material default card padding vs. custom React styling)",
+        "Line-height and vertical-rhythm values not synchronized across platforms"
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Align Android CardView padding and outer container margins to match React card bounds (reduce left/right insets)",
+        "Synchronize typography token values (font-size, line-height) between Android sp and React px/rem definitions",
+        "Reduce vertical padding inside the notifications header row to match React's tighter spacing",
+        "Match the gap between the two notification items and the bottom internal padding to the React baseline",
+        "Verify theme color tokens for the primary pink button are consistent across platforms"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.11986200564399618
     },
     {
@@ -1802,7 +1859,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:05:22.354Z",
+      "generatedAt": "2026-08-16T22:08:47.755Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

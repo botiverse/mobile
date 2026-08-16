@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-16T22:05:25.998Z",
+  "generatedAt": "2026-08-16T22:08:51.306Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 78,
-    "pending": 8
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -773,15 +773,32 @@
     },
     {
       "id": "components.ui.surface-list-item.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:000810040ffc0c0602fc0ff6447c00060000000200000002000000020000fffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
-      "generatedAt": "2026-08-16T22:05:24.857Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-16T22:07:32.025Z",
+      "severity": "low",
+      "summary": [
+        "Unselected list item card width is slightly narrower on iOS (~97% of React width), causing the right border to sit a few pixels inset from the React baseline.",
+        "Selected list item card on iOS has a slightly tighter vertical padding (reduced bottom padding) compared to the React baseline.",
+        "Both states otherwise match in color, border weight, typography weight/size, and alignment; differences are sub-perceptual in spacing only."
+      ],
+      "likelyCauses": [
+        "Independent padding/margin tokens not normalized between the React (web) and iOS (native) implementations of the Surface List Item component.",
+        "Minor rounding differences from native layout (Auto Layout) vs CSS box model at the device pixel density."
+      ],
+      "suggestedOwner": "design-system / Raft UI component owner (SurfaceListItem)",
+      "suggestedFixes": [
+        "Normalize the unselected card width token so iOS matches the React component-bounds width exactly.",
+        "Align the selected-state vertical padding between iOS and React so the selected card height matches.",
+        "Re-run the Slock visual diff after token alignment to confirm pixel mismatch drops below the 2% tolerance.",
+        "Document any intentional platform-specific spacing deviations in the component spec."
+      ],
+      "intentional": [
+        "Platform-specific density or safe-area adjustments that are documented as expected deviations."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.04353742185495735
     },
     {
@@ -1471,15 +1488,34 @@
     },
     {
       "id": "components.home.notification-center.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe07fcfffe7ffe80067ffe0202000280020002800200020072000a0012407a803200028012001a00f2001a0072407a80020002fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-08-16T22:05:25.278Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-16T22:07:32.436Z",
+      "severity": "medium",
+      "summary": [
+        "iOS (right) renders the notification card at a slightly larger overall size with increased internal padding/spacing between icon, title, body, and button row.",
+        "iOS title text 'Android-Developer lost connection' appears heavier/bolder with tighter letter-spacing than React baseline.",
+        "iOS button row (View/Dismiss, Open/Dismiss) buttons are taller with more vertical padding and slightly larger label text.",
+        "iOS card has a visibly thicker outer border/shadow offset on the right and bottom edges versus React's thinner border.",
+        "iOS body text wraps to fewer characters per line (e.g., 'latest run.' sits closer to the right margin) due to wider container width at higher pixel density."
+      ],
+      "likelyCauses": [
+        "iOS variant is rendered at native 3x resolution (1170×2532) vs React baseline at 1x (390×844), causing perceived size differences if not normalized via CSS pixel/dp units.",
+        "Button padding and border-radius tokens differ between iOS UIKit style and React web stylesheet.",
+        "Font weight mapping differs: iOS uses SF Pro/system-bold (semibold appearance) while React uses the web font's regular weight for headings."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Normalize the compare canvas so both renders are evaluated at the same logical dp size; apply scale factor when cropping iOS output.",
+        "Align notification card padding, button height, and border-width tokens to a shared design-token value.",
+        "Unify title font-weight across platforms (e.g., map to 'semibold'/600 on both).",
+        "Verify button vertical padding matches shared spec; reduce iOS button height to match React baseline.",
+        "Tighten iOS card outer shadow/offset to match React's 1–2px border weight."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.10395383535193958
     },
     {
@@ -1802,7 +1838,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:05:25.375Z",
+      "generatedAt": "2026-08-16T22:08:50.725Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2191,7 +2227,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:05:25.623Z",
+      "generatedAt": "2026-08-16T22:08:50.971Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2204,7 +2240,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:05:25.624Z",
+      "generatedAt": "2026-08-16T22:08:50.971Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2217,7 +2253,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:05:25.624Z",
+      "generatedAt": "2026-08-16T22:08:50.971Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2230,7 +2266,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:05:25.624Z",
+      "generatedAt": "2026-08-16T22:08:50.971Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2243,7 +2279,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:05:25.624Z",
+      "generatedAt": "2026-08-16T22:08:50.971Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

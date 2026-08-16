@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-16T22:05:29.358Z",
+  "generatedAt": "2026-08-16T22:08:54.666Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 81,
+    "pending": 5
   },
   "cases": [
     {
@@ -457,15 +457,30 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03f407fe43fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-16T22:05:27.980Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-16T22:07:40.149Z",
+      "severity": "low",
+      "summary": [
+        "Both Android and iOS renders show identical layout: header with title 'Raft UI Status Dot' and subtitle, four small status dots in a row (green, orange, gray, blue), and a pink 'Waiting pulse' indicator with label below.",
+        "All visual elements are isomorphic in placement, size, color, shape, and typography between the two platforms.",
+        "Pixel mismatch ratio is 0.30% and RGB similarity is 98.0%, consistent with sub-pixel/font-hinting differences rather than real divergence.",
+        "The iOS canvas extends much taller (1170×2532 vs cropped 342×92 on Android) but the component bounds themselves match.",
+        "No missing elements, clipping, or state indicator discrepancies detected."
+      ],
+      "likelyCauses": [
+        "Minor font hinting/anti-aliasing differences between Android and iOS text rasterizers at the captured scale.",
+        "Canvas size mismatch (Android component-bounds crop vs iOS full-canvas capture) is a snapshot framing artifact, not a UI divergence."
+      ],
+      "suggestedOwner": "ui-components",
+      "suggestedFixes": [
+        "No fixes required; the renders are isomorphic within tolerance.",
+        "If desired, normalize the snapshot framing on iOS to use the same component-bounds crop as Android for cleaner future comparisons."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0029988793021968885
     },
     {
@@ -2113,7 +2128,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:05:28.972Z",
+      "generatedAt": "2026-08-16T22:08:54.283Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2126,7 +2141,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:05:28.972Z",
+      "generatedAt": "2026-08-16T22:08:54.283Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2139,7 +2154,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:05:28.972Z",
+      "generatedAt": "2026-08-16T22:08:54.283Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2152,7 +2167,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:05:28.972Z",
+      "generatedAt": "2026-08-16T22:08:54.283Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2165,7 +2180,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:05:28.972Z",
+      "generatedAt": "2026-08-16T22:08:54.283Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
