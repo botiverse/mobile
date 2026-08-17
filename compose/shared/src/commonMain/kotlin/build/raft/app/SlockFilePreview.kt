@@ -1217,6 +1217,18 @@ private fun SlockFilePreviewStandalonePageContent() {
                 )
             }
         }
+    val ownerScopedLaunchPayload =
+        remember(launchPayloadTrace.payload, routeOwner, liveRouteOwner) {
+            if (
+                launchPayloadTrace.routeKind == SlockFilePreviewRouteThreadAttachment &&
+                routeOwner != null &&
+                liveRouteOwner == routeOwner
+            ) {
+                slockFilePreviewAttachmentMetadataStore().hydrate(routeOwner, launchPayloadTrace.payload)
+            } else {
+                launchPayloadTrace.payload
+            }
+        }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     LaunchedEffect(launchPayloadTrace.durationMs, launchPayloadTrace.responseBytes, launchPayloadTrace.result) {
         bridge.log(
@@ -1235,15 +1247,15 @@ private fun SlockFilePreviewStandalonePageContent() {
             )
         }
     }
-    var payload by remember(launchPayloadTrace.payload, remoteAuthorityCurrent) {
+    var payload by remember(ownerScopedLaunchPayload, remoteAuthorityCurrent) {
         mutableStateOf(
             if (
                 launchPayloadTrace.requiresAuthenticatedRouteAuthority() &&
                 !remoteAuthorityCurrent
             ) {
-                launchPayloadTrace.payload.withFilePreviewAuthorityRejected()
+                ownerScopedLaunchPayload.withFilePreviewAuthorityRejected()
             } else {
-                launchPayloadTrace.payload
+                ownerScopedLaunchPayload
             }
         )
     }
@@ -4669,13 +4681,22 @@ internal fun Pager.openSlockFilePreviewPage(
     val storeScope = sharedStores?.currentNavigationStoreScope(sourceScope) ?: sourceScope
     val sessionId = SlockFilePreviewLaunchPayloadStore.put(payload)
     val launch = slockFilePreviewLaunchDescriptor(sessionId, payload)
+    val liveOwner = sharedStores?.currentAuthenticatedRouteOwner(storeScope)
+    val sourceRouteOwner = pageData.params.authenticatedRouteOwnerOrNull()
     val targetServerId =
         resolveSlockFilePreviewTargetServerId(
             sourcePageData = pageData.params,
             storeScope = storeScope,
             liveAuthorityAvailable = sharedStores != null,
-            liveOwner = sharedStores?.currentAuthenticatedRouteOwner(storeScope)
+            liveOwner = liveOwner
         )
+    if (
+        launch.routeKind == SlockFilePreviewRouteThreadAttachment &&
+        liveOwner != null &&
+        (sourceRouteOwner == null || sourceRouteOwner == liveOwner)
+    ) {
+        slockFilePreviewAttachmentMetadataStore().capture(liveOwner, payload)
+    }
     val ephemeralActionRegistry = slockFilePreviewEphemeralActionRegistry()
     val ephemeralCleanupLedger = slockFilePreviewEphemeralCleanupLedger()
     val ephemeralRegistration = payload.toEphemeralSessionRegistrationOrNull(sessionId)
@@ -6486,14 +6507,26 @@ private fun SlockFilePreviewPayload.imageGalleryDragOffsetWithResistance(dragDis
 @Composable
 internal fun SlockFilePreviewPayload.previewHeaderTitle(): String {
     val fallbackFile = stringResource(MR.strings.file_preview_fallback_file)
-    val source =
+    return slockFilePreviewHeaderTitle(
+        fallbackFile = fallbackFile,
+        localizedTitle = titleDesc.localized(),
+    )
+}
+
+internal fun SlockFilePreviewPayload.slockFilePreviewHeaderTitle(
+    fallbackFile: String,
+    localizedTitle: String,
+): String {
+    val titleSource =
         name
             .ifBlank { path }
             .ifBlank { externalFileName }
             .ifBlank { title }
-            .ifBlank { titleDesc.localized() }
+            .ifBlank {
+                if (source == SlockFilePreviewSourceThreadAttachment) fallbackFile else localizedTitle
+            }
             .ifBlank { fallbackFile }
-    return source.slockFilePreviewFileName(fallbackFile)
+    return titleSource.slockFilePreviewFileName(fallbackFile)
 }
 
 @Composable
