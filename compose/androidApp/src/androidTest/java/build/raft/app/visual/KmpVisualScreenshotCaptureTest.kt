@@ -2871,6 +2871,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeServerSwitcherBadgeStates() {
+        captureKmpComponentCase(
+            caseId = "screens.home.server-switcher-badge-states",
+            pageName = "compose_home_server_switcher_badge_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureTasksPanelStates() {
         captureKmpComponentCase(
             caseId = "components.tasks.panel.states",
