@@ -2,11 +2,14 @@ package build.raft.app
 
 import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -77,7 +80,7 @@ class SettingsHomeSearchEntityPinTest {
     }
 
     @Test
-    fun channelSettingsPinTargetUsesCanonicalChannelIdentityOnly() {
+    fun threadSettingsPinTargetUsesCanonicalChannelAndDmPeerIdentity() {
         val channel =
             KuiklyThreadScreenPayload(
                 instanceId = "channel",
@@ -87,10 +90,78 @@ class SettingsHomeSearchEntityPinTest {
             )
         val dm = channel.copy(surfaceKind = KuiklyThreadSurfaceKind.DirectMessage)
         val reply = channel.copy(surfaceKind = KuiklyThreadSurfaceKind.ReplyThread)
+        val agentProjection = dmProjection(MemberKind.Agent, "agent-1")
+        val humanProjection = dmProjection(MemberKind.Human, "human-1")
 
-        assertEquals("stream-1", channel.threadChannelPinTargetId(null))
-        assertNull(dm.threadChannelPinTargetId(null))
-        assertNull(reply.threadChannelPinTargetId(null))
+        assertEquals(
+            ThreadConversationPinTarget("stream-1", "channel", "stream-1"),
+            channel.threadConversationPinTarget(null)
+        )
+        assertEquals(
+            ThreadConversationPinTarget("dm-canonical", "agent", "agent-1"),
+            dm.threadConversationPinTarget(agentProjection)
+        )
+        assertEquals(
+            ThreadConversationPinTarget("dm-canonical", "human", "human-1"),
+            dm.threadConversationPinTarget(humanProjection)
+        )
+        assertNull(reply.threadConversationPinTarget(agentProjection))
+    }
+
+    @Test
+    fun dmPinStateMatchesTypedAndLegacyCanonicalPins() {
+        val target = ThreadConversationPinTarget("dm-canonical", "human", "human-1")
+
+        assertTrue(
+            target.toUiState(
+                SettingsServerSidebarOrderSnapshot(
+                    pinned = listOf(SettingsServerSidebarPinnedItem("human", "human-1"))
+                )
+            ).pinned
+        )
+        assertTrue(
+            target.toUiState(
+                SettingsServerSidebarOrderSnapshot(pinnedOrder = listOf("dm-canonical"))
+            ).pinned
+        )
+        assertFalse(
+            target.toUiState(
+                SettingsServerSidebarOrderSnapshot(
+                    pinned = listOf(SettingsServerSidebarPinnedItem("agent", "human-1"))
+                )
+            ).pinned
+        )
+        assertFalse(target.toUiState(null).available)
+    }
+
+    @Test
+    fun dmHeaderAlwaysShowsSettingsAndMovesMuteOutOfInlineActions() {
+        assertTrue(
+            threadHeaderSettingsActionVisible(
+                payloadShowSettingsAction = false,
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage
+            )
+        )
+        assertFalse(threadHeaderInlineActivityMuteVisible(KuiklyThreadSurfaceKind.DirectMessage))
+        assertTrue(threadHeaderInlineActivityMuteVisible(KuiklyThreadSurfaceKind.Channel))
+        assertFalse(
+            threadHeaderSettingsActionVisible(
+                payloadShowSettingsAction = false,
+                surfaceKind = KuiklyThreadSurfaceKind.Channel
+            )
+        )
+        assertFalse(
+            threadSettingsUsesStandalonePage(
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                newDesignSettingsEnabled = true
+            )
+        )
+        assertTrue(
+            threadSettingsUsesStandalonePage(
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                newDesignSettingsEnabled = true
+            )
+        )
     }
 
     @Test
@@ -147,5 +218,22 @@ class SettingsHomeSearchEntityPinTest {
                 },
             conversationIdentity = null,
             archived = archived
+        )
+
+    private fun dmProjection(kind: MemberKind, memberId: String): SharedConversationDirectoryProjection =
+        SharedConversationDirectoryProjection(
+            serverId = "server-1",
+            canonicalChannelId = "dm-canonical",
+            aliases = setOf("dm-canonical", "stream-1"),
+            conversationKind = ConversationKind.DirectMessage,
+            surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+            channelKind = "direct_message",
+            title = "Peer",
+            peerIdentity =
+                MemberDetailIdentity(
+                    memberId = MemberId(memberId),
+                    kind = kind,
+                    sourceServerId = ServerId("server-1")
+                )
         )
 }

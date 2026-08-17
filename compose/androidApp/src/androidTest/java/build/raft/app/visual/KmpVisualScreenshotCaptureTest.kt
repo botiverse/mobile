@@ -3126,6 +3126,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureDirectMessageSettingsPanel() {
+        captureKmpComponentCase(
+            caseId = "components.thread.dm-settings.panel",
+            pageName = "compose_dm_settings_panel_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureChannelAddMemberPanel() {
         captureKmpComponentCase(
             caseId = "components.channel.members.add-panel",

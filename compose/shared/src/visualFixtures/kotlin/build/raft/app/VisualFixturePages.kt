@@ -248,6 +248,14 @@ internal class ComposeChannelSettingsPinnedPanelVisualPage : BasePager() {
     }
 }
 
+@Page("compose_dm_settings_panel_visual", supportInLocal = true)
+internal class ComposeDirectMessageSettingsPanelVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { DirectMessageSettingsPanelVisualScreen() }
+    }
+}
+
 @Page("compose_channel_add_member_panel_visual", supportInLocal = true)
 internal class ComposeChannelAddMemberPanelVisualPage : BasePager() {
     override fun willInit() {

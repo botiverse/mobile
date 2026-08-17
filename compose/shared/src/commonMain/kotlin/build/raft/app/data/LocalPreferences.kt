@@ -2,6 +2,8 @@ package build.raft.app.data
 
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
+internal const val DEFAULT_SERVER_DRAWER_ENABLED = true
+
 enum class AppLocale(
     val storageKey: String,
     val languageTag: String,
@@ -249,7 +251,7 @@ data class ChatLayoutPreferenceSnapshot(
     val activitySenderAvatarsEnabled: Boolean = false,
     val composerSendKeyEnabled: Boolean = false,
     val multiShellHostEnabled: Boolean = false,
-    val serverDrawerEnabled: Boolean = false,
+    val serverDrawerEnabled: Boolean = DEFAULT_SERVER_DRAWER_ENABLED,
     val newDesignSettingsEnabled: Boolean = false,
     val homeServerAvatarEnabled: Boolean = false,
     val translationMode: TranslationModePreference = TranslationModePreference.Default,
@@ -473,7 +475,7 @@ class KeyValueChatLayoutPreferenceStore(
     }
 
     override fun readServerDrawerEnabledSync(): Boolean =
-        store.getBoolean(KEY_SERVER_DRAWER_ENABLED, false)
+        store.getBoolean(KEY_SERVER_DRAWER_ENABLED, DEFAULT_SERVER_DRAWER_ENABLED)
 
     override suspend fun readServerDrawerEnabled(): Boolean =
         readServerDrawerEnabledSync()
