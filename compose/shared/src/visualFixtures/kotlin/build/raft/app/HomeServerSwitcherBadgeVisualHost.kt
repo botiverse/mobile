@@ -47,22 +47,28 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
  * [homeServerSwitcherBadgePresentation] so the next change to that precedence has to restate its
  * baseline instead of passing silently.
  *
- * Row 3 carries the contract's teeth: an authoritative `activityUnreadCount = 0` must suppress the
- * badge even though a nonzero legacy `broaderUnreadCount` is present, because the two counts are
- * different quantities and the legacy one may never stand in for the exact one.
+ * Rows are referred to by server name below, never by position. The list numbering here and the
+ * top-to-bottom order in the captured frame disagree, because the frame also shows the current
+ * server, which pins no branch — so "row 3" means one thing in this file and another in the image.
  *
- * Rows 4 and 5 are a pair, and only mean something together: contract section 3a requires a client
- * to apply its display cap identically to the exact count and to the transitional fallback count,
- * so changing which field feeds the badge must not quietly change capping behaviour. Read row 4
- * alone and a fallback path that bypasses the shared formatter would go unnoticed.
+ * `Authoritative Zero` carries the contract's teeth: an authoritative `activityUnreadCount = 0` must
+ * suppress the badge even though a nonzero legacy `broaderUnreadCount` is present, because the two
+ * counts are different quantities and the legacy one may never stand in for the exact one.
  *
- * Note that the pair does not guard the cap yet. Until the fallback renders a number, row 5 is a dot
- * and row 4 is a capped value, so they legitimately differ; the pair starts holding the cap only
- * once both read the same capped value.
+ * `Capped Count` and `Fallback Capped` are a pair, and only mean something together: contract
+ * section 3a requires a client to apply its display cap identically to the exact count and to the
+ * transitional fallback count, so changing which field feeds the badge must not quietly change
+ * capping behaviour. Read `Capped Count` alone and a fallback path that bypasses the shared
+ * formatter would go unnoticed.
  *
- * Verified frame (dispatch run 32028728530, shard 0): rows render no badge / 3 / dot / no badge /
- * 99+ / dot respectively, confirming in particular that row 3's authoritative zero suppresses the
- * badge despite its nonzero legacy count.
+ * Note that the pair does not guard the cap yet. Until the fallback renders a number,
+ * `Fallback Capped` is a dot while `Capped Count` is a capped value, so they legitimately differ;
+ * the pair starts holding the cap only once both read the same capped value.
+ *
+ * Verified frame (dispatch run 32028728530, shard 0), in frame order: `Visual Server` no badge,
+ * `Exact Three` 3, `Unknown Seven` dot, `Authoritative Zero` no badge, `Capped Count` 99+,
+ * `Fallback Capped` dot — confirming in particular that `Authoritative Zero` is suppressed despite
+ * its nonzero legacy count.
  */
 @Page("compose_home_server_switcher_badge_visual", supportInLocal = true)
 internal class ComposeHomeServerSwitcherBadgeVisualPage : BasePager() {
@@ -95,8 +101,9 @@ private fun HomeServerSwitcherBadgeVisualContent() {
                 ),
                 // 2. Exact count unknown, legacy broader count present -> the fallback branch.
                 //    Renders a dot until the client fix lands and the broader number afterwards.
-                //    Row 5 takes the same path, so BOTH fallback rows move when that fix lands --
-                //    a migration declaration naming only this row would leave row 5 unexplained.
+                //    `Fallback Capped` takes the same path, so BOTH fallback rows move when that fix
+                //    lands -- a migration declaration naming only this row would leave the other
+                //    unexplained.
                 SlockServerSwitcherItem(
                     id = "badge-fallback",
                     name = "Unknown Seven",
@@ -120,10 +127,21 @@ private fun HomeServerSwitcherBadgeVisualContent() {
                     broaderUnreadCount = 0,
                     activityUnreadCount = 128L
                 ),
-                // 5. Legacy fallback count above the cap -> also "99+", matching row 4.
-                //    Contract v2.4.1 requires one client to cap the exact count and the fallback
-                //    count identically, so the pair only holds if both rows read the same. Row 4
+                // 5. Legacy fallback count above the cap -> also "99+", matching `Capped Count`.
+                //    Contract section 3a requires one client to cap the exact count and the fallback
+                //    count identically, so the pair only holds if both read the same. `Capped Count`
                 //    alone cannot see a fallback path that skips the shared formatter.
+                //
+                //    ⚠️ RETIRE THIS ROW (`Fallback Capped`) when the transitional fallback branch is
+                //    deleted. Once the server supplies the exact count and the fallback is removed
+                //    there is only one number source: the cap applies to a single path, so this pair
+                //    stops testing anything and this row renders like `Unknown Seven` again.
+                //    Deleting the fallback therefore owes two things -- drop this row, keeping
+                //    `Capped Count` as the single cap row, and declare the baseline migration in
+                //    #wg-nightly-visual-fix, because `Unknown Seven` and `Fallback Capped` revert
+                //    from 7 and 99+ back to a dot or nothing. `Authoritative Zero` does not move.
+                //    That declaration is easy to miss: it lands in a routine dead-code cleanup that
+                //    looks unrelated to visuals.
                 SlockServerSwitcherItem(
                     id = "badge-fallback-capped",
                     name = "Fallback Capped",
