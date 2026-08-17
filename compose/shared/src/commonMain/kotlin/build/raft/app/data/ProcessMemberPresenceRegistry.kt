@@ -348,6 +348,10 @@ internal class ProcessMemberPresenceRegistry {
     val writeGeneration: Long
         get() = snapshot.value.writeGeneration
 
+    /** Auth-clear generation used to invalidate other owner-bound read projections. */
+    fun writeGenerationFlow(): Flow<Long> =
+        snapshot.map { it.writeGeneration }.distinctUntilChanged()
+
     fun factsFlow(owner: ProcessServerMembersOwner): Flow<Map<String, MemberPresenceUpdated>> =
         snapshot.map { it.partitions[owner].orEmpty() }.distinctUntilChanged()
 

@@ -343,7 +343,7 @@ class SharedServerMembersStoreTest {
         assertEquals("guest", sparsePublished.serverRole)
         assertEquals("channel@example.test", sparsePublished.email)
         assertEquals(candidateAvatar, sparsePublished.avatar?.wireValue)
-        assertEquals(candidateAvatar, store.state.value.memberProfile(serverId, "user-1")?.avatar?.wireValue)
+        assertEquals(candidateAvatar, store.currentMemberProfile(serverId, "user-1")?.avatar?.wireValue)
 
         repository.channelMembersByChannel[channelId.value] =
             listOf(
@@ -357,7 +357,7 @@ class SharedServerMembersStoreTest {
         )
         assertEquals(
             authoritativeAvatar,
-            store.state.value.memberProfile(serverId, "user-1")?.avatar?.wireValue
+            store.currentMemberProfile(serverId, "user-1")?.avatar?.wireValue
         )
     }
 
@@ -1209,7 +1209,7 @@ class SharedServerMembersStoreTest {
         assertEquals(listOf("agent-1"), second.data.members.map { it.id.value })
         assertEquals(
             SharedServerMembersLoadStatus.Loaded,
-            store.state.value.channelMemberSlice(ServerId("server-1"), ChannelId("channel-1")).status
+            store.channelMemberSliceFlow(ServerId("server-1"), ChannelId("channel-1")).first().status
         )
         assertEquals(
             SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
@@ -1217,7 +1217,7 @@ class SharedServerMembersStoreTest {
         )
         assertEquals(
             "pixel:build",
-            store.state.value.memberProfile(ServerId("server-1"), "agent-1")?.avatar?.wireValue
+            store.currentMemberProfile(ServerId("server-1"), "agent-1")?.avatar?.wireValue
         )
     }
 
@@ -1244,9 +1244,11 @@ class SharedServerMembersStoreTest {
             store.currentServerMembers(ServerId("server-1")).map { it.id.value }
         )
         assertEquals(
-            setOf("local"),
+            emptySet(),
             store.state.value.profileCacheByServerId["server-1"].orEmpty().keys,
         )
+        assertEquals("Local", store.currentMemberProfile(ServerId("server-1"), "local")?.displayName)
+        assertEquals("Remote", store.currentMemberProfile(ServerId("server-1"), "remote")?.displayName)
     }
 
     @Test
@@ -1274,8 +1276,8 @@ class SharedServerMembersStoreTest {
         )
 
         val member =
-            store.state.value
-                .channelMemberSlice(ServerId("server-1"), ChannelId("channel-1"))
+            store.channelMemberSliceFlow(ServerId("server-1"), ChannelId("channel-1"))
+                .first()
                 .members
                 .single()
         assertEquals(AgentStatus.Online, member.agentStatus)
