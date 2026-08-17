@@ -3706,7 +3706,7 @@ internal class SharedThreadDataSource(
         val parentContextStartedAt = TimeSource.Monotonic.markNow()
         val parentContextDeferred =
             async {
-                getReplyParentMessageFromStore(
+                resolveReplyParentMessageFromStore(
                     parentChannelId = parentChannelId,
                     parentMessageId = parentMessageId,
                     requestPriority = requestPriority,
@@ -3772,7 +3772,7 @@ internal class SharedThreadDataSource(
                     (replyOriginHydrationGraceMillis -
                         parentContextStartedAt.elapsedNow().inWholeMilliseconds)
                         .coerceAtLeast(0L)
-                val parentMessage =
+                val parentResolution =
                     if (parentContextDeferred.isCompleted) {
                         parentContextDeferred.await()
                     } else {
@@ -3780,7 +3780,11 @@ internal class SharedThreadDataSource(
                             parentContextDeferred.await()
                         }
                     }
-                val parentContextTimedOut = !parentContextDeferred.isCompleted
+                // A grace timeout only means that the canonical parent lookup has not
+                // completed yet. It is not evidence that the parent message is absent.
+                // The scoped message-store producer may still complete after this
+                // caller is cancelled, and the visible route will hydrate that result.
+                val parentContextTimedOut = parentResolution == null
                 if (parentContextTimedOut) {
                     parentContextDeferred.cancel()
                     diagnosticsLogger(
@@ -3790,6 +3794,8 @@ internal class SharedThreadDataSource(
                             "hasReplyContent=$hasReplyContent"
                     )
                 }
+                val parentMessage =
+                    (parentResolution as? SharedThreadMessageResolution.Loaded)?.message
                 val resolvedThreadId =
                     initialResult.data.conversation.thread?.streamChannelId?.value?.takeIf { it.isNotBlank() }
                         ?: initialResult.data.conversation.channelId?.value?.takeIf { it.isNotBlank() }
@@ -3806,13 +3812,23 @@ internal class SharedThreadDataSource(
                         )
                     }
                 val originResolvedBase =
-                    if (parentMessage == null) {
-                        resolvedBase.copy(
-                            originStatus = "missing",
-                            originErrorCode = null
-                        )
-                    } else {
-                        resolvedBase
+                    when (parentResolution) {
+                        is SharedThreadMessageResolution.Loaded -> resolvedBase
+                        SharedThreadMessageResolution.Missing ->
+                            resolvedBase.copy(
+                                originStatus = "missing",
+                                originErrorCode = null
+                            )
+                        is SharedThreadMessageResolution.Error ->
+                            resolvedBase.copy(
+                                originStatus = "error",
+                                originErrorCode = parentResolution.code
+                            )
+                        null ->
+                            resolvedBase.copy(
+                                originStatus = "loading",
+                                originErrorCode = null
+                            )
                     }
                 val payload =
                     initialResult.data
@@ -5179,7 +5195,7 @@ internal class SharedThreadStore(
                 "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds} " +
                 nextPayload.originDiagnostics()
         )
-        launchFocusedOriginHydrationIfNeeded(basePayload, staleToken)
+        launchReplyOriginHydrationIfNeeded(basePayload, staleToken)
         if (!resolvingInitialAccessAtStart && !retryingReadOnlyParentAccess) {
             launchBackgroundHomeContextHydration(basePayload)
         }
@@ -5260,13 +5276,12 @@ internal class SharedThreadStore(
         }
     }
 
-    private fun launchFocusedOriginHydrationIfNeeded(
+    private fun launchReplyOriginHydrationIfNeeded(
         routePayload: KuiklyThreadScreenPayload,
         staleToken: MviStaleToken
     ) {
         val currentPayload = _state.value.payload
         if (
-            routePayload.focusedMessageId.isNullOrBlank() ||
             currentPayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
             currentPayload.originStatus != "loading" ||
             currentPayload.parentChannelId.isNullOrBlank() ||

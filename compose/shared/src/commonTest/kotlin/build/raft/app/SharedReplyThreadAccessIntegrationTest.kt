@@ -99,7 +99,7 @@ class SharedReplyThreadAccessIntegrationTest {
     }
 
     @Test
-    fun loadedRepliesDoNotWaitForHungParentContextProducer() = runBlocking {
+    fun loadedRepliesDoNotWaitForHungParentContextProducerAndOriginStaysLoading() = runBlocking {
         withPortableAppScope { appScope ->
             val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
             val replyRelease = CompletableDeferred<Unit>()
@@ -140,7 +140,7 @@ class SharedReplyThreadAccessIntegrationTest {
 
             assertEquals("content", store.state.value.payload.status)
             assertEquals(listOf("reply body"), store.state.value.payload.messages.map { it.body })
-            assertEquals("missing", store.state.value.payload.originStatus)
+            assertEquals("loading", store.state.value.payload.originStatus)
             assertEquals(ThreadAccessResolution.Resolved, store.state.value.accessResolution)
             assertFalse(store.state.value.writeActionsEnabled)
             assertFalse(store.state.value.payload.joined)
