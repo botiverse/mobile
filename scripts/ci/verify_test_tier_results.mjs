@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 
-const EMULATOR_JOBS = [
-  "android-device",
-  "android-minimum-supported-attachment-runtime",
-  "android-canonical-final-actual-host",
-];
+const DEVICE_SUITE_JOB = "android-device";
+const CANONICAL_FINAL_JOB = "android-canonical-final-actual-host";
+const ATTACHMENT_JOB = "android-minimum-supported-attachment-runtime";
 
 function requireBoolean(value, name) {
   if (value !== "true" && value !== "false") {
@@ -21,8 +19,25 @@ export function verifyTierResults(needs) {
   const runAndroid = requireBoolean(outputs.run_android, "run_android");
   const runIos = requireBoolean(outputs.run_ios, "run_ios");
   const runOhos = requireBoolean(outputs.run_ohos, "run_ohos");
-  const runEmulators = requireBoolean(outputs.run_emulators, "run_emulators");
-  if (runEmulators && !runAndroid) throw new Error("emulator jobs require Android");
+  const runDeviceSuite = requireBoolean(outputs.run_device_suite, "run_device_suite");
+  const runCanonicalFinal = requireBoolean(outputs.run_canonical_final, "run_canonical_final");
+  const attachmentRaw = outputs.attachment_api_levels;
+  if (typeof attachmentRaw !== "string") {
+    throw new Error("CI plan output attachment_api_levels must be a string");
+  }
+  let attachmentLevels;
+  try {
+    attachmentLevels = JSON.parse(attachmentRaw);
+  } catch {
+    throw new Error(`attachment_api_levels must be valid JSON, got ${attachmentRaw}`);
+  }
+  if (!Array.isArray(attachmentLevels) || !attachmentLevels.every((n) => Number.isInteger(n))) {
+    throw new Error(`attachment_api_levels must be an integer array, got ${attachmentRaw}`);
+  }
+  const runAttachment = attachmentLevels.length > 0;
+  if (runDeviceSuite && !runAndroid) throw new Error("device suite requires Android");
+  if (runCanonicalFinal && !runAndroid) throw new Error("canonical-final requires Android");
+  if (runAttachment && !runAndroid) throw new Error("attachment legs require Android");
 
   const expected = new Map([
     ["kuikly-artifacts", runAndroid || runOhos],
@@ -32,7 +47,9 @@ export function verifyTierResults(needs) {
     ["ohos-receipt-selftest", runOhos],
     ["ohos", runOhos],
     ["ohos-host", runOhos],
-    ...EMULATOR_JOBS.map((name) => [name, runEmulators]),
+    [DEVICE_SUITE_JOB, runDeviceSuite],
+    [CANONICAL_FINAL_JOB, runCanonicalFinal],
+    [ATTACHMENT_JOB, runAttachment],
   ]);
   for (const [name, shouldRun] of expected) {
     const result = needs[name]?.result;
@@ -46,12 +63,15 @@ export function verifyTierResults(needs) {
     run_android: runAndroid,
     run_ios: runIos,
     run_ohos: runOhos,
-    run_emulators: runEmulators,
+    run_device_suite: runDeviceSuite,
+    run_canonical_final: runCanonicalFinal,
+    attachment_api_levels: attachmentLevels,
     reason: outputs.reason || "missing",
   };
 }
 
-function fixture({ android, ios, ohos, emulators }) {
+function fixture({ android, ios, ohos, deviceSuite, canonicalFinal, attachmentLevels }) {
+  const levels = attachmentLevels ?? [];
   const needs = {
     plan: {
       result: "success",
@@ -59,7 +79,9 @@ function fixture({ android, ios, ohos, emulators }) {
         run_android: String(android),
         run_ios: String(ios),
         run_ohos: String(ohos),
-        run_emulators: String(emulators),
+        run_device_suite: String(deviceSuite),
+        run_canonical_final: String(canonicalFinal),
+        attachment_api_levels: JSON.stringify(levels),
         reason: "fixture",
       },
     },
@@ -71,7 +93,9 @@ function fixture({ android, ios, ohos, emulators }) {
   needs["ohos-receipt-selftest"] = { result: ohos ? "success" : "skipped" };
   needs.ohos = { result: ohos ? "success" : "skipped" };
   needs["ohos-host"] = { result: ohos ? "success" : "skipped" };
-  for (const name of EMULATOR_JOBS) needs[name] = { result: emulators ? "success" : "skipped" };
+  needs[DEVICE_SUITE_JOB] = { result: deviceSuite ? "success" : "skipped" };
+  needs[CANONICAL_FINAL_JOB] = { result: canonicalFinal ? "success" : "skipped" };
+  needs[ATTACHMENT_JOB] = { result: levels.length > 0 ? "success" : "skipped" };
   return needs;
 }
 
@@ -85,28 +109,52 @@ function expectFailure(needs, message) {
 }
 
 function selfTest() {
-  verifyTierResults(fixture({ android: false, ios: false, ohos: false, emulators: false }));
-  verifyTierResults(fixture({ android: true, ios: false, ohos: false, emulators: false }));
-  verifyTierResults(fixture({ android: false, ios: true, ohos: false, emulators: false }));
-  verifyTierResults(fixture({ android: false, ios: false, ohos: true, emulators: false }));
-  verifyTierResults(fixture({ android: true, ios: true, ohos: true, emulators: false }));
-  verifyTierResults(fixture({ android: true, ios: true, ohos: true, emulators: true }));
+  const none = { android: false, ios: false, ohos: false, deviceSuite: false, canonicalFinal: false, attachmentLevels: [] };
+  verifyTierResults(fixture(none));
+  verifyTierResults(fixture({ ...none, android: true }));
+  verifyTierResults(fixture({ ...none, ios: true }));
+  verifyTierResults(fixture({ ...none, ohos: true }));
+  verifyTierResults(fixture({ ...none, android: true, ios: true, ohos: true }));
+  // full-ci PR: device suite + API31 only, no canonical-final
+  verifyTierResults(fixture({ android: true, ios: true, ohos: true, deviceSuite: true, canonicalFinal: false, attachmentLevels: [31] }));
+  // nightly/manual: full device suite + canonical-final + all attachment legs
+  verifyTierResults(fixture({ android: true, ios: true, ohos: true, deviceSuite: true, canonicalFinal: true, attachmentLevels: [29, 31, 34] }));
 
-  const failedAndroid = fixture({ android: true, ios: false, ohos: false, emulators: false });
+  const failedAndroid = fixture({ ...none, android: true });
   failedAndroid.android.result = "failure";
   expectFailure(failedAndroid, "selected Android failure");
 
-  const missingOhos = fixture({ android: false, ios: false, ohos: true, emulators: false });
+  const missingOhos = fixture({ ...none, ohos: true });
   missingOhos.ohos.result = "skipped";
   expectFailure(missingOhos, "selected OHOS job skipped");
 
-  const accidentalEmulator = fixture({ android: true, ios: false, ohos: false, emulators: false });
-  accidentalEmulator["android-device"].result = "success";
-  expectFailure(accidentalEmulator, "unplanned emulator cost");
+  const accidentalDevice = fixture({ ...none, android: true });
+  accidentalDevice[DEVICE_SUITE_JOB].result = "success";
+  expectFailure(accidentalDevice, "unplanned device suite cost");
 
-  const invalidPlan = fixture({ android: false, ios: true, ohos: false, emulators: false });
-  invalidPlan.plan.outputs.run_emulators = "true";
-  expectFailure(invalidPlan, "emulators without Android");
+  const accidentalCanonical = fixture({ ...none, android: true });
+  accidentalCanonical[CANONICAL_FINAL_JOB].result = "success";
+  expectFailure(accidentalCanonical, "unplanned canonical-final cost");
+
+  const accidentalAttachment = fixture({ ...none, android: true });
+  accidentalAttachment[ATTACHMENT_JOB].result = "success";
+  expectFailure(accidentalAttachment, "unplanned attachment cost");
+
+  const deviceWithoutAndroid = fixture({ ...none, ios: true });
+  deviceWithoutAndroid.plan.outputs.run_device_suite = "true";
+  expectFailure(deviceWithoutAndroid, "device suite without Android");
+
+  const canonicalWithoutAndroid = fixture({ ...none, ios: true });
+  canonicalWithoutAndroid.plan.outputs.run_canonical_final = "true";
+  expectFailure(canonicalWithoutAndroid, "canonical-final without Android");
+
+  const attachmentWithoutAndroid = fixture({ ...none, ios: true });
+  attachmentWithoutAndroid.plan.outputs.attachment_api_levels = "[31]";
+  expectFailure(attachmentWithoutAndroid, "attachment legs without Android");
+
+  const badLevels = fixture({ ...none, android: true, attachmentLevels: [31] });
+  badLevels.plan.outputs.attachment_api_levels = "not-json";
+  expectFailure(badLevels, "invalid attachment_api_levels");
   console.log("CI tier aggregate self-test: PASS");
 }
 
