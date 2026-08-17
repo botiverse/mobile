@@ -195,4 +195,34 @@ class SlockEventBusTest {
         assertTrue(events.isLocalSource(signal))
         assertFalse(events.isLocalSource(signal.copy(source = "other")))
     }
+
+    @Test
+    fun hostNetworkRecoveryRequiresExplicitConsistentOnlineSignal() {
+        val eventBus = SlockPlatformDispatchingEventBus { }
+        val events = KuiklyHostNetworkEvents(eventBus)
+        var recoveries = 0
+        val subscription = events.addAuthoritativeOnlineListener { recoveries += 1 }
+
+        fun post(status: String?, online: Boolean?) {
+            val data = JSONObject()
+            status?.let { data.put(SlockHostNetworkNotifyContract.KeyStatus, it) }
+            online?.let { data.put(SlockHostNetworkNotifyContract.KeyOnline, it) }
+            eventBus.post(SlockHostNetworkNotifyContract.EventName, data)
+        }
+
+        post(status = null, online = true)
+        post(status = SlockHostNetworkNotifyContract.StatusOnline, online = null)
+        post(status = SlockHostNetworkNotifyContract.StatusOnline, online = false)
+        post(status = SlockHostNetworkNotifyContract.StatusOffline, online = true)
+        post(status = SlockHostNetworkNotifyContract.StatusOffline, online = false)
+        assertEquals(0, recoveries)
+
+        post(status = SlockHostNetworkNotifyContract.StatusOnline, online = true)
+        post(status = SlockHostNetworkNotifyContract.StatusOnline, online = true)
+        assertEquals(2, recoveries)
+
+        subscription.close()
+        post(status = SlockHostNetworkNotifyContract.StatusOnline, online = true)
+        assertEquals(2, recoveries)
+    }
 }
