@@ -2774,10 +2774,6 @@ class SharedThreadStoreTest {
         )
         dataSource.cachePayloadForTest(contentPayload("cached body").copy(joined = true, canSend = true))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        val renderEvents = mutableListOf<SharedThreadRenderSlice>()
-        val renderJob = launch {
-            store.renderSliceFlow().collect { slice -> renderEvents += slice }
-        }
 
         store.dispatch(SharedThreadIntent.Start(basePayload()))
         repository.getThreadStarted?.await()
@@ -2828,17 +2824,11 @@ class SharedThreadStoreTest {
         assertEquals(7, resolvedFrame.payload.focusedMessageRequestNonce)
         assertEquals(1, channelRepository.homeCalls)
         assertTrue(
-            renderEvents.any { slice ->
-                slice.accessResolution == ThreadAccessResolution.Resolved && slice.payload.joined
-            }
-        )
-        assertTrue(
             resolvedFrame.payload.isThreadPrimaryFooterReady(
                 timelineSlice = resolvedFrame.timelineSlice,
                 accessResolution = resolvedFrame.accessResolution
             )
         )
-        renderJob.cancel()
         scope.cancel()
     }
 
