@@ -1,6 +1,6 @@
 {
   "schema": "unread-summary-activity.v1",
-  "contract": "task #235 Phase 1 v2.3.1",
+  "contract": "task #235 Phase 1 v2.4.6",
   "endpoint": "GET /api/servers/unread-summary",
   "authority": "GET /api/channels/inbox?filter=all → totalUnreadCount",
   "states": [
@@ -80,9 +80,10 @@
           "serverPushMuted": false
         }
       ],
-      "expect": "mixed state arises ONLY from provable per-server causes (per-group validation failure, permission loss, feature gate) — never from a pretended isolatable per-server SQL compute failure; unknown entries fall back to dot/hidden"
+      "expect": "mixed state arises ONLY from provable per-server causes (per-group validation failure, permission loss, feature gate) — never from a pretended isolatable per-server SQL compute failure; unknown entries render the §3a transitional fallback (legacy broader number) until production serves the field, then dot/hidden"
     }
   ],
-  "muteRule": "serverPushMuted never alters activityUnreadCount; muted servers show the exact number (weakened style allowed); dot/hidden only for absent/unknown",
+  "muteRule": "serverPushMuted never alters activityUnreadCount; muted servers show the exact number (weakened style allowed). For absent/unknown see renderRule.",
+  "renderRule": "v2.4.6 §3a transitional: present ⇒ render that exact number (present 0 renders nothing); absent/unknown ⇒ render the legacy broader unread NUMBER (pre-#2119 behavior), NOT a dot — artin ruling 2026-08-17 while production lacks the field. The wire rule is unchanged: absent stays absent and this field is never populated from the broader count. After production promotion the fallback branch is dead code and absent returns to dot/hidden; the rendered number then becomes the exact Activity count and MAY GET SMALLER, which is expected, not a regression.",
   "freshness": "count may lag ≤30s; Activity snapshot is the reconciliation authority on server entry"
 }

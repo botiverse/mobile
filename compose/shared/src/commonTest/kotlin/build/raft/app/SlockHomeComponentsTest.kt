@@ -498,27 +498,12 @@ class SlockHomeComponentsTest {
         assertEquals(
             HomeServerSwitcherBadgePresentation(
                 kind = HomeServerSwitcherBadgeKind.ActivityNumber,
-                activityLabel = "78",
+                label = "78",
                 muted = true,
             ),
             homeServerSwitcherBadgePresentation(compact[1]),
         )
         assertTrue(homeServerSwitcherHasOtherUnread("server-1", compact))
-    }
-
-    @Test
-    fun knownZeroSuppressesLegacyFallbackWhileAbsentUsesOnlyANeutralDot() {
-        val knownZero =
-            SlockServerSwitcherItem(
-                id = "server-1",
-                broaderUnreadCount = 21,
-                activityUnreadCount = 0,
-            )
-        val absent = knownZero.copy(activityUnreadCount = null)
-
-        assertEquals(HomeServerSwitcherBadgeKind.None, homeServerSwitcherBadgePresentation(knownZero).kind)
-        assertEquals(HomeServerSwitcherBadgeKind.BroaderUnreadDot, homeServerSwitcherBadgePresentation(absent).kind)
-        assertNull(homeServerSwitcherBadgePresentation(absent).activityLabel)
     }
 
     @Test
@@ -547,7 +532,7 @@ class SlockHomeComponentsTest {
 
         assertEquals(3L, muted.activityUnreadCount)
         assertEquals(HomeServerSwitcherBadgeKind.ActivityNumber, homeServerSwitcherBadgePresentation(muted).kind)
-        assertEquals("3", homeServerSwitcherBadgePresentation(muted).activityLabel)
+        assertEquals("3", homeServerSwitcherBadgePresentation(muted).label)
         assertTrue(homeServerSwitcherBadgePresentation(muted).muted)
     }
 
