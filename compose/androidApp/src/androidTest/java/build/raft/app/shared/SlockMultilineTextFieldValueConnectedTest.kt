@@ -9,12 +9,60 @@ import android.view.inputmethod.InputConnection
 import android.widget.EditText
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SlockMultilineTextFieldValueConnectedTest {
+    @Test
+    fun returnKeyTypeChangesPreserveLiveSelectionWithoutTransientZeroCallback() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+            editor.setText("@draft")
+            editor.setSelection(editor.length())
+
+            val selectionEvents = mutableListOf<Pair<Int, Int>>()
+            val selectionCallback: KuiklyRenderCallback = { result ->
+                val state = result as Map<*, *>
+                selectionEvents +=
+                    (state["selectionStart"] as Number).toInt() to
+                        (state["selectionEnd"] as Number).toInt()
+            }
+            assertTrue(editor.setProp("selectionChange", selectionCallback))
+
+            assertTrue(editor.setProp("returnKeyType", "send"))
+
+            assertEquals("@draft", editor.text.toString())
+            assertEquals(editor.length(), editor.selectionStart)
+            assertEquals(editor.length(), editor.selectionEnd)
+            assertFalse(
+                "return-key reconfiguration must not publish a transient zero selection: $selectionEvents",
+                selectionEvents.any { it != (editor.length() to editor.length()) }
+            )
+            assertEquals(EditorInfo.IME_ACTION_SEND, editor.imeOptions and EditorInfo.IME_MASK_ACTION)
+
+            editor.setText("@draft\nnext")
+            editor.setSelection(2, 5)
+            selectionEvents.clear()
+
+            assertTrue(editor.setProp("returnKeyType", "none"))
+
+            assertEquals("@draft\nnext", editor.text.toString())
+            assertEquals(2, editor.selectionStart)
+            assertEquals(5, editor.selectionEnd)
+            assertFalse(
+                "return-key reconfiguration must preserve the exact range: $selectionEvents",
+                selectionEvents.any { it != (2 to 5) }
+            )
+            assertEquals(EditorInfo.IME_ACTION_NONE, editor.imeOptions and EditorInfo.IME_MASK_ACTION)
+        }
+    }
+
     @Test
     fun attachmentCommentRetainsCjkCompositionAndMidTextEditsAcrossRecomposition() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

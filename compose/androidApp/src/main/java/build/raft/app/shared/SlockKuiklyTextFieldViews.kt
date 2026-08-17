@@ -209,6 +209,8 @@ internal class SlockKuiklyTextAreaView(
     context: Context,
     softInputMode: Int?
 ) : SlockKuiklyTextFieldView(context, softInputMode) {
+    private var suppressReturnKeySelectionChange = false
+
     init {
         gravity = Gravity.LEFT or Gravity.TOP
     }
@@ -229,6 +231,11 @@ internal class SlockKuiklyTextAreaView(
         isSingleLine = false
     }
 
+    override fun onSelectionChanged(selStart: Int, selEnd: Int) {
+        if (suppressReturnKeySelectionChange) return
+        super.onSelectionChanged(selStart, selEnd)
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN &&
             computeVerticalScrollRange() > computeVerticalScrollExtent()
@@ -245,11 +252,26 @@ internal class SlockKuiklyTextAreaView(
     }
 
     private fun setReturnKeyType(value: Any): Boolean {
+        val selectionStartBeforeReconfiguration = selectionStart
+        val selectionEndBeforeReconfiguration = selectionEnd
         val method = transformationMethod
-        isSingleLine = true
-        transformationMethod = method
-        maxLines = Integer.MAX_VALUE
-        setHorizontallyScrolling(false)
+        // Android resets the live selection to 0 while setSingleLine reconfigures the
+        // editor. Kuikly forwards onSelectionChanged synchronously, so an async
+        // loading -> visible suggestion transition would otherwise publish that
+        // transient value back into the controlled composer before we can restore it.
+        suppressReturnKeySelectionChange = true
+        try {
+            isSingleLine = true
+            transformationMethod = method
+            maxLines = Integer.MAX_VALUE
+            setHorizontallyScrolling(false)
+        } finally {
+            suppressReturnKeySelectionChange = false
+        }
+        restoreSelectionAfterReturnKeyReconfiguration(
+            selectionStartBeforeReconfiguration,
+            selectionEndBeforeReconfiguration
+        )
         imeOptions =
             when (value as String) {
                 "none" -> EditorInfo.IME_ACTION_NONE
@@ -262,6 +284,16 @@ internal class SlockKuiklyTextAreaView(
                 else -> EditorInfo.IME_NULL
             }
         return true
+    }
+
+    private fun restoreSelectionAfterReturnKeyReconfiguration(start: Int, end: Int) {
+        if (start < 0 || end < 0) return
+        val textLength = text?.length ?: 0
+        val boundedStart = start.coerceIn(0, textLength)
+        val boundedEnd = end.coerceIn(0, textLength)
+        if (selectionStart != boundedStart || selectionEnd != boundedEnd) {
+            setSelection(boundedStart, boundedEnd)
+        }
     }
 }
 
