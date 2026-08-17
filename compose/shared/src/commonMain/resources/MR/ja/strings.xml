@@ -1559,6 +1559,8 @@
     <string name="settings_mobile_server_drawer_detail">ホームで新しいマルチサーバー左ドロワーを使用します。オフにすると、現在のサーバー切り替えポップオーバーを維持します。</string>
     <string name="settings_mobile_inline_selection_toolbar">メッセージのインライン選択ツールバー</string>
     <string name="settings_mobile_inline_selection_toolbar_detail">対象のプレーンテキストメッセージを長押しすると、その場でテキストを選択し、クイックリアクションとメッセージツールを表示します。オフにすると従来のメッセージメニューを使用します。</string>
+    <string name="settings_mobile_thread_unread_jump">スレッドの未読ジャンプ</string>
+    <string name="settings_mobile_thread_unread_jump_detail">スレッドに未読メッセージへのフローティングジャンプを表示します。閲覧ウィンドウの動作が試験中の間はオフのままにしてください。</string>
     <string name="settings_mobile_conversation_forward_gesture">会話の「進む」ジェスチャー</string>
     <string name="settings_mobile_conversation_forward_gesture_detail">会話からホームに戻った後、画面右端から左へスワイプすると、直前のチャンネルまたはDMを再度開けます。</string>
     <string name="settings_mobile_conversation_forward_gesture_accessibility">ベータ。会話の「進む」ジェスチャーを設定します。会話からホームに戻った後、画面右端から左へスワイプすると、直前のチャンネルまたはDMを再度開けます。</string>

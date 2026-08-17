@@ -240,6 +240,7 @@ data class ChatLayoutPreferenceSnapshot(
     val compactConsecutiveMessages: Boolean = true,
     val longMessageCollapseEnabled: Boolean = false,
     val singleTapOpensThreadEnabled: Boolean = false,
+    val threadUnreadJumpEnabled: Boolean = false,
     val inlineSelectionToolbarEnabled: Boolean = false,
     val conversationForwardGestureEnabled: Boolean = false,
     val imageAnnotationEnabled: Boolean = true,
@@ -273,6 +274,9 @@ interface ChatLayoutPreferenceStore {
     fun readSingleTapOpensThreadEnabledSync(): Boolean
     suspend fun readSingleTapOpensThreadEnabled(): Boolean
     suspend fun saveSingleTapOpensThreadEnabled(enabled: Boolean)
+    fun readThreadUnreadJumpEnabledSync(): Boolean
+    suspend fun readThreadUnreadJumpEnabled(): Boolean
+    suspend fun saveThreadUnreadJumpEnabled(enabled: Boolean)
     fun readInlineSelectionToolbarEnabledSync(): Boolean
     suspend fun readInlineSelectionToolbarEnabled(): Boolean
     suspend fun saveInlineSelectionToolbarEnabled(enabled: Boolean)
@@ -369,6 +373,16 @@ class KeyValueChatLayoutPreferenceStore(
 
     override suspend fun saveSingleTapOpensThreadEnabled(enabled: Boolean) {
         store.putBoolean(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, enabled)
+    }
+
+    override fun readThreadUnreadJumpEnabledSync(): Boolean =
+        store.getBoolean(KEY_THREAD_UNREAD_JUMP_ENABLED, false)
+
+    override suspend fun readThreadUnreadJumpEnabled(): Boolean =
+        readThreadUnreadJumpEnabledSync()
+
+    override suspend fun saveThreadUnreadJumpEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_THREAD_UNREAD_JUMP_ENABLED, enabled)
     }
 
     override fun readInlineSelectionToolbarEnabledSync(): Boolean =
@@ -510,6 +524,7 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "chatLayout:compact_consecutive_messages"
         const val KEY_LONG_MESSAGE_COLLAPSE_ENABLED = "chatLayout:long_message_collapse_enabled"
         const val KEY_SINGLE_TAP_OPENS_THREAD_ENABLED = "chatLayout:single_tap_opens_thread_enabled"
+        const val KEY_THREAD_UNREAD_JUMP_ENABLED = "chatLayout:thread_unread_jump_enabled"
         const val KEY_INLINE_SELECTION_TOOLBAR_ENABLED = "mobile:inline_selection_toolbar_enabled"
         const val KEY_CONVERSATION_FORWARD_GESTURE_ENABLED = "mobile:conversation_forward_gesture_enabled"
         const val KEY_IMAGE_ANNOTATION_ENABLED = "chatLayout:image_annotation_enabled"
@@ -537,6 +552,7 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setLongMessageCollapseEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setSingleTapOpensThreadEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
+    suspend fun setThreadUnreadJumpEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setInlineSelectionToolbarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setConversationForwardGestureEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
@@ -562,6 +578,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
@@ -587,6 +604,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
@@ -613,6 +631,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
@@ -637,6 +656,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = enabled,
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
@@ -663,6 +683,11 @@ class PersistentChatLayoutPreferenceRepository(
         return getChatLayoutPreference()
     }
 
+    override suspend fun setThreadUnreadJumpEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+        store.saveThreadUnreadJumpEnabled(enabled)
+        return getChatLayoutPreference()
+    }
+
     override suspend fun setInlineSelectionToolbarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
         store.saveInlineSelectionToolbarEnabled(enabled)
         return getChatLayoutPreference()
@@ -681,6 +706,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = enabled,
@@ -705,6 +731,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
@@ -729,6 +756,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
@@ -783,6 +811,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),

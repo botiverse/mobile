@@ -1559,6 +1559,8 @@
     <string name="settings_mobile_server_drawer_detail">Use the new multi-server left drawer on Home. Turn this off to keep the current server switcher popover.</string>
     <string name="settings_mobile_inline_selection_toolbar">Inline message selection toolbar</string>
     <string name="settings_mobile_inline_selection_toolbar_detail">Long-press an eligible plain-text message to select its text in place and show quick reactions and message tools. Turn this off to keep the current message menu.</string>
+    <string name="settings_mobile_thread_unread_jump">Thread unread jump</string>
+    <string name="settings_mobile_thread_unread_jump_detail">Show the floating unread-message jump control in Thread. Keep this off while its reading-window behavior is experimental.</string>
     <string name="settings_mobile_conversation_forward_gesture">Conversation forward gesture</string>
     <string name="settings_mobile_conversation_forward_gesture_detail">Swipe left from the right edge of Home to reopen the most recent channel or direct message after going back.</string>
     <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta. Controls the conversation forward gesture. After returning to Home, swipe left from the right edge to reopen the most recent channel or direct message.</string>

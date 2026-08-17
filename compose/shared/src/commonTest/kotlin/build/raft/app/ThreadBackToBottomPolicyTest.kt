@@ -60,4 +60,52 @@ class ThreadBackToBottomPolicyTest {
             )
         )
     }
+
+    @Test
+    fun unreadJumpButtonFailsClosedUntilTheLocalPreferenceIsEnabled() {
+        assertFalse(
+            shouldShowThreadUnreadJumpButton(
+                preferenceEnabled = false,
+                routeActive = true,
+                hostForeground = true,
+                unreadCount = 3,
+                targetMessageId = "message-3",
+                inlineSearchVisible = false,
+            )
+        )
+        assertTrue(
+            shouldShowThreadUnreadJumpButton(
+                preferenceEnabled = true,
+                routeActive = true,
+                hostForeground = true,
+                unreadCount = 3,
+                targetMessageId = "message-3",
+                inlineSearchVisible = false,
+            )
+        )
+    }
+
+    @Test
+    fun unreadJumpButtonRetainsExistingVisibilityGuardsWhenEnabled() {
+        assertFalse(
+            shouldShowThreadUnreadJumpButton(
+                preferenceEnabled = true,
+                routeActive = false,
+                hostForeground = true,
+                unreadCount = 1,
+                targetMessageId = "message-1",
+                inlineSearchVisible = false,
+            )
+        )
+        assertFalse(
+            shouldShowThreadUnreadJumpButton(
+                preferenceEnabled = true,
+                routeActive = true,
+                hostForeground = true,
+                unreadCount = 1,
+                targetMessageId = "message-1",
+                inlineSearchVisible = true,
+            )
+        )
+    }
 }

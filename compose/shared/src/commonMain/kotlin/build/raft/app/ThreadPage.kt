@@ -5459,6 +5459,7 @@ internal fun SharedThreadRouteContent(
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     val longMessageCollapseEnabled = chatLayoutPreferenceStore.readLongMessageCollapseEnabledSync()
     val singleTapOpensThreadEnabled = chatLayoutPreferenceStore.readSingleTapOpensThreadEnabledSync()
+    val threadUnreadJumpEnabled = chatLayoutPreferenceStore.readThreadUnreadJumpEnabledSync()
     val inlineSelectionToolbarEnabled = chatLayoutPreferenceStore.readInlineSelectionToolbarEnabledSync()
     val commentsUnavailableLabel = stringResource(MR.strings.thread_error_comments_unavailable)
     val unableToSendCommentLabel = stringResource(MR.strings.thread_error_send_comment)
@@ -7892,6 +7893,7 @@ internal fun SharedThreadRouteContent(
             newDesignSettingsEnabled = chatLayoutPreferenceStore::readNewDesignSettingsEnabledSync,
             longMessageCollapseEnabled = longMessageCollapseEnabled,
             singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+            threadUnreadJumpEnabled = threadUnreadJumpEnabled,
             inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
             currentServerSlug = currentServerSlug,
             translationStore = translationStore,
@@ -10913,6 +10915,7 @@ private fun ThreadPageContent(
     newDesignSettingsEnabled: () -> Boolean = { false },
     longMessageCollapseEnabled: Boolean = false,
     singleTapOpensThreadEnabled: Boolean = false,
+    threadUnreadJumpEnabled: Boolean = false,
     inlineSelectionToolbarEnabled: Boolean = false,
     currentServerSlug: String? = null,
     translationStore: SharedMessageTranslationStore? = null,
@@ -11600,6 +11603,7 @@ private fun ThreadPageContent(
                         contentExtrasVisible = contentExtrasVisible,
                         longMessageCollapseEnabled = longMessageCollapseEnabled,
                         singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                        threadUnreadJumpEnabled = threadUnreadJumpEnabled,
                         inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
                         inlineSearchVisible = inlineSearchVisible,
                         isMarkdownTagValid = isMarkdownTagValid,
@@ -12868,6 +12872,7 @@ private fun ThreadChatTab(
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
     singleTapOpensThreadEnabled: Boolean = false,
+    threadUnreadJumpEnabled: Boolean = false,
     inlineSelectionToolbarEnabled: Boolean = false,
     inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
@@ -12960,6 +12965,7 @@ private fun ThreadChatTab(
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
                     singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                    threadUnreadJumpEnabled = threadUnreadJumpEnabled,
                     inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
                     inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
@@ -13039,6 +13045,7 @@ private fun ThreadChatTab(
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
                     singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                    threadUnreadJumpEnabled = threadUnreadJumpEnabled,
                     inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
                     inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
@@ -13109,6 +13116,7 @@ private fun ThreadChatTab(
                 contentExtrasVisible = contentExtrasVisible,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                threadUnreadJumpEnabled = threadUnreadJumpEnabled,
                 inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
                 inlineSearchVisible = inlineSearchVisible,
                 isMarkdownTagValid = isMarkdownTagValid,
@@ -13420,6 +13428,7 @@ private fun ThreadMessagesList(
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
     singleTapOpensThreadEnabled: Boolean = false,
+    threadUnreadJumpEnabled: Boolean = false,
     inlineSelectionToolbarEnabled: Boolean = false,
     inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
@@ -16258,13 +16267,17 @@ private fun ThreadMessagesList(
             )
         }
         val shouldShowUnreadJumpButton =
-            routeActive &&
-                hostForeground &&
-                unreadJumpProjection.unreadCount > 0 &&
-                unreadJumpProjection.targetMessageId != null &&
-                !inlineSearchVisible
+            shouldShowThreadUnreadJumpButton(
+                preferenceEnabled = threadUnreadJumpEnabled,
+                routeActive = routeActive,
+                hostForeground = hostForeground,
+                unreadCount = unreadJumpProjection.unreadCount,
+                targetMessageId = unreadJumpProjection.targetMessageId,
+                inlineSearchVisible = inlineSearchVisible,
+            )
         if (
             !shareSelectionCaptureActive &&
+            threadUnreadJumpEnabled &&
             (shouldShowUnreadJumpButton || unreadJumpInteractionGuardActive)
         ) {
             ThreadUnreadJumpButton(
@@ -18166,6 +18179,21 @@ private fun ThreadUnreadJumpButton(
         textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
     )
 }
+
+internal fun shouldShowThreadUnreadJumpButton(
+    preferenceEnabled: Boolean,
+    routeActive: Boolean,
+    hostForeground: Boolean,
+    unreadCount: Int,
+    targetMessageId: String?,
+    inlineSearchVisible: Boolean,
+): Boolean =
+    preferenceEnabled &&
+        routeActive &&
+        hostForeground &&
+        unreadCount > 0 &&
+        !targetMessageId.isNullOrBlank() &&
+        !inlineSearchVisible
 
 private const val ThreadBackToBottomReleaseGuardMillis = 64L
 private const val ThreadUnreadJumpButtonZIndex = 5f

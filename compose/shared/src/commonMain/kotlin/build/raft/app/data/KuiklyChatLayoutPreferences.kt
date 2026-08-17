@@ -11,6 +11,7 @@ private const val KEY_LARGE_SCREEN_NAVIGATION = "largeScreenNavigation"
 private const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "compactConsecutiveMessages"
 private const val KEY_LONG_MESSAGE_COLLAPSE_ENABLED = "longMessageCollapseEnabled"
 private const val KEY_SINGLE_TAP_OPENS_THREAD_ENABLED = "singleTapOpensThreadEnabled"
+private const val KEY_THREAD_UNREAD_JUMP_ENABLED = "threadUnreadJumpEnabled"
 private const val KEY_INLINE_SELECTION_TOOLBAR_ENABLED = "inlineSelectionToolbarEnabled"
 private const val KEY_IMAGE_ANNOTATION_ENABLED = "imageAnnotationEnabled"
 private const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "foregroundMessageBannersEnabled"
@@ -30,6 +31,7 @@ private val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS =
         KEY_COMPACT_CONSECUTIVE_MESSAGES,
         KEY_LONG_MESSAGE_COLLAPSE_ENABLED,
         KEY_SINGLE_TAP_OPENS_THREAD_ENABLED,
+        KEY_THREAD_UNREAD_JUMP_ENABLED,
         KEY_INLINE_SELECTION_TOOLBAR_ENABLED,
         KEY_CONVERSATION_FORWARD_GESTURE_ENABLED,
         KEY_IMAGE_ANNOTATION_ENABLED,
@@ -117,6 +119,9 @@ fun kuiklyChatLayoutPreferenceRepository(
         override suspend fun setSingleTapOpensThreadEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setSingleTapOpensThreadEnabled(enabled) }
 
+        override suspend fun setThreadUnreadJumpEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setThreadUnreadJumpEnabled(enabled) }
+
         override suspend fun setInlineSelectionToolbarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setInlineSelectionToolbarEnabled(enabled) }
 
@@ -170,6 +175,7 @@ private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JSONObject =
         .put(KEY_COMPACT_CONSECUTIVE_MESSAGES, compactConsecutiveMessages)
         .put(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, longMessageCollapseEnabled)
         .put(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, singleTapOpensThreadEnabled)
+        .put(KEY_THREAD_UNREAD_JUMP_ENABLED, threadUnreadJumpEnabled)
         .put(KEY_INLINE_SELECTION_TOOLBAR_ENABLED, inlineSelectionToolbarEnabled)
         .put(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, conversationForwardGestureEnabled)
         .put(KEY_IMAGE_ANNOTATION_ENABLED, imageAnnotationEnabled)
@@ -192,6 +198,7 @@ internal fun JSONObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPrefer
         compactConsecutiveMessages = optBoolean(KEY_COMPACT_CONSECUTIVE_MESSAGES, true),
         longMessageCollapseEnabled = optBoolean(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, false),
         singleTapOpensThreadEnabled = optBoolean(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, true),
+        threadUnreadJumpEnabled = optBoolean(KEY_THREAD_UNREAD_JUMP_ENABLED, false),
         inlineSelectionToolbarEnabled = optBoolean(KEY_INLINE_SELECTION_TOOLBAR_ENABLED, false),
         conversationForwardGestureEnabled = optBoolean(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, false),
         imageAnnotationEnabled = optBoolean(KEY_IMAGE_ANNOTATION_ENABLED, true),
