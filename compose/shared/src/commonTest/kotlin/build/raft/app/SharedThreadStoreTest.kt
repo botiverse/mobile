@@ -5838,6 +5838,110 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun acceptedCachedPayloadSeedsAvatarResolverBeforeFailedRefresh() = runBlocking {
+        val payloadStore = SharedThreadPayloadStore()
+        val uploadedAvatar =
+            "https://cdn.raft.build/avatars/users/0123456789abcdef0123456789abcdef.webp"
+        val cached =
+            contentPayload("cached body").let { payload ->
+                payload.copy(
+                    messages =
+                        listOf(
+                            payload.messages.single().copy(
+                                authorId = "cached-user",
+                                authorName = "Cached User",
+                                authorKind = "human",
+                                avatarWireValue = uploadedAvatar
+                            )
+                        )
+                )
+            }
+        payloadStore.put("server-1", "channel-1", cached)
+        val memberStore = SharedServerMembersStore(FakeMemberRepository())
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                serverMembersStore = memberStore,
+                payloadStore = payloadStore
+            )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        assertEquals("cached body", store.state.value.payload.messages.single().body)
+        assertEquals(
+            uploadedAvatar,
+            memberStore.state.value.memberProfile(ServerId("server-1"), "cached-user")?.avatar?.wireValue
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun serverSwitchCacheHitsSeedOnlyTheirSelectedServerInEitherDirection() = runBlocking {
+        for (serverOrder in listOf(listOf("server-a", "server-b"), listOf("server-b", "server-a"))) {
+            val payloadStore = SharedThreadPayloadStore()
+            val memberStore = SharedServerMembersStore(FakeMemberRepository())
+            val avatars =
+                mapOf(
+                    "server-a" to "https://cdn.raft.build/avatars/users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp",
+                    "server-b" to "https://cdn.raft.build/avatars/users/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.webp"
+                )
+            serverOrder.forEach { serverId ->
+                val cached =
+                    contentPayload("cached $serverId").let { payload ->
+                        payload.copy(
+                            messages =
+                                listOf(
+                                    payload.messages.single().copy(
+                                        authorId = "shared-user",
+                                        authorName = "Shared User",
+                                        authorKind = "human",
+                                        avatarWireValue = avatars.getValue(serverId)
+                                    )
+                                )
+                        )
+                    }
+                payloadStore.put(serverId, "channel-1", cached)
+                val session =
+                    sampleSession().copy(
+                        selectedServerId = serverId,
+                        servers =
+                            listOf(
+                                StoredAuthServer(id = "server-a", name = "Server A", slug = "server-a"),
+                                StoredAuthServer(id = "server-b", name = "Server B", slug = "server-b")
+                            )
+                    )
+                val dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(failChannelMessages = true),
+                        sessionStore = InMemorySlockAuthSessionStore(session),
+                        serverMembersStore = memberStore,
+                        payloadStore = payloadStore
+                    )
+                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+                val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+                store.accept(SharedThreadIntent.Start(basePayload()))
+
+                assertEquals("cached $serverId", store.state.value.payload.messages.single().body)
+                assertEquals(
+                    avatars.getValue(serverId),
+                    memberStore.state.value.memberProfile(ServerId(serverId), "shared-user")?.avatar?.wireValue
+                )
+                val otherServer = if (serverId == "server-a") "server-b" else "server-a"
+                val otherAvatar =
+                    memberStore.state.value.memberProfile(ServerId(otherServer), "shared-user")?.avatar?.wireValue
+                if (otherAvatar != null) {
+                    assertEquals(avatars.getValue(otherServer), otherAvatar)
+                }
+                scope.cancel()
+            }
+        }
+    }
+
+    @Test
     fun acceptedRealtimeInlineReplySeedsResolverWhileRejectedScopeWritesNothing() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val memberRepository = FakeMemberRepository()
