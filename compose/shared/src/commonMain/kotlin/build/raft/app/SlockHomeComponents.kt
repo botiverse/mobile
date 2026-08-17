@@ -2317,6 +2317,7 @@ internal fun SlockStructuralHomeShell(
                                 },
                             labels = labels,
                             onDismiss = onServerSwitcherDismiss,
+                            onServerClick = onServerSelected,
                             onSectionToggle = onServerDrawerSectionToggle,
                             onRetry = onServerDrawerRetry,
                             onCreateServerClick = onCreateServerClick
@@ -4014,6 +4015,7 @@ private fun HomeServerDrawerPanel(
     sections: List<SlockHomeServerDrawerSection>,
     labels: SlockHomeShellLabels,
     onDismiss: () -> Unit,
+    onServerClick: (String) -> Unit,
     onSectionToggle: (String) -> Unit,
     onRetry: (String) -> Unit,
     onCreateServerClick: () -> Unit
@@ -4090,7 +4092,8 @@ private fun HomeServerDrawerPanel(
                                     section = row.section,
                                     hasCachedConversations =
                                         row.section.channels.isNotEmpty() || row.section.directMessages.isNotEmpty(),
-                                    onClick = { onSectionToggle(row.section.server.id) }
+                                    onServerClick = onServerClick,
+                                    onSectionToggle = onSectionToggle,
                                 )
                             is SlockHomeServerDrawerRow.SectionHeader ->
                                 HomeServerDrawerSectionHeader(row.section, row.count, labels)
@@ -4130,6 +4133,7 @@ internal fun HomeServerDrawerHostedPanel(
     rowObservationGeneration: Long?,
     interactiveGeneration: Long?,
     authoritativeOpenGeneration: Long?,
+    onServerClick: (String) -> Unit,
     onSectionToggle: (String) -> Unit,
     onRetry: (String) -> Unit,
     onConversationClick: (Long, String, String) -> Unit,
@@ -4208,7 +4212,8 @@ internal fun HomeServerDrawerHostedPanel(
                             HomeServerDrawerServerHeader(
                                 section = section,
                                 hasCachedConversations = hostedSection.hasCachedConversations,
-                                onClick = { onSectionToggle(serverId) }
+                                onServerClick = onServerClick,
+                                onSectionToggle = onSectionToggle,
                             )
                         }
                         if (!section.expanded) return@forEach
@@ -4348,11 +4353,29 @@ private fun HomeServerDrawerConversationSection.toSlockHomeConversationSection()
         HomeServerDrawerConversationSection.DirectMessage -> SlockHomeConversationSection.DirectMessage
     }
 
+internal enum class HomeServerDrawerHeaderAction {
+    OpenServerHome,
+    ToggleSection,
+}
+
+internal fun dispatchHomeServerDrawerHeaderAction(
+    action: HomeServerDrawerHeaderAction,
+    serverId: String,
+    onServerClick: (String) -> Unit,
+    onSectionToggle: (String) -> Unit,
+) {
+    when (action) {
+        HomeServerDrawerHeaderAction.OpenServerHome -> onServerClick(serverId)
+        HomeServerDrawerHeaderAction.ToggleSection -> onSectionToggle(serverId)
+    }
+}
+
 @Composable
 private fun HomeServerDrawerServerHeader(
     section: SlockHomeServerDrawerSection,
     hasCachedConversations: Boolean,
-    onClick: () -> Unit
+    onServerClick: (String) -> Unit,
+    onSectionToggle: (String) -> Unit,
 ) {
     val busy = section.status == HomeServerDrawerLoadStatus.Loading || section.status == HomeServerDrawerLoadStatus.Refreshing
     val failed = section.status == HomeServerDrawerLoadStatus.ErrorEmpty || section.status == HomeServerDrawerLoadStatus.ErrorWithCache
@@ -4363,41 +4386,72 @@ private fun HomeServerDrawerServerHeader(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = HomeServerSwitcherRowMinHeight)
                 .background(if (section.expanded) SlockColor.SurfaceCream else SlockColor.SurfaceWhite)
                 .alpha(if (unavailable) 0.3f else 1f)
                 .semantics {
                     if (unavailable) stateDescription = unavailableDescription
                 }
-                .clickable(enabled = interactive, onClick = onClick)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .heightIn(min = HomeServerSwitcherRowMinHeight),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        ServerSwitcherAvatarTile(section.server)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(section.server.name, style = SlockType.ButtonBold, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                "/${section.server.slug}",
-                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        if (!unavailable) ServerSwitcherUnreadIndicator(section.server)
-        if (busy) {
-            SlockLucideIcon(SlockLucideIconName.LoaderCircle, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
-        } else if (failed) {
-            SlockLucideIcon(SlockLucideIconName.BadgeInfo, Modifier.size(14.dp), color = SlockColor.AccentRedArgb)
-        } else if (unavailable) {
-            SlockLucideIcon(SlockLucideIconName.BadgeInfo, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
+        Row(
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = HomeServerSwitcherRowMinHeight)
+                    .clickable(enabled = interactive) {
+                        dispatchHomeServerDrawerHeaderAction(
+                            action = HomeServerDrawerHeaderAction.OpenServerHome,
+                            serverId = section.server.id,
+                            onServerClick = onServerClick,
+                            onSectionToggle = onSectionToggle,
+                        )
+                    }
+                    .padding(start = 12.dp, end = if (interactive) 0.dp else 12.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            ServerSwitcherAvatarTile(section.server)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Text(section.server.name, style = SlockType.ButtonBold, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "/${section.server.slug}",
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (!unavailable) ServerSwitcherUnreadIndicator(section.server)
+            if (busy) {
+                SlockLucideIcon(SlockLucideIconName.LoaderCircle, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
+            } else if (failed) {
+                SlockLucideIcon(SlockLucideIconName.BadgeInfo, Modifier.size(14.dp), color = SlockColor.AccentRedArgb)
+            } else if (unavailable) {
+                SlockLucideIcon(SlockLucideIconName.BadgeInfo, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
+            }
         }
         if (interactive) {
-            SlockLucideIcon(
-                if (section.expanded) SlockLucideIconName.ChevronUp else SlockLucideIconName.ChevronDown,
-                Modifier.size(16.dp)
-            )
+            Box(
+                modifier =
+                    Modifier
+                        .width(44.dp)
+                        .heightIn(min = HomeServerSwitcherRowMinHeight)
+                        .clickable {
+                            dispatchHomeServerDrawerHeaderAction(
+                                action = HomeServerDrawerHeaderAction.ToggleSection,
+                                serverId = section.server.id,
+                                onServerClick = onServerClick,
+                                onSectionToggle = onSectionToggle,
+                            )
+                        },
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon(
+                    if (section.expanded) SlockLucideIconName.ChevronUp else SlockLucideIconName.ChevronDown,
+                    Modifier.size(16.dp)
+                )
+            }
         }
     }
 }

@@ -208,6 +208,32 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeServerDrawerHeaderRoutesRowAndChevronToDisjointActions() {
+        val openedServerIds = mutableListOf<String>()
+        val toggledServerIds = mutableListOf<String>()
+        val onServerClick: (String) -> Unit = openedServerIds::add
+        val onSectionToggle: (String) -> Unit = toggledServerIds::add
+
+        dispatchHomeServerDrawerHeaderAction(
+            action = HomeServerDrawerHeaderAction.OpenServerHome,
+            serverId = "server-2",
+            onServerClick = onServerClick,
+            onSectionToggle = onSectionToggle,
+        )
+        assertEquals(listOf("server-2"), openedServerIds)
+        assertTrue(toggledServerIds.isEmpty())
+
+        dispatchHomeServerDrawerHeaderAction(
+            action = HomeServerDrawerHeaderAction.ToggleSection,
+            serverId = "server-2",
+            onServerClick = onServerClick,
+            onSectionToggle = onSectionToggle,
+        )
+        assertEquals(listOf("server-2"), openedServerIds)
+        assertEquals(listOf("server-2"), toggledServerIds)
+    }
+
+    @Test
     fun homeServerDrawerShowsSkeletonAndCachePreservingErrorRowsBySectionState() {
         val rows =
             homeServerDrawerRows(

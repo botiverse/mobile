@@ -4726,6 +4726,21 @@ private fun SlockAppShellReadyContent(
 
     val appShellHomeLabels = SlockHomeShellLabels.localized()
     val serverDrawerUserHeader = rememberSlockServerDrawerUserHeader(readySession)
+    fun openServerDrawerHome(serverIdValue: String) {
+        val normalizedServerId = serverIdValue.trim().takeIf { it.isNotBlank() } ?: return
+        val session = latestReadySession
+        if (session == null || session.servers.none { it.id == normalizedServerId }) {
+            bridge.logWarn(
+                "server_drawer_home_open_rejected serverId=$normalizedServerId reason=stale_projection"
+            )
+            return
+        }
+        selectAppShellTab("home")
+        retainedAppShellTabs = retainedAppShellTabs + "home"
+        homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(normalizedServerId)))
+    }
+
     fun openServerDrawerConversation(serverIdValue: String, conversationId: String) {
         val normalizedServerId = serverIdValue.trim().takeIf { it.isNotBlank() } ?: return
         val normalizedConversationId = conversationId.trim().takeIf { it.isNotBlank() } ?: return
@@ -5371,6 +5386,7 @@ private fun SlockAppShellReadyContent(
                         createChannelDialogOpen ||
                         activeAnnouncement != null,
                 dismissLabel = stringResource(MR.strings.common_dismiss),
+                onServerClick = ::openServerDrawerHome,
                 onConversationClick = ::openServerDrawerConversation,
                 onProgrammaticCloseFenceChanged = { serverDrawerProgrammaticCloseFence = it },
                 content = mainRouteSurface
@@ -5463,6 +5479,7 @@ private fun AppShellServerDrawerHost(
     selectedTab: String,
     modalGestureBlocked: Boolean,
     dismissLabel: String,
+    onServerClick: (String) -> Unit,
     onConversationClick: (String, String) -> Unit,
     onProgrammaticCloseFenceChanged: (((String) -> Unit)?) -> Unit,
     content: @Composable () -> Unit
@@ -5626,6 +5643,7 @@ private fun AppShellServerDrawerHost(
                         interactiveGeneration = commandState.interactiveGeneration,
                         authoritativeOpenGeneration =
                             projection.commandIntent.generation.takeIf { projection.commandIntent.desiredOpen },
+                        onServerClick = onServerClick,
                         onSectionToggle = { serverId ->
                             homeShellStore.dispatch(
                                 SharedHomeShellIntent.Home(
