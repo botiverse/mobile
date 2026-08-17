@@ -7,6 +7,9 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.RealtimeAgentActivityEntry
+import build.raft.app.model.RuntimeConfig
+import build.raft.app.model.RuntimeModeConfig
+import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,8 +41,11 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 internal data class SharedAgentDetailState(
     val agentId: MemberId? = null,
+    val detailOwner: SharedAgentDetailOwner? = null,
+    val detailProfileGeneration: Long = 0L,
     val detailServerId: ServerId? = null,
     val detail: AgentDetailSnapshot? = null,
+    val runtimeConfigProjection: SharedAgentRuntimeConfigProjection? = null,
     val agentActivityLogs: Map<MemberId, List<AgentActivityEntry>> = emptyMap(),
     val agentRealtimeActivityLogs: Map<MemberId, List<AgentActivityEntry>> = emptyMap(),
     val agentActivityObservedAt: Map<MemberId, Long> = emptyMap(),
@@ -60,6 +66,34 @@ internal data class SharedAgentDetailState(
     val roleDraft: String? = null,
     val roleSaving: Boolean = false,
     val roleError: String? = null
+)
+
+internal data class SharedAgentDetailOwner(
+    val environmentId: String,
+    val accountId: String,
+    val serverId: ServerId
+)
+
+internal fun sharedAgentDetailOwner(
+    environmentId: String?,
+    accountId: String?,
+    serverId: ServerId?
+): SharedAgentDetailOwner? {
+    val normalizedEnvironment = environmentId?.trim()?.trimEnd('/')?.takeIf { it.isNotBlank() } ?: return null
+    val normalizedAccount = accountId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val normalizedServer = serverId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return SharedAgentDetailOwner(
+        environmentId = normalizedEnvironment,
+        accountId = normalizedAccount,
+        serverId = ServerId(normalizedServer)
+    )
+}
+
+internal data class SharedAgentRuntimeConfigProjection(
+    val owner: SharedAgentDetailOwner,
+    val agentId: MemberId,
+    val config: RuntimeConfig,
+    val profileGeneration: Long
 )
 
 internal enum class SharedAgentDetailLoadStatus {
@@ -101,7 +135,11 @@ internal interface SharedAgentDetailActions {
 }
 
 internal sealed interface SharedAgentDetailIntent {
-    data class SelectMember(val memberId: MemberId) : SharedAgentDetailIntent
+    data class SelectMember(
+        val memberId: MemberId,
+        val owner: SharedAgentDetailOwner? = null,
+        val profileGeneration: Long = 0L
+    ) : SharedAgentDetailIntent
     data class SeedDetailFromMember(val member: MemberProfile) : SharedAgentDetailIntent
     data object DeselectMember : SharedAgentDetailIntent
 
@@ -110,7 +148,15 @@ internal sealed interface SharedAgentDetailIntent {
         val agentId: MemberId,
         val detail: AgentDetailSnapshot,
         val serverId: ServerId? = null,
-        val preserveSequencedActivity: Boolean = true
+        val preserveSequencedActivity: Boolean = true,
+        val owner: SharedAgentDetailOwner? = null,
+        val profileGeneration: Long = 0L
+    ) : SharedAgentDetailIntent
+    data class ApplyRuntimeConfigProjection(
+        val owner: SharedAgentDetailOwner,
+        val agentId: MemberId,
+        val config: RuntimeConfig,
+        val profileGeneration: Long
     ) : SharedAgentDetailIntent
     data class SetAgentActivity(
         val agentId: MemberId,
@@ -180,11 +226,17 @@ internal class SharedAgentDetailStore(
         val current = _state.value
         val next = when (intent) {
             is SharedAgentDetailIntent.SelectMember ->
-                if (current.agentId == intent.memberId) {
+                if (
+                    current.agentId == intent.memberId &&
+                    current.detailOwner == intent.owner &&
+                    current.detailProfileGeneration == intent.profileGeneration
+                ) {
                     current
                 } else {
                     SharedAgentDetailState(
                         agentId = intent.memberId,
+                        detailOwner = intent.owner,
+                        detailProfileGeneration = intent.profileGeneration,
                         agentActivityLogs = current.agentActivityLogs,
                         agentRealtimeActivityLogs = current.agentRealtimeActivityLogs,
                         agentActivityObservedAt = current.agentActivityObservedAt,
@@ -212,7 +264,10 @@ internal class SharedAgentDetailStore(
                     current
                 }
             is SharedAgentDetailIntent.SetDetail ->
-                if (current.agentId == intent.agentId) {
+                if (
+                    current.agentId == intent.agentId &&
+                    current.acceptsDetailResult(intent.owner, intent.profileGeneration)
+                ) {
                     val base =
                         if (intent.serverId != null && current.detailServerId != intent.serverId) {
                             current.withoutCachedAgentActivity(intent.agentId)
@@ -227,19 +282,51 @@ internal class SharedAgentDetailStore(
                             }
                             ?.let { intent.detail.withExistingAgentDetailSections(it) }
                             ?: intent.detail
-                    val detail = base.mergeSequencedActivityIntoDetail(
+                    val mergedDetail = base.mergeSequencedActivityIntoDetail(
                         agentId = intent.agentId,
                         incoming = incoming,
                         preserveSequencedActivity = intent.preserveSequencedActivity
                     ).withCachedAgentActivity(base.agentActivityLogs[intent.agentId])
+                    val projection =
+                        base.runtimeConfigProjection?.takeIf {
+                            it.owner == intent.owner &&
+                                it.agentId == intent.agentId &&
+                                it.profileGeneration >= intent.profileGeneration
+                        }
+                    val detail = projection?.let { mergedDetail.withRuntimeConfigProjection(it.config) } ?: mergedDetail
                     val nextActivityLogs = base.agentActivityLogs.withAgentActivityLog(intent.agentId, detail.activity)
                     base.copy(
                         detail = detail,
+                        detailOwner = intent.owner,
+                        detailProfileGeneration = intent.profileGeneration,
                         detailServerId = intent.serverId ?: base.detailServerId,
+                        runtimeConfigProjection = projection,
                         agentActivityLogs = nextActivityLogs,
                         detailLoadStatus = SharedAgentDetailLoadStatus.Content,
                         detailError = null,
                         detailPermissionBlocker = null
+                    )
+                } else {
+                    current
+                }
+            is SharedAgentDetailIntent.ApplyRuntimeConfigProjection ->
+                if (
+                    current.agentId == intent.agentId &&
+                    current.detail?.agentId == intent.agentId &&
+                    current.detailOwner == intent.owner &&
+                    current.detailServerId == intent.owner.serverId &&
+                    current.detailProfileGeneration == intent.profileGeneration
+                ) {
+                    val projection =
+                        SharedAgentRuntimeConfigProjection(
+                            owner = intent.owner,
+                            agentId = intent.agentId,
+                            config = intent.config,
+                            profileGeneration = intent.profileGeneration
+                        )
+                    current.copy(
+                        detail = current.detail.withRuntimeConfigProjection(intent.config),
+                        runtimeConfigProjection = projection
                     )
                 } else {
                     current
@@ -494,6 +581,12 @@ private fun SharedAgentDetailState.applyAgentActivityUpdate(
     )
 }
 
+private fun SharedAgentDetailState.acceptsDetailResult(
+    owner: SharedAgentDetailOwner?,
+    profileGeneration: Long
+): Boolean =
+    detailOwner == owner && detailProfileGeneration == profileGeneration
+
 private fun SharedAgentDetailState.applyAgentActivitySnapshot(
     agentId: MemberId,
     activity: List<AgentActivityEntry>
@@ -649,6 +742,30 @@ private fun AgentDetailSnapshot.withExistingAgentDetailSections(
                         it.errorCode == null
                 }
                 ?: existing.appLogins
+    )
+}
+
+internal fun AgentDetailSnapshot.withRuntimeConfigProjection(config: RuntimeConfig): AgentDetailSnapshot {
+    val currentSummary = summary ?: AgentDetailSummary(id = agentId.value, name = agentId.value)
+    return copy(
+        summary = currentSummary.copy(
+            runtime = config.runtime,
+            model =
+                when (val modelConfig = config.model) {
+                    is RuntimeModelConfig.Preset -> modelConfig.id
+                    is RuntimeModelConfig.Custom -> modelConfig.name
+                },
+            runtimeProvider = config.provider,
+            runtimeModelKind =
+                when (config.model) {
+                    is RuntimeModelConfig.Preset -> "preset"
+                    is RuntimeModelConfig.Custom -> "custom"
+                },
+            reasoning = config.reasoningEffort,
+            executionMode = if (config.mode is RuntimeModeConfig.Fast) "fast" else "default",
+            envVars = config.envVars.orEmpty(),
+            envVarNames = config.envVars.orEmpty().keys.sorted()
+        )
     )
 }
 

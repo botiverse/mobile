@@ -11,6 +11,8 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.RealtimeAgentActivityDetail
 import build.raft.app.model.RealtimeAgentActivityEntry
+import build.raft.app.model.RuntimeConfig
+import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -79,6 +81,154 @@ class SharedAgentDetailStoreTest {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
         assertEquals(testMemberId, s.state.value.agentId)
+    }
+
+    @Test
+    fun runtimeConfigProjectionUpdatesMountedDetailAndRejectsSameGenerationRollback() {
+        val s = store()
+        val owner =
+            SharedAgentDetailOwner(
+                environmentId = "https://api.raft.build/api",
+                accountId = "account-1",
+                serverId = ServerId("server-1")
+            )
+        val initial =
+            detailWithSummary().copy(
+                summary = detailWithSummary().summary?.copy(runtime = "claude", model = "fable")
+            )
+        val saved = RuntimeConfig(runtime = "claude", model = RuntimeModelConfig.Preset("claude-opus-5"))
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId, owner, profileGeneration = 4L))
+        s.dispatch(
+            SharedAgentDetailIntent.SetDetail(
+                testMemberId,
+                initial,
+                serverId = owner.serverId,
+                owner = owner,
+                profileGeneration = 4L
+            )
+        )
+
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyRuntimeConfigProjection(
+                owner = owner,
+                agentId = testMemberId,
+                config = saved,
+                profileGeneration = 4L
+            )
+        )
+        assertEquals("claude-opus-5", s.state.value.detail?.summary?.model)
+
+        s.dispatch(
+            SharedAgentDetailIntent.SetDetail(
+                testMemberId,
+                initial,
+                serverId = owner.serverId,
+                owner = owner,
+                profileGeneration = 4L
+            )
+        )
+        assertEquals("claude-opus-5", s.state.value.detail?.summary?.model)
+    }
+
+    @Test
+    fun newerProfileGenerationCanReplaceSavedRuntimeProjection() {
+        val s = store()
+        val owner =
+            SharedAgentDetailOwner(
+                environmentId = "https://api.raft.build/api",
+                accountId = "account-1",
+                serverId = ServerId("server-1")
+            )
+        val saved = RuntimeConfig(runtime = "claude", model = RuntimeModelConfig.Preset("claude-opus-5"))
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId, owner, profileGeneration = 4L))
+        s.dispatch(
+            SharedAgentDetailIntent.SetDetail(
+                testMemberId,
+                detailWithSummary(),
+                serverId = owner.serverId,
+                owner = owner,
+                profileGeneration = 4L
+            )
+        )
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyRuntimeConfigProjection(
+                owner,
+                testMemberId,
+                saved,
+                profileGeneration = 4L
+            )
+        )
+
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId, owner, profileGeneration = 5L))
+        s.dispatch(
+            SharedAgentDetailIntent.SetDetail(
+                testMemberId,
+                detailWithSummary().copy(
+                    summary = detailWithSummary().summary?.copy(runtime = "claude", model = "server-new")
+                ),
+                serverId = owner.serverId,
+                owner = owner,
+                profileGeneration = 5L
+            )
+        )
+
+        assertEquals("server-new", s.state.value.detail?.summary?.model)
+        assertNull(s.state.value.runtimeConfigProjection)
+    }
+
+    @Test
+    fun runtimeConfigProjectionIsOwnerAndGenerationFenced() {
+        val s = store()
+        val owner =
+            SharedAgentDetailOwner(
+                environmentId = "https://api.raft.build/api",
+                accountId = "account-1",
+                serverId = ServerId("server-1")
+            )
+        val saved = RuntimeConfig(runtime = "claude", model = RuntimeModelConfig.Preset("claude-opus-5"))
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId, owner, profileGeneration = 4L))
+        s.dispatch(
+            SharedAgentDetailIntent.SetDetail(
+                testMemberId,
+                detailWithSummary().copy(
+                    summary = detailWithSummary().summary?.copy(runtime = "claude", model = "fable")
+                ),
+                serverId = owner.serverId,
+                owner = owner,
+                profileGeneration = 4L
+            )
+        )
+
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyRuntimeConfigProjection(
+                owner = owner.copy(accountId = "account-2"),
+                agentId = testMemberId,
+                config = saved,
+                profileGeneration = 4L
+            )
+        )
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyRuntimeConfigProjection(
+                owner = owner,
+                agentId = testMemberId,
+                config = saved,
+                profileGeneration = 3L
+            )
+        )
+        s.dispatch(
+            SharedAgentDetailIntent.SetDetail(
+                testMemberId,
+                detailWithSummary().copy(
+                    summary = detailWithSummary().summary?.copy(runtime = "claude", model = "cross-owner")
+                ),
+                serverId = owner.serverId,
+                owner = owner.copy(environmentId = "https://staging.raft.build/api"),
+                profileGeneration = 4L
+            )
+        )
+
+        assertEquals("fable", s.state.value.detail?.summary?.model)
+        assertNull(s.state.value.runtimeConfigProjection)
     }
 
     @Test
