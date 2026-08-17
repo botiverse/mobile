@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import build.raft.app.data.InMemorySlockAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.StoredAuthServer
