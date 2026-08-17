@@ -7,6 +7,8 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
+import build.raft.app.model.NotificationPushReceived
+import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -177,7 +179,7 @@ class SystemNotificationsTest {
         assertEquals("channel", request.conversationKindWireValue())
         assertEquals("#general", request.title)
         assertEquals("Ada: Hello team", request.body)
-        assertEquals("unread:server-1:channel-1:message-1", request.notificationKey)
+        assertEquals("unread:message:message-1", request.notificationKey)
     }
 
     @Test
@@ -238,8 +240,44 @@ class SystemNotificationsTest {
         assertEquals("thread-message-1", request.channelId)
         assertEquals("channel-1", request.parentChannelId)
         assertEquals("message-1", request.parentMessageId)
-        assertEquals("unread:server-1:thread-message-1:message-1", request.notificationKey)
+        assertEquals("unread:message:message-1", request.notificationKey)
     }
+
+    @Test
+    fun jointPushesShareOneCanonicalTrayFactWhileKeepingEachLocalRoute() {
+        val host =
+            buildSystemUnreadNotificationRequestFromPush(
+                push = notificationPush("server-host", "host-channel"),
+                isVisibleThread = false,
+                isAppInForeground = false
+            )
+        val peer =
+            buildSystemUnreadNotificationRequestFromPush(
+                push = notificationPush("server-peer", "peer-channel"),
+                isVisibleThread = false,
+                isAppInForeground = false
+            )
+
+        requireNotNull(host)
+        requireNotNull(peer)
+        assertEquals("unread:message:canonical-message", host.notificationKey)
+        assertEquals(host.notificationKey, peer.notificationKey)
+        assertEquals("server-host", host.serverId)
+        assertEquals("host-channel", host.channelId)
+        assertEquals("server-peer", peer.serverId)
+        assertEquals("peer-channel", peer.channelId)
+    }
+
+    private fun notificationPush(serverId: String, channelId: String): NotificationPushReceived =
+        NotificationPushReceived(
+            serverId = ServerId(serverId),
+            kind = ConversationKind.Joint,
+            channelId = ChannelId(channelId),
+            messageId = MessageId("canonical-message"),
+            title = "Joint task",
+            body = "Task updated",
+            tag = "task"
+        )
 
     private fun message(
         body: String = "Hello",

@@ -253,7 +253,11 @@ fun buildSystemUnreadNotificationRequest(
         category = category,
         title = title,
         body = body,
-        notificationKey = "unread:$serverId:${channelId ?: threadId}:$messageId"
+        // Message ids are canonical across host/peer joint projections. The
+        // local route stays in the request, while the tray identity deliberately
+        // does not include Server/channel so two projected deliveries replace
+        // one fact instead of producing duplicate system notifications.
+        notificationKey = "unread:message:$messageId"
     )
 }
 
@@ -301,7 +305,7 @@ fun buildSystemUnreadNotificationRequestFromPush(
         category = category,
         title = push.title.ifBlank { "Raft" },
         body = push.body.ifBlank { "Sent a new message." },
-        notificationKey = "unread:${push.serverId.value}:${streamChannelId ?: push.messageId.value}:${push.messageId.value}"
+        notificationKey = "unread:message:${push.messageId.value}"
     )
 }
 

@@ -2247,24 +2247,80 @@ private fun List<InboxItem>.withActivityThreadTaskProjection(
     tasksDataStore ?: return this
     val projection = tasksDataStore.projection(serverId, SharedTasksScope.Server)
     if (projection.status == SharedTasksDataStoreStatus.Idle || projection.tasks.isEmpty()) return this
-    val tasksByMessageId =
+    val taskBindingsByMessageId =
         projection.tasks
             .flatMap { task ->
+                val notificationProjection = tasksDataStore.notificationProjection(task.id)
+                val localRoute =
+                    notificationProjection
+                        ?.routes
+                        ?.singleOrNull { route -> route.serverId == serverId }
                 listOfNotNull(task.messageId, task.parentMessageId)
                     .mapNotNull { messageId -> messageId.value.trim().takeIf { it.isNotBlank() } }
                     .distinct()
-                    .map { messageId -> messageId to task }
+                    .map { messageId ->
+                        messageId to
+                            ActivityTaskNotificationBinding(
+                                task = task,
+                                canonicalMessageId = notificationProjection?.messageId,
+                                localRoute = localRoute
+                            )
+                    }
             }
             .toMap()
-    if (tasksByMessageId.isEmpty()) return this
-    return map { item -> item.withActivityThreadTaskProjection(tasksByMessageId) }
+    if (taskBindingsByMessageId.isEmpty()) return this
+
+    // The Server normally persists one personal inbox fact for one canonical
+    // message. Keep the client fail-safe too: if host + peer candidates are
+    // both present during a refresh/realtime overlap, retain one row and
+    // prefer the row already carrying this Server's local parent route.
+    val preferredIndexByCanonicalMessage = mutableMapOf<MessageId, Int>()
+    forEachIndexed { index, item ->
+        val binding = item.activityTaskNotificationBinding(taskBindingsByMessageId) ?: return@forEachIndexed
+        val canonicalMessageId = binding.canonicalMessageId ?: return@forEachIndexed
+        val currentPreferred = preferredIndexByCanonicalMessage[canonicalMessageId]
+        if (currentPreferred == null) {
+            preferredIndexByCanonicalMessage[canonicalMessageId] = index
+        } else {
+            val preferredItem = this[currentPreferred]
+            val localChannelId = binding.localRoute?.channelId
+            val preferredIsLocal = preferredItem.parentChannelId == localChannelId
+            val incomingIsLocal = item.parentChannelId == localChannelId
+            if (!preferredIsLocal && incomingIsLocal) {
+                preferredIndexByCanonicalMessage[canonicalMessageId] = index
+            }
+        }
+    }
+    return mapIndexedNotNull { index, item ->
+        val binding = item.activityTaskNotificationBinding(taskBindingsByMessageId)
+        val canonicalMessageId = binding?.canonicalMessageId
+        if (canonicalMessageId != null && preferredIndexByCanonicalMessage[canonicalMessageId] != index) {
+            null
+        } else {
+            item.withActivityThreadTaskProjection(binding)
+        }
+    }
 }
 
-private fun InboxItem.withActivityThreadTaskProjection(tasksByMessageId: Map<String, TaskSummary>): InboxItem {
-    if (kind != InboxItemKind.Thread) return this
-    val parentMessageKey = parentMessageId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return this
-    val task = tasksByMessageId[parentMessageKey] ?: return this
+private data class ActivityTaskNotificationBinding(
+    val task: TaskSummary,
+    val canonicalMessageId: MessageId?,
+    val localRoute: SharedTaskNotificationRoute?
+)
+
+private fun InboxItem.activityTaskNotificationBinding(
+    bindingsByMessageId: Map<String, ActivityTaskNotificationBinding>
+): ActivityTaskNotificationBinding? {
+    if (kind != InboxItemKind.Thread) return null
+    val parentMessageKey = parentMessageId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return bindingsByMessageId[parentMessageKey]
+}
+
+private fun InboxItem.withActivityThreadTaskProjection(binding: ActivityTaskNotificationBinding?): InboxItem {
+    if (kind != InboxItemKind.Thread || binding == null) return this
+    val task = binding.task
     return copy(
+        parentChannelId = binding.localRoute?.channelId ?: parentChannelId,
         taskNumber = task.taskNumber ?: taskNumber,
         taskStatus = task.status,
         taskClaimedByName = task.assignee?.displayName?.takeIf { it.isNotBlank() }
