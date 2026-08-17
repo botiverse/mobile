@@ -12236,7 +12236,7 @@ private fun ThreadPageHeader(
                 )
             } else if (payload.showModeTabs) {
                 Box(modifier = Modifier.padding(end = ThreadHeaderChannelTitleGapExtra)) {
-                    ThreadChannelTile(headerDisplay.channelKind)
+                    SlockChannelIdentityTile(headerDisplay.channelKind)
                 }
             }
         },
@@ -12387,16 +12387,20 @@ private fun ThreadDmAgentActivity(state: SlockAgentStatusIndicatorState) {
 }
 
 @Composable
-private fun ThreadChannelTile(channelKind: String) {
+internal fun SlockChannelIdentityTile(
+    channelKind: String?,
+    tileSize: Dp = ThreadHeaderChannelTileSize,
+    iconSize: Dp = ThreadHeaderChannelIconSize
+) {
     Box(
-        modifier = Modifier.size(ThreadHeaderChannelTileSize)
+        modifier = Modifier.size(tileSize)
             .background(SlockColor.BrandYellow)
             .border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
         SlockLucideIcon(
             channelKind.threadChannelHeaderIcon(),
-            modifier = Modifier.size(ThreadHeaderChannelIconSize),
+            modifier = Modifier.size(iconSize),
             color = "#FF141111"
         )
     }

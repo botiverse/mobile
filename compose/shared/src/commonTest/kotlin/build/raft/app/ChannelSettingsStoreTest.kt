@@ -22,6 +22,7 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CompletableDeferred
@@ -139,6 +140,31 @@ class ChannelSettingsStoreTest {
     }
 
     @Test
+    fun jointChannelRejectsUnsupportedVisibilityAndDeleteBeforeDataSource() = runBlocking {
+        val jointSnapshot =
+            snapshot().copy(
+                channel =
+                    snapshot().channel.copy(
+                        channelType = "joint",
+                        kind = ConversationKind.Joint,
+                    )
+            )
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(jointSnapshot))
+        val store = ChannelSettingsStore(route(), dataSource, this)
+        store.dispatch(ChannelSettingsIntent.Load)
+        yield()
+
+        store.dispatch(ChannelSettingsIntent.MakePrivate)
+        store.dispatch(ChannelSettingsIntent.Delete)
+        yield()
+
+        assertEquals(0, dataSource.makePrivateCalls)
+        assertEquals(0, dataSource.deleteCalls)
+        assertEquals(null, store.state.value.actionInFlight)
+        store.clear()
+    }
+
+    @Test
     fun realDataSourceColdLoadDoesNotDependOnHomeAndPinRereadsCanonicalOrder() = runBlocking {
         val network = RecordingChannelSettingsNetworkClient()
         val gateway = FixedChannelSettingsGateway(network)
@@ -211,6 +237,8 @@ private class FakeChannelSettingsDataSource(
 ) : ChannelSettingsDataSource {
     var loadCalls = 0
     var pinCalls = 0
+    var makePrivateCalls = 0
+    var deleteCalls = 0
 
     override suspend fun load(): DataResult<ChannelSettingsSnapshot> {
         loadCalls += 1
@@ -234,9 +262,15 @@ private class FakeChannelSettingsDataSource(
     override suspend fun updateProfile(name: String, description: String): DataResult<ChannelProfileUpdateResult> =
         DataResult.Content(ChannelProfileUpdateResult(ChannelId("channel-1"), name, description))
 
-    override suspend fun makePrivate(): DataResult<Unit> = DataResult.Content(Unit)
+    override suspend fun makePrivate(): DataResult<Unit> {
+        makePrivateCalls += 1
+        return DataResult.Content(Unit)
+    }
     override suspend fun archive(): DataResult<Unit> = DataResult.Content(Unit)
-    override suspend fun delete(): DataResult<Unit> = DataResult.Content(Unit)
+    override suspend fun delete(): DataResult<Unit> {
+        deleteCalls += 1
+        return DataResult.Content(Unit)
+    }
 }
 
 private class FixedChannelSettingsGateway(

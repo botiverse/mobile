@@ -69,6 +69,18 @@ class HomeParserTest {
     }
 
     @Test
+    fun detailTypeAlonePreservesCanonicalJointKind() {
+        val detail =
+            parseSlockChannelDetail(
+                """{"id":"joint-1","name":"raft-mobile","type":"joint"}"""
+            )
+
+        requireNotNull(detail)
+        assertEquals("joint", detail.channelType)
+        assertEquals(ConversationKind.Joint, detail.kind)
+    }
+
+    @Test
     fun preservesIncompleteHydrateMembersWithoutFillingFromLegacyCursor() {
         val result =
             parseSlockHome(

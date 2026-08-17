@@ -1,7 +1,10 @@
 package build.raft.app
 
+import build.raft.app.data.HomeChannelRow
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
+import build.raft.app.model.ThreadId
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -75,6 +78,33 @@ class ChannelSettingsPageTest {
         assertEquals(
             listOf("archive", "delete"),
             channelSettingsManagementActions(showMakePrivate = false).map { it.id }
+        )
+    }
+
+    @Test
+    fun jointChannelUsesBranchIdentityAndPrivateManagementSemantics() {
+        val joint =
+            HomeChannelRow(
+                threadId = ThreadId("joint-1"),
+                channelId = ChannelId("joint-1"),
+                channelType = "joint",
+                kind = ConversationKind.Joint,
+                name = "raft-mobile",
+            )
+
+        assertEquals(
+            SlockLucideIconName.GitBranch,
+            joint
+                .toThreadLaunchConversationIdentity()
+                .threadRouteChannelKind()
+                .threadChannelHeaderIcon(),
+        )
+        assertTrue(channelSettingsIsPrivate(joint))
+        assertFalse(channelSettingsCanMakePrivate(joint))
+        assertFalse(channelSettingsCanDelete(joint))
+        assertEquals(
+            listOf("archive"),
+            channelSettingsManagementActions(showMakePrivate = false, showDelete = false).map { it.id },
         )
     }
 

@@ -19,6 +19,7 @@ import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
@@ -95,6 +96,20 @@ internal fun channelSettingsSectionKeys(canManage: Boolean): List<String> =
 
 internal fun channelSettingsUsesStandalonePage(newDesignSettingsEnabled: Boolean): Boolean =
     newDesignSettingsEnabled
+
+internal fun channelSettingsIsJoint(channel: HomeChannelRow): Boolean =
+    channel.kind == ConversationKind.Joint ||
+        channel.channelType.equals("joint", ignoreCase = true)
+
+internal fun channelSettingsIsPrivate(channel: HomeChannelRow): Boolean =
+    channelSettingsIsJoint(channel) ||
+        channel.channelType.equals("private", ignoreCase = true)
+
+internal fun channelSettingsCanMakePrivate(channel: HomeChannelRow): Boolean =
+    !channelSettingsIsPrivate(channel)
+
+internal fun channelSettingsCanDelete(channel: HomeChannelRow): Boolean =
+    !channelSettingsIsJoint(channel)
 
 @Page(CHANNEL_SETTINGS_PAGE, supportInLocal = true)
 internal class ComposeChannelSettingsPage : AuthenticatedProductPager(AuthenticatedProductRoute.ChannelSettings) {
@@ -360,7 +375,8 @@ private fun ChannelSettingsContent(
         if (canManage) {
             item(key = "management") {
                 ChannelManagementCard(
-                    showMakePrivate = !channel.channelType.equals("private", ignoreCase = true),
+                    showMakePrivate = channelSettingsCanMakePrivate(channel),
+                    showDelete = channelSettingsCanDelete(channel),
                     onMakePrivate = onMakePrivate,
                     onArchive = onArchive,
                     onDelete = onDelete
@@ -382,16 +398,14 @@ private fun ChannelIdentityCard(channel: HomeChannelRow, editable: Boolean, onCl
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(54.dp)
-                        .background(SlockColor.BrandYellow)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "#", style = SlockType.PageTitle, color = SlockColor.TextBlack)
-            }
+            SlockChannelIdentityTile(
+                channelKind =
+                    channel
+                        .toThreadLaunchConversationIdentity()
+                        .threadRouteChannelKind(),
+                tileSize = 54.dp,
+                iconSize = 26.dp
+            )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     text = "#${channel.name.removePrefix("#")}",
@@ -422,7 +436,7 @@ private fun ChannelStatusBadge(channel: HomeChannelRow) {
     val text =
         when {
             channel.archived -> stringResource(MR.strings.channel_settings_status_archived)
-            channel.channelType.equals("private", ignoreCase = true) ->
+            channelSettingsIsPrivate(channel) ->
                 stringResource(MR.strings.channel_settings_status_private)
             else -> stringResource(MR.strings.channel_settings_status_public)
         }
@@ -551,11 +565,12 @@ private fun ChannelPreferenceRow(
 @Composable
 private fun ChannelManagementCard(
     showMakePrivate: Boolean,
+    showDelete: Boolean,
     onMakePrivate: () -> Unit,
     onArchive: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val actions = channelSettingsManagementActions(showMakePrivate)
+    val actions = channelSettingsManagementActions(showMakePrivate, showDelete)
     SlockBrutalCard(contentPadding = 16.dp, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = stringResource(MR.strings.channel_settings_management),
@@ -576,13 +591,18 @@ private fun ChannelManagementCard(
     }
 }
 
-internal fun channelSettingsManagementActions(showMakePrivate: Boolean): List<KuiklyThreadSettingsAction> =
+internal fun channelSettingsManagementActions(
+    showMakePrivate: Boolean,
+    showDelete: Boolean = true,
+): List<KuiklyThreadSettingsAction> =
     buildList {
         if (showMakePrivate) {
             add(KuiklyThreadSettingsAction(id = "visibility"))
         }
         add(KuiklyThreadSettingsAction(id = "archive"))
-        add(KuiklyThreadSettingsAction(id = "delete"))
+        if (showDelete) {
+            add(KuiklyThreadSettingsAction(id = "delete"))
+        }
     }
 
 @Composable
