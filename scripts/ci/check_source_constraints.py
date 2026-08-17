@@ -60,7 +60,7 @@ AUTH_STRINGS = {
 AUTH_AUTHORITY_CHANGED_KEY = "auth_error_session_changed_retry_create_server"
 AUTH_AUTHORITY_CHANGED_COPY = {
     "base": "Your session changed. Try creating the server again.",
-    "zh-rCN": "您的会话已更改。请重新创建服务器。",
+    "zh-rCN": "你的会话已更改。请重新创建服务器。",
     "ja": "セッションが変更されました。もう一度サーバーを作成してください。",
 }
 
