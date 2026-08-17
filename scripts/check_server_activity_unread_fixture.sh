@@ -3,9 +3,9 @@
 set -euo pipefail
 
 readonly UPSTREAM_REPOSITORY="botiverse/slock"
-readonly UPSTREAM_HEAD="7b858a79178f78870b1c96d7377656c6e32c0136"
+readonly UPSTREAM_HEAD="803e8c8e89398c014e3664fd3e3c140bd982aba3"
 readonly UPSTREAM_PATH="packages/server/test-contracts/unread-summary-activity.v1.json"
-readonly EXPECTED_SHA256="22bc4d85498aa2e476fa4424956746c17fa8bdf31763b7471eaab52c43e8c0ef"
+readonly EXPECTED_SHA256="abfaacbe2c548a16a72060d00fb204ec45c39d1d4c1406c73a8cdbe7a6fa7e01"
 readonly VENDORED_PATH="compose/shared/src/androidUnitTest/resources/sync/unread-summary-activity.v1.json"
 
 if [[ ! -f "$VENDORED_PATH" ]]; then

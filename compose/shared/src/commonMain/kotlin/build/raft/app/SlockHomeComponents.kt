@@ -288,25 +288,26 @@ data class SlockServerSwitcherItem(
 
 internal data class HomeServerSwitcherBadgePresentation(
     val kind: HomeServerSwitcherBadgeKind,
-    val activityLabel: String? = null,
+    val label: String? = null,
     val muted: Boolean = false,
 )
 
 internal enum class HomeServerSwitcherBadgeKind {
     None,
     ActivityNumber,
-    BroaderUnreadDot
+    BroaderUnreadNumber
 }
 
 internal fun homeServerSwitcherBadgePresentation(
     server: SlockServerSwitcherItem
 ): HomeServerSwitcherBadgePresentation {
-    val activityLabel = server.activityUnreadCount?.let { count -> formatHomeSidebarBadgeCount(count) }
+    val exactLabel = server.activityUnreadCount?.let { count -> formatHomeSidebarBadgeCount(count) }
+    val broaderLabel = formatHomeSidebarBadgeCount(server.broaderUnreadCount)
     return when {
-        activityLabel != null ->
+        exactLabel != null ->
             HomeServerSwitcherBadgePresentation(
                 kind = HomeServerSwitcherBadgeKind.ActivityNumber,
-                activityLabel = activityLabel,
+                label = exactLabel,
                 muted = server.serverPushMuted
             )
         server.activityUnreadCount == 0L ->
@@ -314,8 +315,12 @@ internal fun homeServerSwitcherBadgePresentation(
                 kind = HomeServerSwitcherBadgeKind.None,
                 muted = server.serverPushMuted
             )
-        server.broaderUnreadCount > 0 ->
-            HomeServerSwitcherBadgePresentation(kind = HomeServerSwitcherBadgeKind.BroaderUnreadDot)
+        broaderLabel != null ->
+            HomeServerSwitcherBadgePresentation(
+                kind = HomeServerSwitcherBadgeKind.BroaderUnreadNumber,
+                label = broaderLabel,
+                muted = server.serverPushMuted
+            )
         else -> HomeServerSwitcherBadgePresentation(kind = HomeServerSwitcherBadgeKind.None)
     }
 }
@@ -4878,13 +4883,9 @@ private fun ServerSwitcherRow(
 private fun ServerSwitcherUnreadIndicator(server: SlockServerSwitcherItem) {
     val presentation = homeServerSwitcherBadgePresentation(server)
     when (presentation.kind) {
-        HomeServerSwitcherBadgeKind.ActivityNumber ->
-            presentation.activityLabel?.let { HomeUnreadBadge(it) }
-        HomeServerSwitcherBadgeKind.BroaderUnreadDot ->
-            SlockStatusIndicator(
-                color = SlockColor.TextMutedGray,
-                size = SlockStatusIndicatorTokens.ServerUnreadSize
-            )
+        HomeServerSwitcherBadgeKind.ActivityNumber,
+        HomeServerSwitcherBadgeKind.BroaderUnreadNumber ->
+            presentation.label?.let { HomeUnreadBadge(it) }
         HomeServerSwitcherBadgeKind.None -> Unit
     }
 }
