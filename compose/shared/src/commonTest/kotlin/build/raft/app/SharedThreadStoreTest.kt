@@ -2925,7 +2925,7 @@ class SharedThreadStoreTest {
         assertTrue(resolvedFrame.payload.canSend)
         assertTrue(resolvedFrame.payload.composer.enabled)
         assertTrue(resolvedFrame.writeActionsEnabled)
-        assertEquals(1, channelRepository.homeCalls)
+        assertEquals(1, channelRepository.channelsCalls)
         assertFalse(
             renderEvents.any { slice ->
                 slice.accessResolution == ThreadAccessResolution.Resolved && !slice.payload.joined
@@ -3020,7 +3020,7 @@ class SharedThreadStoreTest {
         assertTrue(resolvedFrame.payload.joined)
         assertTrue(resolvedFrame.payload.canSend)
         assertTrue(resolvedFrame.payload.composer.enabled)
-        assertEquals(1, channelRepository.homeCalls)
+        assertEquals(1, channelRepository.channelsCalls)
         assertFalse(
             renderEvents.any { slice ->
                 slice.accessResolution == ThreadAccessResolution.Resolved && !slice.payload.joined
@@ -3099,7 +3099,7 @@ class SharedThreadStoreTest {
         assertFalse(resolvedFrame.payload.canSend)
         assertFalse(resolvedFrame.payload.composer.enabled)
         assertTrue(resolvedFrame.writeActionsEnabled)
-        assertEquals(1, channelRepository.homeCalls)
+        assertEquals(1, channelRepository.channelsCalls)
         assertFalse(
             renderEvents.any { slice ->
                 slice.accessResolution == ThreadAccessResolution.Resolved && slice.payload.joined
@@ -3255,7 +3255,7 @@ class SharedThreadStoreTest {
         assertTrue(resolvedFrame.payload.canSend)
         assertTrue(resolvedFrame.payload.composer.enabled)
         assertEquals("dm-1", resolvedFrame.payload.parentChannelId)
-        assertEquals(1, channelRepository.homeCalls)
+        assertEquals(1, channelRepository.directMessageCalls)
         scope.cancel()
     }
 
@@ -3361,7 +3361,7 @@ class SharedThreadStoreTest {
         assertTrue(resolvedFrame.payload.canSend)
         assertTrue(resolvedFrame.payload.composer.enabled)
         assertEquals("joint-1", resolvedFrame.payload.parentChannelId)
-        assertEquals(1, channelRepository.homeCalls)
+        assertEquals(1, channelRepository.channelsCalls)
         scope.cancel()
     }
 
@@ -3574,7 +3574,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityReplyThreadUsesLoadedParentContextWhenHomeAccessLookupTimesOut() = runBlocking {
+    fun activityReplyThreadUsesLoadedParentContextWhenParentAccessLookupTimesOut() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val route = activityReplyPayload(
             parentKind = ConversationKind.Channel,
@@ -3643,7 +3643,7 @@ class SharedThreadStoreTest {
         assertFalse(resolvedFrame.payload.composer.enabled)
         assertFalse(resolvedFrame.writeActionsEnabled)
         assertEquals(1, repository.getReplyThreadRequests.size)
-        assertEquals(1, channelRepository.homeCalls)
+        assertEquals(1, channelRepository.channelsCalls)
 
         store.dispatch(SharedThreadIntent.Refresh)
         withTimeout(1_000) {
@@ -3655,7 +3655,7 @@ class SharedThreadStoreTest {
         assertTrue(store.state.value.payload.joined)
         assertTrue(store.state.value.payload.canSend)
         assertTrue(store.state.value.payload.composer.enabled)
-        assertEquals(2, channelRepository.homeCalls)
+        assertEquals(2, channelRepository.channelsCalls)
         scope.cancel()
     }
 
@@ -13532,56 +13532,6 @@ class SharedThreadStoreTest {
             checkedMessageIds += messageIds
             return DataResult.Content(SavedMessageStatusSnapshot(savedIds))
         }
-    }
-
-    private class FakeChannelRepository(
-        private val profileUpdater: suspend (ChannelProfileUpdateRequest) -> DataResult<ChannelProfileUpdateResult> = {
-            error("unused")
-        },
-        private val homeResult: (suspend (ServerId) -> DataResult<HomeSnapshot>)? = null
-    ) : ChannelRepository {
-        val createRequests: MutableList<CreateChannelRequest> = mutableListOf()
-        val profileUpdateRequests: MutableList<ChannelProfileUpdateRequest> = mutableListOf()
-        var homeCalls: Int = 0
-
-        override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> {
-            homeCalls += 1
-            return homeResult?.invoke(serverId) ?: error("unused")
-        }
-        override suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot> = error("unused")
-        override suspend fun getDirectMessages(serverId: ServerId): DataResult<DirectMessageSnapshot> = error("unused")
-        override suspend fun openAgentDirectMessage(agentId: MemberId): DataResult<OpenDirectMessageResult> = error("unused")
-        override suspend fun openUserDirectMessage(userId: MemberId): DataResult<OpenDirectMessageResult> = error("unused")
-
-        override suspend fun createChannel(request: CreateChannelRequest): DataResult<CreateChannelResult> {
-            createRequests += request
-            return DataResult.Content(
-                CreateChannelResult(
-                    channel =
-                        ConversationSummary(
-                            threadId = ThreadId("channel-created"),
-                            channelId = ChannelId("channel-created"),
-                            kind = ConversationKind.Channel,
-                            name = request.name
-                        ).toHomeChannelRow(),
-                    addedAgentMemberIds = request.agentMemberIds,
-                    addedUserMemberIds = request.userMemberIds
-                )
-            )
-        }
-
-        override suspend fun joinChannel(channelId: ChannelId): DataResult<ChannelJoinResult> = error("unused")
-        override suspend fun leaveChannel(channelId: ChannelId): DataResult<ChannelLeaveResult> = error("unused")
-        override suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult> = error("unused")
-        override suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult> = error("unused")
-        override suspend fun updateChannel(channelId: ChannelId, visibility: ChannelVisibility): DataResult<ChannelUpdateResult> = error("unused")
-        override suspend fun updateChannelProfile(
-            request: ChannelProfileUpdateRequest
-        ): DataResult<ChannelProfileUpdateResult> {
-            profileUpdateRequests += request
-            return profileUpdater(request)
-        }
-        override suspend fun setChannelActivityMuted(channelId: ChannelId, muted: Boolean): DataResult<ChannelActivityMuteSettings> = error("unused")
     }
 
     private class RecordingAgentsApi : SlockAgentsApi {

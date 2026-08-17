@@ -7,16 +7,22 @@ import build.raft.app.data.ChannelFilesSnapshot
 import build.raft.app.data.ConversationRepository
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.HomeNetworkResponse
+import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SendMessageResult
+import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.ThreadListSnapshot
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
 import build.raft.app.data.ThreadSnapshot
+import build.raft.app.data.toHomeChannelRow
+import build.raft.app.data.toHomeDirectMessageRow
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -25,9 +31,61 @@ import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
+import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CompletableDeferred
+
+internal object ReplyThreadAccessNetworkApi : SharedThreadNetworkApi {
+    override suspend fun channelMessages(
+        threadId: String,
+        limit: Int,
+        beforeSeq: Long?,
+        afterSeq: Long?,
+    ): HomeNetworkResponse = error("unused")
+
+    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse = error("unused")
+
+    override suspend fun messageContext(messageId: String, channelId: String?): HomeNetworkResponse = error("unused")
+
+    override suspend fun sendMessage(
+        channelId: String,
+        body: String,
+        asTask: Boolean,
+        attachmentIds: List<String>,
+        randomId: String?,
+    ): HomeNetworkResponse = error("unused")
+
+    override suspend fun executePendingMentionActions(
+        action: String,
+        resolutionIds: List<String>,
+    ): HomeNetworkResponse = error("unused")
+
+    override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse = error("unused")
+
+    override suspend fun attachmentHtmlPreviewUrl(attachmentId: String): HomeNetworkResponse = error("unused")
+
+    override suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse = error("unused")
+
+    override suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse = error("unused")
+
+    override suspend fun markChannelReadToSeq(channelId: String, seq: Long): HomeNetworkResponse = error("unused")
+
+    override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse = error("unused")
+
+    override suspend fun saveMessage(messageId: String): HomeNetworkResponse = error("unused")
+
+    override suspend fun unsaveMessage(messageId: String): HomeNetworkResponse = error("unused")
+
+    override suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse = error("unused")
+
+    override suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse = error("unused")
+
+    override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse = error("unused")
+
+    override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse = error("unused")
+}
 
 internal class ReplyThreadAccessConversationRepositoryRecorder(
     var replyResult: DataResult<ThreadSnapshot>,
@@ -173,6 +231,59 @@ internal fun unresolvedReplyThreadAccessPayload(
         canSend = true
     )
 
+internal fun replyThreadInitialAccessPayload(
+    parentKind: ConversationKind = ConversationKind.Channel,
+    parentChannelId: String = "channel-1",
+    parentMessageId: String = "m1",
+    threadId: String = "thread-m1",
+): KuiklyThreadScreenPayload =
+    unresolvedReplyThreadAccessPayload(parentMessageId).copy(
+        instanceId = "reply-initial-access-$threadId",
+        sourceThreadId = threadId,
+        streamChannelId = threadId,
+        parentChannelId = parentChannelId,
+        parentSurfaceKind = parentKind.threadParentSurfaceKindOrNull(),
+        parentChannelKind = parentKind.threadChannelKindWireValue(),
+    )
+
+internal fun replyThreadAccessHomeSnapshot(
+    parentKind: ConversationKind = ConversationKind.Channel,
+    parentChannelId: String = "channel-1",
+    joined: Boolean = true,
+    canSend: Boolean = true,
+    serverId: ServerId = ServerId("server-1"),
+): HomeSnapshot {
+    val parent =
+        ConversationSummary(
+            threadId = ThreadId(parentChannelId),
+            channelId = ChannelId(parentChannelId),
+            kind = parentKind,
+            name = if (parentKind == ConversationKind.DirectMessage) "Cindy" else "general",
+            channelType = parentKind.threadChannelKindWireValue(),
+            joined = joined,
+            permissions = ConversationPermissions(canRead = true, canSend = canSend),
+        )
+    return HomeSnapshot(
+        server = ServerSummary(id = serverId, name = "Slock"),
+        currentMember =
+            MemberProfile(
+                id = MemberId("u1"),
+                displayName = "Artin",
+                handle = "artin",
+                kind = MemberKind.Human,
+                presence = Presence.Active,
+            ),
+        channels = if (parentKind == ConversationKind.DirectMessage) emptyList() else listOf(parent.toHomeChannelRow()),
+        directMessages =
+            if (parentKind == ConversationKind.DirectMessage) {
+                listOf(parent.toHomeDirectMessageRow())
+            } else {
+                emptyList()
+            },
+        unreadTotal = 0,
+    )
+}
+
 internal fun replyThreadAccessIdentityAuthority(
     sessionStore: SlockAuthSessionStore,
     environmentId: String,
@@ -190,11 +301,17 @@ internal fun replyThreadAccessIdentityAuthority(
 }
 
 internal fun replyThreadAccessSnapshot(
-    body: String = "reply body"
+    body: String = "reply body",
+    parentKind: ConversationKind = ConversationKind.Channel,
+    parentChannelIdValue: String = "channel-1",
+    parentMessageIdValue: String = "m1",
+    streamChannelIdValue: String = "thread-m1",
+    joined: Boolean = false,
+    canSend: Boolean = false,
 ): ThreadSnapshot {
-    val parentChannelId = ChannelId("channel-1")
-    val parentMessageId = MessageId("m1")
-    val streamChannelId = ChannelId("thread-m1")
+    val parentChannelId = ChannelId(parentChannelIdValue)
+    val parentMessageId = MessageId(parentMessageIdValue)
+    val streamChannelId = ChannelId(streamChannelIdValue)
     fun message(id: MessageId, threadId: ThreadId, channelId: ChannelId, seq: Long, text: String): Message =
         Message(
             id = id,
@@ -221,13 +338,15 @@ internal fun replyThreadAccessSnapshot(
                 channelId = streamChannelId,
                 kind = ConversationKind.Thread,
                 name = "general",
+                joined = joined,
+                permissions = ConversationPermissions(canRead = true, canSend = canSend),
                 thread =
                     ThreadConversation(
                         parentChannelId = parentChannelId,
                         parentMessageId = parentMessageId,
                         streamChannelId = streamChannelId,
-                        parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
-                        parentChannelKind = "channel"
+                        parentSurfaceKind = parentKind.threadParentSurfaceKindOrNull(),
+                        parentChannelKind = parentKind.threadChannelKindWireValue(),
                     )
             ),
         messages = listOf(reply),
