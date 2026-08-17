@@ -50,6 +50,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.concurrent.Volatile
 
@@ -3566,6 +3567,81 @@ class SharedHomeStoreTest {
             priority: DataRequestPriority,
             request: RemoveChannelMemberRequest
         ): DataResult<ChannelMemberActionResult> = noMembers()
+    }
+
+    @Test
+    fun serverActivityBatchPublishesThroughTheHomeStoreWithEnvironmentAccountAndServerFences() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val requestOwner = ReadReceiptOwner("https://raft.example", "user-1", "server-1")
+        val snapshot =
+            sampleHome(ServerId("server-1")).copy(
+                serverUnreadCounts = mapOf("server-1" to 21, "server-2" to 6),
+                serverActivityUnreadCounts = mapOf("server-1" to 0, "server-2" to 3),
+                serverPushMutedByServer = mapOf("server-1" to false, "server-2" to true),
+            )
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = sourceWithSnapshot(snapshot, sessionStore = sessionStore),
+                scope = scope,
+                readReceiptOwnerFactory = { serverId, accountId ->
+                    ReadReceiptOwner("https://raft.example", accountId, serverId)
+                },
+            )
+
+        store.accept(SharedHomeIntent.Start)
+
+        val projection = store.state.value.serverActivityUnread
+        assertEquals(requestOwner, projection.requestOwner)
+        assertEquals(0L, projection.countFor(requestOwner))
+        assertEquals(3L, projection.countFor(requestOwner.copy(serverId = "server-2")))
+        assertTrue(projection.serverPushMutedFor(requestOwner.copy(serverId = "server-2")))
+        assertNull(projection.countFor(requestOwner.copy(accountId = "other")))
+        scope.cancel()
+    }
+
+    @Test
+    fun unavailableSummaryClearsActivityKnowledgeButKeepsLegacyUnreadFallback() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val owner = ReadReceiptOwner("https://raft.example", "user-1", "server-1")
+        var snapshot =
+            sampleHome(ServerId("server-1")).copy(
+                serverUnreadCounts = mapOf("server-1" to 21, "server-2" to 6),
+                serverActivityUnreadCounts = mapOf("server-1" to 0, "server-2" to 3),
+            )
+        val source =
+            SharedHomeDataSource(
+                sessionStore = sessionStore,
+                api = RecordingHomeApi(),
+                parseHome = { _, _ -> DataResult.Content(snapshot) },
+            )
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source,
+                scope = scope,
+                readReceiptOwnerFactory = { serverId, accountId ->
+                    ReadReceiptOwner("https://raft.example", accountId, serverId)
+                },
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        assertEquals(3L, store.state.value.serverActivityUnread.countFor(owner.copy(serverId = "server-2")))
+
+        snapshot =
+            snapshot.copy(
+                serverActivityUnreadCounts = emptyMap(),
+                serverPushMutedByServer = emptyMap(),
+                serverUnreadSummaryAvailable = false,
+                unreadEnrichmentAvailable = false,
+            )
+        store.accept(SharedHomeIntent.ForegroundRefresh)
+
+        assertNull(store.state.value.serverActivityUnread.countFor(owner.copy(serverId = "server-2")))
+        assertEquals(6, store.state.value.serverUnreadCounts["server-2"])
+        scope.cancel()
     }
 
     private fun source(

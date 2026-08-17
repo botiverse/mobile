@@ -319,6 +319,17 @@ data class HomeSnapshot(
      */
     val serverUnreadCounts: Map<String, Int> = emptyMap(),
     /**
+     * Known per-server Activity unread counts from the optional
+     * `activityUnreadCount` summary field. Map membership is the knowledge
+     * bit: a present zero is authoritative, while a missing key is unknown.
+     * Legacy [serverUnreadCounts] must never be substituted into this map.
+     */
+    val serverActivityUnreadCounts: Map<String, Long> = emptyMap(),
+    /** Notification delivery preference carried beside, never folded into, Activity count authority. */
+    val serverPushMutedByServer: Map<String, Boolean> = emptyMap(),
+    /** False when the server-summary request failed or its wire shape was rejected. */
+    val serverUnreadSummaryAvailable: Boolean = true,
+    /**
      * task #831: false when this snapshot's unread projection came from
      * unavailable auxiliary endpoints (error/timeout/hung/contract-mismatch),
      * so [unreadTotal] / [serverUnreadCounts] are an honest empty rather than an

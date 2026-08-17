@@ -196,6 +196,19 @@ fun parseSlockHome(
     val serverUnreadCounts =
         payload.serverUnreadSummary
             .associate { it.serverId to it.unreadCount.coerceAtLeast(0) }
+    val serverActivityUnreadCounts =
+        payload.serverUnreadSummary
+            .mapNotNull { summary ->
+                val serverId = summary.serverId.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                summary.knownActivityUnreadCount?.let { serverId to it }
+            }
+            .toMap()
+    val serverPushMutedByServer =
+        payload.serverUnreadSummary
+            .mapNotNull { summary ->
+                summary.serverId.trim().takeIf { it.isNotEmpty() }?.let { it to summary.serverPushMuted }
+            }
+            .toMap()
     val unreadTotal = serverUnreadTotal ?: channelUnreadTotal
     val unreadSource =
         if (serverUnreadTotal != null) AppBadgeSource.SERVER_UNREAD_SUMMARY
@@ -211,6 +224,9 @@ fun parseSlockHome(
             unreadTotal = unreadTotal,
             unreadSource = unreadSource,
             serverUnreadCounts = serverUnreadCounts,
+            serverActivityUnreadCounts = serverActivityUnreadCounts,
+            serverPushMutedByServer = serverPushMutedByServer,
+            serverUnreadSummaryAvailable = payload.serverUnreadSummaryAvailable,
             // task #831: carry unread availability through so the Store keeps
             // prior badges instead of clobbering them to zero when the unread
             // endpoints were unavailable.
