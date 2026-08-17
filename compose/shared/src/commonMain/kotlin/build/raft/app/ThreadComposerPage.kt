@@ -618,6 +618,20 @@ internal class ThreadComposerControlledEditorOwner(
         return true
     }
 
+    fun acceptNativeEditorValue(
+        sourceSessionId: Long,
+        incoming: TextFieldValue,
+    ): TextFieldValue? {
+        if (!isActiveSession(sourceSessionId)) return null
+        val accepted =
+            repairThreadComposerLegacyZeroSelection(
+                previous = value,
+                incoming = incoming,
+            )
+        value = accepted
+        return accepted
+    }
+
     fun acceptAsTask(sourceSessionId: Long, next: Boolean): Boolean {
         if (!isActiveSession(sourceSessionId)) return false
         asTask = next
@@ -1919,6 +1933,7 @@ internal fun ThreadComposerContent(
         editorSessionId = editorOwner.editorSessionId,
         editorValue = editorOwner.value,
         onEditorValueChange = editorOwner::acceptEditorValue,
+        onNativeEditorValueChange = editorOwner::acceptNativeEditorValue,
         isEditorSessionActive = editorOwner::isActiveSession,
         editorAsTask = editorOwner.asTask,
         onEditorAsTaskChange = editorOwner::acceptAsTask,
@@ -1948,6 +1963,7 @@ internal fun ThreadComposerContentLeaf(
     editorSessionId: Long,
     editorValue: TextFieldValue,
     onEditorValueChange: (Long, TextFieldValue) -> Boolean,
+    onNativeEditorValueChange: (Long, TextFieldValue) -> TextFieldValue?,
     isEditorSessionActive: (Long) -> Boolean,
     editorAsTask: Boolean,
     onEditorAsTaskChange: (Long, Boolean) -> Boolean,
@@ -2664,11 +2680,8 @@ internal fun ThreadComposerContentLeaf(
                                     return@onValueChange
                                 }
                                 val acceptedValue =
-                                    repairThreadComposerLegacyZeroSelection(
-                                        previous = fieldValue,
-                                        incoming = next,
-                                    )
-                                if (!onEditorValueChange(sourceSessionId, acceptedValue)) return@onValueChange
+                                    onNativeEditorValueChange(sourceSessionId, next)
+                                        ?: return@onValueChange
                                 val textChanged = acceptedValue.text != fieldValue.text
                                 suggestionSelectionDispatcher.updateDraft(
                                     text = acceptedValue.text,

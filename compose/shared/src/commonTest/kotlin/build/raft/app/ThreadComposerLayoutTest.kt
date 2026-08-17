@@ -11,6 +11,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -88,6 +89,43 @@ class ThreadComposerLayoutTest {
                 incoming = unprovenEdit,
             ),
         )
+    }
+
+    @Test
+    fun nativeLegacyRepairUsesLatestAcceptedSelectionInsteadOfRenderSnapshot() {
+        val owner = ThreadComposerControlledEditorOwner(seedText = "aa", seedAsTask = false)
+        val sessionId = owner.editorSessionId
+
+        assertNotNull(
+            owner.acceptNativeEditorValue(
+                sourceSessionId = sessionId,
+                incoming = TextFieldValue("aa", selection = TextRange.Zero),
+            ),
+        )
+        assertNotNull(
+            owner.acceptNativeEditorValue(
+                sourceSessionId = sessionId,
+                incoming = TextFieldValue("aa", selection = TextRange(2)),
+            ),
+        )
+        val accepted =
+            assertNotNull(
+                owner.acceptNativeEditorValue(
+                    sourceSessionId = sessionId,
+                    incoming = TextFieldValue("aaa", selection = TextRange.Zero),
+                ),
+            )
+
+        assertEquals(TextRange(3), accepted.selection)
+        assertSame(accepted, owner.value)
+
+        assertNull(
+            owner.acceptNativeEditorValue(
+                sourceSessionId = sessionId + 1,
+                incoming = TextFieldValue("stale", selection = TextRange.Zero),
+            ),
+        )
+        assertSame(accepted, owner.value)
     }
 
     @Test

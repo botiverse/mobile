@@ -11834,6 +11834,14 @@ internal fun SharedHandsFeedbackContent(
                     messageFieldValue = next
                     true
                 },
+                onNativeEditorValueChange = { _, incoming ->
+                    repairThreadComposerLegacyZeroSelection(
+                        previous = messageFieldValue,
+                        incoming = incoming,
+                    ).also { accepted ->
+                        messageFieldValue = accepted
+                    }
+                },
                 isEditorSessionActive = { true },
                 editorAsTask = false,
                 onEditorAsTaskChange = { _, _ -> true },
