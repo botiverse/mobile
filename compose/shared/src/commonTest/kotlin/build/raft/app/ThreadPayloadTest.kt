@@ -2097,6 +2097,30 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun addMemberSubmissionHighlightsOnlySelectedRowWhileLockingAllClicks() {
+        assertEquals(
+            ThreadAddMemberRowInteraction(selected = true, enabled = true, clickEnabled = false),
+            threadAddMemberRowInteraction(
+                memberKey = "human:user-1",
+                selectedKey = "human:user-1",
+                blocked = false,
+                adding = true,
+                alreadyJoined = false
+            )
+        )
+        assertEquals(
+            ThreadAddMemberRowInteraction(selected = false, enabled = true, clickEnabled = false),
+            threadAddMemberRowInteraction(
+                memberKey = "human:user-2",
+                selectedKey = "human:user-1",
+                blocked = false,
+                adding = true,
+                alreadyJoined = false
+            )
+        )
+    }
+
+    @Test
     fun threadMemberFallbackActivityUsesProjectedAgentStatusAndPresence() {
         val working =
             threadMemberFallbackAgentStatusIndicatorState(

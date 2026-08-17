@@ -137,6 +137,47 @@ class SharedServerChannelMembersOwnerTest {
     }
 
     @Test
+    fun routeOwnedLateResponseCannotPublishAfterSameOwnerGenerationRetires() = runBlocking {
+        val repository = OwnerTestMemberRepository()
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        repository.channelMembersLoader = {
+            started.complete(Unit)
+            release.await()
+            listOf(member("stale-member"))
+        }
+        val processOwner = owner("env-a", "account-a")
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(processOwner)
+        val registry = ProcessMemberPresenceRegistry()
+        val store = store(repository, ownerState, registry = registry) { registry.writeGeneration }
+        val routeOwner =
+            AuthenticatedRouteOwner(
+                environmentId = processOwner.environmentId,
+                accountId = processOwner.accountId,
+                serverId = processOwner.serverId
+            )
+
+        val oldLoad = async {
+            store.loadChannelMembers(
+                owner = routeOwner,
+                channelId = ChannelId(CHANNEL_ID),
+                force = true
+            )
+        }
+        started.await()
+        registry.clearAll(reason = "test_route_same_owner_relogin")
+        release.complete(Unit)
+        val result = oldLoad.await()
+
+        assertIs<DataResult.Error>(result)
+        assertEquals("channel_members_owner_stale", result.error.code)
+        assertEquals(
+            emptyList(),
+            store.currentChannelMemberSlice(routeOwner, ChannelId(CHANNEL_ID)).members
+        )
+    }
+
+    @Test
     fun mountedFlowObservesGenerationRetirementWhenOwnerTupleIsUnchanged() = runBlocking {
         val repository = OwnerTestMemberRepository().apply {
             channelMembers = listOf(member("before-clear"))

@@ -764,7 +764,6 @@ class RealMemberRepository(
             executeMember(
                 emptyReason = EmptyReason.NoMembers,
                 block = { networkClient.channelMembers(priority, channelId) },
-                emptyWhen = { it.members.isEmpty() },
                 source = "channel_members",
                 mapper = { bodyText ->
                     parseSharedChannelMemberSnapshot(bodyText, channelId)

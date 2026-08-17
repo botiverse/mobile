@@ -677,6 +677,7 @@ internal fun SlockModalCompactMemberRow(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     enabled: Boolean = true,
+    clickEnabled: Boolean = enabled,
     avatarSize: Dp = 30.dp,
     statusPulsing: Boolean = false,
     sourceBadgeLabel: String? = null,
@@ -697,7 +698,7 @@ internal fun SlockModalCompactMemberRow(
         modifier = modifier
             .fillMaxWidth()
             .background(rowBackground)
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(enabled = enabled && clickEnabled, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)

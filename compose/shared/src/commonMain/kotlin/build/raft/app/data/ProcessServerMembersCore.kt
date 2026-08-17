@@ -34,7 +34,7 @@ internal data class ProcessServerMembersLoadResult(
     val publicationCurrent: Boolean,
     val reduceMs: Long,
     val terminalRevision: Long,
-    internal val owner: ProcessServerMembersOwner,
+    internal val owner: ProcessServerMembersDirectoryOwner,
     internal val generation: ProcessServerMembersGeneration
 )
 
@@ -49,10 +49,18 @@ internal data class ProcessServerMembersGeneration(
 )
 
 internal data class ProcessServerMembersFlightPermit internal constructor(
-    internal val owner: ProcessServerMembersOwner,
+    internal val owner: ProcessServerMembersDirectoryOwner,
     internal val generation: ProcessServerMembersGeneration,
     internal val token: Any
 )
+
+internal data class ProcessServerMembersDirectoryOwner(
+    val processOwner: ProcessServerMembersOwner,
+    val ownerWriteGeneration: Long
+) {
+    val diagnosticsKey: String
+        get() = "${processOwner.diagnosticsKey} writeGeneration=$ownerWriteGeneration"
+}
 
 /**
  * Process-owned read core. It owns only immutable roster snapshots, their versions, and active
@@ -69,52 +77,54 @@ internal class ProcessServerMembersCore(
     }
 
     private val mutex = Mutex()
-    private val cache = linkedMapOf<ProcessServerMembersOwner, CacheEntry>()
-    private val activeFlights = mutableMapOf<ProcessServerMembersOwner, ActiveFlight>()
-    private val ownerGenerations = mutableMapOf<ProcessServerMembersOwner, Long>()
+    private val cache = linkedMapOf<ProcessServerMembersDirectoryOwner, CacheEntry>()
+    private val activeFlights = mutableMapOf<ProcessServerMembersDirectoryOwner, ActiveFlight>()
+    private val ownerGenerations = mutableMapOf<ProcessServerMembersDirectoryOwner, Long>()
     private var processGeneration = 0L
     private var nextVersion = 0L
     private var nextTerminalRevision = 0L
-    private val terminalRevisions = mutableMapOf<ProcessServerMembersOwner, Long>()
+    private val terminalRevisions = linkedMapOf<ProcessServerMembersDirectoryOwner, Long>()
 
     suspend fun load(
         owner: ProcessServerMembersOwner,
         priority: DataRequestPriority,
         force: Boolean,
         reason: String,
+        ownerWriteGeneration: Long = 0L,
         onFlight: suspend (ProcessServerMembersFlightPermit) -> Unit = {}
     ): ProcessServerMembersLoadResult {
+        val directoryOwner = ProcessServerMembersDirectoryOwner(owner, ownerWriteGeneration)
         val decision =
             mutex.withLock {
-                activeFlights[owner]?.let { active ->
+                activeFlights[directoryOwner]?.let { active ->
                     logger(
-                        "process_members_flight result=join ${owner.diagnosticsKey} " +
+                        "process_members_flight result=join ${directoryOwner.diagnosticsKey} " +
                             "force=$force priority=${priority.name} reason=$reason"
                     )
                     return@withLock LoadDecision.Flight(active, started = false)
                 }
                 if (!force) {
-                    cache.remove(owner)?.let { cached ->
+                    cache.remove(directoryOwner)?.let { cached ->
                         if (cached.createdAt.elapsedNow() <= CacheTtl) {
-                            cache[owner] = cached
+                            cache[directoryOwner] = cached
                             logger(
-                                "process_members_flight result=cache_hit ${owner.diagnosticsKey} " +
+                                "process_members_flight result=cache_hit ${directoryOwner.diagnosticsKey} " +
                                     "version=${cached.version} priority=${priority.name} reason=$reason"
                             )
-                            return@withLock LoadDecision.Cached(cached, ownerGeneration(owner))
+                            return@withLock LoadDecision.Cached(cached, ownerGeneration(directoryOwner))
                         }
                     }
                 }
                 val token = Any()
-                val generation = ownerGeneration(owner)
+                val generation = ownerGeneration(directoryOwner)
                 val deferred =
                     scope.async(start = CoroutineStart.LAZY) {
-                        produce(owner, generation, token, priority, force, reason)
+                        produce(directoryOwner, generation, token, priority, force, reason)
                     }
                 val flight = ActiveFlight(token, generation, deferred)
-                activeFlights[owner] = flight
+                activeFlights[directoryOwner] = flight
                 logger(
-                    "process_members_flight result=start ${owner.diagnosticsKey} " +
+                    "process_members_flight result=start ${directoryOwner.diagnosticsKey} " +
                         "force=$force priority=${priority.name} reason=$reason"
                 )
                 LoadDecision.Flight(flight, started = true)
@@ -127,14 +137,14 @@ internal class ProcessServerMembersCore(
                     publicationCurrent = true,
                     reduceMs = 0L,
                     terminalRevision = decision.entry.terminalRevision,
-                    owner = owner,
+                    owner = directoryOwner,
                     generation = decision.generation
                 )
             is LoadDecision.Flight -> {
                 try {
                     onFlight(
                         ProcessServerMembersFlightPermit(
-                            owner = owner,
+                            owner = directoryOwner,
                             generation = decision.flight.generation,
                             token = decision.flight.token
                         )
@@ -149,15 +159,17 @@ internal class ProcessServerMembersCore(
 
     suspend fun seedIfAbsent(
         owner: ProcessServerMembersOwner,
-        snapshot: MemberSnapshot
-    ): ProcessServerMembersSeedResult =
-        mutex.withLock {
-            cache[owner]?.let {
+        snapshot: MemberSnapshot,
+        ownerWriteGeneration: Long = 0L
+    ): ProcessServerMembersSeedResult {
+        val directoryOwner = ProcessServerMembersDirectoryOwner(owner, ownerWriteGeneration)
+        return mutex.withLock {
+            cache[directoryOwner]?.let {
                 return@withLock ProcessServerMembersSeedResult(version = it.version, inserted = false)
             }
             val version = nextSnapshotVersion()
-            val terminalRevision = nextOwnerTerminalRevision(owner)
-            cache[owner] =
+            val terminalRevision = nextOwnerTerminalRevision(directoryOwner)
+            cache[directoryOwner] =
                 CacheEntry(
                     result = DataResult.Content(snapshot),
                     version = version,
@@ -167,6 +179,7 @@ internal class ProcessServerMembersCore(
             trimCache()
             ProcessServerMembersSeedResult(version = version, inserted = true)
         }
+    }
 
     suspend fun <T> commitIfCurrent(
         loadResult: ProcessServerMembersLoadResult,
@@ -205,16 +218,25 @@ internal class ProcessServerMembersCore(
 
     suspend fun invalidate(owner: ProcessServerMembersOwner, reason: String) {
         mutex.withLock {
-            ownerGenerations[owner] = (ownerGenerations[owner] ?: 0L) + 1L
-            cache.remove(owner)
-            activeFlights.remove(owner)
-            terminalRevisions.remove(owner)
+            val ownedKeys =
+                (ownerGenerations.keys + cache.keys + activeFlights.keys + terminalRevisions.keys)
+                    .filterTo(mutableSetOf()) { it.processOwner == owner }
+            ownedKeys.forEach { key ->
+                val hadActiveFlight = activeFlights.remove(key) != null
+                cache.remove(key)
+                terminalRevisions.remove(key)
+                if (hadActiveFlight) {
+                    ownerGenerations[key] = (ownerGenerations[key] ?: 0L) + 1L
+                } else {
+                    ownerGenerations.remove(key)
+                }
+            }
             logger("process_members_invalidate scope=owner ${owner.diagnosticsKey} reason=$reason")
         }
     }
 
     private suspend fun produce(
-        owner: ProcessServerMembersOwner,
+        owner: ProcessServerMembersDirectoryOwner,
         generation: ProcessServerMembersGeneration,
         token: Any,
         priority: DataRequestPriority,
@@ -225,7 +247,7 @@ internal class ProcessServerMembersCore(
             val startedAt = TimeSource.Monotonic.markNow()
             val fetched =
                 try {
-                    fetchMembers(priority, ServerId(owner.serverId))
+                    fetchMembers(priority, ServerId(owner.processOwner.serverId))
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (error: Throwable) {
@@ -292,11 +314,12 @@ internal class ProcessServerMembersCore(
         } finally {
             mutex.withLock {
                 if (activeFlights[owner]?.token === token) activeFlights.remove(owner)
+                pruneDirectoryOwnerMetadataIfUnused(owner)
             }
         }
     }
 
-    private fun ownerGeneration(owner: ProcessServerMembersOwner): ProcessServerMembersGeneration =
+    private fun ownerGeneration(owner: ProcessServerMembersDirectoryOwner): ProcessServerMembersGeneration =
         ProcessServerMembersGeneration(processGeneration, ownerGenerations[owner] ?: 0L)
 
     private fun nextSnapshotVersion(): Long {
@@ -304,16 +327,35 @@ internal class ProcessServerMembersCore(
         return nextVersion
     }
 
-    private fun nextOwnerTerminalRevision(owner: ProcessServerMembersOwner): Long {
+    private fun nextOwnerTerminalRevision(owner: ProcessServerMembersDirectoryOwner): Long {
         nextTerminalRevision += 1L
+        terminalRevisions.remove(owner)
         terminalRevisions[owner] = nextTerminalRevision
+        trimTerminalRevisions()
         return nextTerminalRevision
+    }
+
+    private fun trimTerminalRevisions() {
+        while (terminalRevisions.size > maxEntries) {
+            val evictedOwner = terminalRevisions.keys.first()
+            terminalRevisions.remove(evictedOwner)
+            cache.remove(evictedOwner)
+            pruneDirectoryOwnerMetadataIfUnused(evictedOwner)
+        }
     }
 
     private fun trimCache() {
         while (cache.size > maxEntries) {
-            cache.remove(cache.keys.first())
+            val evictedOwner = cache.keys.first()
+            cache.remove(evictedOwner)
+            terminalRevisions.remove(evictedOwner)
+            pruneDirectoryOwnerMetadataIfUnused(evictedOwner)
         }
+    }
+
+    private fun pruneDirectoryOwnerMetadataIfUnused(owner: ProcessServerMembersDirectoryOwner) {
+        if (cache.containsKey(owner) || activeFlights.containsKey(owner) || terminalRevisions.containsKey(owner)) return
+        ownerGenerations.remove(owner)
     }
 
     private data class CacheEntry(
