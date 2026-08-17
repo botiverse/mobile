@@ -59,6 +59,7 @@ import build.raft.app.data.ThreadReadAnchor
 import build.raft.app.data.ThreadReadAnchorOwner
 import build.raft.app.data.ThreadReadAnchorStore
 import build.raft.app.data.ThreadUnreadAnchorMessage
+import build.raft.app.data.advanceThreadReadAnchorFrontier
 import build.raft.app.data.projectThreadUnreadJump
 import build.raft.app.data.SlockAgentsApiClient
 import build.raft.app.data.SlockAgentsNetworkApi
@@ -13583,9 +13584,9 @@ private fun ThreadMessagesList(
             )
         }.collect { anchor ->
             if (anchor != null) {
-                val current = latestVisibleReadAnchor
-                if (current == null || anchor.seq > current.seq) {
-                    latestVisibleReadAnchor = anchor
+                val advanced = advanceThreadReadAnchorFrontier(latestVisibleReadAnchor, anchor)
+                if (advanced != latestVisibleReadAnchor) {
+                    latestVisibleReadAnchor = advanced
                 }
             }
         }
@@ -13608,10 +13609,17 @@ private fun ThreadMessagesList(
             }
         }
     }
+    // The durable anchor remains lifecycle-persisted, while the route-local frontier advances on
+    // every visible-window change. This makes the pill converge as the user reads and prevents a
+    // locally-sent row that is already on screen from being counted as unread.
+    val sessionReadAnchor =
+        remember(frozenReadAnchor, latestVisibleReadAnchor) {
+            advanceThreadReadAnchorFrontier(frozenReadAnchor, latestVisibleReadAnchor)
+        }
     val unreadJumpProjection =
-        remember(frozenReadAnchor, renderPayload.messages) {
+        remember(sessionReadAnchor, renderPayload.messages) {
             projectThreadUnreadJump(
-                anchor = frozenReadAnchor,
+                anchor = sessionReadAnchor,
                 messages =
                     renderPayload.messages.map { message ->
                         ThreadUnreadAnchorMessage(id = message.id, seq = message.seq)
@@ -16303,14 +16311,12 @@ private fun ThreadMessagesList(
                     }
                     diagnosticsLogger(
                         "thread_unread_jump_click count=${unreadJumpProjection.unreadCount} " +
-                            "anchorSeq=${frozenReadAnchor?.seq} target=$targetMessageId targetIndex=$targetIndex"
+                            "anchorSeq=${sessionReadAnchor?.seq} target=$targetMessageId targetIndex=$targetIndex"
                     )
                     coroutineScope.launch {
-                        var consumed = false
                         try {
                             if (targetIndex >= 0 && listState.canScrollToThreadItem(targetIndex)) {
                                 userScrollGeneration.value += 1
-                                val clickUserScrollGeneration = userScrollGeneration.value
                                 dispatchViewportEvent(
                                     LazyViewportEvent.Anchor(
                                         target = LazyViewportAnchorTarget.Message(targetMessageId),
@@ -16322,20 +16328,14 @@ private fun ThreadMessagesList(
                                 viewportControllerState.pendingCommand?.id?.let { commandId ->
                                     awaitViewportCommandSettlement(commandId)
                                 }
-                                consumed =
-                                    shouldCompleteThreadUnreadJump(
-                                        clickUserScrollGeneration = clickUserScrollGeneration,
-                                        currentUserScrollGeneration = userScrollGeneration.value,
-                                    )
                             } else {
-                                frozenReadAnchor?.messageId?.let { anchorMessageId ->
+                                sessionReadAnchor?.messageId?.let { anchorMessageId ->
                                     onThreadEvent("focusUnreadAnchor", anchorMessageId, null, null)
                                 }
                             }
                         } finally {
                             withContext(NonCancellable) {
                                 delay(ThreadBackToBottomReleaseGuardMillis)
-                                if (consumed) frozenReadAnchor = null
                                 unreadJumpInteractionGuardActive = false
                             }
                         }
@@ -17633,11 +17633,6 @@ internal fun shouldCompleteThreadBackToBottom(
     currentUserScrollGeneration: Int
 ): Boolean =
     canonicalTailLoaded && clickUserScrollGeneration == currentUserScrollGeneration
-
-internal fun shouldCompleteThreadUnreadJump(
-    clickUserScrollGeneration: Int,
-    currentUserScrollGeneration: Int,
-): Boolean = clickUserScrollGeneration == currentUserScrollGeneration
 
 internal fun shouldKeepThreadBackToBottomOverlayMounted(
     shouldShowButton: Boolean,
