@@ -38,8 +38,10 @@ raise "aggregate must survive failed/skipped dependencies" unless jobs.dig("ci-g
 raise "aggregate does not execute checked-in verifier" unless jobs.dig("ci-gate", "steps").any? { |step| step["run"]&.include?("verify_test_tier_results.mjs") }
 
 plan_job = jobs.fetch("plan")
-raise "plan job must have read-only source access" unless plan_job.dig("permissions", "contents") == "read"
-raise "plan job cannot publish carry-in artifacts to PRs" unless plan_job.dig("permissions", "pull-requests") == "write"
+raise "plan job permissions are not the GraphQL PR-comment set" unless plan_job.fetch("permissions") == {
+  "contents" => "read",
+  "pull-requests" => "write",
+}
 plan_steps = plan_job.fetch("steps")
 raise "gitlink gate fixture suite is not hosted" unless plan_steps.any? { |step| step["run"]&.include?("test_gitlink_carry_in_gate.py") }
 raise "gitlink gate is not wired to exact PR base/head" unless plan_steps.any? do |step|
@@ -50,6 +52,14 @@ publish_step = plan_steps.find { |step| step.fetch("name", "").include?("Publish
 raise "gitlink audit is not published into the PR" unless publish_step
 raise "gitlink publication must survive an audit RED" unless publish_step.fetch("if", "").include?("always()")
 raise "gitlink publication regressed to unreliable PR file patches" if publish_step.fetch("run", "").include?(".patch")
+raise "gitlink comment lookup is not bound to the PR GraphQL surface" unless
+  publish_step.fetch("run", "").include?("pullRequest(number: $number)")
+raise "gitlink comment creation left the PR GraphQL surface" unless
+  publish_step.fetch("run", "").include?("addComment(input:")
+raise "gitlink comment update left the PR GraphQL surface" unless
+  publish_step.fetch("run", "").include?("updateIssueComment(input:")
+raise "gitlink publication still calls the unavailable REST Issues API" if
+  publish_step.fetch("run", "").include?("issues/$PR_NUMBER/comments")
 
 expected_needs = {
   "kuikly-artifacts" => ["plan"],
