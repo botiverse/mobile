@@ -50,6 +50,11 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
  * Row 3 carries the contract's teeth: an authoritative `activityUnreadCount = 0` must suppress the
  * badge even though a nonzero legacy `broaderUnreadCount` is present, because the two counts are
  * different quantities and the legacy one may never stand in for the exact one.
+ *
+ * Rows 4 and 5 are a pair, and only mean something together: contract v2.4.1 requires a client to
+ * apply its display cap identically to the exact count and to the transitional fallback count, so
+ * changing which field feeds the badge must not quietly change capping behaviour. Read row 4 alone
+ * and a fallback path that bypasses the shared formatter would go unnoticed.
  */
 @Page("compose_home_server_switcher_badge_visual", supportInLocal = true)
 internal class ComposeHomeServerSwitcherBadgeVisualPage : BasePager() {
@@ -105,6 +110,17 @@ private fun HomeServerSwitcherBadgeVisualContent() {
                     slug = "capped-count",
                     broaderUnreadCount = 0,
                     activityUnreadCount = 128L
+                ),
+                // 5. Legacy fallback count above the cap -> also "99+", matching row 4.
+                //    Contract v2.4.1 requires one client to cap the exact count and the fallback
+                //    count identically, so the pair only holds if both rows read the same. Row 4
+                //    alone cannot see a fallback path that skips the shared formatter.
+                SlockServerSwitcherItem(
+                    id = "badge-fallback-capped",
+                    name = "Fallback Capped",
+                    slug = "fallback-capped",
+                    broaderUnreadCount = 150,
+                    activityUnreadCount = null
                 )
             ),
         channels = emptyList(),
