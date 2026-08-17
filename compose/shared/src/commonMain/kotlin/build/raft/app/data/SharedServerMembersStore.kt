@@ -815,6 +815,62 @@ class SharedServerMembersStore internal constructor(
         serverId: ServerId,
         request: AgentAvatarUploadRequest,
         priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<MemberProfile> =
+        uploadAgentAvatarAndPublish(
+            serverId = serverId,
+            request = request,
+            priority = priority
+        )
+
+    internal suspend fun uploadAgentAvatarWithAvatarCacheInvalidation(
+        serverId: ServerId,
+        request: AgentAvatarUploadRequest,
+        avatarCacheRuntime: SlockAvatarCacheRuntime,
+        avatarCacheNativeCache: SlockAvatarNativeCache,
+        priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<MemberProfile> {
+        val serverKey = serverId.value.trim()
+        val agentKey = request.agentId.value.trim()
+        val retirement =
+            if (serverKey.isNotBlank() && agentKey.isNotBlank()) {
+                avatarCacheRuntime.captureCurrentSubjectRetirement(
+                    subject = SlockAvatarCacheSubject.Member(MemberKind.Agent, agentKey),
+                    serverId = serverKey
+                )
+            } else {
+                null
+            }
+        return uploadAgentAvatarAndPublish(
+            serverId = serverId,
+            request = request,
+            priority = priority,
+            beforePublish = { profile ->
+                val profileServerId = profile.serverId?.value?.trim()?.takeIf(String::isNotEmpty)
+                if (
+                    retirement != null &&
+                    profile.kind == MemberKind.Agent &&
+                    profile.id.value.trim() == agentKey &&
+                    (profileServerId == null || profileServerId == serverKey)
+                ) {
+                    when (val receipt = avatarCacheRuntime.retireSubject(retirement, avatarCacheNativeCache)) {
+                        SlockAvatarCacheClearReceipt.Success -> Unit
+                        is SlockAvatarCacheClearReceipt.Failed ->
+                            logger(
+                                "shared_server_members_avatar_cache_retire result=failure " +
+                                    "source=agent_avatar_upload stages=" +
+                                    receipt.stages.joinToString(",") { it.name.lowercase() }
+                            )
+                    }
+                }
+            }
+        )
+    }
+
+    private suspend fun uploadAgentAvatarAndPublish(
+        serverId: ServerId,
+        request: AgentAvatarUploadRequest,
+        priority: DataRequestPriority,
+        beforePublish: suspend (MemberProfile) -> Unit = {}
     ): DataResult<MemberProfile> {
         val result =
             try {
@@ -826,6 +882,7 @@ class SharedServerMembersStore internal constructor(
                 return DataResult.Error(ScreenError(code = "agent_avatar_upload_exception", retryable = true))
             }
         if (result is DataResult.Content) {
+            beforePublish(result.data)
             seedProfiles(serverId, listOf(result.data))
         }
         return result

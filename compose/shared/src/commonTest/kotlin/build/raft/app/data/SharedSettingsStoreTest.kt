@@ -4709,7 +4709,9 @@ class SharedSettingsStoreTest {
         scope.cancel()
     }
 
-    private class FakeSettingsMemberRepository : MemberRepository {
+    private class FakeSettingsMemberRepository(
+        private val uploadAvatarResult: DataResult<MemberProfile>? = null
+    ) : MemberRepository {
         override suspend fun getMembers(
             priority: DataRequestPriority,
             serverId: ServerId
@@ -4730,7 +4732,7 @@ class SharedSettingsStoreTest {
         override suspend fun uploadAgentAvatar(
             priority: DataRequestPriority,
             request: AgentAvatarUploadRequest
-        ): DataResult<MemberProfile> = error("unused")
+        ): DataResult<MemberProfile> = uploadAvatarResult ?: error("unused")
 
         override suspend fun getAgentDetail(
             priority: DataRequestPriority,
@@ -4821,14 +4823,24 @@ class SharedSettingsStoreTest {
         ): DataResult<ChannelMemberActionResult> = error("unused")
     }
 
-    internal fun avatarSettingsRepository(): SettingsRepository =
-        FakeSettingsRepository(serverResult = DataResult.Content(serverSnapshot()))
+    internal fun avatarSettingsRepository(
+        accountResult: DataResult<AccountSettingsSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    ): SettingsRepository =
+        FakeSettingsRepository(
+            accountResult = accountResult,
+            serverResult = DataResult.Content(serverSnapshot())
+        )
 
-    internal fun avatarSettingsCapabilities(): SharedSettingsPlatformCapabilities =
-        FakeSettingsCapabilities()
+    internal fun avatarSettingsCapabilities(
+        avatarFileResult: DataResult<PlatformFile> =
+            DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable"))
+    ): SharedSettingsPlatformCapabilities =
+        FakeSettingsCapabilities(avatarFileResult = avatarFileResult)
 
-    internal fun avatarSettingsMemberRepository(): MemberRepository =
-        FakeSettingsMemberRepository()
+    internal fun avatarSettingsMemberRepository(
+        uploadAvatarResult: DataResult<MemberProfile>? = null
+    ): MemberRepository =
+        FakeSettingsMemberRepository(uploadAvatarResult = uploadAvatarResult)
 }
 
 internal fun settingsServer(id: String): ServerSummary =
