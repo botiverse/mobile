@@ -2643,6 +2643,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
     var agentActivityRequestGeneration by remember { mutableStateOf(0L) }
     val agentDetailStoreState by provider.agentDetailStore.state.collectAsState()
     val agentPanelTabOrderState by provider.agentPanelTabOrderStore.state.collectAsState()
+    val serverMembersState by provider.serverMembersStore.state.collectAsState()
     val selectedMemberId = memberIdentity?.memberId
     val selectedAgentRouteServerId = (routeState as? MemberDetailRouteState.Agent)?.server?.id
     val selectedAgentDetailStoreStateMatches =
@@ -3059,6 +3060,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                     member = member,
                     currentUserId = current.currentUserId,
                     currentServerId = current.server.id.value,
+                    serverMembersState = serverMembersState,
                     agentDetailState = agentDetailState,
                     agentActivityLoadState = agentActivityLoadState,
                     agentMachineRuntimes =
@@ -3223,7 +3225,6 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
             }
         }
         is MemberDetailRouteState.Human -> {
-            val serverMembersState by provider.serverMembersStore.state.collectAsState()
             val serverMembers = serverMembersState.entryFor(current.server.id)?.members.orEmpty()
             val ownerCount = serverMembers.count {
                 it.kind == MemberKind.Human &&
@@ -4236,6 +4237,7 @@ private fun MembersDetailContent(
     member: MemberProfile,
     currentUserId: String? = null,
     currentServerId: String? = null,
+    serverMembersState: SharedServerMembersState = SharedServerMembersState(),
     agentDetailState: MembersAgentDetailLoadState,
     agentActivityLoadState: MembersAgentActivityLoadState = MembersAgentActivityLoadState.Idle,
     agentMachineRuntimes: List<String> = emptyList(),
@@ -4829,6 +4831,8 @@ private fun MembersDetailContent(
                                 MembersAgentDetailTab.Chat ->
                                     MembersAgentChatTab(
                                         detail = detail,
+                                        currentServerId = currentServerId,
+                                        serverMembersState = serverMembersState,
                                         timeContext = timeContext,
                                         pageVisibleTick = pageVisibleTick,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
@@ -9570,6 +9574,8 @@ private fun MembersAgentCreatedAgentRow(
 @Composable
 private fun MembersAgentChatTab(
     detail: AgentDetailSnapshot?,
+    currentServerId: String?,
+    serverMembersState: SharedServerMembersState,
     timeContext: SlockTimeContext,
     pageVisibleTick: Int,
     modifier: Modifier = Modifier
@@ -9584,12 +9590,22 @@ private fun MembersAgentChatTab(
         )
     val timeContextProvider = inheritedTimeContextProvider ?: fallbackTimeContextProvider
     CompositionLocalProvider(LocalSlockTimeContextProvider provides timeContextProvider) {
-        MembersAgentChatTabContent(detail = detail, modifier = modifier)
+        MembersAgentChatTabContent(
+            detail = detail,
+            currentServerId = currentServerId,
+            serverMembersState = serverMembersState,
+            modifier = modifier
+        )
     }
 }
 
 @Composable
-private fun MembersAgentChatTabContent(detail: AgentDetailSnapshot?, modifier: Modifier = Modifier) {
+private fun MembersAgentChatTabContent(
+    detail: AgentDetailSnapshot?,
+    currentServerId: String?,
+    serverMembersState: SharedServerMembersState,
+    modifier: Modifier = Modifier
+) {
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
@@ -9650,7 +9666,7 @@ private fun MembersAgentChatTabContent(detail: AgentDetailSnapshot?, modifier: M
             )
         } else {
             rows.take(8).forEach { row ->
-                MembersAgentDmRow(row)
+                MembersAgentDmRow(row, currentServerId, serverMembersState)
             }
         }
     }
@@ -9711,8 +9727,31 @@ private fun MembersAgentChannelRow(channel: AgentChannelSummary) {
     }
 }
 
+internal fun SharedServerMembersState.membersAgentDmPeerProfile(
+    row: AgentDmSummary,
+    currentServerId: String?
+): MemberProfile? {
+    val cleanServerId = currentServerId?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    val cleanPeerId = row.peerId?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    val profile = memberProfile(ServerId(cleanServerId), cleanPeerId) ?: return null
+    return profile.takeIf {
+        it.id.value.trim() == cleanPeerId &&
+            it.serverId?.value?.trim() == cleanServerId
+    }
+}
+
 @Composable
-private fun MembersAgentDmRow(row: AgentDmSummary) {
+private fun MembersAgentDmRow(
+    row: AgentDmSummary,
+    currentServerId: String?,
+    serverMembersState: SharedServerMembersState
+) {
+    val avatarCacheIdentity =
+        remember(row.peerId, currentServerId, serverMembersState) {
+            serverMembersState
+                .membersAgentDmPeerProfile(row, currentServerId)
+                ?.slockAvatarCacheIdentity(currentServerId)
+        }
     // React parity: subtle bordered card (alpha 0.2 border, no brutal shadow)
     // with avatar + name + handle + relative time on the top row, body text
     // on the second row, and an ACTIVITY ONLY tag on the third row.
@@ -9738,7 +9777,9 @@ private fun MembersAgentDmRow(row: AgentDmSummary) {
                 avatarWireValue = row.peerAvatarUrl,
                 label = row.peerName.take(1).uppercase(),
                 avatarSize = 22.dp,
-                borderWidth = SlockStroke.Thin
+                borderWidth = SlockStroke.Thin,
+                cacheSubject = avatarCacheIdentity?.subject,
+                cacheServerId = avatarCacheIdentity?.serverId
             )
             Text(
                 text = row.peerName,

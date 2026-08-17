@@ -5988,8 +5988,32 @@ internal fun slockMemberAvatarCacheSubject(
     return SlockAvatarCacheSubject.Member(cacheableKind, cleanMemberId)
 }
 
+internal data class SlockMemberAvatarCacheIdentity(
+    val subject: SlockAvatarCacheSubject.Member,
+    val serverId: String
+)
+
+internal fun slockMemberAvatarCacheIdentity(
+    kind: MemberKind?,
+    memberId: String?,
+    serverId: String?
+): SlockMemberAvatarCacheIdentity? {
+    val cleanServerId = serverId?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    val subject = slockMemberAvatarCacheSubject(kind, memberId) ?: return null
+    return SlockMemberAvatarCacheIdentity(subject = subject, serverId = cleanServerId)
+}
+
 internal fun MemberProfile.slockAvatarCacheSubject(): SlockAvatarCacheSubject.Member? =
     slockMemberAvatarCacheSubject(kind, id.value)
+
+internal fun MemberProfile.slockAvatarCacheIdentity(
+    cacheServerId: String? = serverId?.value
+): SlockMemberAvatarCacheIdentity? {
+    val cleanCacheServerId = cacheServerId?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    val profileServerId = serverId?.value?.trim()?.takeIf(String::isNotEmpty)
+    if (profileServerId != null && profileServerId != cleanCacheServerId) return null
+    return slockMemberAvatarCacheIdentity(kind, id.value, cleanCacheServerId)
+}
 
 @Composable
 internal fun SlockAvatar(

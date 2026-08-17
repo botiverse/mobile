@@ -1,18 +1,23 @@
 package build.raft.app
 
 import build.raft.app.data.AccountProfileUpdateRequest
+import build.raft.app.data.AccountProfileSnapshot
+import build.raft.app.data.AccountSettingsSnapshot
 import build.raft.app.data.AddComputerDialogState
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.InMemorySlockAuthSessionStore
 import build.raft.app.data.RealSettingsRepository
 import build.raft.app.data.ScreenError
+import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsStore
 import build.raft.app.data.SlockNetworkClient
+import build.raft.app.data.SlockAvatarCacheSubject
 import build.raft.app.data.authSessionFixture
 import build.raft.app.model.ServerId
+import build.raft.app.model.MemberKind
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,6 +26,49 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class SettingsHonestStateTest {
+    @Test
+    fun accountAvatarCacheIdentityPairsTheAuthoritativeProfileWithTheCurrentSessionServer() {
+        val session = authSessionFixture(userId = "owner", selectedServerId = "server-2")
+        val fallbackState: ScreenLoadState<AccountSettingsSnapshot> = ScreenLoadState.Loading
+        val expected =
+            SlockMemberAvatarCacheIdentity(
+                subject = SlockAvatarCacheSubject.Member(MemberKind.Human, "owner"),
+                serverId = "server-2"
+            )
+        assertNull(fallbackState.settingsAccountAvatarCacheIdentity(session))
+
+        val content =
+            ScreenLoadState.Content(
+                AccountSettingsSnapshot(
+                    profile = accountProfile("owner"),
+                    connectedAccounts = emptyList()
+                )
+            )
+        assertEquals(expected, content.settingsAccountAvatarCacheIdentity(session))
+
+        val staleAccount =
+            ScreenLoadState.Content(
+                AccountSettingsSnapshot(
+                    profile = accountProfile("previous-owner"),
+                    connectedAccounts = emptyList()
+                )
+            )
+        assertNull(staleAccount.settingsAccountAvatarCacheIdentity(session))
+        assertNull(
+            ScreenLoadState.Content(
+                AccountSettingsSnapshot(
+                    profile = accountProfile(" "),
+                    connectedAccounts = emptyList()
+                )
+            ).settingsAccountAvatarCacheIdentity(session)
+        )
+        assertNull(
+            fallbackState.settingsAccountAvatarCacheIdentity(
+                authSessionFixture(userId = "owner", servers = emptyList(), selectedServerId = null)
+            )
+        )
+    }
+
     @Test
     fun accountErrorEnvelopeSurvivesAdapterStoreAndVisiblePayload() = runBlocking {
         val errorStrings = englishErrorPresentationStringsForTest()
@@ -99,6 +147,15 @@ class SettingsHonestStateTest {
         assertEquals("Choose a computer name", local.userFacingErrorMessage(errorStrings))
         assertNull(AddComputerDialogState().userFacingErrorMessage(errorStrings))
     }
+
+    private fun accountProfile(userId: String): AccountProfileSnapshot =
+        AccountProfileSnapshot(
+            userId = userId,
+            displayName = "Owner",
+            handle = "owner",
+            email = "owner@example.com",
+            avatarLabel = "O"
+        )
 }
 
 private data class AccountErrorCase(
