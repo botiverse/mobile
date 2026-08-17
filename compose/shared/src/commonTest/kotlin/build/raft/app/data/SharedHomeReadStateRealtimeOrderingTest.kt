@@ -34,7 +34,7 @@ class SharedHomeReadStateRealtimeOrderingTest {
         val commitStarted = CompletableDeferred<Unit>()
         val releaseCommit = CompletableDeferred<Unit>()
         val durable = TestReadStateV1Store(beforeCommit = { fact ->
-            if (fact.readStateVersion == 5L) {
+            if (fact.readStateVersion == 2L && fact.maxReadSeq == 5L) {
                 commitStarted.complete(Unit)
                 releaseCommit.await()
             }
