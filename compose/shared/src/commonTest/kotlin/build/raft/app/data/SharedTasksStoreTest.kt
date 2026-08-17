@@ -749,6 +749,50 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun sharedTasksDataStoreFailsClosedWhenLegacyNullRevisionFactsDisagree() {
+        val store = SharedTasksDataStore()
+        val first = task("task-legacy", TaskStatus.Todo, channelId = ChannelId("channel-a"), revision = null)
+        val conflicting = first.copy(status = TaskStatus.Done, channelId = ChannelId("channel-b"))
+
+        assertEquals(SharedTaskFactFoldOutcome.Accepted, store.upsertTask("server-a", first))
+        assertEquals(SharedTaskFactFoldOutcome.Conflict, store.upsertTask("server-b", conflicting))
+
+        assertEquals(emptyList(), store.projection("server-a", SharedTasksScope.Server).tasks)
+        assertEquals(emptyList(), store.projection("server-b", SharedTasksScope.Server).tasks)
+        assertTrue(store.projection("server-a", SharedTasksScope.Server).needsCanonicalRefetch)
+    }
+
+    @Test
+    fun sharedTasksNotificationFactDedupesCanonicalMessageAndRetainsBothLocalRoutes() {
+        val store = SharedTasksDataStore()
+        val host =
+            task("task-joint", TaskStatus.Todo, channelId = ChannelId("channel-host"), revision = 8L)
+                .copy(messageId = MessageId("message-joint"), parentMessageId = MessageId("message-joint"))
+
+        store.upsertTask("server-host", host)
+        store.upsertTask("server-peer", host.copy(channelId = ChannelId("channel-peer")))
+
+        val projection = store.notificationProjection(host.id)
+        assertEquals(MessageId("message-joint"), projection?.messageId)
+        assertEquals(8L, projection?.revision)
+        assertEquals(
+            listOf(
+                SharedTaskNotificationRoute("server-host", ChannelId("channel-host")),
+                SharedTaskNotificationRoute("server-peer", ChannelId("channel-peer"))
+            ),
+            projection?.routes
+        )
+        assertEquals(
+            ChannelId("channel-host"),
+            store.mutationProjection("server-host", host.id, expectedRevision = 8L)?.channelId
+        )
+        assertEquals(
+            ChannelId("channel-peer"),
+            store.mutationProjection("server-peer", host.id, expectedRevision = 8L)?.channelId
+        )
+    }
+
+    @Test
     fun authoritativeSnapshotRemovesOnlyItsMissingLocalRouteAndPreservesPeerRoute() = runBlocking {
         val store = SharedTasksDataStore()
         val canonical = task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-a"), revision = 7L)
@@ -1856,6 +1900,28 @@ class SharedTasksStoreTest {
         assertEquals(2, visible.channelScopedContent.tasks.size)
         assertEquals(1, visible.channelScopedContent.summaryCounts[TaskStatus.Todo])
         assertEquals(1, visible.channelScopedContent.summaryCounts[TaskStatus.InReview])
+    }
+
+    @Test
+    fun assigneeCandidatesDedupeTheSameGlobalHumanAcrossServerProjections() {
+        val host = MemberProfile(MemberId("global-user-1"), "Artin Host", "artin", MemberKind.Human)
+        val peer = MemberProfile(MemberId("global-user-1"), "Artin Peer", "artin", MemberKind.Human)
+        val agent = MemberProfile(MemberId("global-user-1"), "Agent One", "agent-one", MemberKind.Agent)
+
+        val visible =
+            TasksContent(summaryCounts = emptyMap(), tasks = emptyList()).visibleContent(
+                selectedFilter = null,
+                presentationState = TasksPresentationState(),
+                showChannelFilter = true,
+                identityOptions = listOf(host, peer, agent)
+            )
+
+        assertEquals(
+            setOf("user:global-user-1", "agent:global-user-1"),
+            visible.assigneeOptions.mapTo(mutableSetOf()) { it.tasksIdentityFilterId() }
+        )
+        assertEquals(2, visible.assigneeOptions.size)
+        assertEquals(visible.creatorOptions, visible.assigneeOptions)
     }
 
     @Test

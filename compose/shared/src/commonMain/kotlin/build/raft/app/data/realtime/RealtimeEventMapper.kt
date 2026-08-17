@@ -902,14 +902,15 @@ private fun TaskInfoWireDto.toDomain(
     diagnostics: (String) -> Unit,
 ): TaskSummary? {
     val resolvedStatus = status.strictTaskStatusOrNull("realtime_task", diagnostics) ?: return null
+    val resolvedMessageId = (messageId ?: id).let(::MessageId)
     return TaskSummary(
         id = TaskId(id),
         revision = revision,
         title = title,
         status = resolvedStatus,
         taskNumber = taskNumber,
-        messageId = messageId?.let(::MessageId),
-        parentMessageId = null,
+        messageId = resolvedMessageId,
+        parentMessageId = resolvedMessageId,
         channelId = (channelId ?: envelopeChannelId)?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         threadId = null,
         isThreadTask = channelType?.lowercase() == KuiklyThreadSurfaceKind.ReplyThread,

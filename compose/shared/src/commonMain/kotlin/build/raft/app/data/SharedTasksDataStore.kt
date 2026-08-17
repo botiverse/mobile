@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
+import build.raft.app.model.MessageId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +32,19 @@ internal data class SharedTasksProjectionSlice(
     val isExactScopeLoaded: Boolean = false,
     val tasks: List<TaskSummary> = emptyList(),
     val needsCanonicalRefetch: Boolean = false
+)
+
+internal data class SharedTaskNotificationRoute(
+    val serverId: String,
+    val channelId: ChannelId
+)
+
+/** One personal task fact keyed by its canonical message, with every local open route retained. */
+internal data class SharedTaskNotificationProjection(
+    val taskId: TaskId,
+    val messageId: MessageId,
+    val revision: Long?,
+    val routes: List<SharedTaskNotificationRoute>
 )
 
 private data class SharedTasksChannelKey(
@@ -111,11 +125,12 @@ private fun SharedTasksDataStoreState.foldCanonicalTask(
     val currentFact = canonicalTaskFacts[incoming.id]
     val currentlyConflicted = incoming.id in canonicalConflicts
     val revisionOrder = incomingFact.revision.compareTaskRevision(currentFact?.revision)
+    val currentServerHasRoute = key in taskProjectionRoutes
     val comparableRevisions = currentFact?.revision != null && incomingFact.revision != null
     val equalRevisionConflict =
         currentFact != null &&
-            comparableRevisions &&
             revisionOrder == 0 &&
+            (comparableRevisions || !currentServerHasRoute) &&
             currentFact != incomingFact
 
     if (equalRevisionConflict && !(authoritativeRefresh && currentlyConflicted)) {
@@ -148,7 +163,7 @@ private fun SharedTasksDataStoreState.foldCanonicalTask(
     val acceptsIncoming =
         currentFact == null ||
             revisionOrder > 0 ||
-            currentFact.revision == null ||
+            (currentFact.revision == null && incomingFact.revision == null && currentServerHasRoute) ||
             (authoritativeRefresh && currentlyConflicted && revisionOrder == 0)
     if (currentlyConflicted && !acceptsIncoming) {
         return SharedTaskFactFold(
@@ -744,6 +759,34 @@ internal class SharedTasksDataStore(
         val route = current.taskProjectionRoutes[SharedTasksTaskKey(normalizedServerId, taskId)] ?: return null
         if (route.channelId == null) return null
         return fact.withTaskProjectionRoute(route)
+    }
+
+    /**
+     * Personal Activity/notification identity is canonical-message scoped, while opening remains
+     * Server-local. Returning one projection with N routes prevents host/peer duplicates without
+     * inventing a canonical channel target.
+     */
+    fun notificationProjection(taskId: TaskId): SharedTaskNotificationProjection? {
+        val current = state.value
+        if (taskId in current.canonicalConflicts) return null
+        val fact = current.canonicalTaskFacts[taskId] ?: return null
+        val messageId = fact.messageId ?: return null
+        val routes =
+            current.taskProjectionRoutes
+                .mapNotNull { (key, route) ->
+                    if (key.taskId != taskId) return@mapNotNull null
+                    val channelId = route.channelId ?: return@mapNotNull null
+                    SharedTaskNotificationRoute(serverId = key.serverId, channelId = channelId)
+                }
+                .distinct()
+                .sortedWith(compareBy(SharedTaskNotificationRoute::serverId, { it.channelId.value }))
+        if (routes.isEmpty()) return null
+        return SharedTaskNotificationProjection(
+            taskId = taskId,
+            messageId = messageId,
+            revision = fact.revision,
+            routes = routes
+        )
     }
 
     /**

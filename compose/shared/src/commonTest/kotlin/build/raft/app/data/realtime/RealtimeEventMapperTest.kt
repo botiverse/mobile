@@ -1,6 +1,8 @@
 package build.raft.app.data.realtime
 
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.data.TaskWireDto
+import build.raft.app.data.toTaskSummary
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
@@ -455,7 +457,50 @@ class RealtimeEventMapperTest {
         assertEquals("task-2", updated.task.id.value)
         assertEquals("channel-2", updated.task.channelId?.value)
         assertEquals("m2", updated.task.messageId?.value)
+        assertEquals("m2", updated.task.parentMessageId?.value)
         assertEquals(42L, updated.task.revision)
+    }
+
+    @Test
+    fun realtimeAndHttpTaskShapesProduceTheSameCanonicalFactAtOneRevision() {
+        val http =
+            TaskWireDto(
+                id = "task-2",
+                revision = 42L,
+                messageId = "m2",
+                channelId = "channel-http",
+                channelName = "joint",
+                taskNumber = 2,
+                title = "Canonical task",
+                status = "in_review",
+                updatedAt = "2026-06-25T06:10:00Z"
+            ).toTaskSummary()
+        val realtime =
+            assertIs<TaskUpdated>(
+                RealtimeEventMapper().map(
+                    RealtimeSocketEvents.TaskUpdated,
+                    """
+                    {
+                      "channelId": "channel-realtime",
+                      "task": {
+                        "id": "task-2",
+                        "revision": 42,
+                        "messageId": "m2",
+                        "channelName": "joint",
+                        "taskNumber": 2,
+                        "title": "Canonical task",
+                        "status": "in_review",
+                        "updatedAt": "2026-06-25T06:10:00Z"
+                      }
+                    }
+                    """.trimIndent()
+                )
+            ).task
+
+        assertEquals(
+            http?.copy(channelId = null, channelName = null),
+            realtime.copy(channelId = null, channelName = null)
+        )
     }
 
     @Test

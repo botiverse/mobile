@@ -437,7 +437,7 @@ interface SlockTasksApi {
         serverId: ServerId,
         channelId: ChannelId,
         priority: DataRequestPriority
-    ): HomeNetworkResponse = channelTasks(channelId, priority)
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun taskByNumber(channelId: ChannelId, taskNumber: Int, priority: DataRequestPriority): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun taskByNumber(
@@ -445,7 +445,7 @@ interface SlockTasksApi {
         channelId: ChannelId,
         taskNumber: Int,
         priority: DataRequestPriority
-    ): HomeNetworkResponse = taskByNumber(channelId, taskNumber, priority)
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun createTasks(channelId: ChannelId, drafts: List<TaskCreateDraft>, priority: DataRequestPriority): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun createTasks(
@@ -453,22 +453,26 @@ interface SlockTasksApi {
         channelId: ChannelId,
         drafts: List<TaskCreateDraft>,
         priority: DataRequestPriority
-    ): HomeNetworkResponse = createTasks(channelId, drafts, priority)
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun claimTask(taskId: TaskId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
-    suspend fun claimTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse = claimTask(taskId)
+    suspend fun claimTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
-    suspend fun convertMessage(serverId: ServerId, messageId: MessageId): HomeNetworkResponse = convertMessage(messageId)
+    suspend fun convertMessage(serverId: ServerId, messageId: MessageId): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun unclaimTask(taskId: TaskId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
-    suspend fun unclaimTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse = unclaimTask(taskId)
+    suspend fun unclaimTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): HomeNetworkResponse =
-        updateTaskStatus(taskId, status)
+        HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun deleteTask(taskId: TaskId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
-    suspend fun deleteTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse = deleteTask(taskId)
+    suspend fun deleteTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
 }
 
 @Serializable
