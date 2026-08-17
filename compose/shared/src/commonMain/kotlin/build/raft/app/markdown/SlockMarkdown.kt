@@ -2167,14 +2167,15 @@ fun SlockMarkdownBody(
             horizontalRule = {
                 SlockMarkdownHorizontalRule()
             },
-            // task #212: the upstream table header does `style.merge(fontWeight = Bold)`,
-            // which changes the weight but leaves the font FAMILY alone. Slock encodes
-            // weight in the family name (Kuikly drops weight from the serialized family,
-            // see withSlockFontWeight), so that merge asks the platform to synthesise
-            // bold on top of the Regular face instead of using the real 700 cut — the
-            // header rendered heavier and blurrier than React's `th`, which uses a true
-            // SpaceGrotesk Bold file. Handing the header a style that already carries the
-            // Bold family makes the upstream merge a no-op and yields the real cut.
+            // task #212: upstream's table header derives its own style by setting
+            // fontWeight to Bold, which changes the weight but leaves the font FAMILY
+            // alone. Slock encodes weight in the family name (Kuikly drops weight from
+            // the serialized family, see withSlockFontWeight), so that derivation asks
+            // the platform to synthesise bold on top of the Regular face instead of
+            // using the real 700 cut — the header rendered heavier and blurrier than
+            // React's `th`, which uses a true SpaceGrotesk Bold file. Handing the header
+            // a style that already carries the Bold family makes upstream's weight
+            // override redundant and yields the real cut.
             // Overriding the component here keeps the vendored fork free of a new
             // divergence.
             table = { model ->
