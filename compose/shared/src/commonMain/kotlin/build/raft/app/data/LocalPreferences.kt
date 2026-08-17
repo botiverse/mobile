@@ -245,7 +245,6 @@ data class ChatLayoutPreferenceSnapshot(
     val threadUnreadJumpEnabled: Boolean = false,
     val newMessageMenuEnabled: Boolean = false,
     val conversationForwardGestureEnabled: Boolean = false,
-    val imageAnnotationEnabled: Boolean = true,
     val foregroundMessageBannersEnabled: Boolean = false,
     val activityTaskStatusBadgesEnabled: Boolean = false,
     val activitySenderAvatarsEnabled: Boolean = false,
@@ -285,9 +284,6 @@ interface ChatLayoutPreferenceStore {
     fun readConversationForwardGestureEnabledSync(): Boolean
     suspend fun readConversationForwardGestureEnabled(): Boolean
     suspend fun saveConversationForwardGestureEnabled(enabled: Boolean)
-    fun readImageAnnotationEnabledSync(): Boolean
-    suspend fun readImageAnnotationEnabled(): Boolean
-    suspend fun saveImageAnnotationEnabled(enabled: Boolean)
     fun readForegroundMessageBannersEnabledSync(): Boolean
     suspend fun readForegroundMessageBannersEnabled(): Boolean
     suspend fun saveForegroundMessageBannersEnabled(enabled: Boolean)
@@ -414,16 +410,6 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, enabled)
     }
 
-    override fun readImageAnnotationEnabledSync(): Boolean =
-        store.getBoolean(KEY_IMAGE_ANNOTATION_ENABLED, true)
-
-    override suspend fun readImageAnnotationEnabled(): Boolean =
-        readImageAnnotationEnabledSync()
-
-    override suspend fun saveImageAnnotationEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_IMAGE_ANNOTATION_ENABLED, enabled)
-    }
-
     override fun readForegroundMessageBannersEnabledSync(): Boolean =
         store.getBoolean(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, false)
 
@@ -538,7 +524,6 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_LEGACY_INLINE_SELECTION_TOOLBAR_ENABLED =
             "mobile:inline_selection_toolbar_enabled"
         const val KEY_CONVERSATION_FORWARD_GESTURE_ENABLED = "mobile:conversation_forward_gesture_enabled"
-        const val KEY_IMAGE_ANNOTATION_ENABLED = "chatLayout:image_annotation_enabled"
         const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "chatLayout:foreground_message_banners_enabled"
         const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "chatLayout:activity_task_status_badges_enabled"
         const val KEY_ACTIVITY_SENDER_AVATARS_ENABLED = "chatLayout:activity_sender_avatars_enabled"
@@ -566,7 +551,6 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setThreadUnreadJumpEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setNewMessageMenuEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setConversationForwardGestureEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
-    suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setActivitySenderAvatarsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
@@ -592,7 +576,6 @@ class PersistentChatLayoutPreferenceRepository(
             threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
-            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
@@ -618,7 +601,6 @@ class PersistentChatLayoutPreferenceRepository(
             threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
-            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
@@ -645,7 +627,6 @@ class PersistentChatLayoutPreferenceRepository(
             threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
-            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
@@ -670,7 +651,6 @@ class PersistentChatLayoutPreferenceRepository(
             threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
-            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
@@ -709,31 +689,6 @@ class PersistentChatLayoutPreferenceRepository(
         return getChatLayoutPreference()
     }
 
-    override suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
-        store.saveImageAnnotationEnabled(enabled)
-        return ChatLayoutPreferenceSnapshot(
-            myMessageAlignment = store.readMyMessageAlignment(),
-            largeScreenNavigation = store.readLargeScreenNavigation(),
-            compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
-            longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
-            singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
-            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
-            newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
-            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
-            imageAnnotationEnabled = enabled,
-            foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
-            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
-            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
-            composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
-            multiShellHostEnabled = store.readMultiShellHostEnabled(),
-            serverDrawerEnabled = store.readServerDrawerEnabled(),
-            newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
-            homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
-            translationMode = store.readTranslationMode(),
-            translationTargetLanguage = store.readTranslationTargetLanguage(),
-        )
-    }
-
     override suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
         store.saveForegroundMessageBannersEnabled(enabled)
         return ChatLayoutPreferenceSnapshot(
@@ -745,7 +700,6 @@ class PersistentChatLayoutPreferenceRepository(
             threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
-            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = enabled,
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
@@ -770,7 +724,6 @@ class PersistentChatLayoutPreferenceRepository(
             threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
-            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = enabled,
             activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
@@ -825,7 +778,6 @@ class PersistentChatLayoutPreferenceRepository(
             threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
-            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),

@@ -13,7 +13,6 @@ private const val KEY_LONG_MESSAGE_COLLAPSE_ENABLED = "longMessageCollapseEnable
 private const val KEY_SINGLE_TAP_OPENS_THREAD_ENABLED = "singleTapOpensThreadEnabled"
 private const val KEY_THREAD_UNREAD_JUMP_ENABLED = "threadUnreadJumpEnabled"
 private const val KEY_NEW_MESSAGE_MENU_ENABLED = "newMessageMenuEnabled"
-private const val KEY_IMAGE_ANNOTATION_ENABLED = "imageAnnotationEnabled"
 private const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "foregroundMessageBannersEnabled"
 private const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "activityTaskStatusBadgesEnabled"
 private const val KEY_ACTIVITY_SENDER_AVATARS_ENABLED = "activitySenderAvatarsEnabled"
@@ -34,7 +33,6 @@ private val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS =
         KEY_THREAD_UNREAD_JUMP_ENABLED,
         KEY_NEW_MESSAGE_MENU_ENABLED,
         KEY_CONVERSATION_FORWARD_GESTURE_ENABLED,
-        KEY_IMAGE_ANNOTATION_ENABLED,
         KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED,
         KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
         KEY_ACTIVITY_SENDER_AVATARS_ENABLED,
@@ -133,9 +131,6 @@ fun kuiklyChatLayoutPreferenceRepository(
             return snapshot
         }
 
-        override suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
-            persistAndPublish { delegate.setImageAnnotationEnabled(enabled) }
-
         override suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setForegroundMessageBannersEnabled(enabled) }
 
@@ -178,7 +173,6 @@ private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JSONObject =
         .put(KEY_THREAD_UNREAD_JUMP_ENABLED, threadUnreadJumpEnabled)
         .put(KEY_NEW_MESSAGE_MENU_ENABLED, newMessageMenuEnabled)
         .put(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, conversationForwardGestureEnabled)
-        .put(KEY_IMAGE_ANNOTATION_ENABLED, imageAnnotationEnabled)
         .put(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, foregroundMessageBannersEnabled)
         .put(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, activityTaskStatusBadgesEnabled)
         .put(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, activitySenderAvatarsEnabled)
@@ -201,7 +195,6 @@ internal fun JSONObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPrefer
         threadUnreadJumpEnabled = optBoolean(KEY_THREAD_UNREAD_JUMP_ENABLED, false),
         newMessageMenuEnabled = optBoolean(KEY_NEW_MESSAGE_MENU_ENABLED, false),
         conversationForwardGestureEnabled = optBoolean(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, false),
-        imageAnnotationEnabled = optBoolean(KEY_IMAGE_ANNOTATION_ENABLED, true),
         foregroundMessageBannersEnabled = optBoolean(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, false),
         activityTaskStatusBadgesEnabled = optBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, false),
         activitySenderAvatarsEnabled = optBoolean(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, false),

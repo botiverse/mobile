@@ -496,13 +496,11 @@ internal enum class ThreadPickedAttachmentComposerAction {
 internal fun resolveThreadPickedAttachmentComposerAction(
     action: String,
     fileCount: Int,
-    imageAnnotationEnabled: Boolean,
     allFilesAreImages: Boolean = true,
 ): ThreadPickedAttachmentComposerAction {
     return when {
         fileCount <= 0 -> ThreadPickedAttachmentComposerAction.None
         (action == ThreadComposerAttachImageAction || action == ThreadComposerCaptureImageAction) &&
-            imageAnnotationEnabled &&
             allFilesAreImages ->
             ThreadPickedAttachmentComposerAction.OpenImageAnnotation
         else -> ThreadPickedAttachmentComposerAction.UploadToComposer
@@ -5284,8 +5282,6 @@ internal fun SharedThreadRouteContent(
         remember(pager) {
             KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
         }
-    fun imageAnnotationEnabled(): Boolean =
-        chatLayoutPreferenceStore.readImageAnnotationEnabledSync()
     val actionCardSuccessLabels =
         mapOf(
             "channel:create" to stringResource(MR.strings.thread_action_card_success_channel),
@@ -6670,7 +6666,7 @@ internal fun SharedThreadRouteContent(
                     imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() }
                 )
             )
-        } else if (threadAttachment.isImageAttachment() && imageAnnotationEnabled()) {
+        } else if (threadAttachment.isImageAttachment()) {
             composerImageActionCounter += 1
             val composerImageActionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${threadAttachment.id.take(12)}"
             pager.openSlockFilePreviewPage(
@@ -6682,12 +6678,6 @@ internal fun SharedThreadRouteContent(
                     composerImageMimeType = attachment.mimeType.orEmpty(),
                     composerImageReplaceAttachmentId = attachment.id,
                     composerImageCanEdit = true
-                )
-            )
-        } else if (threadAttachment.isImageAttachment()) {
-            pager.openSlockFilePreviewPage(
-                threadAttachment.toThreadAttachmentLazyPreviewPayload(kind = "image").copy(
-                    imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() }
                 )
             )
         } else {
@@ -9162,8 +9152,6 @@ internal fun SharedThreadRouteContent(
                             resolveThreadPickedAttachmentComposerAction(
                                 action = action,
                                 fileCount = files.size,
-                                imageAnnotationEnabled =
-                                    action != "attachFile" && imageAnnotationEnabled(),
                                 allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(files),
                             )
                         ) {

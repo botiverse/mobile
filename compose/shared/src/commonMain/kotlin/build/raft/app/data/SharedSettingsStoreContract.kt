@@ -138,7 +138,6 @@ class SharedSettingsStoreContract(
                 is SharedSettingsIntent.SetSingleTapOpensThreadEnabled -> MviActionKey(MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD)
                 is SharedSettingsIntent.SetNewMessageMenuEnabled -> MviActionKey(MOBILE_ACTION_NEW_MESSAGE_MENU)
                 is SharedSettingsIntent.SetConversationForwardGestureEnabled -> MviActionKey(MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE)
-                is SharedSettingsIntent.SetImageAnnotationEnabled -> MviActionKey(MOBILE_ACTION_IMAGE_ANNOTATION)
                 is SharedSettingsIntent.SetForegroundMessageBanners -> MviActionKey(MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS)
                 is SharedSettingsIntent.SetActivityTaskStatusBadges -> MviActionKey(MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES)
                 is SharedSettingsIntent.SetComposerSendKey -> MviActionKey(MOBILE_ACTION_COMPOSER_SEND_KEY)

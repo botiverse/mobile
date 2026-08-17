@@ -308,13 +308,12 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun pickedSingleImageOpensAnnotationWhenEnabled() {
+    fun pickedSingleImageOpensAnnotation() {
         assertEquals(
             ThreadPickedAttachmentComposerAction.OpenImageAnnotation,
             resolveThreadPickedAttachmentComposerAction(
                 action = "attachImage",
                 fileCount = 1,
-                imageAnnotationEnabled = true
             )
         )
     }
@@ -332,32 +331,18 @@ class ThreadPayloadTest {
             resolveThreadPickedAttachmentComposerAction(
                 action = ThreadComposerCaptureImageAction,
                 fileCount = 1,
-                imageAnnotationEnabled = true,
                 allFilesAreImages = true,
             )
         )
     }
 
     @Test
-    fun pickedSingleImageUploadsDirectlyWhenAnnotationIsDisabled() {
-        assertEquals(
-            ThreadPickedAttachmentComposerAction.UploadToComposer,
-            resolveThreadPickedAttachmentComposerAction(
-                action = "attachImage",
-                fileCount = 1,
-                imageAnnotationEnabled = false
-            )
-        )
-    }
-
-    @Test
-    fun pickedMultipleImagesOpenAnnotationGalleryWhenEnabled() {
+    fun pickedMultipleImagesOpenAnnotationGallery() {
         assertEquals(
             ThreadPickedAttachmentComposerAction.OpenImageAnnotation,
             resolveThreadPickedAttachmentComposerAction(
                 action = "attachImage",
                 fileCount = 2,
-                imageAnnotationEnabled = true
             )
         )
     }
@@ -369,7 +354,6 @@ class ThreadPayloadTest {
             resolveThreadPickedAttachmentComposerAction(
                 action = "attachImage",
                 fileCount = 1,
-                imageAnnotationEnabled = true,
                 allFilesAreImages = false,
             )
         )
@@ -399,7 +383,6 @@ class ThreadPayloadTest {
             resolveThreadPickedAttachmentComposerAction(
                 action = "attachImage",
                 fileCount = files.size,
-                imageAnnotationEnabled = true,
                 allFilesAreImages = allFilesAreImages,
             )
         )
@@ -412,7 +395,6 @@ class ThreadPayloadTest {
             resolveThreadPickedAttachmentComposerAction(
                 action = "attachFile",
                 fileCount = 1,
-                imageAnnotationEnabled = true
             )
         )
     }
@@ -424,7 +406,6 @@ class ThreadPayloadTest {
             resolveThreadPickedAttachmentComposerAction(
                 action = "attachImage",
                 fileCount = 0,
-                imageAnnotationEnabled = true
             )
         )
     }

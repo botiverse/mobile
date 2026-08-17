@@ -137,7 +137,6 @@ class SettingsHandsFeedbackImageEditTest {
             resolveThreadPickedAttachmentComposerAction(
                 action = "attachImage",
                 fileCount = normalized.size,
-                imageAnnotationEnabled = true,
                 allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(normalized)
             )
         )
@@ -423,7 +422,6 @@ class SettingsHandsFeedbackImageEditTest {
             resolveThreadPickedAttachmentComposerAction(
                 action = "attachImage",
                 fileCount = normalized.size,
-                imageAnnotationEnabled = true,
                 allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(normalized)
             )
         )
@@ -850,22 +848,12 @@ class SettingsHandsFeedbackImageEditTest {
     }
 
     @Test
-    fun toggleOffAndAttachFileKeepTheDirectAttachmentPath() {
-        assertEquals(
-            ThreadPickedAttachmentComposerAction.UploadToComposer,
-            resolveThreadPickedAttachmentComposerAction(
-                action = "attachImage",
-                fileCount = 1,
-                imageAnnotationEnabled = false,
-                allFilesAreImages = true
-            )
-        )
+    fun attachFileKeepsTheDirectAttachmentPath() {
         assertEquals(
             ThreadPickedAttachmentComposerAction.UploadToComposer,
             resolveThreadPickedAttachmentComposerAction(
                 action = "attachFile",
                 fileCount = 1,
-                imageAnnotationEnabled = true,
                 allFilesAreImages = true
             )
         )

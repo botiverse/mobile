@@ -491,7 +491,6 @@ sealed interface SharedSettingsIntent {
     data class SetThreadUnreadJumpEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetNewMessageMenuEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetConversationForwardGestureEnabled(val enabled: Boolean) : SharedSettingsIntent
-    data class SetImageAnnotationEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetForegroundMessageBanners(val enabled: Boolean) : SharedSettingsIntent
     data class SetActivityTaskStatusBadges(val enabled: Boolean) : SharedSettingsIntent
     data class SetComposerSendKey(val enabled: Boolean) : SharedSettingsIntent
@@ -1218,14 +1217,6 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
-    suspend fun setImageAnnotationEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
-        val repository =
-            chatLayoutPreferenceRepository
-                ?: return DataResult.Error(ScreenError("settings_image_annotation_unavailable", retryable = false))
-        repository.setImageAnnotationEnabled(enabled)
-        return loadMobilePreferences()
-    }
-
     suspend fun setForegroundMessageBanners(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1656,13 +1647,6 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Conversation Forward navigation is not available on this platform."
-                    ),
-            imageAnnotation =
-                chatLayout?.toSettingsMobileImageAnnotationSnapshot()
-                    ?: imageAnnotation.copy(
-                        available = false,
-                        statusLabel = "Unsupported",
-                        detail = "Image annotation preference is not available on this platform."
                     ),
             foregroundMessageBanners =
                 chatLayout?.toSettingsMobileForegroundMessageBannersSnapshot()
@@ -2509,14 +2493,6 @@ class SharedSettingsStore(
                     )
                 dataSource.setConversationForwardGestureEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE)
-            }
-            is SharedSettingsIntent.SetImageAnnotationEnabled -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(MOBILE_ACTION_IMAGE_ANNOTATION, inProgress = true)
-                    )
-                dataSource.setImageAnnotationEnabled(intent.enabled)
-                    .applyMobileActionResult(MOBILE_ACTION_IMAGE_ANNOTATION)
             }
             is SharedSettingsIntent.SetForegroundMessageBanners -> {
                 if (serverNotificationModeMutation != null) return
@@ -3735,7 +3711,6 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetThreadUnreadJumpEnabled,
             is SharedSettingsIntent.SetNewMessageMenuEnabled,
             is SharedSettingsIntent.SetConversationForwardGestureEnabled,
-            is SharedSettingsIntent.SetImageAnnotationEnabled,
             is SharedSettingsIntent.SetForegroundMessageBanners,
             is SharedSettingsIntent.SetActivityTaskStatusBadges,
             is SharedSettingsIntent.SetComposerSendKey,
@@ -3941,7 +3916,6 @@ internal const val MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD = "singleTapOpensThread
 internal const val MOBILE_ACTION_THREAD_UNREAD_JUMP = "threadUnreadJump"
 internal const val MOBILE_ACTION_NEW_MESSAGE_MENU = "newMessageMenu"
 internal const val MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE = "conversationForwardGesture"
-internal const val MOBILE_ACTION_IMAGE_ANNOTATION = "imageAnnotation"
 internal const val MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS = "foregroundMessageBanners"
 internal const val MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES = "activityTaskStatusBadges"
 internal const val MOBILE_ACTION_COMPOSER_SEND_KEY = "composerSendKey"
@@ -4197,14 +4171,6 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileConversationForwardGest
             } else {
                 "Conversation Forward navigation is available on iOS."
             }
-    )
-
-private fun ChatLayoutPreferenceSnapshot.toSettingsMobileImageAnnotationSnapshot(): SettingsMobileToggleSnapshot =
-    SettingsMobileToggleSnapshot(
-        enabled = imageAnnotationEnabled,
-        available = true,
-        statusLabel = if (imageAnnotationEnabled) "Enabled" else "Off",
-        detail = "Enable the composer image preview and annotation transfer page. When off, selected images upload directly."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileForegroundMessageBannersSnapshot(): SettingsMobileToggleSnapshot =

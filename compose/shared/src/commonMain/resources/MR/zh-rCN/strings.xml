@@ -1602,10 +1602,6 @@
     <string name="settings_mobile_composer_key_new_line">换行</string>
     <string name="settings_mobile_composer_key_enabled">键盘操作发送消息</string>
     <string name="settings_mobile_composer_key_disabled">键盘操作插入换行</string>
-    <string name="settings_mobile_image_annotation">支持图片标注</string>
-    <string name="settings_mobile_image_annotation_detail">启用输入框图片预览和标注转交页面。关闭后，所选图片会直接上传。</string>
-    <string name="settings_mobile_image_annotation_enabled">输入框图片会打开标注转交页面</string>
-    <string name="settings_mobile_image_annotation_disabled">输入框图片会直接上传</string>
     <string name="settings_notifications_loading">正在加载通知设置。</string>
     <string name="settings_notifications_system">系统</string>
     <string name="settings_notifications_on_device">此设备</string>
