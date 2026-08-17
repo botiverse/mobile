@@ -51,10 +51,18 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
  * badge even though a nonzero legacy `broaderUnreadCount` is present, because the two counts are
  * different quantities and the legacy one may never stand in for the exact one.
  *
- * Rows 4 and 5 are a pair, and only mean something together: contract v2.4.1 requires a client to
- * apply its display cap identically to the exact count and to the transitional fallback count, so
- * changing which field feeds the badge must not quietly change capping behaviour. Read row 4 alone
- * and a fallback path that bypasses the shared formatter would go unnoticed.
+ * Rows 4 and 5 are a pair, and only mean something together: contract section 3a requires a client
+ * to apply its display cap identically to the exact count and to the transitional fallback count,
+ * so changing which field feeds the badge must not quietly change capping behaviour. Read row 4
+ * alone and a fallback path that bypasses the shared formatter would go unnoticed.
+ *
+ * Note that the pair does not guard the cap yet. Until the fallback renders a number, row 5 is a dot
+ * and row 4 is a capped value, so they legitimately differ; the pair starts holding the cap only
+ * once both read the same capped value.
+ *
+ * Verified frame (dispatch run 32028728530, shard 0): rows render no badge / 3 / dot / no badge /
+ * 99+ / dot respectively, confirming in particular that row 3's authoritative zero suppresses the
+ * badge despite its nonzero legacy count.
  */
 @Page("compose_home_server_switcher_badge_visual", supportInLocal = true)
 internal class ComposeHomeServerSwitcherBadgeVisualPage : BasePager() {
@@ -86,8 +94,9 @@ private fun HomeServerSwitcherBadgeVisualContent() {
                     activityUnreadCount = 3L
                 ),
                 // 2. Exact count unknown, legacy broader count present -> the fallback branch.
-                //    This is the row artin's ruling changes from a neutral dot back to the broader
-                //    number; expect this row to move when that fix lands.
+                //    Renders a dot until the client fix lands and the broader number afterwards.
+                //    Row 5 takes the same path, so BOTH fallback rows move when that fix lands --
+                //    a migration declaration naming only this row would leave row 5 unexplained.
                 SlockServerSwitcherItem(
                     id = "badge-fallback",
                     name = "Unknown Seven",
