@@ -612,16 +612,11 @@ jobs:
             compose/androidApp/build
           key: build-output-${{ steps.build-input-hash.outputs.hash }}
 
-      # Hard run gate since #215 cleared the legacy failures: the shared JVM
-      # suite must pass. Run androidApp unit tests in the same gate so stale
-      # Android host tests cannot stay hidden until a local developer run.
-      - name: Run shared + Android app unit tests
-        working-directory: compose
-        run: ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --continue --no-daemon --console=plain --stacktrace
-
       # Build once here, then let the emulator job below install the exact APKs
       # without paying for a second Gradle/Kotlin build. The visual fixture gives
-      # the regression a deterministic empty Thread composer.
+      # the regression a deterministic empty Thread composer. Keep this before
+      # unit tests so an unrelated test failure cannot mask fixture-source
+      # compilation failures.
       - name: Build Android connected-test APKs
         working-directory: compose
         env:
@@ -637,6 +632,13 @@ jobs:
             --no-daemon \
             --console=plain \
             --stacktrace
+
+      # Hard run gate since #215 cleared the legacy failures: the shared JVM
+      # suite must pass. Run androidApp unit tests in the same gate so stale
+      # Android host tests cannot stay hidden until a local developer run.
+      - name: Run shared + Android app unit tests
+        working-directory: compose
+        run: ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --continue --no-daemon --console=plain --stacktrace
 
       - name: Verify NetworkKMM curl runtime and pinned CA
         shell: bash
