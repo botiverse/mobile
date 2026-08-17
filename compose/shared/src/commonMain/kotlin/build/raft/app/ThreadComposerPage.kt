@@ -557,6 +557,42 @@ internal fun dispatchThreadComposerHostKeyboardInset(
     return nextInset
 }
 
+/**
+ * Kuikly 2.24's legacy text callback has no selection payload. When that callback arrives before
+ * the complete editing-state callback, it represents the unknown selection as [TextRange.Zero].
+ * Repair only the subset whose edit location is proven by the previously controlled selection:
+ * a non-empty insertion that replaced exactly that range. The returned copy intentionally has a
+ * new identity so Kuikly writes the repaired selection back to the native editor.
+ */
+internal fun repairThreadComposerLegacyZeroSelection(
+    previous: TextFieldValue,
+    incoming: TextFieldValue,
+): TextFieldValue {
+    if (
+        incoming.selection != TextRange.Zero ||
+            incoming.text == previous.text ||
+            previous.composition != null ||
+            incoming.composition != null
+    ) {
+        return incoming
+    }
+
+    val previousStart =
+        minOf(previous.selection.start, previous.selection.end).coerceIn(0, previous.text.length)
+    val previousEnd =
+        maxOf(previous.selection.start, previous.selection.end).coerceIn(previousStart, previous.text.length)
+    val unchangedPrefix = previous.text.substring(0, previousStart)
+    val unchangedSuffix = previous.text.substring(previousEnd)
+    if (!incoming.text.startsWith(unchangedPrefix) || !incoming.text.endsWith(unchangedSuffix)) {
+        return incoming
+    }
+
+    val insertedLength = incoming.text.length - unchangedPrefix.length - unchangedSuffix.length
+    if (insertedLength <= 0) return incoming
+
+    return incoming.copy(selection = TextRange(previousStart + insertedLength))
+}
+
 internal class ThreadComposerControlledEditorOwner(
     seedText: String,
     seedAsTask: Boolean,
@@ -580,6 +616,20 @@ internal class ThreadComposerControlledEditorOwner(
         if (!isActiveSession(sourceSessionId)) return false
         value = next
         return true
+    }
+
+    fun acceptNativeEditorValue(
+        sourceSessionId: Long,
+        incoming: TextFieldValue,
+    ): TextFieldValue? {
+        if (!isActiveSession(sourceSessionId)) return null
+        val accepted =
+            repairThreadComposerLegacyZeroSelection(
+                previous = value,
+                incoming = incoming,
+            )
+        value = accepted
+        return accepted
     }
 
     fun acceptAsTask(sourceSessionId: Long, next: Boolean): Boolean {
@@ -1883,6 +1933,7 @@ internal fun ThreadComposerContent(
         editorSessionId = editorOwner.editorSessionId,
         editorValue = editorOwner.value,
         onEditorValueChange = editorOwner::acceptEditorValue,
+        onNativeEditorValueChange = editorOwner::acceptNativeEditorValue,
         isEditorSessionActive = editorOwner::isActiveSession,
         editorAsTask = editorOwner.asTask,
         onEditorAsTaskChange = editorOwner::acceptAsTask,
@@ -1912,6 +1963,7 @@ internal fun ThreadComposerContentLeaf(
     editorSessionId: Long,
     editorValue: TextFieldValue,
     onEditorValueChange: (Long, TextFieldValue) -> Boolean,
+    onNativeEditorValueChange: (Long, TextFieldValue) -> TextFieldValue?,
     isEditorSessionActive: (Long) -> Boolean,
     editorAsTask: Boolean,
     onEditorAsTaskChange: (Long, Boolean) -> Boolean,
@@ -2627,12 +2679,14 @@ internal fun ThreadComposerContentLeaf(
                                 if (submittedEchoFence.shouldIgnore(sourceSessionId, next)) {
                                     return@onValueChange
                                 }
-                                if (!onEditorValueChange(sourceSessionId, next)) return@onValueChange
-                                val textChanged = next.text != fieldValue.text
+                                val acceptedValue =
+                                    onNativeEditorValueChange(sourceSessionId, next)
+                                        ?: return@onValueChange
+                                val textChanged = acceptedValue.text != fieldValue.text
                                 suggestionSelectionDispatcher.updateDraft(
-                                    text = next.text,
-                                    selectionStart = next.selection.start,
-                                    selectionEnd = next.selection.end
+                                    text = acceptedValue.text,
+                                    selectionStart = acceptedValue.selection.start,
+                                    selectionEnd = acceptedValue.selection.end
                                 )
                                 continueThreadComposerSuggestionsForEditing(
                                     portalState = suggestionPortal,
@@ -2641,7 +2695,7 @@ internal fun ThreadComposerContentLeaf(
                                     onFocusedChanged = { focused = it }
                                 )
                                 if (textChanged) {
-                                    emitChange(nextText = next.text)
+                                    emitChange(nextText = acceptedValue.text)
                                 }
                             },
                             onFocus = onFocus@ {
