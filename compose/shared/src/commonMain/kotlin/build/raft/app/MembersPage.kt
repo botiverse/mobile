@@ -60,6 +60,7 @@ import build.raft.app.data.OpenedDirectMessageAuthority
 import build.raft.app.data.SharedAgentDetailActions
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedAgentDetailLoadStatus
+import build.raft.app.data.SharedAgentDetailOwner
 import build.raft.app.data.SharedAgentDetailState
 import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentIssueReportRequest
@@ -87,6 +88,7 @@ import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedCreateAgentFormStore
+import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.CREATE_AGENT_BUILTIN_RUNTIME_ID
 import build.raft.app.data.buildBuiltInRuntimeConfig
@@ -97,6 +99,7 @@ import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_REQUIRED
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SelectedServerStore
+import build.raft.app.data.sharedAgentDetailOwner
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.model.AgentProfile
@@ -106,6 +109,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.RUNTIME_PROVIDER_MODE_CUSTOM
 import build.raft.app.model.RUNTIME_PROVIDER_MODE_DEFAULT
+import build.raft.app.model.RUNTIME_MODELS
 import build.raft.app.model.RUNTIMES
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeModeConfig
@@ -769,9 +773,14 @@ internal fun membersAgentRuntimeRequestCompletionInFlight(
 
 internal data class MembersAgentProfileEditAuthority(
     val memberId: MemberId,
+    val environmentId: String,
+    val accountId: String,
     val serverId: ServerId,
     val profileGeneration: Long
-)
+) {
+    fun ownerOrNull(): SharedAgentDetailOwner? =
+        sharedAgentDetailOwner(environmentId, accountId, serverId)
+}
 
 internal fun membersAgentProfileEditAuthorityMatches(
     opened: MembersAgentProfileEditAuthority?,
@@ -787,7 +796,9 @@ internal fun membersAgentProfileStoreMatchesAuthority(
     state: SharedAgentDetailState,
     authority: MembersAgentProfileEditAuthority
 ): Boolean =
-    state.agentId == authority.memberId &&
+    state.detailOwner == authority.ownerOrNull() &&
+        state.detailProfileGeneration == authority.profileGeneration &&
+        state.agentId == authority.memberId &&
         state.detailServerId == authority.serverId &&
         state.detail?.agentId == authority.memberId
 
@@ -1991,10 +2002,39 @@ internal fun seedRemoteAgentProfile(
     agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
 }
 
+internal fun membersAgentDetailOwnerForSession(
+    environmentId: String?,
+    accountId: String?,
+    currentServerId: String?,
+    joinedServerIds: Collection<String>,
+    expectedServerId: ServerId,
+    requireCurrentServer: Boolean
+): SharedAgentDetailOwner? {
+    val normalizedCurrentServerId =
+        currentServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val normalizedExpectedServerId =
+        expectedServerId.value.trim().takeIf { it.isNotBlank() } ?: return null
+    if (
+        requireCurrentServer &&
+        (
+            normalizedCurrentServerId != normalizedExpectedServerId ||
+                joinedServerIds.none { it.trim() == normalizedExpectedServerId }
+        )
+    ) {
+        return null
+    }
+    return sharedAgentDetailOwner(
+        environmentId = environmentId,
+        accountId = accountId,
+        serverId = ServerId(normalizedExpectedServerId)
+    )
+}
+
 private class MemberDetailRouteProvider(
     val bridge: BridgeModule,
     val reportIssueFailedMessage: String,
     val authStore: SlockAuthSessionStore,
+    val apiEnvironmentStore: SharedApiEnvironmentStore,
     val memberRepository: MemberRepository,
     val channelRepository: ChannelRepository,
     val settingsRepository: build.raft.app.data.SettingsServerManagementRepository,
@@ -2013,6 +2053,42 @@ private class MemberDetailRouteProvider(
     val storeScope: SlockShellStoreScope,
     val agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null
 ) {
+    suspend fun currentAgentDetailOwner(
+        expectedServerId: ServerId,
+        requireCurrentServer: Boolean = false
+    ): SharedAgentDetailOwner? {
+        val session = authStore.readSession() ?: return null
+        return membersAgentDetailOwnerForSession(
+            environmentId = apiEnvironmentStore.current().apiBaseUrl,
+            accountId = session.user.id,
+            currentServerId = session.currentServerId,
+            joinedServerIds = session.servers.map { it.id },
+            expectedServerId = expectedServerId,
+            requireCurrentServer = requireCurrentServer
+        )
+    }
+
+    suspend fun applyRuntimeConfigProjection(
+        authority: MembersAgentProfileEditAuthority,
+        config: RuntimeConfig
+    ): Boolean {
+        val expectedOwner = authority.ownerOrNull() ?: return false
+        if (currentAgentDetailOwner(authority.serverId, requireCurrentServer = true) != expectedOwner) return false
+        agentDetailStore.dispatch(
+            SharedAgentDetailIntent.ApplyRuntimeConfigProjection(
+                owner = expectedOwner,
+                agentId = authority.memberId,
+                config = config,
+                profileGeneration = authority.profileGeneration
+            )
+        )
+        val projection = agentDetailStore.state.value.runtimeConfigProjection
+        return projection?.owner == expectedOwner &&
+            projection.agentId == authority.memberId &&
+            projection.profileGeneration == authority.profileGeneration &&
+            projection.config == config
+    }
+
     suspend fun updateHumanRole(
         expectedServerId: String,
         memberId: String,
@@ -2054,6 +2130,8 @@ private class MemberDetailRouteProvider(
 
     suspend fun loadMember(
         identity: MemberDetailIdentity,
+        agentOwner: SharedAgentDetailOwner? = null,
+        agentProfileGeneration: Long = 0L,
         isCurrentRequest: () -> Boolean = { true }
     ): MemberDetailRouteState {
         val session = authStore.readSession()
@@ -2076,7 +2154,14 @@ private class MemberDetailRouteProvider(
             loadAgent = { selectedId, accessMode ->
                 when (accessMode) {
                     MemberDetailAccessMode.LocalFull ->
-                        loadAgentMember(selectedId, server, session.user.id, isCurrentRequest)
+                        loadAgentMember(
+                            selectedId,
+                            server,
+                            session.user.id,
+                            agentOwner,
+                            agentProfileGeneration,
+                            isCurrentRequest
+                        )
                     MemberDetailAccessMode.RemoteProfileOnly -> {
                         val sourceServerId = checkNotNull(identity.sourceServerId)
                         loadAgentProfileOnly(
@@ -2091,6 +2176,8 @@ private class MemberDetailRouteProvider(
                                         name = sourceServerId.value
                             ),
                             currentUserId = session.user.id,
+                            owner = agentOwner,
+                            profileGeneration = agentProfileGeneration,
                             isCurrentRequest = isCurrentRequest
                         )
                     }
@@ -2105,23 +2192,35 @@ private class MemberDetailRouteProvider(
         profileServerId: ServerId,
         profileServer: ServerSummary,
         currentUserId: String?,
+        owner: SharedAgentDetailOwner?,
+        profileGeneration: Long,
         isCurrentRequest: () -> Boolean
     ): MemberDetailRouteState {
         val client = agentsApiClient ?: return MemberDetailRouteState.Error("agent_profile_unavailable")
         return when (val detailResult = client.publicAgentDetail(selectedId)) {
             is DataResult.Content -> {
-                if (!isCurrentRequest()) return MemberDetailRouteState.Error("member_request_stale")
+                if (
+                    !isCurrentRequest() ||
+                    owner == null ||
+                    currentAgentDetailOwner(profileServerId) != owner
+                ) {
+                    return MemberDetailRouteState.Error("member_request_stale")
+                }
                 val detail = detailResult.data
                 if (detail.agentId != selectedId || detail.summary?.id != selectedId.value) {
                     return MemberDetailRouteState.Error("member_identity_mismatch")
                 }
                 agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
-                agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
+                agentDetailStore.dispatch(
+                    SharedAgentDetailIntent.SelectMember(selectedId, owner, profileGeneration)
+                )
                 agentDetailStore.dispatch(
                     SharedAgentDetailIntent.SetDetail(
                         agentId = selectedId,
                         detail = detail,
-                        serverId = profileServerId
+                        serverId = profileServerId,
+                        owner = owner,
+                        profileGeneration = profileGeneration
                     )
                 )
                 MemberDetailRouteState.Agent(
@@ -2140,6 +2239,8 @@ private class MemberDetailRouteProvider(
         selectedId: MemberId,
         server: ServerSummary,
         currentUserId: String?,
+        owner: SharedAgentDetailOwner?,
+        profileGeneration: Long,
         isCurrentRequest: () -> Boolean
     ): MemberDetailRouteState {
         // Agent profile content is deliberately cold-loaded. A roster seed has no revision or
@@ -2147,15 +2248,26 @@ private class MemberDetailRouteProvider(
         val loadPlan = memberDetailLoadPlan(hasCachedDetail = false)
         val presenceRequest =
             serverMembersStore.beginAgentDetailPresenceProjection(server.id, selectedId)
-        return when (val detailResult = memberRepository.getAgentDetail(loadPlan.priority, selectedId)) {
+        val detailResult = memberRepository.getAgentDetail(loadPlan.priority, selectedId)
+        if (
+            !isCurrentRequest() ||
+            owner == null ||
+            currentAgentDetailOwner(server.id, requireCurrentServer = true) != owner
+        ) {
+            return MemberDetailRouteState.Error("member_request_stale")
+        }
+        return when (detailResult) {
             is DataResult.Content -> {
-                if (!isCurrentRequest()) return MemberDetailRouteState.Error("member_request_stale")
-                agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
+                agentDetailStore.dispatch(
+                    SharedAgentDetailIntent.SelectMember(selectedId, owner, profileGeneration)
+                )
                 agentDetailStore.dispatch(
                     SharedAgentDetailIntent.SetDetail(
                         agentId = selectedId,
                         detail = detailResult.data,
-                        serverId = server.id
+                        serverId = server.id,
+                        owner = owner,
+                        profileGeneration = profileGeneration
                     )
                 )
                 serverMembersStore.applyAgentDetailSnapshot(presenceRequest, detailResult.data)
@@ -2165,7 +2277,6 @@ private class MemberDetailRouteProvider(
                 )
             }
             is DataResult.Empty -> {
-                if (!isCurrentRequest()) return MemberDetailRouteState.Error("member_request_stale")
                 resolveAgentDetailFailure(
                     selectedId = selectedId,
                     server = server,
@@ -2175,7 +2286,6 @@ private class MemberDetailRouteProvider(
                 )
             }
             is DataResult.Error -> {
-                if (!isCurrentRequest()) return MemberDetailRouteState.Error("member_request_stale")
                 resolveAgentDetailFailure(
                     selectedId = selectedId,
                     server = server,
@@ -2191,7 +2301,6 @@ private class MemberDetailRouteProvider(
                 )
             }
             is DataResult.NoPermission -> {
-                if (!isCurrentRequest()) return MemberDetailRouteState.Error("member_request_stale")
                 resolveAgentDetailFailure(
                     selectedId = selectedId,
                     server = server,
@@ -2306,7 +2415,9 @@ private class MemberDetailRouteProvider(
             SharedAgentDetailIntent.SetDetail(
                 member.id,
                 detail.withMemberProfileProjection(member),
-                expectedServerId
+                expectedServerId,
+                owner = state.detailOwner,
+                profileGeneration = state.detailProfileGeneration
             )
         )
     }
@@ -2319,7 +2430,9 @@ private class MemberDetailRouteProvider(
             SharedAgentDetailIntent.SetDetail(
                 agentId,
                 detail.withMemberDetailLifecycleResult(action),
-                preserveSequencedActivity = false
+                preserveSequencedActivity = false,
+                owner = state.detailOwner,
+                profileGeneration = state.detailProfileGeneration
             )
         )
     }
@@ -2589,6 +2702,7 @@ private fun rememberMemberDetailRouteProvider(
         bridge,
         reportIssueFailedMessage,
         authStore,
+        sharedStores.apiEnvironmentStore,
         memberRepository,
         channelRepository,
         settingsRepository,
@@ -2610,6 +2724,7 @@ private fun rememberMemberDetailRouteProvider(
             bridge = bridge,
             reportIssueFailedMessage = reportIssueFailedMessage,
             authStore = authStore,
+            apiEnvironmentStore = sharedStores.apiEnvironmentStore,
             memberRepository = memberRepository,
             channelRepository = channelRepository,
             settingsRepository = settingsRepository,
@@ -2817,6 +2932,18 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
         val generation = agentProfileRequestGeneration + 1L
         agentProfileRequestGeneration = generation
         val requestServerId = membersAgentProfileRequestServerId(memberIdentity, activeServerId)
+        val requestOwner =
+            if (memberIdentity.kind == MemberKind.Agent) {
+                requestServerId?.let { serverId ->
+                    provider.currentAgentDetailOwner(
+                        expectedServerId = serverId,
+                        requireCurrentServer =
+                            memberIdentity.memberDetailAccessMode(activeServerId).allowsPrivateAgentSurfaces
+                    )
+                }
+            } else {
+                null
+            }
         val requestFence =
             requestServerId?.let { serverId ->
                 MembersAgentProfileRequestFence(
@@ -2826,13 +2953,19 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 )
             }
         if (memberIdentity.kind == MemberKind.Agent) {
+            if (requestOwner == null) {
+                routeState = MemberDetailRouteState.Error("member_request_stale")
+                return@LaunchedEffect
+            }
             // Remove roster-derived seeds before the canonical request. They are useful for list
             // rows, but have neither a profile revision nor runtime-config authority.
             provider.agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
-            provider.agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(memberIdentity.memberId))
+            provider.agentDetailStore.dispatch(
+                SharedAgentDetailIntent.SelectMember(memberIdentity.memberId, requestOwner, generation)
+            )
             provider.agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(memberIdentity.memberId))
         }
-        val loaded = provider.loadMember(memberIdentity) {
+        val loaded = provider.loadMember(memberIdentity, requestOwner, generation) {
             requestFence?.matches(memberIdentity, activeServerId, agentProfileRequestGeneration) == true
         }
         if (requestFence != null &&
@@ -2969,11 +3102,21 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                         }
                         .orEmpty()
                 val agentProfileEditAuthority =
-                    MembersAgentProfileEditAuthority(
-                        memberId = member.id,
-                        serverId = current.server.id,
-                        profileGeneration = agentProfileRequestGeneration
-                    )
+                    agentDetailStoreState.detailOwner
+                        ?.takeIf { owner ->
+                            selectedAgentDetailStoreStateMatches &&
+                                owner.serverId == current.server.id &&
+                                agentDetailStoreState.detailProfileGeneration == agentProfileRequestGeneration
+                        }
+                        ?.let { owner ->
+                            MembersAgentProfileEditAuthority(
+                                memberId = member.id,
+                                environmentId = owner.environmentId,
+                                accountId = owner.accountId,
+                                serverId = owner.serverId,
+                                profileGeneration = agentDetailStoreState.detailProfileGeneration
+                            )
+                        }
                 val loadAgentRuntimeModels: (String, Boolean) -> Unit = { runtime, force ->
                     val key = agentMachineId?.trim().orEmpty() to runtime.trim()
                     val serverId = statusLookupServerId?.trim().orEmpty()
@@ -3171,6 +3314,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                     onApplyAgentProfileResult = { updatedMember ->
                         provider.updateCachedMemberProfile(updatedMember, current.server.id)
                     },
+                    onApplyAgentRuntimeConfigProjection = provider::applyRuntimeConfigProjection,
                     onPickAgentAvatarFile = {
                         provider.pickAgentAvatarFile()
                     },
@@ -4304,6 +4448,8 @@ private fun MembersDetailContent(
     agentDetailActions: SharedAgentDetailActions? = null,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
     onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
+    onApplyAgentRuntimeConfigProjection:
+        suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
     onUploadAgentAvatar: (suspend (MemberId, PlatformFile) -> DataResult<MemberProfile>)?,
     onPickAgentAvatarFile: suspend () -> DataResult<PlatformFile> = { DataResult.Empty(EmptyReason.NoMembers) },
     onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)?,
@@ -4853,6 +4999,7 @@ private fun MembersDetailContent(
                                         agentDetailActions = agentDetailActions,
                                         onUpdateAgentProfile = onUpdateAgentProfile,
                                         onApplyAgentProfileResult = onApplyAgentProfileResult,
+                                        onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection,
                                         onUnavailableAction = onUnavailableAction,
                                         lifecycleInFlight = lifecycleInFlight,
                                         diagnosticActionState = effectiveDiagnosticActionState,
@@ -7237,6 +7384,8 @@ private fun MembersAgentProfileTab(
     agentDetailActions: SharedAgentDetailActions? = null,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
     onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
+    onApplyAgentRuntimeConfigProjection:
+        suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
     onUnavailableAction: (String) -> Unit,
     lifecycleInFlight: String? = null,
     diagnosticActionState: MembersAgentDiagnosticActionState? = null,
@@ -7668,26 +7817,27 @@ private fun MembersAgentProfileTab(
             when (result) {
                 is DataResult.Content -> {
                     onApplyAgentProfileResult(result.data)
-                    editingRuntimeConfig = false
-                }
-                is DataResult.Empty -> {
-                    editingRuntimeConfig = false
-                    val store = sharedAgentDetailStore
-                    val currentDetail = detail
                     val authority = runtimeEditorAuthority
                     if (
-                        store != null &&
-                        currentDetail != null &&
                         authority != null &&
-                        membersAgentProfileStoreMatchesAuthority(store.state.value, authority)
+                        onApplyAgentRuntimeConfigProjection(authority, nextConfig)
                     ) {
-                        store.dispatch(
-                            SharedAgentDetailIntent.SetDetail(
-                                member.id,
-                                currentDetail.withRuntimeConfigProjection(nextConfig),
-                                authority.serverId
-                            )
-                        )
+                        editingRuntimeConfig = false
+                    } else {
+                        runtimeConfigError = "agent_runtime_editor_stale"
+                        onUnavailableAction(runtimeEditingUnavailable)
+                    }
+                }
+                is DataResult.Empty -> {
+                    val authority = runtimeEditorAuthority
+                    if (
+                        authority != null &&
+                        onApplyAgentRuntimeConfigProjection(authority, nextConfig)
+                    ) {
+                        editingRuntimeConfig = false
+                    } else {
+                        runtimeConfigError = "agent_runtime_editor_stale"
+                        onUnavailableAction(runtimeEditingUnavailable)
                     }
                 }
                 is DataResult.NoPermission ->
@@ -8162,7 +8312,11 @@ private fun MembersAgentProfileTab(
                     }
                 )
             }
-            MembersAgentRuntimeConfigRows(runtimeConfigResolution)
+            MembersAgentRuntimeConfigRows(
+                resolution = runtimeConfigResolution,
+                runtimeModelsCatalog =
+                    canonicalRuntimeId?.let(agentRuntimeModelsByRuntime::get)
+            )
             MembersAgentRuntimeEnvVars(summary)
         }
 
@@ -8319,7 +8473,8 @@ private fun MembersAgentProfileActionsSection(
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 private fun MembersAgentRuntimeConfigRows(
-    resolution: MembersAgentRuntimeConfigResolution
+    resolution: MembersAgentRuntimeConfigResolution,
+    runtimeModelsCatalog: SharedCreateAgentRuntimeModelCatalog?
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val runtimeConfig = (resolution as? MembersAgentRuntimeConfigResolution.Content)?.config
@@ -8339,6 +8494,12 @@ private fun MembersAgentRuntimeConfigRows(
         return
     }
     val runtimeId = runtimeConfig.runtime
+    val modelLabel =
+        membersAgentRuntimeModelDisplayLabel(
+            runtimeId = runtimeId,
+            modelId = runtimeConfig.toMembersRuntimeModelValue(),
+            runtimeModelsCatalog = runtimeModelsCatalog
+        )
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
@@ -8350,11 +8511,13 @@ private fun MembersAgentRuntimeConfigRows(
                 kind = MembersAgentRuntimeChipKind.Runtime
             )
         }
-        MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_model)) {
-            MembersAgentRuntimeChip(
-                label = getModelLabel(runtimeId, runtimeConfig.toMembersRuntimeModelValue()),
-                kind = MembersAgentRuntimeChipKind.Model
-            )
+        if (modelLabel != null) {
+            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_model)) {
+                MembersAgentRuntimeChip(
+                    label = modelLabel,
+                    kind = MembersAgentRuntimeChipKind.Model
+                )
+            }
         }
         if (supportsRuntimeReasoningEffort(runtimeId)) {
             MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_reasoning)) {
@@ -8428,6 +8591,28 @@ private fun MembersAgentRuntimeConfigRows(
             }
         }
     }
+}
+
+internal fun membersAgentRuntimeModelDisplayLabel(
+    runtimeId: String,
+    modelId: String,
+    runtimeModelsCatalog: SharedCreateAgentRuntimeModelCatalog?
+): String? {
+    val normalizedRuntimeId = runtimeId.trim()
+    val normalizedModelId = modelId.trim()
+    if (normalizedRuntimeId.isBlank() || normalizedModelId.isBlank()) return null
+    fun String?.verifiedDisplayLabel(): String? =
+        this?.trim()?.takeIf { it.isNotBlank() && it != normalizedModelId }
+
+    return runtimeModelsCatalog
+        ?.models
+        ?.firstOrNull { it.id.trim() == normalizedModelId }
+        ?.label
+        .verifiedDisplayLabel()
+        ?: RUNTIME_MODELS[normalizedRuntimeId]
+            ?.firstOrNull { it.id == normalizedModelId }
+            ?.label
+            .verifiedDisplayLabel()
 }
 
 @Composable
@@ -9342,26 +9527,6 @@ private fun List<Pair<String, String>>.toMembersRuntimeEnvVars(): Map<String, St
             key.trim().takeIf { it.isNotBlank() }?.let { it to value }
         }.toMap()
     return values.takeIf { it.isNotEmpty() }
-}
-
-private fun AgentDetailSnapshot.withRuntimeConfigProjection(config: RuntimeConfig): AgentDetailSnapshot {
-    val currentSummary = summary ?: AgentDetailSummary(id = agentId.value, name = agentId.value)
-    return copy(
-        summary = currentSummary.copy(
-            runtime = config.runtime,
-            model = config.toMembersRuntimeModelValue(),
-            runtimeProvider = config.provider,
-            runtimeModelKind =
-                when (config.model) {
-                    is RuntimeModelConfig.Preset -> "preset"
-                    is RuntimeModelConfig.Custom -> "custom"
-                },
-            reasoning = config.reasoningEffort,
-            executionMode = if (config.mode is RuntimeModeConfig.Fast) "fast" else "default",
-            envVars = config.envVars.orEmpty(),
-            envVarNames = config.envVars.orEmpty().keys.sorted()
-        )
-    )
 }
 
 @Composable

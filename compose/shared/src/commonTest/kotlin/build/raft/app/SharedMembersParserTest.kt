@@ -9,6 +9,7 @@ import build.raft.app.data.EmptyReason
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedAgentDetailLoadStatus
+import build.raft.app.data.SharedAgentDetailOwner
 import build.raft.app.data.SharedAgentDetailState
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
@@ -29,6 +30,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -766,6 +768,8 @@ class SharedMembersParserTest {
         val opened =
             MembersAgentProfileEditAuthority(
                 memberId = MemberId("agent-1"),
+                environmentId = "https://api.raft.build/api",
+                accountId = "account-1",
                 serverId = ServerId("server-1"),
                 profileGeneration = 4L
             )
@@ -775,6 +779,22 @@ class SharedMembersParserTest {
             membersAgentProfileEditAuthorityMatches(
                 opened,
                 opened.copy(memberId = MemberId("agent-2")),
+                7L,
+                7L
+            )
+        )
+        assertFalse(
+            membersAgentProfileEditAuthorityMatches(
+                opened,
+                opened.copy(environmentId = "https://staging.raft.build/api"),
+                7L,
+                7L
+            )
+        )
+        assertFalse(
+            membersAgentProfileEditAuthorityMatches(
+                opened,
+                opened.copy(accountId = "account-2"),
                 7L,
                 7L
             )
@@ -801,6 +821,8 @@ class SharedMembersParserTest {
         val matchingStore =
             SharedAgentDetailState(
                 agentId = opened.memberId,
+                detailOwner = opened.ownerOrNull(),
+                detailProfileGeneration = opened.profileGeneration,
                 detailServerId = opened.serverId,
                 detail = AgentDetailSnapshot(
                     agentId = opened.memberId,
@@ -813,6 +835,15 @@ class SharedMembersParserTest {
         assertTrue(membersAgentProfileStoreMatchesAuthority(matchingStore, opened))
         assertFalse(
             membersAgentProfileStoreMatchesAuthority(
+                matchingStore.copy(
+                    detailOwner =
+                        opened.copy(accountId = "account-2").ownerOrNull()
+                ),
+                opened
+            )
+        )
+        assertFalse(
+            membersAgentProfileStoreMatchesAuthority(
                 matchingStore.copy(detailServerId = ServerId("server-2")),
                 opened
             )
@@ -821,6 +852,114 @@ class SharedMembersParserTest {
             membersAgentProfileStoreMatchesAuthority(
                 matchingStore.copy(agentId = MemberId("agent-2")),
                 opened
+            )
+        )
+    }
+
+    @Test
+    fun runtimeModelPresentationUsesCatalogThenKnownStaticLabelsAndNeverRawIds() {
+        val catalog =
+            SharedCreateAgentRuntimeModelCatalog(
+                models =
+                    listOf(
+                        SharedCreateAgentRuntimeModelOption(
+                            id = "claude-opus-5",
+                            label = "Claude Opus 5"
+                        )
+                    )
+            )
+
+        assertEquals(
+            "Claude Opus 5",
+            membersAgentRuntimeModelDisplayLabel("claude", "claude-opus-5", catalog)
+        )
+        assertEquals(
+            "Claude Sonnet",
+            membersAgentRuntimeModelDisplayLabel("claude", "sonnet", null)
+        )
+        assertNull(membersAgentRuntimeModelDisplayLabel("claude", "unknown-model", null))
+        assertNull(
+            membersAgentRuntimeModelDisplayLabel(
+                runtimeId = "claude",
+                modelId = "raw-only",
+                runtimeModelsCatalog =
+                    SharedCreateAgentRuntimeModelCatalog(
+                        models = listOf(SharedCreateAgentRuntimeModelOption("raw-only", "raw-only"))
+                    )
+            )
+        )
+    }
+
+    @Test
+    fun remoteAgentDetailOwnerAllowsUnjoinedSourceServerButLocalFullStillRequiresMembership() {
+        val remoteOwner =
+            membersAgentDetailOwnerForSession(
+                environmentId = "https://api.raft.build/api/",
+                accountId = "account-1",
+                currentServerId = "server-a",
+                joinedServerIds = listOf("server-a"),
+                expectedServerId = ServerId("server-b"),
+                requireCurrentServer = false
+            )
+
+        assertEquals(
+            SharedAgentDetailOwner(
+                environmentId = "https://api.raft.build/api",
+                accountId = "account-1",
+                serverId = ServerId("server-b")
+            ),
+            remoteOwner
+        )
+        assertNull(
+            membersAgentDetailOwnerForSession(
+                environmentId = "https://api.raft.build/api",
+                accountId = "account-1",
+                currentServerId = "server-a",
+                joinedServerIds = listOf("server-a"),
+                expectedServerId = ServerId("server-b"),
+                requireCurrentServer = true
+            )
+        )
+        assertNull(
+            membersAgentDetailOwnerForSession(
+                environmentId = "https://api.raft.build/api",
+                accountId = "account-1",
+                currentServerId = "server-a",
+                joinedServerIds = emptyList(),
+                expectedServerId = ServerId("server-a"),
+                requireCurrentServer = true
+            )
+        )
+        assertNull(
+            membersAgentDetailOwnerForSession(
+                environmentId = "https://api.raft.build/api",
+                accountId = "account-1",
+                currentServerId = null,
+                joinedServerIds = listOf("server-a"),
+                expectedServerId = ServerId("server-b"),
+                requireCurrentServer = false
+            )
+        )
+        assertNotEquals(
+            remoteOwner,
+            membersAgentDetailOwnerForSession(
+                environmentId = "https://staging.raft.build/api",
+                accountId = "account-1",
+                currentServerId = "server-a",
+                joinedServerIds = listOf("server-a"),
+                expectedServerId = ServerId("server-b"),
+                requireCurrentServer = false
+            )
+        )
+        assertNotEquals(
+            remoteOwner,
+            membersAgentDetailOwnerForSession(
+                environmentId = "https://api.raft.build/api",
+                accountId = "account-2",
+                currentServerId = "server-a",
+                joinedServerIds = listOf("server-a"),
+                expectedServerId = ServerId("server-b"),
+                requireCurrentServer = false
             )
         )
     }
