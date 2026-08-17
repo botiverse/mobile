@@ -435,6 +435,7 @@
     <string name="thread_composer_mention_batch_error_missing">该提及操作已不可用。</string>
     <string name="thread_composer_mention_batch_error_delivery_unavailable">暂时无法送达，请重试。</string>
     <string name="thread_composer_mention_batch_error_dropped">暂时无法添加该对象，请重试。</string>
+    <string name="thread_composer_mention_action_error_notify_dropped">未能通知该对象，请重试。</string>
     <string name="thread_composer_mention_batch_error_sender_access">你已无权访问该频道。</string>
     <string name="thread_composer_mention_batch_error_target_access">该对象无法阅读当前对话。</string>
     <string name="thread_composer_mention_batch_error_surface">无法从该提及操作添加此人。</string>
@@ -447,6 +448,13 @@
     <string name="thread_composer_mention_batch_error_expired">该提及操作已过期。</string>
     <string name="thread_composer_mention_batch_error_ambiguous">该提及操作匹配到多个对象，请刷新后重试。</string>
     <string name="thread_composer_mention_batch_error_generic">无法完成该提及操作。</string>
+    <string name="thread_composer_mention_request_error_connection">无法完成该提及操作，请检查网络后重试。</string>
+    <string name="thread_composer_mention_request_error_authentication">登录状态已失效，请重新登录后重试。</string>
+    <string name="thread_composer_mention_request_error_permission">你没有权限完成该提及操作。</string>
+    <string name="thread_composer_mention_request_error_rate_limited">操作过于频繁，请稍后重试。</string>
+    <string name="thread_composer_mention_request_error_server">服务器暂时无法完成该提及操作，请重试。</string>
+    <string name="thread_composer_mention_request_error_unexpected_response">服务返回了异常结果，请重试。</string>
+    <string name="thread_composer_mention_request_error_generic">无法完成该提及操作，请重试。</string>
     <string name="thread_composer_attachment_upload_failed">上传失败</string>
     <string name="thread_composer_attachment_tap_retry">点按重试</string>
     <string name="thread_composer_attachment_uploading">上传中</string>

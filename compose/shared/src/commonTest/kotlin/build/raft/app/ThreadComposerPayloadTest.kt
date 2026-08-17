@@ -993,74 +993,106 @@ class ThreadComposerPayloadTest {
 
     @Test
     fun mentionActionFailureStatusMapsKnownReasons() {
+        val strings = pendingMentionActionTestStrings()
         assertEquals(
-            "Only channel admins can add members from this mention action.",
+            "Only channel admins can add members.",
             formatMentionActionStatusNotice(
+                "add",
                 build.raft.app.data.PendingMentionActionExecuteResult(
                     resolutionId = "res-1",
                     status = "no_permission",
                     reason = "add_requires_member_management_authority"
-                )
+                ),
+                strings
             )
         )
         assertEquals(
-            "Notification was not delivered because delivery is temporarily unavailable. Try again.",
+            "Delivery is temporarily unavailable.",
             formatMentionActionStatusNotice(
+                "notify",
                 build.raft.app.data.PendingMentionActionExecuteResult(
                     resolutionId = "res-1",
                     status = "dropped",
                     reason = "delivery_unavailable"
-                )
+                ),
+                strings
             )
         )
         assertEquals(
-            "This mention action is no longer pending.",
+            "This action is no longer pending.",
             formatMentionActionStatusNotice(
+                "add",
                 build.raft.app.data.PendingMentionActionExecuteResult(
                     resolutionId = "res-1",
                     status = "stale",
                     reason = "no_longer_pending"
-                )
+                ),
+                strings
             )
         )
         assertEquals(
             "This mention action is no longer available.",
-            formatMentionActionStatusNotice(null)
+            formatMentionActionStatusNotice("add", null, strings)
         )
         listOf(
-            "expired" to "This mention action has expired.",
+            "expired" to "This action expired.",
             "not_found" to "This mention action is no longer available.",
-            "ambiguous" to "This mention action matched more than one target. Refresh and try again."
+            "ambiguous" to "This action matched multiple targets."
         ).forEach { (status, expected) ->
             assertEquals(
                 expected,
                 formatMentionActionStatusNotice(
+                    "add",
                     build.raft.app.data.PendingMentionActionExecuteResult(
                         resolutionId = "res-1",
                         status = status
-                    )
+                    ),
+                    strings
                 )
             )
         }
         listOf(
-            "add_not_allowed_for_surface" to
-                "That person cannot be added from this mention action. Use the channel member controls instead.",
-            "add_requires_human_member_authority" to
-                "Agents cannot add channel members from mention actions. Ask a human member to add them.",
-            "sender_lacks_channel_access" to
-                "You no longer have access to that channel, so this mention action was not applied."
+            "add_not_allowed_for_surface" to "Use channel member controls.",
+            "add_requires_human_member_authority" to "Ask a human member.",
+            "sender_lacks_channel_access" to "You no longer have channel access."
         ).forEach { (reason, expected) ->
             assertEquals(
                 expected,
                 formatMentionActionStatusNotice(
+                    "add",
                     build.raft.app.data.PendingMentionActionExecuteResult(
                         resolutionId = "res-1",
                         status = "no_permission",
                         reason = reason
-                    )
+                    ),
+                    strings
                 )
             )
         }
+        assertEquals(
+            "The target was not notified.",
+            formatMentionActionStatusNotice(
+                "notify",
+                build.raft.app.data.PendingMentionActionExecuteResult(
+                    resolutionId = "res-1",
+                    status = "dropped",
+                    reason = "target_unavailable_for_delivery"
+                ),
+                strings
+            )
+        )
+        assertEquals(
+            "The action was not delivered.",
+            formatMentionActionStatusNotice(
+                "add",
+                build.raft.app.data.PendingMentionActionExecuteResult(
+                    resolutionId = "res-1",
+                    status = "dropped",
+                    reason = "target_unavailable_for_delivery"
+                ),
+                strings
+            )
+        )
     }
 
     @Test

@@ -373,6 +373,40 @@ class ThreadApiTest {
     }
 
     @Test
+    fun executePendingMentionActionsPreservesHttpFailureForUserFacingClassification() = runBlocking {
+        val rawError = """{"error":"must not be shown verbatim","code":"raw_permission_code"}"""
+        val api =
+            SlockThreadApiClient(
+                FakeThreadNetworkApi(
+                    mentionActionCode = 403,
+                    mentionActionErrorBody = rawError
+                )
+            )
+
+        val failure =
+            assertIs<ThreadApiResult.Failure>(
+                api.executePendingMentionActions("add", listOf("res-1"))
+            )
+
+        assertEquals(403, failure.code)
+        assertEquals(rawError, failure.errorBodyText)
+        assertEquals(null, failure.contractCode)
+    }
+
+    @Test
+    fun executePendingMentionActionsMarksMalformedSuccessAsContractFailure() = runBlocking {
+        val api = SlockThreadApiClient(FakeThreadNetworkApi(mentionActionBody = """{"results":"invalid"}"""))
+
+        val failure =
+            assertIs<ThreadApiResult.Failure>(
+                api.executePendingMentionActions("add", listOf("res-1"))
+            )
+
+        assertEquals(200, failure.code)
+        assertEquals("thread_mention_action_contract_mismatch", failure.contractCode)
+    }
+
+    @Test
     fun createThreadRequiresCanonicalThreadChannelId() = runBlocking {
         val api =
             SlockThreadApiClient(
@@ -482,7 +516,9 @@ class ThreadApiTest {
         var reactionBody: String = """{"id":"m1","reactions":[]}""",
         var createThreadBody: String = """{"threadChannelId":"thread-1"}""",
         var contextBody: String = """{"channelId":"c1","targetMessageId":"m1","messages":[],"historyLimited":false}""",
-        var mentionActionBody: String = """{"results":[]}"""
+        var mentionActionBody: String = """{"results":[]}""",
+        var mentionActionCode: Int = 200,
+        var mentionActionErrorBody: String? = null
     ) : SharedThreadNetworkApi {
         val unsavedMessageIds = mutableListOf<String>()
         var lastMentionActionBody: String? = null
@@ -509,7 +545,11 @@ class ThreadApiTest {
 
         override suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): HomeNetworkResponse {
             lastMentionActionBody = buildPendingMentionActionExecuteBody(action, resolutionIds)
-            return HomeNetworkResponse(code = 200, bodyText = mentionActionBody)
+            return HomeNetworkResponse(
+                code = mentionActionCode,
+                bodyText = mentionActionBody.takeIf { mentionActionCode in 200..299 },
+                errorBodyText = mentionActionErrorBody
+            )
         }
 
         override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =

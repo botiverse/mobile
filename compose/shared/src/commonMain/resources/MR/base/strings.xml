@@ -435,6 +435,7 @@
     <string name="thread_composer_mention_batch_error_missing">This mention action is no longer available.</string>
     <string name="thread_composer_mention_batch_error_delivery_unavailable">Delivery is temporarily unavailable. Try again.</string>
     <string name="thread_composer_mention_batch_error_dropped">That target was not added right now. Try again.</string>
+    <string name="thread_composer_mention_action_error_notify_dropped">That target was not notified. Try again.</string>
     <string name="thread_composer_mention_batch_error_sender_access">You no longer have access to that channel.</string>
     <string name="thread_composer_mention_batch_error_target_access">That person cannot read this conversation.</string>
     <string name="thread_composer_mention_batch_error_surface">That person cannot be added from this mention action.</string>
@@ -447,6 +448,13 @@
     <string name="thread_composer_mention_batch_error_expired">This mention action has expired.</string>
     <string name="thread_composer_mention_batch_error_ambiguous">This mention action matched more than one target. Refresh and try again.</string>
     <string name="thread_composer_mention_batch_error_generic">This mention action could not be applied.</string>
+    <string name="thread_composer_mention_request_error_connection">Couldn’t complete this mention action. Check your connection and try again.</string>
+    <string name="thread_composer_mention_request_error_authentication">Your session expired. Sign in again and retry.</string>
+    <string name="thread_composer_mention_request_error_permission">You don’t have permission to complete this mention action.</string>
+    <string name="thread_composer_mention_request_error_rate_limited">Too many attempts. Wait a moment and try again.</string>
+    <string name="thread_composer_mention_request_error_server">The server couldn’t complete this mention action. Try again.</string>
+    <string name="thread_composer_mention_request_error_unexpected_response">Raft received an unexpected response. Try again.</string>
+    <string name="thread_composer_mention_request_error_generic">This mention action could not be applied. Try again.</string>
     <string name="thread_composer_attachment_upload_failed">Upload failed</string>
     <string name="thread_composer_attachment_tap_retry">Tap to retry</string>
     <string name="thread_composer_attachment_uploading">Uploading</string>

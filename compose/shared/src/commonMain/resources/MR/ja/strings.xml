@@ -435,6 +435,7 @@
     <string name="thread_composer_mention_batch_error_missing">このメンション操作は利用できません。</string>
     <string name="thread_composer_mention_batch_error_delivery_unavailable">一時的に配信できません。再試行してください。</string>
     <string name="thread_composer_mention_batch_error_dropped">現在この対象を追加できません。再試行してください。</string>
+    <string name="thread_composer_mention_action_error_notify_dropped">この対象に通知できませんでした。再試行してください。</string>
     <string name="thread_composer_mention_batch_error_sender_access">このチャンネルへのアクセス権がありません。</string>
     <string name="thread_composer_mention_batch_error_target_access">このユーザーは会話を閲覧できません。</string>
     <string name="thread_composer_mention_batch_error_surface">このメンション操作からこのユーザーを追加できません。</string>
@@ -447,6 +448,13 @@
     <string name="thread_composer_mention_batch_error_expired">このメンション操作は期限切れです。</string>
     <string name="thread_composer_mention_batch_error_ambiguous">複数の対象に一致しました。更新して再試行してください。</string>
     <string name="thread_composer_mention_batch_error_generic">このメンション操作を完了できません。</string>
+    <string name="thread_composer_mention_request_error_connection">このメンション操作を完了できません。接続を確認して再試行してください。</string>
+    <string name="thread_composer_mention_request_error_authentication">セッションの有効期限が切れました。再度サインインしてお試しください。</string>
+    <string name="thread_composer_mention_request_error_permission">このメンション操作を完了する権限がありません。</string>
+    <string name="thread_composer_mention_request_error_rate_limited">試行回数が多すぎます。しばらくしてから再試行してください。</string>
+    <string name="thread_composer_mention_request_error_server">サーバーがこのメンション操作を完了できませんでした。再試行してください。</string>
+    <string name="thread_composer_mention_request_error_unexpected_response">予期しない応答を受信しました。再試行してください。</string>
+    <string name="thread_composer_mention_request_error_generic">このメンション操作を完了できません。再試行してください。</string>
     <string name="thread_composer_attachment_upload_failed">アップロードに失敗しました</string>
     <string name="thread_composer_attachment_tap_retry">タップして再試行</string>
     <string name="thread_composer_attachment_uploading">アップロード中</string>
