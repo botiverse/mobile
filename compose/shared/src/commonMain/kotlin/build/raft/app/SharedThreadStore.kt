@@ -4780,6 +4780,16 @@ internal class SharedThreadStore(
                 ?.takeIf { it.isUsableCachedPayloadForRoute(routeContextPayload) }
                 ?.withRouteContext(routeContextPayload)
                 ?.withStoreResolvedReplyOriginFrom(routeContextPayload)
+        // A thread payload cache survives independently from the process-local member profile
+        // projection. Re-seed an accepted cache hit before publishing the first frame so a server
+        // switch or process restore cannot render complete history with placeholder-only avatars.
+        cached?.let { accepted ->
+            dataSource.seedThreadAuthorProfiles(
+                serverId = session?.currentServerId,
+                payload = accepted,
+                source = "visible_cache"
+            )
+        }
         val current =
             if (routeIdentity.canRenderTimelineCandidates) {
                 _state.value.payload.takeIf {
