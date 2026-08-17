@@ -856,7 +856,6 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetThreadUnreadJumpEnabled(true))
         store.accept(SharedSettingsIntent.SetNewMessageMenuEnabled(true))
         store.accept(SharedSettingsIntent.SetConversationForwardGestureEnabled(true))
-        store.accept(SharedSettingsIntent.SetImageAnnotationEnabled(true))
         store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
         store.accept(SharedSettingsIntent.SetActivityTaskStatusBadges(true))
         store.accept(SharedSettingsIntent.SetComposerSendKey(false))
@@ -877,7 +876,6 @@ class SharedSettingsStoreTest {
         assertEquals(true, chatLayoutRepository.threadUnreadJumpEnabled)
         assertEquals(true, chatLayoutRepository.newMessageMenuEnabled)
         assertEquals(true, chatLayoutRepository.conversationForwardGestureEnabled)
-        assertEquals(true, chatLayoutRepository.imageAnnotationEnabled)
         assertEquals(true, chatLayoutRepository.foregroundMessageBannersEnabled)
         assertEquals(true, chatLayoutRepository.activityTaskStatusBadgesEnabled)
         assertEquals(false, chatLayoutRepository.composerSendKeyEnabled)
@@ -907,8 +905,6 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.newMessageMenu.statusLabel)
         assertEquals(true, mobile.conversationForwardGesture.enabled)
         assertEquals("Enabled", mobile.conversationForwardGesture.statusLabel)
-        assertEquals(true, mobile.imageAnnotation.enabled)
-        assertEquals("Enabled", mobile.imageAnnotation.statusLabel)
         assertEquals(true, mobile.foregroundMessageBanners.enabled)
         assertEquals("Enabled", mobile.foregroundMessageBanners.statusLabel)
         assertEquals(true, mobile.activityTaskStatusBadges.enabled)
@@ -4007,7 +4003,6 @@ class SharedSettingsStoreTest {
         var threadUnreadJumpEnabled: Boolean = false,
         var newMessageMenuEnabled: Boolean = false,
         var conversationForwardGestureEnabled: Boolean = false,
-        var imageAnnotationEnabled: Boolean = false,
         var foregroundMessageBannersEnabled: Boolean = false,
         var activityTaskStatusBadgesEnabled: Boolean = false,
         var activitySenderAvatarsEnabled: Boolean = false,
@@ -4028,7 +4023,6 @@ class SharedSettingsStoreTest {
                 threadUnreadJumpEnabled = threadUnreadJumpEnabled,
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 conversationForwardGestureEnabled = conversationForwardGestureEnabled,
-                imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
@@ -4048,7 +4042,6 @@ class SharedSettingsStoreTest {
             return ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = this.alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
@@ -4063,7 +4056,6 @@ class SharedSettingsStoreTest {
                 myMessageAlignment = alignment,
                 largeScreenNavigation = navigation,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
@@ -4075,7 +4067,6 @@ class SharedSettingsStoreTest {
             return ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
@@ -4108,25 +4099,11 @@ class SharedSettingsStoreTest {
             return getChatLayoutPreference()
         }
 
-        override suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
-            imageAnnotationEnabled = enabled
-            return ChatLayoutPreferenceSnapshot(
-                myMessageAlignment = alignment,
-                compactConsecutiveMessages = compactConsecutiveMessages,
-                imageAnnotationEnabled = imageAnnotationEnabled,
-                foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
-                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-                composerSendKeyEnabled = composerSendKeyEnabled,
-                translationMode = translationMode,
-            )
-        }
-
         override suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
             foregroundMessageBannersEnabled = enabled
             return ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
@@ -4139,7 +4116,6 @@ class SharedSettingsStoreTest {
             return ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
@@ -4157,7 +4133,6 @@ class SharedSettingsStoreTest {
             return ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
@@ -4190,7 +4165,6 @@ class SharedSettingsStoreTest {
             return ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,

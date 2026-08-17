@@ -55,7 +55,6 @@ import build.raft.app.data.MOBILE_ACTION_NEW_MESSAGE_MENU
 import build.raft.app.data.MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE
 import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
-import build.raft.app.data.MOBILE_ACTION_IMAGE_ANNOTATION
 import build.raft.app.data.MOBILE_ACTION_LINK_OPEN_MODE
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
@@ -6158,9 +6157,6 @@ private fun SettingsNativeDetailPageContent(
                         onSettingsIntent(SharedSettingsIntent.SetConversationForwardGestureEnabled(enabled))
                         onConversationForwardGestureSelected(enabled)
                     },
-                    onImageAnnotationChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetImageAnnotationEnabled(enabled))
-                    },
                     onActivityTaskStatusBadgesChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetActivityTaskStatusBadges(enabled))
                         onActivityTaskStatusBadgesSelected(enabled)
@@ -7281,7 +7277,6 @@ private fun SettingsMobileContent(
     onThreadUnreadJumpChange: (Boolean) -> Unit,
     onNewMessageMenuChange: (Boolean) -> Unit,
     onConversationForwardGestureChange: (Boolean) -> Unit,
-    onImageAnnotationChange: (Boolean) -> Unit,
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
     onComposerSendKeyChange: (Boolean) -> Unit,
     onMultiShellHostChange: (Boolean) -> Unit,
@@ -7399,13 +7394,6 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onHomeServerAvatarChange = onHomeServerAvatarChange
-                )
-            }
-            item {
-                SettingsImageAnnotationCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onImageAnnotationChange = onImageAnnotationChange
                 )
             }
         }
@@ -8156,59 +8144,6 @@ private fun SettingsMobileToggleSnapshot.localizedToggleStatus(): String =
         enabled -> stringResource(MR.strings.settings_mobile_status_enabled)
         else -> stringResource(MR.strings.settings_state_off)
     }
-
-@Composable
-private fun SettingsImageAnnotationCard(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    onImageAnnotationChange: (Boolean) -> Unit
-) {
-    val busy = actionState?.action == MOBILE_ACTION_IMAGE_ANNOTATION && actionState.inProgress
-    val preference = snapshot.imageAnnotation
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Image, title = stringResource(MR.strings.settings_mobile_image_annotation)) {
-        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_image_annotation_detail))
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
-                        onImageAnnotationChange(!preference.enabled)
-                    }
-                    .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = preference.localizedToggleStatus(),
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text =
-                        if (preference.enabled) {
-                            stringResource(MR.strings.settings_mobile_image_annotation_enabled)
-                        } else {
-                            stringResource(MR.strings.settings_mobile_image_annotation_disabled)
-                        },
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            SlockSwitchButton(
-                checked = preference.enabled,
-                enabled = preference.available && !busy
-            )
-        }
-        if (actionState?.action == MOBILE_ACTION_IMAGE_ANNOTATION && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState)
-        }
-    }
-}
 
 @Composable
 private fun SettingsNotificationsContent(
@@ -11407,8 +11342,6 @@ internal fun SharedHandsFeedbackContent(
                         resolveThreadPickedAttachmentComposerAction(
                             action = if (imageOnly) "attachImage" else "attachFile",
                             fileCount = pickedFiles.size,
-                            imageAnnotationEnabled =
-                                imageOnly && chatLayoutPreferenceStore.readImageAnnotationEnabledSync(),
                             allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(pickedFiles)
                         )
                     if (attachmentAction == ThreadPickedAttachmentComposerAction.OpenImageAnnotation) {

@@ -1300,13 +1300,6 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Swipe left from the right edge of Home to reopen the most recent channel or direct message after going back."
         ),
-    val imageAnnotation: SettingsMobileToggleSnapshot =
-        SettingsMobileToggleSnapshot(
-            enabled = false,
-            available = true,
-            statusLabel = "Off",
-            detail = "Enable the composer image preview and annotation transfer page. When off, selected images upload directly."
-        ),
     val foregroundMessageBanners: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,

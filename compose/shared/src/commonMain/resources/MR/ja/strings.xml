@@ -1597,10 +1597,6 @@
     <string name="settings_mobile_composer_key_new_line">改行</string>
     <string name="settings_mobile_composer_key_enabled">キーボードアクションでメッセージを送信</string>
     <string name="settings_mobile_composer_key_disabled">キーボードアクションで改行を挿入</string>
-    <string name="settings_mobile_image_annotation">画像注釈のサポート</string>
-    <string name="settings_mobile_image_annotation_detail">コンポーザーの画像プレビューと注釈転送ページを有効にします。オフの場合、選択した画像は直接アップロードされます。</string>
-    <string name="settings_mobile_image_annotation_enabled">コンポーザーの画像は注釈転送ページを開く</string>
-    <string name="settings_mobile_image_annotation_disabled">コンポーザーの画像は直接アップロード</string>
     <string name="settings_notifications_loading">通知設定を読み込んでいます。</string>
     <string name="settings_notifications_system">システム</string>
     <string name="settings_notifications_on_device">このデバイス</string>

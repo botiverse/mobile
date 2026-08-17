@@ -46,7 +46,6 @@ class KuiklyChatLayoutPreferencesTest {
             repository.setThreadUnreadJumpEnabled(true)
             repository.setNewMessageMenuEnabled(true)
             repository.setConversationForwardGestureEnabled(true)
-            repository.setImageAnnotationEnabled(false)
             repository.setForegroundMessageBannersEnabled(true)
             repository.setActivityTaskStatusBadgesEnabled(true)
             repository.setActivitySenderAvatarsEnabled(true)
@@ -58,7 +57,7 @@ class KuiklyChatLayoutPreferencesTest {
             repository.setTranslationMode(TranslationModePreference.Automatic)
             repository.setTranslationTargetLanguage("ja")
 
-            assertEquals(19, firstSnapshots.size)
+            assertEquals(18, firstSnapshots.size)
             assertEquals(firstSnapshots, secondSnapshots)
             firstSnapshots.last().let { snapshot ->
                 assertEquals(MyMessageAlignmentPreference.Right, snapshot.myMessageAlignment)
@@ -69,7 +68,6 @@ class KuiklyChatLayoutPreferencesTest {
                 assertTrue(snapshot.threadUnreadJumpEnabled)
                 assertTrue(snapshot.newMessageMenuEnabled)
                 assertTrue(snapshot.conversationForwardGestureEnabled)
-                assertFalse(snapshot.imageAnnotationEnabled)
                 assertTrue(snapshot.foregroundMessageBannersEnabled)
                 assertTrue(snapshot.activityTaskStatusBadgesEnabled)
                 assertTrue(snapshot.activitySenderAvatarsEnabled)

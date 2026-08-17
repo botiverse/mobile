@@ -1597,10 +1597,6 @@
     <string name="settings_mobile_composer_key_new_line">New line</string>
     <string name="settings_mobile_composer_key_enabled">Keyboard action sends messages</string>
     <string name="settings_mobile_composer_key_disabled">Keyboard action inserts a new line</string>
-    <string name="settings_mobile_image_annotation">Support image annotation</string>
-    <string name="settings_mobile_image_annotation_detail">Enable the composer image preview and annotation transfer page. When off, selected images upload directly.</string>
-    <string name="settings_mobile_image_annotation_enabled">Composer images open the annotation transfer page</string>
-    <string name="settings_mobile_image_annotation_disabled">Composer images upload directly</string>
     <string name="settings_notifications_loading">Loading notification settings.</string>
     <string name="settings_notifications_system">System</string>
     <string name="settings_notifications_on_device">On this device</string>
