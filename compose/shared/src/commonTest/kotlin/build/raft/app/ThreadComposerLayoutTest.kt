@@ -5,6 +5,8 @@ import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.model.MemberKind
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
+import com.tencent.kuikly.compose.ui.text.TextRange
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,6 +16,80 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ThreadComposerLayoutTest {
+    @Test
+    fun legacyFirstCharacterAtRepairsCursorAndKeepsMemberTriggerActive() {
+        val repaired =
+            repairThreadComposerLegacyZeroSelection(
+                previous = TextFieldValue("", selection = TextRange.Zero),
+                incoming = TextFieldValue("@", selection = TextRange.Zero),
+            )
+
+        assertEquals(TextRange(1), repaired.selection)
+        assertEquals(
+            KuiklyComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0),
+            threadComposerSuggestionTrigger(repaired.text, repaired.selection.start),
+        )
+    }
+
+    @Test
+    fun legacyZeroSelectionRepairsInsertionAndSelectionReplacementAtTheirEditRange() {
+        val inserted =
+            repairThreadComposerLegacyZeroSelection(
+                previous = TextFieldValue("ping world", selection = TextRange(5)),
+                incoming = TextFieldValue("ping @world", selection = TextRange.Zero),
+            )
+        val replaced =
+            repairThreadComposerLegacyZeroSelection(
+                previous = TextFieldValue("hello middle world", selection = TextRange(6, 12)),
+                incoming = TextFieldValue("hello @artin world", selection = TextRange.Zero),
+            )
+
+        assertEquals(TextRange(6), inserted.selection)
+        assertEquals(TextRange(12), replaced.selection)
+    }
+
+    @Test
+    fun legacyZeroSelectionPreservesCursorMovesDeletionsCompositionAndUnprovenEdits() {
+        val cursorMove = TextFieldValue("@artin", selection = TextRange.Zero)
+        val deletion = TextFieldValue("artin", selection = TextRange.Zero)
+        val composing =
+            TextFieldValue(
+                text = "ni",
+                selection = TextRange.Zero,
+                composition = TextRange(0, 2),
+            )
+        val unprovenEdit = TextFieldValue("rewritten", selection = TextRange.Zero)
+
+        assertSame(
+            cursorMove,
+            repairThreadComposerLegacyZeroSelection(
+                previous = TextFieldValue("@artin", selection = TextRange(6)),
+                incoming = cursorMove,
+            ),
+        )
+        assertSame(
+            deletion,
+            repairThreadComposerLegacyZeroSelection(
+                previous = TextFieldValue("@artin", selection = TextRange(1)),
+                incoming = deletion,
+            ),
+        )
+        assertSame(
+            composing,
+            repairThreadComposerLegacyZeroSelection(
+                previous = TextFieldValue("n", selection = TextRange(1), composition = TextRange(0, 1)),
+                incoming = composing,
+            ),
+        )
+        assertSame(
+            unprovenEdit,
+            repairThreadComposerLegacyZeroSelection(
+                previous = TextFieldValue("draft", selection = TextRange(2)),
+                incoming = unprovenEdit,
+            ),
+        )
+    }
+
     @Test
     fun suggestionPortalLeavesTheComposerAndToolbarHitPathUncovered() {
         assertFalse(ThreadComposerSuggestionOutsidePointerMode.installsOutsideDismissBarrier)
