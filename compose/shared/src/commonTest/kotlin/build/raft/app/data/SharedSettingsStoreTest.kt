@@ -853,6 +853,7 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetCompactConsecutiveMessages(true))
         store.accept(SharedSettingsIntent.SetLongMessageCollapseEnabled(true))
         store.accept(SharedSettingsIntent.SetSingleTapOpensThreadEnabled(true))
+        store.accept(SharedSettingsIntent.SetThreadUnreadJumpEnabled(true))
         store.accept(SharedSettingsIntent.SetInlineSelectionToolbarEnabled(true))
         store.accept(SharedSettingsIntent.SetConversationForwardGestureEnabled(true))
         store.accept(SharedSettingsIntent.SetImageAnnotationEnabled(true))
@@ -873,6 +874,7 @@ class SharedSettingsStoreTest {
         assertEquals(true, chatLayoutRepository.compactConsecutiveMessages)
         assertEquals(true, chatLayoutRepository.longMessageCollapseEnabled)
         assertEquals(true, chatLayoutRepository.singleTapOpensThreadEnabled)
+        assertEquals(true, chatLayoutRepository.threadUnreadJumpEnabled)
         assertEquals(true, chatLayoutRepository.inlineSelectionToolbarEnabled)
         assertEquals(true, chatLayoutRepository.conversationForwardGestureEnabled)
         assertEquals(true, chatLayoutRepository.imageAnnotationEnabled)
@@ -899,6 +901,8 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.longMessageCollapse.statusLabel)
         assertEquals(true, mobile.singleTapOpensThread.enabled)
         assertEquals("Enabled", mobile.singleTapOpensThread.statusLabel)
+        assertEquals(true, mobile.threadUnreadJump.enabled)
+        assertEquals("Enabled", mobile.threadUnreadJump.statusLabel)
         assertEquals(true, mobile.inlineSelectionToolbar.enabled)
         assertEquals("Enabled", mobile.inlineSelectionToolbar.statusLabel)
         assertEquals(true, mobile.conversationForwardGesture.enabled)
@@ -4000,6 +4004,7 @@ class SharedSettingsStoreTest {
         var compactConsecutiveMessages: Boolean = false,
         var longMessageCollapseEnabled: Boolean = false,
         var singleTapOpensThreadEnabled: Boolean = false,
+        var threadUnreadJumpEnabled: Boolean = false,
         var inlineSelectionToolbarEnabled: Boolean = false,
         var conversationForwardGestureEnabled: Boolean = false,
         var imageAnnotationEnabled: Boolean = false,
@@ -4020,6 +4025,7 @@ class SharedSettingsStoreTest {
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                threadUnreadJumpEnabled = threadUnreadJumpEnabled,
                 inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
                 conversationForwardGestureEnabled = conversationForwardGestureEnabled,
                 imageAnnotationEnabled = imageAnnotationEnabled,
@@ -4084,6 +4090,11 @@ class SharedSettingsStoreTest {
 
         override suspend fun setSingleTapOpensThreadEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
             singleTapOpensThreadEnabled = enabled
+            return getChatLayoutPreference()
+        }
+
+        override suspend fun setThreadUnreadJumpEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+            threadUnreadJumpEnabled = enabled
             return getChatLayoutPreference()
         }
 

@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE
 import build.raft.app.data.MOBILE_ACTION_INLINE_SELECTION_TOOLBAR
+import build.raft.app.data.MOBILE_ACTION_THREAD_UNREAD_JUMP
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SettingsMobileToggleSnapshot
@@ -13,6 +14,29 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class SettingsMobilePayloadTest {
+    @Test
+    fun threadUnreadJumpIsDefaultOffAndCarriesBetaBadge() {
+        val snapshot =
+            SettingsMobileSnapshot(
+                pushNotifications = toggle(enabled = false),
+                muteServer = toggle(enabled = false),
+                threadUnreadJump = toggle(enabled = false),
+            )
+
+        val row =
+            ScreenLoadState.Content(snapshot).toMobilePayload(
+                actionState = null,
+                refreshing = false,
+                errorStrings = englishErrorPresentationStringsForTest(),
+            ).sections.flatMap { it.rows }
+                .firstOrNull { it.key == MOBILE_ACTION_THREAD_UNREAD_JUMP }
+
+        assertNotNull(row)
+        assertEquals("Beta", row.badgeLabel)
+        assertEquals(false, row.toggleValue)
+        assertEquals("true", row.value)
+    }
+
     @Test
     fun multiShellHostRowIsDefaultOffAndCarriesBetaBadge() {
         val snapshot =

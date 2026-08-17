@@ -488,6 +488,7 @@ sealed interface SharedSettingsIntent {
     data class SetCompactConsecutiveMessages(val enabled: Boolean) : SharedSettingsIntent
     data class SetLongMessageCollapseEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetSingleTapOpensThreadEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetThreadUnreadJumpEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetInlineSelectionToolbarEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetConversationForwardGestureEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetImageAnnotationEnabled(val enabled: Boolean) : SharedSettingsIntent
@@ -1169,6 +1170,14 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setThreadUnreadJumpEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_thread_unread_jump_unavailable", retryable = false))
+        repository.setThreadUnreadJumpEnabled(enabled)
+        return loadMobilePreferences()
+    }
+
     suspend fun setInlineSelectionToolbarEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1592,6 +1601,13 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Single-tap Thread opening is not available on this platform."
+                    ),
+            threadUnreadJump =
+                chatLayout?.toSettingsMobileThreadUnreadJumpSnapshot()
+                    ?: threadUnreadJump.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "Thread unread jumping is not available on this platform."
                     ),
             inlineSelectionToolbar =
                 chatLayout?.toSettingsMobileInlineSelectionToolbarSnapshot()
@@ -2437,6 +2453,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setSingleTapOpensThreadEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD)
+            }
+            is SharedSettingsIntent.SetThreadUnreadJumpEnabled -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_THREAD_UNREAD_JUMP, inProgress = true)
+                    )
+                dataSource.setThreadUnreadJumpEnabled(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_THREAD_UNREAD_JUMP)
             }
             is SharedSettingsIntent.SetInlineSelectionToolbarEnabled -> {
                 _state.value =
@@ -3676,6 +3700,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetCompactConsecutiveMessages,
             is SharedSettingsIntent.SetLongMessageCollapseEnabled,
             is SharedSettingsIntent.SetSingleTapOpensThreadEnabled,
+            is SharedSettingsIntent.SetThreadUnreadJumpEnabled,
             is SharedSettingsIntent.SetInlineSelectionToolbarEnabled,
             is SharedSettingsIntent.SetConversationForwardGestureEnabled,
             is SharedSettingsIntent.SetImageAnnotationEnabled,
@@ -3881,6 +3906,7 @@ internal const val MOBILE_ACTION_LINK_OPEN_MODE = "linkOpenMode"
 internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 internal const val MOBILE_ACTION_LONG_MESSAGE_COLLAPSE = "longMessageCollapse"
 internal const val MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD = "singleTapOpensThread"
+internal const val MOBILE_ACTION_THREAD_UNREAD_JUMP = "threadUnreadJump"
 internal const val MOBILE_ACTION_INLINE_SELECTION_TOOLBAR = "inlineSelectionToolbar"
 internal const val MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE = "conversationForwardGesture"
 internal const val MOBILE_ACTION_IMAGE_ANNOTATION = "imageAnnotation"
@@ -4103,6 +4129,14 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileSingleTapOpensThreadSna
         available = true,
         statusLabel = if (singleTapOpensThreadEnabled) "Enabled" else "Off",
         detail = "Open a message Thread by tapping its body once. When off, use the replies action or message menu."
+    )
+
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileThreadUnreadJumpSnapshot(): SettingsMobileToggleSnapshot =
+    SettingsMobileToggleSnapshot(
+        enabled = threadUnreadJumpEnabled,
+        available = true,
+        statusLabel = if (threadUnreadJumpEnabled) "Enabled" else "Off",
+        detail = "Show the floating unread-message jump control in Thread. Keep this off while the reading-window behavior is experimental."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileInlineSelectionToolbarSnapshot(): SettingsMobileToggleSnapshot =
