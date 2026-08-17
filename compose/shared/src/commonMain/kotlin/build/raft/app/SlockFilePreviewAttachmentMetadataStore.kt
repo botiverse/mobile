@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.normalizedOrNull
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 /**
  * Process-local display metadata captured from the current canonical Thread attachment model.
@@ -25,6 +27,7 @@ private data class SlockFilePreviewAttachmentMetadataKey(
 internal class SlockFilePreviewAttachmentMetadataStore(
     private val maxEntries: Int = 256,
 ) {
+    private val lock = SynchronizedObject()
     private val entries = LinkedHashMap<SlockFilePreviewAttachmentMetadataKey, SlockFilePreviewAttachmentMetadata>()
 
     init {
@@ -38,7 +41,7 @@ internal class SlockFilePreviewAttachmentMetadataStore(
         val normalizedOwner = owner.normalizedOrNull() ?: return
         payload.threadAttachmentMetadataCandidates().forEach { candidate ->
             val key = SlockFilePreviewAttachmentMetadataKey(normalizedOwner, candidate.attachmentId)
-            synchronized(entries) {
+            synchronized(lock) {
                 val merged = entries.remove(key)?.merge(candidate) ?: candidate
                 entries[key] = merged
                 while (entries.size > maxEntries) {
@@ -57,7 +60,7 @@ internal class SlockFilePreviewAttachmentMetadataStore(
         val normalizedOwner = owner.normalizedOrNull() ?: return payload
         val attachmentId = payload.attachmentId.trim().takeIf(String::isNotBlank) ?: return payload
         val metadataByAttachmentId = mutableMapOf<String, SlockFilePreviewAttachmentMetadata>()
-        synchronized(entries) {
+        synchronized(lock) {
             entries[SlockFilePreviewAttachmentMetadataKey(normalizedOwner, attachmentId)]?.let {
                 metadataByAttachmentId[attachmentId] = it
             }
