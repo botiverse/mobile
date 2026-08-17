@@ -6582,12 +6582,6 @@ internal fun SharedThreadRouteContent(
                     composerImageCanEdit = true
                 )
             )
-        } else if (threadAttachment.isImageAttachment()) {
-            pager.openSlockFilePreviewPage(
-                threadAttachment.toThreadAttachmentLazyPreviewPayload(kind = "image").copy(
-                    imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() }
-                )
-            )
         } else {
             openAttachmentNoPreview(threadAttachment)
         }
