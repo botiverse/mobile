@@ -485,6 +485,30 @@ internal class ComposeHomeSearchVisualPage : BasePager() {
     }
 }
 
+@Page("compose_home_search_home_visual", supportInLocal = true)
+internal class ComposeHomeSearchHomeVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSearchHomeVisualContent() }
+    }
+}
+
+@Page("compose_home_search_home_edit_visual", supportInLocal = true)
+internal class ComposeHomeSearchHomeEditVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSearchHomeVisualContent(editing = true) }
+    }
+}
+
+@Page("compose_home_search_home_large_text_visual", supportInLocal = true)
+internal class ComposeHomeSearchHomeLargeTextVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSearchHomeVisualContent(editing = true, visualTextScale = 1.3f) }
+    }
+}
+
 @Page("compose_home_search_channel_pin_visual", supportInLocal = true)
 internal class ComposeHomeSearchChannelPinVisualPage : BasePager() {
     override fun willInit() {

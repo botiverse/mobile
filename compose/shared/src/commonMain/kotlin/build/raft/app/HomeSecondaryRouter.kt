@@ -436,16 +436,28 @@ private fun HomeSearchRouterContent(
                         conversationDirectory = openConversationDirectory
                     )
             ) {
-                is ConversationOpenResolution.Resolved ->
-                    environment.pager.openStandaloneHomeMessageRequest(
+                is ConversationOpenResolution.Resolved -> {
+                    val opened = environment.pager.openStandaloneHomeMessageRequest(
                         bridge = environment.bridge,
                         request = resolution.request,
                         source = "home_search",
                         timeContext = environment.timeContext,
                         alignOwnMessagesRight = environment.alignOwnMessagesRight,
                         compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                                    storeScope = environment.storeScope
+                        storeScope = environment.storeScope
                     )
+                    if (opened) {
+                        val entityKey =
+                            resolution.request.conversationIdentity.searchPersonalizationEntityKeyOrNull()
+                        searchSavedViewModel.dispatch(
+                            SharedHomeSearchSavedIntent.RecordSuccessfulSearchOpen(
+                                query = searchSavedState.search.resultQuery.orEmpty(),
+                                entityKind = entityKey?.kind,
+                                entityId = entityKey?.id,
+                            )
+                        )
+                    }
+                }
                 is ConversationOpenResolution.Pending -> {
                     environment.bridge.logWarn(
                         "search_open_request_pending reason=${resolution.reason} itemKey=${item.key}"
@@ -455,14 +467,24 @@ private fun HomeSearchRouterContent(
             }
         },
         onOpenEntity = { entity ->
-            environment.pager.openHomeSearchEntity(
+            val opened = environment.pager.openHomeSearchEntity(
                 bridge = environment.bridge,
                 entity = entity,
                 timeContext = environment.timeContext,
                 alignOwnMessagesRight = environment.alignOwnMessagesRight,
                 compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                    storeScope = environment.storeScope
+                storeScope = environment.storeScope
             )
+            if (opened) {
+                val entityKey = entity.searchPersonalizationEntityKeyOrNull()
+                searchSavedViewModel.dispatch(
+                    SharedHomeSearchSavedIntent.RecordSuccessfulSearchOpen(
+                        query = searchSavedState.search.query,
+                        entityKind = entityKey?.kind,
+                        entityId = entityKey?.id,
+                    )
+                )
+            }
         },
         onRefreshComputers = {
             searchServerId?.trim()?.takeIf { it.isNotBlank() }?.let { serverId ->

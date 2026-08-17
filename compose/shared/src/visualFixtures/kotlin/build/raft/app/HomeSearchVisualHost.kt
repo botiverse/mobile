@@ -10,6 +10,9 @@ import androidx.compose.runtime.setValue
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxItem
 import build.raft.app.data.SearchScope
+import build.raft.app.data.SearchFrequentEntityRank
+import build.raft.app.data.SearchPersonalizationEntityKey
+import build.raft.app.data.SearchPersonalizationEntityKind
 import build.raft.app.data.SearchSenderFilterItem
 import build.raft.app.data.SearchSort
 import build.raft.app.data.SearchTimeRange
@@ -295,6 +298,34 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
     nextOffset = 3
 )
 
+private val homeSearchHomeVisualSearchState =
+    SharedHomeSearchPanelState(
+        personalizationLoaded = true,
+        history =
+            listOf(
+                "sig",
+                "mobile",
+                "pve",
+                "runtime",
+                "hands",
+                "git-",
+                "scopedb",
+                "cpa",
+                "git-h",
+                "all",
+            ),
+        senderFilters = homeSearchVisualSearchState.senderFilters,
+        frequentEntityRanks =
+            mapOf(
+                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "ch_design") to
+                    SearchFrequentEntityRank(score = 4.0, lastOpenedAtMillis = 4_000L),
+                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.DirectMessage, "dm_product") to
+                    SearchFrequentEntityRank(score = 3.0, lastOpenedAtMillis = 3_000L),
+                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Agent, "agent_android") to
+                    SearchFrequentEntityRank(score = 2.0, lastOpenedAtMillis = 2_000L),
+            ),
+    )
+
 // Canonical saved-messages entries (task #370): ported verbatim from
 // packages/visual-testing/shared/savedMessagesFixture.json in the slock repo
 // (total 5 → "5 saved" header, 3 rendered entries, hasMore → Load More).
@@ -324,6 +355,30 @@ internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
             onOpenEntity = {},
             bottomContentPadding = 12.dp,
             modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+@Composable
+internal fun HomeSearchHomeVisualContent(
+    editing: Boolean = false,
+    visualTextScale: Float = 1f,
+) {
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        SharedHomeSearchPanel(
+            state = homeSearchHomeVisualSearchState,
+            homeState = homeSearchVisualHomeState,
+            onIntent = {},
+            onClose = {},
+            interactiveSearchField = false,
+            includeTopSafeArea = false,
+            showSenderFilter = true,
+            initialHistoryEditing = editing,
+            searchHomeVisualTextScale = visualTextScale,
+            onOpenItem = {},
+            onOpenEntity = {},
+            bottomContentPadding = 12.dp,
+            modifier = Modifier.fillMaxSize(),
         )
     }
 }

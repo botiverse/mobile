@@ -94,4 +94,16 @@ class SharedHomeSearchInputEditorTest {
         assertEquals(TextFieldValue(""), owner.value)
         assertEquals(1, clearCalls)
     }
+
+    @Test
+    fun historySelectionReplacesTextAtTheEndAndProjectsOnce() {
+        val owner = SharedHomeSearchEditorOwner("")
+        val projected = mutableListOf<String>()
+
+        owner.replaceText("i18n search") { projected += it }
+
+        assertEquals("i18n search", owner.value.text)
+        assertEquals(TextRange("i18n search".length), owner.value.selection)
+        assertEquals(listOf("i18n search"), projected)
+    }
 }

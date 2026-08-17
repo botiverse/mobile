@@ -1,10 +1,13 @@
 package build.raft.app
 
 import build.raft.app.data.SearchSenderFilterItem
+import build.raft.app.data.SearchPersonalizationEntityKey
+import build.raft.app.data.SearchPersonalizationEntityKind
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import kotlin.test.Test
@@ -105,6 +108,37 @@ class SettingsHomeSearchEntityDestinationTest {
         assertEquals(
             conversation,
             assertIs<HomeSearchEntityDestination.Conversation>(result.destinationOrNull()).identity,
+        )
+    }
+
+    @Test
+    fun replyThreadUsageIsAttributedToItsTypedParentConversation() {
+        val channelReply =
+            buildThreadLaunchConversationIdentity(
+                kind = ConversationKind.Thread,
+                channelId = ChannelId("reply-stream-channel"),
+                threadChannelId = ChannelId("reply-stream-channel"),
+                parentChannelId = ChannelId("channel-parent"),
+                parentMessageId = MessageId("channel-parent-message"),
+                parentChannelKind = "channel",
+            )
+        val dmReply =
+            buildThreadLaunchConversationIdentity(
+                kind = ConversationKind.Thread,
+                channelId = ChannelId("reply-stream-dm"),
+                threadChannelId = ChannelId("reply-stream-dm"),
+                parentChannelId = ChannelId("dm-parent"),
+                parentMessageId = MessageId("dm-parent-message"),
+                parentChannelKind = "direct",
+            )
+
+        assertEquals(
+            SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-parent"),
+            channelReply.searchPersonalizationEntityKeyOrNull(),
+        )
+        assertEquals(
+            SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.DirectMessage, "dm-parent"),
+            dmReply.searchPersonalizationEntityKeyOrNull(),
         )
     }
 

@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.referentialEqualityPolicy
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -22,6 +23,7 @@ import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
@@ -57,6 +59,11 @@ internal class SharedHomeSearchEditorOwner(initialText: String) {
         onClear()
         return true
     }
+
+    fun replaceText(nextText: String, onTextChange: (String) -> Unit) {
+        value = TextFieldValue(nextText, selection = TextRange(nextText.length))
+        onTextChange(nextText)
+    }
 }
 
 private fun submitSharedHomeSearchInput(
@@ -79,6 +86,7 @@ internal fun SharedHomeSearchInput(
     onClear: () -> Unit,
     placeholder: String,
     autoFocus: Boolean = false,
+    focusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier
 ) {
     if (interactive) {
@@ -100,6 +108,7 @@ internal fun SharedHomeSearchInput(
             showClearWhenNotEmpty = true,
             onClear = onClear,
             autoFocus = autoFocus,
+            focusRequester = focusRequester ?: remember { FocusRequester() },
             modifier = modifier
         )
     } else {
@@ -151,6 +160,7 @@ internal fun SharedHomeSearchInput(
     onClear: () -> Unit,
     placeholder: String,
     autoFocus: Boolean = false,
+    focusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier
 ) {
     if (interactive) {
@@ -172,6 +182,7 @@ internal fun SharedHomeSearchInput(
             showClearWhenNotEmpty = true,
             onClear = onClear,
             autoFocus = autoFocus,
+            focusRequester = focusRequester ?: remember { FocusRequester() },
             modifier = modifier
         )
     } else {

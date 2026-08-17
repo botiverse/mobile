@@ -1473,6 +1473,13 @@
     <string name="search_placeholder">搜索频道、成员、计算机和消息…</string>
     <string name="search_empty_title">搜索所有内容</string>
     <string name="search_empty_detail">搜索频道、私信、成员、Agent、计算机和消息历史。</string>
+    <string name="search_home_history">搜索历史</string>
+    <string name="search_home_frequent">常用</string>
+    <string name="search_home_edit">编辑</string>
+    <string name="search_home_done">完成</string>
+    <string name="search_home_clear">清除</string>
+    <string name="search_home_remove_history">从搜索历史中移除“%1$s”</string>
+    <string name="search_home_frequent_empty">你从搜索中打开过的频道和联系人会显示在这里。</string>
     <string name="search_empty_results_query">没有关于“%1$s”的结果</string>
     <string name="search_empty_results">没有匹配的消息</string>
     <string name="search_empty_query_detail">请尝试其他关键词或更短的短语。</string>
