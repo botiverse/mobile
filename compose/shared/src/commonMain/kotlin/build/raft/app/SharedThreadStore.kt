@@ -1703,7 +1703,10 @@ internal class SharedThreadDataSource(
                 )
 
         homeSnapshotProvider?.invoke(serverId)
-            ?.takeIf { snapshot -> snapshot.server.id == serverId }
+            ?.takeIf { snapshot ->
+                snapshot.server.id == serverId &&
+                    snapshot.currentMember.id.value == resolutionScope.provenance.principalId
+            }
             ?.let { home ->
                 val candidate =
                     payload.exactReplyParentAccessCandidate(

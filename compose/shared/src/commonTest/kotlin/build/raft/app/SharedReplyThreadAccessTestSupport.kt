@@ -252,6 +252,7 @@ internal fun replyThreadAccessHomeSnapshot(
     joined: Boolean = true,
     canSend: Boolean = true,
     serverId: ServerId = ServerId("server-1"),
+    currentMemberId: String = "u1",
 ): HomeSnapshot {
     val parent =
         ConversationSummary(
@@ -267,7 +268,7 @@ internal fun replyThreadAccessHomeSnapshot(
         server = ServerSummary(id = serverId, name = "Slock"),
         currentMember =
             MemberProfile(
-                id = MemberId("u1"),
+                id = MemberId(currentMemberId),
                 displayName = "Artin",
                 handle = "artin",
                 kind = MemberKind.Human,

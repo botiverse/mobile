@@ -27,6 +27,66 @@ import kotlin.test.assertTrue
 
 class SharedThreadInitialAccessTest {
     @Test
+    fun sameServerSnapshotFromPreviousAccountCannotGrantCurrentAccountWriteAccess() = runBlocking {
+        val route = replyThreadInitialAccessPayload()
+        val serverId = ServerId("server-1")
+        val staleAccountHome =
+            replyThreadAccessHomeSnapshot(
+                joined = true,
+                canSend = true,
+                serverId = serverId,
+                currentMemberId = "account-a",
+            )
+        val currentAccountHome =
+            replyThreadAccessHomeSnapshot(
+                joined = false,
+                canSend = false,
+                serverId = serverId,
+                currentMemberId = "account-b",
+            )
+        val sessionStore =
+            InMemorySlockAuthSessionStore(
+                authSessionFixture(userId = "account-b", selectedServerId = serverId.value)
+            )
+        val channelRepository =
+            FakeChannelRepository(
+                channelsResult = { requestedServerId ->
+                    assertEquals(serverId, requestedServerId)
+                    DataResult.Content(
+                        ChannelSnapshot(
+                            server = currentAccountHome.server,
+                            channels = currentAccountHome.channels,
+                        )
+                    )
+                }
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = ReplyThreadAccessNetworkApi,
+                sessionStore = sessionStore,
+                channelRepository = channelRepository,
+                homeSnapshotProvider = { requestedServerId ->
+                    assertEquals(serverId, requestedServerId)
+                    staleAccountHome
+                },
+                replyCacheIdentityAuthority =
+                    replyThreadAccessIdentityAuthority(
+                        sessionStore = sessionStore,
+                        environmentId = "https://prod.example.test",
+                    ),
+            )
+
+        val resolution = dataSource.initialConversationAccessResolution(route)
+        val candidate = assertNotNull(resolution.accessCandidate)
+
+        assertFalse(candidate.joined)
+        assertFalse(candidate.permissions.canSend)
+        assertTrue(resolution.ownerCurrent)
+        assertTrue(resolution.requiresBackgroundHomeContextHydration)
+        assertEquals(1, channelRepository.channelsCalls)
+    }
+
+    @Test
     fun joinedChannelParentMountsComposerBeforeBackgroundHomeFailure() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val route = replyThreadInitialAccessPayload()
