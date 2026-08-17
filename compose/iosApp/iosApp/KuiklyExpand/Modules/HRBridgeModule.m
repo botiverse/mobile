@@ -2559,12 +2559,12 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
 }
 
 - (void)avatarCacheCapability:(NSDictionary *)args {
+    NSDictionary *params = SlockBridgeParams(args);
     KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
     if (!callback) return;
-    callback(@{
-        @"code" : @(-1),
-        @"message" : @"Avatar cache capability unavailable"
-    });
+    [[SlockIosAvatarCacheHost shared] handleLegacyCommand:params completion:^(NSDictionary<NSString *, id> *result) {
+        callback(result);
+    }];
 }
 
 - (void)settingsCapability:(NSDictionary *)args {

@@ -10,10 +10,12 @@
 		0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */ = {isa = PBXBuildFile; fileRef = 0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */; };
 		04E32B3E29F01975000A6BC5 /* KRRouterHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = 04E32B3D29F01975000A6BC5 /* KRRouterHandler.m */; };
 		058557BB273AAA24004C7B11 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 058557BA273AAA24004C7B11 /* Assets.xcassets */; };
-		A39600010000000000000001 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A39600020000000000000001 /* InfoPlist.strings */; };
 		058557D9273AAEEB004C7B11 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 058557D8273AAEEB004C7B11 /* Preview Assets.xcassets */; };
 		0721899DF9F6E0424B1E4B7D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B8FDA997E9DD2D474C82E853 /* Foundation.framework */; };
 		2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2152FB032600AC8F00CF470E /* iOSApp.swift */; };
+		3FDCFB96518F86B53D4E5ADD /* Pods_iosApp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */; };
+		7555FF83242A565900829871 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF82242A565900829871 /* ContentView.swift */; };
+		8DFBDFF355CB77B1EFE78055 /* Pods_iosApp_iosAppTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E6FE20F52F0830F7F4E65579 /* Pods_iosApp_iosAppTests.framework */; };
 		A12900010000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */; };
 		A12900010000000000000002 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */; };
 		A12900010000000000000003 /* SlockIosNetworkRequestLifetimeAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */; };
@@ -21,26 +23,28 @@
 		A13000010000000000000002 /* SlockIosAdaptivePanePublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000001 /* SlockIosAdaptivePanePublisher.swift */; };
 		A13000010000000000000003 /* SlockIosAdaptivePanePublisherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */; };
 		A13000010000000000000004 /* SlockAdaptivePaneRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000003 /* SlockAdaptivePaneRuntimeTests.swift */; };
-		3FDCFB96518F86B53D4E5ADD /* Pods_iosApp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */; };
-		7555FF83242A565900829871 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF82242A565900829871 /* ContentView.swift */; };
+		A39600010000000000000001 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A39600020000000000000001 /* InfoPlist.strings */; };
+		A42400010000000000000001 /* SlockIosAvatarCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */; };
+		A42400010000000000000002 /* SlockIosAvatarCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */; };
+		A42400010000000000000003 /* SlockIosAvatarCacheProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000002 /* SlockIosAvatarCacheProviderTests.swift */; };
 		B84B15A29AB40BD06D3F34C8 /* IosUseInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C465599FD991429AC545C211 /* IosUseInteractionTests.swift */; };
 		B84B15A39AB40BD06D3F34C9 /* QaAcceptanceLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */; };
 		D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */; };
 		D41350022E0F000100C0DE02 /* SlockIosRealtimeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */; };
 		D41350062E140100100C0DE03 /* SlockIosAppScopeMMKV.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */; };
-		D46363012E17000100C0DE09 /* SlockIosMobileOAuthHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */; };
 		D43B80142E0E500100C0DE01 /* SlockKuiklyPageView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */; };
 		D43B80172E0F000100C0DE03 /* SlockKRVideoViewHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80192E0F000100C0DE03 /* SlockKRVideoViewHandler.m */; };
 		D43B80202E0F100100C0DE04 /* SlockSandboxWebView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80222E0F100100C0DE04 /* SlockSandboxWebView.m */; };
-		D43B80412E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */; };
 		D43B80262E0F400100C0DE06 /* SlockLucideIconView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80282E0F400100C0DE06 /* SlockLucideIconView.m */; };
 		D43B80292E0F400100C0DE07 /* SlockPixelAvatarView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B802B2E0F400100C0DE07 /* SlockPixelAvatarView.m */; };
 		D43B802C2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B802E2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m */; };
 		D43B80302E18000100C0DE11 /* SlockStackedItemTabBar.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80342E18000100C0DE11 /* SlockStackedItemTabBar.m */; };
 		D43B80312E18000100C0DE11 /* SlockStackedItemTabBar.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80342E18000100C0DE11 /* SlockStackedItemTabBar.m */; };
 		D43B80322E18000100C0DE11 /* SlockStackedItemTabBarTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */; };
+		D43B80412E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */; };
 		D43B80422E19000100C0DE12 /* SlockSandboxWebViewTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */; };
 		D43B80432E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */; };
+		D46363012E17000100C0DE09 /* SlockIosMobileOAuthHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */; };
 		D49163022E14000100C0DE01 /* space_grotesk_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163122E14000100C0DE01 /* space_grotesk_regular.ttf */; };
 		D49163032E14000100C0DE01 /* space_grotesk_medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */; };
 		D49163042E14000100C0DE01 /* space_grotesk_semibold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */; };
@@ -64,36 +68,39 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0423580F44476A8BFD9068C7 /* Pods-iosApp-iosAppTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp-iosAppTests.debug.xcconfig"; path = "Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests.debug.xcconfig"; sourceTree = "<group>"; };
 		0474A3F129F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UINavigationController+FDFullscreenPopGesture.h"; sourceTree = "<group>"; };
 		0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "UINavigationController+FDFullscreenPopGesture.m"; sourceTree = "<group>"; };
-		A82F000129F6A41000F43E31 /* SlockConversationForwardGestureAdmission.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SlockConversationForwardGestureAdmission.h; sourceTree = "<group>"; };
 		04E32B3C29F01971000A6BC5 /* KRRouterHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KRRouterHandler.h; sourceTree = "<group>"; };
 		04E32B3D29F01975000A6BC5 /* KRRouterHandler.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = KRRouterHandler.m; sourceTree = "<group>"; };
 		058557BA273AAA24004C7B11 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		058557D8273AAEEB004C7B11 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		1DAE3769BAE68C43F5D78324 /* iosAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2152FB032600AC8F00CF470E /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
+		28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_iosApp.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		312F0DBEF95A91A72E5FCBFA /* Pods-iosApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.debug.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.debug.xcconfig"; sourceTree = "<group>"; };
+		55EA1C556347C9913DA93659 /* Pods-iosApp-iosAppTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp-iosAppTests.release.xcconfig"; path = "Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests.release.xcconfig"; sourceTree = "<group>"; };
+		7555FF7B242A565900829871 /* iosApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iosApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7555FF82242A565900829871 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		7555FF8C242A565B00829871 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosNetworkRequestLifetimeAdapter.swift; sourceTree = "<group>"; };
 		A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosNetworkRequestLifetimeAdapterTests.swift; sourceTree = "<group>"; };
 		A12900020000000000000003 /* iosAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A13000020000000000000001 /* SlockIosAdaptivePanePublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAdaptivePanePublisher.swift; sourceTree = "<group>"; };
 		A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAdaptivePanePublisherTests.swift; sourceTree = "<group>"; };
 		A13000020000000000000003 /* SlockAdaptivePaneRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockAdaptivePaneRuntimeTests.swift; sourceTree = "<group>"; };
-		2152FB032600AC8F00CF470E /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
-		28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_iosApp.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		312F0DBEF95A91A72E5FCBFA /* Pods-iosApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.debug.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.debug.xcconfig"; sourceTree = "<group>"; };
-		7555FF7B242A565900829871 /* iosApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iosApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		7555FF82242A565900829871 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		7555FF8C242A565B00829871 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A39600030000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A39600030000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		A39600030000000000000003 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAvatarCacheProvider.swift; sourceTree = "<group>"; };
+		A42400020000000000000002 /* SlockIosAvatarCacheProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAvatarCacheProviderTests.swift; sourceTree = "<group>"; };
+		A82F000129F6A41000F43E31 /* SlockConversationForwardGestureAdmission.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SlockConversationForwardGestureAdmission.h; sourceTree = "<group>"; };
 		B8FDA997E9DD2D474C82E853 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		C465599FD991429AC545C211 /* IosUseInteractionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosUseInteractionTests.swift; sourceTree = "<group>"; };
 		C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QaAcceptanceLoopTests.swift; sourceTree = "<group>"; };
 		D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedRealtimeContract.swift; sourceTree = "<group>"; };
 		D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosRealtimeHost.swift; sourceTree = "<group>"; };
 		D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAppScopeMMKV.swift; sourceTree = "<group>"; };
-		D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosMobileOAuthHost.swift; sourceTree = "<group>"; };
 		D43B80152E0E500100C0DE01 /* SlockKuiklyPageView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockKuiklyPageView.h; sourceTree = "<group>"; };
 		D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockKuiklyPageView.m; sourceTree = "<group>"; };
 		D43B80182E0F000100C0DE03 /* SlockKRVideoViewHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockKRVideoViewHandler.h; sourceTree = "<group>"; };
@@ -112,12 +119,14 @@
 		D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockSandboxWebViewTests.m; sourceTree = "<group>"; };
 		D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockSandboxWebViewNavigationCommit.m; sourceTree = "<group>"; };
 		D43B80472E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockSandboxWebViewNavigationCommit.h; sourceTree = "<group>"; };
+		D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosMobileOAuthHost.swift; sourceTree = "<group>"; };
 		D49163122E14000100C0DE01 /* space_grotesk_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_regular.ttf; sourceTree = "<group>"; };
 		D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_medium.ttf; sourceTree = "<group>"; };
 		D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_semibold.ttf; sourceTree = "<group>"; };
 		D49163152E14000100C0DE01 /* space_grotesk_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_bold.ttf; sourceTree = "<group>"; };
 		D49163162E14000100C0DE01 /* space_mono_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_mono_regular.ttf; sourceTree = "<group>"; };
 		D49163172E14000100C0DE01 /* space_mono_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_mono_bold.ttf; sourceTree = "<group>"; };
+		E6FE20F52F0830F7F4E65579 /* Pods_iosApp_iosAppTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_iosApp_iosAppTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		EAD586BEDBD0772EDC4E4B96 /* Pods-iosApp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.release.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.release.xcconfig"; sourceTree = "<group>"; };
 		FF6B713F29A2A173009349F1 /* KuiklyRenderViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = KuiklyRenderViewController.m; sourceTree = "<group>"; };
 		FF6B714129A2A173009349F1 /* HRBridgeModule.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = HRBridgeModule.m; sourceTree = "<group>"; };
@@ -138,18 +147,19 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A12900050000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8DFBDFF355CB77B1EFE78055 /* Pods_iosApp_iosAppTests.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B353DDD6BF09802D9DFE05E3 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				0721899DF9F6E0424B1E4B7D /* Foundation.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		A12900050000000000000002 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -187,6 +197,7 @@
 			children = (
 				28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */,
 				344FA050C9E0DC463DFE0173 /* iOS */,
+				E6FE20F52F0830F7F4E65579 /* Pods_iosApp_iosAppTests.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -231,6 +242,7 @@
 				D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */,
 				D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */,
 				D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */,
+				A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */,
 				FF6B713E29A2A10E009349F1 /* KuiklyExpand */,
 				058557BA273AAA24004C7B11 /* Assets.xcassets */,
 				D49163102E14000100C0DE01 /* Fonts */,
@@ -258,6 +270,7 @@
 		A12900030000000000000001 /* iosAppTests */ = {
 			isa = PBXGroup;
 			children = (
+				A42400020000000000000002 /* SlockIosAvatarCacheProviderTests.swift */,
 				A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */,
 				A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */,
 				D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */,
@@ -305,6 +318,8 @@
 			children = (
 				312F0DBEF95A91A72E5FCBFA /* Pods-iosApp.debug.xcconfig */,
 				EAD586BEDBD0772EDC4E4B96 /* Pods-iosApp.release.xcconfig */,
+				0423580F44476A8BFD9068C7 /* Pods-iosApp-iosAppTests.debug.xcconfig */,
+				55EA1C556347C9913DA93659 /* Pods-iosApp-iosAppTests.release.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
@@ -391,9 +406,12 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A12900070000000000000001 /* Build configuration list for PBXNativeTarget "iosAppTests" */;
 			buildPhases = (
+				A5B40D3BF7114A79AAD1765C /* [CP] Check Pods Manifest.lock */,
 				A12900050000000000000001 /* Sources */,
 				A12900050000000000000002 /* Frameworks */,
 				A12900050000000000000003 /* Resources */,
+				C5AFC7215F1FE45A326FBB86 /* [CP] Embed Pods Frameworks */,
+				AC986769335986F8488539E5 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -469,13 +487,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		D4CF1579663686D13F798DDC /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		A12900050000000000000003 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -483,20 +494,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXResourcesBuildPhase section */
-
-/* Begin PBXVariantGroup section */
-		A39600020000000000000001 /* InfoPlist.strings */ = {
-			isa = PBXVariantGroup;
-			children = (
-				A39600030000000000000001 /* en */,
-				A39600030000000000000002 /* zh-Hans */,
-				A39600030000000000000003 /* ja */,
+		D4CF1579663686D13F798DDC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
-			name = InfoPlist.strings;
-			sourceTree = "<group>";
+			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXVariantGroup section */
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
 		037D30FF99587FF5BDE98C71 /* [CP-User] Copy kmmresource MR bundle to app */ = {
@@ -565,6 +570,62 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
+		A5B40D3BF7114A79AAD1765C /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-iosApp-iosAppTests-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		AC986769335986F8488539E5 /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests-resources-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Copy Pods Resources";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		C5AFC7215F1FE45A326FBB86 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 		D4C7A0112E15000100C0DE01 /* Generate Raft Build Metadata */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -620,6 +681,7 @@
 				D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */,
 				D41350062E140100100C0DE03 /* SlockIosAppScopeMMKV.swift in Sources */,
 				D46363012E17000100C0DE09 /* SlockIosMobileOAuthHost.swift in Sources */,
+				A42400010000000000000001 /* SlockIosAvatarCacheProvider.swift in Sources */,
 				FF6B714529A2A174009349F1 /* HRBridgeModule.m in Sources */,
 				D41350022E0F000100C0DE02 /* SlockIosRealtimeHost.swift in Sources */,
 				FF6B714729A2A315009349F1 /* KuiklyRenderViewPage.swift in Sources */,
@@ -650,6 +712,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A42400010000000000000002 /* SlockIosAvatarCacheProvider.swift in Sources */,
+				A42400010000000000000003 /* SlockIosAvatarCacheProviderTests.swift in Sources */,
 				A12900010000000000000002 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */,
 				A12900010000000000000003 /* SlockIosNetworkRequestLifetimeAdapterTests.swift in Sources */,
 				A13000010000000000000002 /* SlockIosAdaptivePanePublisher.swift in Sources */,
@@ -671,6 +735,19 @@
 			targetProxy = F6B1415414C164BA5FC82C87 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		A39600020000000000000001 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A39600030000000000000001 /* en */,
+				A39600030000000000000002 /* zh-Hans */,
+				A39600030000000000000003 /* ja */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		7555FFA3242A565B00829871 /* Debug */ = {
@@ -865,25 +942,9 @@
 			};
 			name = Debug;
 		};
-		C2EA9517739CDFD8F6A946CE /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-				PRODUCT_BUNDLE_IDENTIFIER = build.raft.appUITests;
-				PRODUCT_MODULE_NAME = iosAppUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = iosApp;
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
 		A12900060000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 0423580F44476A8BFD9068C7 /* Pods-iosApp-iosAppTests.debug.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -904,6 +965,7 @@
 		};
 		A12900060000000000000002 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 55EA1C556347C9913DA93659 /* Pods-iosApp-iosAppTests.release.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -919,6 +981,23 @@
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		C2EA9517739CDFD8F6A946CE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = build.raft.appUITests;
+				PRODUCT_MODULE_NAME = iosAppUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = iosApp;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;

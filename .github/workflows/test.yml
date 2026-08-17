@@ -1150,8 +1150,8 @@ jobs:
             --console=plain \
             --stacktrace
 
-      - name: Validate iOS avatar-cache unsupported fallback
-        run: node compose/iosApp/scripts/test_avatar_cache_unsupported_bridge_source_contract.mjs
+      - name: Validate iOS avatar-cache durable provider
+        run: node compose/iosApp/scripts/test_avatar_cache_provider_source_contract.mjs
 
       # shared.podspec guards against a missing framework dir; the IDE's
       # Gradle sync normally creates the placeholder — CI must do it manually.

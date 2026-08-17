@@ -1,0 +1,116 @@
+#!/usr/bin/env node
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(scriptDirectory, '../../..');
+const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8').replaceAll('\r\n', '\n');
+const provider = read('compose/iosApp/iosApp/SlockIosAvatarCacheProvider.swift');
+const app = read('compose/iosApp/iosApp/iOSApp.swift');
+const handler = read('compose/iosApp/iosApp/KuiklyExpand/Handler/KuiklyRenderComponentExpandHandler.m');
+const bridge = read('compose/iosApp/iosApp/KuiklyExpand/Modules/HRBridgeModule.m');
+const project = read('compose/iosApp/iosApp.xcodeproj/project.pbxproj');
+
+function fail(message) {
+  throw new Error(`iOS avatar-cache provider source contract failed: ${message}`);
+}
+
+function check(condition, message) {
+  if (!condition) fail(message);
+}
+
+function count(body, marker) {
+  return body.split(marker).length - 1;
+}
+
+function validateProvider(candidate) {
+  check(count(candidate, 'final class SlockIosAvatarDurableStore') === 1, 'durable store must exist once');
+  check(candidate.includes('SlockAvatarMountedNativeProvider'), 'provider must implement shared mounted contract');
+  check(candidate.includes('SlockAvatarMountedNativeProviderRegistry.shared.install(next: store)'), 'provider must install through shared registry');
+  check(candidate.includes('slock-avatar-render-v1:'), 'managed render protocol must be recognized');
+  check(candidate.includes('slockIosAvatarMaxEntryBytes: Int64 = 5 * 1024 * 1024'), '5 MiB entry limit drifted');
+  check(candidate.includes('slockIosAvatarMaxManagedBytes: Int64 = 64 * 1024 * 1024'), '64 MiB budget drifted');
+  for (const marker of [
+    'persistIndex()',
+    'atomicWrite(',
+    'recoverStartup()',
+    'retireOwner(',
+    'retireSubject(',
+    'clearAll(',
+    'retireEntry(at: index)',
+    'readBlocked(slot:',
+    'recordMovedCandidateCleanup(',
+  ]) {
+    check(candidate.includes(marker), `missing durable/terminal marker ${marker}`);
+  }
+  check(
+    count(candidate, 'if operation.phase == .finalized') === 2,
+    'finalize idempotence and post-finalize rollback teeth must both remain'
+  );
+  check(
+    count(candidate, 'guard !readBlocked(slot:') === 2,
+    'inspect and render must both honor read-admission hold'
+  );
+  check(!candidate.includes('remoteUrl'), 'native provider must not become a second downloader');
+}
+
+validateProvider(provider);
+
+const install = app.indexOf('SlockIosAvatarCacheHost.shared.install()');
+const firstPageOwner = app.indexOf('SlockIosAppScopeMMKV.install()');
+check(install >= 0 && firstPageOwner > install, 'provider must install before shared app scope starts');
+
+const managedRoute = handler.indexOf('isManagedRenderModel:url');
+const networkRoute = handler.indexOf('sd_setImageWithURL:resolvedURL');
+check(managedRoute >= 0 && networkRoute > managedRoute, 'managed descriptor must be intercepted before URL loading');
+check(handler.includes('imageForRenderModel:url'), 'render path must resolve exact committed native bytes');
+
+const bridgeStart = bridge.indexOf('- (void)avatarCacheCapability:(NSDictionary *)args {');
+const bridgeEnd = bridge.indexOf('\n- (void)settingsCapability:', bridgeStart);
+const bridgeBody = bridge.slice(bridgeStart, bridgeEnd);
+check(bridgeStart >= 0 && bridgeEnd > bridgeStart, 'unable to isolate bridge method');
+check(bridgeBody.includes('handleLegacyCommand:params'), 'legacy bridge must delegate terminal cleanup to provider');
+check(!bridgeBody.includes('Avatar cache capability unavailable'), 'unsupported fallback must be removed');
+
+check(project.includes('A42400010000000000000001 /* SlockIosAvatarCacheProvider.swift in Sources */,'), 'provider missing from app target');
+check(project.includes('A42400010000000000000002 /* SlockIosAvatarCacheProvider.swift in Sources */,'), 'provider missing from unit-test target');
+check(project.includes('A42400010000000000000003 /* SlockIosAvatarCacheProviderTests.swift in Sources */,'), 'provider tests missing from unit-test target');
+
+function assertProviderMutationRejected(mutation, label) {
+  check(mutation !== provider, 'source-contract mutation fixture did not change source');
+  try {
+    validateProvider(mutation);
+  } catch (_error) {
+    return;
+  }
+  fail(`self-test accepted ${label}`);
+}
+
+assertProviderMutationRejected(
+  provider.replace('SlockAvatarMountedNativeProviderRegistry.shared.install(next: store)', '/* removed */'),
+  'missing registry install'
+);
+assertProviderMutationRejected(
+  provider.replace('slockIosAvatarMaxEntryBytes: Int64 = 5 * 1024 * 1024', 'slockIosAvatarMaxEntryBytes: Int64 = 6 * 1024 * 1024'),
+  'entry-limit drift'
+);
+assertProviderMutationRejected(
+  provider.replace('slockIosAvatarMaxManagedBytes: Int64 = 64 * 1024 * 1024', 'slockIosAvatarMaxManagedBytes: Int64 = 65 * 1024 * 1024'),
+  'budget drift'
+);
+assertProviderMutationRejected(
+  provider.replaceAll('if operation.phase == .finalized', 'if false'),
+  'missing post-finalize rollback tooth'
+);
+assertProviderMutationRejected(
+  provider.replaceAll('guard !readBlocked(slot:', 'guard true || !readBlocked(slot:'),
+  'missing read-admission hold'
+);
+assertProviderMutationRejected(
+  provider.replaceAll('recordMovedCandidateCleanup(', 'recordDiscardedCandidateCleanup('),
+  'missing post-move candidate cleanup debt'
+);
+
+console.log('iOS avatar-cache provider source contract passed');

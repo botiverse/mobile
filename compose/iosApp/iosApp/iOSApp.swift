@@ -489,6 +489,7 @@ struct iOSApp: App {
         // Google/GitHub provider icons, which are shipped as SVG and otherwise
         // render blank on iOS (UIImage has no native SVG support).
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
+        SlockIosAvatarCacheHost.shared.install()
         SlockIosAppScopeMMKV.install()
         let curlCaPath = slockCurlCaBundlePath()
         let curlBootstrap = SlockIosNetworkTransportBootstrapKt

@@ -1,5 +1,6 @@
 #import "KuiklyRenderComponentExpandHandler.h"
 #import <SDWebImage/UIImageView+WebCache.h>
+#import "iosApp-Swift.h"
 
 @implementation KuiklyRenderComponentExpandHandler
 
@@ -14,6 +15,11 @@
  * @return 是否处理该图片设置，返回值为YES，则交给该代理实现，否则sdk内部自己处理
  */
 - (BOOL)hr_setImageWithUrl:(NSString *)url forImageView:(UIImageView *)imageView {
+    if ([[SlockIosAvatarCacheHost shared] isManagedRenderModel:url]) {
+        [imageView sd_cancelCurrentImageLoad];
+        imageView.image = [[SlockIosAvatarCacheHost shared] imageForRenderModel:url];
+        return YES;
+    }
     UIImage *bundledAssetImage = [self slock_bundledImageForAssetURLString:url];
     if (bundledAssetImage != nil) {
         [imageView sd_cancelCurrentImageLoad];
