@@ -421,6 +421,7 @@ private fun HomeSearchRouterContent(
     SharedHomeSearchPanel(
         state = searchSavedState.search,
         homeState = homeState,
+        cacheServerId = searchServerId,
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
         computerDirectory = computerDirectory,
@@ -563,6 +564,7 @@ private fun HomeSavedRouterContent(
     }
     SharedHomeSavedPanel(
         state = searchSavedState.saved,
+        cacheServerId = savedServerId,
         memberAvatarResolver = memberAvatarResolver,
         draftProjection = draftProjection,
         onIntent = searchSavedViewModel::dispatch,
@@ -667,4 +669,3 @@ private fun rememberHomeSearchSavedViewModel(
         )
     }
 }
-

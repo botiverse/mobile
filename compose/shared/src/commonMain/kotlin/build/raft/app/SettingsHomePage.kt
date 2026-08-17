@@ -858,6 +858,7 @@ private fun SharedHomeSearchEntityLeadingAvatar(
 private fun SharedHomeSearchSenderMeta(
     sender: String,
     avatarWireValue: String?,
+    avatarCacheIdentity: SlockMemberAvatarCacheIdentity? = null,
     modifier: Modifier = Modifier,
     compact: Boolean = false
 ) {
@@ -869,7 +870,9 @@ private fun SharedHomeSearchSenderMeta(
         SlockAvatar(
             avatarWireValue = avatarWireValue ?: AvatarReference.Random(sender.searchAvatarSeed()).wireValue,
             label = sender,
-            avatarSize = if (compact) 12.dp else 16.dp
+            avatarSize = if (compact) 12.dp else 16.dp,
+            cacheSubject = avatarCacheIdentity?.subject,
+            cacheServerId = avatarCacheIdentity?.serverId
         )
         Text(
             text = sender,
@@ -12672,6 +12675,20 @@ internal fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
         )
 }
 
+internal fun ScreenLoadState<AccountSettingsSnapshot>.settingsAccountAvatarCacheIdentity(
+    session: StoredAuthSession?
+): SlockMemberAvatarCacheIdentity? {
+    val sessionUserId = session?.user?.id?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    val account = (this as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data ?: return null
+    val profileUserId = account.profile.userId.trim().takeIf(String::isNotEmpty) ?: return null
+    if (profileUserId != sessionUserId) return null
+    return slockMemberAvatarCacheIdentity(
+        kind = MemberKind.Human,
+        memberId = profileUserId,
+        serverId = session.currentServerId
+    )
+}
+
 private fun AccountSettingsSnapshot.toAccountPayload(): KuiklySettingsAccountPayload =
     KuiklySettingsAccountPayload(
         instanceId = "shared-shell-settings-account",
@@ -17548,6 +17565,7 @@ private fun SharedHomeNotification.toHomeNotificationItem(): SlockHomeNotificati
 internal fun SharedHomeSearchPanel(
     state: SharedHomeSearchPanelState,
     homeState: SharedHomeState,
+    cacheServerId: String? = null,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     computerDirectory: HomeSearchComputerDirectory = HomeSearchComputerDirectory(),
@@ -17804,6 +17822,7 @@ internal fun SharedHomeSearchPanel(
                                 SharedHomeSearchMessageResultRow(
                                     item = group.item,
                                     query = state.query,
+                                    cacheServerId = cacheServerId,
                                     memberAvatarResolver = memberAvatarResolver,
                                     timeContext = timeContext,
                                     onOpen = { onOpenItem(group.item) }
@@ -17815,6 +17834,7 @@ internal fun SharedHomeSearchPanel(
                                 SharedHomeThreadResultGroup(
                                     group = group,
                                     query = state.query,
+                                    cacheServerId = cacheServerId,
                                     memberAvatarResolver = memberAvatarResolver,
                                     timeContext = timeContext,
                                     onOpenItem = onOpenItem
@@ -18103,6 +18123,7 @@ private fun SharedHomeSearchIconButton(
 @Composable
 internal fun SharedHomeSavedPanel(
     state: SharedHomeSavedPanelState,
+    cacheServerId: String? = null,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
@@ -18224,6 +18245,7 @@ internal fun SharedHomeSavedPanel(
                     SharedHomeSavedResultCard(
                         item = item,
                         selected = selectedItemKey == item.key || activeMenu?.item?.key == item.key,
+                        cacheServerId = cacheServerId,
                         memberAvatarResolver = memberAvatarResolver,
                         onUnsave = { onIntent(SharedHomeSearchSavedIntent.Unsave(item)) },
                         onOpen = {
@@ -18738,12 +18760,15 @@ private fun SharedHomeSavedSelectedSurface(
 private fun SharedHomeSavedResultCard(
     item: InboxItem,
     selected: Boolean,
+    cacheServerId: String? = null,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onUnsave: () -> Unit,
     onOpen: () -> Unit,
     onContextMenu: (SlockPopoverAnchor) -> Unit,
     timeContext: AppShellThreadTimeContext? = null
 ) {
+    val avatarCacheIdentity =
+        remember(item, cacheServerId) { item.previewSenderAvatarCacheIdentity(cacheServerId) }
     val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview
         ?: stringResource(MR.strings.saved_state_no_preview)
     val sender = item.latestActivitySenderName ?: item.lastMessageSenderName
@@ -18898,6 +18923,7 @@ private fun SharedHomeSavedResultCard(
                         SharedHomeSavedSenderMeta(
                             senderName = it,
                             avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
+                            avatarCacheIdentity = avatarCacheIdentity,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -18981,6 +19007,7 @@ private fun SharedHomeSavedUnsaveButton(
 private fun SharedHomeSavedSenderMeta(
     senderName: String,
     avatarWireValue: String?,
+    avatarCacheIdentity: SlockMemberAvatarCacheIdentity? = null,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -18991,7 +19018,9 @@ private fun SharedHomeSavedSenderMeta(
         SlockAvatar(
             avatarWireValue = avatarWireValue ?: savedSenderAvatarFallback(senderName),
             label = senderName,
-            avatarSize = 12.dp
+            avatarSize = 12.dp,
+            cacheSubject = avatarCacheIdentity?.subject,
+            cacheServerId = avatarCacheIdentity?.serverId
         )
         Text(
             text = senderName,
@@ -19003,26 +19032,54 @@ private fun SharedHomeSavedSenderMeta(
     }
 }
 
-private fun InboxItem.senderAvatarWireValueForPreview(): String? {
-    val latestKind = latestActivitySenderKind
-    val latestId = latestActivitySenderId
-    if (latestKind != null && latestId != null) {
-        return avatarWireValueForAvatarSlot(
-            kind = latestKind,
-            id = latestId,
+private data class InboxPreviewSenderIdentity(
+    val kind: MemberKind,
+    val memberId: String,
+    val avatarWireValue: String?
+)
+
+private fun InboxItem.previewSenderIdentityOrNull(): InboxPreviewSenderIdentity? {
+    val latestId = latestActivitySenderId?.trim()?.takeIf(String::isNotEmpty)
+    if (latestActivitySenderKind != null && latestId != null) {
+        return InboxPreviewSenderIdentity(
+            kind = latestActivitySenderKind,
+            memberId = latestId,
             avatarWireValue = latestActivitySenderAvatarWireValue
         )
     }
-    val lastKind = lastMessageSenderKind
-    val lastId = lastMessageSenderId
-    if (lastKind != null && lastId != null) {
-        return avatarWireValueForAvatarSlot(
-            kind = lastKind,
-            id = lastId,
+    val lastId = lastMessageSenderId?.trim()?.takeIf(String::isNotEmpty)
+    if (lastMessageSenderKind != null && lastId != null) {
+        return InboxPreviewSenderIdentity(
+            kind = lastMessageSenderKind,
+            memberId = lastId,
             avatarWireValue = lastMessageSenderAvatarWireValue
         )
     }
-    return latestActivitySenderAvatarWireValue ?: lastMessageSenderAvatarWireValue
+    return null
+}
+
+private fun InboxItem.senderAvatarWireValueForPreview(): String? {
+    val identity = previewSenderIdentityOrNull()
+    return if (identity != null) {
+        avatarWireValueForAvatarSlot(
+            kind = identity.kind,
+            id = identity.memberId,
+            avatarWireValue = identity.avatarWireValue
+        )
+    } else {
+        latestActivitySenderAvatarWireValue ?: lastMessageSenderAvatarWireValue
+    }
+}
+
+internal fun InboxItem.previewSenderAvatarCacheIdentity(
+    cacheServerId: String?
+): SlockMemberAvatarCacheIdentity? {
+    val identity = previewSenderIdentityOrNull() ?: return null
+    return slockMemberAvatarCacheIdentity(
+        kind = identity.kind,
+        memberId = identity.memberId,
+        serverId = cacheServerId
+    )
 }
 
 @Composable
@@ -19035,11 +19092,7 @@ private fun InboxItem.resolvedSenderAvatarWireValueForPreview(
 }
 
 private fun InboxItem.previewSenderMemberId(): String? =
-    when {
-        latestActivitySenderKind != null && latestActivitySenderId != null -> latestActivitySenderId
-        lastMessageSenderKind != null && lastMessageSenderId != null -> lastMessageSenderId
-        else -> latestActivitySenderId ?: lastMessageSenderId
-    }
+    previewSenderIdentityOrNull()?.memberId
 
 private fun savedSenderAvatarFallback(senderName: String): String? =
     if (senderName.contains("developer", ignoreCase = true) || senderName.contains("agent", ignoreCase = true)) {
@@ -19278,6 +19331,7 @@ private fun SharedHomeEntityTypeBadge(type: SearchEntityType) {
 private fun SharedHomeThreadResultGroup(
     group: HomeSearchResultGroup.Thread,
     query: String,
+    cacheServerId: String? = null,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     timeContext: AppShellThreadTimeContext? = null,
     onOpenItem: (InboxItem) -> Unit
@@ -19356,6 +19410,7 @@ private fun SharedHomeThreadResultGroup(
                 item = item,
                 query = query,
                 nested = true,
+                cacheServerId = cacheServerId,
                 memberAvatarResolver = memberAvatarResolver,
                 timeContext = timeContext,
                 onOpen = { onOpenItem(item) }
@@ -19369,10 +19424,13 @@ private fun SharedHomeSearchMessageResultRow(
     item: InboxItem,
     query: String,
     nested: Boolean = false,
+    cacheServerId: String? = null,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     timeContext: AppShellThreadTimeContext? = null,
     onOpen: () -> Unit
 ) {
+    val avatarCacheIdentity =
+        remember(item, cacheServerId) { item.previewSenderAvatarCacheIdentity(cacheServerId) }
     val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview
         ?: stringResource(MR.strings.search_state_no_preview)
     val sender = item.latestActivitySenderName ?: item.lastMessageSenderName
@@ -19427,6 +19485,7 @@ private fun SharedHomeSearchMessageResultRow(
                     SharedHomeSearchSenderMeta(
                         sender = sender,
                         avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
+                        avatarCacheIdentity = avatarCacheIdentity,
                         modifier = Modifier.weight(1f, fill = false),
                         compact = compactMeta
                     )
@@ -23406,6 +23465,8 @@ private fun SettingsDedicatedPagerVisualFixtureContent(
                         settingsState.actionState,
                         localizedErrorPresentationStrings(),
                     ),
+                    avatarCacheIdentity =
+                        settingsState.account.settingsAccountAvatarCacheIdentity(session),
                     applyTopSafeArea = false,
                     bottomContentPadding = bottomContentPadding,
                     onPasswordChange = { _, _ -> },

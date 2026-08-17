@@ -21,6 +21,7 @@ import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.SLOCK_MOBILE_OAUTH_COMPLETION_EVENT
 import build.raft.app.data.SlockEventBuses
+import build.raft.app.data.StoredAuthSession
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -232,6 +233,10 @@ private fun SettingsAccountScreen() {
             SharedSettingsViewModel(environment.dataSource)
         }
     val settingsState by settingsViewModel.state.collectAsState()
+    val session = remember(environment.authStore) { mutableStateOf<StoredAuthSession?>(null) }
+    LaunchedEffect(environment.authStore) {
+        session.value = environment.authStore.readSession()
+    }
     LaunchedEffect(Unit) {
         bridge.log("settings_account_open instanceId=${launchPayload.instanceId}")
         settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account))
@@ -260,6 +265,8 @@ private fun SettingsAccountScreen() {
                     actionState = settingsState.actionState,
                     errorStrings = localizedErrorPresentationStrings()
                 ),
+            avatarCacheIdentity =
+                settingsState.account.settingsAccountAvatarCacheIdentity(session.value),
             applyTopSafeArea = false,
             onPasswordChange = { currentPassword, newPassword ->
                 settingsViewModel.dispatch(
@@ -336,6 +343,7 @@ private fun handleStandaloneAccountAction(
 @Composable
 internal fun SettingsAccountContent(
     payload: KuiklySettingsAccountPayload,
+    avatarCacheIdentity: SlockMemberAvatarCacheIdentity? = null,
     applyTopSafeArea: Boolean = true,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onPasswordChange: (currentPassword: String, newPassword: String) -> Unit = { _, _ -> },
@@ -355,7 +363,15 @@ internal fun SettingsAccountContent(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item { SettingsAccountSectionHeader(localizedPayload.profileSectionTitle) }
-        item { SettingsAccountProfileCard(localizedPayload, visibleConnectedAccounts, onEvent, onPasswordChange) }
+        item {
+            SettingsAccountProfileCard(
+                localizedPayload,
+                visibleConnectedAccounts,
+                avatarCacheIdentity,
+                onEvent,
+                onPasswordChange
+            )
+        }
         item { SettingsLogoutAction(localizedPayload) { onEvent("logout", null) } }
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }
@@ -383,6 +399,7 @@ private fun SettingsAccountSectionHeader(title: String) {
 private fun SettingsAccountProfileCard(
     payload: KuiklySettingsAccountPayload,
     connectedAccounts: List<KuiklySettingsConnectedAccount>,
+    avatarCacheIdentity: SlockMemberAvatarCacheIdentity?,
     onEvent: (String, String?) -> Unit,
     onPasswordChange: (currentPassword: String, newPassword: String) -> Unit
 ) {
@@ -398,7 +415,7 @@ private fun SettingsAccountProfileCard(
     val displayName = displayNameState.value
     SettingsAccountHardShadowCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            SettingsProfileAvatar(profile, payload, onEvent)
+            SettingsProfileAvatar(profile, payload, avatarCacheIdentity, onEvent)
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     profile.displayName.ifBlank { stringResource(MR.strings.settings_account_title) },
@@ -511,6 +528,7 @@ internal fun settingsAccountHeaderHandleLabel(handle: String): String? {
 private fun SettingsProfileAvatar(
     profile: KuiklySettingsAccountProfile,
     payload: KuiklySettingsAccountPayload,
+    avatarCacheIdentity: SlockMemberAvatarCacheIdentity?,
     onEvent: (String, String?) -> Unit
 ) {
     Box(
@@ -524,7 +542,9 @@ private fun SettingsProfileAvatar(
             avatarWireValue = profile.avatarUrl,
             label = profile.avatarLabel,
             avatarSize = 56.dp,
-            borderWidth = SlockStroke.Default
+            borderWidth = SlockStroke.Default,
+            cacheSubject = avatarCacheIdentity?.subject,
+            cacheServerId = avatarCacheIdentity?.serverId
         )
         if (payload.avatarInProgress) {
             Box(
