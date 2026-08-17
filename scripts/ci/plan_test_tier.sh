@@ -157,7 +157,9 @@ emit_plan() {
   run_android=false
   run_ios=false
   run_ohos=false
-  local run_emulators=false
+  local run_device_suite=false
+  local run_canonical_final=false
+  local attachment_api_levels="[]"
   reason=""
 
   case "$full_ci" in
@@ -173,15 +175,20 @@ emit_plan() {
       classify_changed_paths "$changed_paths_file" "pull-request"
       if test "$full_ci" = true; then
         mark_all_platforms
-        run_emulators=true
+        # Task #26 closure: full-ci PR keeps the device suite but only the
+        # API31 attachment leg; canonical-final stays nightly/manual only.
+        run_device_suite=true
+        run_canonical_final=false
+        attachment_api_levels="[31]"
         reason="pull-request-full-ci"
       fi
       ;;
     merge_group)
       mark_all_platforms
-      # Emulator/connected jobs stay out of the blocking queue until their
-      # infra-abort retry contract has landed and has fresh flake evidence.
-      run_emulators=false
+      # Emulator/connected jobs stay out of the blocking queue.
+      run_device_suite=false
+      run_canonical_final=false
+      attachment_api_levels="[]"
       reason="merge-group-deterministic-all"
       ;;
     push)
@@ -198,16 +205,19 @@ emit_plan() {
               main-push-paths:*) reason="main-push-paths:$(platform_summary)" ;;
             esac
           fi
-          # Preserve post-merge Android device readback whenever the changed
-          # paths select Android. iOS-only, OHOS-only and irrelevant pushes no
-          # longer spend emulator capacity.
-          test "$run_android" = true && run_emulators=true
+          # Task #26 closure: routine main pushes no longer run the device
+          # suite; nightly and explicit manual dispatch keep the readback.
+          run_device_suite=false
+          run_canonical_final=false
+          attachment_api_levels="[]"
           ;;
         release-*)
-          # Preserve the release branch's deterministic full readback. Release
-          # validation is not reduced by source-path inference.
+          # Release branches keep the platform readback, but routine release
+          # pushes no longer run the device suite (nightly/manual keep it).
           mark_all_platforms
-          run_emulators=true
+          run_device_suite=false
+          run_canonical_final=false
+          attachment_api_levels="[]"
           reason="release-push-full-readback"
           ;;
         *)
@@ -218,7 +228,11 @@ emit_plan() {
       ;;
     schedule|workflow_dispatch)
       mark_all_platforms
-      run_emulators=true
+      # Task #26 closure: nightly/manual keep the full device suite, the
+      # canonical-final readback, and all three attachment API legs.
+      run_device_suite=true
+      run_canonical_final=true
+      attachment_api_levels="[29,31,34]"
       reason="${event_name}-full-readback"
       ;;
     *)
@@ -227,15 +241,25 @@ emit_plan() {
       ;;
   esac
 
-  if test "$run_emulators" = true && test "$run_android" != true; then
-    echo "invalid CI plan: emulator jobs require Android" >&2
+  if test "$run_device_suite" = true && test "$run_android" != true; then
+    echo "invalid CI plan: device suite requires Android" >&2
+    return 1
+  fi
+  if test "$run_canonical_final" = true && test "$run_android" != true; then
+    echo "invalid CI plan: canonical-final requires Android" >&2
+    return 1
+  fi
+  if test "$attachment_api_levels" != "[]" && test "$run_android" != true; then
+    echo "invalid CI plan: attachment legs require Android" >&2
     return 1
   fi
 
   printf 'run_android=%s\n' "$run_android"
   printf 'run_ios=%s\n' "$run_ios"
   printf 'run_ohos=%s\n' "$run_ohos"
-  printf 'run_emulators=%s\n' "$run_emulators"
+  printf 'run_device_suite=%s\n' "$run_device_suite"
+  printf 'run_canonical_final=%s\n' "$run_canonical_final"
+  printf 'attachment_api_levels=%s\n' "$attachment_api_levels"
   printf 'reason=%s\n' "$reason"
 }
 
@@ -259,13 +283,15 @@ self_test() {
     fi
   }
 
-  local none=$'run_android=false\nrun_ios=false\nrun_ohos=false\nrun_emulators=false'
-  local android=$'run_android=true\nrun_ios=false\nrun_ohos=false\nrun_emulators=false'
-  local ios=$'run_android=false\nrun_ios=true\nrun_ohos=false\nrun_emulators=false'
-  local ohos=$'run_android=false\nrun_ios=false\nrun_ohos=true\nrun_emulators=false'
-  local native=$'run_android=false\nrun_ios=true\nrun_ohos=true\nrun_emulators=false'
-  local all=$'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_emulators=false'
-  local all_emulators=$'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_emulators=true'
+  local ds=false; local cf=false; local att='[]'
+  local none=$'run_android=false\nrun_ios=false\nrun_ohos=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
+  local android=$'run_android=true\nrun_ios=false\nrun_ohos=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
+  local ios=$'run_android=false\nrun_ios=true\nrun_ohos=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
+  local ohos=$'run_android=false\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
+  local native=$'run_android=false\nrun_ios=true\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
+  local all=$'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
+  local full_ci_pr=$'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=true\nrun_canonical_final=false\nattachment_api_levels=[31]'
+  local nightly=$'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=true\nrun_canonical_final=true\nattachment_api_levels=[29,31,34]'
 
   assert_plan "$none"$'\nreason=pull-request-no-test-paths' \
     pull_request false feature $'docs/readme.md\n'
@@ -287,33 +313,36 @@ self_test() {
     pull_request false feature $'.github/workflows/test.yml\n'
   assert_plan "$all"$'\nreason=pull-request-diff-unavailable-fail-closed' \
     pull_request false feature "$UNKNOWN_PATH_SENTINEL"$'\n'
-  assert_plan $'run_android=true\nrun_ios=true\nrun_ohos=false\nrun_emulators=false\nreason=pull-request-paths:android,ios' \
+  assert_plan $'run_android=true\nrun_ios=true\nrun_ohos=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ios' \
     pull_request false feature $'compose/androidApp/src/main/kotlin/Example.kt\ncompose/iosApp/iosApp/Example.swift\n'
-  assert_plan "$all_emulators"$'\nreason=pull-request-full-ci' \
+  assert_plan "$full_ci_pr"$'\nreason=pull-request-full-ci' \
     pull_request true feature $'docs/readme.md\n'
   assert_plan "$all"$'\nreason=merge-group-deterministic-all' \
     merge_group false gh-readonly-queue/main/pr-1 ''
   assert_plan "$none"$'\nreason=main-push-no-test-paths' \
     push false main $'docs/readme.md\n'
-  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=false\nrun_emulators=true\nreason=main-push-paths:android' \
+  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:android' \
     push false main $'compose/androidApp/src/main/kotlin/Example.kt\n'
-  assert_plan $'run_android=false\nrun_ios=true\nrun_ohos=false\nrun_emulators=false\nreason=main-push-paths:ios' \
+  assert_plan $'run_android=false\nrun_ios=true\nrun_ohos=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:ios' \
     push false main $'compose/iosApp/iosApp/Example.swift\n'
-  assert_plan "$all_emulators"$'\nreason=main-push-diff-unavailable-fail-closed' \
+  assert_plan $'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-diff-unavailable-fail-closed' \
     push false main "$UNKNOWN_PATH_SENTINEL"$'\n'
   # Task #26 option A: ordinary main pushes (commonMain catch-all) no longer
   # compile iOS; the nightly readback covers them.
-  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_emulators=true\nreason=main-push-paths:android,ohos' \
+  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:android,ohos' \
     push false main $'compose/shared/src/commonMain/kotlin/Example.kt\n'
   # Pushes that can affect iOS keep the iOS compile.
-  assert_plan "$all_emulators"$'\nreason=main-push-paths:android,ios,ohos' \
+  assert_plan $'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:android,ios,ohos' \
     push false main $'compose/shared/src/commonMain/kotlin/Example.kt\ncompose/iosApp/iosApp/Example.swift\n'
-  assert_plan "$all_emulators"$'\nreason=main-push-ci-control' \
+  assert_plan $'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-ci-control' \
     push false main $'.github/workflows/test.yml\n'
-  assert_plan "$all_emulators"$'\nreason=release-push-full-readback' \
+  assert_plan $'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=release-push-full-readback' \
     push false release-1.9.0 $'docs/readme.md\n'
-  assert_plan "$all_emulators"$'\nreason=schedule-full-readback' \
+  assert_plan "$nightly"$'\nreason=schedule-full-readback' \
     schedule false main ''
+  # Task #26 closure: manual dispatch keeps the full device suite too.
+  assert_plan "$nightly"$'\nreason=workflow_dispatch-full-readback' \
+    workflow_dispatch false main ''
   if emit_plan pull_request "$work/paths" maybe feature >/dev/null 2>&1; then
     echo "invalid full-ci flag unexpectedly passed" >&2
     return 1

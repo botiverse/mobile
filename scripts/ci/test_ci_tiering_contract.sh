@@ -70,9 +70,12 @@ raise "iOS compile is not iOS-path gated" unless jobs.dig("ios", "if").include?(
 %w[fork-deps ohos-receipt-selftest ohos ohos-host].each do |job|
   raise "#{job} is not OHOS-path gated" unless jobs.dig(job, "if").include?("run_ohos")
 end
-%w[android-device android-minimum-supported-attachment-runtime android-canonical-final-actual-host].each do |job|
-  raise "#{job} is not emulator-tier gated" unless jobs.dig(job, "if").include?("run_emulators")
-end
+raise "android-device suite is not device-suite gated" unless
+  jobs.dig("android-device", "if").include?("run_device_suite")
+raise "canonical-final is not nightly/manual gated" unless
+  jobs.dig("android-canonical-final-actual-host", "if").include?("run_canonical_final")
+raise "attachment authority is not API-level selected" unless
+  jobs.dig("android-minimum-supported-attachment-runtime", "if").include?("attachment_api_levels")
 kuikly_steps = jobs.fetch("kuikly-artifacts").fetch("steps")
 raise "Kuikly manifest admission gate is not hosted" unless kuikly_steps.any? do |step|
   step["run"]&.include?("verify_kuikly_release_manifest.sh")
@@ -83,7 +86,7 @@ raise "Kuikly gate regressed to gitlink/source publication" if kuikly_steps.any?
 end
 
 plan_outputs = jobs.fetch("plan").fetch("outputs").keys
-raise "platform plan outputs drifted" unless plan_outputs == %w[run_android run_ios run_ohos run_emulators reason]
+raise "platform plan outputs drifted" unless plan_outputs == %w[run_android run_ios run_ohos run_device_suite run_canonical_final attachment_api_levels reason]
 plan_script = jobs.fetch("plan").fetch("steps").find { |step| step["id"] == "plan" }.fetch("run")
 raise "PR diff does not use merge-base semantics" unless plan_script.include?('write_changed_paths "$BASE_SHA" "$HEAD_SHA" merge-base')
 raise "main push diff is not directly path-scoped" unless plan_script.include?('write_changed_paths "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" direct')
