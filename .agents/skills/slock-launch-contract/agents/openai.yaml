@@ -1,4 +1,4 @@
 interface:
-  display_name: "Slock Launch Contract"
-  short_description: "Audit route payloads and canonical facts"
-  default_prompt: "Use $slock-launch-contract to audit Slock route/pageData payloads and canonical store boundaries."
+  display_name: "Raft Launch Contract"
+  short_description: "Audit Raft route identity and store authority"
+  default_prompt: "Use $slock-launch-contract to audit Raft route/pageData, candidate snapshot, mounted cache, and canonical store boundaries."

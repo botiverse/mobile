@@ -1,106 +1,73 @@
-# 自定义 Module 各平台 Native 实现
+# Native Module implementations
 
-以 `KRMyLogModule` 为例，展示各平台如何实现 Kuikly 侧定义的三个方法：`log`（异步无返回值）、`logWithCallback`（异步带回调）、`syncLog`（同步有返回值）。
+This reference describes registration and dispatch shapes. Always verify imports and signatures against the project's exact Kuikly renderer version.
 
-## Contents
-- [Android 侧](#android-侧)
-- [iOS 侧](#ios-侧)
-- [鸿蒙侧 (ArkTS)](#鸿蒙侧-arkts)
-- [鸿蒙侧 (C)](#鸿蒙侧-c)
-- [H5 侧](#h5-侧)
-- [小程序侧](#小程序侧)
+The examples assume shared `moduleName() == "KRMyLogModule"` and JSON methods named `log`, `logWithCallback`, and `syncLog`.
 
----
+## Android
 
-## Android 侧
-
-### 1. 创建 Module 类
-
-继承 `KuiklyRenderBaseModule`，重写 `call` 方法。根据参数类型选择重写：
-- `call(method, params: String?, callback)` — 接收 JSON 字符串参数
-- `call(method, params: Any?, callback)` — 接收基本类型/数组参数
+### Implement
 
 ```kotlin
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
-import android.util.Log
+import org.json.JSONObject
 
-class KRMyLogModule : KuiklyRenderBaseModule() {
-
-    override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
-        return when (method) {
-            "log" -> log(params ?: "")
-            "logWithCallback" -> logWithCallback(params ?: "", callback)
-            "syncLog" -> syncLog(params ?: "")
-            else -> super.call(method, params, callback)
+internal class KRMyLogModule : KuiklyRenderBaseModule() {
+    override fun call(
+        method: String,
+        params: String?,
+        callback: KuiklyRenderCallback?,
+    ): Any? = when (method) {
+        "log" -> {
+            log(parseContent(params))
+            null
         }
+        "logWithCallback" -> {
+            log(parseContent(params))
+            callback?.invoke(mapOf("result" to "ok"))
+            null
+        }
+        "syncLog" -> {
+            log(parseContent(params))
+            "ok"
+        }
+        else -> super.call(method, params, callback)
     }
 
-    private fun log(content: String) {
-        Log.d("MyLog", content)
-    }
+    private fun parseContent(params: String?): String =
+        runCatching { JSONObject(params.orEmpty()).optString("content") }.getOrDefault("")
 
-    private fun logWithCallback(content: String, callback: KuiklyRenderCallback?) {
-        Log.d("MyLog", content)
-        callback?.invoke(mapOf("result" to 1))
-    }
-
-    private fun syncLog(content: String): String {
-        Log.d("MyLog", content)
-        return "success"
-    }
+    private fun log(content: String) = Unit
 }
 ```
 
-### 2. 注册 Module
+The `JSONObject` shared overload arrives as a JSON string. The `Array<Any>` overload uses `call(method, params: Any?, callback)` and must be decoded according to the renderer's exact atomic transport types.
 
-在实现了 `KuiklyRenderViewDelegatorDelegate` 接口的类中注册：
+### Register
 
 ```kotlin
-override fun registerExternalModule(kuiklyRenderExport: IKuiklyRenderExport) {
-    super.registerExternalModule(kuiklyRenderExport)
-    with(kuiklyRenderExport) {
-        moduleExport("KRMyLogModule") {
-            KRMyLogModule()
-        }
-    }
+override fun registerExternalModule(export: IKuiklyRenderExport) {
+    super.registerExternalModule(export)
+    export.moduleExport("KRMyLogModule") { KRMyLogModule() }
 }
 ```
 
-> ⚠️ 注册名字必须与 Kuikly 侧 `moduleName()` 返回值一致。
+Register through the actual delegator used by every relevant render surface. In apps with activity and embedded render views, add a source-contract test proving both reach the same export path.
 
-### 线程说明
+## iOS
 
-| 调用方式 | 执行线程 | 注意事项 |
-|---------|---------|---------|
-| `syncToNativeMethod` | Kuikly 线程 | 避免耗时操作，会阻塞渲染 |
-| `asyncToNativeMethod` | 主线程(UI线程) | 避免耗时操作，会阻塞 UI |
+Kuikly iOS resolves native modules through the Objective-C runtime. The runtime class name must equal shared `moduleName()`.
 
----
-
-## iOS 侧
-
-### 1. 创建 Module 类
-
-继承 `KRBaseModule`，**类名必须与 Kuikly 侧 `moduleName()` 返回值一致**（iOS 通过类名动态创建 Module）。
+### Objective-C
 
 ```objc
 // KRMyLogModule.h
-#import <Foundation/Foundation.h>
-#import "KRBaseModule.h"
-
-NS_ASSUME_NONNULL_BEGIN
+#import <OpenKuiklyIOSRender/KRBaseModule.h>
 
 @interface KRMyLogModule : KRBaseModule
-
 @end
-
-NS_ASSUME_NONNULL_END
 ```
-
-### 2. 实现方法
-
-方法名与 Kuikly 侧 `toNative` 的 `methodName` 一致，参数固定为 `NSDictionary`。
 
 ```objc
 // KRMyLogModule.m
@@ -108,271 +75,124 @@ NS_ASSUME_NONNULL_END
 
 @implementation KRMyLogModule
 
-// 异步无返回值
 - (void)log:(NSDictionary *)args {
-    NSString *content = args[KR_PARAM_KEY];
-    NSLog(@"log: %@", content);
+    NSDictionary *payload = [self payloadFromArgs:args];
+    NSString *content = [payload[@"content"] isKindOfClass:NSString.class]
+        ? payload[@"content"] : @"";
+    (void)content;
 }
 
-// 异步带回调
 - (void)logWithCallback:(NSDictionary *)args {
-    NSString *content = args[KR_PARAM_KEY];
-    NSLog(@"log: %@", content);
-
+    [self log:args];
     KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
-    callback(@{ @"result": @1 });
+    if (callback) callback(@{ @"result": @"ok" });
 }
 
-// 同步有返回值
 - (id)syncLog:(NSDictionary *)args {
-    NSString *content = args[KR_PARAM_KEY];
-    NSLog(@"log: %@", content);
-    return @"success";
+    [self log:args];
+    return @"ok";
+}
+
+- (NSDictionary *)payloadFromArgs:(NSDictionary *)args {
+    id raw = args[KR_PARAM_KEY];
+    if ([raw isKindOfClass:NSDictionary.class]) return raw;
+    if (![raw isKindOfClass:NSString.class]) return @{};
+    NSData *data = [(NSString *)raw dataUsingEncoding:NSUTF8StringEncoding];
+    id value = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    return [value isKindOfClass:NSDictionary.class] ? value : @{};
 }
 
 @end
 ```
 
-**关键常量：**
-- `KR_PARAM_KEY` — 获取 Kuikly 侧传递的参数
-- `KR_CALLBACK_KEY` — 获取 Kuikly 侧传递的回调闭包
+No separate export map is needed for this standard ObjC runtime path, but the class must be linked into the host target. A class present only in source or in the wrong target is not registered.
 
-> ⚠️ iOS 侧无需额外注册步骤，框架通过类名自动发现。
-> ⚠️ 如果使用 Swift 实现，需要 `@objc` 或 `@objcMembers` 注解修饰类。
+### Swift
 
----
+Bare `@objc` does not guarantee the required unqualified runtime name. Pin it explicitly and expose Objective-C selectors:
 
-## 鸿蒙侧 (ArkTS)
+```swift
+@objc(KRMyLogModule)
+final class KRMyLogModule: KRBaseModule {
+    @objc(log:)
+    func log(_ args: NSDictionary) { /* decode args[KR_PARAM_KEY] */ }
 
-### 1. 创建 Module 类
+    @objc(syncLog:)
+    func syncLog(_ args: NSDictionary) -> Any { "ok" }
+}
+```
 
-继承 `KuiklyRenderBaseModule`，实现 `syncMode()` 和 `call` 方法。
+Verify with `NSClassFromString("KRMyLogModule")` in a native test and compile the actual host target.
+
+## HarmonyOS / OHOS ArkTS
+
+### Implement
 
 ```ts
-import { KRAny, KuiklyRenderBaseModule, KuiklyRenderCallback } from '@kuikly/render';
+import {
+  KRAny,
+  KuiklyRenderBaseModule,
+  KuiklyRenderCallback,
+} from '@kuikly-open/render';
 
 export class KRMyLogModule extends KuiklyRenderBaseModule {
-    static readonly MODULE_NAME = "KRMyLogModule";
+  static readonly MODULE_NAME: string = 'KRMyLogModule';
 
-    // 同步模式：运行在 Kuikly 线程，支持同步和异步调用
-    // 异步模式：运行在 UI 线程，只支持异步调用
-    syncMode(): boolean {
-        return true;
-    }
+  syncMode(): boolean {
+    return true;
+  }
 
-    call(method: string, params: KRAny, callback: KuiklyRenderCallback | null): KRAny {
-        switch (method) {
-            case 'log':
-                this.log(params as string);
-                return null;
-            case 'logWithCallback':
-                this.logWithCallback(params as string, callback);
-                return null;
-            case 'syncLog':
-                return this.syncLog(params as string);
-        }
+  call(method: string, params: KRAny, callback: KuiklyRenderCallback | null): KRAny {
+    switch (method) {
+      case 'log':
+        this.log(params);
+        return null;
+      case 'logWithCallback':
+        this.log(params);
+        callback?.({ result: 'ok' });
+        return null;
+      case 'syncLog':
+        this.log(params);
+        return 'ok';
+      default:
         return null;
     }
+  }
 
-    private log(content: string) {
-        console.log(`log: ${content}`);
-    }
-
-    private logWithCallback(content: string, callback: KuiklyRenderCallback | null) {
-        console.log(`log: ${content}`);
-        callback?.({ "result": 1 });
-    }
-
-    private syncLog(content: string): string {
-        console.log(`log: ${content}`);
-        return "success";
-    }
+  private log(params: KRAny): void {
+    // Decode the JSON-string or atomic transport shape used by the shared overload.
+    console.info(params?.toString() ?? '');
+  }
 }
 ```
 
-### 2. 注册 Module
+`syncMode() == true` runs the module in Kuikly's thread mode and supports sync plus async calls. `false` is UI-thread/async-only; do not make shared sync calls to such a module.
 
-在实现了 `IKuiklyViewDelegate` 接口的类中注册：
+### Register
 
 ```ts
-export class KuiklyViewDelegate extends IKuiklyViewDelegate {
-    getCustomRenderModuleCreatorRegisterMap(): Map<string, KRRenderModuleExportCreator> {
-        const map: Map<string, KRRenderModuleExportCreator> = new Map();
-        map.set(KRMyLogModule.MODULE_NAME, () => new KRMyLogModule());
-        return map;
-    }
+getCustomRenderModuleCreatorRegisterMap(): Map<string, KRRenderModuleExportCreator> {
+  const map = new Map<string, KRRenderModuleExportCreator>();
+  map.set(KRMyLogModule.MODULE_NAME, () => new KRMyLogModule());
+  return map;
 }
 ```
 
-### syncMode 说明
+Import the creator type and base class from the exact installed `@kuikly-open/render` version. Build with the project's Hvigor/lockfile rather than assuming the skill checkout package shape.
 
-| syncMode() | 执行线程 | 支持的调用方式 |
-|------------|---------|-------------|
-| `true` | Kuikly 线程 | 同步调用 + 异步调用 |
-| `false` | UI 线程 | 仅异步调用 |
+## OHOS C module
 
----
+Use `KRRenderModuleRegisterV2` only when the project intentionally implements the module in C/C++. Confirm ownership of returned `KRAnyData`, callback context lifetime, and ArkTS-vs-C precedence in the exact renderer source. Do not introduce a C module only to avoid ordinary ArkTS registration.
 
-## 鸿蒙侧 (C)
+## H5 and mini-app
 
-适用于需要在 C 层实现高性能 Module 的场景。
+Both use the web renderer's `KuiklyRenderBaseModule` and host export mechanism, but available browser/mini-app globals and thread behavior differ. Read the project's `core-render-web` and host adapter before implementing. Do not copy Android imports or assume `window`/`wx` exists in common code.
 
-### 1. 实现 Module
+## Cross-platform checklist
 
-```c
-static void* MyModuleOnConstruct(const char *moduleName) {
-    return nullptr;
-}
-
-static void MyModuleOnDestruct(const void* moduleInstance) {
-    // 清理资源
-}
-
-static KRAnyData MyModuleOnCallMethod(
-    const void* moduleInstance,
-    const char* moduleName,
-    int sync,
-    const char *method,
-    KRAnyData param,
-    KRRenderModuleCallbackContext context) {
-
-    if (context) {
-        // 异步回调示例
-        char* result = "{\"key\":\"value\"}";
-        KRRenderModuleDoCallback(context, result);
-    }
-
-    std::string resultString(method ? method : "");
-    resultString.append(" handled.");
-    return KRAnyDataCreateString(resultString.c_str());
-}
-```
-
-### 2. 注册 Module
-
-推荐在 `InitKuikly` 过程中注册：
-
-```c
-KRRenderModuleRegisterV2("KRMyLogModule",
-    &MyModuleOnConstruct,
-    &MyModuleOnDestruct,
-    &MyModuleOnCallMethod,
-    nullptr);
-```
-
-> ⚠️ 返回值 `KRAnyData` 由框架释放，不需要额外调用 `KRAnyDataDestroy`。
-> ⚠️ ArkTS Module 和 C Module 同时存在时，优先调用 C Module。
-
----
-
-## H5 侧
-
-### 1. 创建 Module 类
-
-继承 `KuiklyRenderBaseModule`，实现方式与 Android 侧一致：
-
-```kotlin
-import com.tencent.kuikly.core.render.web.export.KuiklyRenderBaseModule
-import com.tencent.kuikly.core.render.web.ktx.KuiklyRenderCallback
-
-class KRMyLogModule : KuiklyRenderBaseModule() {
-
-    override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
-        return when (method) {
-            "log" -> log(params ?: "")
-            "logWithCallback" -> logWithCallback(params ?: "", callback)
-            "syncLog" -> syncLog(params ?: "")
-            else -> null
-        }
-    }
-
-    private fun log(content: String) {
-        console.log("log: $content")
-    }
-
-    private fun logWithCallback(content: String, callback: KuiklyRenderCallback?) {
-        console.log("log: $content")
-        callback?.invoke(mapOf(
-            "result" to "1",
-            "locationHref" to window.location.href  // 可使用 H5 宿主 API
-        ))
-    }
-
-    private fun syncLog(content: String): String {
-        console.log("log: $content")
-        return "success"
-    }
-
-    companion object {
-        const val MODULE_NAME = "KRMyLogModule"
-    }
-}
-```
-
-### 2. 注册 Module
-
-```kotlin
-override fun registerExternalModule(kuiklyRenderExport: IKuiklyRenderExport) {
-    super.registerExternalModule(kuiklyRenderExport)
-    with(kuiklyRenderExport) {
-        moduleExport("KRMyLogModule") {
-            KRMyLogModule()
-        }
-    }
-}
-```
-
----
-
-## 小程序侧
-
-### 1. 创建 Module 类
-
-与 H5 侧类似，但可通过 `NativeApi.plat` 访问微信 `wx` 对象：
-
-```kotlin
-import com.tencent.kuikly.core.render.web.export.KuiklyRenderBaseModule
-import com.tencent.kuikly.core.render.web.ktx.KuiklyRenderCallback
-
-class KRMyLogModule : KuiklyRenderBaseModule() {
-
-    override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
-        return when (method) {
-            "log" -> log(params ?: "")
-            "logWithCallback" -> logWithCallback(params ?: "", callback)
-            "syncLog" -> syncLog(params ?: "")
-            else -> null
-        }
-    }
-
-    private fun log(content: String) {
-        console.log("log: $content")
-    }
-
-    private fun logWithCallback(content: String, callback: KuiklyRenderCallback?) {
-        console.log("log: $content")
-        callback?.invoke(mapOf(
-            "result" to "1",
-            "platform" to NativeApi.plat.getSystemInfoSync().platform  // 访问 wx 对象
-        ))
-    }
-
-    private fun syncLog(content: String): String {
-        console.log("log: $content")
-        return "success"
-    }
-
-    companion object {
-        const val MODULE_NAME = "KRMyLogModule"
-    }
-}
-```
-
-### 2. 注册方式
-
-同 H5 侧，在 `registerExternalModule` 中注册。
-
-### 小程序特有 API
-
-- `NativeApi.plat` — 全局 `wx` 对象（如 `NativeApi.plat.showToast`）
-- `NativeApi.globalThis` — 微信小程序全局 `global` 对象
+- Exact module and method names match.
+- JSON vs atomic payload encoding matches on each platform.
+- Sync methods return bridge-supported values and never block on slow work.
+- Callback result shape matches shared parsing; repeated callbacks have explicit teardown.
+- Page destruction, cancellation, duplicate result and unsupported platform are safe.
+- Native class/file is linked into the actual target and every render entry uses the registration path.
