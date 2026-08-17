@@ -565,8 +565,8 @@ const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 internal const val SLOCK_APP_SHELL_CHILD_TAB_PAGE = "compose_app_shell_child_tab"
 internal const val SLOCK_CONVERSATION_FORWARD_PAGER_EVENT = "slockConversationForwardRequested"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
-private const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
-private const val AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD = "slockAuthChooseServerSkipInitialLoad"
+internal const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
+internal const val AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD = "slockAuthChooseServerSkipInitialLoad"
 private const val APP_SHELL_SUPPRESS_RESTORE_LANDING = "slockSuppressRestoreLanding"
 private const val APP_SHELL_AUTH_GATE_INSTANCE_ID = "slockAuthGateInstanceId"
 
@@ -580,7 +580,7 @@ internal sealed interface AuthGateMessage {
 }
 
 @Composable
-private fun AuthGateMessage?.localizedMessage(): String? =
+internal fun AuthGateMessage?.localizedMessage(): String? =
     when (this) {
         is AuthGateMessage.Dynamic -> value
         is AuthGateMessage.Static -> value.localized()
@@ -713,7 +713,7 @@ private data class AppShellChildTabRegistration(
     val replacedEntryId: Int
 )
 
-private object AppShellChildTabRegistry {
+internal object AppShellChildTabRegistry {
     private val entries = mutableMapOf<String, AppShellChildTabEntry>()
     private var nextDebugId = 0
 
@@ -909,116 +909,6 @@ internal class ComposeBottomTabBarSmokePage : build.raft.app.base.BasePager() {
 }
 
 
-
-@Page(AUTH_CHOOSE_SERVER_PAGE, supportInLocal = true)
-internal class ComposeAuthChooseServerPage : build.raft.app.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { AuthChooseServerPageContent() }
-    }
-}
-
-@Page(SLOCK_APP_SHELL_PAGE, supportInLocal = true)
-internal class ComposeSlockAppShellPage : build.raft.app.base.BasePager() {
-    private var initialAuthRestoreTick by mutableStateOf(0)
-    private var adaptivePane by mutableStateOf(SlockAdaptivePaneState())
-    private var conversationForwardRequestTick by mutableStateOf(0)
-
-    override fun willInit() {
-        super.willInit()
-        setContent {
-            val timestampDisplayState = retainedSlockTimestampDisplayState(pagerId)
-            SlockTimestampDisplayScope(timestampDisplayState) {
-                SlockAppShellContent(
-                    pageVisibleTick = slockPageVisibleResumeTick,
-                    initialAuthRestoreTick = initialAuthRestoreTick,
-                    pageVisible = slockPageVisible,
-                    adaptivePane = adaptivePane,
-                    conversationForwardRequestTick = conversationForwardRequestTick
-                )
-            }
-        }
-    }
-
-    override fun onSlockPageDidAppear(isInitialAppearance: Boolean) {
-        if (isInitialAppearance) {
-            initialAuthRestoreTick += 1
-        }
-    }
-
-    override fun onSlockAdaptivePaneChanged(eventData: JSONObject) {
-        val event = eventData.toSlockAdaptivePaneEventOrNull() ?: return
-        adaptivePane = reduceSlockAdaptivePane(adaptivePane, event)
-    }
-
-    override fun onReceivePagerEvent(pagerEvent: String, eventData: JSONObject) {
-        super.onReceivePagerEvent(pagerEvent, eventData)
-        if (pagerEvent == SLOCK_CONVERSATION_FORWARD_PAGER_EVENT) {
-            conversationForwardRequestTick += 1
-        }
-    }
-}
-
-@Page(SLOCK_APP_SHELL_CHILD_TAB_PAGE, supportInLocal = true)
-internal class ComposeSlockAppShellChildTabPage : build.raft.app.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { SlockAppShellChildTabPageContent() }
-    }
-}
-
-@Composable
-private fun SlockAppShellChildTabPageContent() {
-    val pager = LocalActivity.current.getPager() as Pager
-    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val shellId = pager.pageData.params.optString("shellId")
-    val tab = retainedAppShellSelectedTab(pager.pageData.params.optString("tab"))
-    val entry = AppShellChildTabRegistry.entry(shellId)
-    if (entry == null) {
-        LaunchedEffect(shellId, tab) {
-            bridge.log("app_shell_child_tab_registry_entry shellId=$shellId pageDataTab=$tab result=missing")
-        }
-        PageErrorContent(
-            title = "App Shell",
-            subtitle = "Child tab host",
-            iconName = SlockLucideIconName.House,
-            message = "Could not attach child tab",
-            code = "child_tab_registry_missing"
-        )
-        return
-    }
-    val active = appShellChildTabIsActive(entry.parentVisible, entry.selectedTab, tab)
-    val retained = tab in entry.retainedTabs
-    LaunchedEffect(shellId, tab, entry.debugId) {
-        bridge.log(
-            "app_shell_child_tab_registry_entry shellId=$shellId pageDataTab=$tab " +
-                "result=hit entryId=${entry.debugId} selectedTab=${entry.selectedTab}"
-        )
-    }
-    LaunchedEffect(tab, active, entry.selectedTab) {
-        if (active) {
-            bridge.log(
-                "app_shell_child_tab_render shellId=$shellId pageDataTab=$tab " +
-                    "pageTab=$tab selectedTab=${entry.selectedTab} active=$active entryId=${entry.debugId}"
-            )
-        }
-    }
-    if (appShellChildPageRendersContent(active = active, retained = retained)) {
-        val renderer = entry.rendererFor(tab)
-        val modalHostState = entry.modalHostState
-        SlockTimestampDisplayScope(entry.timestampDisplayState) {
-            if (modalHostState != null) {
-                SlockUnifiedDialogHostProvider(modalHostState) {
-                    renderer(tab, active)
-                }
-            } else {
-                renderer(tab, active)
-            }
-        }
-    } else {
-        Box(modifier = Modifier.fillMaxSize())
-    }
-}
 
 @Serializable
 internal data class KuiklySettingsHomePayload(
@@ -15062,138 +14952,6 @@ private fun String.toVisualFixtureSharedSettingsDestination(): SharedSettingsDes
     }
 
 @Composable
-private fun AuthChooseServerPageContent() {
-    RememberKmmResourceLocaleSeedFromLocalActivity()
-    val pager = LocalActivity.current.getPager() as Pager
-    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val fromShell = remember(pager.pageData.params.toString()) {
-        pager.pageData.params.optBoolean(AUTH_CHOOSE_SERVER_FROM_SHELL, false)
-    }
-    val sourceStoreScope = remember(pager.pageData.params.toString(), pager.pagerId) {
-        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
-    }
-    val sourceDocumentShell = remember(pager.pageData.params.toString()) {
-        pager.pageData.params.optBoolean(SLOCK_DOCUMENT_SHELL, false)
-    }
-    val skipInitialLoad = remember(pager.pageData.params.toString()) {
-        pager.pageData.params.optBoolean(AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD, false)
-    }
-    val closeChooser = remember(pager) {
-        { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
-    }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
-    rememberAuthRuntimeCapabilities(
-        store = sharedStores.authRuntimeCapabilityStore,
-        pageData = pager.pageData.params
-    )
-    val bridgeCallScope = rememberCoroutineScope()
-    val avatarNativeCache =
-        remember(bridge, bridgeCallScope) {
-            BridgeSlockAvatarNativeCache(
-                bridge = bridge,
-                bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
-            )
-        }
-    val authDataSource = remember(sharedStores, avatarNativeCache) {
-        sharedStores.createAuthDataSourceForCurrentEnvironment(avatarNativeCache)
-    }
-    var session by remember { mutableStateOf<StoredAuthSession?>(null) }
-    var errorPresentation by remember { mutableStateOf<AuthGateMessage?>(null) }
-    var restoreAttempt by remember { mutableStateOf(0) }
-    val errorMessage = errorPresentation.localizedMessage()
-
-    LaunchedEffect(fromShell, skipInitialLoad) {
-        authDataSource.logDiagnostics(
-            "auth_choose_server_page_enter fromShell=$fromShell skipInitialLoad=$skipInitialLoad"
-        )
-    }
-
-    LaunchedEffect(sharedStores.authStore, restoreAttempt) {
-        runCatchingPreservingCancellation { sharedStores.authStore.readSession() }
-            .onSuccess { restored ->
-                session = restored
-                authDataSource.logDiagnostics(
-                    "auth_choose_server_page_session result=${if (restored == null) "missing" else "success"} " +
-                        "serversCount=${restored?.servers?.size ?: 0} " +
-                        "selectedServer=${!restored?.selectedServerId.isNullOrBlank()} " +
-                        "restoreAttempt=$restoreAttempt"
-                )
-                errorPresentation =
-                    if (restored == null) {
-                        AuthGateMessage.Static(MR.strings.auth_error_choose_server_sign_in_required.desc())
-                    } else {
-                        null
-                    }
-            }
-            .onFailure {
-                session = null
-                authDataSource.logDiagnostics(
-                    "auth_choose_server_page_session result=failure restoreAttempt=$restoreAttempt"
-                )
-                errorPresentation = AuthGateMessage.Static(MR.strings.auth_error_restore_session.desc())
-            }
-    }
-
-    when (val restoredSession = session) {
-        null -> {
-            if (errorMessage == null) {
-                AppShellRestoreSplashContent()
-            } else {
-                AppShellAuthErrorContent(
-                    message =
-                        errorMessage
-                            ?: stringResource(MR.strings.auth_error_choose_server_sign_in_required),
-                    onRetry = {
-                        errorPresentation = null
-                        session = null
-                        restoreAttempt += 1
-                    },
-                    onSignIn = { pager.openLoginReplacingCurrentPage() },
-                    onOpenDiagnostics = { pager.openAppShellDeveloper() },
-                    onBack = closeChooser.takeIf { fromShell }
-                )
-            }
-        }
-        else ->
-            AppShellServerGateContent(
-                session = restoredSession.copy(selectedServerId = null, selectedServerSlug = null),
-                authDataSource = authDataSource,
-                skipInitialLoad = skipInitialLoad,
-                onReady = { readySession ->
-                    val multiShellHostEnabled =
-                        slockPlatformSupportsMultiShellHost() &&
-                            KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
-                                .readMultiShellHostEnabledSync()
-                    val opensDocumentShell =
-                        isMultiShellCrossServerSelection(
-                            sourceStoreScope = sourceStoreScope,
-                            selectedServerId = readySession.selectedServerId,
-                            multiShellHostEnabled = multiShellHostEnabled
-                        )
-                    if (!opensDocumentShell) {
-                        bridge.realtimeDisconnect("server_changed")
-                    }
-                    pager.openAppShellReplacingCurrentPage(
-                        pageData =
-                            appShellPageDataForServerSelection(
-                                sourceStoreScope = sourceStoreScope,
-                                sourceDocumentShell = sourceDocumentShell,
-                                selectedServerId = readySession.selectedServerId,
-                                multiShellHostEnabled = multiShellHostEnabled,
-                                suppressRestoreLanding = true
-                            )
-                    )
-                },
-                onSignOut = {
-                    bridge.realtimeDisconnect("logout")
-                    pager.openLoginReplacingCurrentPage()
-                },
-                onBack = closeChooser.takeIf { fromShell }
-            )
-    }
-}
-
-@Composable
 internal fun AuthChooseServerVisualContent() {
     val session = remember { authChooseServerVisualSession() }
     val store = remember(session) { InMemorySlockAuthSessionStore(session) }
@@ -15350,7 +15108,7 @@ private class AuthChooseServerVisualApi(
         AuthApiResult.Failure(code = 400)
 }
 
-private fun Pager.openAppShellDeveloper() {
+internal fun Pager.openAppShellDeveloper() {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(
             AUTH_ABOUT_PAGE,
@@ -15374,7 +15132,7 @@ private fun Pager.openAuthChooseServerPage(
         )
 }
 
-private fun Pager.openAppShellReplacingCurrentPage(pageData: JSONObject) {
+internal fun Pager.openAppShellReplacingCurrentPage(pageData: JSONObject) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(SLOCK_APP_SHELL_PAGE, pageData)
 }
@@ -15469,7 +15227,7 @@ private fun slockAuthRoutePageData(pageName: String, replaceCurrent: Boolean): J
     }
 
 @Composable
-private fun AppShellServerGateContent(
+internal fun AppShellServerGateContent(
     session: StoredAuthSession,
     authDataSource: SharedAuthDataSource,
     skipInitialLoad: Boolean = false,
@@ -15866,7 +15624,7 @@ private fun AppShellServerEmptyState(
 
 
 @Composable
-private fun AppShellAuthErrorContent(
+internal fun AppShellAuthErrorContent(
     message: String,
     onRetry: () -> Unit,
     onSignIn: () -> Unit,
@@ -21441,7 +21199,7 @@ private fun AppShellRestoreLogoBadge(text: String, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun PageErrorContent(
+internal fun PageErrorContent(
     title: String,
     subtitle: String,
     iconName: SlockLucideIconName?,
