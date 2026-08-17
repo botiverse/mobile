@@ -7289,7 +7289,7 @@ class ThreadPayloadTest {
         assertEquals("parent-channel", found.payload.parentChannelId)
         assertEquals("parent-message", found.payload.parentMessageId)
         assertEquals("reply-stream", found.payload.streamChannelId)
-        assertEquals(listOf("taskByNumber:parent-channel:541"), api.calls)
+        assertEquals(listOf("taskByNumber:server-1:parent-channel:541"), api.calls)
     }
 
     @Test
@@ -7521,7 +7521,7 @@ class ThreadPayloadTest {
 
         val found = assertIs<MarkdownTaskNumberOpenResult.Found>(result)
         assertEquals(SharedTaskReferenceResolutionSource.NetworkChannel, found.source)
-        assertEquals(listOf("taskByNumber:parent-channel:541"), api.calls)
+        assertEquals(listOf("taskByNumber:server-1:parent-channel:541"), api.calls)
     }
 
     @Test
@@ -7834,7 +7834,11 @@ class ThreadPayloadTest {
                             )
                         }
 
-                        override suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse {
+                        override suspend fun convertMessage(
+                            serverId: ServerId,
+                            messageId: MessageId
+                        ): HomeNetworkResponse {
+                            assertEquals(ServerId("server-1"), serverId)
                             convertCalls += 1
                             return HomeNetworkResponse(code = 204, bodyText = null)
                         }
@@ -7879,12 +7883,15 @@ class ThreadPayloadTest {
                             return HomeNetworkResponse(code = 200, bodyText = """{"tasks":[]}""")
                         }
 
-                        override suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse =
+                        override suspend fun convertMessage(
+                            serverId: ServerId,
+                            messageId: MessageId
+                        ): HomeNetworkResponse =
                             HomeNetworkResponse(
                                 code = 200,
                                 bodyText =
                                     """{"task":{"id":"message-convert","channelId":"channel-1","taskNumber":291,"title":"convert me","status":"todo","createdByType":"user","createdById":"user-1"}}"""
-                            )
+                            ).also { assertEquals(ServerId("server-1"), serverId) }
 
                         override suspend fun updateTaskStatus(
                             taskId: TaskId,
@@ -7925,8 +7932,12 @@ class ThreadPayloadTest {
                             return HomeNetworkResponse(code = 200, bodyText = """{"tasks":[]}""")
                         }
 
-                        override suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse =
+                        override suspend fun convertMessage(
+                            serverId: ServerId,
+                            messageId: MessageId
+                        ): HomeNetworkResponse =
                             HomeNetworkResponse(code = 204, bodyText = null)
+                                .also { assertEquals(ServerId("server-1"), serverId) }
 
                         override suspend fun updateTaskStatus(
                             taskId: TaskId,
@@ -7965,8 +7976,12 @@ class ThreadPayloadTest {
                             return HomeNetworkResponse(code = 200, bodyText = """{"tasks":[]}""")
                         }
 
-                        override suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse =
+                        override suspend fun convertMessage(
+                            serverId: ServerId,
+                            messageId: MessageId
+                        ): HomeNetworkResponse =
                             HomeNetworkResponse(code = 500, bodyText = null)
+                                .also { assertEquals(ServerId("server-1"), serverId) }
 
                         override suspend fun updateTaskStatus(
                             taskId: TaskId,
@@ -9145,11 +9160,12 @@ class ThreadPayloadTest {
         }
 
         override suspend fun taskByNumber(
+            serverId: ServerId,
             channelId: ChannelId,
             taskNumber: Int,
             priority: DataRequestPriority
         ): HomeNetworkResponse {
-            calls += "taskByNumber:${channelId.value}:$taskNumber"
+            calls += "taskByNumber:${serverId.value}:${channelId.value}:$taskNumber"
             return HomeNetworkResponse(code = 200, bodyText = channelTaskBody)
         }
 
