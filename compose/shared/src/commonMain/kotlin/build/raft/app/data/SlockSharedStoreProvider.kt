@@ -84,6 +84,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
@@ -462,6 +463,85 @@ internal class SlockSharedStoreProvider private constructor(
             ProcessReadStateV1DiagnosticOverride.controller.setOnChanged(canary::refreshEffectiveState)
         }
     }
+
+    private suspend fun handlePresenceTransportConnected(
+        grant: RealtimeGrantRecord,
+        transportEpoch: Long
+    ) {
+        var rebaselineResult: ProcessPresenceTransportRebaselineResult? = null
+        var rebaselineOwner: ProcessServerMembersOwner? = null
+        val admitted =
+            realtimeAuthorityProvider.runIfCurrentGrant(grant) {
+                val context = replyCacheAuthContext.value
+                if (
+                    context == null ||
+                    context.authorityGeneration != grant.authGeneration ||
+                    context.accountId != grant.principalId
+                ) {
+                    return@runIfCurrentGrant
+                }
+                val owner = context.ownerFor(grant.serverId) ?: return@runIfCurrentGrant
+                rebaselineOwner = owner
+                rebaselineResult =
+                    processMemberPresenceRegistry.rebaselineTransport(
+                        owner = owner,
+                        writeGeneration = context.writeGeneration,
+                        transport =
+                            ProcessPresenceTransportEpoch(
+                                connectionFamilyId = grant.connectionFamilyId,
+                                epoch = transportEpoch
+                            )
+                    )
+            }
+        val result = rebaselineResult
+        if (
+            !admitted ||
+            result == null ||
+            result == ProcessPresenceTransportRebaselineResult.Rejected
+        ) {
+            return
+        }
+        val owner = rebaselineOwner ?: return
+
+        // A force caller otherwise joins any already-active pre-connect
+        // roster flight. Retire that flight/cache once, before every shell
+        // joins the new current-transport request.
+        processServerMembersCore.invalidate(
+            owner = owner,
+            reason = "presence_transport_connected"
+        )
+        val activeScopes = scopesForServer(grant.serverId).toSet()
+        val stores =
+            buildList {
+                add(serverMembersStore)
+                shellServerMembersStores.entries().forEach { (scope, store) ->
+                    if (scope in activeScopes) add(store)
+                }
+            }.distinct()
+        sharedInfoLogger("SlockPresence", "presence_transport_rebaseline")(
+            "serverId=${grant.serverId} epoch=$transportEpoch result=${result.name} stores=${stores.size}"
+        )
+        coroutineScope {
+            stores.forEach { store ->
+                launch {
+                    try {
+                        store.refreshMembers(
+                            serverId = ServerId(grant.serverId),
+                            priority = DataRequestPriority.Background,
+                            force = true,
+                            reason = "presence_transport_connected"
+                        )
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (error: Throwable) {
+                        sharedWarnLogger("SlockPresence", "presence_transport_rebaseline")(
+                            "serverId=${grant.serverId} refresh_failed=${error::class.simpleName ?: "unknown"}"
+                        )
+                    }
+                }
+            }
+        }
+    }
     private var authSessionClearedSubscription: RealtimeSubscription? = null
     private var authSessionClearLogger: ((String) -> Unit)? = null
     private val activeAppShellPagerOwner = AppShellActivePagerOwner()
@@ -549,6 +629,7 @@ internal class SlockSharedStoreProvider private constructor(
             mapper = RealtimeEventMapper(messageShadowObserver = messageShadowObserver),
             nativeHost = BridgeProcessRealtimeNativeHost(bridge),
             scope = threadSendScope,
+            onPresenceTransportConnected = ::handlePresenceTransportConnected,
         ).start()
         threadSendScope.launch {
             realtimeAuthorityProvider.registerScope(
@@ -2395,6 +2476,7 @@ internal class SharedRealtimeDomainEventOwner(
         grant: RealtimeGrantRecord,
         event: RealtimeEvent,
         source: String = "unknown",
+        presenceTransportEpoch: Long? = null,
     ): Boolean =
         runGuardedCanonicalShadowFirst(
             RealtimeCanonicalFinalOwnerEntry.Process,
@@ -2405,7 +2487,12 @@ internal class SharedRealtimeDomainEventOwner(
             // Process transport grants never capture shell surfaces. The
             // canonical commit still runs first, including with zero mounted
             // sinks, before process-global cursor/tasks/presence mutate once.
-            acceptGuarded(serverId, acceptedEvent, acceptedSource, grant.presenceAdmission())
+            acceptGuarded(
+                serverId,
+                acceptedEvent,
+                acceptedSource,
+                grant.presenceAdmission(presenceTransportEpoch)
+            )
         }
 
     suspend fun acceptTerminalProcessMutation(

@@ -926,7 +926,7 @@ class SharedServerMembersStoreTest {
             )
         )
 
-        store.applyAgentActivitySnapshot(
+        store.applyAgentActivitySnapshotForTest(
             ServerId("server-1"),
             MemberId("agent-1"),
             listOf(
@@ -968,7 +968,7 @@ class SharedServerMembersStoreTest {
                 serverSeq = 10L
             )
         )
-        store.applyAgentActivitySnapshot(
+        store.applyAgentActivitySnapshotForTest(
             ServerId("server-1"),
             MemberId("agent-1"),
             listOf(
@@ -1007,12 +1007,12 @@ class SharedServerMembersStoreTest {
                 timestamp = timestamp
             )
 
-        store.applyAgentActivitySnapshot(
+        store.applyAgentActivitySnapshotForTest(
             ServerId("server-1"),
             MemberId("agent-1"),
             listOf(statusEntry("activity-new", "working", "Building", "200"))
         )
-        store.applyAgentActivitySnapshot(
+        store.applyAgentActivitySnapshotForTest(
             ServerId("server-1"),
             MemberId("agent-1"),
             listOf(statusEntry("activity-old", "offline", "Stopped", "100"))
@@ -1031,7 +1031,7 @@ class SharedServerMembersStoreTest {
         val store = SharedServerMembersStore(repository, presenceRegistry = registry)
         val owner = ProcessServerMembersOwner(environmentId = "local", accountId = "local", serverId = "server-1")
 
-        store.applyAgentActivitySnapshot(
+        store.applyAgentActivitySnapshotForTest(
             ServerId("server-1"),
             MemberId("agent-1"),
             listOf(
@@ -1045,7 +1045,7 @@ class SharedServerMembersStoreTest {
                 )
             )
         )
-        store.applyAgentActivitySnapshot(
+        store.applyAgentActivitySnapshotForTest(
             ServerId("server-1"),
             MemberId("agent-1"),
             listOf(

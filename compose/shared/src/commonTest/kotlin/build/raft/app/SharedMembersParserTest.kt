@@ -1049,6 +1049,45 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun agentLifecyclePrimaryActionPrefersResolvedPresenceSsotOverDetailFallback() {
+        assertEquals(
+            MembersAgentLifecycleAction.Start,
+            membersResolvedPrimaryLifecycleAction(
+                resolvedStatus = AgentStatus.Offline,
+                detailFallbackStatus = AgentStatus.Working,
+                deleted = false
+            )
+        )
+        assertEquals(
+            MembersAgentLifecycleAction.Stop,
+            membersResolvedPrimaryLifecycleAction(
+                resolvedStatus = AgentStatus.Working,
+                detailFallbackStatus = AgentStatus.Offline,
+                deleted = false
+            )
+        )
+        assertEquals(
+            null,
+            membersResolvedPrimaryLifecycleAction(
+                resolvedStatus = null,
+                detailFallbackStatus = AgentStatus.Working,
+                deleted = false,
+                hasResolvedPresence = true
+            ),
+            "an explicit unknown SSOT state must not expose a stale lifecycle action"
+        )
+        assertEquals(
+            MembersAgentLifecycleAction.Stop,
+            membersResolvedPrimaryLifecycleAction(
+                resolvedStatus = null,
+                detailFallbackStatus = AgentStatus.Working,
+                deleted = false,
+                hasResolvedPresence = false
+            )
+        )
+    }
+
+    @Test
     fun agentManagementMenuMatchesReactHeaderActions() {
         val onlineItems =
             buildMembersManagementMenuItems(

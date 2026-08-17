@@ -912,6 +912,25 @@ internal fun membersPrimaryLifecycleAction(status: AgentStatus?, deleted: Boolea
         }
     }
 
+internal fun membersResolvedPrimaryLifecycleAction(
+    resolvedStatus: AgentStatus?,
+    detailFallbackStatus: AgentStatus?,
+    deleted: Boolean,
+    hasResolvedPresence: Boolean = resolvedStatus != null
+): MembersAgentLifecycleAction? =
+    when {
+        deleted -> null
+        // During reconnect reconciliation the presence SSOT deliberately
+        // publishes an explicit unknown state. Do not turn an old detail
+        // fallback into an unsafe Start/Stop action in that window.
+        hasResolvedPresence && resolvedStatus == null -> null
+        else ->
+            membersPrimaryLifecycleAction(
+                status = if (hasResolvedPresence) resolvedStatus else detailFallbackStatus,
+                deleted = false
+            )
+    }
+
 @Page(MEMBERS_SMOKE_PAGE, supportInLocal = true)
 internal class ComposeMembersSmokePage : build.raft.app.base.BasePager() {
     override fun willInit() {
@@ -2121,6 +2140,8 @@ private class MemberDetailRouteProvider(
         // Agent profile content is deliberately cold-loaded. A roster seed has no revision or
         // canonical runtime authority and may never be kept as if it were a successful response.
         val loadPlan = memberDetailLoadPlan(hasCachedDetail = false)
+        val presenceRequest =
+            serverMembersStore.beginAgentDetailPresenceProjection(server.id, selectedId)
         return when (val detailResult = memberRepository.getAgentDetail(loadPlan.priority, selectedId)) {
             is DataResult.Content -> {
                 if (!isCurrentRequest()) return MemberDetailRouteState.Error("member_request_stale")
@@ -2132,7 +2153,7 @@ private class MemberDetailRouteProvider(
                         serverId = server.id
                     )
                 )
-                serverMembersStore.applyAgentDetailSnapshot(server.id, detailResult.data)
+                serverMembersStore.applyAgentDetailSnapshot(presenceRequest, detailResult.data)
                 MemberDetailRouteState.Agent(
                     server = server,
                     currentUserId = currentUserId
@@ -2748,6 +2769,8 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 serverId = current.server.id,
                 generation = generation
             )
+        val presenceRequest =
+            provider.serverMembersStore.beginAgentActivityPresenceProjection(current.server.id, agentId)
         agentActivityLoadState = membersAgentActivityLoadStart(hasCachedActivity)
         val result = provider.loadAgentActivity(agentId)
         val routeServerId = (routeState as? MemberDetailRouteState.Agent)?.server?.id
@@ -2760,7 +2783,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                     serverId = current.server.id
                 )
             )
-            provider.serverMembersStore.applyAgentActivitySnapshot(current.server.id, agentId, result.data)
+            provider.serverMembersStore.applyAgentActivitySnapshot(presenceRequest, agentId, result.data)
         }
         agentActivityLoadState = result.toMembersAgentActivityLoadState()
     }
@@ -8167,6 +8190,7 @@ private fun MembersAgentProfileTab(
         MembersAgentProfileActionsSection(
             member = member,
             detail = detail,
+            resolvedStatus = agentStatusIndicatorState,
             canManage = canManage,
             lifecycleInFlight = lifecycleInFlight,
             diagnosticActionState = diagnosticActionState,
@@ -8182,6 +8206,7 @@ private fun MembersAgentProfileTab(
 private fun MembersAgentProfileActionsSection(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
+    resolvedStatus: SlockAgentStatusIndicatorState?,
     canManage: Boolean,
     lifecycleInFlight: String?,
     diagnosticActionState: MembersAgentDiagnosticActionState?,
@@ -8194,8 +8219,17 @@ private fun MembersAgentProfileActionsSection(
     val deleted = summary?.deletedAt?.isNotBlank() == true
     if (!canManage || deleted) return
 
-    val status = member.membersAgentStatusDisplayState(summary?.status, summary?.activity).status
-    val primaryAction = membersPrimaryLifecycleAction(status, deleted = false)
+    // The action reads the same process presence SSOT as the header/avatar.
+    // Detail summary remains only the pre-resolution fallback, so the screen
+    // cannot say Stopped while simultaneously offering Stop Agent.
+    val primaryAction =
+        membersResolvedPrimaryLifecycleAction(
+            resolvedStatus = resolvedStatus?.status,
+            detailFallbackStatus =
+                member.membersAgentStatusDisplayState(summary?.status, summary?.activity).status,
+            deleted = false,
+            hasResolvedPresence = resolvedStatus != null
+        )
     val primaryLabel =
         when (primaryAction) {
             MembersAgentLifecycleAction.Start -> stringResource(MR.strings.member_action_start_agent)

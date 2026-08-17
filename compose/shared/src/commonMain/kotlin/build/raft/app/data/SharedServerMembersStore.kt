@@ -478,18 +478,32 @@ class SharedServerMembersStore internal constructor(
         // partition — the SSOT read edge. flatMapLatest over the owner flow so
         // this mounted flow rebinds automatically on login / account switch /
         // environment change; no copy of presence ever sits in store state.
-        val presenceFactFlow: Flow<MemberPresenceUpdated?> =
+        val presenceOwnerSnapshotFlow: Flow<ProcessPresenceOwnerSnapshot> =
             presenceOwnerFlow(scopedServerId)
                 .flatMapLatest { owner ->
-                    owner?.let { presenceRegistry.factsFlow(it) } ?: flowOf(emptyMap())
+                    owner?.let { presenceRegistry.ownerSnapshotFlow(it) }
+                        ?: flowOf(ProcessPresenceOwnerSnapshot(emptyMap(), transport = null))
                 }
-                .map { facts -> facts[cleanMemberId] }
                 .distinctUntilChanged()
         return combine(
             scopedMemberProfileFlow(scopedServerId, cleanMemberId),
-            presenceFactFlow
-        ) { member, presenceFact ->
-            member.toSharedServerMemberStatus(presenceFact)
+            presenceOwnerSnapshotFlow
+        ) { member, presenceOwnerSnapshot ->
+            val presenceFact = presenceOwnerSnapshot.facts[cleanMemberId]
+            if (presenceOwnerSnapshot.transport != null && presenceFact == null) {
+                // A native reconnect retired the profile's pre-connect status.
+                // Publish an explicit neutral resolution (rather than null,
+                // which UI consumers interpret as permission to fall back to
+                // the stale profile) until the request-fenced forced roster
+                // refresh, current detail, or realtime repopulates this member.
+                SharedServerMemberStatus(
+                    status = null,
+                    presence = Presence.Offline,
+                    statusLabel = "—"
+                )
+            } else {
+                member.toSharedServerMemberStatus(presenceFact)
+            }
         }.distinctUntilChanged()
     }
 
@@ -727,7 +741,13 @@ class SharedServerMembersStore internal constructor(
                 ?: current.profileCacheByServerId
         // task #136: presence lives only in the registry — evict the deleted
         // member's fact from THIS server's owner partition (never cross-server).
-        presenceOwner(serverId)?.let { owner -> presenceRegistry.evict(owner, memberKey) }
+        presenceWrite(serverId)?.let { write ->
+            presenceRegistry.evict(
+                owner = write.owner,
+                memberId = memberKey,
+                writeGeneration = write.writeGeneration
+            )
+        }
         if (!changed) return false
         _state.value =
             current.copy(
@@ -889,38 +909,84 @@ class SharedServerMembersStore internal constructor(
         presenceRegistry.apply(write.owner, event, write.writeGeneration)
     }
 
-    fun applyAgentActivitySnapshot(
+    /** Capture before issuing a current agent-detail request. */
+    internal fun beginAgentDetailPresenceProjection(
         serverId: ServerId,
+        agentId: MemberId
+    ): ProcessPresenceProjectionRequest? {
+        val write = presenceWrite(serverId) ?: return null
+        return presenceRegistry.captureDetailProjectionRequest(
+            owner = write.owner,
+            memberId = agentId.value,
+            writeGeneration = write.writeGeneration
+        )
+    }
+
+    /** Capture before issuing a durable Activity-history request. */
+    internal fun beginAgentActivityPresenceProjection(
+        serverId: ServerId,
+        agentId: MemberId
+    ): ProcessPresenceProjectionRequest? {
+        val write = presenceWrite(serverId) ?: return null
+        return presenceRegistry.captureHistoricalProjectionRequest(
+            owner = write.owner,
+            memberId = agentId.value,
+            writeGeneration = write.writeGeneration
+        )
+    }
+
+    internal fun applyAgentActivitySnapshot(
+        request: ProcessPresenceProjectionRequest?,
         agentId: MemberId,
         activity: List<AgentActivityEntry>
     ) {
+        if (request == null || request.source != ProcessPresenceProjectionSource.Historical) return
         val projection = activity.latestAgentActivityStatusProjection() ?: return
-        applyAgentActivityProjection(serverId, agentId, projection)
+        applyAgentActivityProjection(request, agentId, projection)
     }
 
-    fun applyAgentDetailSnapshot(serverId: ServerId, detail: AgentDetailSnapshot) {
-        val projection =
-            detail.activity.latestAgentActivityStatusProjection()
-                ?: detail.summary.agentActivityStatusFallbackProjection()
-                ?: return
-        applyAgentActivityProjection(serverId, detail.agentId, projection)
+    internal fun applyAgentDetailSnapshot(
+        request: ProcessPresenceProjectionRequest?,
+        detail: AgentDetailSnapshot
+    ) {
+        if (request == null || request.source != ProcessPresenceProjectionSource.DetailCurrent) return
+        // Agent detail summary.activity is the current server state. Prefer it
+        // over the durable trajectory so an old run_command row cannot become
+        // current after the agent stopped (or vice versa). Only this current
+        // snapshot may replace a sequenced fact, and only under the request
+        // fence captured before the network call.
+        val currentProjection = detail.summary.agentActivityStatusFallbackProjection()
+        val projection = currentProjection ?: detail.activity.latestAgentActivityStatusProjection() ?: return
+        applyAgentActivityProjection(
+            request =
+                if (currentProjection != null) {
+                    request
+                } else {
+                    request.copy(
+                        source = ProcessPresenceProjectionSource.Historical,
+                        requestVersion = 0L,
+                        baseRequestVersion = null
+                    )
+                },
+            agentId = detail.agentId,
+            projection = projection
+        )
     }
 
     private fun applyAgentActivityProjection(
-        serverId: ServerId,
+        request: ProcessPresenceProjectionRequest,
         agentId: MemberId,
         projection: AgentActivityStatusProjection
     ) {
         val memberId = agentId.value.trim()
-        if (memberId.isBlank()) return
-        val write = presenceWrite(serverId) ?: return
+        if (memberId.isBlank() || memberId != request.memberId) return
         // Gap-fill path: never displaces a seq-carrying realtime fact, and
         // (task #137(b)) the registry's evidence watermark rejects a stale
-        // or evidence-less snapshot once fresher evidence has been seen.
+        // or evidence-less snapshot once fresher evidence has been seen. A
+        // current detail summary uses the stronger request-fenced path.
         presenceRegistry.applyProjection(
-            write.owner,
-            projection.toMemberPresenceUpdated(agentId),
-            write.writeGeneration,
+            request = request,
+            event = projection.toMemberPresenceUpdated(agentId),
             evidenceTimestamp = projection.evidenceTimestamp
         )
     }
@@ -959,6 +1025,19 @@ class SharedServerMembersStore internal constructor(
             )
             return authSessionRequiredResult()
         }
+        val rosterPresenceRequest =
+            if (!force) {
+                null
+            } else {
+                presenceWrite(ServerId(key))
+                    ?.takeIf { it.owner == owner }
+                    ?.let { write ->
+                        presenceRegistry.captureRosterProjectionRequest(
+                            owner = write.owner,
+                            writeGeneration = write.writeGeneration
+                        )
+                    }
+            }
         val localSeed =
             mutex.withLock {
                 if (publishedProcessVersionsByOwner[owner] == null) {
@@ -1038,6 +1117,11 @@ class SharedServerMembersStore internal constructor(
                                         )
 
                                 )
+                            applyAuthoritativeRosterPresence(
+                                request = rosterPresenceRequest,
+                                serverId = normalizedKey,
+                                profiles = snapshot.members
+                            )
                             cacheProfiles(normalizedKey, snapshot.members)
                             putEntry(
                                 normalizedKey,
@@ -1093,6 +1177,36 @@ class SharedServerMembersStore internal constructor(
                     result.map { Unit }
                 }
             } ?: DataResult.Error(ScreenError(code = "members_owner_stale", retryable = true))
+        }
+    }
+
+    private fun applyAuthoritativeRosterPresence(
+        request: ProcessPresenceRosterProjectionRequest?,
+        serverId: String,
+        profiles: List<MemberProfile>
+    ) {
+        if (request == null || request.owner.serverId != serverId) return
+        profiles.forEach { profile ->
+            val status =
+                profile.agentStatus
+                    ?.takeIf {
+                        profile.kind == MemberKind.Agent &&
+                            profile.agentDeletedAt.isNullOrBlank()
+                    }
+                    ?: return@forEach
+            val memberRequest = request.memberRequest(profile.id.value) ?: return@forEach
+            presenceRegistry.applyProjection(
+                request = memberRequest,
+                event =
+                    MemberPresenceUpdated(
+                        memberId = profile.id,
+                        presence = profile.presence,
+                        kind = MemberKind.Agent,
+                        agentStatus = status,
+                        statusLabel = status.label,
+                        serverSeq = null
+                    )
+            )
         }
     }
 

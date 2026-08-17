@@ -2028,6 +2028,8 @@ private fun SlockAppShellReadyContent(
         }
     val appShellAgentDetailStore =
         remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
+    val appShellPresenceTransportCursors =
+        remember(sharedStores, storeScope) { mutableMapOf<String, AppShellPresenceTransportCursor>() }
     val selectedServerId by selectedServerStore.selectedServerId.collectAsState()
     val canonicalFinalSelectedServerId =
         selectedServerId?.takeIf { it.isNotBlank() }
@@ -4272,7 +4274,53 @@ private fun SlockAppShellReadyContent(
         realtimeEventMapper,
         realtimeCallbackGate,
     ) {
-        val onRealtimeEvent: (JSONObject) -> Unit = { rawEventData ->
+        val onRealtimeEvent: (JSONObject) -> Unit = onRealtimeEvent@{ rawEventData ->
+            if (
+                rawEventData.optString(SlockRealtimeNotifyContract.KeyAction) ==
+                    SlockRealtimeNotifyContract.ActionPresenceTransportConnected
+            ) {
+                val serverId =
+                    rawEventData
+                        .optString(SlockRealtimeNotifyContract.KeyServerId)
+                        .trim()
+                        .takeIf { it.isNotBlank() }
+                val transportEpoch =
+                    rawEventData
+                        .optLong(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
+                        .takeIf { it > 0L }
+                val witness = rawEventData.realtimeConnectionWitnessOrNull()
+                val authority = processRealtimeAuthorityFlow.value
+                val shellServerId =
+                    selectedServerStore.selectedServerId.value
+                        ?: storeScope.initialServerId
+                if (
+                    serverId != null &&
+                    transportEpoch != null &&
+                    witness != null &&
+                    witness == authority?.witness &&
+                    authority?.grant(serverId) != null &&
+                    shouldRouteRealtimeEventToShell(shellServerId, serverId)
+                ) {
+                    val nextCursor =
+                        nextAppShellPresenceTransportCursor(
+                            previous = appShellPresenceTransportCursors[serverId],
+                            connectionFamilyId = witness.connectionFamilyId,
+                            transportEpoch = transportEpoch
+                        )
+                    if (nextCursor != null) {
+                        appShellPresenceTransportCursors[serverId] = nextCursor
+                        // Native posts this signal synchronously before any
+                        // event from the new socket. Reset here, before the
+                        // per-event coroutine launch, so a low post-restart
+                        // seq cannot race ahead of the rebaseline. The cursor
+                        // rejects duplicate or delayed old-epoch signals.
+                        appShellAgentDetailStore.dispatch(
+                            SharedAgentDetailIntent.ResetAgentActivitySeq
+                        )
+                    }
+                }
+                return@onRealtimeEvent
+            }
                 val eventDataSnapshot = rawEventData.toString()
                 val appearanceGenerationAtDelivery = latestVisibleAppearanceGeneration
                 appShellCoroutineScope.launch {
@@ -4379,7 +4427,11 @@ private fun SlockAppShellReadyContent(
                         sharedStores.processRealtimeDomainEventOwner().acceptProcessMutation(
                             grant,
                             event,
-                            source = "process_realtime"
+                            source = "process_realtime",
+                            presenceTransportEpoch =
+                                eventData
+                                    .optLong(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
+                                    .takeIf { it > 0L }
                         )
                     if (!processAccepted) return@launch
                     RealtimeCursorPolicy.appliedSeqForEvent(event)
@@ -21213,6 +21265,31 @@ internal fun shouldRouteRealtimeEventToShell(shellServerId: String?, eventServer
     val shellServer = shellServerId?.trim().takeUnless { it.isNullOrBlank() } ?: return false
     val eventServer = eventServerId?.trim().takeUnless { it.isNullOrBlank() } ?: return false
     return shellServer == eventServer
+}
+
+internal data class AppShellPresenceTransportCursor(
+    val connectionFamilyId: String,
+    val transportEpoch: Long
+)
+
+internal fun nextAppShellPresenceTransportCursor(
+    previous: AppShellPresenceTransportCursor?,
+    connectionFamilyId: String?,
+    transportEpoch: Long
+): AppShellPresenceTransportCursor? {
+    val family = connectionFamilyId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    if (transportEpoch <= 0L) return null
+    if (
+        previous != null &&
+        previous.connectionFamilyId == family &&
+        transportEpoch <= previous.transportEpoch
+    ) {
+        return null
+    }
+    return AppShellPresenceTransportCursor(
+        connectionFamilyId = family,
+        transportEpoch = transportEpoch
+    )
 }
 
 internal fun shouldProjectBackgroundServerUnread(

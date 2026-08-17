@@ -44,6 +44,7 @@ final class SlockIosRealtimeHost: NSObject {
         var authRefreshInFlight = false
         var generation: UInt64 = 0
         var resumeLastSeq: Int64 = 0
+        var presenceTransportEpoch: Int64 = 0
 
         init(serverId: String) {
             self.serverId = serverId
@@ -54,6 +55,7 @@ final class SlockIosRealtimeHost: NSObject {
     private var runtimes: [String: Runtime] = [:]
     private var processIdentity: ProcessIdentity?
     private var nextGeneration: UInt64 = 0
+    private var nextPresenceTransportEpoch: Int64 = 0
     private var foregroundEpoch: Int64 = 0
     private var didInstallObservers = false
 
@@ -296,7 +298,13 @@ final class SlockIosRealtimeHost: NSObject {
             self?.queue.async {
                 guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
                 runtime.state = .connected
-                self.log("socket_io_connected serverId=\(serverId) generation=\(generation)")
+                self.nextPresenceTransportEpoch += 1
+                runtime.presenceTransportEpoch = self.nextPresenceTransportEpoch
+                self.log(
+                    "socket_io_connected serverId=\(serverId) generation=\(generation) " +
+                        "presenceEpoch=\(runtime.presenceTransportEpoch)"
+                )
+                self.postPresenceTransportConnected(runtime: runtime)
                 self.rejoinChannels(runtime: runtime, reason: "connect")
             }
         }
@@ -361,6 +369,24 @@ final class SlockIosRealtimeHost: NSObject {
                 "authorityPrincipalId": params.authorityPrincipalId,
                 "authorityAuthGeneration": params.authorityAuthGeneration,
                 "authorityConnectionFamilyId": params.authorityConnectionFamilyId,
+                "presenceTransportEpoch": runtime.presenceTransportEpoch,
+            ]
+        )
+    }
+
+    private func postPresenceTransportConnected(runtime: Runtime) {
+        guard let params = runtime.connectParams, runtime.presenceTransportEpoch > 0 else { return }
+        NotificationCenter.default.post(
+            name: Notification.Name(GeneratedRealtimeContract.Notify.eventName),
+            object: nil,
+            userInfo: [
+                GeneratedRealtimeContract.PayloadKey.action: "presenceTransportConnected",
+                GeneratedRealtimeContract.PayloadKey.serverId: params.serverId,
+                "authorityScopeLeaseId": params.authorityScopeLeaseId,
+                "authorityPrincipalId": params.authorityPrincipalId,
+                "authorityAuthGeneration": params.authorityAuthGeneration,
+                "authorityConnectionFamilyId": params.authorityConnectionFamilyId,
+                "presenceTransportEpoch": runtime.presenceTransportEpoch,
             ]
         )
     }
