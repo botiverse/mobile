@@ -1,6 +1,8 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
@@ -83,7 +85,8 @@ private data class SharedTasksTaskMutation(
 
 private data class SharedTasksProjectionRoute(
     val channelId: ChannelId?,
-    val channelName: String?
+    val channelName: String?,
+    val canClaim: Boolean
 )
 
 internal enum class SharedTaskFactFoldOutcome {
@@ -112,14 +115,10 @@ private fun SharedTasksDataStoreState.foldCanonicalTask(
     val incomingRoute =
         SharedTasksProjectionRoute(
             channelId = incoming.channelId,
-            channelName = incoming.channelName
+            channelName = incoming.channelName,
+            canClaim = incoming.canClaim
         )
-    val nextRoutes =
-        if (incomingRoute.channelId != null || !incomingRoute.channelName.isNullOrBlank()) {
-            taskProjectionRoutes + (key to incomingRoute)
-        } else {
-            taskProjectionRoutes
-        }
+    val nextRoutes = taskProjectionRoutes + (key to incomingRoute)
     val route = nextRoutes[key]
     val incomingFact = incoming.withoutTaskProjectionRoute()
     val currentFact = canonicalTaskFacts[incoming.id]
@@ -131,7 +130,7 @@ private fun SharedTasksDataStoreState.foldCanonicalTask(
         currentFact != null &&
             revisionOrder == 0 &&
             (comparableRevisions || !currentServerHasRoute) &&
-            currentFact != incomingFact
+            !currentFact.hasSameCanonicalTaskFact(incomingFact)
 
     if (equalRevisionConflict && !(authoritativeRefresh && currentlyConflicted)) {
         val affectedServerIds =
@@ -203,13 +202,36 @@ private fun Long?.compareTaskRevision(existing: Long?): Int =
     }
 
 private fun TaskSummary.withoutTaskProjectionRoute(): TaskSummary =
-    copy(channelId = null, channelName = null)
+    copy(channelId = null, channelName = null, canClaim = true)
 
 private fun TaskSummary.withTaskProjectionRoute(route: SharedTasksProjectionRoute?): TaskSummary =
     copy(
         channelId = route?.channelId,
-        channelName = route?.channelName
+        channelName = route?.channelName,
+        canClaim = route?.canClaim ?: false
     )
+
+/**
+ * Compares only revision-owned task data. Member presentation is enriched independently by each
+ * Server and updatedAtLabel is a local rendering, so neither may turn one canonical revision into a
+ * false conflict. Authorization remains projection-local via [SharedTasksProjectionRoute].
+ */
+private fun TaskSummary.hasSameCanonicalTaskFact(other: TaskSummary): Boolean =
+    id == other.id &&
+        title == other.title &&
+        status == other.status &&
+        taskNumber == other.taskNumber &&
+        messageId == other.messageId &&
+        parentMessageId == other.parentMessageId &&
+        threadId == other.threadId &&
+        isThreadTask == other.isThreadTask &&
+        assignee.taskPrincipalIdentity() == other.assignee.taskPrincipalIdentity() &&
+        creator.taskPrincipalIdentity() == other.creator.taskPrincipalIdentity() &&
+        description == other.description &&
+        revision == other.revision
+
+private fun MemberProfile?.taskPrincipalIdentity(): Pair<MemberKind, String>? =
+    this?.let { profile -> profile.kind to profile.id.value }
 
 private fun Map<String, TaskSnapshot>.reprojectServerTask(
     fact: TaskSummary,

@@ -716,6 +716,37 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun equalRevisionIgnoresServerLocalPresentationAndKeepsAuthorizationLocal() = runBlocking {
+        val store = SharedTasksDataStore()
+        val hostAssignee =
+            MemberProfile(MemberId("global-user-1"), "Artin Host", "artin", MemberKind.Human)
+        val peerAssignee =
+            MemberProfile(MemberId("global-user-1"), "Artin Peer", "artin", MemberKind.Human)
+        val host =
+            task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-a"), revision = 7L)
+                .copy(assignee = hostAssignee, updatedAtLabel = "just now", canClaim = true)
+        val peer =
+            host.copy(
+                channelId = ChannelId("channel-b"),
+                assignee = peerAssignee,
+                updatedAtLabel = "1 minute ago",
+                canClaim = false
+            )
+
+        assertEquals(SharedTaskFactFoldOutcome.Accepted, store.upsertTask("server-a", host))
+        assertEquals(SharedTaskFactFoldOutcome.StaleIgnored, store.upsertTask("server-b", peer))
+
+        val serverA = store.projection("server-a", SharedTasksScope.Server).tasks.single()
+        val serverB = store.projection("server-b", SharedTasksScope.Server).tasks.single()
+        assertEquals(ChannelId("channel-a"), serverA.channelId)
+        assertEquals(ChannelId("channel-b"), serverB.channelId)
+        assertTrue(serverA.canClaim)
+        assertFalse(serverB.canClaim)
+        assertFalse(store.projection("server-a", SharedTasksScope.Server).needsCanonicalRefetch)
+        assertFalse(store.projection("server-b", SharedTasksScope.Server).needsCanonicalRefetch)
+    }
+
+    @Test
     fun sharedTasksDataStoreRejectsStaleRevisionAndFailsClosedOnEqualRevisionConflict() = runBlocking {
         val store = SharedTasksDataStore()
         val revisionOne = task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-a"), revision = 1L)
