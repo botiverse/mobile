@@ -34,6 +34,8 @@ object SlockRealtimeNotifyContract {
     const val KeyAuthorityPrincipalId = "authorityPrincipalId"
     const val KeyAuthorityAuthGeneration = "authorityAuthGeneration"
     const val KeyAuthorityConnectionFamilyId = "authorityConnectionFamilyId"
+    const val ActionPresenceTransportConnected = "presenceTransportConnected"
+    const val KeyPresenceTransportEpoch = "presenceTransportEpoch"
     const val ActionAppLifecycle = "appLifecycle"
     const val LifecycleVisibleResume = "resume"
     const val LifecycleVisibleShow = "show"

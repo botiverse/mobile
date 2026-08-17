@@ -65,6 +65,29 @@ class SettingsHomePageRealtimeTest {
     }
 
     @Test
+    fun presenceTransportCursorAcceptsOnlyNewEpochWithinAConnectionFamily() {
+        val first =
+            nextAppShellPresenceTransportCursor(
+                previous = null,
+                connectionFamilyId = "family-1",
+                transportEpoch = 3L
+            )
+        assertEquals(AppShellPresenceTransportCursor("family-1", 3L), first)
+        assertEquals(
+            null,
+            nextAppShellPresenceTransportCursor(first, "family-1", transportEpoch = 3L)
+        )
+        assertEquals(
+            null,
+            nextAppShellPresenceTransportCursor(first, "family-1", transportEpoch = 2L)
+        )
+        assertEquals(
+            AppShellPresenceTransportCursor("family-2", 1L),
+            nextAppShellPresenceTransportCursor(first, "family-2", transportEpoch = 1L)
+        )
+    }
+
+    @Test
     fun backgroundUnreadProjectionRequiresAnotherServerInTheAuthenticatedSession() {
         val session =
             sampleSession().copy(

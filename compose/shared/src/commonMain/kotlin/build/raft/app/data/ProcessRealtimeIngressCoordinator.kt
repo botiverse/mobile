@@ -33,6 +33,7 @@ internal class ProcessRealtimeIngressCoordinator(
     private val mapper: RealtimeEventMapper,
     private val nativeHost: ProcessRealtimeNativeHost,
     private val scope: CoroutineScope,
+    private val onPresenceTransportConnected: suspend (RealtimeGrantRecord, Long) -> Unit = { _, _ -> },
 ) {
     fun start() {
         events.addListener { raw ->
@@ -58,6 +59,26 @@ internal class ProcessRealtimeIngressCoordinator(
     }
 
     private suspend fun accept(eventData: JSONObject) {
+        if (
+            eventData.optString(SlockRealtimeNotifyContract.KeyAction) ==
+            SlockRealtimeNotifyContract.ActionPresenceTransportConnected
+        ) {
+            val serverId =
+                eventData
+                    .optString(SlockRealtimeNotifyContract.KeyServerId)
+                    .trim()
+                    .takeIf(String::isNotEmpty)
+                    ?: return
+            val transportEpoch =
+                eventData
+                    .optLong(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
+                    .takeIf { it > 0L }
+                    ?: return
+            val witness = eventData.processRealtimeWitnessOrNull() ?: return
+            val grant = authorityProvider.resolve(witness, serverId) ?: return
+            onPresenceTransportConnected(grant, transportEpoch)
+            return
+        }
         val event = decode(eventData) ?: return
         val envelopeServerId =
             eventData.optString(SlockRealtimeNotifyContract.KeyServerId).trim().takeIf(String::isNotEmpty)
@@ -81,7 +102,15 @@ internal class ProcessRealtimeIngressCoordinator(
                     },
                 )
             } else {
-                domainOwner.acceptProcessMutation(grant, event, source = "process_normal_realtime")
+                domainOwner.acceptProcessMutation(
+                    grant,
+                    event,
+                    source = "process_normal_realtime",
+                    presenceTransportEpoch =
+                        eventData
+                            .optLong(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
+                            .takeIf { it > 0L },
+                )
             }
         if (!accepted) return
         RealtimeCursorPolicy.appliedSeqForEvent(event)

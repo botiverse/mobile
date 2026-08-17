@@ -84,14 +84,20 @@ internal data class ProcessPresenceWrite(
 internal data class RealtimePresenceAdmission(
     val serverId: String,
     val principalId: String,
-    val authGeneration: Long
+    val authGeneration: Long,
+    val connectionFamilyId: String,
+    val transportEpoch: Long? = null
 )
 
-internal fun RealtimeGrantRecord.presenceAdmission(): RealtimePresenceAdmission =
+internal fun RealtimeGrantRecord.presenceAdmission(
+    transportEpoch: Long? = null
+): RealtimePresenceAdmission =
     RealtimePresenceAdmission(
         serverId = serverId,
         principalId = principalId,
-        authGeneration = authGeneration
+        authGeneration = authGeneration,
+        connectionFamilyId = connectionFamilyId,
+        transportEpoch = transportEpoch
     )
 
 /**
@@ -135,7 +141,18 @@ internal fun processMemberPresenceRealtimeSink(
     }
     if (dropReason == null && context != null) {
         context.ownerFor(admission.serverId)?.let { owner ->
-            registry.apply(owner, event, context.writeGeneration)
+            registry.apply(
+                owner = owner,
+                event = event,
+                writeGeneration = context.writeGeneration,
+                transport =
+                    admission.transportEpoch?.let { epoch ->
+                        ProcessPresenceTransportEpoch(
+                            connectionFamilyId = admission.connectionFamilyId,
+                            epoch = epoch
+                        )
+                    }
+            )
         }
     } else {
         try {
@@ -200,6 +217,61 @@ internal fun processPresenceBindingTransition(
     }
 }
 
+internal data class ProcessPresenceTransportEpoch(
+    val connectionFamilyId: String,
+    val epoch: Long
+) {
+    fun normalizedOrNull(): ProcessPresenceTransportEpoch? {
+        val family = connectionFamilyId.trim().takeIf { it.isNotBlank() } ?: return null
+        if (epoch <= 0L) return null
+        return copy(connectionFamilyId = family)
+    }
+}
+
+internal enum class ProcessPresenceTransportRebaselineResult {
+    Applied,
+    Current,
+    Rejected
+}
+
+/**
+ * Request-time fence for one REST presence projection. It freezes the auth
+ * generation, current transport epoch, and member mutation revision before
+ * the request leaves. A reconnect or realtime write during the request makes
+ * the response stale and therefore unable to overwrite current state.
+ */
+internal data class ProcessPresenceProjectionRequest(
+    val owner: ProcessServerMembersOwner,
+    val memberId: String,
+    val writeGeneration: Long,
+    val transport: ProcessPresenceTransportEpoch?,
+    val mutationVersion: Long
+)
+
+/** Server-roster request fence captured before a forced current-status refresh. */
+internal data class ProcessPresenceRosterProjectionRequest(
+    val owner: ProcessServerMembersOwner,
+    val writeGeneration: Long,
+    val transport: ProcessPresenceTransportEpoch?,
+    val mutationVersions: Map<String, Long>
+) {
+    fun memberRequest(memberId: String?): ProcessPresenceProjectionRequest? {
+        val key = memberId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return ProcessPresenceProjectionRequest(
+            owner = owner,
+            memberId = key,
+            writeGeneration = writeGeneration,
+            transport = transport,
+            mutationVersion = mutationVersions[key] ?: 0L
+        )
+    }
+}
+
+internal data class ProcessPresenceOwnerSnapshot(
+    val facts: Map<String, MemberPresenceUpdated>,
+    val transport: ProcessPresenceTransportEpoch?
+)
+
 internal class ProcessMemberPresenceRegistry {
 
     private data class Snapshot(
@@ -216,7 +288,18 @@ internal class ProcessMemberPresenceRegistry {
          * (same-account stale window); owner-keyed, so different accounts /
          * environments / servers never share a watermark.
          */
-        val projectionEvidence: Map<ProcessServerMembersOwner, Map<String, Long>> = emptyMap()
+        val projectionEvidence: Map<ProcessServerMembersOwner, Map<String, Long>> = emptyMap(),
+        /** Current native transport family/connection epoch for each owner. */
+        val transportEpochs: Map<ProcessServerMembersOwner, ProcessPresenceTransportEpoch> = emptyMap(),
+        /** Members whose seq-less fact came from an authoritative current-detail response. */
+        val authoritativeCurrentMembers: Map<ProcessServerMembersOwner, Set<String>> = emptyMap(),
+        /**
+         * Per-owner/member current-state mutation fence. Realtime,
+         * authoritative current-detail projection, and eviction advance it;
+         * historical Activity projections do not. Request tokens compare it
+         * atomically so history cannot invalidate a fresher current-state load.
+         */
+        val memberMutationVersions: Map<ProcessServerMembersOwner, Map<String, Long>> = emptyMap()
     )
 
     private val snapshot = MutableStateFlow(Snapshot(writeGeneration = 0L, partitions = emptyMap()))
@@ -232,6 +315,16 @@ internal class ProcessMemberPresenceRegistry {
     fun factsFlow(owner: ProcessServerMembersOwner): Flow<Map<String, MemberPresenceUpdated>> =
         snapshot.map { it.partitions[owner].orEmpty() }.distinctUntilChanged()
 
+    fun ownerSnapshotFlow(owner: ProcessServerMembersOwner): Flow<ProcessPresenceOwnerSnapshot> =
+        snapshot
+            .map { current ->
+                ProcessPresenceOwnerSnapshot(
+                    facts = current.partitions[owner].orEmpty(),
+                    transport = current.transportEpochs[owner]
+                )
+            }
+            .distinctUntilChanged()
+
     fun current(owner: ProcessServerMembersOwner): Map<String, MemberPresenceUpdated> =
         snapshot.value.partitions[owner].orEmpty()
 
@@ -244,21 +337,130 @@ internal class ProcessMemberPresenceRegistry {
      * EVERY CAS attempt, so a write racing [clearAll] can never resurrect a
      * retired fact on retry (post-merge audit blocker on PR #1054).
      */
-    fun apply(owner: ProcessServerMembersOwner, event: MemberPresenceUpdated, writeGeneration: Long) {
+    fun apply(
+        owner: ProcessServerMembersOwner,
+        event: MemberPresenceUpdated,
+        writeGeneration: Long,
+        transport: ProcessPresenceTransportEpoch? = null
+    ) {
         val memberId = event.memberId.value.trim()
         if (memberId.isBlank()) return
-        updateOwner(owner, writeGeneration) { facts ->
-            val previous = facts[memberId]
-            if (!event.shouldReplaceRegisteredPresenceFact(previous)) return@updateOwner facts
-            // Same visible presence: the CANONICAL FACT (and with it the seq
-            // watermark) must still advance — keeping the old seq let an
-            // out-of-order older event pass the >= gate later and roll status
-            // backwards (QA blocker on task #136: seq1 online → seq3 online
-            // kept watermark 1, then seq2 offline was accepted). Read edges
-            // absorb the equal-visible emission via distinctUntilChanged, so
-            // advancing costs no visible churn.
-            facts + (memberId to event)
+        val normalizedTransport = transport?.normalizedOrNull()
+        if (transport != null && normalizedTransport == null) return
+        while (true) {
+            val current = snapshot.value
+            if (writeGeneration != current.writeGeneration) return
+            val currentTransport = current.transportEpochs[owner]
+            val transportDisposition =
+                currentTransport.presenceTransportDisposition(normalizedTransport)
+            if (transportDisposition == PresenceTransportDisposition.Reject) return
+            val transportAdvanced = transportDisposition == PresenceTransportDisposition.Advance
+            val ownerFacts =
+                if (transportAdvanced) emptyMap()
+                else current.partitions[owner].orEmpty()
+            val previous = ownerFacts[memberId]
+            if (!event.shouldReplaceRegisteredPresenceFact(previous)) return
+            // Same visible presence still stores the newer canonical fact so
+            // its seq watermark advances. The current-state mutation fence
+            // advances in the same CAS, making an in-flight REST response stale.
+            val nextOwnerFacts = ownerFacts + (memberId to event)
+            val nextPartitions =
+                current.partitions
+                    .let { partitions -> if (transportAdvanced) partitions - owner else partitions }
+                    .let { partitions -> partitions + (owner to nextOwnerFacts) }
+            val nextTransportEpochs =
+                if (!transportAdvanced || normalizedTransport == null) current.transportEpochs
+                else current.transportEpochs + (owner to normalizedTransport)
+            val nextAuthoritativeCurrentMembers =
+                if (transportAdvanced) current.authoritativeCurrentMembers - owner
+                else current.authoritativeCurrentMembers
+            val nextMutationVersions =
+                current.memberMutationVersions.withAdvancedPresenceMutation(owner, memberId)
+            if (
+                snapshot.compareAndSet(
+                    current,
+                    current.copy(
+                        partitions = nextPartitions,
+                        transportEpochs = nextTransportEpochs,
+                        authoritativeCurrentMembers = nextAuthoritativeCurrentMembers,
+                        memberMutationVersions = nextMutationVersions
+                    )
+                )
+            ) {
+                return
+            }
         }
+    }
+
+    /**
+     * Marks a freshly connected native transport as the current epoch and
+     * drops only that owner's old seq baselines. The connection family is part
+     * of the identity because auth refresh creates a new family whose native
+     * epoch counter may legitimately restart at 1.
+     */
+    fun rebaselineTransport(
+        owner: ProcessServerMembersOwner,
+        writeGeneration: Long,
+        transport: ProcessPresenceTransportEpoch
+    ): ProcessPresenceTransportRebaselineResult {
+        val normalizedTransport = transport.normalizedOrNull()
+            ?: return ProcessPresenceTransportRebaselineResult.Rejected
+        while (true) {
+            val current = snapshot.value
+            if (writeGeneration != current.writeGeneration) {
+                return ProcessPresenceTransportRebaselineResult.Rejected
+            }
+            when (
+                current.transportEpochs[owner]
+                    .presenceTransportDisposition(normalizedTransport)
+            ) {
+                PresenceTransportDisposition.Reject ->
+                    return ProcessPresenceTransportRebaselineResult.Rejected
+                PresenceTransportDisposition.Same ->
+                    return ProcessPresenceTransportRebaselineResult.Current
+                PresenceTransportDisposition.Advance -> Unit
+            }
+            val next =
+                current.copy(
+                    partitions = current.partitions - owner,
+                    transportEpochs = current.transportEpochs + (owner to normalizedTransport),
+                    authoritativeCurrentMembers = current.authoritativeCurrentMembers - owner
+                )
+            if (snapshot.compareAndSet(current, next)) {
+                return ProcessPresenceTransportRebaselineResult.Applied
+            }
+        }
+    }
+
+    fun captureProjectionRequest(
+        owner: ProcessServerMembersOwner,
+        memberId: String?,
+        writeGeneration: Long
+    ): ProcessPresenceProjectionRequest? {
+        val key = memberId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val current = snapshot.value
+        if (writeGeneration != current.writeGeneration) return null
+        return ProcessPresenceProjectionRequest(
+            owner = owner,
+            memberId = key,
+            writeGeneration = writeGeneration,
+            transport = current.transportEpochs[owner],
+            mutationVersion = current.memberMutationVersions[owner]?.get(key) ?: 0L
+        )
+    }
+
+    fun captureRosterProjectionRequest(
+        owner: ProcessServerMembersOwner,
+        writeGeneration: Long
+    ): ProcessPresenceRosterProjectionRequest? {
+        val current = snapshot.value
+        if (writeGeneration != current.writeGeneration) return null
+        return ProcessPresenceRosterProjectionRequest(
+            owner = owner,
+            writeGeneration = writeGeneration,
+            transport = current.transportEpochs[owner],
+            mutationVersions = current.memberMutationVersions[owner].orEmpty()
+        )
     }
 
     /**
@@ -281,26 +483,61 @@ internal class ProcessMemberPresenceRegistry {
         writeGeneration: Long,
         evidenceTimestamp: Long? = null
     ) {
+        val request = captureProjectionRequest(owner, event.memberId.value, writeGeneration) ?: return
+        applyProjection(request, event, evidenceTimestamp)
+    }
+
+    fun applyProjection(
+        request: ProcessPresenceProjectionRequest,
+        event: MemberPresenceUpdated,
+        evidenceTimestamp: Long? = null,
+        authoritativeCurrent: Boolean = false,
+        replaceSequencedFact: Boolean = authoritativeCurrent
+    ) {
         val memberId = event.memberId.value.trim()
-        if (memberId.isBlank()) return
+        if (memberId.isBlank() || memberId != request.memberId) return
         while (true) {
             val current = snapshot.value
-            // The generation gate lives inside the CAS loop, same as
-            // updateOwner: a retry after losing the race to clearAll
-            // re-evaluates against the post-clear snapshot.
-            if (writeGeneration != current.writeGeneration) return
-            val ownerFacts = current.partitions[owner].orEmpty()
+            if (request.writeGeneration != current.writeGeneration) return
+            if (current.transportEpochs[request.owner] != request.transport) return
+            val mutationVersion = current.memberMutationVersions[request.owner]?.get(memberId) ?: 0L
+            if (mutationVersion != request.mutationVersion) return
+            val ownerFacts = current.partitions[request.owner].orEmpty()
             val previous = ownerFacts[memberId]
-            val watermark = current.projectionEvidence[owner]?.get(memberId)
-            if (evidenceTimestamp == null && watermark != null) return
-            if (evidenceTimestamp != null && watermark != null && evidenceTimestamp < watermark) return
+            val watermark = current.projectionEvidence[request.owner]?.get(memberId)
+            val hasAuthoritativeCurrentFact =
+                memberId in current.authoritativeCurrentMembers[request.owner].orEmpty()
+            if (!authoritativeCurrent) {
+                if (evidenceTimestamp == null && watermark != null) return
+                if (evidenceTimestamp != null && watermark != null && evidenceTimestamp < watermark) return
+            }
             val nextOwnerFacts =
                 when {
+                    // A fresh agent-detail summary is the server's current
+                    // state, not trajectory history. The request/mutation and
+                    // transport fences above make replacing an old seq fact
+                    // safe. Within one transport the old seq remains a floor;
+                    // after a confirmed transport advance the owner has
+                    // already been cleared, so the new epoch begins seq-less.
+                    authoritativeCurrent && (replaceSequencedFact || previous?.serverSeq == null) ->
+                        ownerFacts +
+                            (
+                                memberId to
+                                    event.copy(
+                                        // A current-detail response may repair the visible status inside
+                                        // the same transport, but it must not erase that transport's seq
+                                        // floor: a delayed lower event could otherwise roll the repair
+                                        // back. A confirmed transport advance clears the whole owner before
+                                        // this path, so a restarted low sequence still begins from null.
+                                        serverSeq = event.serverSeq ?: previous?.serverSeq
+                                    )
+                            )
+                    authoritativeCurrent -> ownerFacts
                     // A seq-carrying realtime fact is projection-proof. The
                     // evidence watermark STILL advances below: it records
                     // what the REST edge has seen, so a stale snapshot cannot
                     // refill the slot if the fact is later evicted.
-                    previous?.serverSeq != null -> ownerFacts
+                    previous?.serverSeq != null || hasAuthoritativeCurrentFact -> ownerFacts
                     !event.shouldReplaceRegisteredPresenceFact(previous) -> ownerFacts
                     previous != null && event.hasSameVisibleRegisteredPresenceAs(previous) -> ownerFacts
                     else -> ownerFacts + (memberId to event)
@@ -313,16 +550,41 @@ internal class ProcessMemberPresenceRegistry {
                 evidenceTimestamp != null && (watermark == null || evidenceTimestamp > watermark)
             if (nextOwnerFacts === ownerFacts && !advanceEvidence) return
             val nextPartitions =
-                if (nextOwnerFacts.isEmpty()) current.partitions - owner
-                else current.partitions + (owner to nextOwnerFacts)
+                if (nextOwnerFacts.isEmpty()) current.partitions - request.owner
+                else current.partitions + (request.owner to nextOwnerFacts)
             val nextEvidence =
                 if (!advanceEvidence) current.projectionEvidence
                 else current.projectionEvidence +
-                    (owner to (current.projectionEvidence[owner].orEmpty() + (memberId to evidenceTimestamp!!)))
+                    (
+                        request.owner to
+                            (current.projectionEvidence[request.owner].orEmpty() + (memberId to evidenceTimestamp!!))
+                    )
             if (
                 snapshot.compareAndSet(
                     current,
-                    Snapshot(current.writeGeneration, nextPartitions, nextEvidence)
+                    current.copy(
+                        partitions = nextPartitions,
+                        projectionEvidence = nextEvidence,
+                        authoritativeCurrentMembers =
+                            if (authoritativeCurrent) {
+                                current.authoritativeCurrentMembers +
+                                    (
+                                        request.owner to
+                                            (current.authoritativeCurrentMembers[request.owner].orEmpty() + memberId)
+                                    )
+                            } else {
+                                current.authoritativeCurrentMembers
+                            },
+                        memberMutationVersions =
+                            if (authoritativeCurrent) {
+                                current.memberMutationVersions.withAdvancedPresenceMutation(
+                                    request.owner,
+                                    memberId
+                                )
+                            } else {
+                                current.memberMutationVersions
+                            }
+                    )
                 )
             ) {
                 return
@@ -331,12 +593,29 @@ internal class ProcessMemberPresenceRegistry {
     }
 
     /** Deleted members must not keep a live fact — in THIS owner only. */
-    fun evict(owner: ProcessServerMembersOwner, memberId: String?) {
+    fun evict(
+        owner: ProcessServerMembersOwner,
+        memberId: String?,
+        writeGeneration: Long? = null
+    ) {
         val key = memberId?.trim()?.takeIf { it.isNotBlank() } ?: return
-        // Removal-only: needs no generation gate — after a clear there is
-        // nothing to evict, and eviction can never resurrect a fact.
-        updateOwner(owner, writeGeneration = null) { facts ->
-            if (facts.containsKey(key)) facts - key else facts
+        while (true) {
+            val current = snapshot.value
+            if (writeGeneration != null && writeGeneration != current.writeGeneration) return
+            val ownerFacts = current.partitions[owner].orEmpty()
+            val nextOwnerFacts = ownerFacts - key
+            val nextPartitions =
+                if (nextOwnerFacts.isEmpty()) current.partitions - owner
+                else current.partitions + (owner to nextOwnerFacts)
+            val next =
+                current.copy(
+                    partitions = nextPartitions,
+                    authoritativeCurrentMembers =
+                        current.authoritativeCurrentMembers.withoutPresenceMember(owner, key),
+                    memberMutationVersions =
+                        current.memberMutationVersions.withAdvancedPresenceMutation(owner, key)
+                )
+            if (snapshot.compareAndSet(current, next)) return
         }
     }
 
@@ -359,7 +638,10 @@ internal class ProcessMemberPresenceRegistry {
                 Snapshot(
                     writeGeneration = current.writeGeneration + 1L,
                     partitions = emptyMap(),
-                    projectionEvidence = current.projectionEvidence
+                    projectionEvidence = current.projectionEvidence,
+                    transportEpochs = emptyMap(),
+                    authoritativeCurrentMembers = emptyMap(),
+                    memberMutationVersions = emptyMap()
                 )
             if (snapshot.compareAndSet(current, next)) {
                 return next.writeGeneration
@@ -367,26 +649,42 @@ internal class ProcessMemberPresenceRegistry {
         }
     }
 
-    private inline fun updateOwner(
-        owner: ProcessServerMembersOwner,
-        writeGeneration: Long?,
-        transform: (Map<String, MemberPresenceUpdated>) -> Map<String, MemberPresenceUpdated>
-    ) {
-        while (true) {
-            val current = snapshot.value
-            // The generation gate lives INSIDE the CAS loop on purpose: a
-            // retry after losing the race to clearAll re-evaluates it against
-            // the post-clear snapshot and drops the retired write.
-            if (writeGeneration != null && writeGeneration != current.writeGeneration) return
-            val ownerFacts = current.partitions[owner].orEmpty()
-            val nextOwnerFacts = transform(ownerFacts)
-            if (nextOwnerFacts === ownerFacts) return
-            val nextPartitions =
-                if (nextOwnerFacts.isEmpty()) current.partitions - owner
-                else current.partitions + (owner to nextOwnerFacts)
-            if (snapshot.compareAndSet(current, current.copy(partitions = nextPartitions))) return
-        }
+}
+
+private enum class PresenceTransportDisposition {
+    Advance,
+    Same,
+    Reject
+}
+
+private fun ProcessPresenceTransportEpoch?.presenceTransportDisposition(
+    incoming: ProcessPresenceTransportEpoch?
+): PresenceTransportDisposition =
+    when {
+        this == null && incoming == null -> PresenceTransportDisposition.Same
+        this == null && incoming != null -> PresenceTransportDisposition.Advance
+        this != null && incoming == null -> PresenceTransportDisposition.Reject
+        this!!.connectionFamilyId != incoming!!.connectionFamilyId -> PresenceTransportDisposition.Advance
+        incoming.epoch > epoch -> PresenceTransportDisposition.Advance
+        incoming.epoch == epoch -> PresenceTransportDisposition.Same
+        else -> PresenceTransportDisposition.Reject
     }
+
+private fun Map<ProcessServerMembersOwner, Map<String, Long>>.withAdvancedPresenceMutation(
+    owner: ProcessServerMembersOwner,
+    memberId: String
+): Map<ProcessServerMembersOwner, Map<String, Long>> {
+    val ownerVersions = this[owner].orEmpty()
+    val nextVersion = (ownerVersions[memberId] ?: 0L) + 1L
+    return this + (owner to (ownerVersions + (memberId to nextVersion)))
+}
+
+private fun Map<ProcessServerMembersOwner, Set<String>>.withoutPresenceMember(
+    owner: ProcessServerMembersOwner,
+    memberId: String
+): Map<ProcessServerMembersOwner, Set<String>> {
+    val nextOwnerMembers = this[owner].orEmpty() - memberId
+    return if (nextOwnerMembers.isEmpty()) this - owner else this + (owner to nextOwnerMembers)
 }
 
 internal fun MemberPresenceUpdated.shouldReplaceRegisteredPresenceFact(

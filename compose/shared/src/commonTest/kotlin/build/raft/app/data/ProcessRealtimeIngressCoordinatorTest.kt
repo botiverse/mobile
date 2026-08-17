@@ -42,6 +42,7 @@ class ProcessRealtimeIngressCoordinatorTest {
         val oldGrant = assertNotNull(authority.grant("server-a"))
         val bus = FakeEventBus()
         val host = FakeNativeHost()
+        val presenceConnections = mutableListOf<Pair<String, Long>>()
         val owner =
             SharedRealtimeDomainEventOwner(
                 cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()),
@@ -64,8 +65,30 @@ class ProcessRealtimeIngressCoordinatorTest {
             mapper = RealtimeEventMapper(),
             nativeHost = host,
             scope = scope,
+            onPresenceTransportConnected = { grant, epoch ->
+                presenceConnections += grant.connectionFamilyId to epoch
+            },
         ).start()
         yield()
+
+        bus.post(
+            SlockRealtimeNotifyContract.EventName,
+            presenceTransportEnvelope(authority, epoch = 3L),
+        )
+        yield()
+        assertEquals(listOf(authority.witness.connectionFamilyId to 3L), presenceConnections)
+
+        bus.post(
+            SlockRealtimeNotifyContract.EventName,
+            presenceTransportEnvelope(authority, epoch = 4L)
+                .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, "retired-family"),
+        )
+        yield()
+        assertEquals(
+            listOf(authority.witness.connectionFamilyId to 3L),
+            presenceConnections,
+            "a stale native witness must not rebaseline presence",
+        )
 
         bus.post(
             SlockRealtimeNotifyContract.EventName,
@@ -119,6 +142,22 @@ class ProcessRealtimeIngressCoordinatorTest {
             .put(SlockRealtimeNotifyContract.KeyEventName, eventName)
             .put(SlockRealtimeNotifyContract.KeyRawPayload, rawPayload)
             .put(SlockRealtimeNotifyContract.KeyServerId, "server-a")
+            .put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, authority.witness.scopeLeaseId)
+            .put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, authority.witness.principalId)
+            .put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, authority.witness.authGeneration)
+            .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, authority.witness.connectionFamilyId)
+
+    private fun presenceTransportEnvelope(
+        authority: RealtimeScopeAuthority,
+        epoch: Long,
+    ): JSONObject =
+        JSONObject()
+            .put(
+                SlockRealtimeNotifyContract.KeyAction,
+                SlockRealtimeNotifyContract.ActionPresenceTransportConnected,
+            )
+            .put(SlockRealtimeNotifyContract.KeyServerId, "server-a")
+            .put(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, epoch)
             .put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, authority.witness.scopeLeaseId)
             .put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, authority.witness.principalId)
             .put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, authority.witness.authGeneration)
