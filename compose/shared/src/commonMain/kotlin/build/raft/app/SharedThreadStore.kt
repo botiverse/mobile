@@ -177,6 +177,13 @@ internal data class ReplyCacheProvenance(
         get() = namespaceId?.let { namespace -> "$namespace\u001f$generation" }
 }
 
+internal fun ReplyCacheProvenance?.currentRevisionForReplyCacheOwner(
+    owner: ReplyCacheProvenance?
+): ReplyCacheProvenance? {
+    val ownerNamespaceId = owner?.namespaceId ?: return null
+    return this?.takeIf { current -> current.namespaceId == ownerNamespaceId }
+}
+
 private data class ReplyResolutionScope(
     val session: StoredAuthSession,
     val provenance: ReplyCacheProvenance,
@@ -1260,6 +1267,8 @@ internal class SharedThreadDataSource(
     private val replyCacheProvenanceLock = SynchronizedObject()
     private val replyCacheCaptureSequence = atomic(0L)
     private val replyCacheProvenance = MutableStateFlow<ReplyCacheProvenance?>(null)
+    internal val replyCacheProvenanceState: StateFlow<ReplyCacheProvenance?> =
+        replyCacheProvenance.asStateFlow()
     private var latestPublishedReplyCacheCapture = 0L
     internal var onReplyCacheIdentitySourceCapturedForTest: (suspend () -> Unit)? = null
     internal var onMarkdownReplyCacheScopeCapturedForTest: (suspend () -> Unit)? = null

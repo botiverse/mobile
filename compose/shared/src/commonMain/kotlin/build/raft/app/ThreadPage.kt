@@ -4787,9 +4787,12 @@ internal fun SharedThreadRouteContent(
         remember(selectedMessageBodyFontSize) {
             slockMessageBodyTextStyle(selectedMessageBodyFontSize)
         }
-    var replyCacheProvenance by remember(initialThreadInstanceKey) {
+    var replyCacheProvenanceOwner by remember(initialThreadInstanceKey) {
         mutableStateOf<ReplyCacheProvenance?>(null)
     }
+    val publishedReplyCacheProvenance by dataSource.replyCacheProvenanceState.collectAsState()
+    val replyCacheProvenance =
+        publishedReplyCacheProvenance.currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)
     var currentServerSlug by remember(initialThreadInstanceKey) {
         mutableStateOf<String?>(null)
     }
@@ -4803,7 +4806,7 @@ internal fun SharedThreadRouteContent(
     LaunchedEffect(dataSource, initialThreadInstanceKey) {
         val producerContext = dataSource.captureReplyCacheProducerContext()
         currentSession = producerContext?.session
-        replyCacheProvenance = producerContext?.provenance
+        replyCacheProvenanceOwner = producerContext?.provenance
         currentServerSlug = producerContext?.session?.currentServerSlug()
     }
     LaunchedEffect(initialPayload, initialThreadInstanceKey) {
@@ -8098,7 +8101,9 @@ internal fun SharedThreadRouteContent(
                     }
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
                     val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
-                    val provenance = replyCacheProvenance
+                    val provenance =
+                        dataSource.replyCacheProvenanceState.value
+                            .currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)
                     if (
                         provenance == null ||
                         !dataSource.rememberReplyParentCandidate(
@@ -8374,7 +8379,9 @@ internal fun SharedThreadRouteContent(
                                 replyMetadataByParentId.threadReplyMetadataFor(message)
                             }
                         val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
-                        val provenance = replyCacheProvenance
+                        val provenance =
+                            dataSource.replyCacheProvenanceState.value
+                                .currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)
                         val loadedParentProvenanceAccepted =
                             parentMessage != null &&
                                 parentReplyMetadata != null &&
@@ -8672,7 +8679,9 @@ internal fun SharedThreadRouteContent(
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
                     coroutineScope.launch {
                         try {
-                            val provenance = replyCacheProvenance
+                            val provenance =
+                                dataSource.replyCacheProvenanceState.value
+                                    .currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)
                             if (provenance == null) {
                                 bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
                                 return@launch

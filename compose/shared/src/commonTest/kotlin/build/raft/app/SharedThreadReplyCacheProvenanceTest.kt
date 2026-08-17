@@ -303,6 +303,81 @@ class SharedThreadReplyCacheProvenanceTest {
     }
 
     @Test
+    fun visiblePageProvenanceAdvancesAfterSameRouteAuthorityRevisionWithoutReentry() = runBlocking {
+        val authStore = InMemorySlockAuthSessionStore(session("account-a"))
+        val messageStore = SharedThreadMessageStore()
+        var accountId = "account-a"
+        var authGeneration = 7L
+        var selectionGeneration = 11L
+        val dataSource =
+            dataSource(
+                authStore = authStore,
+                messageStore = messageStore,
+                authority = {
+                    ThreadReplyCacheIdentitySnapshot(
+                        session = requireNotNull(authStore.readSession()),
+                        environmentId = "https://prod.example.test",
+                        principalId = accountId,
+                        serverId = "server-1",
+                        authGeneration = authGeneration,
+                        selectionGeneration = selectionGeneration,
+                    )
+                },
+            )
+        val publishedProvenance = dataSource.replyCacheProvenanceState
+        val initial = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        assertEquals(initial, publishedProvenance.value)
+
+        authGeneration += 1L
+        selectionGeneration += 1L
+        // An older-page producer can be the operation that observes the new shell authority.
+        val refreshedByPageLoad =
+            requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+
+        assertNotEquals(initial, refreshedByPageLoad)
+        assertEquals(refreshedByPageLoad, publishedProvenance.value)
+        val currentPageProvenance =
+            requireNotNull(
+                publishedProvenance.value.currentRevisionForReplyCacheOwner(initial)
+            )
+        assertFalse(
+            dataSource.rememberReplyParentCandidate(
+                provenance = initial,
+                serverId = "server-1",
+                parentChannelId = "channel-1",
+                parentMessage = parentMessage(),
+                threadChannelId = "thread-parent-1",
+            )
+        )
+        assertTrue(
+            dataSource.rememberReplyParentCandidate(
+                provenance = currentPageProvenance,
+                serverId = "server-1",
+                parentChannelId = "channel-1",
+                parentMessage = parentMessage(),
+                threadChannelId = "thread-parent-1",
+            )
+        )
+        assertEquals(
+            "thread-parent-1",
+            messageStore.getReplyThreadStream(
+                requireNotNull(refreshedByPageLoad.namespaceId),
+                "channel-1",
+                ParentMessageId,
+            )
+        )
+
+        accountId = "account-b"
+        authStore.saveSession(session(accountId))
+        authGeneration += 1L
+        selectionGeneration += 1L
+        val accountB = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+
+        assertEquals(accountB, publishedProvenance.value)
+        assertNull(publishedProvenance.value.currentRevisionForReplyCacheOwner(initial))
+    }
+
+    @Test
     fun canonicalConversationDetailPublishesWithCurrentReplyCacheProvenance() = runBlocking {
         val detail = directMessageDetail("Cindy", "pixel:cindy")
         val repository = canonicalConversationRepository(detail)
