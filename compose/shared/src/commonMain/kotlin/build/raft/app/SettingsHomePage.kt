@@ -23490,7 +23490,7 @@ private fun settingsRouteVisualSession(): StoredAuthSession {
 }
 
 @Composable
-private fun rememberSettingsHomePayload(
+internal fun rememberSettingsHomePayload(
     payload: String,
     fallbackPageData: String,
     instanceId: String
