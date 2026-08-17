@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.PendingMentionActionExecuteResult
+import build.raft.app.data.ThreadApiResult
 
 internal data class PendingMentionActionBatchOutcome(
     val requestedIds: List<String>,
@@ -19,6 +20,7 @@ internal data class PendingMentionActionBatchStrings(
     val missing: String,
     val deliveryUnavailable: String,
     val dropped: String,
+    val notifyDropped: String,
     val senderLacksChannelAccess: String,
     val targetLacksReadAccess: String,
     val addNotAllowedForSurface: String,
@@ -30,8 +32,26 @@ internal data class PendingMentionActionBatchStrings(
     val stale: String,
     val expired: String,
     val ambiguous: String,
-    val generic: String
+    val generic: String,
+    val requestConnection: String,
+    val requestAuthentication: String,
+    val requestPermission: String,
+    val requestRateLimited: String,
+    val requestServer: String,
+    val requestUnexpectedResponse: String,
+    val requestGeneric: String
 )
+
+internal enum class PendingMentionActionRequestFailureKind {
+    Connection,
+    Authentication,
+    Permission,
+    Missing,
+    RateLimited,
+    Server,
+    UnexpectedResponse,
+    Generic
+}
 
 internal class PendingMentionActionBatchRequestGate {
     private var inFlight = false
@@ -111,16 +131,22 @@ internal fun PendingMentionActionBatchOutcome.localizedFailureNotice(
     return if (missingFirstFailure) {
         strings.missing
     } else {
-        firstFailure.localizedPendingMentionBatchFailure(strings)
+        firstFailure.localizedPendingMentionActionFailure(action = "add", strings = strings)
     }
 }
 
-private fun PendingMentionActionExecuteResult?.localizedPendingMentionBatchFailure(
+internal fun PendingMentionActionExecuteResult?.localizedPendingMentionActionFailure(
+    action: String,
     strings: PendingMentionActionBatchStrings
 ): String =
     when (this?.status) {
         null, "not_found" -> strings.missing
-        "dropped" -> if (reason == "delivery_unavailable") strings.deliveryUnavailable else strings.dropped
+        "dropped" ->
+            when {
+                reason == "delivery_unavailable" -> strings.deliveryUnavailable
+                action == "notify" || action == "notify_only" -> strings.notifyDropped
+                else -> strings.dropped
+            }
         "no_permission" ->
             when (reason) {
                 "sender_lacks_channel_access" -> strings.senderLacksChannelAccess
@@ -139,4 +165,41 @@ private fun PendingMentionActionExecuteResult?.localizedPendingMentionBatchFailu
         "expired" -> strings.expired
         "ambiguous" -> strings.ambiguous
         else -> strings.generic
+    }
+
+internal fun pendingMentionActionRequestFailureKind(
+    result: ThreadApiResult<*>?,
+    requestThrew: Boolean
+): PendingMentionActionRequestFailureKind? {
+    if (requestThrew) return PendingMentionActionRequestFailureKind.Connection
+    val failure = result as? ThreadApiResult.Failure ?: return null
+    if (!failure.contractCode.isNullOrBlank()) {
+        return PendingMentionActionRequestFailureKind.UnexpectedResponse
+    }
+    return when (failure.code) {
+        in Int.MIN_VALUE..0, 408 -> PendingMentionActionRequestFailureKind.Connection
+        401 -> PendingMentionActionRequestFailureKind.Authentication
+        403 -> PendingMentionActionRequestFailureKind.Permission
+        404, 410 -> PendingMentionActionRequestFailureKind.Missing
+        429 -> PendingMentionActionRequestFailureKind.RateLimited
+        in 500..599 -> PendingMentionActionRequestFailureKind.Server
+        else -> PendingMentionActionRequestFailureKind.Generic
+    }
+}
+
+internal fun localizedPendingMentionActionRequestFailure(
+    result: ThreadApiResult<*>?,
+    requestThrew: Boolean,
+    strings: PendingMentionActionBatchStrings
+): String? =
+    when (pendingMentionActionRequestFailureKind(result, requestThrew)) {
+        null -> null
+        PendingMentionActionRequestFailureKind.Connection -> strings.requestConnection
+        PendingMentionActionRequestFailureKind.Authentication -> strings.requestAuthentication
+        PendingMentionActionRequestFailureKind.Permission -> strings.requestPermission
+        PendingMentionActionRequestFailureKind.Missing -> strings.missing
+        PendingMentionActionRequestFailureKind.RateLimited -> strings.requestRateLimited
+        PendingMentionActionRequestFailureKind.Server -> strings.requestServer
+        PendingMentionActionRequestFailureKind.UnexpectedResponse -> strings.requestUnexpectedResponse
+        PendingMentionActionRequestFailureKind.Generic -> strings.requestGeneric
     }

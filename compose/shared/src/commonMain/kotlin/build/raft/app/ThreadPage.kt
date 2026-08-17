@@ -5531,6 +5531,7 @@ internal fun SharedThreadRouteContent(
             missing = stringResource(MR.strings.thread_composer_mention_batch_error_missing),
             deliveryUnavailable = stringResource(MR.strings.thread_composer_mention_batch_error_delivery_unavailable),
             dropped = stringResource(MR.strings.thread_composer_mention_batch_error_dropped),
+            notifyDropped = stringResource(MR.strings.thread_composer_mention_action_error_notify_dropped),
             senderLacksChannelAccess = stringResource(MR.strings.thread_composer_mention_batch_error_sender_access),
             targetLacksReadAccess = stringResource(MR.strings.thread_composer_mention_batch_error_target_access),
             addNotAllowedForSurface = stringResource(MR.strings.thread_composer_mention_batch_error_surface),
@@ -5543,7 +5544,16 @@ internal fun SharedThreadRouteContent(
             stale = stringResource(MR.strings.thread_composer_mention_batch_error_stale),
             expired = stringResource(MR.strings.thread_composer_mention_batch_error_expired),
             ambiguous = stringResource(MR.strings.thread_composer_mention_batch_error_ambiguous),
-            generic = stringResource(MR.strings.thread_composer_mention_batch_error_generic)
+            generic = stringResource(MR.strings.thread_composer_mention_batch_error_generic),
+            requestConnection = stringResource(MR.strings.thread_composer_mention_request_error_connection),
+            requestAuthentication =
+                stringResource(MR.strings.thread_composer_mention_request_error_authentication),
+            requestPermission = stringResource(MR.strings.thread_composer_mention_request_error_permission),
+            requestRateLimited = stringResource(MR.strings.thread_composer_mention_request_error_rate_limited),
+            requestServer = stringResource(MR.strings.thread_composer_mention_request_error_server),
+            requestUnexpectedResponse =
+                stringResource(MR.strings.thread_composer_mention_request_error_unexpected_response),
+            requestGeneric = stringResource(MR.strings.thread_composer_mention_request_error_generic)
         )
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val attachmentPickerUnavailableLabel = stringResource(MR.strings.thread_error_attachment_picker)
@@ -9150,23 +9160,31 @@ internal fun SharedThreadRouteContent(
                     )
                     coroutineScope.launch {
                         try {
-                            val results =
+                            val requestAttempt =
                                 runCatchingPreservingCancellation {
                                     dataSource.executePendingMentionActions(
                                         action = "add",
                                         resolutionIds = resolutionIds
                                     )
-                                }.getOrNull()
-                                    .let { result ->
-                                        (result as? ThreadApiResult.Success)?.data.orEmpty()
-                                    }
+                                }
+                            val requestResult = requestAttempt.getOrNull()
+                            val requestFailureNotice =
+                                localizedPendingMentionActionRequestFailure(
+                                    result = requestResult,
+                                    requestThrew = requestAttempt.isFailure,
+                                    strings = pendingMentionActionBatchStrings
+                                )
+                            val results =
+                                (requestResult as? ThreadApiResult.Success)?.data.orEmpty()
                             val outcome = pendingMentionActionBatchOutcome(resolutionIds, results)
                             composerDraftViewModel.dispatch(
                                 SharedThreadComposerDraftIntent.FinishMentionActionBatch(
                                     requestedIds = outcome.requestedIds,
                                     deliveredIds = outcome.deliveredIds,
                                     noticeTitle = outcome.localizedNoticeTitle(pendingMentionActionBatchStrings),
-                                    notice = outcome.localizedFailureNotice(pendingMentionActionBatchStrings)
+                                    notice =
+                                        requestFailureNotice
+                                            ?: outcome.localizedFailureNotice(pendingMentionActionBatchStrings)
                                 )
                             )
                             if (outcome.deliveredIds.isNotEmpty()) {
@@ -9194,13 +9212,14 @@ internal fun SharedThreadRouteContent(
                         )
                     )
                     coroutineScope.launch {
-                        val result =
+                        val requestAttempt =
                             runCatchingPreservingCancellation {
                                 dataSource.executePendingMentionActions(
                                     action = verb,
                                     resolutionIds = listOf(resolutionId)
                                 )
-                            }.getOrNull()
+                            }
+                        val result = requestAttempt.getOrNull()
                         val rowResult =
                             (result as? ThreadApiResult.Success)
                                 ?.data
@@ -9210,7 +9229,11 @@ internal fun SharedThreadRouteContent(
                             if (succeeded) {
                                 pendingAction.mentionActionDeliveredNotice(verb, composerSurface.mentionScopeChannelLabel())
                             } else {
-                                formatMentionActionStatusNotice(rowResult)
+                                localizedPendingMentionActionRequestFailure(
+                                    result = result,
+                                    requestThrew = requestAttempt.isFailure,
+                                    strings = pendingMentionActionBatchStrings
+                                ) ?: formatMentionActionStatusNotice(verb, rowResult, pendingMentionActionBatchStrings)
                             }
                         composerDraftViewModel.dispatch(
                             SharedThreadComposerDraftIntent.FinishMentionAction(
@@ -10663,35 +10686,11 @@ internal fun mentionActionSucceeded(
         else -> false
     }
 
-internal fun formatMentionActionStatusNotice(result: PendingMentionActionExecuteResult?): String =
-    when (result?.status) {
-        null -> "This mention action is no longer available."
-        "dropped" ->
-            if (result.reason == "delivery_unavailable") {
-                "Notification was not delivered because delivery is temporarily unavailable. Try again."
-            } else {
-                "That target was not notified right now. Try again."
-            }
-        "no_permission" ->
-            when (result.reason) {
-                "sender_lacks_channel_access" -> "You no longer have access to that channel, so this mention action was not applied."
-                "target_lacks_read_access" -> "That person cannot read this conversation, so they were not notified."
-                "add_not_allowed_for_surface" -> "That person cannot be added from this mention action. Use the channel member controls instead."
-                "add_requires_human_member_authority" -> "Agents cannot add channel members from mention actions. Ask a human member to add them."
-                "add_requires_member_management_authority" -> "Only channel admins can add members from this mention action."
-                else -> "This mention action is not available for the current channel state."
-            }
-        "stale" ->
-            when (result.reason) {
-                "target_already_member" -> "That target is already in the channel, so no action is needed."
-                "target_unavailable" -> "That target is no longer available."
-                else -> "This mention action is no longer pending."
-            }
-        "expired" -> "This mention action has expired."
-        "not_found" -> "This mention action is no longer available."
-        "ambiguous" -> "This mention action matched more than one target. Refresh and try again."
-        else -> "This mention action could not be applied."
-    }
+internal fun formatMentionActionStatusNotice(
+    action: String,
+    result: PendingMentionActionExecuteResult?,
+    strings: PendingMentionActionBatchStrings
+): String = result.localizedPendingMentionActionFailure(action = action, strings = strings)
 
 private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
     draftState: SharedThreadComposerDraftState,
