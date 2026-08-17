@@ -46,6 +46,8 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      # The audit comment uses the GraphQL PullRequest surface because this
+      # installation cannot access PR comments through the REST Issues API.
       pull-requests: write
     outputs:
       run_android: ${{ steps.plan.outputs.run_android }}
@@ -187,22 +189,51 @@ jobs:
           test -s "$manifest"
 
           marker='<!-- gitlink-carry-in-gate -->'
+          owner="${GITHUB_REPOSITORY%%/*}"
+          repo="${GITHUB_REPOSITORY#*/}"
+          comment_state="$(
+            gh api graphql --paginate --slurp \
+              -f owner="$owner" \
+              -f repo="$repo" \
+              -F number="$PR_NUMBER" \
+              -f query='query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $number) {
+                    id
+                    comments(first: 100, after: $endCursor) {
+                      nodes { id body }
+                      pageInfo { hasNextPage endCursor }
+                    }
+                  }
+                }
+              }'
+          )"
+          subject_id="$(jq -r '.[0].data.repository.pullRequest.id // empty' <<< "$comment_state")"
+          test -n "$subject_id"
           existing="$(
-            gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
-              --jq ".[] | select(.body | startswith(\"$marker\")) | .id" \
-              | sed -n '1p'
+            jq -r --arg marker "$marker" \
+              '.[].data.repository.pullRequest.comments.nodes[] | select(.body | startswith($marker)) | .id' \
+              <<< "$comment_state" | sed -n '1p'
           )"
           status="$(jq -r '.status' "$manifest")"
           if test "$status" = no_changes && test -z "$existing"; then
             exit 0
           fi
 
-          payload="$RUNNER_TEMP/gitlink-carry-in-comment.json"
-          jq -n --rawfile body "$report" '{body: $body}' > "$payload"
           if test -n "$existing"; then
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" --input "$payload" >/dev/null
+            gh api graphql \
+              -f id="$existing" \
+              -F body=@"$report" \
+              -f query='mutation($id: ID!, $body: String!) {
+                updateIssueComment(input: {id: $id, body: $body}) { issueComment { id } }
+              }' >/dev/null
           else
-            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --input "$payload" >/dev/null
+            gh api graphql \
+              -f subjectId="$subject_id" \
+              -F body=@"$report" \
+              -f query='mutation($subjectId: ID!, $body: String!) {
+                addComment(input: {subjectId: $subjectId, body: $body}) { commentEdge { node { id } } }
+              }' >/dev/null
           fi
 
       - name: Summarize gitlink carry-in audit
