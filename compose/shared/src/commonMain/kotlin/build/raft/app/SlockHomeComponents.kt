@@ -1609,7 +1609,6 @@ internal fun SlockStructuralHomeShell(
                 servers = servers
             )
         }
-    val serverSwitcherAvatarPainters = rememberServerSwitcherAvatarPainters(servers)
     val sidebarSelection =
         homeSidebarSelection(
             selectedChannelId = selectedChannelId,
@@ -2279,7 +2278,7 @@ internal fun SlockStructuralHomeShell(
                 }
             }
             }
-            ServerSwitcherAvatarPrewarmSurface(serverSwitcherAvatarPainters)
+            ServerSwitcherAvatarPrewarmSurface(servers)
             if (serverSwitcherExpanded) {
                 if (serverDrawerEnabled) {
                     // The opt-in drawer owns the full screen so its scrim and native
@@ -4874,8 +4873,8 @@ private fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
                     cacheServerId = server.id
                 )
             } else {
-                // The invisible prewarm Image owns its painter. Give the visible row a distinct
-                // painter so Kuikly's stateful image node can draw the already-warm cache entry.
+                // The invisible prewarm surface and visible tile share the typed mounted cache;
+                // the mounted session coalesces an in-flight fetch for this server identity.
                 SlockAvatarHttpImage(
                     source = source,
                     modifier = Modifier.fillMaxSize(),
@@ -4913,24 +4912,17 @@ internal fun homeHeaderServerIdentity(
 }
 
 @Composable
-private fun rememberServerSwitcherAvatarPainters(
-    servers: List<SlockServerSwitcherItem>
-): Map<String, AsyncImagePainter> {
-    val painters = linkedMapOf<String, AsyncImagePainter>()
-    servers.forEach { server ->
-        val source = server.toServerSwitcherAvatarPresentation().avatarWireValue ?: return@forEach
-        key(server.id, source) {
-            painters[server.id] = rememberSlockAvatarHttpPainter(source)
-        }
-    }
-    return painters
-}
-
-@Composable
 private fun ServerSwitcherAvatarPrewarmSurface(
-    avatarPainters: Map<String, AsyncImagePainter>
+    servers: List<SlockServerSwitcherItem>
 ) {
-    if (avatarPainters.isEmpty()) return
+    val remoteAvatars =
+        servers.mapNotNull { server ->
+            val source =
+                server.toServerSwitcherAvatarPresentation().avatarWireValue
+                    ?: return@mapNotNull null
+            if (source.toPixelAvatarSpec() != null) null else server to source
+        }
+    if (remoteAvatars.isEmpty()) return
     Box(
         modifier =
             Modifier
@@ -4938,13 +4930,15 @@ private fun ServerSwitcherAvatarPrewarmSurface(
                 .alpha(0f)
                 .clipToBounds()
     ) {
-        avatarPainters.values.forEach { painter ->
-            Image(
-                painter = painter,
-                contentDescription = null,
-                contentScale = ContentScale.FillBounds,
-                modifier = Modifier.fillMaxSize()
-            )
+        remoteAvatars.forEach { (server, source) ->
+            key(server.id, source) {
+                SlockAvatarHttpImage(
+                    source = source,
+                    modifier = Modifier.fillMaxSize(),
+                    cacheSubject = SlockAvatarCacheSubject.Server(server.id),
+                    cacheServerId = server.id
+                )
+            }
         }
     }
 }
@@ -6182,29 +6176,6 @@ private fun AsyncImagePainter.State.toSlockAvatarHttpPainterPhase(): SlockAvatar
         is AsyncImagePainter.State.Success -> SlockAvatarHttpPainterPhase.Success
         is AsyncImagePainter.State.Error -> SlockAvatarHttpPainterPhase.Error
     }
-
-@Composable
-private fun rememberSlockAvatarHttpPainter(source: String): AsyncImagePainter {
-    val fallbackSource =
-        remember(source) {
-            source.appAvatarApiFallbackUrl(
-                SlockSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.apiBaseUrl
-            )
-        }
-    var activeSource by remember(source, fallbackSource) { mutableStateOf(source) }
-    val painter = rememberAsyncImagePainter(model = activeSource)
-    val imageState by painter.state.collectAsState()
-    LaunchedEffect(imageState, activeSource, source, fallbackSource) {
-        if (
-            imageState is AsyncImagePainter.State.Error &&
-            activeSource == source &&
-            fallbackSource != null
-        ) {
-            activeSource = fallbackSource
-        }
-    }
-    return painter
-}
 
 @Composable
 private fun DefaultUserAvatar(

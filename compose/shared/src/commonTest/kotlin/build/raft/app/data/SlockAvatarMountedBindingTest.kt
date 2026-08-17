@@ -46,6 +46,36 @@ class SlockAvatarMountedBindingTest {
     }
 
     @Test
+    fun serverSubjectUsesRequestedOwnerAndFreshDurableModelWithoutNetwork() = runBlocking {
+        val cacheOwner = owner()
+        val cacheSubject = SlockAvatarCacheSubject.Server(cacheOwner.serverId)
+        val cacheKey = key(cacheSubject)
+        val store =
+            FakeMetadataStore().apply {
+                metadata = metadata(freshUntilMs = 500L, key = cacheKey)
+            }
+        val provider = FakeNativeProvider()
+        val downloader = RecordingDownloader()
+        val requestedServerIds = mutableListOf<String?>()
+        val binding =
+            binding(store, provider, downloader) { requestedServerId ->
+                requestedServerIds += requestedServerId
+                cacheOwner
+            }
+
+        val handle = binding.mount(cacheSubject, RemoteUrl, serverId = cacheOwner.serverId)
+        binding.refresh(handle)
+
+        val descriptor = assertNotNull(parseSlockAvatarMountedRenderModel(handle.imageModel.value.orEmpty()))
+        assertEquals(cacheOwner.serverId, assertNotNull(requestedServerIds.single()))
+        assertEquals(cacheOwner.nativePartitionKey, descriptor.slot.nativePartitionKey)
+        assertEquals(cacheKey.nativeSubjectKey, descriptor.slot.nativeSubjectKey)
+        assertEquals(cacheKey.nativeBytesKey, descriptor.slot.nativeBytesKey)
+        assertEquals(0, downloader.calls)
+        assertEquals(0, provider.reserveCalls)
+    }
+
+    @Test
     fun managedRenderParserRejectsOrdinaryAndMalformedModels() {
         assertNull(parseSlockAvatarMountedRenderModel(RemoteUrl))
         assertNull(parseSlockAvatarMountedRenderModel("data:image/png;base64,AAAA"))
@@ -330,12 +360,13 @@ class SlockAvatarMountedBindingTest {
     private fun binding(
         store: FakeMetadataStore = FakeMetadataStore(),
         provider: SlockAvatarMountedNativeProvider,
-        downloader: SlockAvatarConditionalDownloader
+        downloader: SlockAvatarConditionalDownloader,
+        currentOwner: suspend (String?) -> SlockAvatarCacheOwner? = { owner() }
     ): SlockAvatarMountedBinding {
         var nonce = 0
         return SlockAvatarMountedBinding(
             coordinator = SlockAvatarCacheCoordinator(store) { 100L },
-            currentOwner = { owner() },
+            currentOwner = currentOwner,
             nativeProvider = { provider },
             downloader = downloader,
             session =
@@ -347,11 +378,15 @@ class SlockAvatarMountedBindingTest {
 
     private fun owner() = SlockAvatarCacheOwner("https://api.example", "account-a", "server-a")
     private fun subject() = SlockAvatarCacheSubject.Member(MemberKind.Agent, "member-a")
-    private fun key() = SlockAvatarCacheKey(owner(), subject(), slockAvatarContentIdentity(RemoteUrl))
+    private fun key(subject: SlockAvatarCacheSubject = subject()) =
+        SlockAvatarCacheKey(owner(), subject, slockAvatarContentIdentity(RemoteUrl))
 
-    private fun metadata(freshUntilMs: Long): SlockAvatarCacheMetadata =
+    private fun metadata(
+        freshUntilMs: Long,
+        key: SlockAvatarCacheKey = key()
+    ): SlockAvatarCacheMetadata =
         SlockAvatarCacheMetadata(
-            key = key(),
+            key = key,
             eTag = "\"v1\"",
             fetchedAtMs = 10L,
             validatedAtMs = 10L,
