@@ -52,6 +52,8 @@ jobs:
       run_ios: ${{ steps.plan.outputs.run_ios }}
       run_ohos: ${{ steps.plan.outputs.run_ohos }}
       run_emulators: ${{ steps.plan.outputs.run_emulators }}
+      run_canonical_final: ${{ steps.plan.outputs.run_canonical_final }}
+      run_attachment: ${{ steps.plan.outputs.run_attachment }}
       reason: ${{ steps.plan.outputs.reason }}
     steps:
       - name: Checkout exact event source
@@ -903,7 +905,7 @@ jobs:
     name: Android attachment authority (API ${{ matrix.api-level }} emulator)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [plan, android]
-    if: ${{ needs.plan.outputs.run_emulators == 'true' }}
+    if: ${{ needs.plan.outputs.run_attachment == 'all' || (needs.plan.outputs.run_attachment == 'api31' && matrix.api-level == 31) }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -943,8 +945,8 @@ jobs:
           test -n "${test_apk}"
           aapt_bin="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -n 1)"
           test -x "${aapt_bin}"
-          "${aapt_bin}" dump badging "${app_apk}" | tee api29-connectedtest-app-badging.txt
-          grep -Fq "sdkVersion:'29'" api29-connectedtest-app-badging.txt
+          "${aapt_bin}" dump badging "${app_apk}" | tee "api${{ matrix.api-level }}-connectedtest-app-badging.txt"
+          grep -Fq "sdkVersion:'29'" "api${{ matrix.api-level }}-connectedtest-app-badging.txt"
 
       - name: Enable KVM
         run: |
@@ -976,7 +978,7 @@ jobs:
         with:
           name: attachment-public-downloads-api${{ matrix.api-level }}-evidence
           path: |
-            api29-connectedtest-app-badging.txt
+            api${{ matrix.api-level }}-connectedtest-app-badging.txt
             attachment-public-downloads-api${{ matrix.api-level }}-instrumentation.txt
             *-instrumentation.txt.attempt-*
           if-no-files-found: warn
@@ -986,7 +988,7 @@ jobs:
     name: Android canonical-final actual host (emulator)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [plan, android]
-    if: ${{ needs.plan.outputs.run_emulators == 'true' }}
+    if: ${{ needs.plan.outputs.run_canonical_final == 'true' }}
     timeout-minutes: 35
     steps:
       - name: Free runner disk space for emulator
