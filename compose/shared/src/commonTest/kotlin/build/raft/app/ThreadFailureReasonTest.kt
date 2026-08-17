@@ -153,4 +153,76 @@ class ThreadFailureReasonTest {
         assertEquals(false, threadSendShouldSilentlyRetry("body_too_large"))
         assertEquals(false, threadSendShouldSilentlyRetry(null, httpCode = 400))
     }
+
+    @Test
+    fun codeZeroConnectionLostCurlFailureRetriesWithOneStableRandomId() {
+        val errorCode =
+            threadSendFailureErrorCode(
+                contractCode = null,
+                errorBodyText =
+                    "[connection_lost]_CURLcode:55_OpenSSL_SSL_read:_SSL_ERROR_SYSCALL_errno_0",
+                httpCode = 0
+            )
+        val state = ThreadSendAttemptState(randomId = "rid-send-1", maxSilentRetries = 2)
+        val sentRandomIds = mutableListOf<String?>()
+
+        sentRandomIds += state.randomId
+        assertTrue(state.advanceForSilentRetry(threadSendShouldSilentlyRetry(errorCode, httpCode = 0)))
+        sentRandomIds += state.randomId
+        assertTrue(state.advanceForSilentRetry(threadSendShouldSilentlyRetry(errorCode, httpCode = 0)))
+        sentRandomIds += state.randomId
+
+        assertEquals("thread_send_network", errorCode)
+        assertEquals(listOf<String?>("rid-send-1", "rid-send-1", "rid-send-1"), sentRandomIds)
+        assertEquals(3, state.attempt)
+        assertEquals(
+            false,
+            state.advanceForSilentRetry(threadSendShouldSilentlyRetry(errorCode, httpCode = 0))
+        )
+    }
+
+    @Test
+    fun codeZeroTimeoutUsesTransientTimeoutClassification() {
+        val errorCode =
+            threadSendFailureErrorCode(
+                contractCode = null,
+                errorBodyText = """{"error":"network_timeout","message":"request timed out"}""",
+                httpCode = 0
+            )
+
+        assertEquals("thread_send_timeout", errorCode)
+        assertEquals(true, threadSendShouldSilentlyRetry(errorCode, httpCode = 0))
+    }
+
+    @Test
+    fun arbitraryCodeZeroAndBusinessFailuresDoNotSilentlyRetry() {
+        val unknownCodeZero =
+            threadSendFailureErrorCode(
+                contractCode = null,
+                errorBodyText = "unexpected local failure",
+                httpCode = 0
+            )
+        val validationFailure =
+            threadSendFailureErrorCode(
+                contractCode = null,
+                errorBodyText = """{"code":"body_too_large","errorMessage":"Body is too large"}""",
+                httpCode = 400
+            )
+
+        assertEquals("http_0", unknownCodeZero)
+        assertEquals(false, threadSendShouldSilentlyRetry(unknownCodeZero, httpCode = 0))
+        assertEquals("body_too_large", validationFailure)
+        assertEquals(false, threadSendShouldSilentlyRetry(validationFailure, httpCode = 400))
+    }
+
+    @Test
+    fun silentRetryRequiresAnIdempotencyIdentity() {
+        val missingIdentity = ThreadSendAttemptState(randomId = null, maxSilentRetries = 2)
+        val blankIdentity = ThreadSendAttemptState(randomId = " ", maxSilentRetries = 2)
+
+        assertEquals(false, missingIdentity.advanceForSilentRetry(eligible = true))
+        assertEquals(false, blankIdentity.advanceForSilentRetry(eligible = true))
+        assertEquals(1, missingIdentity.attempt)
+        assertEquals(1, blankIdentity.attempt)
+    }
 }

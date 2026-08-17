@@ -6964,8 +6964,13 @@ internal fun SharedThreadRouteContent(
                 }
             }
 
-            var attempt = 1
+            val sendAttemptState =
+                ThreadSendAttemptState(
+                    randomId = context.randomId,
+                    maxSilentRetries = ThreadSendMaxSilentRetries
+                )
             while (true) {
+                val attempt = sendAttemptState.attempt
                 val sendResult =
                     runCatchingPreservingCancellation {
                         dataSource.sendMessage(
@@ -6973,7 +6978,7 @@ internal fun SharedThreadRouteContent(
                             body = context.body,
                             asTask = context.asTask,
                             attachmentIds = context.attachmentIds,
-                            randomId = context.randomId
+                            randomId = sendAttemptState.randomId
                         )
                     }
                 val sendException = sendResult.exceptionOrNull()
@@ -6986,12 +6991,11 @@ internal fun SharedThreadRouteContent(
                             "channelId=${context.channelId} errorType=$errorType " +
                             "mapped=$errorCode attempt=$attempt durationMs=$durationMs"
                     )
-                    if (attempt <= ThreadSendMaxSilentRetries && threadSendShouldSilentlyRetry(errorCode)) {
+                    if (sendAttemptState.advanceForSilentRetry(threadSendShouldSilentlyRetry(errorCode))) {
                         bridge.log(
                             "thread_send_silent_retry localMessageId=$localMessageId " +
                                 "channelId=${context.channelId} reason=$errorCode attempt=$attempt"
                         )
-                        attempt += 1
                         delay(ThreadSendSilentRetryDelayMs)
                         continue
                     }
@@ -7018,16 +7022,20 @@ internal fun SharedThreadRouteContent(
                         is ThreadApiResult.Success -> sendResponse.data
                         is ThreadApiResult.Failure -> {
                             val errorCode =
-                                sendResponse.contractCode
-                                    ?: threadFailureDiagnosticCode(sendResponse.errorBodyText)
-                                    ?: "http_${sendResponse.code}"
+                                threadSendFailureErrorCode(
+                                    contractCode = sendResponse.contractCode,
+                                    errorBodyText = sendResponse.errorBodyText,
+                                    httpCode = sendResponse.code
+                                )
                             val errorMessage = threadFailureReasonMessage(sendResponse.errorBodyText)
-                            if (attempt <= ThreadSendMaxSilentRetries && threadSendShouldSilentlyRetry(errorCode, sendResponse.code)) {
+                            if (sendAttemptState.advanceForSilentRetry(
+                                    threadSendShouldSilentlyRetry(errorCode, sendResponse.code)
+                                )
+                            ) {
                                 bridge.log(
                                     "thread_send_silent_retry localMessageId=$localMessageId " +
                                         "channelId=${context.channelId} reason=$errorCode httpCode=${sendResponse.code} attempt=$attempt"
                                 )
-                                attempt += 1
                                 delay(ThreadSendSilentRetryDelayMs)
                                 continue
                             }
@@ -7052,12 +7060,11 @@ internal fun SharedThreadRouteContent(
                         }
                     }
                 if (sentPage.messages.isEmpty()) {
-                    if (attempt <= ThreadSendMaxSilentRetries) {
+                    if (sendAttemptState.advanceForSilentRetry(eligible = true)) {
                         bridge.log(
                             "thread_send_silent_retry localMessageId=$localMessageId " +
                                 "channelId=${context.channelId} reason=empty_response attempt=$attempt"
                         )
-                        attempt += 1
                         delay(ThreadSendSilentRetryDelayMs)
                         continue
                     }

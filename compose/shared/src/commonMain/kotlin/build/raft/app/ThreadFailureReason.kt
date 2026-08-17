@@ -220,6 +220,55 @@ internal fun threadSendShouldSilentlyRetry(errorCode: String?, httpCode: Int? = 
     }
 }
 
+internal fun threadSendFailureErrorCode(
+    contractCode: String?,
+    errorBodyText: String?,
+    httpCode: Int
+): String =
+    contractCode
+        ?: threadFailureDiagnosticCode(errorBodyText)
+        ?: threadSendTransportFailureErrorCode(errorBodyText, httpCode)
+        ?: "http_$httpCode"
+
+private fun threadSendTransportFailureErrorCode(errorBodyText: String?, httpCode: Int): String? {
+    if (httpCode != 0) return null
+    val cleanBody = errorBodyText?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val transportError =
+        cleanBody
+            .threadFailureJsonObjectOrNull()
+            ?.threadFailureStringField("error")
+            ?.trim()
+    if (transportError.equals("network_timeout", ignoreCase = true)) {
+        return "thread_send_timeout"
+    }
+    val curlCode =
+        ThreadSendConnectionLostCurlCode
+            .find(cleanBody)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
+    return if (curlCode != null && curlCode > 0) "thread_send_network" else null
+}
+
+private val ThreadSendConnectionLostCurlCode =
+    Regex("""^\[connection_lost]\s*[_-]?\s*CURLcode\s*:\s*([1-9][0-9]*)""", RegexOption.IGNORE_CASE)
+
+internal class ThreadSendAttemptState(
+    randomId: String?,
+    private val maxSilentRetries: Int
+) {
+    val randomId: String? = randomId?.takeIf { it.isNotBlank() }
+
+    var attempt: Int = 1
+        private set
+
+    fun advanceForSilentRetry(eligible: Boolean): Boolean {
+        if (!eligible || randomId == null || attempt > maxSilentRetries) return false
+        attempt += 1
+        return true
+    }
+}
+
 internal fun threadFailureReasonMessage(errorBodyText: String?): String? {
     val cleanBody = errorBodyText?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val bodyObject = cleanBody.threadFailureJsonObjectOrNull()
