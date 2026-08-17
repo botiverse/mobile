@@ -326,7 +326,10 @@ fun parseSharedChannelDeleteResult(bodyText: String, channelId: ChannelId): Chan
     }.getOrNull()
 
 private fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
-    val isJoint = jointChannelId?.isNotBlank() == true || jointRole?.isNotBlank() == true
+    val isJoint =
+        type.equals("joint", ignoreCase = true) ||
+            jointChannelId?.isNotBlank() == true ||
+            jointRole?.isNotBlank() == true
     return HomeChannelRow(
         threadId = ThreadId(id),
         channelId = ChannelId(id),

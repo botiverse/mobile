@@ -254,12 +254,20 @@ internal class ChannelSettingsStore(
             ChannelSettingsIntent.TogglePin ->
                 launchAction(ChannelSettingsAction.Pin, dataSource::togglePinned)
             is ChannelSettingsIntent.UpdateProfile -> updateProfile(intent)
-            ChannelSettingsIntent.MakePrivate ->
-                launchAction(ChannelSettingsAction.Visibility, dataSource::makePrivate)
+            ChannelSettingsIntent.MakePrivate -> {
+                val channel = mutableState.value.channel ?: return
+                if (channelSettingsCanMakePrivate(channel)) {
+                    launchAction(ChannelSettingsAction.Visibility, dataSource::makePrivate)
+                }
+            }
             ChannelSettingsIntent.Archive ->
                 launchAction(ChannelSettingsAction.Archive, dataSource::archive)
-            ChannelSettingsIntent.Delete ->
-                launchAction(ChannelSettingsAction.Delete, dataSource::delete)
+            ChannelSettingsIntent.Delete -> {
+                val channel = mutableState.value.channel ?: return
+                if (channelSettingsCanDelete(channel)) {
+                    launchAction(ChannelSettingsAction.Delete, dataSource::delete)
+                }
+            }
             ChannelSettingsIntent.ClearProfileStatus ->
                 mutableState.value =
                     mutableState.value.copy(
