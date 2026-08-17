@@ -631,6 +631,11 @@ internal class SlockSharedStoreProvider private constructor(
             scope = threadSendScope,
             onPresenceTransportConnected = ::handlePresenceTransportConnected,
         ).start()
+        KuiklyHostNetworkEvents(eventBus).addAuthoritativeOnlineListener {
+            threadSendScope.launch {
+                avatarCacheRuntime.recoverCurrentOwnerAfterNetworkAvailable()
+            }
+        }
         threadSendScope.launch {
             realtimeAuthorityProvider.registerScope(
                 scopeKey = ProcessRealtimeAuthorityScopeKey,

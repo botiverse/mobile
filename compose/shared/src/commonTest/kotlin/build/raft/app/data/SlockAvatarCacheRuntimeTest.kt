@@ -746,6 +746,83 @@ class SlockAvatarCacheRuntimeTest {
     }
 
     @Test
+    fun networkRecoveryClearsOnlyCurrentOwnersTemporaryBackoffAndAdmitsImmediateRetry() = runBlocking {
+        val currentOwner = owner()
+        val otherOwner = owner(accountId = "account-b")
+        val currentKey = key(owner = currentOwner)
+        val otherKey = key(owner = otherOwner)
+        val permanentKey = key(owner = currentOwner, subject = subject("member-permanent"))
+        val store = FakeMetadataStore().apply {
+            failureByKey[currentKey] = temporaryFailure(currentKey)
+            failureByKey[otherKey] = temporaryFailure(otherKey)
+            failureByKey[permanentKey] =
+                temporaryFailure(permanentKey).copy(kind = SlockAvatarCacheFailureKind.ResourceAbsent)
+        }
+        val native = FakeNativeCache()
+        val runtime =
+            runtime(
+                store = store,
+                nowMillis = { 250L },
+                ownerProvider = { requested ->
+                    currentOwner.takeIf { requested == null || requested == currentOwner.serverId }
+                }
+            )
+
+        val suppressed =
+            assertIs<SlockAvatarPreparedRender.Native>(
+                runtime.prepare(currentKey.subject, RemoteUrl, currentOwner.serverId, native)
+            )
+        assertEquals(SlockAvatarNativeReadMode.Suppressed, suppressed.request.readMode)
+
+        assertTrue(runtime.recoverCurrentOwnerAfterNetworkAvailable())
+        val retry =
+            assertIs<SlockAvatarPreparedRender.Native>(
+                runtime.prepare(currentKey.subject, RemoteUrl, currentOwner.serverId, native)
+            )
+        assertEquals(SlockAvatarNativeReadMode.Fetch, retry.request.readMode)
+        assertNull(store.failureByKey[currentKey])
+        assertEquals(otherKey, store.failureByKey[otherKey]?.key)
+        assertEquals(permanentKey, store.failureByKey[permanentKey]?.key)
+
+        assertTrue(runtime.recoverCurrentOwnerAfterNetworkAvailable())
+        assertEquals(listOf(currentOwner, currentOwner), store.clearedTemporaryFailureOwners)
+        assertEquals(otherKey, store.failureByKey[otherKey]?.key)
+        assertEquals(permanentKey, store.failureByKey[permanentKey]?.key)
+    }
+
+    @Test
+    fun networkRecoveryFailsClosedWithoutAStableCurrentOwner() = runBlocking {
+        val oldOwner = owner()
+        val newOwner = owner(accountId = "account-b", serverId = "server-b")
+        val oldKey = key(owner = oldOwner)
+        val newKey = key(owner = newOwner)
+        val store = FakeMetadataStore().apply {
+            failureByKey[oldKey] = temporaryFailure(oldKey)
+            failureByKey[newKey] = temporaryFailure(newKey)
+        }
+        var ownerRead = 0
+        val changingRuntime =
+            runtime(
+                store = store,
+                ownerProvider = {
+                    ownerRead += 1
+                    if (ownerRead == 1) oldOwner else newOwner
+                }
+            )
+
+        assertFalse(changingRuntime.recoverCurrentOwnerAfterNetworkAvailable())
+        assertTrue(store.clearedTemporaryFailureOwners.isEmpty())
+        assertEquals(oldKey, store.failureByKey[oldKey]?.key)
+        assertEquals(newKey, store.failureByKey[newKey]?.key)
+
+        val signedOutRuntime = runtime(store, ownerProvider = { null })
+        assertFalse(signedOutRuntime.recoverCurrentOwnerAfterNetworkAvailable())
+        val failedOwnerRuntime = runtime(store, ownerProvider = { error("owner unavailable") })
+        assertFalse(failedOwnerRuntime.recoverCurrentOwnerAfterNetworkAvailable())
+        assertTrue(store.clearedTemporaryFailureOwners.isEmpty())
+    }
+
+    @Test
     fun requestedServerAllowsSparseCurrentButRejectsUnrelatedServer() {
         val session =
             StoredAuthSession(
@@ -762,6 +839,23 @@ class SlockAvatarCacheRuntimeTest {
             slockCurrentAvatarCacheOwner("https://api.example", session, "server-current")?.serverId
         )
         assertNull(slockCurrentAvatarCacheOwner("https://api.example", session, "server-other"))
+        assertNull(slockCurrentAvatarCacheOwner(" ", session))
+        assertNull(
+            slockCurrentAvatarCacheOwner(
+                "https://api.example",
+                session.copy(
+                    selectedServerId = null,
+                    servers = emptyList(),
+                    allowImplicitServerFallback = false
+                )
+            )
+        )
+        assertNull(
+            slockCurrentAvatarCacheOwner(
+                "https://api.example",
+                session.copy(user = session.user.copy(id = " "))
+            )
+        )
     }
 
     private fun runtime(
@@ -819,6 +913,15 @@ class SlockAvatarCacheRuntimeTest {
         modelRevision = 1L
     )
 
+    private fun temporaryFailure(key: SlockAvatarCacheKey) =
+        SlockAvatarCacheFailure(
+            key = key,
+            kind = SlockAvatarCacheFailureKind.TemporaryTransport,
+            consecutiveCount = 1,
+            failedAtMs = 200L,
+            retryAtMs = 400L
+        )
+
     private val SlockAvatarCacheKey.slot: Pair<SlockAvatarCacheOwner, SlockAvatarCacheSubject>
         get() = owner to subject
 
@@ -831,6 +934,7 @@ class SlockAvatarCacheRuntimeTest {
         var commitFailureCalls = 0
         var clearAllCalls = 0
         var throwOnClearAll = false
+        val clearedTemporaryFailureOwners = mutableListOf<SlockAvatarCacheOwner>()
 
         override suspend fun read(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState =
             SlockAvatarCacheStoredState(
@@ -909,6 +1013,7 @@ class SlockAvatarCacheRuntimeTest {
         }
 
         override suspend fun clearTemporaryFailures(owner: SlockAvatarCacheOwner) {
+            clearedTemporaryFailureOwners += owner
             failureByKey.entries.removeAll {
                 it.key.owner == owner && it.value.kind == SlockAvatarCacheFailureKind.TemporaryTransport
             }

@@ -24,10 +24,21 @@ internal class KuiklyHostNetworkEvents(
             data?.toHostNetworkStatusSignal()?.let(onChanged)
         }
 
+    /** Recovery work accepts only the host's explicit, internally-consistent online signal. */
+    fun addAuthoritativeOnlineListener(onAvailable: () -> Unit): RealtimeSubscription =
+        eventBus.observe(SlockHostNetworkNotifyContract.EventName, crossProcess = true) { data ->
+            if (data?.isAuthoritativeOnlineSignal() == true) onAvailable()
+        }
+
     fun removeListener(subscription: RealtimeSubscription) {
         subscription.close()
     }
 }
+
+private fun JSONObject.isAuthoritativeOnlineSignal(): Boolean =
+    optString(SlockHostNetworkNotifyContract.KeyStatus) == SlockHostNetworkNotifyContract.StatusOnline &&
+        has(SlockHostNetworkNotifyContract.KeyOnline) &&
+        optBoolean(SlockHostNetworkNotifyContract.KeyOnline, false)
 
 private fun JSONObject.toHostNetworkStatusSignal(): HostNetworkStatusSignal {
     val status = optString(SlockHostNetworkNotifyContract.KeyStatus)

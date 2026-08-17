@@ -786,6 +786,28 @@ internal class SlockAvatarCacheRuntime(
         token: SlockAvatarMountToken
     ): Boolean = coordinator.seedMountedSession(session, token)
 
+    /**
+     * Clears transient download suppression only for the exact process owner that is still current
+     * when the host reports restored connectivity. The host supplies no owner identity: shared
+     * resolves environment/account/current-server twice so a queued signal cannot recover a
+     * departed owner after an auth or server transition.
+     */
+    suspend fun recoverCurrentOwnerAfterNetworkAvailable(): Boolean {
+        val capturedOwner = currentNetworkRecoveryOwner() ?: return false
+        val confirmedOwner = currentNetworkRecoveryOwner() ?: return false
+        if (confirmedOwner != capturedOwner) {
+            logger("avatar_cache_network_recovery_owner_changed")
+            return false
+        }
+        return runCatchingPreservingCancellation {
+            coordinator.onNetworkChanged(capturedOwner)
+            true
+        }.getOrElse {
+            logger("avatar_cache_network_recovery_failed")
+            false
+        }
+    }
+
     fun captureSessionRetirement(
         environmentId: String,
         session: StoredAuthSession?
@@ -876,6 +898,13 @@ internal class SlockAvatarCacheRuntime(
                 withTimeoutOrNull(nativeMutationTimeoutMillis) { block(binding) } ?: false
             }.getOrDefault(false)
         } ?: true
+
+    private suspend fun currentNetworkRecoveryOwner(): SlockAvatarCacheOwner? =
+        runCatchingPreservingCancellation { currentOwner(null) }
+            .getOrElse {
+                logger("avatar_cache_network_recovery_owner_read_failed")
+                null
+            }
 
     /** Settings image clear: native and shared are both attempted, and partial work is never success. */
     suspend fun clearAll(nativeClear: suspend () -> Boolean): SlockAvatarCacheClearReceipt =
