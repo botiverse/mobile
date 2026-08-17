@@ -257,11 +257,11 @@
     <string name="thread_action_copy_link">Copy Link</string>
     <string name="thread_action_copy_markdown">Copy Markdown</string>
     <string name="thread_action_select_text">Select Text</string>
-    <string name="thread_inline_selection_copy">Copy</string>
-    <string name="thread_inline_selection_reply">Reply</string>
-    <string name="thread_inline_selection_save">Save</string>
-    <string name="thread_inline_selection_select">Select</string>
-    <string name="thread_inline_selection_more">More</string>
+    <string name="thread_new_message_menu_copy">Copy</string>
+    <string name="thread_new_message_menu_reply">Reply</string>
+    <string name="thread_new_message_menu_save">Save</string>
+    <string name="thread_new_message_menu_select">Select</string>
+    <string name="thread_new_message_menu_more">More</string>
     <string name="thread_action_open_thread">Open Thread</string>
     <string name="thread_action_remove_from_saved">Remove from Saved</string>
     <string name="thread_action_save_message">Save Message</string>
@@ -1565,8 +1565,8 @@
     <string name="settings_mobile_multi_shell_host_detail">Open different workspaces in separate Android app windows. Existing windows remain open until you close them.</string>
     <string name="settings_mobile_server_drawer">Multi-server Home drawer</string>
     <string name="settings_mobile_server_drawer_detail">Use the new multi-server left drawer on Home. Turn this off to keep the current server switcher popover.</string>
-    <string name="settings_mobile_inline_selection_toolbar">Inline message selection toolbar</string>
-    <string name="settings_mobile_inline_selection_toolbar_detail">Long-press an eligible plain-text message to select its text in place and show quick reactions and message tools. Turn this off to keep the current message menu.</string>
+    <string name="settings_mobile_new_message_menu">New message menu</string>
+    <string name="settings_mobile_new_message_menu_detail">Long-press a message to show quick reactions and common actions in a compact two-row menu. Turn it off to use the classic message menu.</string>
     <string name="settings_mobile_thread_unread_jump">Thread unread jump</string>
     <string name="settings_mobile_thread_unread_jump_detail">Show the floating unread-message jump control in Thread. Keep this off while its reading-window behavior is experimental.</string>
     <string name="settings_mobile_conversation_forward_gesture">Conversation forward gesture</string>

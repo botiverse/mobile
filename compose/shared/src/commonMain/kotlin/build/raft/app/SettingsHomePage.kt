@@ -51,7 +51,7 @@ import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
 import build.raft.app.data.MOBILE_ACTION_LONG_MESSAGE_COLLAPSE
 import build.raft.app.data.MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD
 import build.raft.app.data.MOBILE_ACTION_THREAD_UNREAD_JUMP
-import build.raft.app.data.MOBILE_ACTION_INLINE_SELECTION_TOOLBAR
+import build.raft.app.data.MOBILE_ACTION_NEW_MESSAGE_MENU
 import build.raft.app.data.MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE
 import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
@@ -6133,8 +6133,8 @@ private fun SettingsNativeDetailPageContent(
                     onThreadUnreadJumpChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetThreadUnreadJumpEnabled(enabled))
                     },
-                    onInlineSelectionToolbarChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetInlineSelectionToolbarEnabled(enabled))
+                    onNewMessageMenuChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetNewMessageMenuEnabled(enabled))
                     },
                     onConversationForwardGestureChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetConversationForwardGestureEnabled(enabled))
@@ -7261,7 +7261,7 @@ private fun SettingsMobileContent(
     onLongMessageCollapseChange: (Boolean) -> Unit,
     onSingleTapOpensThreadChange: (Boolean) -> Unit,
     onThreadUnreadJumpChange: (Boolean) -> Unit,
-    onInlineSelectionToolbarChange: (Boolean) -> Unit,
+    onNewMessageMenuChange: (Boolean) -> Unit,
     onConversationForwardGestureChange: (Boolean) -> Unit,
     onImageAnnotationChange: (Boolean) -> Unit,
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
@@ -7324,10 +7324,10 @@ private fun SettingsMobileContent(
                 )
             }
             item {
-                SettingsInlineSelectionToolbarCard(
+                SettingsNewMessageMenuCard(
                     snapshot = snapshot,
                     actionState = actionState,
-                    onInlineSelectionToolbarChange = onInlineSelectionToolbarChange
+                    onNewMessageMenuChange = onNewMessageMenuChange
                 )
             }
             if (snapshot.conversationForwardGesture.available) {
@@ -7897,34 +7897,49 @@ private fun SettingsThreadUnreadJumpCard(
 }
 
 @Composable
-private fun SettingsInlineSelectionToolbarCard(
+private fun SettingsNewMessageMenuCard(
     snapshot: SettingsMobileSnapshot,
     actionState: SharedSettingsActionState?,
-    onInlineSelectionToolbarChange: (Boolean) -> Unit
+    onNewMessageMenuChange: (Boolean) -> Unit
 ) {
-    val busy = actionState?.action == MOBILE_ACTION_INLINE_SELECTION_TOOLBAR && actionState.inProgress
-    val preference = snapshot.inlineSelectionToolbar
+    val busy = actionState?.action == MOBILE_ACTION_NEW_MESSAGE_MENU && actionState.inProgress
+    val preference = snapshot.newMessageMenu
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.FileScan,
-        title = stringResource(MR.strings.settings_mobile_inline_selection_toolbar)
+        iconName = SlockLucideIconName.PanelBottomOpen,
+        title = stringResource(MR.strings.settings_mobile_new_message_menu)
     ) {
-        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_inline_selection_toolbar_detail))
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .clickable(enabled = preference.available && !busy) {
-                        onInlineSelectionToolbarChange(!preference.enabled)
+                        onNewMessageMenuChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SettingsConnectedAppsBadge(
+                        stringResource(MR.strings.settings_badge_beta),
+                        SlockColor.BrandYellow
+                    )
+                    Text(
+                        preference.localizedToggleStatus(),
+                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
                 Text(
-                    preference.localizedToggleStatus(),
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack
+                    stringResource(MR.strings.settings_mobile_new_message_menu_detail),
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             SlockSwitchButton(
@@ -7932,7 +7947,7 @@ private fun SettingsInlineSelectionToolbarCard(
                 enabled = preference.available && !busy
             )
         }
-        if (actionState?.action == MOBILE_ACTION_INLINE_SELECTION_TOOLBAR && actionState.errorCode != null) {
+        if (actionState?.action == MOBILE_ACTION_NEW_MESSAGE_MENU && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
     }
@@ -13434,13 +13449,14 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                 errorStrings = errorStrings,
                                 badgeLabel = "Beta"
                             ),
-                            mobile.inlineSelectionToolbar.toMobileToggleRow(
-                                key = MOBILE_ACTION_INLINE_SELECTION_TOOLBAR,
-                                iconName = SlockLucideIconName.FileScan,
-                                title = "Inline message selection toolbar",
+                            mobile.newMessageMenu.toMobileToggleRow(
+                                key = MOBILE_ACTION_NEW_MESSAGE_MENU,
+                                iconName = SlockLucideIconName.PanelBottomOpen,
+                                title = "New message menu",
                                 fallbackStatus = "Off",
                                 actionState = actionState,
-                                errorStrings = errorStrings
+                                errorStrings = errorStrings,
+                                badgeLabel = "Beta"
                             ),
                             if (mobile.conversationForwardGesture.available) {
                                 mobile.conversationForwardGesture.toMobileToggleRow(

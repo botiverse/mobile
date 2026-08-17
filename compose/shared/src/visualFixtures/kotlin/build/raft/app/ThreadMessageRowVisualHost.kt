@@ -255,11 +255,6 @@ import com.tencent.kuikly.compose.extension.keyboardDismissModeInteractiveIOS
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.resources.imageResource
 import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.text.SelectionContainer
-import com.tencent.kuikly.compose.text.SelectionContainerState
-import com.tencent.kuikly.compose.text.SelectionFrame
-import com.tencent.kuikly.compose.text.TextSelectionType
-import com.tencent.kuikly.compose.text.rememberSelectionContainerState
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
@@ -381,22 +376,19 @@ internal fun ThreadMessageVisualScreenContent() {
     val longPressReadyToken = params.optString("longPressReadyToken")
     val longPressMenuVisibleToken = params.optString("longPressMenuVisibleToken")
     val singleTapOpensThreadEnabled = params.optBoolean("singleTapOpensThreadEnabled", false)
-    val inlineSelectionComposerBoundaryVisible =
-        params.optBoolean("inlineSelectionComposerBoundaryVisible", false)
-    // Reply count for the inline-selection fixture's compact target group. Zero
-    // keeps the fixture exactly as authored, so cases that omit this parameter
-    // render byte-identically to before it existed.
-    val inlineSelectionTargetReplyCount = params.optInt("inlineSelectionTargetReplyCount", 0)
-    val inlineSelectionToolbarEnabled =
+    val newMessageMenuComposerBoundaryVisible =
+        params.optBoolean("newMessageMenuComposerBoundaryVisible", false)
+    val newMessageMenuTargetReplyCount = params.optInt("newMessageMenuTargetReplyCount", 0)
+    val newMessageMenuEnabled =
         remember(visualFixture) {
-            visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO &&
+            visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_NEW_MESSAGE_MENU_DEMO &&
                 KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
-                    .readInlineSelectionToolbarEnabledSync()
+                    .readNewMessageMenuEnabledSync()
         }
     val payload =
-        remember(visualFixture, instanceId, inlineSelectionTargetReplyCount) {
+        remember(visualFixture, instanceId, newMessageMenuTargetReplyCount) {
             threadVisualFixture(fixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }, instanceId = instanceId)
-                .withInlineSelectionTargetReplyCount(inlineSelectionTargetReplyCount)
+                .withNewMessageMenuTargetReplyCount(newMessageMenuTargetReplyCount)
         }
     val highlightedMentions =
         remember(visualFixture) {
@@ -565,24 +557,16 @@ internal fun ThreadMessageVisualScreenContent() {
         return
     }
     if (
-        visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO &&
+        visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_NEW_MESSAGE_MENU_DEMO &&
         !visualSingleMessage
     ) {
-        ThreadInlineSelectionCompactGroupVisual(
+        ThreadNewMessageMenuCompactGroupVisual(
             messages = payload.toThreadTimelineSlice().messages,
-            // The slice strips per-message reply metadata
-            // (withoutThreadReplyMetadata); production reads replyCount through
-            // this side-channel map built from the UNstripped payload. Without
-            // it the card's replyMetadata default derives from the stripped
-            // message, replyCount stays 0, and single-tap-opens-thread is
-            // (correctly) ineligible — which is exactly how the
-            // inlineSelectionTargetReplyCount override got silently erased
-            // (nightly 31128964690).
             replyMetadataByParentId = payload.toThreadReplyMetadataMap(),
             messageBodyTextStyle = messageBodyTextStyle,
-            inlineSelectionEnabled = inlineSelectionToolbarEnabled,
+            newMessageMenuEnabled = newMessageMenuEnabled,
             singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
-            composerBoundaryVisible = inlineSelectionComposerBoundaryVisible
+            composerBoundaryVisible = newMessageMenuComposerBoundaryVisible
         )
         return
     }
@@ -610,6 +594,9 @@ internal fun ThreadMessageVisualScreenContent() {
         return
     }
     var actionsMenuVisible by remember(visualFixture, menuVariant) { mutableStateOf(menuVariant.isNotBlank()) }
+    var compactMenuAnchor by remember(visualFixture, message?.id) {
+        mutableStateOf<SlockPopoverAnchor?>(null)
+    }
     val menuActions =
         remember(message, menuVariant, actionsMenuVisible, visualReplyMetadataByParentId) {
             if (message == null || !actionsMenuVisible) {
@@ -722,10 +709,6 @@ internal fun ThreadMessageVisualScreenContent() {
                 null
             }
         }
-    val inlineSelectionOverlayCoordinator =
-        rememberThreadInlineSelectionOverlayCoordinator(
-            "thread-message-visual:$visualFixture:$instanceId"
-        )
     CompositionLocalProvider(
         LocalSlockMessagePermalinkLabelResolver provides visualMessagePermalinkLabelResolver,
         LocalSlockMarkdownRenderConfig provides
@@ -733,12 +716,7 @@ internal fun ThreadMessageVisualScreenContent() {
         LocalSlockTimeContextProvider provides (visualTimeContextProvider ?: inheritedTimeContextProvider),
         LocalThreadInlineReplyTimestampReporter provides inlineReplyTimestampReporter,
     ) {
-        Box(
-            modifier =
-                Modifier.onGloballyPositioned(
-                    inlineSelectionOverlayCoordinator::updateRootBounds
-                )
-        ) {
+        Box {
             Column(
                 modifier =
                     Modifier
@@ -811,7 +789,7 @@ internal fun ThreadMessageVisualScreenContent() {
                             Modifier
                                 .size(24.dp)
                                 .background(
-                                    if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO) {
+                                    if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_NEW_MESSAGE_MENU_DEMO) {
                                         // Keep the fixture's open-thread oracle distinct from colorful reactions.
                                         Color(0xFFFF00A8)
                                     } else {
@@ -844,7 +822,13 @@ internal fun ThreadMessageVisualScreenContent() {
                     isMarkdownTagValid = isMarkdownTagValid,
                     markdownTagContextSignature = markdownTagContextSignature,
                     timestampLabel = message.timestampLabel,
-                    onShowActions = { actionsMenuVisible = true },
+                    onShowActions = { anchor ->
+                        if (newMessageMenuEnabled) {
+                            compactMenuAnchor = anchor
+                        } else {
+                            actionsMenuVisible = true
+                        }
+                    },
                     onOpenMember = {},
                     onOpenThread = { openedVisualThreadMessageId = it },
                     onOpenTask = {},
@@ -857,19 +841,30 @@ internal fun ThreadMessageVisualScreenContent() {
                         }
                     },
                     onOpenMarkdownUrl = { openedVisualMarkdownUrlCount += 1 },
-                    inlineSelectionEnabled = inlineSelectionToolbarEnabled,
-                    onInlineSelectionOverlayChanged = inlineSelectionOverlayCoordinator::update,
-                    onInlineSelectionReact = {},
-                    onInlineSelectionCopy = {},
-                    onInlineSelectionReply = { openedVisualThreadMessageId = message.id },
-                    onInlineSelectionForward = {},
-                    onInlineSelectionSave = {},
-                    onInlineSelectionTranslate = {},
-                    onInlineSelectionSelect = {},
-                    onInlineSelectionMore = { _ -> },
                     onLongPressInputReady = onLongPressInputReady,
                     outerPadding = 0.dp
                 )
+                compactMenuAnchor?.let { anchor ->
+                    ThreadNewMessageMenu(
+                        anchor = anchor,
+                        availability =
+                            ThreadNewMessageMenuActionAvailability(
+                                reactions = payload.showReactionActions,
+                                reply = payload.showReplyActions,
+                                save = payload.showMessageSaveAction,
+                                translate = false
+                            ),
+                        onDismiss = { compactMenuAnchor = null },
+                        onReact = {},
+                        onCopy = {},
+                        onReply = { openedVisualThreadMessageId = message.id },
+                        onForward = {},
+                        onSave = {},
+                        onTranslate = {},
+                        onSelect = {},
+                        onMore = { compactMenuAnchor = null }
+                    )
+                }
                 if (menuActions.isNotEmpty()) {
                     Spacer(Modifier.height(SlockSpacing.Sm))
                     ThreadMessageMenuChrome(
@@ -902,25 +897,23 @@ internal fun ThreadMessageVisualScreenContent() {
                             }
                 )
             }
-            ThreadInlineSelectionRootOverlay(inlineSelectionOverlayCoordinator)
         }
     }
 }
 @Composable
-internal fun ThreadInlineSelectionCompactGroupVisual(
+internal fun ThreadNewMessageMenuCompactGroupVisual(
     messages: List<KuiklyThreadMessageItem>,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     messageBodyTextStyle: TextStyle,
-    inlineSelectionEnabled: Boolean,
+    newMessageMenuEnabled: Boolean,
     singleTapOpensThreadEnabled: Boolean,
     composerBoundaryVisible: Boolean
 ) {
     var openedMessageId by remember { mutableStateOf<String?>(null) }
-    val inlineSelectionOverlayCoordinator =
-        rememberThreadInlineSelectionOverlayCoordinator("thread-inline-selection-compact-group")
+    var compactMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     val renderedMessages =
         if (composerBoundaryVisible) {
-            messages.take(THREAD_INLINE_SELECTION_TARGET_GROUP_SIZE)
+            messages.take(THREAD_NEW_MESSAGE_MENU_TARGET_GROUP_SIZE)
         } else {
             messages
         }
@@ -930,7 +923,6 @@ internal fun ThreadInlineSelectionCompactGroupVisual(
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .onGloballyPositioned(inlineSelectionOverlayCoordinator::updateRootBounds)
         ) {
             LazyColumn(
                 modifier = Modifier.width(390.dp).fillMaxSize().padding(SlockSpacing.Md),
@@ -952,7 +944,9 @@ internal fun ThreadInlineSelectionCompactGroupVisual(
                         taskStatusActionsEnabled = false,
                         showSaveAction = false,
                         showReactionAddAction = false,
-                        onShowActions = {},
+                        onShowActions = { anchor ->
+                            if (newMessageMenuEnabled) compactMenuAnchor = anchor
+                        },
                         onOpenMember = {},
                         onOpenThread = { openedMessageId = it },
                         onOpenTask = {},
@@ -961,13 +955,31 @@ internal fun ThreadInlineSelectionCompactGroupVisual(
                         onOpenAttachment = {},
                         onOpenMarkdownTag = { _, _ -> },
                         onOpenMarkdownUrl = {},
-                        inlineSelectionEnabled = inlineSelectionEnabled,
-                        onInlineSelectionOverlayChanged = inlineSelectionOverlayCoordinator::update,
                         outerPadding = 0.dp
                     )
                 }
             }
-            ThreadInlineSelectionRootOverlay(inlineSelectionOverlayCoordinator)
+            compactMenuAnchor?.let { anchor ->
+                ThreadNewMessageMenu(
+                    anchor = anchor,
+                    availability =
+                        ThreadNewMessageMenuActionAvailability(
+                            reactions = true,
+                            reply = true,
+                            save = false,
+                            translate = false
+                        ),
+                    onDismiss = { compactMenuAnchor = null },
+                    onReact = {},
+                    onCopy = {},
+                    onReply = {},
+                    onForward = {},
+                    onSave = {},
+                    onTranslate = {},
+                    onSelect = {},
+                    onMore = { compactMenuAnchor = null }
+                )
+            }
             if (openedMessageId != null) {
                 Box(
                     modifier =
@@ -985,17 +997,17 @@ internal fun ThreadInlineSelectionCompactGroupVisual(
                     Modifier
                         .fillMaxWidth()
                         // Keep the visual oracle's bottom band equal to the
-                        // Composer host bounds, so message-selection pixels
-                        // are never counted as Composer overlap.
+                        // Composer host bounds, so compact-menu pixels are
+                        // never counted as Composer overlap.
                         .height(150.dp)
                         .padding(start = SlockSpacing.Sm, top = 12.dp, end = SlockSpacing.Sm, bottom = 14.dp)
             ) {
                 ThreadComposerContent(
                     payload =
                         KuiklyThreadComposerPayload(
-                            instanceId = "visual-inline-selection-composer",
+                            instanceId = "visual-new-message-menu-composer",
                             placeholder = "Message",
-                            streamChannelId = "visual-inline-selection-thread"
+                            streamChannelId = "visual-new-message-menu-thread"
                         ),
                     onEvent = { _, _, _, _ -> },
                     contentPaddingTop = 0.dp,
@@ -1045,13 +1057,13 @@ internal fun ThreadTaskStatusOwnerAnchorVisualProbe(message: KuiklyThreadMessage
     }
 }
 /**
- * Gives the inline-selection fixture's compact target group [count] replies.
+ * Gives the new-message-menu fixture's compact target group [count] replies.
  *
  * Single-tap thread opening only applies to messages that already have replies,
  * so a capture case that exercises it has to say so. A count of zero returns the
  * payload untouched, keeping every case that omits the parameter unchanged.
  */
-internal fun KuiklyThreadScreenPayload.withInlineSelectionTargetReplyCount(
+internal fun KuiklyThreadScreenPayload.withNewMessageMenuTargetReplyCount(
     count: Int
 ): KuiklyThreadScreenPayload =
     if (count <= 0) {
@@ -1060,7 +1072,7 @@ internal fun KuiklyThreadScreenPayload.withInlineSelectionTargetReplyCount(
         copy(
             messages =
                 messages.mapIndexed { index, message ->
-                    if (index < THREAD_INLINE_SELECTION_TARGET_GROUP_SIZE) {
+                    if (index < THREAD_NEW_MESSAGE_MENU_TARGET_GROUP_SIZE) {
                         message.copy(replyCount = count)
                     } else {
                         message

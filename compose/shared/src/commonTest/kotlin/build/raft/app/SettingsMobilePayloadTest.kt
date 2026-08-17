@@ -2,8 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE
-import build.raft.app.data.MOBILE_ACTION_INLINE_SELECTION_TOOLBAR
 import build.raft.app.data.MOBILE_ACTION_THREAD_UNREAD_JUMP
+import build.raft.app.data.MOBILE_ACTION_NEW_MESSAGE_MENU
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SettingsMobileToggleSnapshot
@@ -65,12 +65,12 @@ class SettingsMobilePayloadTest {
     }
 
     @Test
-    fun conversationForwardGestureIsDefaultOffBetaAndFollowsInlineSelection() {
+    fun newMessageMenuIsDefaultOffBetaAndPrecedesConversationForwardGesture() {
         val snapshot =
             SettingsMobileSnapshot(
                 pushNotifications = toggle(enabled = false),
                 muteServer = toggle(enabled = false),
-                inlineSelectionToolbar = toggle(enabled = false),
+                newMessageMenu = toggle(enabled = false),
                 conversationForwardGesture = toggle(enabled = false)
             )
 
@@ -80,16 +80,19 @@ class SettingsMobilePayloadTest {
                 refreshing = false,
                 errorStrings = englishErrorPresentationStringsForTest()
             ).sections.flatMap { it.rows }
-        val inlineIndex = rows.indexOfFirst { it.key == MOBILE_ACTION_INLINE_SELECTION_TOOLBAR }
+        val menuIndex = rows.indexOfFirst { it.key == MOBILE_ACTION_NEW_MESSAGE_MENU }
         val forwardIndex = rows.indexOfFirst { it.key == MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE }
-        val row = rows.getOrNull(forwardIndex)
+        val menuRow = rows.getOrNull(menuIndex)
+        val forwardRow = rows.getOrNull(forwardIndex)
 
-        assertEquals(inlineIndex + 1, forwardIndex)
-        assertNotNull(row)
-        assertEquals("Beta", row.badgeLabel)
-        assertEquals(false, row.toggleValue)
-        assertFalse(row.title.isBlank())
-        assertFalse(row.detail.isBlank())
+        assertEquals(menuIndex + 1, forwardIndex)
+        assertNotNull(menuRow)
+        assertEquals("Beta", menuRow.badgeLabel)
+        assertEquals(false, menuRow.toggleValue)
+        assertEquals("New message menu", menuRow.title)
+        assertFalse(menuRow.detail.isBlank())
+        assertNotNull(forwardRow)
+        assertEquals("Beta", forwardRow.badgeLabel)
     }
 
     @Test
@@ -98,7 +101,7 @@ class SettingsMobilePayloadTest {
             SettingsMobileSnapshot(
                 pushNotifications = toggle(enabled = false),
                 muteServer = toggle(enabled = false),
-                inlineSelectionToolbar = toggle(enabled = false),
+                newMessageMenu = toggle(enabled = false),
                 conversationForwardGesture =
                     SettingsMobileToggleSnapshot(
                         enabled = false,

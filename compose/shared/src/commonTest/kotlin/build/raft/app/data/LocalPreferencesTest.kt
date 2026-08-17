@@ -132,7 +132,7 @@ class LocalPreferencesTest {
         assertEquals(false, snapshot.longMessageCollapseEnabled)
         assertEquals(false, snapshot.singleTapOpensThreadEnabled)
         assertEquals(false, snapshot.threadUnreadJumpEnabled)
-        assertEquals(false, snapshot.inlineSelectionToolbarEnabled)
+        assertEquals(false, snapshot.newMessageMenuEnabled)
         assertEquals(false, snapshot.conversationForwardGestureEnabled)
         assertEquals(true, snapshot.imageAnnotationEnabled)
         assertEquals(false, snapshot.foregroundMessageBannersEnabled)
@@ -249,13 +249,13 @@ class LocalPreferencesTest {
         assertEquals(true, enabled.conversationForwardGestureEnabled)
         assertEquals(true, preferenceStore.readConversationForwardGestureEnabledSync())
 
-        repository.setInlineSelectionToolbarEnabled(true)
+        repository.setNewMessageMenuEnabled(true)
         val restored =
             PersistentChatLayoutPreferenceRepository(
                 KeyValueChatLayoutPreferenceStore(store)
             ).getChatLayoutPreference()
         assertEquals(true, restored.conversationForwardGestureEnabled)
-        assertEquals(true, restored.inlineSelectionToolbarEnabled)
+        assertEquals(true, restored.newMessageMenuEnabled)
     }
 
     @Test
@@ -272,7 +272,7 @@ class LocalPreferencesTest {
         val longMessageCollapse = repository.setLongMessageCollapseEnabled(true)
         val singleTapOpensThread = repository.setSingleTapOpensThreadEnabled(true)
         val threadUnreadJump = repository.setThreadUnreadJumpEnabled(true)
-        val inlineSelectionToolbar = repository.setInlineSelectionToolbarEnabled(true)
+        val newMessageMenu = repository.setNewMessageMenuEnabled(true)
         val conversationForwardGesture = repository.setConversationForwardGestureEnabled(true)
         val imageAnnotation = repository.setImageAnnotationEnabled(true)
         val foregroundMessageBanners = repository.setForegroundMessageBannersEnabled(true)
@@ -299,7 +299,7 @@ class LocalPreferencesTest {
         assertEquals(true, longMessageCollapse.longMessageCollapseEnabled)
         assertEquals(true, singleTapOpensThread.singleTapOpensThreadEnabled)
         assertEquals(true, threadUnreadJump.threadUnreadJumpEnabled)
-        assertEquals(true, inlineSelectionToolbar.inlineSelectionToolbarEnabled)
+        assertEquals(true, newMessageMenu.newMessageMenuEnabled)
         assertEquals(true, conversationForwardGesture.conversationForwardGestureEnabled)
         assertEquals(true, imageAnnotation.imageAnnotationEnabled)
         assertEquals(true, foregroundMessageBanners.foregroundMessageBannersEnabled)
@@ -318,7 +318,7 @@ class LocalPreferencesTest {
         assertEquals(true, restored.longMessageCollapseEnabled)
         assertEquals(true, restored.singleTapOpensThreadEnabled)
         assertEquals(true, restored.threadUnreadJumpEnabled)
-        assertEquals(true, restored.inlineSelectionToolbarEnabled)
+        assertEquals(true, restored.newMessageMenuEnabled)
         assertEquals(true, restored.conversationForwardGestureEnabled)
         assertEquals(true, restored.imageAnnotationEnabled)
         assertEquals(true, restored.foregroundMessageBannersEnabled)
@@ -344,7 +344,7 @@ class LocalPreferencesTest {
         assertEquals(true, restoredDisabledCompact.serverDrawerEnabled)
         assertEquals(true, restoredDisabledCompact.newDesignSettingsEnabled)
         assertEquals(true, restoredDisabledCompact.homeServerAvatarEnabled)
-        assertEquals(true, restoredDisabledCompact.inlineSelectionToolbarEnabled)
+        assertEquals(true, restoredDisabledCompact.newMessageMenuEnabled)
     }
 
     @Test

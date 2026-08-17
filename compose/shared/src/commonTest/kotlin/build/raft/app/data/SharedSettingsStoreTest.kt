@@ -854,7 +854,7 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetLongMessageCollapseEnabled(true))
         store.accept(SharedSettingsIntent.SetSingleTapOpensThreadEnabled(true))
         store.accept(SharedSettingsIntent.SetThreadUnreadJumpEnabled(true))
-        store.accept(SharedSettingsIntent.SetInlineSelectionToolbarEnabled(true))
+        store.accept(SharedSettingsIntent.SetNewMessageMenuEnabled(true))
         store.accept(SharedSettingsIntent.SetConversationForwardGestureEnabled(true))
         store.accept(SharedSettingsIntent.SetImageAnnotationEnabled(true))
         store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
@@ -875,7 +875,7 @@ class SharedSettingsStoreTest {
         assertEquals(true, chatLayoutRepository.longMessageCollapseEnabled)
         assertEquals(true, chatLayoutRepository.singleTapOpensThreadEnabled)
         assertEquals(true, chatLayoutRepository.threadUnreadJumpEnabled)
-        assertEquals(true, chatLayoutRepository.inlineSelectionToolbarEnabled)
+        assertEquals(true, chatLayoutRepository.newMessageMenuEnabled)
         assertEquals(true, chatLayoutRepository.conversationForwardGestureEnabled)
         assertEquals(true, chatLayoutRepository.imageAnnotationEnabled)
         assertEquals(true, chatLayoutRepository.foregroundMessageBannersEnabled)
@@ -903,8 +903,8 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.singleTapOpensThread.statusLabel)
         assertEquals(true, mobile.threadUnreadJump.enabled)
         assertEquals("Enabled", mobile.threadUnreadJump.statusLabel)
-        assertEquals(true, mobile.inlineSelectionToolbar.enabled)
-        assertEquals("Enabled", mobile.inlineSelectionToolbar.statusLabel)
+        assertEquals(true, mobile.newMessageMenu.enabled)
+        assertEquals("Enabled", mobile.newMessageMenu.statusLabel)
         assertEquals(true, mobile.conversationForwardGesture.enabled)
         assertEquals("Enabled", mobile.conversationForwardGesture.statusLabel)
         assertEquals(true, mobile.imageAnnotation.enabled)
@@ -4005,7 +4005,7 @@ class SharedSettingsStoreTest {
         var longMessageCollapseEnabled: Boolean = false,
         var singleTapOpensThreadEnabled: Boolean = false,
         var threadUnreadJumpEnabled: Boolean = false,
-        var inlineSelectionToolbarEnabled: Boolean = false,
+        var newMessageMenuEnabled: Boolean = false,
         var conversationForwardGestureEnabled: Boolean = false,
         var imageAnnotationEnabled: Boolean = false,
         var foregroundMessageBannersEnabled: Boolean = false,
@@ -4026,7 +4026,7 @@ class SharedSettingsStoreTest {
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                 threadUnreadJumpEnabled = threadUnreadJumpEnabled,
-                inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
+                newMessageMenuEnabled = newMessageMenuEnabled,
                 conversationForwardGestureEnabled = conversationForwardGestureEnabled,
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
@@ -4098,8 +4098,8 @@ class SharedSettingsStoreTest {
             return getChatLayoutPreference()
         }
 
-        override suspend fun setInlineSelectionToolbarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
-            inlineSelectionToolbarEnabled = enabled
+        override suspend fun setNewMessageMenuEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+            newMessageMenuEnabled = enabled
             return getChatLayoutPreference()
         }
 

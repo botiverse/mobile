@@ -489,7 +489,7 @@ sealed interface SharedSettingsIntent {
     data class SetLongMessageCollapseEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetSingleTapOpensThreadEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetThreadUnreadJumpEnabled(val enabled: Boolean) : SharedSettingsIntent
-    data class SetInlineSelectionToolbarEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetNewMessageMenuEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetConversationForwardGestureEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetImageAnnotationEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetForegroundMessageBanners(val enabled: Boolean) : SharedSettingsIntent
@@ -1178,11 +1178,11 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
-    suspend fun setInlineSelectionToolbarEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+    suspend fun setNewMessageMenuEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
-                ?: return DataResult.Error(ScreenError("settings_inline_selection_toolbar_unavailable", retryable = false))
-        repository.setInlineSelectionToolbarEnabled(enabled)
+                ?: return DataResult.Error(ScreenError("settings_new_message_menu_unavailable", retryable = false))
+        repository.setNewMessageMenuEnabled(enabled)
         return loadMobilePreferences()
     }
 
@@ -1609,12 +1609,12 @@ class SharedSettingsDataSource(
                         statusLabel = "Unsupported",
                         detail = "Thread unread jumping is not available on this platform."
                     ),
-            inlineSelectionToolbar =
-                chatLayout?.toSettingsMobileInlineSelectionToolbarSnapshot()
-                    ?: inlineSelectionToolbar.copy(
+            newMessageMenu =
+                chatLayout?.toSettingsMobileNewMessageMenuSnapshot()
+                    ?: newMessageMenu.copy(
                         available = false,
                         statusLabel = "Unsupported",
-                        detail = "Inline message selection is not available on this platform."
+                        detail = "The compact message menu is not available on this platform."
                     ),
             conversationForwardGesture =
                 chatLayout?.toSettingsMobileConversationForwardGestureSnapshot(
@@ -2462,13 +2462,13 @@ class SharedSettingsStore(
                 dataSource.setThreadUnreadJumpEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_THREAD_UNREAD_JUMP)
             }
-            is SharedSettingsIntent.SetInlineSelectionToolbarEnabled -> {
+            is SharedSettingsIntent.SetNewMessageMenuEnabled -> {
                 _state.value =
                     _state.value.copy(
-                        actionState = SharedSettingsActionState(MOBILE_ACTION_INLINE_SELECTION_TOOLBAR, inProgress = true)
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_NEW_MESSAGE_MENU, inProgress = true)
                     )
-                dataSource.setInlineSelectionToolbarEnabled(intent.enabled)
-                    .applyMobileActionResult(MOBILE_ACTION_INLINE_SELECTION_TOOLBAR)
+                dataSource.setNewMessageMenuEnabled(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_NEW_MESSAGE_MENU)
             }
             is SharedSettingsIntent.SetConversationForwardGestureEnabled -> {
                 _state.value =
@@ -3701,7 +3701,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetLongMessageCollapseEnabled,
             is SharedSettingsIntent.SetSingleTapOpensThreadEnabled,
             is SharedSettingsIntent.SetThreadUnreadJumpEnabled,
-            is SharedSettingsIntent.SetInlineSelectionToolbarEnabled,
+            is SharedSettingsIntent.SetNewMessageMenuEnabled,
             is SharedSettingsIntent.SetConversationForwardGestureEnabled,
             is SharedSettingsIntent.SetImageAnnotationEnabled,
             is SharedSettingsIntent.SetForegroundMessageBanners,
@@ -3907,7 +3907,7 @@ internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 internal const val MOBILE_ACTION_LONG_MESSAGE_COLLAPSE = "longMessageCollapse"
 internal const val MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD = "singleTapOpensThread"
 internal const val MOBILE_ACTION_THREAD_UNREAD_JUMP = "threadUnreadJump"
-internal const val MOBILE_ACTION_INLINE_SELECTION_TOOLBAR = "inlineSelectionToolbar"
+internal const val MOBILE_ACTION_NEW_MESSAGE_MENU = "newMessageMenu"
 internal const val MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE = "conversationForwardGesture"
 internal const val MOBILE_ACTION_IMAGE_ANNOTATION = "imageAnnotation"
 internal const val MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS = "foregroundMessageBanners"
@@ -4139,12 +4139,12 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileThreadUnreadJumpSnapsho
         detail = "Show the floating unread-message jump control in Thread. Keep this off while the reading-window behavior is experimental."
     )
 
-private fun ChatLayoutPreferenceSnapshot.toSettingsMobileInlineSelectionToolbarSnapshot(): SettingsMobileToggleSnapshot =
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileNewMessageMenuSnapshot(): SettingsMobileToggleSnapshot =
     SettingsMobileToggleSnapshot(
-        enabled = inlineSelectionToolbarEnabled,
+        enabled = newMessageMenuEnabled,
         available = true,
-        statusLabel = if (inlineSelectionToolbarEnabled) "Enabled" else "Off",
-        detail = "Long-press eligible plain-text messages to select text in place and show quick reactions and message tools."
+        statusLabel = if (newMessageMenuEnabled) "Enabled" else "Off",
+        detail = "Long-press a message to show quick reactions and common actions in a compact two-row menu. Turn it off to use the classic message menu."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileConversationForwardGestureSnapshot(
