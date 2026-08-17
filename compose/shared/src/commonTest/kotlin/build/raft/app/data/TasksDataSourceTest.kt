@@ -95,6 +95,49 @@ class TasksDataSourceTest {
     }
 
     @Test
+    fun networkTasksApiBindsProjectedReadsAndWritesToExplicitServer() = runBlocking {
+        val networkClient = RecordingTasksNetworkClient()
+        val client = SlockTasksApiClient(NetworkSlockTasksApi(networkClient))
+        val serverId = ServerId("server-peer")
+
+        assertIs<DataResult.Content<TaskSnapshot>>(
+            client.channelTasks(serverId, ChannelId("channel-peer"), DataRequestPriority.Visible)
+        )
+        assertIs<DataResult.Content<TaskActionResult>>(
+            client.taskByNumber(serverId, ChannelId("channel-peer"), 9, DataRequestPriority.Visible)
+        )
+        assertIs<DataResult.Content<TaskSnapshot>>(
+            client.createTasks(
+                serverId,
+                ChannelId("channel-peer"),
+                listOf(TaskCreateDraft("Peer task")),
+                DataRequestPriority.Foreground
+            )
+        )
+        assertIs<DataResult.Content<TaskActionResult>>(
+            client.updateTaskStatus(serverId, TaskId("task-peer"), TaskStatus.Done)
+        )
+        assertIs<DataResult.Content<TaskActionResult>>(client.claimTask(serverId, TaskId("task-peer")))
+        assertIs<DataResult.Content<TaskConvertResult>>(client.convertMessage(serverId, MessageId("message-peer")))
+        assertIs<DataResult.Content<TaskActionResult>>(client.unclaimTask(serverId, TaskId("task-peer")))
+        assertIs<DataResult.Content<Unit>>(client.deleteTask(serverId, TaskId("task-peer")))
+
+        assertEquals(
+            listOf(
+                "GET tasks/channel/channel-peer priority=Visible server=server-peer body=",
+                "GET tasks/channel/channel-peer/number/9 priority=Visible server=server-peer body=",
+                """POST tasks/channel/channel-peer priority=Foreground server=server-peer body={"tasks":[{"title":"Peer task"}]}""",
+                """PATCH tasks/task-peer/status priority=Foreground server=server-peer body={"status":"done"}""",
+                "PATCH tasks/task-peer/claim priority=Foreground server=server-peer body=",
+                """POST tasks/convert-message priority=Foreground server=server-peer body={"messageId":"message-peer"}""",
+                "PATCH tasks/task-peer/unclaim priority=Foreground server=server-peer body=",
+                "DELETE tasks/task-peer priority=Foreground server=server-peer body="
+            ),
+            networkClient.calls
+        )
+    }
+
+    @Test
     fun typedTasksApiRejectsGuessedCreateWrappers() = runBlocking {
         val client = SlockTasksApiClient(
             RecordingTasksApi(createBody = """{"data":[{"id":"task-1","title":"Task #1: guessed"}]}""")
@@ -238,6 +281,7 @@ class TasksDataSourceTest {
                           "tasks": [
                             {
                               "id": "task-1",
+                              "revision": 41,
                               "channelId": "channel-1",
                               "taskNumber": 1,
                               "title": "Task #1: canonical",
@@ -267,6 +311,7 @@ class TasksDataSourceTest {
         ).data
 
         assertEquals("Align the visual fixture copy.", snapshot.tasks[0].description)
+        assertEquals(41L, snapshot.tasks[0].revision)
         assertEquals(null, snapshot.tasks[1].description)
     }
 

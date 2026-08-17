@@ -2955,9 +2955,24 @@ internal class SharedRealtimeDomainEventOwner(
 
     private fun RealtimeEvent.patchSharedTaskProjection(serverId: String) {
         val store = tasksDataStore ?: return
+        fun patch(task: TaskSummary) {
+            when (store.upsertTask(serverId, task)) {
+                SharedTaskFactFoldOutcome.Accepted -> Unit
+                SharedTaskFactFoldOutcome.StaleIgnored ->
+                    sinks?.log?.invoke(
+                        "tasks_canonical_stale_drop serverId=$serverId taskId=${task.id.value} " +
+                            "revision=${task.revision ?: -1L}"
+                    )
+                SharedTaskFactFoldOutcome.Conflict ->
+                    sinks?.log?.invoke(
+                        "tasks_canonical_conflict serverId=$serverId taskId=${task.id.value} " +
+                            "revision=${task.revision ?: -1L} requires=authoritative_refetch"
+                    )
+            }
+        }
         when (this) {
-            is TaskCreated -> tasks.forEach { task -> store.upsertTask(serverId, task) }
-            is TaskUpdated -> store.upsertTask(serverId, task)
+            is TaskCreated -> tasks.forEach(::patch)
+            is TaskUpdated -> patch(task)
             is TaskDeleted -> store.removeTask(serverId, taskId)
             else -> Unit
         }
@@ -3033,7 +3048,7 @@ private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
     }
 
 private fun TaskSummary.taskDomainKey(): String =
-    "${id.value}:${status.name}:${updatedAtLabel}:${assignee?.id?.value.orEmpty()}"
+    "${id.value}:${revision ?: -1L}:${status.name}:${updatedAtLabel}:${assignee?.id?.value.orEmpty()}"
 
 private fun RealtimeEvent.messageSeqEnvelope(epoch: String): MessageSeqEnvelope<RealtimeEvent>? =
     when (this) {

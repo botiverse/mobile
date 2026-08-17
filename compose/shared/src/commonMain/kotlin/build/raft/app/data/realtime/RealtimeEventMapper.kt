@@ -514,6 +514,7 @@ private data class ThreadLatestReplyDto(
 @Serializable
 private data class TaskInfoWireDto(
     val id: String,
+    val revision: Long? = null,
     val messageId: String? = null,
     val channelId: String? = null,
     val channelName: String? = null,
@@ -903,6 +904,7 @@ private fun TaskInfoWireDto.toDomain(
     val resolvedStatus = status.strictTaskStatusOrNull("realtime_task", diagnostics) ?: return null
     return TaskSummary(
         id = TaskId(id),
+        revision = revision,
         title = title,
         status = resolvedStatus,
         taskNumber = taskNumber,

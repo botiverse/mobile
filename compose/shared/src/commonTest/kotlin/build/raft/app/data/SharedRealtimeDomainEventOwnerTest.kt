@@ -631,6 +631,40 @@ class SharedRealtimeDomainEventOwnerTest {
     }
 
     @Test
+    fun hostAndPeerTaskRealtimeKeepBothLocalRoutesAndOneNewestFact() = runBlocking {
+        val tasksDataStore = SharedTasksDataStore()
+        val owner = SharedRealtimeDomainEventOwner(tasksDataStore)
+        val host =
+            TaskSummary(
+                id = TaskId("task-joint"),
+                title = "Joint task",
+                status = TaskStatus.Todo,
+                channelId = ChannelId("channel-host"),
+                messageId = MessageId("message-joint"),
+                revision = 8L,
+                updatedAtLabel = "now"
+            )
+        val peer =
+            host.copy(
+                status = TaskStatus.InReview,
+                channelId = ChannelId("channel-peer"),
+                revision = 9L
+            )
+
+        owner.accept("server-host", TaskUpdated(host), source = "host_wire")
+        owner.accept("server-peer", TaskUpdated(peer), source = "peer_wire")
+
+        val hostProjection = tasksDataStore.projection("server-host", SharedTasksScope.Server).tasks.single()
+        val peerProjection = tasksDataStore.projection("server-peer", SharedTasksScope.Server).tasks.single()
+        assertEquals(TaskStatus.InReview, hostProjection.status)
+        assertEquals(TaskStatus.InReview, peerProjection.status)
+        assertEquals(ChannelId("channel-host"), hostProjection.channelId)
+        assertEquals(ChannelId("channel-peer"), peerProjection.channelId)
+        assertEquals(MessageId("message-joint"), hostProjection.messageId)
+        assertEquals(hostProjection.copy(channelId = null), peerProjection.copy(channelId = null))
+    }
+
+    @Test
     fun messageEventsUseStableIdentityForDedupe() {
         val owner = SharedRealtimeDomainEventOwner()
         val homeEvents = mutableListOf<RealtimeEventRecord>()

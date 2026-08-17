@@ -5696,6 +5696,7 @@ internal fun SharedThreadRouteContent(
                     forceRefresh = true
                 ) {
                     tasksDataSource.loadChannelTasks(
+                        serverId = ServerId(serverId),
                         channelId = resolvedTaskChannelId,
                         priority = DataRequestPriority.Background
                     )

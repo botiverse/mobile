@@ -49,12 +49,13 @@ class SharedTasksDataSource(
         }
 
     override suspend fun loadChannelTasks(
+        serverId: ServerId,
         channelId: ChannelId,
         filter: TaskFilter,
         priority: DataRequestPriority
     ): DataResult<TaskSnapshot> =
         try {
-            typedApi.channelTasks(channelId, priority, filter)
+            typedApi.channelTasks(serverId, channelId, priority, filter)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
@@ -62,12 +63,13 @@ class SharedTasksDataSource(
         }
 
     suspend fun loadChannelTaskByNumber(
+        serverId: ServerId,
         channelId: ChannelId,
         taskNumber: Int,
         priority: DataRequestPriority
     ): DataResult<TaskActionResult> =
         try {
-            typedApi.taskByNumber(channelId, taskNumber, priority)
+            typedApi.taskByNumber(serverId, channelId, taskNumber, priority)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
@@ -75,11 +77,12 @@ class SharedTasksDataSource(
         }
 
     override suspend fun updateTaskStatus(
+        serverId: ServerId,
         taskId: TaskId,
         status: TaskStatus
     ): DataResult<TaskActionResult> =
         try {
-            typedApi.updateTaskStatus(taskId, status)
+            typedApi.updateTaskStatus(serverId, taskId, status)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
@@ -94,11 +97,13 @@ class SharedTasksDataSource(
      * before dispatching).
      */
     override suspend fun createTasks(
+        serverId: ServerId,
         channelId: ChannelId,
         titles: List<String>
     ): DataResult<TaskSnapshot> =
         try {
             typedApi.createTasks(
+                serverId = serverId,
                 channelId = channelId,
                 drafts = titles.map { TaskCreateDraft(title = it) },
                 priority = DataRequestPriority.Foreground
@@ -109,9 +114,9 @@ class SharedTasksDataSource(
             DataResult.Error(ScreenError(code = "tasks_create_network", retryable = true))
         }
 
-    suspend fun convertMessageToTask(messageId: MessageId): DataResult<TaskConvertResult> =
+    suspend fun convertMessageToTask(serverId: ServerId, messageId: MessageId): DataResult<TaskConvertResult> =
         try {
-            typedApi.convertMessage(messageId)
+            typedApi.convertMessage(serverId, messageId)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
@@ -133,7 +138,9 @@ internal suspend fun convertMessageToCanonicalTask(
     tasksDataStore: SharedTasksDataStore?,
     diagnosticsLogger: (String) -> Unit = {}
 ): DataResult<TaskSummary> {
-    val convertResult = tasksDataSource.convertMessageToTask(messageId)
+    val resolvedServerId = serverId
+        ?: return DataResult.Error(ScreenError(code = "selected_server_missing", retryable = false))
+    val convertResult = tasksDataSource.convertMessageToTask(resolvedServerId, messageId)
     val accepted =
         when (convertResult) {
             is DataResult.Content -> convertResult.data
@@ -148,8 +155,6 @@ internal suspend fun convertMessageToCanonicalTask(
                 ScreenError(code = "tasks_convert_message_identity_mismatch", retryable = false)
             )
         }
-        val resolvedServerId = serverId
-            ?: return DataResult.Error(ScreenError(code = "selected_server_missing", retryable = false))
         val sharedStore = tasksDataStore
             ?: return DataResult.Error(ScreenError(code = "tasks_store_missing", retryable = false))
         sharedStore.upsertTask(resolvedServerId.value, responseTask)
@@ -159,8 +164,6 @@ internal suspend fun convertMessageToCanonicalTask(
         return DataResult.Content(responseTask)
     }
 
-    val resolvedServerId = serverId
-        ?: return DataResult.Error(ScreenError(code = "selected_server_missing", retryable = false))
     val sharedStore = tasksDataStore
         ?: return DataResult.Error(ScreenError(code = "tasks_store_missing", retryable = false))
     diagnosticsLogger(
@@ -249,12 +252,31 @@ internal class NetworkSlockTasksApi(
     override suspend fun channelTasks(channelId: ChannelId, priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.request(priority, "tasks/channel/${channelId.value}")
 
+    override suspend fun channelTasks(
+        serverId: ServerId,
+        channelId: ChannelId,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse =
+        networkClient.request(priority, "tasks/channel/${channelId.value}", serverIdOverride = serverId)
+
     override suspend fun taskByNumber(
         channelId: ChannelId,
         taskNumber: Int,
         priority: DataRequestPriority
     ): HomeNetworkResponse =
         networkClient.request(priority, "tasks/channel/${channelId.value}/number/$taskNumber")
+
+    override suspend fun taskByNumber(
+        serverId: ServerId,
+        channelId: ChannelId,
+        taskNumber: Int,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority,
+            "tasks/channel/${channelId.value}/number/$taskNumber",
+            serverIdOverride = serverId
+        )
 
     override suspend fun createTasks(
         channelId: ChannelId,
@@ -268,8 +290,30 @@ internal class NetworkSlockTasksApi(
             bodyText = buildSharedTasksCreateBody(drafts)
         )
 
+    override suspend fun createTasks(
+        serverId: ServerId,
+        channelId: ChannelId,
+        drafts: List<TaskCreateDraft>,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = priority,
+            path = "tasks/channel/${channelId.value}",
+            method = "POST",
+            bodyText = buildSharedTasksCreateBody(drafts),
+            serverIdOverride = serverId
+        )
+
     override suspend fun claimTask(taskId: TaskId): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Foreground, "tasks/${taskId.value}/claim", method = "PATCH")
+
+    override suspend fun claimTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
+        networkClient.request(
+            DataRequestPriority.Foreground,
+            "tasks/${taskId.value}/claim",
+            method = "PATCH",
+            serverIdOverride = serverId
+        )
 
     override suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse =
         networkClient.request(
@@ -279,8 +323,25 @@ internal class NetworkSlockTasksApi(
             bodyText = buildSharedTaskConvertBody(messageId)
         )
 
+    override suspend fun convertMessage(serverId: ServerId, messageId: MessageId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "tasks/convert-message",
+            method = "POST",
+            bodyText = buildSharedTaskConvertBody(messageId),
+            serverIdOverride = serverId
+        )
+
     override suspend fun unclaimTask(taskId: TaskId): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Foreground, "tasks/${taskId.value}/unclaim", method = "PATCH")
+
+    override suspend fun unclaimTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
+        networkClient.request(
+            DataRequestPriority.Foreground,
+            "tasks/${taskId.value}/unclaim",
+            method = "PATCH",
+            serverIdOverride = serverId
+        )
 
     override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse =
         networkClient.updateTaskStatus(
@@ -289,8 +350,29 @@ internal class NetworkSlockTasksApi(
             buildSharedTaskStatusBody(status)
         )
 
+    override suspend fun updateTaskStatus(
+        serverId: ServerId,
+        taskId: TaskId,
+        status: TaskStatus
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "tasks/${taskId.value}/status",
+            method = "PATCH",
+            bodyText = buildSharedTaskStatusBody(status),
+            serverIdOverride = serverId
+        )
+
     override suspend fun deleteTask(taskId: TaskId): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Foreground, "tasks/${taskId.value}", method = "DELETE")
+
+    override suspend fun deleteTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
+        networkClient.request(
+            DataRequestPriority.Foreground,
+            "tasks/${taskId.value}",
+            method = "DELETE",
+            serverIdOverride = serverId
+        )
 }
 
 class RealTaskRepository(
@@ -351,19 +433,42 @@ interface SlockTasksApi {
     suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse
     suspend fun channelTasks(channelId: ChannelId, priority: DataRequestPriority): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun channelTasks(
+        serverId: ServerId,
+        channelId: ChannelId,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse = channelTasks(channelId, priority)
     suspend fun taskByNumber(channelId: ChannelId, taskNumber: Int, priority: DataRequestPriority): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun taskByNumber(
+        serverId: ServerId,
+        channelId: ChannelId,
+        taskNumber: Int,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse = taskByNumber(channelId, taskNumber, priority)
     suspend fun createTasks(channelId: ChannelId, drafts: List<TaskCreateDraft>, priority: DataRequestPriority): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun createTasks(
+        serverId: ServerId,
+        channelId: ChannelId,
+        drafts: List<TaskCreateDraft>,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse = createTasks(channelId, drafts, priority)
     suspend fun claimTask(taskId: TaskId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun claimTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse = claimTask(taskId)
     suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun convertMessage(serverId: ServerId, messageId: MessageId): HomeNetworkResponse = convertMessage(messageId)
     suspend fun unclaimTask(taskId: TaskId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun unclaimTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse = unclaimTask(taskId)
     suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse
+    suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): HomeNetworkResponse =
+        updateTaskStatus(taskId, status)
     suspend fun deleteTask(taskId: TaskId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun deleteTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse = deleteTask(taskId)
 }
 
 @Serializable
@@ -425,6 +530,29 @@ internal class SlockTasksApiClient(
             diagnosticsLogger = diagnosticsLogger
         )
 
+    suspend fun channelTasks(
+        serverId: ServerId,
+        channelId: ChannelId,
+        priority: DataRequestPriority,
+        filter: TaskFilter = TaskFilter()
+    ): DataResult<TaskSnapshot> =
+        transport.channelTasks(serverId, channelId, priority).toTasksResultOffUi(
+            filter = filter,
+            source = "tasks_channel",
+            diagnosticsLogger = diagnosticsLogger
+        )
+
+    suspend fun taskByNumber(
+        serverId: ServerId,
+        channelId: ChannelId,
+        taskNumber: Int,
+        priority: DataRequestPriority
+    ): DataResult<TaskActionResult> =
+        transport.taskByNumber(serverId, channelId, taskNumber, priority).toTaskActionResult(
+            source = "tasks_by_number",
+            diagnostics = diagnosticsLogger,
+        )
+
     suspend fun taskByNumber(
         channelId: ChannelId,
         taskNumber: Int,
@@ -445,8 +573,22 @@ internal class SlockTasksApiClient(
             diagnosticsLogger = diagnosticsLogger
         )
 
+    suspend fun createTasks(
+        serverId: ServerId,
+        channelId: ChannelId,
+        drafts: List<TaskCreateDraft>,
+        priority: DataRequestPriority
+    ): DataResult<TaskSnapshot> =
+        transport.createTasks(serverId, channelId, drafts, priority).toTasksResultOffUi(
+            source = "tasks_create",
+            diagnosticsLogger = diagnosticsLogger
+        )
+
     suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult> =
         transport.claimTask(taskId).toTaskActionResult(source = "tasks_claim", diagnostics = diagnosticsLogger)
+
+    suspend fun claimTask(serverId: ServerId, taskId: TaskId): DataResult<TaskActionResult> =
+        transport.claimTask(serverId, taskId).toTaskActionResult(source = "tasks_claim", diagnostics = diagnosticsLogger)
 
     suspend fun convertMessage(messageId: MessageId): DataResult<TaskConvertResult> =
         transport.convertMessage(messageId).toTaskConvertResult(
@@ -454,8 +596,17 @@ internal class SlockTasksApiClient(
             diagnostics = diagnosticsLogger,
         )
 
+    suspend fun convertMessage(serverId: ServerId, messageId: MessageId): DataResult<TaskConvertResult> =
+        transport.convertMessage(serverId, messageId).toTaskConvertResult(
+            source = "tasks_convert_message",
+            diagnostics = diagnosticsLogger,
+        )
+
     suspend fun unclaimTask(taskId: TaskId): DataResult<TaskActionResult> =
         transport.unclaimTask(taskId).toTaskActionResult(source = "tasks_unclaim", diagnostics = diagnosticsLogger)
+
+    suspend fun unclaimTask(serverId: ServerId, taskId: TaskId): DataResult<TaskActionResult> =
+        transport.unclaimTask(serverId, taskId).toTaskActionResult(source = "tasks_unclaim", diagnostics = diagnosticsLogger)
 
     suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult> =
         transport.updateTaskStatus(taskId, status).toTaskActionResult(
@@ -464,8 +615,22 @@ internal class SlockTasksApiClient(
             requestedStatus = status,
         )
 
+    suspend fun updateTaskStatus(
+        serverId: ServerId,
+        taskId: TaskId,
+        status: TaskStatus
+    ): DataResult<TaskActionResult> =
+        transport.updateTaskStatus(serverId, taskId, status).toTaskActionResult(
+            source = "tasks_status",
+            diagnostics = diagnosticsLogger,
+            requestedStatus = status,
+        )
+
     suspend fun deleteTask(taskId: TaskId): DataResult<Unit> =
         transport.deleteTask(taskId).toTaskDeleteResult()
+
+    suspend fun deleteTask(serverId: ServerId, taskId: TaskId): DataResult<Unit> =
+        transport.deleteTask(serverId, taskId).toTaskDeleteResult()
 }
 
 internal fun HomeNetworkResponse.toTasksResult(
@@ -721,6 +886,7 @@ private fun HomeNetworkResponse.tasksServerErrorTextOrNull(): String? {
 @Serializable
 internal data class TaskWireDto(
     val id: String,
+    val revision: Long? = null,
     val messageId: String? = null,
     val channelId: String? = null,
     val channelName: String? = null,
@@ -751,6 +917,7 @@ internal fun TaskWireDto.toTaskSummary(
     val resolvedStatus = status.strictTaskStatusOrNull("task_wire", diagnostics) ?: return null
     return TaskSummary(
         id = TaskId(id),
+        revision = revision,
         title = displayTitle,
         status = resolvedStatus,
         taskNumber = taskNumber,

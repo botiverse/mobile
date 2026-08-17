@@ -412,6 +412,7 @@ class RealtimeEventMapperTest {
                   "channelId": "channel-2",
                   "task": {
                     "id": "task-2",
+                    "revision": 42,
                     "messageId": "m2",
                     "title": "Keep task",
                     "status": "in_review",
@@ -439,6 +440,7 @@ class RealtimeEventMapperTest {
                   "channelId": "channel-2",
                   "task": {
                     "id": "task-2",
+                    "revision": 42,
                     "messageId": "m2",
                     "taskNumber": 2,
                     "title": "Update channel two",
@@ -453,6 +455,7 @@ class RealtimeEventMapperTest {
         assertEquals("task-2", updated.task.id.value)
         assertEquals("channel-2", updated.task.channelId?.value)
         assertEquals("m2", updated.task.messageId?.value)
+        assertEquals(42L, updated.task.revision)
     }
 
     @Test

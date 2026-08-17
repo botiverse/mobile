@@ -57,7 +57,8 @@ class SharedTasksDataRepository(
         val remoteResult =
             when (scope) {
                 SharedTasksScope.Server -> remoteDataSource.loadTasks(serverId, TaskFilter(), priority)
-                is SharedTasksScope.Channel -> remoteDataSource.loadChannelTasks(scope.channelId, TaskFilter(), priority)
+                is SharedTasksScope.Channel ->
+                    remoteDataSource.loadChannelTasks(serverId, scope.channelId, TaskFilter(), priority)
             }
         if (remoteResult is DataResult.Content) {
             localDataSource.replaceTasks(serverId, scope, remoteResult.data)
@@ -72,7 +73,7 @@ class SharedTasksDataRepository(
         taskId: TaskId,
         status: TaskStatus
     ): DataResult<TaskActionResult> {
-        val result = remoteDataSource.updateTaskStatus(taskId, status)
+        val result = remoteDataSource.updateTaskStatus(serverId, taskId, status)
         if (result is DataResult.Content) {
             localDataSource.upsertTask(serverId, result.data.task)
         }
@@ -84,7 +85,7 @@ class SharedTasksDataRepository(
         channelId: ChannelId,
         titles: List<String>
     ): DataResult<TaskSnapshot> {
-        val result = remoteDataSource.createTasks(channelId, titles)
+        val result = remoteDataSource.createTasks(serverId, channelId, titles)
         if (result is DataResult.Content) {
             val channelScope = SharedTasksScope.Channel(channelId)
             localDataSource.mergeTasks(serverId, channelScope, result.data)
@@ -116,14 +117,15 @@ interface SharedTasksRemoteDataSource {
     ): DataResult<TaskSnapshot>
 
     suspend fun loadChannelTasks(
+        serverId: ServerId,
         channelId: ChannelId,
         filter: TaskFilter = TaskFilter(),
         priority: DataRequestPriority = DataRequestPriority.Visible
     ): DataResult<TaskSnapshot>
 
-    suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
+    suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
 
-    suspend fun createTasks(channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot>
+    suspend fun createTasks(serverId: ServerId, channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot>
 }
 
 private data class SharedTasksCacheKey(
