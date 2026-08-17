@@ -5575,7 +5575,10 @@ internal class SharedThreadStore(
                                     payload.withHomeContextProjectionFrom(homePayload)
                                 } ?: payload
                             }
-                            .withInitialHomeConversationAccessFallback(candidate)
+                            .withInitialHomeConversationAccessFallbackUnlessCanonical(
+                                canonicalAccessResolved = currentState.canonicalAccessResolved,
+                                candidate = candidate,
+                            )
                             .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
                                 homeLookupComplete = true,
                                 homeAccessCandidate = candidate

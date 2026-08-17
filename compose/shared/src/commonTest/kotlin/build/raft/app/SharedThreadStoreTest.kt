@@ -2742,7 +2742,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun warmChannelCacheKeepsFooterUnresolvedUntilCanonicalUnjoinedAccessArrives() = runBlocking {
+    fun warmChannelCacheKeepsFooterUnresolvedUntilInitialLookupCompletes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val repository =
             FakeConversationRepository(
@@ -2819,13 +2819,15 @@ class SharedThreadStoreTest {
 
         val resolvedFrame = store.state.value
         assertEquals(ThreadAccessResolution.Resolved, resolvedFrame.accessResolution)
-        assertFalse(resolvedFrame.payload.joined)
-        assertFalse(resolvedFrame.payload.canSend)
+        assertTrue(resolvedFrame.payload.joined)
+        assertTrue(resolvedFrame.payload.canSend)
+        assertTrue(resolvedFrame.payload.composer.enabled)
+        assertTrue(resolvedFrame.writeActionsEnabled)
         assertEquals("files", resolvedFrame.payload.selectedTab)
         assertEquals("m1", resolvedFrame.payload.focusedMessageId)
         assertEquals(7, resolvedFrame.payload.focusedMessageRequestNonce)
         assertEquals(1, channelRepository.homeCalls)
-        assertFalse(
+        assertTrue(
             renderEvents.any { slice ->
                 slice.accessResolution == ThreadAccessResolution.Resolved && slice.payload.joined
             }
@@ -3729,48 +3731,75 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun refreshWhileInitialHomeAccessIsPendingRelaunchesResolution() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val releaseHome = CompletableDeferred<Unit>()
-        val channelRepository =
-            FakeChannelRepository {
-                releaseHome.await()
-                DataResult.Content(unjoinedHomeSnapshot())
-            }
-        val repository = FakeConversationRepository()
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                conversationRepository = repository,
-                channelRepository = channelRepository
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+    fun refreshCanonicalAccessWinsInEitherInitialLookupCompletionOrder() = runBlocking {
+        for (homeCompletesFirst in listOf(false, true)) {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val releaseHome = CompletableDeferred<Unit>()
+            val channelRepository =
+                FakeChannelRepository {
+                    releaseHome.await()
+                    DataResult.Content(unjoinedHomeSnapshot())
+                }
+            val repository = FakeConversationRepository()
+            val dataSource =
+                SharedThreadDataSource(
+                    networkApi = FakeThreadApi(failChannelMessages = true),
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    conversationRepository = repository,
+                    channelRepository = channelRepository
+                )
+            val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
-        store.dispatch(SharedThreadIntent.Start(basePayload()))
-        withTimeout(1_000) {
-            while (store.state.value.payload.status != "content" || channelRepository.homeCalls < 1) {
-                delay(10)
+            store.dispatch(SharedThreadIntent.Start(basePayload()))
+            withTimeout(1_000) {
+                while (store.state.value.payload.status != "content" || channelRepository.homeCalls < 1) {
+                    delay(10)
+                }
             }
-        }
-        assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
+            assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
 
-        store.dispatch(SharedThreadIntent.Refresh)
-        withTimeout(1_000) {
-            while (channelRepository.homeCalls < 2) {
-                delay(10)
+            if (homeCompletesFirst) {
+                repository.getThreadStarted = CompletableDeferred()
+                repository.releaseGetThread = CompletableDeferred()
             }
-        }
-        releaseHome.complete(Unit)
-        withTimeout(1_000) {
-            while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
-                delay(10)
+            store.dispatch(SharedThreadIntent.Refresh)
+            withTimeout(1_000) {
+                while (channelRepository.homeCalls < 2) {
+                    delay(10)
+                }
             }
-        }
+            if (homeCompletesFirst) {
+                repository.getThreadStarted?.await()
+                releaseHome.complete(Unit)
+                withTimeout(1_000) {
+                    while (!store.state.value.initialHomeAccessLookupComplete) {
+                        delay(10)
+                    }
+                }
+                repository.releaseGetThread?.complete(Unit)
+            } else {
+                withTimeout(1_000) {
+                    while (
+                        !store.state.value.canonicalAccessResolved ||
+                            store.state.value.initialHomeAccessLookupComplete
+                    ) {
+                        delay(10)
+                    }
+                }
+                releaseHome.complete(Unit)
+            }
+            withTimeout(1_000) {
+                while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
+                    delay(10)
+                }
+            }
 
-        assertFalse(store.state.value.payload.joined)
-        assertFalse(store.state.value.payload.canSend)
-        scope.cancel()
+            assertTrue(store.state.value.payload.joined)
+            assertTrue(store.state.value.payload.canSend)
+            assertTrue(store.state.value.payload.composer.enabled)
+            assertTrue(store.state.value.writeActionsEnabled)
+            scope.cancel()
+        }
     }
 
     @Test
@@ -3823,7 +3852,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun retryResetsTimedOutHomeVerdictBeforeCanonicalJoinedContentCanResolve() = runBlocking {
+    fun retryResetsTimedOutHomeVerdictWithoutOverridingCanonicalJoinedAccess() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val firstHomeNeverCompletes = CompletableDeferred<Unit>()
         val releaseRetryHome = CompletableDeferred<Unit>()
@@ -3888,8 +3917,10 @@ class SharedThreadStoreTest {
                 delay(10)
             }
         }
-        assertFalse(store.state.value.payload.joined)
-        assertFalse(store.state.value.payload.canSend)
+        assertTrue(store.state.value.payload.joined)
+        assertTrue(store.state.value.payload.canSend)
+        assertTrue(store.state.value.payload.composer.enabled)
+        assertTrue(store.state.value.writeActionsEnabled)
         renderJob.cancel()
         scope.cancel()
     }
