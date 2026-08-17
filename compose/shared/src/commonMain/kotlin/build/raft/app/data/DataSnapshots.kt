@@ -1286,12 +1286,12 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Show the floating unread-message jump control in Thread. Keep this off while the reading-window behavior is experimental."
         ),
-    val inlineSelectionToolbar: SettingsMobileToggleSnapshot =
+    val newMessageMenu: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,
             available = true,
             statusLabel = "Off",
-            detail = "Long-press eligible plain-text messages to select text in place and show quick reactions and message tools."
+            detail = "Long-press a message to show quick reactions and common actions in a compact two-row menu. Turn it off to use the classic message menu."
         ),
     val conversationForwardGesture: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(

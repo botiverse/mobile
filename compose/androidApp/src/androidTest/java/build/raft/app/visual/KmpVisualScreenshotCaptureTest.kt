@@ -1046,7 +1046,7 @@ class KmpVisualScreenshotCaptureTest {
             beforeScreenshot = {
                 dismissCompatibilityDialog()
                 waitForIdleBounded()
-                awaitReactionAtlasReady("components.thread.inline-selection-demo")
+                awaitReactionAtlasReady("components.thread.message-body-tap")
                 var before: Bitmap? = null
                 var after: Bitmap? = null
                 try {
@@ -1214,59 +1214,59 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureThreadInlineSelectionDemo() {
-        captureThreadInlineSelectionCompactTarget(
-            caseId = "components.thread.inline-selection-compact-first",
+    fun captureThreadNewMessageMenuDemo() {
+        captureThreadNewMessageMenuCompactTarget(
+            caseId = "components.thread.new-message-menu-compact-first",
             targetYDp = 70f
         )
     }
 
     @Test
-    fun captureThreadInlineSelectionCompactMiddle() {
-        captureThreadInlineSelectionCompactTarget(
-            caseId = "components.thread.inline-selection-compact-middle",
+    fun captureThreadNewMessageMenuCompactMiddle() {
+        captureThreadNewMessageMenuCompactTarget(
+            caseId = "components.thread.new-message-menu-compact-middle",
             targetYDp = 124f
         )
     }
 
     @Test
-    fun captureThreadInlineSelectionCompactLast() {
-        captureThreadInlineSelectionCompactTarget(
-            caseId = "components.thread.inline-selection-compact-last",
+    fun captureThreadNewMessageMenuCompactLast() {
+        captureThreadNewMessageMenuCompactTarget(
+            caseId = "components.thread.new-message-menu-compact-last",
             targetYDp = 660f,
             composerBoundaryVisible = true
         )
     }
 
-    private fun captureThreadInlineSelectionCompactTarget(
+    private fun captureThreadNewMessageMenuCompactTarget(
         caseId: String,
         targetYDp: Float,
         composerBoundaryVisible: Boolean = false
     ) {
         val backingStore = slockSharedPreferenceStore()
-        val previous = backingStore.getString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY)
-        var selectedArtifact: Bitmap? = null
+        val previous = backingStore.getString(NEW_MESSAGE_MENU_PREFERENCE_KEY)
+        var menuArtifact: Bitmap? = null
         try {
-            backingStore.putString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY, null)
+            backingStore.putString(NEW_MESSAGE_MENU_PREFERENCE_KEY, null)
             val preferenceStore = KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
-            assertFalse(preferenceStore.readInlineSelectionToolbarEnabledSync())
-            runBlocking { preferenceStore.saveInlineSelectionToolbarEnabled(true) }
-            assertTrue(preferenceStore.readInlineSelectionToolbarEnabledSync())
+            assertFalse(preferenceStore.readNewMessageMenuEnabledSync())
+            runBlocking { preferenceStore.saveNewMessageMenuEnabled(true) }
+            assertTrue(preferenceStore.readNewMessageMenuEnabledSync())
             captureKmpComponentCase(
                 caseId = caseId,
                 pageName = "compose_thread_message_row_visual",
                 pageData =
                     JSONObject()
                         .put("instanceId", "visual-$caseId")
-                        .put("visualFixture", "inline_selection_demo")
-                        .put("inlineSelectionComposerBoundaryVisible", composerBoundaryVisible)
+                        .put("visualFixture", "new_message_menu_demo")
+                        .put("newMessageMenuComposerBoundaryVisible", composerBoundaryVisible)
                         .put("singleTapOpensThreadEnabled", true),
                 crop = FULL_VIEWPORT_CROP,
                 suppressSoftKeyboard = false,
                 capturedBitmapAfterBeforeScreenshot = {
-                    requireNotNull(selectedArtifact) {
-                        "Inline-selection interaction did not provide its validated artifact"
-                    }.also { selectedArtifact = null }
+                    requireNotNull(menuArtifact) {
+                        "Compact-menu interaction did not provide its validated artifact"
+                    }.also { menuArtifact = null }
                 },
                 beforeScreenshot = {
                     dismissCompatibilityDialog()
@@ -1275,98 +1275,81 @@ class KmpVisualScreenshotCaptureTest {
                     var after: Bitmap? = null
                     try {
                         before = captureActivityScreenshot("$caseId.before")
-                        val threadOpenBefore = before.countThreadInlineSelectionOpenProbeSamples()
-                        val selectionBlueBefore = before.countThreadInlineSelectionBlueSamples()
+                        val threadOpenBefore = before.countThreadNewMessageMenuOpenProbeSamples()
                         after = captureAfterLongPressRendered(
                             label = caseId,
                             before = before,
                             longPress = { longPressDisplayDp(x = 300f, y = targetYDp) },
                             rendered = { b, shot, changedRatio ->
-                                // Full render: the blue selection AND the black
-                                // compact-toolbar chrome, which paints slightly
-                                // after the first pixel change — a changedRatio-
-                                // only gate returned before the toolbar and the
-                                // addedNearBlack assert flaked (shard0 2026-07-31).
+                                // Full render: the compact menu's black chrome,
+                                // which paints slightly after the first pixel
+                                // change. A changed-ratio-only gate can return
+                                // while the press ripple is still visible.
                                 changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
-                                    shot.countThreadInlineSelectionBlueSamples() >=
-                                    selectionBlueBefore + THREAD_INLINE_SELECTION_MIN_ADDED_BLUE_SAMPLES &&
                                     shot.countNewNearBlackSamplesComparedWith(b) >=
-                                    THREAD_INLINE_SELECTION_MIN_ADDED_BLACK_SAMPLES
+                                    THREAD_NEW_MESSAGE_MENU_MIN_ADDED_BLACK_SAMPLES
                             },
                         )
-                        val threadOpenAfter = after.countThreadInlineSelectionOpenProbeSamples()
-                        val selectionBlueAfter = after.countThreadInlineSelectionBlueSamples()
+                        val threadOpenAfter = after.countThreadNewMessageMenuOpenProbeSamples()
                         val addedToolbarBlack = after.countNewNearBlackSamplesComparedWith(before)
                         val changedRatio = before.fullBitmapChangedPixelRatio(after)
                         val composerChangedRatio =
                             if (composerBoundaryVisible) {
                                 before.bottomBandChangedPixelRatio(
                                     after,
-                                    heightDp = THREAD_INLINE_SELECTION_COMPOSER_BOUNDARY_HEIGHT_DP
+                                    heightDp = THREAD_NEW_MESSAGE_MENU_COMPOSER_BOUNDARY_HEIGHT_DP
                                 )
                             } else {
                                 0f
                             }
                         assertTrue(
-                            "Long press must render the in-place selection and compact toolbar; changedRatio=$changedRatio",
+                            "Long press must render the compact message menu; changedRatio=$changedRatio",
                             changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
                         )
                         assertTrue(
-                            "Long press must render a blue selection; before=$selectionBlueBefore after=$selectionBlueAfter",
-                            selectionBlueAfter >=
-                                selectionBlueBefore + THREAD_INLINE_SELECTION_MIN_ADDED_BLUE_SAMPLES
+                            "Long press must render the compact menu chrome; addedNearBlack=$addedToolbarBlack",
+                            addedToolbarBlack >= THREAD_NEW_MESSAGE_MENU_MIN_ADDED_BLACK_SAMPLES
                         )
                         assertTrue(
-                            "Long press must render the black toolbar chrome; addedNearBlack=$addedToolbarBlack",
-                            addedToolbarBlack >= THREAD_INLINE_SELECTION_MIN_ADDED_BLACK_SAMPLES
-                        )
-                        assertTrue(
-                            "Inline selection must not open the thread; before=$threadOpenBefore after=$threadOpenAfter",
+                            "Opening the compact menu must not open the thread; before=$threadOpenBefore after=$threadOpenAfter",
                             threadOpenAfter <
-                                threadOpenBefore + THREAD_INLINE_SELECTION_MIN_ADDED_OPEN_PROBE_SAMPLES
+                                threadOpenBefore + THREAD_NEW_MESSAGE_MENU_MIN_ADDED_OPEN_PROBE_SAMPLES
                         )
                         if (composerBoundaryVisible) {
                             assertTrue(
-                                "Inline-selection toolbar must not paint over the Composer boundary; " +
+                                "Compact menu must not paint over the Composer boundary; " +
                                     "bottomBandChangedRatio=$composerChangedRatio",
-                                composerChangedRatio < THREAD_INLINE_SELECTION_COMPOSER_MAX_CHANGED_RATIO
+                                composerChangedRatio < THREAD_NEW_MESSAGE_MENU_COMPOSER_MAX_CHANGED_RATIO
                             )
                         }
-                        selectedArtifact = after
+                        menuArtifact = after
                         after = null
                     } finally {
                         before?.recycle()
                         after?.recycle()
                     }
                 },
-                assertBitmap = { bitmap ->
-                    val selectionBlue = bitmap.countThreadInlineSelectionBlueSamples()
-                    assertTrue(
-                        "Final inline-selection artifact must preserve the selected text; selectionBlue=$selectionBlue",
-                        selectionBlue >= THREAD_INLINE_SELECTION_MIN_FINAL_BLUE_SAMPLES
-                    )
-                },
                 afterScreenshot = {
-                    selectedArtifact?.recycle()
-                    selectedArtifact = null
+                    menuArtifact?.recycle()
+                    menuArtifact = null
                 }
             )
         } finally {
-            backingStore.putString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY, previous)
-            selectedArtifact?.recycle()
-            selectedArtifact = null
+            backingStore.putString(NEW_MESSAGE_MENU_PREFERENCE_KEY, previous)
+            menuArtifact?.recycle()
+            menuArtifact = null
         }
     }
 
     @Test
-    fun captureThreadInlineSelectionCompactListStillScrolls() {
+    fun captureThreadNewMessageMenuCompactListStillScrolls() {
         captureKmpComponentCase(
-            caseId = "components.thread.inline-selection-compact-scroll",
+            caseId = "components.thread.new-message-menu-compact-scroll",
             pageName = "compose_thread_message_row_visual",
             pageData =
                 JSONObject()
-                    .put("instanceId", "visual-thread-inline-selection-compact-scroll")
-                    .put("visualFixture", "inline_selection_demo")
+                    .put("instanceId", "visual-thread-new-message-menu-compact-scroll")
+                    .put("visualFixture", "new_message_menu_demo")
                     .put("singleTapOpensThreadEnabled", true),
             crop = FULL_VIEWPORT_CROP,
             beforeScreenshot = {
@@ -1375,20 +1358,20 @@ class KmpVisualScreenshotCaptureTest {
                 var before: Bitmap? = null
                 var after: Bitmap? = null
                 try {
-                    before = captureActivityScreenshot("components.thread.inline-selection-compact-scroll.before")
+                    before = captureActivityScreenshot("components.thread.new-message-menu-compact-scroll.before")
                     swipeDisplayFraction(startYFraction = 0.75f, endYFraction = 0.25f)
                     waitForIdleBounded()
                     Thread.sleep(400)
-                    after = captureActivityScreenshot("components.thread.inline-selection-compact-scroll.after")
+                    after = captureActivityScreenshot("components.thread.new-message-menu-compact-scroll.after")
                     val changedRatio = before.fullBitmapChangedPixelRatio(after)
                     assertTrue(
-                        "Dragging over inline-selection rows must still scroll the LazyColumn; changedRatio=$changedRatio",
+                        "Dragging over compact message rows must still scroll the LazyColumn; changedRatio=$changedRatio",
                         changedRatio >= FORWARD_PROBE_MIN_SCROLL_CHANGED_RATIO
                     )
                     assertTrue(
                         "A vertical drag must not open a message thread",
-                        after.countThreadInlineSelectionOpenProbeSamples() <
-                            THREAD_INLINE_SELECTION_MIN_ADDED_OPEN_PROBE_SAMPLES
+                        after.countThreadNewMessageMenuOpenProbeSamples() <
+                            THREAD_NEW_MESSAGE_MENU_MIN_ADDED_OPEN_PROBE_SAMPLES
                     )
                 } finally {
                     before?.recycle()
@@ -1399,18 +1382,18 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureThreadInlineSelectionCompactTapStillOpensThread() {
+    fun captureThreadNewMessageMenuCompactTapStillOpensThread() {
         captureKmpComponentCase(
-            caseId = "components.thread.inline-selection-compact-tap",
+            caseId = "components.thread.new-message-menu-compact-tap",
             pageName = "compose_thread_message_row_visual",
             pageData =
                 JSONObject()
-                    .put("instanceId", "visual-thread-inline-selection-compact-tap")
-                    .put("visualFixture", "inline_selection_demo")
+                    .put("instanceId", "visual-thread-new-message-menu-compact-tap")
+                    .put("visualFixture", "new_message_menu_demo")
                     // Single-tap thread opening applies only to messages that
                     // already have replies, so give this case's compact target
                     // group a reply. Sibling cases omit it and stay reply-less.
-                    .put("inlineSelectionTargetReplyCount", 1)
+                    .put("newMessageMenuTargetReplyCount", 1)
                     .put("singleTapOpensThreadEnabled", true),
             crop = FULL_VIEWPORT_CROP,
             beforeScreenshot = {
@@ -1419,33 +1402,28 @@ class KmpVisualScreenshotCaptureTest {
                 var before: Bitmap? = null
                 var after: Bitmap? = null
                 try {
-                    before = captureActivityScreenshot("components.thread.inline-selection-compact-tap.before")
-                    val openProbeBefore = before.countThreadInlineSelectionOpenProbeSamples()
+                    before = captureActivityScreenshot("components.thread.new-message-menu-compact-tap.before")
+                    val openProbeBefore = before.countThreadNewMessageMenuOpenProbeSamples()
                     // Same flake family as the 2026-08-01 long-press cases: a
                     // fixed post-tap sleep gambles against thread-open render
                     // timing and a missed first tap. Poll the open-probe
                     // predicate instead (with one automatic re-tap), and keep
                     // the assertions below as the loud final verdict.
                     after = captureAfterLongPressRendered(
-                        label = "components.thread.inline-selection-compact-tap",
+                        label = "components.thread.new-message-menu-compact-tap",
                         before = before,
                         longPress = { tapDisplayDp(x = 300f, y = 124f) },
                         rendered = { _, shot, _ ->
-                            shot.countThreadInlineSelectionOpenProbeSamples() >=
-                                openProbeBefore + THREAD_INLINE_SELECTION_MIN_ADDED_OPEN_PROBE_SAMPLES
+                            shot.countThreadNewMessageMenuOpenProbeSamples() >=
+                                openProbeBefore + THREAD_NEW_MESSAGE_MENU_MIN_ADDED_OPEN_PROBE_SAMPLES
                         },
                     )
-                    val openProbeAfter = after.countThreadInlineSelectionOpenProbeSamples()
+                    val openProbeAfter = after.countThreadNewMessageMenuOpenProbeSamples()
                     assertTrue(
-                        "Tapping a compact inline-selection row must still open its thread; " +
+                        "Tapping a compact new-menu fixture row must still open its thread; " +
                             "before=$openProbeBefore after=$openProbeAfter",
                         openProbeAfter >=
-                            openProbeBefore + THREAD_INLINE_SELECTION_MIN_ADDED_OPEN_PROBE_SAMPLES
-                    )
-                    assertTrue(
-                        "Ordinary tap must not create inline text selection",
-                        after.countThreadInlineSelectionBlueSamples() <
-                            THREAD_INLINE_SELECTION_MIN_FINAL_BLUE_SAMPLES
+                            openProbeBefore + THREAD_NEW_MESSAGE_MENU_MIN_ADDED_OPEN_PROBE_SAMPLES
                     )
                 } finally {
                     before?.recycle()
@@ -1455,31 +1433,29 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Regression for botiverse/mobile#1837. The compact inline-selection visual
-    // intentionally has a no-op onShowActions callback, so the old targeted
-    // "pass" only captured a transient press ripple. Route the same eligible
-    // message through the real single-message menu path and require both exact
-    // detector/menu signals plus visible menu chrome before accepting the frame.
+    // Regression for botiverse/mobile#1837. Route the same eligible message
+    // through the single-message path with the Beta switch disabled and require
+    // both the exact detector signal and visible classic-menu chrome.
     @Test
-    fun captureThreadInlineSelectionPreferenceOffFallback() {
+    fun captureThreadNewMessageMenuPreferenceOffFallback() {
         val backingStore = slockSharedPreferenceStore()
-        val previous = backingStore.getString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY)
+        val previous = backingStore.getString(NEW_MESSAGE_MENU_PREFERENCE_KEY)
         val launchTokenSuffix = "${visualAttempt()}_${SystemClock.elapsedRealtimeNanos()}"
         val longPressReadyToken = "thread_message_long_press_ready_$launchTokenSuffix"
         val longPressMenuVisibleToken = "thread_message_menu_visible_$launchTokenSuffix"
         try {
-            backingStore.putString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY, null)
+            backingStore.putString(NEW_MESSAGE_MENU_PREFERENCE_KEY, null)
             assertFalse(
                 KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
-                    .readInlineSelectionToolbarEnabledSync()
+                    .readNewMessageMenuEnabledSync()
             )
             captureKmpComponentCase(
-                caseId = "components.thread.inline-selection-preference-off",
+                caseId = "components.thread.new-message-menu-preference-off",
                 pageName = "compose_thread_message_row_visual",
                 pageData =
                     JSONObject()
-                        .put("instanceId", "visual-thread-inline-selection-preference-off")
-                        .put("visualFixture", "inline_selection_demo")
+                        .put("instanceId", "visual-thread-new-message-menu-preference-off")
+                        .put("visualFixture", "new_message_menu_demo")
                         .put("visualSingleMessage", true)
                         .put("longPressReadyToken", longPressReadyToken)
                         .put("longPressMenuVisibleToken", longPressMenuVisibleToken),
@@ -1490,18 +1466,16 @@ class KmpVisualScreenshotCaptureTest {
                     var before: Bitmap? = null
                     var after: Bitmap? = null
                     try {
-                        before = captureActivityScreenshot("components.thread.inline-selection-preference-off.before")
-                        val selectionBlueBefore =
-                            before.countThreadInlineSelectionBlueSamplesAroundDisplayDp(70f)
+                        before = captureActivityScreenshot("components.thread.new-message-menu-preference-off.before")
                         after = captureAfterLongPressRendered(
-                            label = "components.thread.inline-selection-preference-off",
+                            label = "components.thread.new-message-menu-preference-off",
                             before = before,
                             longPress = {
                                 longPressDisplayDp(
                                     x = 300f,
                                     y = 70f,
                                     inputReadyCaseId =
-                                        "components.thread.inline-selection-preference-off",
+                                        "components.thread.new-message-menu-preference-off",
                                     inputReadyToken = longPressReadyToken,
                                 )
                             },
@@ -1515,8 +1489,6 @@ class KmpVisualScreenshotCaptureTest {
                                     THREAD_LEGACY_MENU_MIN_ADDED_BLACK_SAMPLES
                             },
                         )
-                        val selectionBlueAfter =
-                            after.countThreadInlineSelectionBlueSamplesAroundDisplayDp(70f)
                         val menuVisibleTokenObserved = logcatContainsToken(longPressMenuVisibleToken)
                         val addedMenuBlack = after.countNewNearBlackSamplesComparedWith(before)
                         val changedRatio = before.fullBitmapChangedPixelRatio(after)
@@ -1534,11 +1506,6 @@ class KmpVisualScreenshotCaptureTest {
                                 "addedNearBlack=$addedMenuBlack",
                             addedMenuBlack >= THREAD_LEGACY_MENU_MIN_ADDED_BLACK_SAMPLES
                         )
-                        assertTrue(
-                            "Default-off long press must not create an in-place selection; before=$selectionBlueBefore after=$selectionBlueAfter",
-                            selectionBlueAfter <
-                                selectionBlueBefore + THREAD_INLINE_SELECTION_MIN_ADDED_BLUE_SAMPLES
-                        )
                     } finally {
                         before?.recycle()
                         after?.recycle()
@@ -1546,7 +1513,7 @@ class KmpVisualScreenshotCaptureTest {
                 }
             )
         } finally {
-            backingStore.putString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY, previous)
+            backingStore.putString(NEW_MESSAGE_MENU_PREFERENCE_KEY, previous)
         }
     }
 
@@ -1868,51 +1835,7 @@ class KmpVisualScreenshotCaptureTest {
         return samples
     }
 
-    private fun Bitmap.countThreadInlineSelectionBlueSamples(): Int =
-        countThreadInlineSelectionBlueSamples(startYInclusive = 0, endYExclusive = height)
-
-    private fun Bitmap.countThreadInlineSelectionBlueSamplesAroundDisplayDp(centerYDp: Float): Int {
-        val density =
-            InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-        val halfHeightPx = THREAD_INLINE_SELECTION_BLUE_PROBE_HALF_HEIGHT_DP * density
-        return countThreadInlineSelectionBlueSamples(
-            startYInclusive = (centerYDp * density - halfHeightPx).roundToInt(),
-            endYExclusive = (centerYDp * density + halfHeightPx).roundToInt(),
-        )
-    }
-
-    private fun Bitmap.countThreadInlineSelectionBlueSamples(
-        startYInclusive: Int,
-        endYExclusive: Int,
-    ): Int {
-        val boundedStartY = startYInclusive.coerceIn(0, height)
-        val boundedEndY = endYExclusive.coerceIn(boundedStartY, height)
-        var samples = 0
-        var y = boundedStartY
-        while (y < boundedEndY) {
-            var x = 0
-            while (x < width) {
-                val pixel = getPixel(x, y)
-                val red = Color.red(pixel)
-                val green = Color.green(pixel)
-                val blue = Color.blue(pixel)
-                if (
-                    red in 120..210 &&
-                    green in 155..235 &&
-                    blue in 220..255 &&
-                    green - red >= 15 &&
-                    blue - green >= 15
-                ) {
-                    samples++
-                }
-                x += FORWARD_PROBE_PIXEL_STRIDE
-            }
-            y += FORWARD_PROBE_PIXEL_STRIDE
-        }
-        return samples
-    }
-
-    private fun Bitmap.countThreadInlineSelectionOpenProbeSamples(): Int {
+    private fun Bitmap.countThreadNewMessageMenuOpenProbeSamples(): Int {
         val endY = (height * THREAD_OPEN_PROBE_TOP_BAND_FRACTION).toInt()
         var samples = 0
         var y = 0
@@ -1921,9 +1844,9 @@ class KmpVisualScreenshotCaptureTest {
             while (x < width) {
                 val pixel = getPixel(x, y)
                 if (
-                    kotlin.math.abs(Color.red(pixel) - 0xFF) <= THREAD_INLINE_SELECTION_OPEN_PROBE_TOLERANCE &&
-                    kotlin.math.abs(Color.green(pixel) - 0x00) <= THREAD_INLINE_SELECTION_OPEN_PROBE_TOLERANCE &&
-                    kotlin.math.abs(Color.blue(pixel) - 0xA8) <= THREAD_INLINE_SELECTION_OPEN_PROBE_TOLERANCE
+                    kotlin.math.abs(Color.red(pixel) - 0xFF) <= THREAD_NEW_MESSAGE_MENU_OPEN_PROBE_TOLERANCE &&
+                    kotlin.math.abs(Color.green(pixel) - 0x00) <= THREAD_NEW_MESSAGE_MENU_OPEN_PROBE_TOLERANCE &&
+                    kotlin.math.abs(Color.blue(pixel) - 0xA8) <= THREAD_NEW_MESSAGE_MENU_OPEN_PROBE_TOLERANCE
                 ) {
                     samples++
                 }
@@ -3968,19 +3891,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     /**
-     * Long-press, then poll-capture until the triggered UI (actions menu /
-     * in-place selection) has actually rendered, instead of guessing a fixed
+     * Long-press, then poll-capture until the triggered actions UI has actually
+     * rendered, instead of guessing a fixed
      * post-gesture sleep. On a loaded nightly shard the menu can render slower
      * than any fixed wait, so a fixed sleep captures before the render and the
      * changedRatio assert flakes (green in isolation, red under load — the
-     * inline-selection case seen 2026-07-31). We wait for the real pixels:
+     * compact-menu case seen 2026-07-31). We wait for the real pixels:
      * poll every [pollMs] until [rendered] is true for the fresh capture or
      * [timeoutMs] elapses, re-issuing the long-press once at [retryAtMs] to guard
      * the occasional un-registered press. [rendered] must encode the case's FULL
      * render-ready signal, not just a coarse changedRatio: e.g. the compact case
-     * needs the blue selection AND the black toolbar chrome, which render after
-     * the first pixel change, so a changedRatio-only gate would return before the
-     * toolbar and the caller's later assert would still fail. Returns the final
+     * needs the black menu chrome, which renders after the first pixel change,
+     * so a changedRatio-only gate would return before the menu and the caller's
+     * later assert would still fail. Returns the final
      * capture (rendered on success, last poll on timeout so the caller's own
      * asserts still fail with real detail). The caller owns recycling the
      * returned bitmap; [captureActivityScreenshot] holds no disk state, so the
@@ -5468,7 +5391,7 @@ class KmpVisualScreenshotCaptureTest {
             )
         private const val HOME_SERVER_AVATAR_PREFERENCE_KEY = "mobile:home_server_avatar_enabled"
         private const val HOME_SERVER_AVATAR_PROCESS_RESTART_PHASE_ARG = "homeServerAvatarProcessRestartPhase"
-        private const val INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY = "mobile:inline_selection_toolbar_enabled"
+        private const val NEW_MESSAGE_MENU_PREFERENCE_KEY = "mobile:new_message_menu_enabled"
         private val HOME_SAVED_RESULTS_CROP =
             VisualCrop(
                 leftDp = 0,
@@ -6116,16 +6039,13 @@ class KmpVisualScreenshotCaptureTest {
         private const val LONG_PRESS_RENDER_RETRY_AT_MS = 2_000L
         private const val LONG_PRESS_INPUT_READY_SETTLE_MS = 100L
         private const val THREAD_LEGACY_MENU_MIN_ADDED_BLACK_SAMPLES = 300
-        private const val THREAD_INLINE_SELECTION_BLUE_PROBE_HALF_HEIGHT_DP = 32f
-        private const val THREAD_INLINE_SELECTION_MIN_ADDED_BLUE_SAMPLES = 100
-        private const val THREAD_INLINE_SELECTION_MIN_ADDED_BLACK_SAMPLES = 40
-        private const val THREAD_INLINE_SELECTION_MIN_FINAL_BLUE_SAMPLES = 80
-        private const val THREAD_INLINE_SELECTION_MIN_ADDED_OPEN_PROBE_SAMPLES = 100
+        private const val THREAD_NEW_MESSAGE_MENU_MIN_ADDED_BLACK_SAMPLES = 40
+        private const val THREAD_NEW_MESSAGE_MENU_MIN_ADDED_OPEN_PROBE_SAMPLES = 100
         // Matches the fixed host bounds in the compact-last visual fixture.
         // The sampled band therefore contains only the real Composer host.
-        private const val THREAD_INLINE_SELECTION_COMPOSER_BOUNDARY_HEIGHT_DP = 150
-        private const val THREAD_INLINE_SELECTION_COMPOSER_MAX_CHANGED_RATIO = 0.005f
-        private const val THREAD_INLINE_SELECTION_OPEN_PROBE_TOLERANCE = 8
+        private const val THREAD_NEW_MESSAGE_MENU_COMPOSER_BOUNDARY_HEIGHT_DP = 150
+        private const val THREAD_NEW_MESSAGE_MENU_COMPOSER_MAX_CHANGED_RATIO = 0.005f
+        private const val THREAD_NEW_MESSAGE_MENU_OPEN_PROBE_TOLERANCE = 8
         private const val SEARCH_PIN_MENU_MIN_CHANGED_RATIO = 0.004f
         private const val THREAD_OPEN_PROBE_TOP_BAND_FRACTION = 0.15f
         private const val FORWARD_PROBE_SWIPE_STEPS = 12

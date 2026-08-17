@@ -122,12 +122,6 @@ GESTURE_OWNER_REGIONS = (
     (SETTINGS_HOME_PAGE, "private fun SharedSettingsRow(", "internal fun SharedSettingsAboutContent(", "settings-row"),
     (SETTINGS_HOME_PAGE, "private fun SharedHomeSavedResultCard(", "private fun SharedHomeSavedUnsaveButton(", "home-saved-result"),
     (SETTINGS_HOME_PAGE, "private fun SharedHomeSearchEntityRow(", "internal data class SearchEntityPinTarget(", "home-search-entity"),
-    (
-        THREAD_PAGE,
-        "val inlineSelectionGestureOwner =",
-        "ThreadMessageGeometryTintBox(geometryTints?.bodyTint) {",
-        "thread-inline-selection",
-    ),
     (THREAD_PAGE, "private fun ThreadReactionChip(", "internal fun threadNeutralMessageSurfaceColor(", "thread-reaction-chip"),
     (THREAD_PAGE, "private fun ThreadMessageAvatar(", "private fun ThreadMessageStaticAvatar(", "thread-message-avatar"),
     (BRUTAL_DROPDOWN, "private fun SlockBrutalDropdownMenuRow(", "private data class SlockBrutalDropdownRowGestureCallbacks(", "brutal-dropdown-row"),

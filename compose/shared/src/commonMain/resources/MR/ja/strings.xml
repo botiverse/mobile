@@ -257,11 +257,11 @@
     <string name="thread_action_copy_link">リンクをコピー</string>
     <string name="thread_action_copy_markdown">Markdown をコピー</string>
     <string name="thread_action_select_text">テキストを選択</string>
-    <string name="thread_inline_selection_copy">コピー</string>
-    <string name="thread_inline_selection_reply">返信</string>
-    <string name="thread_inline_selection_save">保存</string>
-    <string name="thread_inline_selection_select">選択</string>
-    <string name="thread_inline_selection_more">その他</string>
+    <string name="thread_new_message_menu_copy">コピー</string>
+    <string name="thread_new_message_menu_reply">返信</string>
+    <string name="thread_new_message_menu_save">保存</string>
+    <string name="thread_new_message_menu_select">選択</string>
+    <string name="thread_new_message_menu_more">その他</string>
     <string name="thread_action_open_thread">スレッドを開く</string>
     <string name="thread_action_remove_from_saved">保存済みから削除</string>
     <string name="thread_action_save_message">メッセージを保存</string>
@@ -1565,8 +1565,8 @@
     <string name="settings_mobile_multi_shell_host_detail">異なるワークスペースを別々の Android アプリウィンドウで開きます。既存のウィンドウは閉じるまで開いたままになります。</string>
     <string name="settings_mobile_server_drawer">マルチサーバーのホームドロワー</string>
     <string name="settings_mobile_server_drawer_detail">ホームで新しいマルチサーバー左ドロワーを使用します。オフにすると、現在のサーバー切り替えポップオーバーを維持します。</string>
-    <string name="settings_mobile_inline_selection_toolbar">メッセージのインライン選択ツールバー</string>
-    <string name="settings_mobile_inline_selection_toolbar_detail">対象のプレーンテキストメッセージを長押しすると、その場でテキストを選択し、クイックリアクションとメッセージツールを表示します。オフにすると従来のメッセージメニューを使用します。</string>
+    <string name="settings_mobile_new_message_menu">新しいメッセージメニュー</string>
+    <string name="settings_mobile_new_message_menu_detail">メッセージを長押しすると、クイックリアクションとよく使う操作を2段のコンパクトメニューで表示します。オフにすると従来のメッセージメニューを使用します。</string>
     <string name="settings_mobile_thread_unread_jump">スレッドの未読ジャンプ</string>
     <string name="settings_mobile_thread_unread_jump_detail">スレッドに未読メッセージへのフローティングジャンプを表示します。閲覧ウィンドウの動作が試験中の間はオフのままにしてください。</string>
     <string name="settings_mobile_conversation_forward_gesture">会話の「進む」ジェスチャー</string>

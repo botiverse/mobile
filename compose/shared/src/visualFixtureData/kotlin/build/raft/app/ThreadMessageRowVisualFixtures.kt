@@ -255,11 +255,6 @@ import com.tencent.kuikly.compose.extension.keyboardDismissModeInteractiveIOS
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.resources.imageResource
 import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.text.SelectionContainer
-import com.tencent.kuikly.compose.text.SelectionContainerState
-import com.tencent.kuikly.compose.text.SelectionFrame
-import com.tencent.kuikly.compose.text.TextSelectionType
-import com.tencent.kuikly.compose.text.rememberSelectionContainerState
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
@@ -352,9 +347,9 @@ import kotlin.time.TimeSource
  */
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
-internal const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO = "inline_selection_demo"
-/** Leading messages of the inline-selection fixture that form its compact group. */
-internal const val THREAD_INLINE_SELECTION_TARGET_GROUP_SIZE = 3
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_NEW_MESSAGE_MENU_DEMO = "new_message_menu_demo"
+/** Leading messages of the new-message-menu fixture that form its compact group. */
+internal const val THREAD_NEW_MESSAGE_MENU_TARGET_GROUP_SIZE = 3
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD = "markdown_link_child"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD = "markdown_mention_child"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
@@ -405,7 +400,7 @@ internal fun threadVisualFixture(
 ): KuiklyThreadScreenPayload {
     val resolvedInstanceId = instanceId.ifBlank { "visual-thread-$fixture" }
     return when (fixture) {
-        THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO -> {
+        THREAD_MESSAGE_VISUAL_FIXTURE_NEW_MESSAGE_MENU_DEMO -> {
             val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
             val seed = requireNotNull(base.messages.firstOrNull())
             base.copy(
@@ -413,12 +408,12 @@ internal fun threadVisualFixture(
                 compactConsecutiveMessages = true,
                 messages =
                     List(20) { index ->
-                        val inTargetGroup = index < THREAD_INLINE_SELECTION_TARGET_GROUP_SIZE
+                        val inTargetGroup = index < THREAD_NEW_MESSAGE_MENU_TARGET_GROUP_SIZE
                         seed.copy(
-                            id = "visual-inline-selection-$index",
+                            id = "visual-new-message-menu-$index",
                             body =
                                 if (inTargetGroup) {
-                                    "Compact selection target ${index + 1}"
+                                    "Compact menu target ${index + 1}"
                                 } else {
                                     "Scrollable overflow message ${index + 1}"
                                 },

@@ -257,11 +257,11 @@
     <string name="thread_action_copy_link">复制链接</string>
     <string name="thread_action_copy_markdown">复制 Markdown</string>
     <string name="thread_action_select_text">选择文本</string>
-    <string name="thread_inline_selection_copy">复制</string>
-    <string name="thread_inline_selection_reply">回复</string>
-    <string name="thread_inline_selection_save">收藏</string>
-    <string name="thread_inline_selection_select">选择</string>
-    <string name="thread_inline_selection_more">更多</string>
+    <string name="thread_new_message_menu_copy">复制</string>
+    <string name="thread_new_message_menu_reply">回复</string>
+    <string name="thread_new_message_menu_save">收藏</string>
+    <string name="thread_new_message_menu_select">选择</string>
+    <string name="thread_new_message_menu_more">更多</string>
     <string name="thread_action_open_thread">打开消息列</string>
     <string name="thread_action_remove_from_saved">从收藏中移除</string>
     <string name="thread_action_save_message">收藏消息</string>
@@ -1565,8 +1565,8 @@
     <string name="settings_mobile_multi_shell_host_detail">在独立的 Android 应用窗口中打开不同工作区。已打开的窗口会保留到你手动关闭。</string>
     <string name="settings_mobile_server_drawer">多服务器首页抽屉</string>
     <string name="settings_mobile_server_drawer_detail">在首页使用新的多服务器左侧抽屉。关闭后继续使用当前的服务器切换浮层。</string>
-    <string name="settings_mobile_inline_selection_toolbar">原位消息选择工具栏</string>
-    <string name="settings_mobile_inline_selection_toolbar_detail">长按符合条件的纯文本消息，在原位选择文字并显示快捷表情与消息工具。关闭后继续使用现有消息菜单。</string>
+    <string name="settings_mobile_new_message_menu">新消息菜单</string>
+    <string name="settings_mobile_new_message_menu_detail">长按消息时显示快捷表情和常用操作的双层紧凑菜单；关闭后使用经典消息菜单。</string>
     <string name="settings_mobile_thread_unread_jump">Thread 未读跳转</string>
     <string name="settings_mobile_thread_unread_jump_detail">在 Thread 中显示浮动未读消息跳转控件。可见窗口读取行为仍在试验期间，请保持关闭。</string>
     <string name="settings_mobile_conversation_forward_gesture">对话前进手势</string>
