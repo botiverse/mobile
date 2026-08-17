@@ -766,22 +766,6 @@ internal fun sharedSettingsHostShellWebUrl(
 internal fun ScreenLoadState<SharedSettingsDeveloperSnapshot>.configuredWebBaseUrlOrNull(): String? =
     (this as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.webUrl
 
-@Page(SETTINGS_HOME_PAGE, supportInLocal = true)
-internal class ComposeSettingsHomePage : build.raft.app.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { SettingsHomeScreen() }
-    }
-}
-
-@Page(SETTINGS_ROUTE_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeSettingsRouteVisualPage : build.raft.app.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { SettingsRouteVisualScreen() }
-    }
-}
-
 @Composable
 private fun SharedHomeSearchEntityLeadingAvatar(
     result: SearchEntityResult,
@@ -887,29 +871,6 @@ private fun SharedHomeSearchSenderMeta(
     }
 }
 
-@Page(SETTINGS_TAB_BAR_SMOKE_PAGE, supportInLocal = true)
-internal class ComposeSettingsTabBarSmokePage : build.raft.app.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent {
-            SettingsHomeContent(
-                payload = settingsTabBarSmokePayload,
-                onSelect = {}
-            )
-        }
-    }
-}
-
-@Page(BOTTOM_TAB_BAR_SMOKE_PAGE, supportInLocal = true)
-internal class ComposeBottomTabBarSmokePage : build.raft.app.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { BottomTabBarSmokeContent() }
-    }
-}
-
-
-
 @Serializable
 internal data class KuiklySettingsHomePayload(
     val instanceId: String = "",
@@ -960,7 +921,7 @@ internal data class KuiklySharedSettingsRow(
     val copyValue: String = ""
 )
 
-private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
+internal val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
     title = "Settings",
     subtitle = "Harmony smoke",
     items = listOf(
@@ -21289,7 +21250,7 @@ private fun PageErrorBody(
 }
 
 @Composable
-private fun BottomTabBarSmokeContent() {
+internal fun BottomTabBarSmokeContent() {
     val shellScope = rememberSlockAppShellScope()
     var selectedTab by remember { mutableStateOf("tasks") }
     val smokeItems = bottomTabBarSmokeItems.map { item -> item.copy(selected = item.key == selectedTab) }
@@ -23001,24 +22962,7 @@ internal fun HomeCreateChannelDialogVisualContent() {
 }
 
 @Composable
-private fun SettingsHomeScreen() {
-    val pager = LocalActivity.current.getPager() as Pager
-    val bridge = Utils.bridgeModule(pager.pagerId)
-    val payload = rememberSettingsHomePayload(
-        pager.pageData.params.optString("payload"),
-        pager.pageData.params.toString(),
-        pager.pageData.params.optString("instanceId")
-    )
-    LaunchedEffect(payload.instanceId, payload.items.size) {
-        bridge.log("settings_home_render instanceId=${payload.instanceId} items=${payload.items.size}")
-    }
-    SettingsHomeContent(payload) { key ->
-        bridge.log("settings_home_unsupported_destination key=$key")
-    }
-}
-
-@Composable
-private fun SettingsRouteVisualScreen() {
+internal fun SettingsRouteVisualScreen() {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
