@@ -25,8 +25,8 @@ internal data class ThreadHeaderDisplayModel(
 
 internal sealed interface ThreadHeaderProjectionInput {
     // Order IS the contract (t432 family ③): implementations list ids that name the
-    // header's own conversation before parent/related ids, so the first directory hit is
-    // the surface being rendered, never a parent association claiming it.
+    // conversation rendered by the header before related ids. For a reply thread that is
+    // the exact parent Channel/DM, never the child stream projection.
     val lookupIds: List<String>
     val surfaceKind: String
 
@@ -264,7 +264,10 @@ internal fun KuiklyThreadScreenPayload.threadHeaderFallbackDisplayModel(): Threa
         else ->
             ThreadHeaderDisplayModel(
                 title = threadHeaderDisplayTitle(null, surfaceKind),
-                subtitle = existingThreadChannelHeaderSubtitle(subtitle),
+                // A reply route/content slice carries parent identity, not authoritative
+                // parent display state. Keep the subtitle empty until the directory resolves
+                // the exact parent canonical id; a readable guess is still a misidentity.
+                subtitle = null,
                 surfaceKind = surfaceKind,
                 channelKind = channelKind
             )
@@ -357,17 +360,13 @@ private fun KuiklyThreadScreenPayload.acceptsReplyThreadParentHeaderProjection(
     val resolvedParentSurfaceKind =
         parentSurfaceKind.parsedThreadParentSurfaceKindOrNull() ?: return false
     if (projection.surfaceKind != resolvedParentSurfaceKind) return false
-    val lookupIds = conversationHeaderLookupIds().toSet()
-    if (lookupIds.isNotEmpty() && projection.headerProjectionIds().none { it in lookupIds }) return false
+    val exactParentChannelId = parentChannelId?.trim()?.takeIf { it.isNotBlank() } ?: return false
+    if (projection.canonicalChannelId.trim() != exactParentChannelId) return false
     if (resolvedParentSurfaceKind != KuiklyThreadSurfaceKind.Channel) return true
     val parentKind = parentChannelKind.normalizedHeaderChannelKind()
     if (parentKind == null || parentKind == KuiklyThreadSurfaceKind.Channel) return true
     return projection.channelKind.normalizedHeaderChannelKind() == parentKind
 }
-
-private fun SharedConversationDirectoryProjection.headerProjectionIds(): Set<String> =
-    (aliases + canonicalChannelId).filter { it.isNotBlank() }.toSet()
-
 
 private fun SharedConversationDirectoryProjection.replyThreadParentSubtitle(): String? =
     when (surfaceKind) {

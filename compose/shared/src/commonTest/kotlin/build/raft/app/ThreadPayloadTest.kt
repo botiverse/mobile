@@ -3212,7 +3212,7 @@ class ThreadPayloadTest {
                 aliases = setOf("reply-thread-1"),
                 title = "secondary"
             )
-        owner.accept(mapOf("reply-thread-1" to secondaryProjection))
+        val secondaryOutcome = owner.accept(mapOf("reply-thread-1" to secondaryProjection))
         val loadedPayload = payload.copy(status = "content", showOpenInChannelAction = false)
         val loadedDisplay = input.displayModel(owner.selectedProjection(), loadedPayload)
 
@@ -3222,11 +3222,15 @@ class ThreadPayloadTest {
         assertEquals("#general", loadedDisplay.subtitle)
         assertEquals("#general", loadedDisplay.threadComposerMentionScopeChannelLabel())
         assertTrue(loadedPayload.threadHeaderOpenInParentActionVisible())
-        assertEquals(setOf("channel-1", "reply-thread-1"), owner.state.value.keys)
+        assertEquals(setOf("channel-1"), owner.state.value.keys)
         assertEquals(parentProjection, owner.selectedProjection())
         assertEquals(
             ThreadHeaderProjectionAcceptance.PreservedNoDisplayValidProjection,
             incompleteOutcome
+        )
+        assertEquals(
+            ThreadHeaderProjectionAcceptance.PreservedNoDisplayValidProjection,
+            secondaryOutcome
         )
     }
 
@@ -3383,7 +3387,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun replyThreadHeaderKeepsExistingSafeChannelSubtitleWithoutDirectoryProjection() {
+    fun replyThreadHeaderHidesUnverifiedChannelSubtitleWithoutDirectoryProjection() {
         val payload =
             KuiklyThreadScreenPayload(
                 title = ThreadReplyPageTitle,
@@ -3395,7 +3399,7 @@ class ThreadPayloadTest {
 
         val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(null)
 
-        assertEquals("#product", headerDisplay.subtitle)
+        assertNull(headerDisplay.subtitle)
     }
 
     @Test
