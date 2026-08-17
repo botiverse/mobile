@@ -48,6 +48,7 @@ import build.raft.app.data.AgentWorkspaceChildrenSnapshot
 import build.raft.app.data.AgentWorkspaceTreeSnapshot
 import build.raft.app.data.AgentProfileUpdateRequest
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
+import build.raft.app.data.BridgeSlockAvatarNativeCache
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -64,6 +65,8 @@ import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentIssueReportRequest
 import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.SlockAvatarCacheRuntime
+import build.raft.app.data.SlockAvatarNativeCache
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedConversationDirectoryState
@@ -2003,6 +2006,8 @@ private class MemberDetailRouteProvider(
     val computersStore: SharedComputersStore,
     val createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator,
     val createAgentFormStore: SharedCreateAgentFormStore,
+    val avatarCacheRuntime: SlockAvatarCacheRuntime,
+    val avatarNativeCache: SlockAvatarNativeCache,
     val conversationIdentityProvider: build.raft.app.data.SharedConversationIdentityProvider?,
     val sharedHomeStore: SharedHomeStore?,
     val storeScope: SlockShellStoreScope,
@@ -2395,10 +2400,12 @@ private class MemberDetailRouteProvider(
         file: PlatformFile
     ): DataResult<MemberProfile> =
         withContext(Dispatchers.Default) {
-            serverMembersStore.uploadAgentAvatar(
+            serverMembersStore.uploadAgentAvatarWithAvatarCacheInvalidation(
                 serverId = serverId,
                 priority = DataRequestPriority.Foreground,
-                request = AgentAvatarUploadRequest(agentId = agentId, file = file)
+                request = AgentAvatarUploadRequest(agentId = agentId, file = file),
+                avatarCacheRuntime = avatarCacheRuntime,
+                avatarCacheNativeCache = avatarNativeCache
             )
         }
 
@@ -2571,6 +2578,13 @@ private fun rememberMemberDetailRouteProvider(
     val createAgentFormStore = remember(sharedStores, storeScope) {
         sharedStores.createAgentFormStore(storeScope)
     }
+    val avatarNativeCache =
+        remember(bridge, scope) {
+            BridgeSlockAvatarNativeCache(
+                bridge = bridge,
+                bridgeCallContext = scope.kuiklyBridgeCallContext()
+            )
+        }
     return remember(
         bridge,
         reportIssueFailedMessage,
@@ -2586,6 +2600,7 @@ private fun rememberMemberDetailRouteProvider(
         computersStore,
         createAgentCoordinator,
         createAgentFormStore,
+        avatarNativeCache,
         sharedStores.conversationIdentityProvider(storeScope),
         sharedStores.sharedHomeStore(storeScope),
         storeScope,
@@ -2606,6 +2621,8 @@ private fun rememberMemberDetailRouteProvider(
             computersStore = computersStore,
             createAgentCoordinator = createAgentCoordinator,
             createAgentFormStore = createAgentFormStore,
+            avatarCacheRuntime = sharedStores.avatarCacheRuntime,
+            avatarNativeCache = avatarNativeCache,
             conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
             sharedHomeStore = sharedStores.sharedHomeStore(storeScope),
             storeScope = storeScope,

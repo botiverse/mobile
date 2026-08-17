@@ -617,6 +617,11 @@ interface SharedSettingsPlatformCapabilities {
     suspend fun loadSystemNotificationPermission(): SettingsMobileActionSnapshot? = null
 }
 
+private data class AccountAvatarRetirementCapture(
+    val userId: String,
+    val capture: SlockAvatarSubjectRetirementCapture
+)
+
 class SharedSettingsDataSource(
     private val sessionStore: SlockAuthSessionStore,
     private val settingsRepository: SettingsRepository? = null,
@@ -671,11 +676,25 @@ class SharedSettingsDataSource(
 
     suspend fun uploadAccountAvatar(): DataResult<AccountSettingsSnapshot> {
         val repository = settingsRepository ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        val avatarRetirement = captureCurrentAccountAvatarRetirement()
         return when (val picked = platformCapabilities.pickAccountAvatarFile()) {
-            is DataResult.Content ->
-                withContext(Dispatchers.Default) {
-                    repository.uploadAccountAvatar(AccountAvatarUploadRequest(picked.data))
+            is DataResult.Content -> {
+                val result =
+                    withContext(Dispatchers.Default) {
+                        repository.uploadAccountAvatar(AccountAvatarUploadRequest(picked.data))
+                    }
+                if (
+                    result is DataResult.Content &&
+                    avatarRetirement != null &&
+                    result.data.profile.userId.trim() == avatarRetirement.userId
+                ) {
+                    retireCapturedAvatarSubject(
+                        avatarRetirement.capture,
+                        source = "account_avatar_upload"
+                    )
                 }
+                result
+            }
             is DataResult.Empty -> DataResult.Empty(picked.reason)
             is DataResult.Error -> DataResult.Error(picked.error)
             is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
@@ -1404,6 +1423,19 @@ class SharedSettingsDataSource(
                 requestedServerId = currentServerId
             ) ?: return null
         return SlockAvatarOwnerRetirementCapture(setOf(owner))
+    }
+
+    private suspend fun captureCurrentAccountAvatarRetirement(): AccountAvatarRetirementCapture? {
+        val runtime = avatarCacheRuntime ?: return null
+        val session = sessionStore.readSession() ?: return null
+        val userId = session.user.id.trim().takeIf(String::isNotEmpty) ?: return null
+        val serverId = session.currentServerId?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val capture =
+            runtime.captureCurrentSubjectRetirement(
+                subject = SlockAvatarCacheSubject.Member(MemberKind.Human, userId),
+                serverId = serverId
+            ) ?: return null
+        return AccountAvatarRetirementCapture(userId = userId, capture = capture)
     }
 
     private suspend fun retireCapturedAvatarOwners(

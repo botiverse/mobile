@@ -75,6 +75,157 @@ class SharedSettingsAvatarCacheTest {
     }
 
     @Test
+    fun accountAvatarUploadRetiresCapturedHumanSubjectEvenWhenReturnedUrlIsUnchanged() = runBlocking {
+        val avatarUrl = "https://avatars.example.test/users/user-1.webp"
+        val session =
+            fixtures.sampleSession().let { current ->
+                current.copy(user = current.user.copy(avatarUrl = avatarUrl))
+            }
+        val resultSnapshot =
+            AccountSettingsSnapshot(
+                profile =
+                    AccountProfileSnapshot(
+                        userId = "user-1",
+                        displayName = "Artin",
+                        handle = "artin",
+                        email = "artin@slock.ai",
+                        avatarLabel = "A",
+                        avatarUrl = avatarUrl
+                    ),
+                connectedAccounts = emptyList()
+            )
+        val owner = SlockAvatarCacheOwner("https://api.example", "user-1", "server-1")
+        val metadata = RecordingAvatarMetadataStore()
+        val native = RecordingAvatarNativeCache()
+        val dataSource =
+            SharedSettingsDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(session),
+                settingsRepository = fixtures.avatarSettingsRepository(DataResult.Content(resultSnapshot)),
+                platformCapabilities =
+                    fixtures.avatarSettingsCapabilities(
+                        DataResult.Content(
+                            PlatformFile(
+                                id = "avatar-1",
+                                fileName = "avatar.webp",
+                                mimeType = "image/webp",
+                                bytes = "new-avatar-bytes".encodeToByteArray()
+                            )
+                        )
+                    )
+            ).withAvatarCacheRuntime(avatarRuntime(metadata) { owner }, native)
+
+        val result = assertIs<DataResult.Content<AccountSettingsSnapshot>>(dataSource.uploadAccountAvatar())
+
+        assertEquals(avatarUrl, result.data.profile.avatarUrl)
+        val expectedSubject: SlockAvatarCacheSubject =
+            SlockAvatarCacheSubject.Member(MemberKind.Human, "user-1")
+        assertEquals(
+            listOf(owner.nativePartitionKey to slockAvatarNativeSubjectKey(owner, expectedSubject)),
+            native.retiredSubjects
+        )
+        assertEquals(listOf(owner to expectedSubject), metadata.clearedSubjects)
+    }
+
+    @Test
+    fun failedAccountAvatarUploadDoesNotRetireCapturedSubject() = runBlocking {
+        val owner = SlockAvatarCacheOwner("https://api.example", "user-1", "server-1")
+        val metadata = RecordingAvatarMetadataStore()
+        val native = RecordingAvatarNativeCache()
+        val dataSource =
+            SharedSettingsDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(fixtures.sampleSession()),
+                settingsRepository =
+                    fixtures.avatarSettingsRepository(
+                        DataResult.Error(ScreenError("account_avatar_upload_failed"))
+                    ),
+                platformCapabilities =
+                    fixtures.avatarSettingsCapabilities(
+                        DataResult.Content(PlatformFile(id = "avatar-1", fileName = "avatar.webp"))
+                    )
+            ).withAvatarCacheRuntime(avatarRuntime(metadata) { owner }, native)
+
+        assertIs<DataResult.Error>(dataSource.uploadAccountAvatar())
+
+        assertTrue(native.retiredSubjects.isEmpty())
+        assertTrue(metadata.clearedSubjects.isEmpty())
+    }
+
+    @Test
+    fun agentAvatarUploadRetiresCapturedAgentSubjectWhenReturnedUrlIsUnchanged() = runBlocking {
+        val avatarUrl = "https://avatars.example.test/agents/agent-1.webp"
+        val profile =
+            settingsMember("agent-1", "Agent").copy(
+                kind = MemberKind.Agent,
+                serverId = ServerId("server-1"),
+                avatarUrl = avatarUrl
+            )
+        val store =
+            SharedServerMembersStore(
+                fixtures.avatarSettingsMemberRepository(DataResult.Content(profile))
+            )
+        store.seed(MemberSnapshot(settingsServer("server-1"), listOf(profile)))
+        val owner = SlockAvatarCacheOwner("https://api.example", "user-1", "server-1")
+        val metadata = RecordingAvatarMetadataStore()
+        val native = RecordingAvatarNativeCache()
+
+        val result =
+            assertIs<DataResult.Content<build.raft.app.model.MemberProfile>>(
+                store.uploadAgentAvatarWithAvatarCacheInvalidation(
+                    serverId = ServerId("server-1"),
+                    request =
+                        AgentAvatarUploadRequest(
+                            agentId = build.raft.app.model.MemberId("agent-1"),
+                            file = PlatformFile(id = "avatar-1", fileName = "avatar.webp")
+                        ),
+                    avatarCacheRuntime = avatarRuntime(metadata) { owner },
+                    avatarCacheNativeCache = native
+                )
+            )
+
+        assertEquals(avatarUrl, result.data.avatarUrl)
+        val expectedSubject: SlockAvatarCacheSubject =
+            SlockAvatarCacheSubject.Member(MemberKind.Agent, "agent-1")
+        assertEquals(
+            listOf(owner.nativePartitionKey to slockAvatarNativeSubjectKey(owner, expectedSubject)),
+            native.retiredSubjects
+        )
+        assertEquals(listOf(owner to expectedSubject), metadata.clearedSubjects)
+    }
+
+    @Test
+    fun agentAvatarUploadIdentityMismatchDoesNotRetireCapturedSubject() = runBlocking {
+        val mismatchedProfile =
+            settingsMember("agent-2", "Other Agent").copy(
+                kind = MemberKind.Agent,
+                serverId = ServerId("server-1"),
+                avatarUrl = "https://avatars.example.test/agents/agent-2.webp"
+            )
+        val store =
+            SharedServerMembersStore(
+                fixtures.avatarSettingsMemberRepository(DataResult.Content(mismatchedProfile))
+            )
+        val owner = SlockAvatarCacheOwner("https://api.example", "user-1", "server-1")
+        val metadata = RecordingAvatarMetadataStore()
+        val native = RecordingAvatarNativeCache()
+
+        assertIs<DataResult.Content<build.raft.app.model.MemberProfile>>(
+            store.uploadAgentAvatarWithAvatarCacheInvalidation(
+                serverId = ServerId("server-1"),
+                request =
+                    AgentAvatarUploadRequest(
+                        agentId = build.raft.app.model.MemberId("agent-1"),
+                        file = PlatformFile(id = "avatar-1", fileName = "avatar.webp")
+                    ),
+                avatarCacheRuntime = avatarRuntime(metadata) { owner },
+                avatarCacheNativeCache = native
+            )
+        )
+
+        assertTrue(native.retiredSubjects.isEmpty())
+        assertTrue(metadata.clearedSubjects.isEmpty())
+    }
+
+    @Test
     fun deleteAndLeaveServerRetireOnlyTheCapturedCurrentOwner() = runBlocking {
         val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
         val owner =
