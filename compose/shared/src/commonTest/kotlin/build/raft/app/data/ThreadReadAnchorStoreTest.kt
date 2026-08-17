@@ -35,7 +35,7 @@ class ThreadReadAnchorStoreTest {
     }
 
     @Test
-    fun unreadProjectionUsesExactAnchorThenFallsBackToFirstUnread() {
+    fun unreadProjectionTargetsTheFirstUnreadCanonicalMessage() {
         val messages =
             listOf(
                 ThreadUnreadAnchorMessage("pending", null),
@@ -45,7 +45,7 @@ class ThreadReadAnchorStoreTest {
             )
 
         assertEquals(
-            ThreadUnreadJumpProjection(unreadCount = 2, targetMessageId = "m10"),
+            ThreadUnreadJumpProjection(unreadCount = 2, targetMessageId = "m11"),
             projectThreadUnreadJump(ThreadReadAnchor(10L, "m10"), messages),
         )
         assertEquals(
@@ -55,6 +55,45 @@ class ThreadReadAnchorStoreTest {
         assertEquals(
             ThreadUnreadJumpProjection(unreadCount = 0, targetMessageId = null),
             projectThreadUnreadJump(ThreadReadAnchor(12L, "m12"), messages),
+        )
+    }
+
+    @Test
+    fun visibleFrontierAdvancesMonotonicallyAndUpgradesSameSeqIdentity() {
+        val entered = ThreadReadAnchor(10L, null)
+        val visible = ThreadReadAnchor(12L, "m12")
+
+        assertEquals(visible, advanceThreadReadAnchorFrontier(entered, visible))
+        assertEquals(visible, advanceThreadReadAnchorFrontier(visible, ThreadReadAnchor(11L, "m11")))
+        assertEquals(
+            ThreadReadAnchor(10L, "m10"),
+            advanceThreadReadAnchorFrontier(entered, ThreadReadAnchor(10L, "m10")),
+        )
+    }
+
+    @Test
+    fun visibleWindowConsumptionShrinksUnreadAndVisibleLocalSendClearsIt() {
+        val messages =
+            listOf(
+                ThreadUnreadAnchorMessage("m10", 10L),
+                ThreadUnreadAnchorMessage("m11", 11L),
+                ThreadUnreadAnchorMessage("m12", 12L),
+                ThreadUnreadAnchorMessage("local-visible", 13L),
+            )
+        val entered = ThreadReadAnchor(10L, "m10")
+        val afterVisibleWindow =
+            advanceThreadReadAnchorFrontier(entered, ThreadReadAnchor(12L, "m12"))
+
+        assertEquals(
+            ThreadUnreadJumpProjection(unreadCount = 1, targetMessageId = "local-visible"),
+            projectThreadUnreadJump(afterVisibleWindow, messages),
+        )
+        assertEquals(
+            ThreadUnreadJumpProjection(unreadCount = 0, targetMessageId = null),
+            projectThreadUnreadJump(
+                advanceThreadReadAnchorFrontier(afterVisibleWindow, ThreadReadAnchor(13L, "local-visible")),
+                messages,
+            ),
         )
     }
 

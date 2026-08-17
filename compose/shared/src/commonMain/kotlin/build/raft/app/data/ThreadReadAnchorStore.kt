@@ -45,6 +45,26 @@ internal data class ThreadUnreadJumpProjection(
     val targetMessageId: String?,
 )
 
+/**
+ * Advances the route-local read frontier without allowing a viewport moving toward older rows to
+ * make already-seen messages unread again. Persistence remains owned by [ThreadReadAnchorStore].
+ */
+internal fun advanceThreadReadAnchorFrontier(
+    current: ThreadReadAnchor?,
+    visible: ThreadReadAnchor?,
+): ThreadReadAnchor? {
+    val currentAnchor = current?.normalizedOrNull()
+    val visibleAnchor = visible?.normalizedOrNull()
+    return when {
+        currentAnchor == null -> visibleAnchor
+        visibleAnchor == null -> currentAnchor
+        visibleAnchor.seq > currentAnchor.seq -> visibleAnchor
+        visibleAnchor.seq < currentAnchor.seq -> currentAnchor
+        currentAnchor.messageId == null && visibleAnchor.messageId != null -> visibleAnchor
+        else -> currentAnchor
+    }
+}
+
 internal fun projectThreadUnreadJump(
     anchor: ThreadReadAnchor?,
     messages: List<ThreadUnreadAnchorMessage>,
@@ -56,14 +76,10 @@ internal fun projectThreadUnreadJump(
     if (unread.isEmpty()) {
         return ThreadUnreadJumpProjection(unreadCount = 0, targetMessageId = null)
     }
-    val exactAnchor =
-        validAnchor.messageId?.let { messageId ->
-            canonical.firstOrNull { message -> message.id == messageId }?.id
-        }
     val firstUnread = unread.minByOrNull { message -> message.seq!! }?.id
     return ThreadUnreadJumpProjection(
         unreadCount = unread.distinctBy { message -> message.id }.size,
-        targetMessageId = exactAnchor ?: firstUnread,
+        targetMessageId = firstUnread,
     )
 }
 
