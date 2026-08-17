@@ -2742,7 +2742,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun warmChannelCacheKeepsFooterUnresolvedUntilCanonicalUnjoinedAccessArrives() = runBlocking {
+    fun warmChannelCacheKeepsFooterUnresolvedUntilInitialLookupCompletes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val repository =
             FakeConversationRepository(
@@ -2774,10 +2774,6 @@ class SharedThreadStoreTest {
         )
         dataSource.cachePayloadForTest(contentPayload("cached body").copy(joined = true, canSend = true))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        val renderEvents = mutableListOf<SharedThreadRenderSlice>()
-        val renderJob = launch {
-            store.renderSliceFlow().collect { slice -> renderEvents += slice }
-        }
 
         store.dispatch(SharedThreadIntent.Start(basePayload()))
         repository.getThreadStarted?.await()
@@ -2819,24 +2815,20 @@ class SharedThreadStoreTest {
 
         val resolvedFrame = store.state.value
         assertEquals(ThreadAccessResolution.Resolved, resolvedFrame.accessResolution)
-        assertFalse(resolvedFrame.payload.joined)
-        assertFalse(resolvedFrame.payload.canSend)
+        assertTrue(resolvedFrame.payload.joined)
+        assertTrue(resolvedFrame.payload.canSend)
+        assertTrue(resolvedFrame.payload.composer.enabled)
+        assertTrue(resolvedFrame.writeActionsEnabled)
         assertEquals("files", resolvedFrame.payload.selectedTab)
         assertEquals("m1", resolvedFrame.payload.focusedMessageId)
         assertEquals(7, resolvedFrame.payload.focusedMessageRequestNonce)
         assertEquals(1, channelRepository.homeCalls)
-        assertFalse(
-            renderEvents.any { slice ->
-                slice.accessResolution == ThreadAccessResolution.Resolved && slice.payload.joined
-            }
-        )
         assertTrue(
             resolvedFrame.payload.isThreadPrimaryFooterReady(
                 timelineSlice = resolvedFrame.timelineSlice,
                 accessResolution = resolvedFrame.accessResolution
             )
         )
-        renderJob.cancel()
         scope.cancel()
     }
 
@@ -2925,7 +2917,7 @@ class SharedThreadStoreTest {
         assertTrue(resolvedFrame.payload.canSend)
         assertTrue(resolvedFrame.payload.composer.enabled)
         assertTrue(resolvedFrame.writeActionsEnabled)
-        assertEquals(1, channelRepository.homeCalls)
+        assertEquals(1, channelRepository.channelsCalls)
         assertFalse(
             renderEvents.any { slice ->
                 slice.accessResolution == ThreadAccessResolution.Resolved && !slice.payload.joined
@@ -3020,7 +3012,7 @@ class SharedThreadStoreTest {
         assertTrue(resolvedFrame.payload.joined)
         assertTrue(resolvedFrame.payload.canSend)
         assertTrue(resolvedFrame.payload.composer.enabled)
-        assertEquals(1, channelRepository.homeCalls)
+        assertEquals(1, channelRepository.channelsCalls)
         assertFalse(
             renderEvents.any { slice ->
                 slice.accessResolution == ThreadAccessResolution.Resolved && !slice.payload.joined
@@ -3099,7 +3091,7 @@ class SharedThreadStoreTest {
         assertFalse(resolvedFrame.payload.canSend)
         assertFalse(resolvedFrame.payload.composer.enabled)
         assertTrue(resolvedFrame.writeActionsEnabled)
-        assertEquals(1, channelRepository.homeCalls)
+        assertEquals(1, channelRepository.channelsCalls)
         assertFalse(
             renderEvents.any { slice ->
                 slice.accessResolution == ThreadAccessResolution.Resolved && slice.payload.joined
@@ -3255,7 +3247,7 @@ class SharedThreadStoreTest {
         assertTrue(resolvedFrame.payload.canSend)
         assertTrue(resolvedFrame.payload.composer.enabled)
         assertEquals("dm-1", resolvedFrame.payload.parentChannelId)
-        assertEquals(1, channelRepository.homeCalls)
+        assertEquals(1, channelRepository.directMessageCalls)
         scope.cancel()
     }
 
@@ -3361,7 +3353,7 @@ class SharedThreadStoreTest {
         assertTrue(resolvedFrame.payload.canSend)
         assertTrue(resolvedFrame.payload.composer.enabled)
         assertEquals("joint-1", resolvedFrame.payload.parentChannelId)
-        assertEquals(1, channelRepository.homeCalls)
+        assertEquals(1, channelRepository.channelsCalls)
         scope.cancel()
     }
 
@@ -3574,7 +3566,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityReplyThreadUsesLoadedParentContextWhenHomeAccessLookupTimesOut() = runBlocking {
+    fun activityReplyThreadUsesLoadedParentContextWhenParentAccessLookupTimesOut() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val route = activityReplyPayload(
             parentKind = ConversationKind.Channel,
@@ -3643,7 +3635,7 @@ class SharedThreadStoreTest {
         assertFalse(resolvedFrame.payload.composer.enabled)
         assertFalse(resolvedFrame.writeActionsEnabled)
         assertEquals(1, repository.getReplyThreadRequests.size)
-        assertEquals(1, channelRepository.homeCalls)
+        assertEquals(1, channelRepository.channelsCalls)
 
         store.dispatch(SharedThreadIntent.Refresh)
         withTimeout(1_000) {
@@ -3655,7 +3647,7 @@ class SharedThreadStoreTest {
         assertTrue(store.state.value.payload.joined)
         assertTrue(store.state.value.payload.canSend)
         assertTrue(store.state.value.payload.composer.enabled)
-        assertEquals(2, channelRepository.homeCalls)
+        assertEquals(2, channelRepository.channelsCalls)
         scope.cancel()
     }
 
@@ -3729,48 +3721,75 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun refreshWhileInitialHomeAccessIsPendingRelaunchesResolution() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val releaseHome = CompletableDeferred<Unit>()
-        val channelRepository =
-            FakeChannelRepository {
-                releaseHome.await()
-                DataResult.Content(unjoinedHomeSnapshot())
-            }
-        val repository = FakeConversationRepository()
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                conversationRepository = repository,
-                channelRepository = channelRepository
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+    fun refreshCanonicalAccessWinsInEitherInitialLookupCompletionOrder() = runBlocking {
+        for (homeCompletesFirst in listOf(false, true)) {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val releaseHome = CompletableDeferred<Unit>()
+            val channelRepository =
+                FakeChannelRepository {
+                    releaseHome.await()
+                    DataResult.Content(unjoinedHomeSnapshot())
+                }
+            val repository = FakeConversationRepository()
+            val dataSource =
+                SharedThreadDataSource(
+                    networkApi = FakeThreadApi(failChannelMessages = true),
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    conversationRepository = repository,
+                    channelRepository = channelRepository
+                )
+            val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
-        store.dispatch(SharedThreadIntent.Start(basePayload()))
-        withTimeout(1_000) {
-            while (store.state.value.payload.status != "content" || channelRepository.homeCalls < 1) {
-                delay(10)
+            store.dispatch(SharedThreadIntent.Start(basePayload()))
+            withTimeout(1_000) {
+                while (store.state.value.payload.status != "content" || channelRepository.homeCalls < 1) {
+                    delay(10)
+                }
             }
-        }
-        assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
+            assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
 
-        store.dispatch(SharedThreadIntent.Refresh)
-        withTimeout(1_000) {
-            while (channelRepository.homeCalls < 2) {
-                delay(10)
+            if (homeCompletesFirst) {
+                repository.getThreadStarted = CompletableDeferred()
+                repository.releaseGetThread = CompletableDeferred()
             }
-        }
-        releaseHome.complete(Unit)
-        withTimeout(1_000) {
-            while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
-                delay(10)
+            store.dispatch(SharedThreadIntent.Refresh)
+            withTimeout(1_000) {
+                while (channelRepository.homeCalls < 2) {
+                    delay(10)
+                }
             }
-        }
+            if (homeCompletesFirst) {
+                repository.getThreadStarted?.await()
+                releaseHome.complete(Unit)
+                withTimeout(1_000) {
+                    while (!store.state.value.initialHomeAccessLookupComplete) {
+                        delay(10)
+                    }
+                }
+                repository.releaseGetThread?.complete(Unit)
+            } else {
+                withTimeout(1_000) {
+                    while (
+                        !store.state.value.canonicalAccessResolved ||
+                            store.state.value.initialHomeAccessLookupComplete
+                    ) {
+                        delay(10)
+                    }
+                }
+                releaseHome.complete(Unit)
+            }
+            withTimeout(1_000) {
+                while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
+                    delay(10)
+                }
+            }
 
-        assertFalse(store.state.value.payload.joined)
-        assertFalse(store.state.value.payload.canSend)
-        scope.cancel()
+            assertTrue(store.state.value.payload.joined)
+            assertTrue(store.state.value.payload.canSend)
+            assertTrue(store.state.value.payload.composer.enabled)
+            assertTrue(store.state.value.writeActionsEnabled)
+            scope.cancel()
+        }
     }
 
     @Test
@@ -3823,7 +3842,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun retryResetsTimedOutHomeVerdictBeforeCanonicalJoinedContentCanResolve() = runBlocking {
+    fun retryResetsTimedOutHomeVerdictWithoutOverridingCanonicalJoinedAccess() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val firstHomeNeverCompletes = CompletableDeferred<Unit>()
         val releaseRetryHome = CompletableDeferred<Unit>()
@@ -3888,8 +3907,10 @@ class SharedThreadStoreTest {
                 delay(10)
             }
         }
-        assertFalse(store.state.value.payload.joined)
-        assertFalse(store.state.value.payload.canSend)
+        assertTrue(store.state.value.payload.joined)
+        assertTrue(store.state.value.payload.canSend)
+        assertTrue(store.state.value.payload.composer.enabled)
+        assertTrue(store.state.value.writeActionsEnabled)
         renderJob.cancel()
         scope.cancel()
     }
@@ -13636,56 +13657,6 @@ class SharedThreadStoreTest {
             checkedMessageIds += messageIds
             return DataResult.Content(SavedMessageStatusSnapshot(savedIds))
         }
-    }
-
-    private class FakeChannelRepository(
-        private val profileUpdater: suspend (ChannelProfileUpdateRequest) -> DataResult<ChannelProfileUpdateResult> = {
-            error("unused")
-        },
-        private val homeResult: (suspend (ServerId) -> DataResult<HomeSnapshot>)? = null
-    ) : ChannelRepository {
-        val createRequests: MutableList<CreateChannelRequest> = mutableListOf()
-        val profileUpdateRequests: MutableList<ChannelProfileUpdateRequest> = mutableListOf()
-        var homeCalls: Int = 0
-
-        override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> {
-            homeCalls += 1
-            return homeResult?.invoke(serverId) ?: error("unused")
-        }
-        override suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot> = error("unused")
-        override suspend fun getDirectMessages(serverId: ServerId): DataResult<DirectMessageSnapshot> = error("unused")
-        override suspend fun openAgentDirectMessage(agentId: MemberId): DataResult<OpenDirectMessageResult> = error("unused")
-        override suspend fun openUserDirectMessage(userId: MemberId): DataResult<OpenDirectMessageResult> = error("unused")
-
-        override suspend fun createChannel(request: CreateChannelRequest): DataResult<CreateChannelResult> {
-            createRequests += request
-            return DataResult.Content(
-                CreateChannelResult(
-                    channel =
-                        ConversationSummary(
-                            threadId = ThreadId("channel-created"),
-                            channelId = ChannelId("channel-created"),
-                            kind = ConversationKind.Channel,
-                            name = request.name
-                        ).toHomeChannelRow(),
-                    addedAgentMemberIds = request.agentMemberIds,
-                    addedUserMemberIds = request.userMemberIds
-                )
-            )
-        }
-
-        override suspend fun joinChannel(channelId: ChannelId): DataResult<ChannelJoinResult> = error("unused")
-        override suspend fun leaveChannel(channelId: ChannelId): DataResult<ChannelLeaveResult> = error("unused")
-        override suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult> = error("unused")
-        override suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult> = error("unused")
-        override suspend fun updateChannel(channelId: ChannelId, visibility: ChannelVisibility): DataResult<ChannelUpdateResult> = error("unused")
-        override suspend fun updateChannelProfile(
-            request: ChannelProfileUpdateRequest
-        ): DataResult<ChannelProfileUpdateResult> {
-            profileUpdateRequests += request
-            return profileUpdater(request)
-        }
-        override suspend fun setChannelActivityMuted(channelId: ChannelId, muted: Boolean): DataResult<ChannelActivityMuteSettings> = error("unused")
     }
 
     private class RecordingAgentsApi : SlockAgentsApi {

@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
+import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxItem
 import build.raft.app.data.toConversationSummary
@@ -69,6 +70,7 @@ import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
 import build.raft.app.data.ThreadReplyCacheIdentityTransitionAnchor
 import build.raft.app.data.authSessionRequiredResult
 import build.raft.app.data.map
+import build.raft.app.data.toSharedConversationDirectoryProjection
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadRouteId
@@ -1661,6 +1663,142 @@ internal class SharedThreadDataSource(
             accessCandidate = accessFallback
         )
     }
+
+    /**
+     * Reply write authority belongs to the exact parent Channel/DM. Resolve it independently from
+     * the full Home aggregate so auxiliary unread enrichment cannot consume the initial-access
+     * timeout after the canonical conversation list is already available.
+     */
+    suspend fun initialConversationAccessResolution(
+        payload: KuiklyThreadScreenPayload
+    ): ThreadHomeContextResolution =
+        if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            replyParentConversationAccessResolution(payload)
+        } else {
+            homeConversationContextResolution(payload)
+        }
+
+    private suspend fun replyParentConversationAccessResolution(
+        payload: KuiklyThreadScreenPayload
+    ): ThreadHomeContextResolution {
+        val (parentId, parentKind) =
+            payload.replyParentAccessIdentityOrNull()
+                ?: return ThreadHomeContextResolution(
+                    payload = payload,
+                    requiresBackgroundHomeContextHydration = true,
+                )
+        val resolutionScope =
+            readReplyResolutionScope()
+                ?: return ThreadHomeContextResolution(
+                    payload = payload,
+                    requiresBackgroundHomeContextHydration = true,
+                )
+        val serverId =
+            resolutionScope.provenance.serverId
+                .takeIf { it.isNotBlank() }
+                ?.let(::ServerId)
+                ?: return ThreadHomeContextResolution(
+                    payload = payload,
+                    requiresBackgroundHomeContextHydration = true,
+                )
+
+        homeSnapshotProvider?.invoke(serverId)
+            ?.takeIf { snapshot ->
+                snapshot.server.id == serverId &&
+                    snapshot.currentMember.id.value == resolutionScope.provenance.principalId
+            }
+            ?.let { home ->
+                val candidate =
+                    payload.exactReplyParentAccessCandidate(
+                        serverId = serverId,
+                        parentId = parentId,
+                        parentKind = parentKind,
+                        conversations = home.channels + home.directMessages,
+                    ) ?: return@let
+                val ownerCurrent = replyAccessResolutionOwnerStillCurrent(resolutionScope)
+                return ThreadHomeContextResolution(
+                    payload = payload.withKnownMarkdownChannelNames(home),
+                    accessCandidate = candidate,
+                    ownerCurrent = ownerCurrent,
+                )
+            }
+
+        val repository = channelRepository
+        val conversations: List<HomeConversationRow> =
+            if (repository == null) {
+                emptyList()
+            } else {
+                try {
+                    when (parentKind) {
+                        ConversationKind.Channel,
+                        ConversationKind.Joint ->
+                            (repository.getChannels(serverId) as? DataResult.Content)
+                                ?.data
+                                ?.takeIf { snapshot -> snapshot.server.id == serverId }
+                                ?.channels
+                                .orEmpty()
+                        ConversationKind.DirectMessage ->
+                            (repository.getDirectMessages(serverId) as? DataResult.Content)
+                                ?.data
+                                ?.takeIf { snapshot -> snapshot.server.id == serverId }
+                                ?.directMessages
+                                .orEmpty()
+                        ConversationKind.Thread,
+                        ConversationKind.Inbox,
+                        ConversationKind.System -> emptyList()
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    emptyList()
+                }
+            }
+        val ownerCurrent = replyAccessResolutionOwnerStillCurrent(resolutionScope)
+        val candidate =
+            payload.exactReplyParentAccessCandidate(
+                serverId = serverId,
+                parentId = parentId,
+                parentKind = parentKind,
+                conversations = conversations,
+            )
+        diagnosticsLogger(
+            "thread_initial_parent_access source=conversation_list serverId=${serverId.value} " +
+                "parentId=$parentId parentKind=${parentKind.name} candidate=${candidate != null} " +
+                "ownerCurrent=$ownerCurrent"
+        )
+        return ThreadHomeContextResolution(
+            payload = payload,
+            accessCandidate = candidate,
+            ownerCurrent = ownerCurrent,
+            requiresBackgroundHomeContextHydration = true,
+        )
+    }
+
+    private suspend fun replyAccessResolutionOwnerStillCurrent(
+        expected: ReplyResolutionScope
+    ): Boolean {
+        val current = readReplyResolutionScope() ?: return false
+        return current.provenance == expected.provenance &&
+            isCurrentReplyCacheProvenance(expected.provenance)
+    }
+
+    private fun KuiklyThreadScreenPayload.exactReplyParentAccessCandidate(
+        serverId: ServerId,
+        parentId: String,
+        parentKind: ConversationKind,
+        conversations: List<HomeConversationRow>,
+    ): ConversationAccessCandidate? =
+        conversations
+            .asSequence()
+            .mapNotNull { conversation ->
+                conversation.toSharedConversationDirectoryProjection(serverId)
+            }
+            .firstOrNull { projection ->
+                projection.canonicalChannelId == parentId &&
+                    projection.conversationKind == parentKind
+            }
+            ?.toConversationAccessCandidate()
+            ?.takeIf(::acceptsInitialConversationAccessCandidate)
 
     suspend fun withHomeConversationContext(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
         homeConversationContextResolution(payload).payload
@@ -4341,7 +4479,9 @@ internal enum class ChannelProfileUpdateStatus {
 
 internal data class ThreadHomeContextResolution(
     val payload: KuiklyThreadScreenPayload,
-    val accessCandidate: ConversationAccessCandidate? = null
+    val accessCandidate: ConversationAccessCandidate? = null,
+    val ownerCurrent: Boolean = true,
+    val requiresBackgroundHomeContextHydration: Boolean = false,
 )
 
 /**
@@ -5405,14 +5545,24 @@ internal class SharedThreadStore(
                 val homeResolution =
                     withTimeoutOrNull(ThreadInitialAccessLookupTimeoutMillis) {
                         try {
-                            dataSource.homeConversationContextResolution(routePayload)
+                            dataSource.initialConversationAccessResolution(routePayload)
                         } catch (cancellation: CancellationException) {
                             throw cancellation
                         } catch (_: Throwable) {
                             null
                         }
                     }
+                if (homeResolution?.ownerCurrent == false) {
+                    diagnosticsLogger?.invoke(
+                        "thread_access_resolution_stale_drop " +
+                            "threadId=${routePayload.sourceThreadId.orEmpty()} reason=owner_changed"
+                    )
+                    return@launch
+                }
                 val candidate = homeResolution?.accessCandidate
+                val launchBackgroundHomeContext =
+                    homeResolution?.requiresBackgroundHomeContextHydration
+                        ?: (routePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread)
                 initialAccessStateMutex.withLock {
                     val currentState = _state.value
                     val currentPayload = currentState.payload
@@ -5435,7 +5585,10 @@ internal class SharedThreadStore(
                                     payload.withHomeContextProjectionFrom(homePayload)
                                 } ?: payload
                             }
-                            .withInitialHomeConversationAccessFallback(candidate)
+                            .withInitialHomeConversationAccessFallbackUnlessCanonical(
+                                canonicalAccessResolved = currentState.canonicalAccessResolved,
+                                candidate = candidate,
+                            )
                             .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
                                 homeLookupComplete = true,
                                 homeAccessCandidate = candidate
@@ -5482,6 +5635,22 @@ internal class SharedThreadStore(
                                 )
                         )
                     )
+                }
+                if (
+                    launchBackgroundHomeContext &&
+                    staleTokenStillCurrent(
+                        staleToken,
+                        "thread_access_home_context",
+                        "launch",
+                        routePayload,
+                    ) &&
+                    routeStillCurrent(
+                        routePayload,
+                        "thread_access_home_context",
+                        "launch",
+                    )
+                ) {
+                    launchBackgroundHomeContextHydration(routePayload)
                 }
             }
     }
