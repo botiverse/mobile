@@ -40,7 +40,7 @@ class SharedServerMembersPresenceReconciliationTest {
         )
         registry.rebaselineTransport(owner, registry.writeGeneration, restartedTransport)
 
-        val request = store.beginAgentPresenceProjection(serverId, agentId)
+        val request = store.beginAgentDetailPresenceProjection(serverId, agentId)
         store.applyAgentDetailSnapshot(
             request,
             detail(
@@ -71,7 +71,7 @@ class SharedServerMembersPresenceReconciliationTest {
         val store = SharedServerMembersStore(PresenceNoopMemberRepository, presenceRegistry = registry)
         store.applyPresence(serverId, presence(AgentStatus.Offline, serverSeq = 10L, detail = "Stopped"))
 
-        val request = store.beginAgentPresenceProjection(serverId, agentId)
+        val request = store.beginAgentDetailPresenceProjection(serverId, agentId)
         store.applyAgentDetailSnapshot(
             request,
             detail(summaryStatus = "working", summaryActivity = "working")
@@ -85,6 +85,10 @@ class SharedServerMembersPresenceReconciliationTest {
         assertEquals(AgentStatus.Working, registry.factFor(owner, agentId.value)?.agentStatus)
         assertEquals(10L, registry.factFor(owner, agentId.value)?.serverSeq)
 
+        store.applyPresence(serverId, presence(AgentStatus.Offline, serverSeq = 10L, detail = "Equal replay"))
+        assertEquals(AgentStatus.Working, registry.factFor(owner, agentId.value)?.agentStatus)
+        assertEquals(10L, registry.factFor(owner, agentId.value)?.serverSeq)
+
         store.applyPresence(serverId, presence(AgentStatus.Online, serverSeq = 11L, detail = "Current event"))
         assertEquals(AgentStatus.Online, registry.factFor(owner, agentId.value)?.agentStatus)
         assertEquals(11L, registry.factFor(owner, agentId.value)?.serverSeq)
@@ -94,7 +98,7 @@ class SharedServerMembersPresenceReconciliationTest {
     fun realtimeArrivingDuringDetailRequestWins() {
         val registry = ProcessMemberPresenceRegistry()
         val store = SharedServerMembersStore(PresenceNoopMemberRepository, presenceRegistry = registry)
-        val request = store.beginAgentPresenceProjection(serverId, agentId)
+        val request = store.beginAgentDetailPresenceProjection(serverId, agentId)
 
         store.applyPresence(serverId, presence(AgentStatus.Working, serverSeq = 7L, detail = "Running"))
         store.applyAgentDetailSnapshot(
@@ -112,8 +116,8 @@ class SharedServerMembersPresenceReconciliationTest {
     fun historicalActivityDoesNotInvalidateConcurrentCurrentDetail() {
         val registry = ProcessMemberPresenceRegistry()
         val store = SharedServerMembersStore(PresenceNoopMemberRepository, presenceRegistry = registry)
-        val detailRequest = store.beginAgentPresenceProjection(serverId, agentId)
-        val activityRequest = store.beginAgentPresenceProjection(serverId, agentId)
+        val detailRequest = store.beginAgentDetailPresenceProjection(serverId, agentId)
+        val activityRequest = store.beginAgentActivityPresenceProjection(serverId, agentId)
 
         store.applyAgentActivitySnapshot(
             request = activityRequest,
@@ -132,13 +136,13 @@ class SharedServerMembersPresenceReconciliationTest {
     fun historicalActivityStartedAfterCurrentDetailStillCannotReplaceCurrentState() {
         val registry = ProcessMemberPresenceRegistry()
         val store = SharedServerMembersStore(PresenceNoopMemberRepository, presenceRegistry = registry)
-        val detailRequest = store.beginAgentPresenceProjection(serverId, agentId)
+        val detailRequest = store.beginAgentDetailPresenceProjection(serverId, agentId)
         store.applyAgentDetailSnapshot(
             detailRequest,
             detail(summaryStatus = "working", summaryActivity = "working")
         )
 
-        val activityRequest = store.beginAgentPresenceProjection(serverId, agentId)
+        val activityRequest = store.beginAgentActivityPresenceProjection(serverId, agentId)
         store.applyAgentActivitySnapshot(
             request = activityRequest,
             agentId = agentId,
@@ -191,7 +195,7 @@ class SharedServerMembersPresenceReconciliationTest {
         assertEquals(AgentStatus.Working, current?.agentStatus)
         assertNull(current?.serverSeq)
 
-        val activityRequest = store.beginAgentPresenceProjection(serverId, agentId)
+        val activityRequest = store.beginAgentActivityPresenceProjection(serverId, agentId)
         store.applyAgentActivitySnapshot(
             request = activityRequest,
             agentId = agentId,
@@ -312,6 +316,140 @@ class SharedServerMembersPresenceReconciliationTest {
     }
 
     @Test
+    fun detailAuthorityWinsConcurrentRosterInEitherResponseOrder() = runBlocking {
+        for (rosterCompletesFirst in listOf(true, false)) {
+            val registry = ProcessMemberPresenceRegistry()
+            val rosterStarted = CompletableDeferred<Unit>()
+            val releaseRoster = CompletableDeferred<Unit>()
+            val repository =
+                object : MemberRepository by PresenceNoopMemberRepository {
+                    override suspend fun getMembers(
+                        priority: DataRequestPriority,
+                        serverId: ServerId
+                    ): DataResult<MemberSnapshot> {
+                        rosterStarted.complete(Unit)
+                        releaseRoster.await()
+                        return DataResult.Content(
+                            MemberSnapshot(
+                                server = ServerSummary(id = serverId, name = "Raft"),
+                                members =
+                                    listOf(
+                                        MemberProfile(
+                                            id = agentId,
+                                            displayName = "Agent One",
+                                            handle = "agent-one",
+                                            kind = MemberKind.Agent,
+                                            presence = Presence.Offline,
+                                            agentStatus = AgentStatus.Offline,
+                                            serverId = serverId
+                                        )
+                                    )
+                            )
+                        )
+                    }
+                }
+            val store = SharedServerMembersStore(repository, presenceRegistry = registry)
+            registry.rebaselineTransport(
+                owner,
+                registry.writeGeneration,
+                ProcessPresenceTransportEpoch("family-1", 1L)
+            )
+
+            val rosterRefresh =
+                async { store.refreshMembers(serverId, force = true, reason = "held_concurrent_roster") }
+            rosterStarted.await()
+            val detailRequest = store.beginAgentDetailPresenceProjection(serverId, agentId)
+
+            if (rosterCompletesFirst) {
+                releaseRoster.complete(Unit)
+                assertEquals(DataResult.Content(Unit), rosterRefresh.await())
+                assertEquals(AgentStatus.Offline, registry.factFor(owner, agentId.value)?.agentStatus)
+                store.applyAgentDetailSnapshot(
+                    detailRequest,
+                    detail(summaryStatus = "working", summaryActivity = "working")
+                )
+            } else {
+                store.applyAgentDetailSnapshot(
+                    detailRequest,
+                    detail(summaryStatus = "working", summaryActivity = "working")
+                )
+                releaseRoster.complete(Unit)
+                assertEquals(DataResult.Content(Unit), rosterRefresh.await())
+            }
+
+            assertEquals(
+                AgentStatus.Working,
+                registry.factFor(owner, agentId.value)?.agentStatus,
+                "detail must win when rosterCompletesFirst=$rosterCompletesFirst"
+            )
+        }
+    }
+
+    @Test
+    fun newerDetailRequestWinsRegardlessOfCompletionOrder() {
+        for (newerCompletesFirst in listOf(true, false)) {
+            val registry = ProcessMemberPresenceRegistry()
+            val store = SharedServerMembersStore(PresenceNoopMemberRepository, presenceRegistry = registry)
+            val olderRequest = store.beginAgentDetailPresenceProjection(serverId, agentId)
+            val newerRequest = store.beginAgentDetailPresenceProjection(serverId, agentId)
+            val olderDetail = detail(summaryStatus = "offline", summaryActivity = "offline")
+            val newerDetail = detail(summaryStatus = "working", summaryActivity = "working")
+
+            if (newerCompletesFirst) {
+                store.applyAgentDetailSnapshot(newerRequest, newerDetail)
+                store.applyAgentDetailSnapshot(olderRequest, olderDetail)
+            } else {
+                store.applyAgentDetailSnapshot(olderRequest, olderDetail)
+                store.applyAgentDetailSnapshot(newerRequest, newerDetail)
+            }
+
+            assertEquals(
+                AgentStatus.Working,
+                registry.factFor(owner, agentId.value)?.agentStatus,
+                "newer request must win when newerCompletesFirst=$newerCompletesFirst"
+            )
+        }
+    }
+
+    @Test
+    fun laterRosterRefreshAdvancesPastDetailAndBlocksOlderDetailSibling() {
+        val registry = ProcessMemberPresenceRegistry()
+        val store = SharedServerMembersStore(PresenceNoopMemberRepository, presenceRegistry = registry)
+        val staleDetail = store.beginAgentDetailPresenceProjection(serverId, agentId)
+        val acceptedDetail = store.beginAgentDetailPresenceProjection(serverId, agentId)
+
+        store.applyAgentDetailSnapshot(
+            acceptedDetail,
+            detail(summaryStatus = "working", summaryActivity = "working")
+        )
+        assertEquals(AgentStatus.Working, registry.factFor(owner, agentId.value)?.agentStatus)
+
+        val rosterRequest =
+            registry.captureRosterProjectionRequest(owner, registry.writeGeneration)
+                ?.memberRequest(agentId.value)
+        checkNotNull(rosterRequest)
+        registry.applyProjection(
+            request = rosterRequest,
+            event =
+                MemberPresenceUpdated(
+                    memberId = agentId,
+                    presence = Presence.Offline,
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Offline,
+                    statusLabel = AgentStatus.Offline.label,
+                    serverSeq = null
+                )
+        )
+        assertEquals(AgentStatus.Offline, registry.factFor(owner, agentId.value)?.agentStatus)
+
+        store.applyAgentDetailSnapshot(
+            staleDetail,
+            detail(summaryStatus = "online", summaryActivity = "online")
+        )
+        assertEquals(AgentStatus.Offline, registry.factFor(owner, agentId.value)?.agentStatus)
+    }
+
+    @Test
     fun reconnectInvalidatesHeldDetailAndRejectsOldTransportEpoch() {
         val registry = ProcessMemberPresenceRegistry()
         val store = SharedServerMembersStore(PresenceNoopMemberRepository, presenceRegistry = registry)
@@ -328,7 +466,7 @@ class SharedServerMembersPresenceReconciliationTest {
             registry.writeGeneration,
             firstTransport
         )
-        val heldRequest = store.beginAgentPresenceProjection(serverId, agentId)
+        val heldRequest = store.beginAgentDetailPresenceProjection(serverId, agentId)
 
         assertEquals(
             ProcessPresenceTransportRebaselineResult.Applied,
@@ -426,7 +564,7 @@ class SharedServerMembersPresenceReconciliationTest {
     fun memberEvictionInvalidatesHeldCurrentDetail() {
         val registry = ProcessMemberPresenceRegistry()
         val store = SharedServerMembersStore(PresenceNoopMemberRepository, presenceRegistry = registry)
-        val heldRequest = store.beginAgentPresenceProjection(serverId, agentId)
+        val heldRequest = store.beginAgentDetailPresenceProjection(serverId, agentId)
 
         registry.evict(
             owner = owner,

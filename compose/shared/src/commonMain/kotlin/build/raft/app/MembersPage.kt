@@ -2140,7 +2140,8 @@ private class MemberDetailRouteProvider(
         // Agent profile content is deliberately cold-loaded. A roster seed has no revision or
         // canonical runtime authority and may never be kept as if it were a successful response.
         val loadPlan = memberDetailLoadPlan(hasCachedDetail = false)
-        val presenceRequest = serverMembersStore.beginAgentPresenceProjection(server.id, selectedId)
+        val presenceRequest =
+            serverMembersStore.beginAgentDetailPresenceProjection(server.id, selectedId)
         return when (val detailResult = memberRepository.getAgentDetail(loadPlan.priority, selectedId)) {
             is DataResult.Content -> {
                 if (!isCurrentRequest()) return MemberDetailRouteState.Error("member_request_stale")
@@ -2769,7 +2770,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 generation = generation
             )
         val presenceRequest =
-            provider.serverMembersStore.beginAgentPresenceProjection(current.server.id, agentId)
+            provider.serverMembersStore.beginAgentActivityPresenceProjection(current.server.id, agentId)
         agentActivityLoadState = membersAgentActivityLoadStart(hasCachedActivity)
         val result = provider.loadAgentActivity(agentId)
         val routeServerId = (routeState as? MemberDetailRouteState.Agent)?.server?.id

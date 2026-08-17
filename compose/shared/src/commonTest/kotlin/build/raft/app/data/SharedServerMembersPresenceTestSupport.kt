@@ -10,7 +10,7 @@ internal fun SharedServerMembersStore.applyAgentActivitySnapshotForTest(
     activity: List<AgentActivityEntry>
 ) {
     applyAgentActivitySnapshot(
-        request = beginAgentPresenceProjection(serverId, agentId),
+        request = beginAgentActivityPresenceProjection(serverId, agentId),
         agentId = agentId,
         activity = activity
     )

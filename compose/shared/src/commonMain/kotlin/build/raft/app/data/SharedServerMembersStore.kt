@@ -903,13 +903,26 @@ class SharedServerMembersStore internal constructor(
         presenceRegistry.apply(write.owner, event, write.writeGeneration)
     }
 
-    /** Capture before issuing an agent detail/activity request. */
-    internal fun beginAgentPresenceProjection(
+    /** Capture before issuing a current agent-detail request. */
+    internal fun beginAgentDetailPresenceProjection(
         serverId: ServerId,
         agentId: MemberId
     ): ProcessPresenceProjectionRequest? {
         val write = presenceWrite(serverId) ?: return null
-        return presenceRegistry.captureProjectionRequest(
+        return presenceRegistry.captureDetailProjectionRequest(
+            owner = write.owner,
+            memberId = agentId.value,
+            writeGeneration = write.writeGeneration
+        )
+    }
+
+    /** Capture before issuing a durable Activity-history request. */
+    internal fun beginAgentActivityPresenceProjection(
+        serverId: ServerId,
+        agentId: MemberId
+    ): ProcessPresenceProjectionRequest? {
+        val write = presenceWrite(serverId) ?: return null
+        return presenceRegistry.captureHistoricalProjectionRequest(
             owner = write.owner,
             memberId = agentId.value,
             writeGeneration = write.writeGeneration
@@ -921,16 +934,16 @@ class SharedServerMembersStore internal constructor(
         agentId: MemberId,
         activity: List<AgentActivityEntry>
     ) {
-        if (request == null) return
+        if (request == null || request.source != ProcessPresenceProjectionSource.Historical) return
         val projection = activity.latestAgentActivityStatusProjection() ?: return
-        applyAgentActivityProjection(request, agentId, projection, authoritativeCurrent = false)
+        applyAgentActivityProjection(request, agentId, projection)
     }
 
     internal fun applyAgentDetailSnapshot(
         request: ProcessPresenceProjectionRequest?,
         detail: AgentDetailSnapshot
     ) {
-        if (request == null) return
+        if (request == null || request.source != ProcessPresenceProjectionSource.DetailCurrent) return
         // Agent detail summary.activity is the current server state. Prefer it
         // over the durable trajectory so an old run_command row cannot become
         // current after the agent stopped (or vice versa). Only this current
@@ -939,18 +952,25 @@ class SharedServerMembersStore internal constructor(
         val currentProjection = detail.summary.agentActivityStatusFallbackProjection()
         val projection = currentProjection ?: detail.activity.latestAgentActivityStatusProjection() ?: return
         applyAgentActivityProjection(
-            request = request,
+            request =
+                if (currentProjection != null) {
+                    request
+                } else {
+                    request.copy(
+                        source = ProcessPresenceProjectionSource.Historical,
+                        requestVersion = 0L,
+                        baseRequestVersion = null
+                    )
+                },
             agentId = detail.agentId,
-            projection = projection,
-            authoritativeCurrent = currentProjection != null
+            projection = projection
         )
     }
 
     private fun applyAgentActivityProjection(
         request: ProcessPresenceProjectionRequest,
         agentId: MemberId,
-        projection: AgentActivityStatusProjection,
-        authoritativeCurrent: Boolean
+        projection: AgentActivityStatusProjection
     ) {
         val memberId = agentId.value.trim()
         if (memberId.isBlank() || memberId != request.memberId) return
@@ -961,8 +981,7 @@ class SharedServerMembersStore internal constructor(
         presenceRegistry.applyProjection(
             request = request,
             event = projection.toMemberPresenceUpdated(agentId),
-            evidenceTimestamp = projection.evidenceTimestamp,
-            authoritativeCurrent = authoritativeCurrent
+            evidenceTimestamp = projection.evidenceTimestamp
         )
     }
 
@@ -1180,9 +1199,7 @@ class SharedServerMembersStore internal constructor(
                         agentStatus = status,
                         statusLabel = status.label,
                         serverSeq = null
-                    ),
-                authoritativeCurrent = true,
-                replaceSequencedFact = false
+                    )
             )
         }
     }
