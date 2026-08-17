@@ -675,6 +675,19 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun visibleMemberCandidateOwnsImeActionWhenSendKeyPreferenceIsDisabled() {
+        assertEquals(
+            true,
+            threadComposerUsesImeAction(
+                composerSendKeyEnabled = false,
+                panelState = ThreadComposerSuggestionPanelState.MemberItems,
+                memberCount = 1,
+                channelCount = 0
+            )
+        )
+    }
+
+    @Test
     fun firstMemberSuggestionCandidateMatchesVisualGrouping() {
         val outside =
             KuiklyComposerMemberItem(
@@ -888,6 +901,59 @@ class ThreadComposerLayoutTest {
                 channelCount = 1,
                 canSend = true,
                 isImeComposing = false
+            )
+        )
+    }
+
+    @Test
+    fun visibleChannelCandidateOwnsImeActionWhenSendKeyPreferenceIsDisabled() {
+        assertEquals(
+            true,
+            threadComposerUsesImeAction(
+                composerSendKeyEnabled = false,
+                panelState = ThreadComposerSuggestionPanelState.ChannelItems,
+                memberCount = 0,
+                channelCount = 1
+            )
+        )
+    }
+
+    @Test
+    fun newlinePreferenceRemainsWhenSuggestionPanelHasNoCandidate() {
+        val inactivePanels =
+            listOf(
+                ThreadComposerSuggestionPanelState.Hidden,
+                ThreadComposerSuggestionPanelState.MemberLoading,
+                ThreadComposerSuggestionPanelState.MemberEmpty,
+                ThreadComposerSuggestionPanelState.MemberError,
+                ThreadComposerSuggestionPanelState.ChannelLoading,
+                ThreadComposerSuggestionPanelState.ChannelEmpty,
+                ThreadComposerSuggestionPanelState.ChannelError
+            )
+
+        inactivePanels.forEach { panelState ->
+            assertEquals(
+                false,
+                threadComposerUsesImeAction(
+                    composerSendKeyEnabled = false,
+                    panelState = panelState,
+                    memberCount = 0,
+                    channelCount = 0
+                ),
+                "panelState=$panelState"
+            )
+        }
+    }
+
+    @Test
+    fun sendKeyPreferenceStillOwnsImeActionWithoutSuggestions() {
+        assertEquals(
+            true,
+            threadComposerUsesImeAction(
+                composerSendKeyEnabled = true,
+                panelState = ThreadComposerSuggestionPanelState.Hidden,
+                memberCount = 0,
+                channelCount = 0
             )
         )
     }
