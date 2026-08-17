@@ -118,6 +118,8 @@ import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCode
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeBlock
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeFence
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownHeader
+import com.tencent.kuiklybase.markdown.compose.elements.MarkdownTable
+import com.tencent.kuiklybase.markdown.compose.elements.MarkdownTableHeader
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownParagraph
 import com.tencent.kuiklybase.markdown.model.MarkdownDimens
 import com.tencent.kuiklybase.markdown.model.markdownPadding
@@ -2164,6 +2166,32 @@ fun SlockMarkdownBody(
             },
             horizontalRule = {
                 SlockMarkdownHorizontalRule()
+            },
+            // task #212: the upstream table header does `style.merge(fontWeight = Bold)`,
+            // which changes the weight but leaves the font FAMILY alone. Slock encodes
+            // weight in the family name (Kuikly drops weight from the serialized family,
+            // see withSlockFontWeight), so that merge asks the platform to synthesise
+            // bold on top of the Regular face instead of using the real 700 cut — the
+            // header rendered heavier and blurrier than React's `th`, which uses a true
+            // SpaceGrotesk Bold file. Handing the header a style that already carries the
+            // Bold family makes the upstream merge a no-op and yields the real cut.
+            // Overriding the component here keeps the vendored fork free of a new
+            // divergence.
+            table = { model ->
+                MarkdownTable(
+                    model.content,
+                    model.node,
+                    style = model.typography.table,
+                    headerBlock = { content, header, style, columnWidths, rowWidths ->
+                        MarkdownTableHeader(
+                            content = content,
+                            header = header,
+                            style = style.withSlockFontWeight(FontWeight.Bold),
+                            columnWidths = columnWidths,
+                            rowWidths = rowWidths
+                        )
+                    }
+                )
             },
             // task #66: code blocks carry a persistent transparent copy
             // affordance (top-right lucide copy, no plate — May task #9 native
