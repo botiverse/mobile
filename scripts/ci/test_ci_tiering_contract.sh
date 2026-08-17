@@ -6,7 +6,12 @@ scripts/ci/plan_test_tier.sh --self-test
 node scripts/ci/verify_test_tier_results.mjs --self-test
 bash -n scripts/ci/plan_test_tier.sh scripts/ci/test_ci_tiering_contract.sh
 
-ruby -ryaml -rjson <<'RUBY'
+ruby -ryaml -rjson -rshellwords <<'RUBY'
+def includes_shell_tokens?(command, required_tokens)
+  tokens = Shellwords.shellsplit(command)
+  required_tokens.all? { |required_token| tokens.include?(required_token) }
+end
+
 workflow = YAML.load_file(".github/workflows/test.yml")
 events = workflow.fetch(true)
 pull_request = events.fetch("pull_request")
@@ -76,6 +81,27 @@ raise "canonical-final is not nightly/manual gated" unless
   jobs.dig("android-canonical-final-actual-host", "if").include?("run_canonical_final")
 raise "attachment authority is not API-level selected" unless
   jobs.dig("android-minimum-supported-attachment-runtime", "if").include?("attachment_api_levels")
+android_steps = jobs.fetch("android").fetch("steps")
+fixture_build_index = android_steps.index { |step| step["name"] == "Build Android connected-test APKs" }
+unit_test_index = android_steps.index { |step| step["name"] == "Run shared + Android app unit tests" }
+raise "Android visual-fixture build step missing" unless fixture_build_index
+raise "Android unit-test step missing" unless unit_test_index
+raise "unit-test failures can mask visual-fixture compilation" unless fixture_build_index < unit_test_index
+fixture_build = android_steps.fetch(fixture_build_index).fetch("run")
+fixture_build_tokens = %w[
+  -PslockVisualFixtures=true
+  :shared:assembleDebugAndroidTest
+  :androidApp:assembleConnectedTest
+  :androidApp:assembleConnectedTestAndroidTest
+]
+raise "Android visual-fixture task matcher accepts task-name prefixes" if includes_shell_tokens?(
+  ":androidApp:assembleConnectedTestAndroidTest",
+  [":androidApp:assembleConnectedTest"],
+)
+fixture_build_tokens.each do |argument|
+  raise "Android visual-fixture build lost #{argument}" unless
+    includes_shell_tokens?(fixture_build, [argument])
+end
 kuikly_steps = jobs.fetch("kuikly-artifacts").fetch("steps")
 raise "Kuikly manifest admission gate is not hosted" unless kuikly_steps.any? do |step|
   step["run"]&.include?("verify_kuikly_release_manifest.sh")
