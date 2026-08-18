@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>aece8704-20260818220517</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-18T22:07:28.945Z" data-timestamp="2026-08-18T22:07:28.945Z" title="2026-08-18T22:07:28.945Z">2026-08-18 22:07:28 UTC</time></p>
+    <p class="runMeta"><code>aece8704-20260818220517</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-18T22:11:20.990Z" data-timestamp="2026-08-18T22:11:20.990Z" title="2026-08-18T22:11:20.990Z">2026-08-18 22:11:20 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 13</span>
       <span class="pill">Different 56</span>
       <span class="pill">Missing 6</span>
-      <span class="pill">AI 78/86 ready</span>
+      <span class="pill">AI 80/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1028,7 +1028,12 @@
       <p><code>RGB 98.0%</code><br/><code>Pixel 99.77%</code><br/><code>Mismatch 0.23%</code><br/><code>Raw 1026×276 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.77% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×92 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · design-system</summary>
+    <ul><li>Visual layout, dot colors, and typography appear nearly identical between React and iOS renders.</li><li>Pixel-perfect similarity is 99.77% with only 0.23% mismatch, well within tolerance.</li><li>No missing elements, clipping, or alignment differences observed in the inspected region.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No action required; results are within tolerance.</li><li>If a stricter match is desired, normalize dot stroke width and font weight between platforms.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.status-dot.states.png" data-current-src="ios/components.ui.status-dot.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4465,7 +4470,12 @@
       <p><code>RGB 65.3%</code><br/><code>Pixel 12.46%</code><br/><code>Mismatch 87.54%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · design-systems</summary>
+    <ul><li>React uses a full-screen panel with a yellow header containing 'CHANNEL SETTINGS' and '#design' hashtag; iOS uses a centered modal dialog with a dark overlay backdrop and 'EDIT CHANNEL' title only.</li><li>iOS is missing the 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers and explanatory helper text that appear in React.</li><li>iOS adds a 'Pin' action button (white, with pin icon) not present in React's action list; React's 'Pin Channel' button is green, iOS renders it as a neutral white button.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Standardize the settings panel as a full-screen layout on iOS (or apply a consistent modal pattern on both platforms) and remove the dark backdrop overlay if a panel is intended.</li><li>Add 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers and helper text to the iOS component to match React.</li><li>Unify the title to 'CHANNEL SETTINGS' (or 'EDIT CHANNEL' on both) and ensure the channel name/hashtag is rendered in the header on iOS.</li><li>Move the 'Pin' action into the same action list with consistent color treatment (green) and ordering across platforms.</li><li>Align Cancel/Save Changes placement and styling: use the same primary fill color (pink) and ensure disabled state is visually consistent (e.g., reduced opacity vs gray outline).</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.channel.settings.panel.png" data-current-src="ios/components.channel.settings.panel.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">

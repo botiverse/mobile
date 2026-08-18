@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-18T22:07:23.937Z",
+  "generatedAt": "2026-08-18T22:11:15.828Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 78,
-    "pending": 8
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -467,15 +467,28 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-18T22:07:22.582Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-18T22:09:48.208Z",
+      "severity": "low",
+      "summary": [
+        "Visual layout, dot colors, and typography appear nearly identical between React and iOS renders.",
+        "Pixel-perfect similarity is 99.77% with only 0.23% mismatch, well within tolerance.",
+        "No missing elements, clipping, or alignment differences observed in the inspected region."
+      ],
+      "likelyCauses": [
+        "Minor sub-pixel antialiasing differences between web and native font/shape rendering.",
+        "Tiny color rendering variance between React and iOS rendering pipelines."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "No action required; results are within tolerance.",
+        "If a stricter match is desired, normalize dot stroke width and font weight between platforms."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -1824,7 +1837,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:07:23.285Z",
+      "generatedAt": "2026-08-18T22:11:15.222Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1872,15 +1885,38 @@
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffffffff000087fd0000fffd0000ffff0000ffff0000ffff7ffcffff7ff8cffd7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017cfc80017ffc80017ffc80014000800100008001400080010000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
-      "generatedAt": "2026-08-18T22:07:23.450Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-18T22:09:49.123Z",
+      "severity": "high",
+      "summary": [
+        "React uses a full-screen panel with a yellow header containing 'CHANNEL SETTINGS' and '#design' hashtag; iOS uses a centered modal dialog with a dark overlay backdrop and 'EDIT CHANNEL' title only.",
+        "iOS is missing the 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers and explanatory helper text that appear in React.",
+        "iOS adds a 'Pin' action button (white, with pin icon) not present in React's action list; React's 'Pin Channel' button is green, iOS renders it as a neutral white button.",
+        "React places Cancel and Save Changes at the bottom of the page; iOS places them inline below the Description field, with Save Changes appearing disabled (gray text/border).",
+        "Save Changes button styling differs: React uses a solid pink fill, iOS uses an outlined style with gray (disabled) text."
+      ],
+      "likelyCauses": [
+        "iOS implementation reinterpreted the settings screen as a modal (sheet) rather than a full-screen page, causing different layout structure and added backdrop.",
+        "iOS template omitted the 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers and their descriptive subtext.",
+        "Section/header token mapping was not shared between React and iOS design systems, leading to different titles ('SETTINGS' vs 'EDIT CHANNEL').",
+        "iOS added a 'Pin' affordance treated as a separate action and rendered above Make Private, while React embedded Pin within the action list with a distinct green color.",
+        "Save Changes disabled state styling was applied differently: iOS uses gray outlined button, React uses solid pink primary button."
+      ],
+      "suggestedOwner": "design-systems",
+      "suggestedFixes": [
+        "Standardize the settings panel as a full-screen layout on iOS (or apply a consistent modal pattern on both platforms) and remove the dark backdrop overlay if a panel is intended.",
+        "Add 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers and helper text to the iOS component to match React.",
+        "Unify the title to 'CHANNEL SETTINGS' (or 'EDIT CHANNEL' on both) and ensure the channel name/hashtag is rendered in the header on iOS.",
+        "Move the 'Pin' action into the same action list with consistent color treatment (green) and ordering across platforms.",
+        "Align Cancel/Save Changes placement and styling: use the same primary fill color (pink) and ensure disabled state is visually consistent (e.g., reduced opacity vs gray outline)."
+      ],
+      "intentional": [
+        "iOS may intentionally use a modal sheet pattern with backdrop dimming per iOS HIG."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.8753703028584545
     },
     {
@@ -2191,7 +2227,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:07:23.553Z",
+      "generatedAt": "2026-08-18T22:11:15.461Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2204,7 +2240,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:07:23.553Z",
+      "generatedAt": "2026-08-18T22:11:15.461Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2217,7 +2253,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:07:23.553Z",
+      "generatedAt": "2026-08-18T22:11:15.461Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2230,7 +2266,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:07:23.553Z",
+      "generatedAt": "2026-08-18T22:11:15.461Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2243,7 +2279,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:07:23.553Z",
+      "generatedAt": "2026-08-18T22:11:15.461Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

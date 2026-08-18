@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-18T22:07:28.945Z",
+  "generatedAt": "2026-08-18T22:11:20.990Z",
   "latestRunId": "aece8704-20260818220517",
   "latest": {
     "runId": "aece8704-20260818220517",
     "commit": "aece8704-20260818220517",
     "commitSubject": "fix(home): render durable avatars before HTTP warmup",
-    "generatedAt": "2026-08-18T22:07:28.945Z",
+    "generatedAt": "2026-08-18T22:11:20.990Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 86,
-      "ready": 83,
-      "pending": 3
+      "ready": 85,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "aece8704-20260818220517",
       "commit": "aece8704-20260818220517",
       "commitSubject": "fix(home): render durable avatars before HTTP warmup",
-      "generatedAt": "2026-08-18T22:07:28.945Z",
+      "generatedAt": "2026-08-18T22:11:20.990Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 83,
-        "pending": 3
+        "ready": 85,
+        "pending": 1
       },
       "comparisons": [
         "react__android",

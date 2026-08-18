@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>aece8704-20260818220517</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-18T22:07:28.945Z" data-timestamp="2026-08-18T22:07:28.945Z" title="2026-08-18T22:07:28.945Z">2026-08-18 22:07:28 UTC</time></p>
+    <p class="runMeta"><code>aece8704-20260818220517</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-18T22:11:20.990Z" data-timestamp="2026-08-18T22:11:20.990Z" title="2026-08-18T22:11:20.990Z">2026-08-18 22:11:20 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 85</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 83/86 ready</span>
+      <span class="pill">AI 85/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -4182,7 +4182,12 @@
       <p><code>RGB 72.2%</code><br/><code>Pixel 50.49%</code><br/><code>Mismatch 49.51%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android</summary>
+    <ul><li>Android dialog is significantly shorter and clipped — Runtime, Model, &quot;Retry model check&quot;, and &quot;MORE&quot; sections are entirely missing, while React shows the full form</li><li>Modal viewport height differs: React dialog fills ~844px viewport, Android dialog is truncated and ends near mid-screen</li><li>Cancel and Create Agent buttons appear immediately after the Description field in Android instead of at the bottom of a full form</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Verify Android renders Runtime, Model, &quot;Retry model check&quot;, and &quot;MORE&quot; expandable sections</li><li>Match modal max-height / scroll viewport so the dialog reaches full viewport height like React</li><li>Normalize form field vertical spacing/padding tokens across platforms to match React baseline</li><li>Align typography weights (header, label, input) between Android and React design tokens</li><li>Standardize disabled &quot;Create Agent&quot; button color treatment (pink accent vs gray)</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.claude-dialog.png" data-current-src="android/components.members.create-agent.claude-dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4465,7 +4470,12 @@
       <p><code>RGB 65.0%</code><br/><code>Pixel 12.33%</code><br/><code>Mismatch 87.67%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-platform</summary>
+    <ul><li>Android side renders as a centered modal dialog on a dark gray overlay, while React renders as a full-page panel with a yellow header banner.</li><li>Header text differs: React shows 'CHANNEL / SETTINGS / #design' stacked with a hashtag; Android shows a single 'EDIT CHANNEL' title.</li><li>Channel info description copy ('Name and description shown across the workspace.') and section divider line are missing on Android.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Replace the dark overlay modal with a full-screen settings panel matching the React layout (yellow header, #design subtitle, close X).</li><li>Restore 'CHANNEL INFO' heading, helper text, and horizontal divider above 'CHANNEL ACTIONS'.</li><li>Add a green 'Pin Channel' button above 'Make Private' in the actions group; remove the standalone 'Pin' button or integrate it into the same stack.</li><li>Fix Save Changes primary button color (use pink/magenta) and move Cancel/Save to a bottom footer row on Android.</li><li>Verify enabled state logic so 'Save Changes' is not rendered as disabled when there are pending edits.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.channel.settings.panel.png" data-current-src="android/components.channel.settings.panel.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

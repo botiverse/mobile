@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-18 22:07:28 UTC
+Generated: 2026-08-18 22:11:20 UTC
 Latest run: aece8704-20260818220517
 Latest commit: aece8704-20260818220517
 Commit subject: fix(home): render durable avatars before HTTP warmup
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 86, same 0, pass 0, basic-pass 0, different 85, missing 1
-AI analysis: ready 83 / total 86, pending 3
+AI analysis: ready 85 / total 86, pending 1
 Visual coverage matrix: active 95 / total 114, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

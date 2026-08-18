@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-18T22:07:28.945Z",
+  "generatedAt": "2026-08-18T22:11:20.990Z",
   "runId": "aece8704-20260818220517",
   "commit": "aece8704-20260818220517",
   "commitSubject": "fix(home): render durable avatars before HTTP warmup",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 83,
-        "pending": 3
+        "ready": 85,
+        "pending": 1
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 78,
-        "pending": 8
+        "ready": 80,
+        "pending": 6
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 79,
-        "pending": 7
+        "ready": 81,
+        "pending": 5
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 86,
-    "ready": 83,
-    "pending": 3
+    "ready": 85,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 114,

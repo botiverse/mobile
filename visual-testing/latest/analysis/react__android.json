@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-18T22:07:21.044Z",
+  "generatedAt": "2026-08-18T22:11:12.890Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 83,
-    "pending": 3
+    "ready": 85,
+    "pending": 1
   },
   "cases": [
     {
@@ -1822,22 +1822,42 @@
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff0000000000007ffc7ffe7ffc7ffc7ffc7ffe41fc61fe7ffc7ffe7ffc7ffe7ffc607c7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffe7ffc6ffe7dfc6ffc00007ffe00007ffe00007ffc00007ffe00007ffe00007ffe00007fc600007ffe00000000000000000000ffffffff",
-      "generatedAt": "2026-08-18T22:07:20.422Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-18T22:09:40.709Z",
+      "severity": "high",
+      "summary": [
+        "Android dialog is significantly shorter and clipped — Runtime, Model, \"Retry model check\", and \"MORE\" sections are entirely missing, while React shows the full form",
+        "Modal viewport height differs: React dialog fills ~844px viewport, Android dialog is truncated and ends near mid-screen",
+        "Cancel and Create Agent buttons appear immediately after the Description field in Android instead of at the bottom of a full form",
+        "Field vertical spacing/padding is compressed in Android — gaps between COMPUTER, NAME, DESCRIPTION labels and inputs are tighter than React",
+        "Typography weight on the \"CREATE AGENT\" header and labels appears heavier/bolder in Android (visible antialiasing differences)"
+      ],
+      "likelyCauses": [
+        "Android implementation only renders a partial form (missing Runtime, Model, Retry model check, More sections)",
+        "Different modal/dialog scroll container height configuration between platforms",
+        "Missing or conditional rendering of lower form sections on Android",
+        "Inconsistent disabled button component mapping between React and Android"
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Verify Android renders Runtime, Model, \"Retry model check\", and \"MORE\" expandable sections",
+        "Match modal max-height / scroll viewport so the dialog reaches full viewport height like React",
+        "Normalize form field vertical spacing/padding tokens across platforms to match React baseline",
+        "Align typography weights (header, label, input) between Android and React design tokens",
+        "Standardize disabled \"Create Agent\" button color treatment (pink accent vs gray)"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.4950635287128178
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:07:20.321Z",
+      "generatedAt": "2026-08-18T22:11:12.203Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1885,15 +1905,35 @@
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffffffff000087fd0000fffd0000ffff0000ffff0000ffff7ffcffff7ff8cffd7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017cfc80017ffc80017ffc80014000800100008001400080010000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
-      "generatedAt": "2026-08-18T22:07:20.491Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-18T22:09:40.834Z",
+      "severity": "high",
+      "summary": [
+        "Android side renders as a centered modal dialog on a dark gray overlay, while React renders as a full-page panel with a yellow header banner.",
+        "Header text differs: React shows 'CHANNEL / SETTINGS / #design' stacked with a hashtag; Android shows a single 'EDIT CHANNEL' title.",
+        "Channel info description copy ('Name and description shown across the workspace.') and section divider line are missing on Android.",
+        "Pin Channel action (green button, with pin icon) present in React is missing from Android's action list, while Android adds a separate 'Pin' button.",
+        "Save Changes button styling differs: React uses a solid pink/magenta fill with black text; Android uses a light gray disabled-looking fill with muted text and renders inline next to Cancel above the action list rather than in a sticky footer."
+      ],
+      "likelyCauses": [
+        "Android implementation likely rendered a native modal dialog component instead of the designed full-page settings layout.",
+        "Missing section description and dividers suggest incomplete port of the channel info block.",
+        "Action order/affordance mismatch (Pin separated vs grouped with destructive actions) indicates divergent component composition between platforms.",
+        "Save Changes disabled appearance on Android may reflect incorrect initial enabled state or missing primary button color token."
+      ],
+      "suggestedOwner": "android-platform",
+      "suggestedFixes": [
+        "Replace the dark overlay modal with a full-screen settings panel matching the React layout (yellow header, #design subtitle, close X).",
+        "Restore 'CHANNEL INFO' heading, helper text, and horizontal divider above 'CHANNEL ACTIONS'.",
+        "Add a green 'Pin Channel' button above 'Make Private' in the actions group; remove the standalone 'Pin' button or integrate it into the same stack.",
+        "Fix Save Changes primary button color (use pink/magenta) and move Cancel/Save to a bottom footer row on Android.",
+        "Verify enabled state logic so 'Save Changes' is not rendered as disabled when there are pending edits."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.8766651814045179
     },
     {

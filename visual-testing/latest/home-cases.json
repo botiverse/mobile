@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-18T22:07:28.945Z",
+  "generatedAt": "2026-08-18T22:11:20.990Z",
   "runId": "aece8704-20260818220517",
   "cases": [
     {
@@ -5424,17 +5424,27 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-18T22:07:24.256Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-18T22:09:48.208Z",
+            "severity": "low",
+            "summary": [
+              "Visual layout, dot colors, and typography appear nearly identical between React and iOS renders.",
+              "Pixel-perfect similarity is 99.77% with only 0.23% mismatch, well within tolerance.",
+              "No missing elements, clipping, or alignment differences observed in the inspected region."
+            ],
+            "likelyCauses": [
+              "Minor sub-pixel antialiasing differences between web and native font/shape rendering.",
+              "Tiny color rendering variance between React and iOS rendering pipelines."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "No action required; results are within tolerance.",
+              "If a stricter match is desired, normalize dot stroke width and font weight between platforms."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -5457,17 +5467,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-18T22:07:27.551Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-18T22:09:59.333Z",
+            "severity": "low",
+            "summary": [
+              "Status dot colors and order match between Android and iOS (green, orange, gray, blue, pink).",
+              "Typography for \"Waiting pulse\" label is consistent in family and weight across both platforms.",
+              "Slight horizontal offset between dot group and text label between platforms due to different canvas scale (342×92 baseline vs 1170×2532 current).",
+              "Both renders show the same component structure with no missing or extra elements."
+            ],
+            "likelyCauses": [
+              "Difference in canvas DPR/scale between Android (342×92) and iOS (1170×2532) reference frames causing minor proportional layout shift.",
+              "Antialiasing rendering differences between platform text engines."
+            ],
+            "suggestedOwner": "ui-engineering",
+            "suggestedFixes": [
+              "Normalize comparison by aligning DP-based crop regions rather than raw pixel sizes.",
+              "Verify status dot spacing uses consistent dp units on both platforms.",
+              "Confirm pulse animation frame snapshot timing is matched to avoid transient color/scale differences."
+            ],
+            "intentional": [
+              "Platform-level antialiasing variance on text edges",
+              "DPR-normalized layout offset is expected when comparing different device classes"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -5493,17 +5518,27 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-18T22:07:24.256Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-18T22:09:48.208Z",
+            "severity": "low",
+            "summary": [
+              "Visual layout, dot colors, and typography appear nearly identical between React and iOS renders.",
+              "Pixel-perfect similarity is 99.77% with only 0.23% mismatch, well within tolerance.",
+              "No missing elements, clipping, or alignment differences observed in the inspected region."
+            ],
+            "likelyCauses": [
+              "Minor sub-pixel antialiasing differences between web and native font/shape rendering.",
+              "Tiny color rendering variance between React and iOS rendering pipelines."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "No action required; results are within tolerance.",
+              "If a stricter match is desired, normalize dot stroke width and font weight between platforms."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -5527,17 +5562,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-18T22:07:27.551Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-18T22:09:59.333Z",
+            "severity": "low",
+            "summary": [
+              "Status dot colors and order match between Android and iOS (green, orange, gray, blue, pink).",
+              "Typography for \"Waiting pulse\" label is consistent in family and weight across both platforms.",
+              "Slight horizontal offset between dot group and text label between platforms due to different canvas scale (342×92 baseline vs 1170×2532 current).",
+              "Both renders show the same component structure with no missing or extra elements."
+            ],
+            "likelyCauses": [
+              "Difference in canvas DPR/scale between Android (342×92) and iOS (1170×2532) reference frames causing minor proportional layout shift.",
+              "Antialiasing rendering differences between platform text engines."
+            ],
+            "suggestedOwner": "ui-engineering",
+            "suggestedFixes": [
+              "Normalize comparison by aligning DP-based crop regions rather than raw pixel sizes.",
+              "Verify status dot spacing uses consistent dp units on both platforms.",
+              "Confirm pulse animation frame snapshot timing is matched to avoid transient color/scale differences."
+            ],
+            "intentional": [
+              "Platform-level antialiasing variance on text edges",
+              "DPR-normalized layout offset is expected when comparing different device classes"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20514,17 +20564,34 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-18T22:07:21.642Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-18T22:09:40.709Z",
+        "severity": "high",
+        "summary": [
+          "Android dialog is significantly shorter and clipped — Runtime, Model, \"Retry model check\", and \"MORE\" sections are entirely missing, while React shows the full form",
+          "Modal viewport height differs: React dialog fills ~844px viewport, Android dialog is truncated and ends near mid-screen",
+          "Cancel and Create Agent buttons appear immediately after the Description field in Android instead of at the bottom of a full form",
+          "Field vertical spacing/padding is compressed in Android — gaps between COMPUTER, NAME, DESCRIPTION labels and inputs are tighter than React",
+          "Typography weight on the \"CREATE AGENT\" header and labels appears heavier/bolder in Android (visible antialiasing differences)"
+        ],
+        "likelyCauses": [
+          "Android implementation only renders a partial form (missing Runtime, Model, Retry model check, More sections)",
+          "Different modal/dialog scroll container height configuration between platforms",
+          "Missing or conditional rendering of lower form sections on Android",
+          "Inconsistent disabled button component mapping between React and Android"
+        ],
+        "suggestedOwner": "android",
+        "suggestedFixes": [
+          "Verify Android renders Runtime, Model, \"Retry model check\", and \"MORE\" expandable sections",
+          "Match modal max-height / scroll viewport so the dialog reaches full viewport height like React",
+          "Normalize form field vertical spacing/padding tokens across platforms to match React baseline",
+          "Align typography weights (header, label, input) between Android and React design tokens",
+          "Standardize disabled \"Create Agent\" button color treatment (pink accent vs gray)"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -20611,17 +20678,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-18T22:07:21.642Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-18T22:09:40.709Z",
+            "severity": "high",
+            "summary": [
+              "Android dialog is significantly shorter and clipped — Runtime, Model, \"Retry model check\", and \"MORE\" sections are entirely missing, while React shows the full form",
+              "Modal viewport height differs: React dialog fills ~844px viewport, Android dialog is truncated and ends near mid-screen",
+              "Cancel and Create Agent buttons appear immediately after the Description field in Android instead of at the bottom of a full form",
+              "Field vertical spacing/padding is compressed in Android — gaps between COMPUTER, NAME, DESCRIPTION labels and inputs are tighter than React",
+              "Typography weight on the \"CREATE AGENT\" header and labels appears heavier/bolder in Android (visible antialiasing differences)"
+            ],
+            "likelyCauses": [
+              "Android implementation only renders a partial form (missing Runtime, Model, Retry model check, More sections)",
+              "Different modal/dialog scroll container height configuration between platforms",
+              "Missing or conditional rendering of lower form sections on Android",
+              "Inconsistent disabled button component mapping between React and Android"
+            ],
+            "suggestedOwner": "android",
+            "suggestedFixes": [
+              "Verify Android renders Runtime, Model, \"Retry model check\", and \"MORE\" expandable sections",
+              "Match modal max-height / scroll viewport so the dialog reaches full viewport height like React",
+              "Normalize form field vertical spacing/padding tokens across platforms to match React baseline",
+              "Align typography weights (header, label, input) between Android and React design tokens",
+              "Standardize disabled \"Create Agent\" button color treatment (pink accent vs gray)"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -20698,17 +20782,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-18T22:07:28.374Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-18T22:10:00.126Z",
+            "severity": "medium",
+            "summary": [
+              "iOS renders the on-screen keyboard below the dialog, which overlaps/replaces the bottom area of the form, while Android has no keyboard and the dialog sits near the top with empty space below.",
+              "On iOS, the Cancel/Create Agent buttons are repositioned just above the keyboard, narrower and tighter spacing; on Android they sit at the natural bottom of the dialog with more vertical breathing room.",
+              "On iOS, the character counter '72/3000' under the Description field is not visible (likely clipped or hidden by the repositioned layout), whereas Android shows it clearly bottom-right of the textarea.",
+              "iOS uses a thinner/lighter font weight for body and labels (notably 'COMPUTER', 'NAME', 'DESCRIPTION' headings and field text) compared to Android's bolder/heavier weight.",
+              "Field border strokes and Cancel button outlines render slightly thicker/darker on iOS than on Android."
+            ],
+            "likelyCauses": [
+              "iOS does not auto-scroll or compress the dialog when the soft keyboard appears, so the layout overlaps the bottom controls.",
+              "Font weight mapping differs between the Kuikly Android and iOS renderers (system font fallback or different weight resolution).",
+              "Description field char-counter may be hidden when the keyboard pushes the field, or the counter component is positioned absolutely and clipped by the keyboard on iOS."
+            ],
+            "suggestedOwner": "ui-platform",
+            "suggestedFixes": [
+              "Adjust the dialog container to add bottom safe-area/inset padding equal to keyboard height so the buttons and char-counter remain visible on iOS.",
+              "Ensure the iOS font weight for headings and inputs resolves to the same bold weight as Android (or set explicit fontWeight in the shared style).",
+              "Anchor the char-counter relative to the Description field bounds so it doesn't get clipped by the keyboard, or scroll the focused field above the keyboard.",
+              "Verify the Cancel/Create Agent button row uses the same flex layout and spacing tokens on both platforms."
+            ],
+            "intentional": [
+              "Keyboard appearance and its system-rendered layout differences are platform-native and expected.",
+              "Minor stroke thickness differences may be acceptable if within the 1dp tolerance."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -20789,17 +20891,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-18T22:07:28.374Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-18T22:10:00.126Z",
+            "severity": "medium",
+            "summary": [
+              "iOS renders the on-screen keyboard below the dialog, which overlaps/replaces the bottom area of the form, while Android has no keyboard and the dialog sits near the top with empty space below.",
+              "On iOS, the Cancel/Create Agent buttons are repositioned just above the keyboard, narrower and tighter spacing; on Android they sit at the natural bottom of the dialog with more vertical breathing room.",
+              "On iOS, the character counter '72/3000' under the Description field is not visible (likely clipped or hidden by the repositioned layout), whereas Android shows it clearly bottom-right of the textarea.",
+              "iOS uses a thinner/lighter font weight for body and labels (notably 'COMPUTER', 'NAME', 'DESCRIPTION' headings and field text) compared to Android's bolder/heavier weight.",
+              "Field border strokes and Cancel button outlines render slightly thicker/darker on iOS than on Android."
+            ],
+            "likelyCauses": [
+              "iOS does not auto-scroll or compress the dialog when the soft keyboard appears, so the layout overlaps the bottom controls.",
+              "Font weight mapping differs between the Kuikly Android and iOS renderers (system font fallback or different weight resolution).",
+              "Description field char-counter may be hidden when the keyboard pushes the field, or the counter component is positioned absolutely and clipped by the keyboard on iOS."
+            ],
+            "suggestedOwner": "ui-platform",
+            "suggestedFixes": [
+              "Adjust the dialog container to add bottom safe-area/inset padding equal to keyboard height so the buttons and char-counter remain visible on iOS.",
+              "Ensure the iOS font weight for headings and inputs resolves to the same bold weight as Android (or set explicit fontWeight in the shared style).",
+              "Anchor the char-counter relative to the Description field bounds so it doesn't get clipped by the keyboard, or scroll the focused field above the keyboard.",
+              "Verify the Cancel/Create Agent button row uses the same flex layout and spacing tokens on both platforms."
+            ],
+            "intentional": [
+              "Keyboard appearance and its system-rendered layout differences are platform-native and expected.",
+              "Minor stroke thickness differences may be acceptable if within the 1dp tolerance."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20829,7 +20949,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-18T22:07:21.050Z",
+        "generatedAt": "2026-08-18T22:11:12.898Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20890,7 +21010,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:21.050Z",
+            "generatedAt": "2026-08-18T22:11:12.898Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20912,7 +21032,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:23.943Z",
+            "generatedAt": "2026-08-18T22:11:15.833Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20987,7 +21107,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:23.943Z",
+            "generatedAt": "2026-08-18T22:11:15.833Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -21489,17 +21609,34 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-18T22:07:21.711Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-18T22:09:40.834Z",
+        "severity": "high",
+        "summary": [
+          "Android side renders as a centered modal dialog on a dark gray overlay, while React renders as a full-page panel with a yellow header banner.",
+          "Header text differs: React shows 'CHANNEL / SETTINGS / #design' stacked with a hashtag; Android shows a single 'EDIT CHANNEL' title.",
+          "Channel info description copy ('Name and description shown across the workspace.') and section divider line are missing on Android.",
+          "Pin Channel action (green button, with pin icon) present in React is missing from Android's action list, while Android adds a separate 'Pin' button.",
+          "Save Changes button styling differs: React uses a solid pink/magenta fill with black text; Android uses a light gray disabled-looking fill with muted text and renders inline next to Cancel above the action list rather than in a sticky footer."
+        ],
+        "likelyCauses": [
+          "Android implementation likely rendered a native modal dialog component instead of the designed full-page settings layout.",
+          "Missing section description and dividers suggest incomplete port of the channel info block.",
+          "Action order/affordance mismatch (Pin separated vs grouped with destructive actions) indicates divergent component composition between platforms.",
+          "Save Changes disabled appearance on Android may reflect incorrect initial enabled state or missing primary button color token."
+        ],
+        "suggestedOwner": "android-platform",
+        "suggestedFixes": [
+          "Replace the dark overlay modal with a full-screen settings panel matching the React layout (yellow header, #design subtitle, close X).",
+          "Restore 'CHANNEL INFO' heading, helper text, and horizontal divider above 'CHANNEL ACTIONS'.",
+          "Add a green 'Pin Channel' button above 'Make Private' in the actions group; remove the standalone 'Pin' button or integrate it into the same stack.",
+          "Fix Save Changes primary button color (use pink/magenta) and move Cancel/Save to a bottom footer row on Android.",
+          "Verify enabled state logic so 'Save Changes' is not rendered as disabled when there are pending edits."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -21586,17 +21723,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-18T22:07:21.711Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-18T22:09:40.834Z",
+            "severity": "high",
+            "summary": [
+              "Android side renders as a centered modal dialog on a dark gray overlay, while React renders as a full-page panel with a yellow header banner.",
+              "Header text differs: React shows 'CHANNEL / SETTINGS / #design' stacked with a hashtag; Android shows a single 'EDIT CHANNEL' title.",
+              "Channel info description copy ('Name and description shown across the workspace.') and section divider line are missing on Android.",
+              "Pin Channel action (green button, with pin icon) present in React is missing from Android's action list, while Android adds a separate 'Pin' button.",
+              "Save Changes button styling differs: React uses a solid pink/magenta fill with black text; Android uses a light gray disabled-looking fill with muted text and renders inline next to Cancel above the action list rather than in a sticky footer."
+            ],
+            "likelyCauses": [
+              "Android implementation likely rendered a native modal dialog component instead of the designed full-page settings layout.",
+              "Missing section description and dividers suggest incomplete port of the channel info block.",
+              "Action order/affordance mismatch (Pin separated vs grouped with destructive actions) indicates divergent component composition between platforms.",
+              "Save Changes disabled appearance on Android may reflect incorrect initial enabled state or missing primary button color token."
+            ],
+            "suggestedOwner": "android-platform",
+            "suggestedFixes": [
+              "Replace the dark overlay modal with a full-screen settings panel matching the React layout (yellow header, #design subtitle, close X).",
+              "Restore 'CHANNEL INFO' heading, helper text, and horizontal divider above 'CHANNEL ACTIONS'.",
+              "Add a green 'Pin Channel' button above 'Make Private' in the actions group; remove the standalone 'Pin' button or integrate it into the same stack.",
+              "Fix Save Changes primary button color (use pink/magenta) and move Cancel/Save to a bottom footer row on Android.",
+              "Verify enabled state logic so 'Save Changes' is not rendered as disabled when there are pending edits."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -21619,17 +21773,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-18T22:07:25.124Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-18T22:09:49.123Z",
+            "severity": "high",
+            "summary": [
+              "React uses a full-screen panel with a yellow header containing 'CHANNEL SETTINGS' and '#design' hashtag; iOS uses a centered modal dialog with a dark overlay backdrop and 'EDIT CHANNEL' title only.",
+              "iOS is missing the 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers and explanatory helper text that appear in React.",
+              "iOS adds a 'Pin' action button (white, with pin icon) not present in React's action list; React's 'Pin Channel' button is green, iOS renders it as a neutral white button.",
+              "React places Cancel and Save Changes at the bottom of the page; iOS places them inline below the Description field, with Save Changes appearing disabled (gray text/border).",
+              "Save Changes button styling differs: React uses a solid pink fill, iOS uses an outlined style with gray (disabled) text."
+            ],
+            "likelyCauses": [
+              "iOS implementation reinterpreted the settings screen as a modal (sheet) rather than a full-screen page, causing different layout structure and added backdrop.",
+              "iOS template omitted the 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers and their descriptive subtext.",
+              "Section/header token mapping was not shared between React and iOS design systems, leading to different titles ('SETTINGS' vs 'EDIT CHANNEL').",
+              "iOS added a 'Pin' affordance treated as a separate action and rendered above Make Private, while React embedded Pin within the action list with a distinct green color.",
+              "Save Changes disabled state styling was applied differently: iOS uses gray outlined button, React uses solid pink primary button."
+            ],
+            "suggestedOwner": "design-systems",
+            "suggestedFixes": [
+              "Standardize the settings panel as a full-screen layout on iOS (or apply a consistent modal pattern on both platforms) and remove the dark backdrop overlay if a panel is intended.",
+              "Add 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers and helper text to the iOS component to match React.",
+              "Unify the title to 'CHANNEL SETTINGS' (or 'EDIT CHANNEL' on both) and ensure the channel name/hashtag is rendered in the header on iOS.",
+              "Move the 'Pin' action into the same action list with consistent color treatment (green) and ordering across platforms.",
+              "Align Cancel/Save Changes placement and styling: use the same primary fill color (pink) and ensure disabled state is visually consistent (e.g., reduced opacity vs gray outline)."
+            ],
+            "intentional": [
+              "iOS may intentionally use a modal sheet pattern with backdrop dimming per iOS HIG."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -21698,17 +21872,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-18T22:07:25.124Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-18T22:09:49.123Z",
+            "severity": "high",
+            "summary": [
+              "React uses a full-screen panel with a yellow header containing 'CHANNEL SETTINGS' and '#design' hashtag; iOS uses a centered modal dialog with a dark overlay backdrop and 'EDIT CHANNEL' title only.",
+              "iOS is missing the 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers and explanatory helper text that appear in React.",
+              "iOS adds a 'Pin' action button (white, with pin icon) not present in React's action list; React's 'Pin Channel' button is green, iOS renders it as a neutral white button.",
+              "React places Cancel and Save Changes at the bottom of the page; iOS places them inline below the Description field, with Save Changes appearing disabled (gray text/border).",
+              "Save Changes button styling differs: React uses a solid pink fill, iOS uses an outlined style with gray (disabled) text."
+            ],
+            "likelyCauses": [
+              "iOS implementation reinterpreted the settings screen as a modal (sheet) rather than a full-screen page, causing different layout structure and added backdrop.",
+              "iOS template omitted the 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers and their descriptive subtext.",
+              "Section/header token mapping was not shared between React and iOS design systems, leading to different titles ('SETTINGS' vs 'EDIT CHANNEL').",
+              "iOS added a 'Pin' affordance treated as a separate action and rendered above Make Private, while React embedded Pin within the action list with a distinct green color.",
+              "Save Changes disabled state styling was applied differently: iOS uses gray outlined button, React uses solid pink primary button."
+            ],
+            "suggestedOwner": "design-systems",
+            "suggestedFixes": [
+              "Standardize the settings panel as a full-screen layout on iOS (or apply a consistent modal pattern on both platforms) and remove the dark backdrop overlay if a panel is intended.",
+              "Add 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers and helper text to the iOS component to match React.",
+              "Unify the title to 'CHANNEL SETTINGS' (or 'EDIT CHANNEL' on both) and ensure the channel name/hashtag is rendered in the header on iOS.",
+              "Move the 'Pin' action into the same action list with consistent color treatment (green) and ordering across platforms.",
+              "Align Cancel/Save Changes placement and styling: use the same primary fill color (pink) and ensure disabled state is visually consistent (e.g., reduced opacity vs gray outline)."
+            ],
+            "intentional": [
+              "iOS may intentionally use a modal sheet pattern with backdrop dimming per iOS HIG."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -25387,7 +25581,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:23.943Z",
+            "generatedAt": "2026-08-18T22:11:15.833Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25409,7 +25603,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:27.233Z",
+            "generatedAt": "2026-08-18T22:11:19.260Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25434,7 +25628,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:23.943Z",
+            "generatedAt": "2026-08-18T22:11:15.833Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25457,7 +25651,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:27.233Z",
+            "generatedAt": "2026-08-18T22:11:19.260Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25657,7 +25851,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:23.943Z",
+            "generatedAt": "2026-08-18T22:11:15.833Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25679,7 +25873,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:27.233Z",
+            "generatedAt": "2026-08-18T22:11:19.260Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25704,7 +25898,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:23.943Z",
+            "generatedAt": "2026-08-18T22:11:15.833Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25727,7 +25921,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:27.233Z",
+            "generatedAt": "2026-08-18T22:11:19.260Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25927,7 +26121,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:23.943Z",
+            "generatedAt": "2026-08-18T22:11:15.833Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25949,7 +26143,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:27.233Z",
+            "generatedAt": "2026-08-18T22:11:19.260Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25974,7 +26168,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:23.943Z",
+            "generatedAt": "2026-08-18T22:11:15.833Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25997,7 +26191,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:27.233Z",
+            "generatedAt": "2026-08-18T22:11:19.260Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26193,7 +26387,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:23.943Z",
+            "generatedAt": "2026-08-18T22:11:15.833Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26215,7 +26409,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:27.233Z",
+            "generatedAt": "2026-08-18T22:11:19.260Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26240,7 +26434,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:23.943Z",
+            "generatedAt": "2026-08-18T22:11:15.833Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26263,7 +26457,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:27.233Z",
+            "generatedAt": "2026-08-18T22:11:19.260Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26459,7 +26653,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:23.943Z",
+            "generatedAt": "2026-08-18T22:11:15.833Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26481,7 +26675,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:27.233Z",
+            "generatedAt": "2026-08-18T22:11:19.260Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26506,7 +26700,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:23.943Z",
+            "generatedAt": "2026-08-18T22:11:15.833Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26529,7 +26723,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-18T22:07:27.233Z",
+            "generatedAt": "2026-08-18T22:11:19.260Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
