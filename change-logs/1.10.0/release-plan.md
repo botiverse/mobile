@@ -2,18 +2,23 @@
 
 Plan opened: 2026-08-10 13:00 Asia/Shanghai
 
-Inventory refreshed: 2026-08-18 00:47 Asia/Shanghai
+Inventory refreshed: 2026-08-18 16:05 Asia/Shanghai
 
 ## Snapshot And Authority
 
-- Candidate inventory: `origin/main@f6ea96ed07f3dfb9632ed32227b421e2a5de72b7`
-  (tree `787acac3f6c7e55dc34c847eff80300b782d0022`).
+- Candidate inventory: `origin/main@f711a9815c1c5fbb8cd2b61a84ae70d01f37b097`
+  (tree `cae2aabaa85f0e8cedd5eaa3e72e29f44abfc74d`) plus the two landed docs
+  commits `4b2abfb5c` (PR #2114) and `1c5d11feb` (PR #2174).
+- Frozen exact: `1c5d11feba7f516604613b6458ff653ed41db40d`, cut as
+  `release-1.10.0` on 2026-08-18 by owner directive ("直接切分支，同步发布").
+  The head's delta over cumulative-green `f711a9815` is docs-only plus the
+  reviewed one-line Staging `webUrl` correction; the freeze-exact push Test
+  `32113956897` must still reach terminal green before any carrier build.
 - Last distributed formal release: `1.9.1`, source
   `26bb45829e0f21de35613d965f39d38b48244d8d`.
-- Next formal version: `1.10.0`; the stabilization branch will be
-  `release-1.10.0` after scope lock.
-- No `1.10.0` source exact, release branch, platform build number, signed
-  carrier, or distribution boundary has been frozen yet.
+- Next formal version: `1.10.0`; the stabilization branch is `release-1.10.0`.
+- Platform build numbers and the signed carriers are not yet allocated; no
+  distribution boundary is authorized.
 
 This file is the planning ledger required by
 `docs/mobile-paired-release-sop.md`. It accounts for landed behavior, open
@@ -31,10 +36,10 @@ The release owner must replace every `TBD` before branch creation.
 
 | Milestone | Date | Rule |
 | --- | --- | --- |
-| Target release | TBD, Asia/Shanghai | Fixed after owner approval |
-| Reservation cutoff | TBD (`T-7` suggested) | Ordinary new candidates stop entering |
-| Scope lock | TBD (`T-5` suggested) | Only `accepted` rows remain |
-| `release-1.10.0` branch cut | TBD (`T-4` suggested) | Cut from one reviewed main exact |
+| Target release | Owner approved an immediate train 2026-08-18 15:47 Asia/Shanghai; marketing date follows distribution authorization | Distribution is separately authorized |
+| Reservation cutoff | 2026-08-18 15:58 Asia/Shanghai | Owner closed scope: #2089/#2060/#2003 not taken |
+| Scope lock | 2026-08-18 Asia/Shanghai, at freeze | Only `accepted` rows remain |
+| `release-1.10.0` branch cut | 2026-08-18 Asia/Shanghai, at freeze | Cut from one reviewed main exact |
 | Notes and source RC | TBD (`T-2` suggested) | Exact Hosted checks plus independent review |
 | Product acceptance cutoff | TBD (`T-1` suggested) | Missing evidence requires removal or a recorded owner exception |
 
@@ -102,6 +107,13 @@ carrier acceptance matrix have not been completed.
 | R110-19 | Server switcher restores numeric unread badges while exact Activity totals are absent, preserves authoritative zero, and shares the `99+` cap | PR #2165; `c8108aa7a` | Android/iOS/OHOS | reserved | Changeset; exact positive/zero/absent, broader fallback, cap, production wire, and visual acceptance |
 | R110-20 | Composer preserves the insertion cursor and mention panel when the legacy native text callback reports an untrusted zero selection | PR #2166; `2d263d12d` | Android/iOS/OHOS | reserved | Changeset; new-carrier first-character `@`, explicit cursor zero, delete, composition, stale-session, and selection-race acceptance. Feedback logs did not record the affected Thread selection, so the causal link remains a mechanism inference pending runtime replay. |
 | R110-21 | Saving an agent runtime model updates the mounted detail immediately, re-entry resolves the current catalog label, and owner/generation fences reject stale completion | PR #2160; `0554daaf6` | Android/iOS/OHOS | reserved | Changeset; save completion, immediate projection, re-entry label, unknown/raw model, owner switch, generation race, and account isolation acceptance. Existing visual fixtures bypass the changed live-store path and therefore do not prove these production behaviors. |
+| R110-22 | Channel member caches are partitioned by environment/account/server/channel, retiring on auth-clear and rejecting late old-owner writes | PR #2145; `ec8bf4b623b697d7a46c96e643328164a5ab693f` | Android/iOS/OHOS | reserved | Changeset (`members-cache-auth-owner-isolation.md`); account-switch and late-response acceptance on a new carrier |
+| R110-23 | iOS durable mounted avatar cache with atomic index, bounded storage, and closed admission | PR #2137; `63141eac86b44fadf8b3dc3912345a98accec0b7` | iOS | reserved | Changeset (`ios-durable-mounted-avatar-cache.md`); physical iPhone restart/re-entry and sign-out retirement runtime NOT RUN |
+| R110-24 | Android composer preserves selection/cursor while `@`/`#` suggestions load | PR #2170; `a42695f7f16a2c26e7ba6be7370067686facffc1` | Android | reserved | Changeset (`composer-selection-suggestions-load.md`); Huawei Android 16 new-carrier replay NOT RUN |
+| R110-25 | Channel Members page renders the cached roster on first frame and keeps it across refresh/failure; row-local Add state; canonical Add permission | PR #2130; `aeb2ae17147367056f0d70656ed6281c648c14cf` | Android/iOS/OHOS | reserved | Changeset (`members-first-frame-cached-roster.md`); new-carrier runtime must specifically verify the persistent "members (0)" report (task #430), not only the transient first-frame flash; physical replay NOT RUN |
+| R110-26 | Auth refresh retires a flight before publishing its result, so immediate retries cannot suppress the authoritative unauthorized consequence | PR #2168; `fea7056861c00d4ceccb8df65c08b0b16d67161d` | Android/iOS/OHOS | reserved | Changeset (`auth-refresh-publication-ordering.md`); auth/retry runtime acceptance NOT RUN |
+| R110-27 | Joint Channel Task V2 parity: one canonical task fact with per-server local routes, monotonic revisions with fail-closed conflict refetch, deduped Activity/tray facts, explicit-server mutations | PR #2156; `2e4be50774120555285100b8330b86d8e2430be3` | Android/iOS/OHOS | reserved | Changeset (`joint-channel-task-v2-parity.md`); two-Server staging runtime NOT RUN; three landed risks tracked in Raft task #254 (owner accepted for this train 2026-08-18) |
+| R110-28 | Personalized Search Home: account-scoped recent queries and 90-day frequent Channel/DM/Human/Agent ranking with authoritative re-projection | PR #2064; `7476abf320652950b2f5468ce2cb63fed2b0f116` | Android/iOS/OHOS | reserved | Changeset (`search-home-personalization.md`); product acceptance on a new carrier NOT RUN |
 
 ## Support-Only Landings
 
@@ -117,6 +129,15 @@ claim by itself:
   API (PR #2169; `f6ea96ed0`);
 - visual-fixture source-set migrations and their compile-order repair;
 - Settings and visual-host source refactors that preserve existing behavior;
+- visual-fixture quarantine of the bistable compact-menu cases (PR #2171;
+  `90562bb4e`);
+- the Staging environment entry's own `webUrl` correction plus its test (PR
+  #2114; `4b2abfb5c`). The Production entry and the default environment
+  selection are untouched, so there is no production-behavior change; the
+  earlier exclusion of this PR was written from its misleading title and is
+  corrected here after diff review;
+- release-plan and changeset documentation for this train (PRs #2152, #2164,
+  #2172, #2173, #2174);
 - pure source organization with no changed route, state, or presentation
   contract.
 
@@ -125,26 +146,21 @@ packaging, and rollback analysis.
 
 ## Open Work Not In The Snapshot
 
-Open PR state was read on 2026-08-18 00:47 Asia/Shanghai. These PRs are not in
-the candidate inventory and must not appear in `1.10.0` notes unless they land
-before the chosen freeze exact and satisfy all normal gates.
+Open PR state was re-read on 2026-08-18 16:00 Asia/Shanghai. At the 2026-08-18
+15:58 owner directive the reservation cutoff closed: none of the remaining
+open PRs enters this train. They must not appear in `1.10.0` notes.
 
-| PR | Proposal | Snapshot classification |
+| PR | Proposal | Disposition (owner, 2026-08-18) |
 | --- | --- | --- |
-| #2170 | Preserve composer selection while asynchronous suggestions load | Proposed; requires current-main exact, review, changeset, and first-character/selection/composition runtime acceptance |
-| #2168 | Fix authentication refresh publication ordering and coroutine race tests | Proposed; source, exact checks, review, changeset, and auth/retry runtime incomplete |
-| #2156 | Joint Channel Task V2 parity | Proposed; source, exact checks, review, changeset, and product acceptance incomplete |
-| #2145 | Isolate channel cache by authenticated owner | Proposed; requires current-main exact, review, changeset, and account-switch matrix |
-| #2137 | Durable mounted avatar cache on iOS | Draft; not part of the landed Android/shared avatar scope |
-| #2130 | Render cached member roster on first frame | Proposed; requires current-main exact, review, changeset, and first-frame matrix |
-| #2089 | Gate Home on server setup during onboarding | Proposed; requires current product contract and full onboarding matrix |
-| #2064 | Personalized Search Home | Proposed; required checks not terminal green at snapshot |
-| #2060 | Open installed app from download links | Proposed; requires platform/deep-link acceptance and changeset |
-| #2003 | System Share to Raft extension | Draft; requires authorized iOS extension, privacy, and physical-device matrix |
+| #2089 | Gate Home on server setup during onboarding | Not taken; author absent from the server roster; next train with an accountable owner |
+| #2060 | Open installed app from download links | Not taken; author absent from the server roster; next train |
+| #2003 | System Share to Raft extension | Not taken; still draft, iOS owner @Jony continues outside this train |
 
-PRs #2152 and #2164 are documentation-only and are not product candidates. PR
-#2114 changes the web origin to staging and is excluded from a production train
-unless the release owner records an explicit environment exception.
+Everything previously listed here (#2170, #2168, #2156, #2145, #2137, #2130,
+#2064) has since landed and is accounted as R110-22 through R110-28 above.
+PRs #2152, #2164, #2172, #2173, and #2174 are documentation-only and landed as
+support-only. PR #2114 landed as `4b2abfb5c` and is reclassified support-only
+after diff review (see above).
 
 ## Preflight Carriers
 
@@ -165,7 +181,15 @@ as a formal version coordinate.
 | Item | Current fact | Required release treatment / lift condition |
 | --- | --- | --- |
 | iOS `KRRichTextView` selector crash | The distributed 1.9.1 TestFlight build `1000015` has physical crash evidence. The causal source fix is in the immutable Kuikly line consumed by this snapshot, but no new final iOS carrier has physical same-path proof. | Build the final frozen iOS carrier and pass physical Settings/rapid-tab plus send-last-character replay before claiming the crash closed. No evidence from `1000015` is a PASS for 1.10.0. |
-| Android camera long press | Source and automated gates landed at `36aa853ae`, but task #415 remains NOT RUN because no authorized controllable physical Android is available; emulator/redroid has no qualifying camera hardware. | Run gallery tap, camera long press, capture-to-annotation/upload, cancel, denial, unavailable-camera, duplicate-action, recreation, cleanup, callback-replay, crash/ANR matrix on an authorized physical device, or record a release-owner scope exception/removal decision. |
+| Android camera long press | Source and automated gates landed at `36aa853ae`. The matrix splits in two: cloud cells (gallery → annotation → upload, recreation, fail-closed, duplicate-action, callback-replay, crash/ANR) are routable to @HuaTuo's Alibaba pool; camera-hardware cells (capture success, cancel, denial, unavailable-camera) cannot run on redroid (no camera hardware). The owner accepted the hardware cells personally: "相机我自己跑" (2026-08-18). | @HuaTuo runs the cloud cells on the signed carrier; artin runs the camera-hardware cells on his authorized physical Android. Any cell not executed stays `NOT RUN` in the receipt; no emulator evidence upgrades to PASS. |
+| Joint Channel Task V2 landed risks | PR #2156 merged with three unruled risks recorded in Raft task #254: (1) a wedged `needsCanonicalRefetch` path when an authoritative refetch answers a lower revision (no test, silent stale UI), (2) realtime folds overwrite projection routes and hardcode `canClaim=true`, flipping HTTP-denied Claim affordances, (3) single-server deletes clear every server's projection without a revision guard. The author is absent from the server roster. | Owner accepted the risks for this train on 2026-08-18 ("开始发布吧" after the risk list was posted). task #254 must close or carry a recorded owner exception with scope and expiry before the next train's scope lock; do not describe the three behaviors as correct in notes. |
+| Main-history Commit Sign-off red | The #2156 squash `2e4be5077` carries seven `Signed-off-by` trailers and fails the exactly-one policy; the red is permanent in main history. | Owner exception recorded 2026-08-18: no history rewrite. Cumulative-green accounting at freeze uses the terminal Test/constraints runs on the freeze exact, in which this workflow is green. |
+| Members page persistent zero | task #430's "members (0)" on Alpha VC1000213 is root-caused to the pre-#2130 route-local store. The fix `aeb2ae171` is in the freeze, but no carrier with it has runtime proof yet. The changeset describes the transient first-frame flash; the user report was persistent within the visit (mechanism inference). | On the new carrier, specifically verify the persistent-zero path (open Members with a populated unified store), not only first-frame behavior. Until then task #430 keeps reproducing on old packages and must not be called closed. |
+| Joint task two-server runtime | PR #2156's remaining acceptance (one fact/two routes, N+1 stale resistance, per-server mutation authorities, host/peer realtime fold, notification open through either local route) has no staging proof. | Run the two-Server staging matrix on the signed carrier or record `NOT RUN`. |
+| iOS durable avatar cache | PR #2137 landed without physical iPhone runtime (restart/re-entry render, sign-out retirement). | Physical iPhone replay on the signed carrier or record `NOT RUN`. |
+| Composer selection (#2170) | Huawei Android 16 new-carrier replay was NOT RUN at landing. | Replay on the signed carrier or record `NOT RUN`. |
+| Personalized Search Home | PR #2064 landed without product acceptance (recents recording, frequent ranking re-projection, hidden-entity filtering, clear-preserves-frequent). | Acceptance pass on the signed carrier or record `NOT RUN`. |
+| Auth refresh ordering (#2168) | The publication-ordering fix has no dedicated runtime acceptance beyond unit/hosted gates. | Auth-expiry guided re-login replay on the signed carrier or record `NOT RUN`. |
 | Activity exact unread number | Client support landed, but the required server field is not in production. When the field is absent, the server switcher now displays the legacy broader unread number; an authoritative exact zero remains hidden and an exact positive value wins when present. The fallback can differ from the Activity total. | Do not claim exact per-server Activity counts are live in 1.10.0 notes. Describe the landed behavior as a temporary broader-number fallback. Exact Activity numbers activate only after a separately governed server production promotion. This does not by itself hold the client train. |
 | OHOS feedback attachments over 50 MB | Memory work is deferred to task #418 before the following release and was explicitly classified non-blocking for this train. | Keep the existing product limit/behavior honest; do not claim the deferred memory improvement in 1.10.0. |
 
@@ -186,19 +210,32 @@ Do not announce these again as `1.10.0` features:
 ## Scope-Lock And Release Checklist
 
 - [ ] Target date, cutoff, scope lock, branch cut, RC, and acceptance dates are
-      real Asia/Shanghai dates.
+      real Asia/Shanghai dates. (Cutoff, scope lock, and branch cut are
+      2026-08-18 by owner directive; target release, RC, and acceptance dates
+      follow distribution authorization.)
 - [ ] Maximum authorized delivery boundary is recorded separately for Android,
       iOS, OHOS, and community communication.
-- [ ] Every landed user-visible row is either `accepted`, removed/reverted from
-      the branch point, or covered by an explicit owner exception.
-- [ ] Every accepted row has a reviewed
+- [x] Every landed user-visible row is either `accepted`, removed/reverted from
+      the branch point, or covered by an explicit owner exception. (Owner closed
+      scope and accepted R110-01..R110-28 on 2026-08-18; the task #254 risks
+      and the main-history Commit Sign-off red carry recorded owner exceptions
+      above.)
+- [x] Every accepted row has a reviewed
       `change-logs/1.10.0/changesets/<name>.md` with equivalent zh-CN/en copy.
+      (Seven changesets were backfilled by the release lane under the owner's
+      2026-08-18 assignment and are inside the freeze exact.)
 - [ ] Open proposals selected for the train are landed with terminal checks and
       independent review on the exact source included by the branch point.
-- [ ] `release-1.10.0` is created from one reviewed 40-character main exact;
+      (True for #2145/#2137/#2170/#2130/#2168; #2156 and #2064 were direct
+      owner merges whose prior fresh-exact reviews were void — recorded as
+      owner decisions, not as completed gates; #2114 is support-only.)
+- [x] `release-1.10.0` is created from one reviewed 40-character main exact;
       Android, iOS, and included OHOS carriers embed that same exact.
+      (`1c5d11feba7f516604613b6458ff653ed41db40d`; cut by owner directive while
+      its push Test was pending — carriers wait for terminal green.)
 - [ ] Cumulative exact CI is terminal green, including Kuikly manifest admission
-      and empty-cache Android/KMP, Apple, and OHOS resolution.
+      and empty-cache Android/KMP, Apple, and OHOS resolution. (Green on
+      `f711a9815`; freeze-exact Test `32113956897` pending at cut time.)
 - [ ] Every private fork dependency has immutable source, manifest, size, and
       SHA-256 provenance with zero unapproved local/source fallback.
 - [ ] Android/iOS/OHOS build coordinates are newly allocated after freeze and
