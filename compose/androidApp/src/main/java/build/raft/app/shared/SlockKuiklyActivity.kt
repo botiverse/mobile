@@ -2463,14 +2463,15 @@ internal fun cleanupPickedThreadAttachmentCache(
         cacheDir: File,
         nowMillis: Long,
         maxAgeMillis: Long,
-        maxFiles: Int
+        maxFiles: Int,
+        deleteFile: (File) -> Boolean = File::delete
 ): PickedThreadAttachmentCacheCleanupResult {
     val files = cacheDir.listFiles()?.filter(File::isFile).orEmpty()
     val staleFiles = files.filter { file -> nowMillis - file.lastModified() > maxAgeMillis.coerceAtLeast(0L) }
-    val deletedStaleCount = staleFiles.count { file -> runCatching { file.delete() }.getOrDefault(false) }
-    val retainedByAge = files.filter(File::exists).sortedByDescending(File::lastModified)
+    val deletedStaleCount = staleFiles.count { file -> runCatching { deleteFile(file) }.getOrDefault(false) }
+    val retainedByAge = files.filter { file -> file.exists() && file !in staleFiles }.sortedByDescending(File::lastModified)
     val overflowFiles = retainedByAge.drop(maxFiles.coerceAtLeast(0))
-    val deletedOverflowCount = overflowFiles.count { file -> runCatching { file.delete() }.getOrDefault(false) }
+    val deletedOverflowCount = overflowFiles.count { file -> runCatching { deleteFile(file) }.getOrDefault(false) }
     return PickedThreadAttachmentCacheCleanupResult(
             deletedStaleCount = deletedStaleCount,
             deletedOverflowCount = deletedOverflowCount,
