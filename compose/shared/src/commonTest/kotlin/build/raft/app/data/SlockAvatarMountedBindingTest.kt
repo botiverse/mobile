@@ -2,12 +2,14 @@ package build.raft.app.data
 
 import build.raft.app.SlockAvatarHttpCacheState
 import build.raft.app.SlockAvatarHttpLoadSnapshot
+import build.raft.app.refreshWhenHttpLoadAdmitted
 import build.raft.app.slockAvatarHttpAdmittedImageModel
 import build.raft.app.model.MemberKind
 import build.raft.app.network.SharedBinaryConditionalDownloadResult
 import build.raft.app.network.SharedBinaryConditionalHttpException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -78,6 +80,56 @@ class SlockAvatarMountedBindingTest {
         val handle = binding.mount(subject(), RemoteUrl, serverId = otherAccountOwner.serverId)
 
         assertNull(handle.imageModel.value)
+    }
+
+    @Test
+    fun mountedMissAndStaleRefreshRequireHttpLeaseOrReadyGeneration() = runTest {
+        val missDownloader = RecordingDownloader.modified(byteArrayOf(1, 2))
+        val missBinding = binding(FakeMetadataStore(), FakeNativeProvider(), missDownloader)
+        val missHandle = missBinding.mount(subject(), RemoteUrl)
+
+        assertFalse(
+            missBinding.refreshWhenHttpLoadAdmitted(
+                handle = missHandle,
+                loadState = SlockAvatarHttpLoadSnapshot(cache = SlockAvatarHttpCacheState.Idle),
+                ownsCurrentRequest = false
+            )
+        )
+        assertEquals(0, missDownloader.calls, "an idle cache miss must not bypass the HTTP lease")
+
+        val staleStore = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 50L) }
+        val staleDownloader = RecordingDownloader.modified(byteArrayOf(3, 4))
+        val staleBinding = binding(staleStore, FakeNativeProvider(), staleDownloader)
+        val staleHandle = staleBinding.mount(subject(), RemoteUrl)
+        assertNotNull(staleHandle.imageModel.value, "stale durable bytes remain renderable")
+
+        assertFalse(
+            staleBinding.refreshWhenHttpLoadAdmitted(
+                handle = staleHandle,
+                loadState =
+                    SlockAvatarHttpLoadSnapshot(
+                        cache = SlockAvatarHttpCacheState.Cooldown,
+                        generation = 1L,
+                        retryAtMillis = 1_000L
+                    ),
+                ownsCurrentRequest = false
+            )
+        )
+        assertEquals(0, staleDownloader.calls, "cooldown without a lease must suppress revalidation")
+
+        assertTrue(
+            staleBinding.refreshWhenHttpLoadAdmitted(
+                handle = staleHandle,
+                loadState =
+                    SlockAvatarHttpLoadSnapshot(
+                        cache = SlockAvatarHttpCacheState.InFlight,
+                        generation = 2L,
+                        ownerToken = 7L
+                    ),
+                ownsCurrentRequest = true
+            )
+        )
+        assertEquals(1, staleDownloader.calls, "the current in-flight owner may revalidate")
     }
 
     @Test

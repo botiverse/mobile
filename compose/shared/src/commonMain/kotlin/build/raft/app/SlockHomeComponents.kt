@@ -29,6 +29,7 @@ import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockAvatarCacheSubject
+import build.raft.app.data.SlockAvatarMountedBinding
 import build.raft.app.data.SlockAvatarMountedHandle
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.defaultNowMillis
@@ -6212,9 +6213,24 @@ private fun SlockAvatarHttpImage(
             if (ownedHandle != null) avatarMountedBinding?.dispose(ownedHandle)
         }
     }
-    LaunchedEffect(avatarMountedBinding, mountedHandle) {
+    val ownsCurrentRequest =
+        loadState.cache == SlockAvatarHttpCacheState.InFlight &&
+            lease?.generation == loadState.generation &&
+            lease?.ownerToken == loadState.ownerToken
+    LaunchedEffect(
+        avatarMountedBinding,
+        mountedHandle,
+        loadState.cache,
+        loadState.generation,
+        ownsCurrentRequest
+    ) {
+        val binding = avatarMountedBinding ?: return@LaunchedEffect
         val handle = mountedHandle ?: return@LaunchedEffect
-        avatarMountedBinding?.refresh(handle)
+        binding.refreshWhenHttpLoadAdmitted(
+            handle = handle,
+            loadState = loadState,
+            ownsCurrentRequest = ownsCurrentRequest
+        )
     }
 
     DisposableEffect(loadKey, lease?.ownerToken) {
@@ -6247,10 +6263,6 @@ private fun SlockAvatarHttpImage(
         )
     }
 
-    val ownsCurrentRequest =
-        loadState.cache == SlockAvatarHttpCacheState.InFlight &&
-            lease?.generation == loadState.generation &&
-            lease?.ownerToken == loadState.ownerToken
     val candidateImageModel =
         if (avatarMountedBinding == null || cacheSubject == null) {
             activeSource
@@ -6295,9 +6307,26 @@ internal fun slockAvatarHttpAdmittedImageModel(
     ownsCurrentRequest: Boolean
 ): String? {
     if (parseSlockAvatarMountedRenderModel(candidateImageModel) != null) return candidateImageModel
-    return candidateImageModel.takeIf {
-        ownsCurrentRequest || loadState.cache == SlockAvatarHttpCacheState.Ready
-    }
+    return candidateImageModel.takeIf { slockAvatarHttpLoadIsAdmitted(loadState, ownsCurrentRequest) }
+}
+
+/**
+ * Durable mounted bytes may bypass this gate for rendering only. Any refresh or ordinary URL load
+ * still requires the current coordinator lease, or reuse of an already-ready HTTP generation.
+ */
+internal fun slockAvatarHttpLoadIsAdmitted(
+    loadState: SlockAvatarHttpLoadSnapshot,
+    ownsCurrentRequest: Boolean
+): Boolean = ownsCurrentRequest || loadState.cache == SlockAvatarHttpCacheState.Ready
+
+internal suspend fun SlockAvatarMountedBinding.refreshWhenHttpLoadAdmitted(
+    handle: SlockAvatarMountedHandle,
+    loadState: SlockAvatarHttpLoadSnapshot,
+    ownsCurrentRequest: Boolean
+): Boolean {
+    if (!slockAvatarHttpLoadIsAdmitted(loadState, ownsCurrentRequest)) return false
+    refresh(handle)
+    return true
 }
 
 private fun AsyncImagePainter.State.toSlockAvatarHttpPainterPhase(): SlockAvatarHttpPainterPhase =
