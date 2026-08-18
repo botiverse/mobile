@@ -14,11 +14,162 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class SharedHomeSearchSavedStoreTest {
+    @Test
+    fun searchPersonalizationHydratesAndClearPreservesFrequentUsage() = runBlocking {
+        val repository = PersistentSearchPersonalizationRepository(InMemorySlockKeyValueStore())
+        val now = 1_800_000_000_000L
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = FakeSearchRepository(),
+                scope = this,
+                personalizationRepository = repository,
+                nowMillis = { now },
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
+        yield()
+        assertEquals(true, store.state.value.search.personalizationLoaded)
+
+        store.dispatch(
+            SharedHomeSearchSavedIntent.RecordSuccessfulSearchOpen(
+                query = " release ",
+                entityKind = SearchPersonalizationEntityKind.Channel,
+                entityId = "channel-1",
+            )
+        )
+        yield()
+        assertEquals(listOf("release"), store.state.value.search.history)
+        assertEquals(
+            setOf(SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-1")),
+            store.state.value.search.frequentEntityRanks.keys,
+        )
+
+        store.dispatch(SharedHomeSearchSavedIntent.ClearSearchHistory)
+        yield()
+        assertEquals(emptyList(), store.state.value.search.history)
+        assertEquals(1, store.state.value.search.frequentEntityRanks.size)
+        store.clear()
+    }
+
+    @Test
+    fun retainedMessageRowsKeepTheQueryThatProducedThem() = runBlocking {
+        val search = DeferredSearchRepository()
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = this,
+                searchDebounceMillis = 0L,
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("first query"))
+        yield()
+        search.complete("first query", "message-first")
+        yield()
+        assertEquals("first query", store.state.value.search.resultQuery)
+
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("second query"))
+        yield()
+        assertEquals("second query", store.state.value.search.query)
+        assertEquals(listOf("message-first"), store.state.value.search.items.map { it.key })
+        assertEquals("first query", store.state.value.search.resultQuery)
+        search.complete("second query", "message-second")
+        yield()
+        store.clear()
+    }
+
+    @Test
+    fun latePersonalizationReadCannotCrossAccountBoundary() = runBlocking {
+        val auth = InMemorySlockAuthSessionStore(sampleSession("user-a"))
+        val repository = DeferredSearchPersonalizationRepository()
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = auth,
+                savedRepository = FakeSavedRepository(),
+                searchRepository = FakeSearchRepository(),
+                scope = this,
+                personalizationRepository = repository,
+                nowMillis = { 1_800_000_000_000L },
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
+        yield()
+        auth.saveSession(sampleSession("user-b"))
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
+        yield()
+        assertEquals(emptyList(), store.state.value.search.history)
+
+        repository.complete("user-b", history = listOf("owner-b"))
+        yield()
+        assertEquals(listOf("owner-b"), store.state.value.search.history)
+        repository.complete("user-a", history = listOf("owner-a"))
+        yield()
+        assertEquals(listOf("owner-b"), store.state.value.search.history)
+        store.clear()
+    }
+
+    @Test
+    fun rapidSuccessfulOpensPersistInDispatchOrder() = runBlocking {
+        val repository = PersistentSearchPersonalizationRepository(InMemorySlockKeyValueStore())
+        var now = 1_800_000_000_000L
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = FakeSearchRepository(),
+                scope = this,
+                personalizationRepository = repository,
+                nowMillis = { now++ },
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
+        yield()
+        store.dispatch(SharedHomeSearchSavedIntent.RecordSuccessfulSearchOpen("first"))
+        store.dispatch(SharedHomeSearchSavedIntent.RecordSuccessfulSearchOpen("second"))
+        yield()
+
+        assertEquals(listOf("second", "first"), store.state.value.search.history)
+        store.clear()
+    }
+
+    @Test
+    fun samePrincipalOnAnotherServerNeverSeesThePreviousServerHistory() = runBlocking {
+        val auth = InMemorySlockAuthSessionStore(sampleSession(serverId = "server-a"))
+        val repository = PersistentSearchPersonalizationRepository(InMemorySlockKeyValueStore())
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = auth,
+                savedRepository = FakeSavedRepository(),
+                searchRepository = FakeSearchRepository(),
+                scope = this,
+                personalizationRepository = repository,
+                nowMillis = { 1_800_000_000_000L },
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
+        yield()
+        store.dispatch(SharedHomeSearchSavedIntent.RecordSuccessfulSearchOpen("server-a-only"))
+        yield()
+        assertEquals(listOf("server-a-only"), store.state.value.search.history)
+
+        auth.saveSession(sampleSession(serverId = "server-b"))
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
+        yield()
+
+        assertEquals(emptyList(), store.state.value.search.history)
+        assertEquals(true, store.state.value.search.personalizationLoaded)
+        store.clear()
+    }
+
     @Test
     fun processReadPredictionClearsMatchingSavedAndSearchOwnerOnly() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -949,6 +1100,43 @@ class SharedHomeSearchSavedStoreTest {
         }
     }
 
+    private class DeferredSearchPersonalizationRepository : SearchPersonalizationRepository {
+        private val reads = mutableMapOf<String, CompletableDeferred<SearchPersonalizationSnapshot>>()
+
+        override suspend fun read(
+            owner: SearchPersonalizationOwner,
+            nowMillis: Long,
+        ): SearchPersonalizationSnapshot =
+            reads.getOrPut(owner.principalId) { CompletableDeferred() }.await()
+
+        override suspend fun recordSuccessfulOpen(
+            owner: SearchPersonalizationOwner,
+            rawQuery: String,
+            entityKey: SearchPersonalizationEntityKey?,
+            openedAtMillis: Long,
+        ): SearchPersonalizationSnapshot = error("not used")
+
+        override suspend fun removeHistoryEntry(
+            owner: SearchPersonalizationOwner,
+            rawQuery: String,
+            nowMillis: Long,
+        ): SearchPersonalizationSnapshot = error("not used")
+
+        override suspend fun clearHistory(
+            owner: SearchPersonalizationOwner,
+            nowMillis: Long,
+        ): SearchPersonalizationSnapshot = error("not used")
+
+        fun complete(principalId: String, history: List<String>) {
+            reads.getOrPut(principalId) { CompletableDeferred() }.complete(
+                SearchPersonalizationSnapshot(
+                    owner = SearchPersonalizationOwner("server-1", principalId),
+                    history = history,
+                )
+            )
+        }
+    }
+
     private inner class DeferredSavedRepository : SavedRepository {
         private val pending = mutableListOf<Pair<ServerId, CompletableDeferred<DataResult<SavedSnapshot>>>>()
 
@@ -1081,13 +1269,16 @@ class SharedHomeSearchSavedStoreTest {
         val options: SearchQueryOptions
     )
 
-    private fun sampleSession(userId: String = "user-1"): StoredAuthSession =
+    private fun sampleSession(
+        userId: String = "user-1",
+        serverId: String = "server-1",
+    ): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = userId, email = "$userId@slock.local", displayName = "User One"),
             accessToken = "access",
             refreshToken = "refresh",
-            selectedServerId = "server-1",
-            servers = listOf(StoredAuthServer(id = "server-1", name = "Slock"))
+            selectedServerId = serverId,
+            servers = listOf(StoredAuthServer(id = serverId, name = "Slock"))
         )
 
     private fun inboxItem(messageId: String): InboxItem =

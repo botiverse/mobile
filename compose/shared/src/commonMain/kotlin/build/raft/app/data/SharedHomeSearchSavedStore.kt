@@ -25,7 +25,7 @@ private const val HomeSavedPageSize = 100
 private const val HomeSearchPageSize = 30
 private const val SearchDebounceMillis = 250L
 
-class SharedHomeSearchSavedStore(
+internal class SharedHomeSearchSavedStore(
     private val authStore: SlockAuthSessionStore,
     private val savedRepository: SavedRepository,
     private val searchRepository: SearchRepository,
@@ -37,7 +37,9 @@ class SharedHomeSearchSavedStore(
     private val searchDebounceMillis: Long = SearchDebounceMillis,
     private val readReceiptCoordinator: ReadReceiptCoordinator? = null,
     private val readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
-    private val diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = {},
+    private val personalizationRepository: SearchPersonalizationRepository? = null,
+    private val nowMillis: () -> Long = ::defaultNowMillis,
 ) {
     private val _state = MutableStateFlow(SharedHomeSearchSavedState())
     val state: StateFlow<SharedHomeSearchSavedState> = _state.asStateFlow()
@@ -46,10 +48,14 @@ class SharedHomeSearchSavedStore(
     private var searchJob: Job? = null
     private var searchDebounceJob: Job? = null
     private var senderFiltersJob: Job? = null
+    private var personalizationJob: Job? = null
+    private var personalizationWriteJob: Job? = null
     private var savedRequestToken: Long = 0L
     private var searchRequestToken: Long = 0L
     private var senderFiltersRequestToken: Long = 0L
+    private var personalizationRequestToken: Long = 0L
     private var senderFiltersOwner: SenderFiltersOwner? = null
+    private var personalizationOwner: SearchPersonalizationOwner? = null
     private var readPredictionRevisions: Map<ChannelId, Long> = emptyMap()
     private var savedOwner: SavedStateOwner? = null
     private val pendingSavedUnsaves = mutableMapOf<MessageId, PendingSavedUnsave>()
@@ -69,6 +75,17 @@ class SharedHomeSearchSavedStore(
                 }
             }
         }
+        if (personalizationRepository != null) {
+            (authStore as? SlockAuthSessionEventSource)?.let { authEvents ->
+                scope.launch {
+                    authEvents.authSessionEvents.collect { event ->
+                        if (event !is AuthSessionEvent.TokensRotated) {
+                            refreshSearchPersonalization()
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fun dispatch(intent: SharedHomeSearchSavedIntent) {
@@ -76,6 +93,7 @@ class SharedHomeSearchSavedStore(
             SharedHomeSearchSavedIntent.ClearSavedSummary -> clearSavedSummary()
             SharedHomeSearchSavedIntent.OpenSearch -> {
                 loadSenderFilters()
+                refreshSearchPersonalization()
             }
             SharedHomeSearchSavedIntent.OpenSaved -> {
                 val saved = _state.value.saved
@@ -206,6 +224,19 @@ class SharedHomeSearchSavedStore(
                     )
                 scheduleSearchRefresh()
             }
+            is SharedHomeSearchSavedIntent.RecordSuccessfulSearchOpen -> {
+                recordSuccessfulSearchOpen(intent)
+            }
+            is SharedHomeSearchSavedIntent.RemoveSearchHistoryEntry -> {
+                mutateSearchPersonalization { repository, owner, timestamp ->
+                    repository.removeHistoryEntry(owner, intent.query, timestamp)
+                }
+            }
+            SharedHomeSearchSavedIntent.ClearSearchHistory -> {
+                mutateSearchPersonalization { repository, owner, timestamp ->
+                    repository.clearHistory(owner, timestamp)
+                }
+            }
         }
     }
 
@@ -224,14 +255,20 @@ class SharedHomeSearchSavedStore(
         searchJob?.cancel()
         searchDebounceJob?.cancel()
         senderFiltersJob?.cancel()
+        personalizationJob?.cancel()
+        personalizationWriteJob?.cancel()
         savedJob = null
         searchJob = null
         searchDebounceJob = null
         senderFiltersJob = null
+        personalizationJob = null
+        personalizationWriteJob = null
         savedRequestToken++
         searchRequestToken++
         senderFiltersRequestToken++
+        personalizationRequestToken++
         senderFiltersOwner = null
+        personalizationOwner = null
         pendingSavedUnsaves.clear()
         clearSavedOrderRanks()
         savedOwner = null
@@ -522,7 +559,11 @@ class SharedHomeSearchSavedStore(
                                 )
                         )
                     if (isActiveSearchRequest(requestToken)) {
-                        applySearchResult(result, append = !refresh)
+                        applySearchResult(
+                            result = result,
+                            append = !refresh,
+                            resultQuery = previous.query.trim(),
+                        )
                         diagnosticsLogger(
                             "store_load domain=search ${previous.query.searchQueryDiagnostics()} refresh=$refresh append=${!refresh} " +
                                 "result=${result.searchDiagnosticsResult()} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
@@ -565,7 +606,124 @@ class SharedHomeSearchSavedStore(
                         hasMore = false,
                         nextOffset = null,
                         errorCode = null,
-                        noPermissionCode = null
+                        noPermissionCode = null,
+                        resultQuery = null,
+                    )
+            )
+    }
+
+    private fun refreshSearchPersonalization() {
+        val repository = personalizationRepository ?: return
+        personalizationJob?.cancel()
+        val requestToken = ++personalizationRequestToken
+        personalizationOwner = null
+        _state.value =
+            _state.value.copy(
+                search =
+                    _state.value.search.copy(
+                        personalizationLoaded = false,
+                        history = emptyList(),
+                        frequentEntityRanks = emptyMap(),
+                    )
+            )
+        personalizationJob =
+            scope.launch {
+                val owner = currentSearchPersonalizationOwner()
+                if (owner == null) {
+                    if (requestToken == personalizationRequestToken) {
+                        _state.value =
+                            _state.value.copy(
+                                search = _state.value.search.copy(personalizationLoaded = true)
+                            )
+                    }
+                    return@launch
+                }
+                val snapshot = repository.read(owner, nowMillis())
+                if (!personalizationRequestStillActive(requestToken, owner)) return@launch
+                personalizationOwner = owner
+                applySearchPersonalizationSnapshot(snapshot)
+            }
+    }
+
+    private fun recordSuccessfulSearchOpen(intent: SharedHomeSearchSavedIntent.RecordSuccessfulSearchOpen) {
+        val entityKey =
+            intent.entityKind?.let { kind ->
+                SearchPersonalizationEntityKey.create(kind, intent.entityId)
+            }
+        mutateSearchPersonalization { repository, owner, timestamp ->
+            repository.recordSuccessfulOpen(
+                owner = owner,
+                rawQuery = intent.query,
+                entityKey = entityKey,
+                openedAtMillis = timestamp,
+            )
+        }
+    }
+
+    private fun mutateSearchPersonalization(
+        mutation: suspend (
+            repository: SearchPersonalizationRepository,
+            owner: SearchPersonalizationOwner,
+            timestamp: Long,
+        ) -> SearchPersonalizationSnapshot,
+    ) {
+        val repository = personalizationRepository ?: return
+        val predecessor = personalizationWriteJob
+        val requestToken = personalizationRequestToken
+        personalizationWriteJob =
+            scope.launch {
+                predecessor?.join()
+                val owner = currentSearchPersonalizationOwner() ?: return@launch
+                if (requestToken != personalizationRequestToken) return@launch
+                val snapshot = mutation(repository, owner, nowMillis())
+                if (!personalizationRequestStillActive(requestToken, owner)) return@launch
+                personalizationOwner = owner
+                applySearchPersonalizationSnapshot(snapshot)
+            }
+    }
+
+    private suspend fun currentSearchPersonalizationOwner(): SearchPersonalizationOwner? {
+        val session = authStore.readSession() ?: return null
+        return SearchPersonalizationOwner.create(session.currentServerId, session.user.id)
+    }
+
+    private suspend fun personalizationRequestStillActive(
+        requestToken: Long,
+        owner: SearchPersonalizationOwner,
+    ): Boolean {
+        if (requestToken != personalizationRequestToken) return false
+        val currentOwner = currentSearchPersonalizationOwner()
+        if (currentOwner == owner) return true
+        personalizationRequestToken++
+        personalizationOwner = null
+        _state.value =
+            _state.value.copy(
+                search =
+                    _state.value.search.copy(
+                        personalizationLoaded = currentOwner == null,
+                        history = emptyList(),
+                        frequentEntityRanks = emptyMap(),
+                    )
+            )
+        return false
+    }
+
+    private fun applySearchPersonalizationSnapshot(snapshot: SearchPersonalizationSnapshot) {
+        if (snapshot.owner != personalizationOwner) return
+        val timestamp = nowMillis()
+        val ranks =
+            snapshot.usage.mapNotNull { (rawKey, events) ->
+                val key = SearchPersonalizationEntityKey.parse(rawKey) ?: return@mapNotNull null
+                val rank = searchFrequentEntityRank(events, timestamp)
+                if (rank.score <= 0.0) null else key to rank
+            }.toMap()
+        _state.value =
+            _state.value.copy(
+                search =
+                    _state.value.search.copy(
+                        personalizationLoaded = true,
+                        history = snapshot.history,
+                        frequentEntityRanks = ranks,
                     )
             )
     }
@@ -732,7 +890,8 @@ class SharedHomeSearchSavedStore(
 
     private fun applySearchResult(
         result: DataResult<SearchSnapshot>,
-        append: Boolean
+        append: Boolean,
+        resultQuery: String,
     ) {
         val current = _state.value.search
         _state.value =
@@ -758,6 +917,7 @@ class SharedHomeSearchSavedStore(
                                 refreshing = false,
                                 loadingMore = false,
                                 querySearchPending = false,
+                                resultQuery = resultQuery,
                                 errorCode = null,
                                 noPermissionCode = null
                             )
@@ -773,6 +933,7 @@ class SharedHomeSearchSavedStore(
                                 refreshing = false,
                                 loadingMore = false,
                                 querySearchPending = false,
+                                resultQuery = resultQuery,
                                 errorCode = null,
                                 noPermissionCode = null
                             )
@@ -1097,7 +1258,7 @@ class SharedHomeSearchSavedViewModel(
     timeRangeBoundsProvider: (SearchTimeRange) -> SearchIsoBounds = { SearchIsoBounds() },
     readReceiptCoordinator: ReadReceiptCoordinator? = null,
     readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
 ) : ViewModel() {
     private val storeDelegate =
         lazy {
@@ -1112,7 +1273,9 @@ class SharedHomeSearchSavedViewModel(
                 timeRangeBoundsProvider = timeRangeBoundsProvider,
                 readReceiptCoordinator = readReceiptCoordinator,
                 readReceiptOwnerFactory = readReceiptOwnerFactory,
-                diagnosticsLogger = diagnosticsLogger
+                diagnosticsLogger = diagnosticsLogger,
+                personalizationRepository =
+                    PersistentSearchPersonalizationRepository(slockSharedPreferenceStore()),
             )
         }
     private val store: SharedHomeSearchSavedStore by storeDelegate
@@ -1173,10 +1336,14 @@ data class SharedHomeSearchPanelState(
     val hasMore: Boolean = false,
     val nextOffset: Int? = null,
     val errorCode: String? = null,
-    val noPermissionCode: String? = null
+    val noPermissionCode: String? = null,
+    val resultQuery: String? = null,
+    val personalizationLoaded: Boolean = false,
+    val history: List<String> = emptyList(),
+    val frequentEntityRanks: Map<SearchPersonalizationEntityKey, SearchFrequentEntityRank> = emptyMap(),
 )
 
-private fun SharedHomeSearchPanelState.hasMessageSearchIntent(): Boolean =
+internal fun SharedHomeSearchPanelState.hasMessageSearchIntent(): Boolean =
     query.trim().isNotBlank() ||
         myMessagesOnly ||
         selectedSenderIds.any { it.isNotBlank() } ||
@@ -1231,6 +1398,13 @@ sealed interface SharedHomeSearchSavedIntent {
     data object ClearSearchScopes : SharedHomeSearchSavedIntent
     data class SetMyMessagesOnly(val enabled: Boolean) : SharedHomeSearchSavedIntent
     data object ClearSearchFilters : SharedHomeSearchSavedIntent
+    data class RecordSuccessfulSearchOpen(
+        val query: String,
+        val entityKind: SearchPersonalizationEntityKind? = null,
+        val entityId: String? = null,
+    ) : SharedHomeSearchSavedIntent
+    data class RemoveSearchHistoryEntry(val query: String) : SharedHomeSearchSavedIntent
+    data object ClearSearchHistory : SharedHomeSearchSavedIntent
 }
 
 private const val SavedInboxItemKeyPrefix = "saved:"

@@ -1473,6 +1473,13 @@
     <string name="search_placeholder">Search channels, people, computers, messages…</string>
     <string name="search_empty_title">Search everything</string>
     <string name="search_empty_detail">Search channels, DMs, people, agents, computers, and message history.</string>
+    <string name="search_home_history">Search History</string>
+    <string name="search_home_frequent">Frequently Used</string>
+    <string name="search_home_edit">Edit</string>
+    <string name="search_home_done">Done</string>
+    <string name="search_home_clear">Clear</string>
+    <string name="search_home_remove_history">Remove “%1$s” from search history</string>
+    <string name="search_home_frequent_empty">Channels and contacts you open from Search will appear here.</string>
     <string name="search_empty_results_query">No results for “%1$s”</string>
     <string name="search_empty_results">No matching messages</string>
     <string name="search_empty_query_detail">Try different keywords or a shorter phrase.</string>

@@ -6,11 +6,16 @@ import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.ComputerStatus
 import build.raft.app.data.ComputerSummary
 import build.raft.app.data.SearchSenderFilterItem
+import build.raft.app.data.SearchFrequentEntityRank
+import build.raft.app.data.SearchPersonalizationEntityKey
+import build.raft.app.data.SearchPersonalizationEntityKind
+import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.authSessionFixture
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -155,6 +160,89 @@ class SettingsHomeSearchEntityRankingTest {
                     ),
             )
         assertTrue(leaked.none { it.type == SearchEntityType.Computer })
+    }
+
+    @Test
+    fun frequentProjectionUsesOnlyAuthoritativeEligibleEntitiesAndDeterministicRanking() {
+        val content = entityHomeState.content as SharedHomeContentState.Content
+        val stateWithInaccessibleEntities =
+            entityHomeState.copy(
+                content =
+                    content.copy(
+                        snapshot =
+                            content.snapshot.copy(
+                                channels =
+                                    content.snapshot.channels +
+                                        HomeChannelRow(
+                                            threadId = ThreadId("channel-unjoined"),
+                                            channelId = ChannelId("channel-unjoined"),
+                                            name = "unjoined",
+                                            joined = false,
+                                        ) +
+                                        HomeChannelRow(
+                                            threadId = ThreadId("channel-denied"),
+                                            channelId = ChannelId("channel-denied"),
+                                            name = "denied",
+                                            permissions = ConversationPermissions(canRead = false),
+                                        ),
+                                directMessages =
+                                    content.snapshot.directMessages +
+                                        HomeDirectMessageRow(
+                                            threadId = ThreadId("dm-hidden"),
+                                            channelId = ChannelId("dm-hidden"),
+                                            name = "Hidden person",
+                                        ),
+                                sidebarOrder = SettingsServerSidebarOrderSnapshot(hiddenDmIds = listOf("dm-hidden")),
+                            )
+                    )
+            )
+        val ranks =
+            mapOf(
+                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-archived") to
+                    SearchFrequentEntityRank(score = 99.0, lastOpenedAtMillis = 99L),
+                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Human, "human-dm") to
+                    SearchFrequentEntityRank(score = 2.0, lastOpenedAtMillis = 20L),
+                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-prefix") to
+                    SearchFrequentEntityRank(score = 2.0, lastOpenedAtMillis = 20L),
+                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "deleted-channel") to
+                    SearchFrequentEntityRank(score = 100.0, lastOpenedAtMillis = 100L),
+                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-unjoined") to
+                    SearchFrequentEntityRank(score = 100.0, lastOpenedAtMillis = 100L),
+                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-denied") to
+                    SearchFrequentEntityRank(score = 100.0, lastOpenedAtMillis = 100L),
+                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.DirectMessage, "dm-hidden") to
+                    SearchFrequentEntityRank(score = 100.0, lastOpenedAtMillis = 100L),
+            )
+
+        val results =
+            homeSearchFrequentEntityResults(
+                homeState = stateWithInaccessibleEntities,
+                senderFilters = entitySenders,
+                ranks = ranks,
+                channelLabel = "Channel",
+                dmLabel = "DM",
+                agentLabel = "Agent",
+                personLabel = "Person",
+                membersLabel = "Members",
+            )
+
+        assertEquals(
+            listOf("conversation:channel-prefix", "sender:server-1:Human:human-dm"),
+            results.map { it.key },
+        )
+        assertTrue(results.none { it.archived })
+    }
+
+    @Test
+    fun searchHomeVisualTypographyStressChangesRealTextMetricsWithoutChangingDefault() {
+        val base = SlockType.Body
+
+        assertEquals(base, base.withHomeSearchVisualTextScale(1f))
+
+        val large = base.withHomeSearchVisualTextScale(1.3f)
+        assertEquals(base.fontSize * 1.3f, large.fontSize)
+        assertEquals(base.lineHeight * 1.3f, large.lineHeight)
+        assertEquals(base.letterSpacing * 1.3f, large.letterSpacing)
     }
 
     private fun keysFor(query: String): List<String> = resultsFor(query).map { it.key }

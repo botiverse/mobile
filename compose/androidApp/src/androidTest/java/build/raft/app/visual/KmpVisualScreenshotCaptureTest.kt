@@ -2599,6 +2599,36 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeSearchHomeDefault() {
+        captureKmpComponentCase(
+            caseId = "components.home.search.home-default",
+            pageName = "compose_home_search_home_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500,
+        )
+    }
+
+    @Test
+    fun captureHomeSearchHomeEdit() {
+        captureKmpComponentCase(
+            caseId = "components.home.search.home-edit",
+            pageName = "compose_home_search_home_edit_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500,
+        )
+    }
+
+    @Test
+    fun captureHomeSearchHomeLargeText() {
+        captureKmpComponentCase(
+            caseId = "components.home.search.home-large-text",
+            pageName = "compose_home_search_home_large_text_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500,
+        )
+    }
+
+    @Test
     fun captureHomeSearchChannelPinMenu() {
         captureHomeSearchEntityPinMenu(
             caseId = "components.home.search.channel-pin-menu",

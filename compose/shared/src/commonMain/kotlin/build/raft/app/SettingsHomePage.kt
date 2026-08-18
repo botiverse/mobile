@@ -266,6 +266,10 @@ import build.raft.app.data.SearchIsoBounds
 import build.raft.app.data.SearchScope
 import build.raft.app.data.SearchSort
 import build.raft.app.data.SearchSenderFilterItem
+import build.raft.app.data.SearchFrequentEntityLimit
+import build.raft.app.data.SearchFrequentEntityRank
+import build.raft.app.data.SearchPersonalizationEntityKey
+import build.raft.app.data.SearchPersonalizationEntityKind
 import build.raft.app.data.SearchTimeRange
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SlockAgentsApiClient
@@ -293,6 +297,7 @@ import build.raft.app.data.SharedHomeSavedStateCache
 import build.raft.app.data.SharedHomeSearchPanelState
 import build.raft.app.data.SharedHomeSearchSavedIntent
 import build.raft.app.data.SharedHomeSearchSavedViewModel
+import build.raft.app.data.hasMessageSearchIntent
 import build.raft.app.data.AccountProfileUpdateRequest
 import build.raft.app.data.AccountPasswordChangeRequest
 import build.raft.app.data.AccountProviderLinkStartRequest
@@ -453,6 +458,8 @@ import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.ColumnScope
+import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
+import com.tencent.kuikly.compose.foundation.layout.FlowRow
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.RowScope
@@ -482,12 +489,12 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.semantics.Role
@@ -17195,6 +17202,8 @@ internal fun SharedHomeSearchPanel(
     showSenderFilter: Boolean = true,
     initialOpenFilterId: String? = null,
     initialFocusInput: Boolean = false,
+    initialHistoryEditing: Boolean = false,
+    searchHomeVisualTextScale: Float = 1f,
     onOpenItem: (InboxItem) -> Unit,
     onOpenEntity: (SearchEntityResult) -> Unit,
     onRefreshComputers: () -> Unit = {},
@@ -17240,6 +17249,29 @@ internal fun SharedHomeSearchPanel(
         )
     }
     val computerSearchEligible = state.query.trim().firstOrNull() !in setOf('#', '@') && state.query.trim().isNotBlank()
+    val frequentEntityResults = remember(
+        state.frequentEntityRanks,
+        homeState,
+        state.senderFilters,
+        channelEntityLabel,
+        dmEntityLabel,
+        agentEntityLabel,
+        personEntityLabel,
+        membersEntityLabel,
+    ) {
+        homeSearchFrequentEntityResults(
+            homeState = homeState,
+            senderFilters = state.senderFilters,
+            ranks = state.frequentEntityRanks,
+            channelLabel = channelEntityLabel,
+            dmLabel = dmEntityLabel,
+            agentLabel = agentEntityLabel,
+            personLabel = personEntityLabel,
+            membersLabel = membersEntityLabel,
+        )
+    }
+    val showSearchHome = !state.hasMessageSearchIntent()
+    val hasSearchHomeContent = state.history.isNotEmpty() || frequentEntityResults.isNotEmpty()
     val projectedItems =
         remember(state.items, draftProjection) {
             state.items.map { item -> item.withComposerDraftProjection(draftProjection) }
@@ -17260,6 +17292,9 @@ internal fun SharedHomeSearchPanel(
     var timeAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
     var sortAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
     var activePinMenu by remember { mutableStateOf<SharedHomeSearchPinMenuState?>(null) }
+    var historyEditing by remember(initialHistoryEditing) { mutableStateOf(initialHistoryEditing) }
+    val searchEditor = remember { SharedHomeSearchEditorOwner(state.query) }
+    val searchFocusRequester = remember { FocusRequester() }
     var senderSearch by remember { mutableStateOf("") }
     var channelSearch by remember { mutableStateOf("") }
     val pinLabel = stringResource(MR.strings.home_action_pin)
@@ -17269,6 +17304,12 @@ internal fun SharedHomeSearchPanel(
         if (activeKey != null && entityResults.none { it.key == activeKey }) {
             activePinMenu = null
         }
+    }
+    LaunchedEffect(state.history) {
+        if (state.history.isEmpty()) historyEditing = false
+    }
+    LaunchedEffect(showSearchHome) {
+        if (!showSearchHome) historyEditing = false
     }
     LaunchedEffect(Unit) {
         onIntent(SharedHomeSearchSavedIntent.OpenSearch)
@@ -17296,10 +17337,15 @@ internal fun SharedHomeSearchPanel(
             pendingInitialOpenFilterId = null
         }
     }
-    SlockBackHandler(enabled = openFilterId != null || activePinMenu != null) {
-        openFilterId = null
-        pendingInitialOpenFilterId = null
-        activePinMenu = null
+    SlockBackHandler(enabled = openFilterId != null || activePinMenu != null || historyEditing) {
+        when {
+            openFilterId != null || activePinMenu != null -> {
+                openFilterId = null
+                pendingInitialOpenFilterId = null
+                activePinMenu = null
+            }
+            historyEditing -> historyEditing = false
+        }
     }
     Box(
         modifier =
@@ -17308,6 +17354,8 @@ internal fun SharedHomeSearchPanel(
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             SharedHomeSearchToolbar(
+                editor = searchEditor,
+                focusRequester = searchFocusRequester,
                 query = state.query,
                 loading = state.loading,
                 onQueryChange = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(it)) },
@@ -17350,7 +17398,14 @@ internal fun SharedHomeSearchPanel(
             ) {
                 item {
                     val hasSearchRows = projectedItems.isNotEmpty() || entityResults.isNotEmpty()
-                    if ((state.loading || (computerSearchEligible && computerDirectory.initialLoadInFlight)) && !hasSearchRows) {
+                    if (showSearchHome && (!state.personalizationLoaded || !hasSearchHomeContent)) {
+                        SharedHomeSearchEmptyState(
+                            title = stringResource(MR.strings.search_empty_title),
+                            detail = stringResource(MR.strings.search_empty_detail)
+                        )
+                    } else if (showSearchHome) {
+                        Unit
+                    } else if ((state.loading || (computerSearchEligible && computerDirectory.initialLoadInFlight)) && !hasSearchRows) {
                         SlockCenteredLoading(modifier = Modifier.fillParentMaxSize())
                     } else if (
                         state.noPermissionCode != null ||
@@ -17397,6 +17452,67 @@ internal fun SharedHomeSearchPanel(
                             totalResults = state.totalCount + entityResults.size,
                             searching = state.querySearchPending || state.loading || state.refreshing
                         )
+                    }
+                }
+                if (showSearchHome && state.personalizationLoaded && state.history.isNotEmpty()) {
+                    item(key = "search-home-history") {
+                        SharedHomeSearchHistorySection(
+                            history = state.history,
+                            editing = historyEditing,
+                            visualTextScale = searchHomeVisualTextScale,
+                            onEditingChange = { historyEditing = it },
+                            onSelect = { query ->
+                                historyEditing = false
+                                searchEditor.replaceText(query) { next ->
+                                    onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(next))
+                                }
+                                searchFocusRequester.requestFocus()
+                            },
+                            onRemove = { query ->
+                                onIntent(SharedHomeSearchSavedIntent.RemoveSearchHistoryEntry(query))
+                            },
+                            onClear = {
+                                historyEditing = false
+                                onIntent(SharedHomeSearchSavedIntent.ClearSearchHistory)
+                            },
+                        )
+                    }
+                }
+                if (showSearchHome && state.personalizationLoaded && hasSearchHomeContent) {
+                    item(key = "search-home-frequent-heading") {
+                        SharedHomeSearchSectionLabel(
+                            label = stringResource(MR.strings.search_home_frequent),
+                            visualTextScale = searchHomeVisualTextScale,
+                        )
+                    }
+                    if (frequentEntityResults.isEmpty()) {
+                        item(key = "search-home-frequent-empty") {
+                            Text(
+                                text = stringResource(MR.strings.search_home_frequent_empty),
+                                style = SlockType.Body.withHomeSearchVisualTextScale(searchHomeVisualTextScale),
+                                color = SlockColor.TextMutedGray,
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = SearchMessagesHorizontalPadding, vertical = 12.dp),
+                            )
+                        }
+                    } else {
+                        items(
+                            frequentEntityResults.size,
+                            key = { index -> "frequent:${frequentEntityResults[index].key}" },
+                        ) { index ->
+                            SharedHomeSearchEntityRow(
+                                result = frequentEntityResults[index],
+                                query = "",
+                                agentStatusResolver = agentStatusResolver,
+                                memberAvatarResolver = memberAvatarResolver,
+                                isPinned = frequentEntityResults[index].isPinnedBy(pinnedItems),
+                                visualTextScale = searchHomeVisualTextScale,
+                                onOpen = { onOpenEntity(frequentEntityResults[index]) },
+                                onContextMenu = null,
+                            )
+                        }
                     }
                 }
                 if (entityResults.isNotEmpty()) {
@@ -17658,8 +17774,205 @@ private fun SharedHomeSearchDivider() {
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SharedHomeSearchHistorySection(
+    history: List<String>,
+    editing: Boolean,
+    visualTextScale: Float = 1f,
+    onEditingChange: (Boolean) -> Unit,
+    onSelect: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    onClear: () -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .padding(
+                    start = SearchMessagesHorizontalPadding,
+                    top = 16.dp,
+                    end = SearchMessagesHorizontalPadding,
+                    bottom = 24.dp,
+                ),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SlockLucideIcon(
+                SlockLucideIconName.Clock3,
+                color = SlockColor.TextMutedGrayArgb,
+                modifier = Modifier.size(14.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = stringResource(MR.strings.search_home_history),
+                style = SlockType.SectionLabel.withHomeSearchVisualTextScale(visualTextScale),
+                color = SlockColor.TextMutedGray,
+                modifier = Modifier.weight(1f),
+            )
+            SharedHomeSearchHistoryTextAction(
+                label =
+                    if (editing) {
+                        stringResource(MR.strings.search_home_done)
+                    } else {
+                        stringResource(MR.strings.search_home_edit)
+                    },
+                onClick = { onEditingChange(!editing) },
+                visualTextScale = visualTextScale,
+            )
+            SharedHomeSearchHistoryTextAction(
+                label = stringResource(MR.strings.search_home_clear),
+                onClick = onClear,
+                visualTextScale = visualTextScale,
+            )
+        }
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            history.forEach { query ->
+                SharedHomeSearchHistoryTag(
+                    query = query,
+                    editing = editing,
+                    visualTextScale = visualTextScale,
+                    onSelect = { onSelect(query) },
+                    onRemove = { onRemove(query) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedHomeSearchHistoryTextAction(
+    label: String,
+    onClick: () -> Unit,
+    visualTextScale: Float = 1f,
+) {
+    Box(
+        modifier =
+            Modifier
+                .height(44.dp)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style =
+                SlockType.Caption
+                    .withSlockFontWeight(FontWeight.Bold)
+                    .withHomeSearchVisualTextScale(visualTextScale),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun SharedHomeSearchHistoryTag(
+    query: String,
+    editing: Boolean,
+    visualTextScale: Float = 1f,
+    onSelect: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val removeLabel =
+        if (editing) {
+            MR.strings.search_home_remove_history.format(listOf(query)).localized()
+        } else {
+            null
+        }
+    Box(
+        modifier =
+            Modifier
+                .height(if (editing) 44.dp else 30.dp)
+                .widthIn(max = 260.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .height(30.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.2f)),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                modifier =
+                    Modifier
+                        .height(30.dp)
+                        .weight(1f, fill = false)
+                        .padding(start = 10.dp, end = if (editing) 4.dp else 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                SlockLucideIcon(
+                    SlockLucideIconName.Clock3,
+                    color = SlockColor.TextMutedGrayArgb,
+                    modifier = Modifier.size(12.dp),
+                )
+                Text(
+                    text = query,
+                    style = SlockType.Caption.withHomeSearchVisualTextScale(visualTextScale),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (editing) {
+                Box(
+                    modifier = Modifier.size(width = 44.dp, height = 30.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    SlockLucideIcon(
+                        SlockLucideIconName.X,
+                        color = "#FF000000",
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+        }
+        if (editing) {
+            Row(modifier = Modifier.matchParentSize()) {
+                Box(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(onClick = onSelect)
+                            .semantics { contentDescription = query },
+                )
+                Box(
+                    modifier =
+                        Modifier
+                            .width(44.dp)
+                            .fillMaxHeight()
+                            .clickable(onClick = onRemove)
+                            .semantics { contentDescription = removeLabel.orEmpty() },
+                )
+            }
+        } else {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .clickable(onClick = onSelect)
+                        .semantics { contentDescription = query },
+            )
+        }
+    }
+}
+
 @Composable
 private fun SharedHomeSearchToolbar(
+    editor: SharedHomeSearchEditorOwner,
+    focusRequester: FocusRequester,
     query: String,
     loading: Boolean,
     onQueryChange: (String) -> Unit,
@@ -17671,9 +17984,6 @@ private fun SharedHomeSearchToolbar(
     topSafeAreaPadding: Dp = 0.dp,
     placeholder: String
 ) {
-    // This mounted editor is the only query authority. Search results may update the result list,
-    // but the store has no external query-replacement path while this toolbar remains mounted.
-    val editor = remember { SharedHomeSearchEditorOwner(query) }
     SharedHomeSearchControlsRow(topSafeAreaPadding = topSafeAreaPadding) {
         if (onClose != null) {
             SharedHomeSearchIconButton(
@@ -17690,6 +18000,7 @@ private fun SharedHomeSearchToolbar(
             interactive = interactive,
             placeholder = placeholder,
             autoFocus = autoFocus,
+            focusRequester = focusRequester,
             onQueryChange = { next -> editor.acceptEditorValue(next, onQueryChange) },
             onSubmit = onSubmit,
             onClear = { editor.clear(onClear) },
@@ -18757,11 +19068,37 @@ private fun SharedHomeSearchResultsCount(
     )
 }
 
+/**
+ * Visual-fixture-only typography stress for the personalized Search home.
+ *
+ * Kuikly currently serializes TextStyle SP values without consuming an inner
+ * LocalDensity fontScale override, so that override produced a byte-identical
+ * 1.0x/1.3x screenshot. Scaling the real component styles here keeps the
+ * production default byte-for-byte unchanged while exercising the actual
+ * shared History/Frequent layout with larger glyph metrics on every renderer.
+ */
+internal fun TextStyle.withHomeSearchVisualTextScale(scale: Float): TextStyle {
+    if (scale == 1f) return this
+    val resolved = scale.coerceIn(1f, 2f)
+    return copy(
+        fontSize = fontSize * resolved,
+        lineHeight = lineHeight * resolved,
+        letterSpacing = letterSpacing * resolved,
+    )
+}
+
 @Composable
-private fun SharedHomeSearchSectionLabel(label: String) {
+private fun SharedHomeSearchSectionLabel(
+    label: String,
+    visualTextScale: Float = 1f,
+) {
     Text(
         text = label.uppercase(),
-        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.8.sp),
+        style =
+            SlockType.Caption
+                .withSlockFontWeight(FontWeight.Bold)
+                .copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.8.sp)
+                .withHomeSearchVisualTextScale(visualTextScale),
         color = SlockColor.TextMutedGray,
         maxLines = 1,
         modifier = Modifier.padding(horizontal = SearchMessagesHorizontalPadding, vertical = 8.dp)
@@ -18783,6 +19120,7 @@ private fun SharedHomeSearchEntityRow(
     agentStatusResolver: SlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     isPinned: Boolean = false,
+    visualTextScale: Float = 1f,
     onOpen: () -> Unit,
     onContextMenu: ((SlockPopoverAnchor) -> Unit)? = null
 ) {
@@ -18840,7 +19178,11 @@ private fun SharedHomeSearchEntityRow(
                     HomeSearchHighlightedText(
                         text = result.title,
                         query = query,
-                        style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
+                        style =
+                            SlockType.Body
+                                .withSlockFontWeight(FontWeight.Bold)
+                                .copy(fontSize = 14.sp, lineHeight = 18.sp)
+                                .withHomeSearchVisualTextScale(visualTextScale),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -18851,7 +19193,7 @@ private fun SharedHomeSearchEntityRow(
                 HomeSearchHighlightedText(
                     text = result.subtitle,
                     query = query,
-                    style = SlockType.Caption,
+                    style = SlockType.Caption.withHomeSearchVisualTextScale(visualTextScale),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -19650,6 +19992,67 @@ internal fun homeSearchEntityResults(
 ): List<SearchEntityResult> {
     val trimmedQuery = query.trim()
     if (trimmedQuery.isBlank()) return emptyList()
+    val candidates =
+        homeSearchEntityCandidates(
+            homeState = homeState,
+            senderFilters = senderFilters,
+            channelLabel = channelLabel,
+            dmLabel = dmLabel,
+            agentLabel = agentLabel,
+            personLabel = personLabel,
+            membersLabel = membersLabel,
+            computerLabel = computerLabel,
+            computerDirectory = computerDirectory,
+        )
+    val entries =
+        candidates
+            .let { unfiltered ->
+                when (trimmedQuery.firstOrNull()) {
+                    '#' -> unfiltered.filter { it.result.type == SearchEntityType.Channel }
+                    '@' ->
+                        unfiltered.filter {
+                            it.result.type == SearchEntityType.Human ||
+                                it.result.type == SearchEntityType.Agent
+                        }
+                    else -> unfiltered
+                }
+            }
+            .mapIndexed { index, candidate ->
+                ThreadComposerSuggestionSearchEntry(
+                    index = index,
+                    suggestion = candidate.result,
+                    fields =
+                        candidate.searchFields.map { field ->
+                            ThreadComposerSuggestionSearchField(field.value, priority = field.priority)
+                        },
+                )
+            }
+    return rankThreadComposerSuggestionEntries(query = trimmedQuery, entries = entries)
+        .distinctBy { it.key }
+        .take(5)
+}
+
+private data class HomeSearchEntityCandidate(
+    val result: SearchEntityResult,
+    val searchFields: List<HomeSearchEntitySearchField>,
+)
+
+private data class HomeSearchEntitySearchField(
+    val value: String,
+    val priority: Int,
+)
+
+private fun homeSearchEntityCandidates(
+    homeState: SharedHomeState,
+    senderFilters: List<SearchSenderFilterItem>,
+    channelLabel: String,
+    dmLabel: String,
+    agentLabel: String,
+    personLabel: String,
+    membersLabel: String,
+    computerLabel: String = "Computer",
+    computerDirectory: HomeSearchComputerDirectory = HomeSearchComputerDirectory(),
+): List<HomeSearchEntityCandidate> {
     val snapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
     val conversations = snapshot.channels + snapshot.directMessages
     val byPresenceMemberId =
@@ -19660,7 +20063,7 @@ internal fun homeSearchEntityResults(
             }
             .toMap()
     val conversationEntries =
-        conversations.mapIndexed { index, conversation ->
+        conversations.map { conversation ->
             val type =
                 if (conversation.kind == ConversationKind.DirectMessage) {
                     SearchEntityType.DirectMessage
@@ -19668,9 +20071,8 @@ internal fun homeSearchEntityResults(
                     SearchEntityType.Channel
                 }
             val conversationIdentity = conversation.toThreadLaunchConversationIdentity()
-            ThreadComposerSuggestionSearchEntry(
-                index = index,
-                suggestion =
+            HomeSearchEntityCandidate(
+                result =
                     SearchEntityResult(
                         key = "conversation:${conversation.threadId.value}",
                         type = type,
@@ -19685,17 +20087,17 @@ internal fun homeSearchEntityResults(
                         showPresence = conversation.isAgentDirectMessage(),
                         archived = conversation.archived
                     ),
-                fields =
+                searchFields =
                     listOf(
-                        ThreadComposerSuggestionSearchField(conversation.name, priority = 0),
-                        ThreadComposerSuggestionSearchField(conversation.subtitle.orEmpty(), priority = 3),
-                        ThreadComposerSuggestionSearchField(conversation.channelId?.value.orEmpty(), priority = 5),
-                        ThreadComposerSuggestionSearchField(conversation.threadId.value, priority = 5)
+                        HomeSearchEntitySearchField(conversation.name, priority = 0),
+                        HomeSearchEntitySearchField(conversation.subtitle.orEmpty(), priority = 3),
+                        HomeSearchEntitySearchField(conversation.channelId?.value.orEmpty(), priority = 5),
+                        HomeSearchEntitySearchField(conversation.threadId.value, priority = 5),
                     )
             )
         }
     val memberEntries =
-        senderFilters.mapIndexedNotNull { offset, sender ->
+        senderFilters.mapNotNull { sender ->
             val conversation = byPresenceMemberId[sender.id]
             val suggestion =
                 sender.toHomeSearchEntityResult(
@@ -19703,15 +20105,14 @@ internal fun homeSearchEntityResults(
                     agentLabel = agentLabel,
                     personLabel = personLabel,
                     membersLabel = membersLabel,
-                ) ?: return@mapIndexedNotNull null
-            ThreadComposerSuggestionSearchEntry(
-                index = conversationEntries.size + offset,
-                suggestion = suggestion,
-                fields =
+                ) ?: return@mapNotNull null
+            HomeSearchEntityCandidate(
+                result = suggestion,
+                searchFields =
                     listOf(
-                        ThreadComposerSuggestionSearchField(sender.displayLabel, priority = 0),
-                        ThreadComposerSuggestionSearchField(sender.handle, priority = 1),
-                        ThreadComposerSuggestionSearchField(sender.id, priority = 5)
+                        HomeSearchEntitySearchField(sender.displayLabel, priority = 0),
+                        HomeSearchEntitySearchField(sender.handle, priority = 1),
+                        HomeSearchEntitySearchField(sender.id, priority = 5),
                     )
             )
         }
@@ -19722,16 +20123,15 @@ internal fun homeSearchEntityResults(
             .asSequence()
             .filter { it.isComputer }
             .distinctBy { it.id }
-            .mapIndexedNotNull { offset, machine ->
+            .mapNotNull { machine ->
                 val computerIdentity =
                     settingsComputerRouteIdentity(
                         serverId = computerDirectory.serverId,
                         machineId = machine.id,
-                    ) ?: return@mapIndexedNotNull null
+                    ) ?: return@mapNotNull null
                 val title = machine.name.trim().ifBlank { machine.hostname?.trim().orEmpty().ifBlank { machine.id } }
-                ThreadComposerSuggestionSearchEntry(
-                    index = conversationEntries.size + memberEntries.size + offset,
-                    suggestion =
+                HomeSearchEntityCandidate(
+                    result =
                         SearchEntityResult(
                             key = "computer:${computerIdentity.serverId}:${computerIdentity.machineId}",
                             type = SearchEntityType.Computer,
@@ -19742,32 +20142,121 @@ internal fun homeSearchEntityResults(
                             conversationIdentity = null,
                             computerIdentity = computerIdentity,
                         ),
-                    fields =
+                    searchFields =
                         listOf(
-                            ThreadComposerSuggestionSearchField(machine.name, priority = 0),
-                            ThreadComposerSuggestionSearchField(machine.hostname.orEmpty(), priority = 1),
-                            ThreadComposerSuggestionSearchField(machine.description.orEmpty(), priority = 3),
-                            ThreadComposerSuggestionSearchField(machine.os.orEmpty(), priority = 4),
+                            HomeSearchEntitySearchField(machine.name, priority = 0),
+                            HomeSearchEntitySearchField(machine.hostname.orEmpty(), priority = 1),
+                            HomeSearchEntitySearchField(machine.description.orEmpty(), priority = 3),
+                            HomeSearchEntitySearchField(machine.os.orEmpty(), priority = 4),
                         ),
                 )
             }
             .toList()
-    val entries =
-        (conversationEntries + memberEntries + computerEntries).let { candidates ->
-            when (trimmedQuery.firstOrNull()) {
-                '#' -> candidates.filter { it.suggestion.type == SearchEntityType.Channel }
-                '@' ->
-                    candidates.filter {
-                        it.suggestion.type == SearchEntityType.Human ||
-                            it.suggestion.type == SearchEntityType.Agent
-                    }
-                else -> candidates
-            }
-        }
-    return rankThreadComposerSuggestionEntries(query = trimmedQuery, entries = entries)
-        .distinctBy { it.key }
-        .take(5)
+    return (conversationEntries + memberEntries + computerEntries).distinctBy { it.result.key }
 }
+
+internal fun homeSearchFrequentEntityResults(
+    homeState: SharedHomeState,
+    senderFilters: List<SearchSenderFilterItem>,
+    ranks: Map<SearchPersonalizationEntityKey, SearchFrequentEntityRank>,
+    channelLabel: String,
+    dmLabel: String,
+    agentLabel: String,
+    personLabel: String,
+    membersLabel: String,
+): List<SearchEntityResult> {
+    if (ranks.isEmpty()) return emptyList()
+    val snapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
+    val currentMemberId = snapshot.currentMember.id.value
+    val hiddenDmIds = snapshot.sidebarOrder?.hiddenDmIds.orEmpty().toSet()
+    val eligibleConversationKeys =
+        (snapshot.channels + snapshot.directMessages)
+            .asSequence()
+            .filter { conversation ->
+                conversation.joined &&
+                    conversation.permissions.canRead &&
+                    !conversation.archived &&
+                    (
+                        conversation.kind != ConversationKind.DirectMessage ||
+                            (
+                                conversation.threadId.value !in hiddenDmIds &&
+                                    conversation.channelId?.value !in hiddenDmIds
+                            )
+                    )
+            }
+            .mapNotNull { conversation ->
+                val kind =
+                    if (conversation.kind == ConversationKind.DirectMessage) {
+                        SearchPersonalizationEntityKind.DirectMessage
+                    } else {
+                        SearchPersonalizationEntityKind.Channel
+                    }
+                SearchPersonalizationEntityKey.create(
+                    kind,
+                    conversation.channelId?.value ?: conversation.threadId.value,
+                )
+            }
+            .toSet()
+    val candidates =
+        homeSearchEntityCandidates(
+            homeState = homeState,
+            senderFilters = senderFilters,
+            channelLabel = channelLabel,
+            dmLabel = dmLabel,
+            agentLabel = agentLabel,
+            personLabel = personLabel,
+            membersLabel = membersLabel,
+        )
+    return candidates
+        .mapNotNull { candidate ->
+            val result = candidate.result
+            val key = result.searchPersonalizationEntityKeyOrNull() ?: return@mapNotNull null
+            val rank = ranks[key] ?: return@mapNotNull null
+            if (result.archived || result.destinationOrNull() == null) return@mapNotNull null
+            if (
+                (key.kind == SearchPersonalizationEntityKind.Channel ||
+                    key.kind == SearchPersonalizationEntityKind.DirectMessage) &&
+                key !in eligibleConversationKeys
+            ) {
+                return@mapNotNull null
+            }
+            if (
+                (result.type == SearchEntityType.Human || result.type == SearchEntityType.Agent) &&
+                result.memberId == currentMemberId
+            ) {
+                return@mapNotNull null
+            }
+            Triple(result, key, rank)
+        }
+        .sortedWith(
+            compareByDescending<Triple<SearchEntityResult, SearchPersonalizationEntityKey, SearchFrequentEntityRank>> {
+                it.third.score
+            }.thenByDescending { it.third.lastOpenedAtMillis }
+                .thenBy { it.first.title.lowercase() }
+                .thenBy { it.second.storageValue }
+        )
+        .take(SearchFrequentEntityLimit)
+        .map { it.first }
+}
+
+internal fun SearchEntityResult.searchPersonalizationEntityKeyOrNull(): SearchPersonalizationEntityKey? =
+    when (type) {
+        SearchEntityType.Channel ->
+            SearchPersonalizationEntityKey.create(
+                SearchPersonalizationEntityKind.Channel,
+                conversationIdentity?.channelId?.value ?: conversationIdentity?.threadId?.value,
+            )
+        SearchEntityType.DirectMessage ->
+            SearchPersonalizationEntityKey.create(
+                SearchPersonalizationEntityKind.DirectMessage,
+                conversationIdentity?.channelId?.value ?: conversationIdentity?.threadId?.value,
+            )
+        SearchEntityType.Human ->
+            SearchPersonalizationEntityKey.create(SearchPersonalizationEntityKind.Human, memberId)
+        SearchEntityType.Agent ->
+            SearchPersonalizationEntityKey.create(SearchPersonalizationEntityKind.Agent, memberId)
+        SearchEntityType.Computer -> null
+    }
 
 internal fun SearchSenderFilterItem.toHomeSearchEntityResult(
     conversationIdentity: ThreadLaunchConversationIdentity?,
@@ -20584,7 +21073,7 @@ internal fun Pager.openStandaloneHomeMessageRequest(
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
     storeScope: SlockShellStoreScope
-) {
+): Boolean =
     openStandaloneHomeConversation(
         bridge = bridge,
         conversation = request.conversationIdentity,
@@ -20596,7 +21085,6 @@ internal fun Pager.openStandaloneHomeMessageRequest(
         anchorMessageId = request.anchorMessageId,
         originFallback = request.originFallback
     )
-}
 
 private fun Pager.openStandaloneHomeConversation(
     bridge: build.raft.app.base.BridgeModule,
@@ -20608,7 +21096,7 @@ private fun Pager.openStandaloneHomeConversation(
     storeScope: SlockShellStoreScope,
     anchorMessageId: String? = null,
     originFallback: ThreadLaunchOriginFallback? = null
-) {
+): Boolean {
     bridge.log(
         "home_open_conversation threadId=${conversation.threadId.value} " +
             "kind=${conversation.kind.name} source=$source anchorMessageId=${anchorMessageId.orEmpty()}"
@@ -20634,7 +21122,7 @@ private fun Pager.openStandaloneHomeConversation(
             anchorMessageId = anchorMessageId,
             originFallback = originFallback,
             onWarn = { bridge.logWarn(it) }
-        ) ?: return
+        ) ?: return false
     bridge.log(
         "home_open_thread_launch source=$source threadId=${conversation.threadId.value} " +
             "sourceThreadId=${launchPayload.sourceThreadId.orEmpty()} surface=${launchPayload.surfaceKind} " +
@@ -20642,6 +21130,7 @@ private fun Pager.openStandaloneHomeConversation(
             "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${launchPayload.originParentMessageId.orEmpty()}"
     )
     openStandaloneThreadLaunchPayload(launchPayload, storeScope)
+    return true
 }
 
 internal fun Pager.openHomeSearchEntity(
@@ -20651,8 +21140,8 @@ internal fun Pager.openHomeSearchEntity(
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
     storeScope: SlockShellStoreScope
-) {
-    when (val destination = entity.destinationOrNull()) {
+): Boolean {
+    return when (val destination = entity.destinationOrNull()) {
         is HomeSearchEntityDestination.Conversation -> {
             openStandaloneHomeConversation(
                 bridge = bridge,
@@ -20665,21 +21154,57 @@ internal fun Pager.openHomeSearchEntity(
             )
         }
         is HomeSearchEntityDestination.Member -> {
-            val pageData = homeSearchMemberDetailPageData(destination.identity, timeContext) ?: return
+            val pageData = homeSearchMemberDetailPageData(destination.identity, timeContext) ?: return false
             openSlockPage(
                 pageName = MEMBER_DETAIL_PAGE,
                 pageData = pageData,
                 storeScopeOverride = storeScope
             )
+            true
         }
-        is HomeSearchEntityDestination.Computer ->
+        is HomeSearchEntityDestination.Computer -> {
             openSettingsComputerPage(
                 storeScope = storeScope,
                 target = destination.identity,
             )
-        null -> Unit
+            true
+        }
+        null -> false
     }
 }
+
+internal fun ThreadLaunchConversationIdentity.searchPersonalizationEntityKeyOrNull(): SearchPersonalizationEntityKey? =
+    when (kind) {
+        ConversationKind.DirectMessage ->
+            SearchPersonalizationEntityKey.create(
+                SearchPersonalizationEntityKind.DirectMessage,
+                channelId?.value ?: threadId.value,
+            )
+        ConversationKind.Channel,
+        ConversationKind.Joint ->
+            SearchPersonalizationEntityKey.create(
+                SearchPersonalizationEntityKind.Channel,
+                channelId?.value ?: threadId.value,
+            )
+        ConversationKind.Thread -> {
+            val parentKind =
+                typedReplyParentConversationKindOrNull(
+                    parentSurfaceKind = threadParentSurfaceKind(),
+                    parentChannelKind = threadParentChannelKind(),
+                )
+            val parentId = threadParentChannelId() ?: channelId?.value
+            when (parentKind) {
+                ConversationKind.DirectMessage ->
+                    SearchPersonalizationEntityKey.create(SearchPersonalizationEntityKind.DirectMessage, parentId)
+                ConversationKind.Channel,
+                ConversationKind.Joint ->
+                    SearchPersonalizationEntityKey.create(SearchPersonalizationEntityKind.Channel, parentId)
+                else -> null
+            }
+        }
+        ConversationKind.Inbox,
+        ConversationKind.System -> null
+    }
 
 internal fun homeSearchMemberDetailPageData(
     identity: MemberDetailIdentity,
