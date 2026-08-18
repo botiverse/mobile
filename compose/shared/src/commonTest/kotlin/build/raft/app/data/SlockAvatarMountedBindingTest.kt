@@ -9,7 +9,6 @@ import build.raft.app.network.SharedBinaryConditionalDownloadResult
 import build.raft.app.network.SharedBinaryConditionalHttpException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -83,7 +82,7 @@ class SlockAvatarMountedBindingTest {
     }
 
     @Test
-    fun mountedMissAndStaleRefreshRequireHttpLeaseOrReadyGeneration() = runTest {
+    fun mountedMissAndStaleRefreshRequireHttpLeaseOrReadyGeneration() = runBlocking {
         val missDownloader = RecordingDownloader.modified(byteArrayOf(1, 2))
         val missBinding = binding(FakeMetadataStore(), FakeNativeProvider(), missDownloader)
         val missHandle = missBinding.mount(subject(), RemoteUrl)
