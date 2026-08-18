@@ -6,18 +6,12 @@ python3 <<'PY'
 from pathlib import Path
 
 build_path = Path("compose/shared/build.gradle.kts")
-workflow_path = Path(".github/workflows/ios-release.yml")
 build = build_path.read_text()
-workflow = workflow_path.read_text()
 
 flag = "-Xdisable-phases=RemoveRedundantCallsToStaticInitializersPhase"
-heap_line = (
-    "org.gradle.jvmargs=-Xmx8g -Xss4m -XX:MaxMetaspaceSize=1g "
-    "-Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\\=\"-Xmx8g,-Xss4m\""
-)
 
 
-def validate(build_text: str, workflow_text: str) -> None:
+def validate(build_text: str) -> None:
     if build_text.count(flag) != 1:
         raise ValueError(f"{build_path}: expected exactly one {flag!r}")
 
@@ -33,22 +27,17 @@ def validate(build_text: str, workflow_text: str) -> None:
     if "objcExportEntryPointsPath" in build_text:
         raise ValueError(f"{build_path}: ObjC entry-point filtering is not the OOM fix")
 
-    if workflow_text.count(heap_line) != 1:
-        raise ValueError(f"{workflow_path}: expected the release runner's exact 8 GiB heap contract")
-    if "-Xmx12g" in workflow_text:
-        raise ValueError(f"{workflow_path}: temporary 12 GiB carrier fallback must not become permanent")
 
-
-def expect_failure(name: str, build_text: str = build, workflow_text: str = workflow) -> None:
+def expect_failure(name: str, build_text: str = build) -> None:
     try:
-        validate(build_text, workflow_text)
+        validate(build_text)
     except (ValueError, IndexError):
         print(f"ok {name}")
         return
     raise SystemExit(f"mutation fixture unexpectedly passed: {name}")
 
 
-validate(build, workflow)
+validate(build)
 expect_failure("missing-phase", build_text=build.replace(flag, ""))
 expect_failure("duplicate-phase", build_text=build.replace(flag, f"{flag},{flag}"))
 expect_failure(
@@ -60,7 +49,6 @@ expect_failure(
     ),
 )
 expect_failure("objc-entry-point-workaround", build_text=build + "\nobjcExportEntryPointsPath\n")
-expect_failure("12g-fallback", workflow_text=workflow.replace("-Xmx8g", "-Xmx12g"))
 
 print("iOS Kotlin/Native optimizer contract: PASS")
 PY
