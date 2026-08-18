@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.ServerId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import com.tencent.kuikly.lifecycle.ViewModel
@@ -207,6 +208,7 @@ internal class SharedTasksViewModel(
     private var observeJob: Job? = null
     private var statusJob: Job? = null
     private var lastRefreshCompletedAt: TimeMark? = null
+    private var canonicalRefetchRequested = false
 
     private var createJob: Job? = null
 
@@ -234,13 +236,7 @@ internal class SharedTasksViewModel(
                     }
             }
             is SharedTasksRouteIntent.ApplyTaskStatus -> {
-                if (store.accept(SharedTasksIntent.UpdateTaskStatus(action.taskId, action.status))) {
-                    state.value.currentTaskSummary(action.taskId)?.let { task ->
-                        runtimeScope.launch {
-                            publishSharedTaskUpdate(task, "external_task_status")
-                        }
-                    }
-                }
+                store.accept(SharedTasksIntent.UpdateTaskStatus(action.taskId, action.status))
             }
             is SharedTasksRouteIntent.ApplyTaskUpdate -> {
                 if (store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(action.task))) {
@@ -433,12 +429,17 @@ internal class SharedTasksViewModel(
         }
     }
 
-    private suspend fun publishSharedTaskUpdate(task: TaskSummary, source: String) {
+    private suspend fun publishSharedTaskUpdate(
+        task: TaskSummary,
+        source: String,
+        serverId: ServerId? = null
+    ) {
         val sharedStore = sharedTasksDataStore ?: return
-        val serverId = useCase.currentServerId() ?: return
-        sharedStore.upsertTask(serverId.value, task)
+        val resolvedServerId = serverId ?: useCase.currentServerId() ?: return
+        sharedStore.upsertTask(resolvedServerId.value, task)
         diagnosticsLogger(
-            "tasks_projection_upsert source=$source taskId=${task.id.value} status=${task.status.name}"
+            "tasks_projection_upsert source=$source taskId=${task.id.value} status=${task.status.name} " +
+                "serverId=${resolvedServerId.value}"
         )
     }
 
@@ -471,6 +472,15 @@ internal class SharedTasksViewModel(
                 val serverId = useCase.currentServerId()
                 if (sharedStore != null && serverId != null) {
                     sharedStore.projectionFlow(serverId.value, scope).collect { slice ->
+                        if (slice.needsCanonicalRefetch) {
+                            if (!canonicalRefetchRequested) {
+                                canonicalRefetchRequested = true
+                                diagnosticsLogger("tasks_canonical_conflict_refetch serverId=${serverId.value}")
+                                runtimeScope.launch { load(SharedTasksRouteIntent.Refresh) }
+                            }
+                            return@collect
+                        }
+                        canonicalRefetchRequested = false
                         val result = slice.toTasksDataResultOrNull(request.filter) ?: return@collect
                         if (store.accept(SharedTasksIntent.SetResult(result, selectedFilter))) {
                             diagnosticsLogger("tasks_snapshot_commit source=shared_projection ${result.tasksDiagnosticsSummary()}")
@@ -498,16 +508,43 @@ internal class SharedTasksViewModel(
             )
             return
         }
-        if (store.accept(SharedTasksIntent.UpdateTaskStatus(task.id.value, status))) {
-            val optimisticTask =
-                state.value.currentTaskSummary(task.id.value)?.copy(status = status)
-                    ?: task.copy(status = status)
-            publishSharedTaskUpdate(optimisticTask, "status_optimistic")
+        val mutationServerId = useCase.currentServerId()
+        val mutationTask =
+            if (sharedTasksDataStore == null) {
+                task
+            } else {
+                val localProjection =
+                    sharedTasksDataStore.mutationProjection(
+                        serverId = mutationServerId?.value,
+                        taskId = task.id,
+                        expectedRevision = task.revision
+                    )
+                val isScopeRoute =
+                    when (scope) {
+                        SharedTasksScope.Server -> localProjection != null
+                        is SharedTasksScope.Channel -> localProjection?.channelId == scope.channelId
+                    }
+                localProjection.takeIf { isScopeRoute }
+            }
+        if (mutationServerId == null || mutationTask == null) {
+            diagnosticsLogger(
+                "tasks_status_update_reject reason=missing_local_projection taskId=${task.id.value} " +
+                    "revision=${task.revision ?: -1L}"
+            )
+            events.emit(SharedTasksEvent.OperationFailed("tasks_local_projection_missing"))
+            return
         }
+        store.accept(SharedTasksIntent.UpdateTaskStatus(task.id.value, status))
         try {
-            when (val result = useCase.updateTaskStatus(TasksStatusUpdateRequest(task.id, status))) {
+            when (
+                val result =
+                    useCase.updateTaskStatus(
+                        mutationServerId,
+                        TasksStatusUpdateRequest(mutationTask.id, status)
+                    )
+            ) {
                 is DataResult.Content -> {
-                    publishSharedTaskUpdate(result.data.task, "status_result")
+                    publishSharedTaskUpdate(result.data.task, "status_result", mutationServerId)
                     store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(result.data.task))
                 }
                 else -> {
@@ -518,29 +555,23 @@ internal class SharedTasksViewModel(
                     ) {
                         val acceptedTask =
                             state.value.currentTaskSummary(task.id.value)?.copy(status = status)
-                                ?: task.copy(status = status)
-                        val source =
-                            if (errorCode == TASKS_STATUS_APPLIED_WITHOUT_PROJECTION) {
-                                "status_accepted_without_projection"
-                            } else {
-                                "status_idempotent"
-                            }
-                        publishSharedTaskUpdate(acceptedTask, source)
+                                ?: mutationTask.copy(status = status)
                         store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(acceptedTask))
+                        if (sharedTasksDataStore != null) {
+                            runtimeScope.launch { load(SharedTasksRouteIntent.Refresh) }
+                        }
                         diagnosticsLogger(
                             "tasks_status_update_accepted taskId=${task.id.value} status=${status.name} " +
                                 "serverCode=$errorCode"
                         )
                     } else {
                         events.emit(SharedTasksEvent.OperationFailed(errorCode))
-                        if (store.accept(
+                        store.accept(
                             SharedTasksIntent.TaskStatusUpdateFailed(
-                                previousTask = task,
+                                previousTask = mutationTask,
                                 errorCode = errorCode
                             )
-                        )) {
-                            publishSharedTaskUpdate(task, "status_rollback")
-                        }
+                        )
                     }
                 }
             }
@@ -548,19 +579,35 @@ internal class SharedTasksViewModel(
             throw cancellation
         } catch (_: Throwable) {
             events.emit(SharedTasksEvent.OperationFailed("tasks_status_network"))
-            if (store.accept(SharedTasksIntent.TaskStatusUpdateFailed(task, "tasks_status_network"))) {
-                publishSharedTaskUpdate(task, "status_rollback")
-            }
+            store.accept(SharedTasksIntent.TaskStatusUpdateFailed(mutationTask, "tasks_status_network"))
         }
     }
 
     private suspend fun createTasks(operation: TasksCreateOperationId, titles: List<String>) {
+        val serverId = useCase.currentServerId()
+        val isLocalChannelScope = scope is SharedTasksScope.Channel && scope.channelId == operation.channelId
+        if (serverId == null || !isLocalChannelScope) {
+            val errorCode = "tasks_local_projection_missing"
+            diagnosticsLogger(
+                "tasks_create_reject reason=missing_local_projection channelId=${operation.channelId.value}"
+            )
+            if (store.accept(SharedTasksIntent.CreateTasksFailed(operation, errorCode))) {
+                events.emit(SharedTasksEvent.OperationFailed(errorCode))
+            }
+            return
+        }
         try {
-            when (val result = useCase.createTasks(TasksCreateRequest(operation.channelId, titles))) {
+            when (
+                val result =
+                    useCase.createTasks(
+                        serverId,
+                        TasksCreateRequest(operation.channelId, titles)
+                    )
+            ) {
                 is DataResult.Content -> {
                     if (store.accept(SharedTasksIntent.CreateTasksSucceeded(operation, result.data))) {
                         result.data.tasks.forEach { task ->
-                            publishSharedTaskUpdate(task, "create_result")
+                            publishSharedTaskUpdate(task, "create_result", serverId)
                         }
                         // Re-fetch the active scope so the board/list reflects server-side
                         // canonical ordering and any derived counts after create.

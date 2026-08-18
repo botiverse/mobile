@@ -3267,13 +3267,17 @@ internal class SharedThreadDataSource(
         }
     }
 
-    suspend fun updateTaskStatus(taskId: String, status: TaskStatus): DataResult<TaskSummary?> {
+    suspend fun updateTaskStatus(
+        serverId: ServerId,
+        taskId: String,
+        status: TaskStatus
+    ): DataResult<TaskSummary?> {
         if (taskId.isBlank()) {
             return DataResult.Error(ScreenError(code = "task_id_missing", retryable = false))
         }
         val response =
             try {
-                api.updateTaskStatus(taskId, status)
+                api.updateTaskStatus(serverId, taskId, status)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {

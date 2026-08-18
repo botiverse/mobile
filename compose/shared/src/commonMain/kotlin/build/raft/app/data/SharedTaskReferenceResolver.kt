@@ -48,6 +48,7 @@ internal suspend fun resolveSharedTaskReference(
         when (
             val channelResult =
                 tasksDataSource.loadChannelTaskByNumber(
+                    serverId = serverId,
                     channelId = channelId,
                     taskNumber = taskNumber,
                     priority = DataRequestPriority.Foreground

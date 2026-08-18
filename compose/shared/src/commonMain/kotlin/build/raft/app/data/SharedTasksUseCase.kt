@@ -32,13 +32,22 @@ class SharedTasksUseCase(
 
     suspend fun updateTaskStatus(request: TasksStatusUpdateRequest): DataResult<TaskActionResult> {
         val serverId = selectedServerIdOrError() ?: return selectedServerMissing()
-        return repository.updateTaskStatus(serverId, request.taskId, request.status)
+        return updateTaskStatus(serverId, request)
     }
+
+    suspend fun updateTaskStatus(
+        serverId: ServerId,
+        request: TasksStatusUpdateRequest
+    ): DataResult<TaskActionResult> =
+        repository.updateTaskStatus(serverId, request.taskId, request.status)
 
     suspend fun createTasks(request: TasksCreateRequest): DataResult<TaskSnapshot> {
         val serverId = selectedServerIdOrError() ?: return selectedServerMissing()
-        return repository.createTasks(serverId, request.channelId, request.titles)
+        return createTasks(serverId, request)
     }
+
+    suspend fun createTasks(serverId: ServerId, request: TasksCreateRequest): DataResult<TaskSnapshot> =
+        repository.createTasks(serverId, request.channelId, request.titles)
 
     private suspend fun selectedServerIdOrError(): ServerId? =
         authStore.readSession()?.currentServerId?.let(::ServerId)

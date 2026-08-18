@@ -465,7 +465,9 @@ class ThreadApiTest {
         assertIs<ThreadApiResult.Success<MessageMutationSummary>>(api.addReaction("msg-1", "rocket"))
         assertIs<ThreadApiResult.Success<MessageMutationSummary>>(api.removeReaction("msg-1", "rocket"))
         val taskStatusResult =
-            assertIs<ThreadApiResult.Success<TaskSummary?>>(api.updateTaskStatus("task-1", TaskStatus.InReview))
+            assertIs<ThreadApiResult.Success<TaskSummary?>>(
+                api.updateTaskStatus(ServerId("server-peer"), "task-1", TaskStatus.InReview)
+            )
         assertEquals("task-1", taskStatusResult.data?.id?.value)
         assertIs<ThreadApiResult.Success<ThreadActionResult>>(api.createOrOpenThread("channel-1", "parent-1"))
         assertIs<ThreadApiResult.Success<List<PendingMentionActionExecuteResult>>>(
@@ -487,7 +489,7 @@ class ThreadApiTest {
                 "DELETE channels/saved/msg-1 priority=Foreground query= server= body=",
                 """POST messages/msg-1/reactions priority=Foreground query= server= body={"emoji":"rocket"}""",
                 """DELETE messages/msg-1/reactions priority=Foreground query= server= body={"emoji":"rocket"}""",
-                """PATCH tasks/task-1/status priority=Foreground query= server= body={"status":"in_review"}""",
+                """PATCH tasks/task-1/status priority=Foreground query= server=server-peer body={"status":"in_review"}""",
                 """POST channels/channel-1/threads priority=Foreground query= server= body={"parentMessageId":"parent-1"}""",
                 """POST messages/mention-actions/execute priority=Foreground query= server= body={"action":"notify","resolutionIds":["res-1"]}"""
             ),

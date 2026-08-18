@@ -4,6 +4,7 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
+import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
@@ -68,6 +69,8 @@ internal interface SlockThreadApi {
     suspend fun addReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary>
     suspend fun removeReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary>
     suspend fun updateTaskStatus(taskId: String, status: TaskStatus): ThreadApiResult<TaskSummary?>
+    suspend fun updateTaskStatus(serverId: ServerId, taskId: String, status: TaskStatus): ThreadApiResult<TaskSummary?> =
+        ThreadApiResult.Failure(code = 501, contractCode = "thread_task_status_server_required")
     suspend fun createOrOpenThread(channelId: String, parentMessageId: String): ThreadApiResult<ThreadActionResult>
 }
 
@@ -239,6 +242,13 @@ internal class SlockThreadApiClient(
     override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): ThreadApiResult<TaskSummary?> =
         transport.updateTaskStatus(taskId, status).mapThreadTaskMutation()
 
+    override suspend fun updateTaskStatus(
+        serverId: ServerId,
+        taskId: String,
+        status: TaskStatus
+    ): ThreadApiResult<TaskSummary?> =
+        transport.updateTaskStatus(serverId, taskId, status).mapThreadTaskMutation()
+
     override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): ThreadApiResult<ThreadActionResult> =
         transport.createOrOpenThread(channelId, parentMessageId)
             .mapThreadBody(
@@ -401,6 +411,19 @@ internal class NetworkSlockThreadApi(
             path = "tasks/${taskId.trim()}/status",
             method = "PATCH",
             bodyText = buildSharedTaskStatusBody(status)
+        )
+
+    override suspend fun updateTaskStatus(
+        serverId: ServerId,
+        taskId: String,
+        status: TaskStatus
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "tasks/${taskId.trim()}/status",
+            method = "PATCH",
+            bodyText = buildSharedTaskStatusBody(status),
+            serverIdOverride = serverId
         )
 
     override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse =

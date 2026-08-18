@@ -690,6 +690,162 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun sharedTasksDataStoreFoldsOneCanonicalFactAcrossTwoLocalRoutes() = runBlocking {
+        val store = SharedTasksDataStore()
+        val canonical = task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-a"), revision = 7L)
+
+        assertEquals(SharedTaskFactFoldOutcome.Accepted, store.upsertTask("server-a", canonical))
+        assertEquals(
+            SharedTaskFactFoldOutcome.StaleIgnored,
+            store.upsertTask("server-b", canonical.copy(channelId = ChannelId("channel-b")))
+        )
+
+        val serverA = store.projection("server-a", SharedTasksScope.Server).tasks.single()
+        val serverB = store.projection("server-b", SharedTasksScope.Server).tasks.single()
+        assertEquals(ChannelId("channel-a"), serverA.channelId)
+        assertEquals(ChannelId("channel-b"), serverB.channelId)
+        assertEquals(serverA.copy(channelId = null), serverB.copy(channelId = null))
+        assertEquals(
+            ChannelId("channel-a"),
+            store.mutationProjection("server-a", canonical.id, expectedRevision = 7L)?.channelId
+        )
+        assertEquals(
+            ChannelId("channel-b"),
+            store.mutationProjection("server-b", canonical.id, expectedRevision = 7L)?.channelId
+        )
+    }
+
+    @Test
+    fun equalRevisionIgnoresServerLocalPresentationAndKeepsAuthorizationLocal() = runBlocking {
+        val store = SharedTasksDataStore()
+        val hostAssignee =
+            MemberProfile(MemberId("global-user-1"), "Artin Host", "artin", MemberKind.Human)
+        val peerAssignee =
+            MemberProfile(MemberId("global-user-1"), "Artin Peer", "artin", MemberKind.Human)
+        val host =
+            task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-a"), revision = 7L)
+                .copy(assignee = hostAssignee, updatedAtLabel = "just now", canClaim = true)
+        val peer =
+            host.copy(
+                channelId = ChannelId("channel-b"),
+                assignee = peerAssignee,
+                updatedAtLabel = "1 minute ago",
+                canClaim = false
+            )
+
+        assertEquals(SharedTaskFactFoldOutcome.Accepted, store.upsertTask("server-a", host))
+        assertEquals(SharedTaskFactFoldOutcome.StaleIgnored, store.upsertTask("server-b", peer))
+
+        val serverA = store.projection("server-a", SharedTasksScope.Server).tasks.single()
+        val serverB = store.projection("server-b", SharedTasksScope.Server).tasks.single()
+        assertEquals(ChannelId("channel-a"), serverA.channelId)
+        assertEquals(ChannelId("channel-b"), serverB.channelId)
+        assertTrue(serverA.canClaim)
+        assertFalse(serverB.canClaim)
+        assertFalse(store.projection("server-a", SharedTasksScope.Server).needsCanonicalRefetch)
+        assertFalse(store.projection("server-b", SharedTasksScope.Server).needsCanonicalRefetch)
+    }
+
+    @Test
+    fun sharedTasksDataStoreRejectsStaleRevisionAndFailsClosedOnEqualRevisionConflict() = runBlocking {
+        val store = SharedTasksDataStore()
+        val revisionOne = task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-a"), revision = 1L)
+        val revisionTwo = revisionOne.copy(status = TaskStatus.Done, channelId = ChannelId("channel-b"), revision = 2L)
+
+        store.upsertTask("server-a", revisionOne)
+        store.upsertTask("server-b", revisionTwo)
+        assertEquals(
+            SharedTaskFactFoldOutcome.StaleIgnored,
+            store.upsertTask("server-a", revisionOne)
+        )
+        assertEquals(
+            TaskStatus.Done,
+            store.projection("server-a", SharedTasksScope.Server).tasks.single().status
+        )
+        assertEquals(
+            ChannelId("channel-a"),
+            store.projection("server-a", SharedTasksScope.Server).tasks.single().channelId
+        )
+        assertEquals(null, store.mutationProjection("server-a", revisionOne.id, expectedRevision = 1L))
+
+        val conflicting = revisionTwo.copy(title = "conflicting payload", channelId = ChannelId("channel-a"))
+        assertEquals(SharedTaskFactFoldOutcome.Conflict, store.upsertTask("server-a", conflicting))
+        val serverA = store.projection("server-a", SharedTasksScope.Server)
+        val serverB = store.projection("server-b", SharedTasksScope.Server)
+        assertEquals(emptyList(), serverA.tasks)
+        assertEquals(emptyList(), serverB.tasks)
+        assertEquals(true, serverA.needsCanonicalRefetch)
+        assertEquals(true, serverB.needsCanonicalRefetch)
+        assertEquals(null, store.mutationProjection("server-b", revisionTwo.id, expectedRevision = 2L))
+    }
+
+    @Test
+    fun sharedTasksDataStoreFailsClosedWhenLegacyNullRevisionFactsDisagree() {
+        val store = SharedTasksDataStore()
+        val first = task("task-legacy", TaskStatus.Todo, channelId = ChannelId("channel-a"), revision = null)
+        val conflicting = first.copy(status = TaskStatus.Done, channelId = ChannelId("channel-b"))
+
+        assertEquals(SharedTaskFactFoldOutcome.Accepted, store.upsertTask("server-a", first))
+        assertEquals(SharedTaskFactFoldOutcome.Conflict, store.upsertTask("server-b", conflicting))
+
+        assertEquals(emptyList(), store.projection("server-a", SharedTasksScope.Server).tasks)
+        assertEquals(emptyList(), store.projection("server-b", SharedTasksScope.Server).tasks)
+        assertTrue(store.projection("server-a", SharedTasksScope.Server).needsCanonicalRefetch)
+    }
+
+    @Test
+    fun sharedTasksNotificationFactDedupesCanonicalMessageAndRetainsBothLocalRoutes() {
+        val store = SharedTasksDataStore()
+        val host =
+            task("task-joint", TaskStatus.Todo, channelId = ChannelId("channel-host"), revision = 8L)
+                .copy(messageId = MessageId("message-joint"), parentMessageId = MessageId("message-joint"))
+
+        store.upsertTask("server-host", host)
+        store.upsertTask("server-peer", host.copy(channelId = ChannelId("channel-peer")))
+
+        val projection = store.notificationProjection(host.id)
+        assertEquals(MessageId("message-joint"), projection?.messageId)
+        assertEquals(8L, projection?.revision)
+        assertEquals(
+            listOf(
+                SharedTaskNotificationRoute("server-host", ChannelId("channel-host")),
+                SharedTaskNotificationRoute("server-peer", ChannelId("channel-peer"))
+            ),
+            projection?.routes
+        )
+        assertEquals(
+            ChannelId("channel-host"),
+            store.mutationProjection("server-host", host.id, expectedRevision = 8L)?.channelId
+        )
+        assertEquals(
+            ChannelId("channel-peer"),
+            store.mutationProjection("server-peer", host.id, expectedRevision = 8L)?.channelId
+        )
+    }
+
+    @Test
+    fun authoritativeSnapshotRemovesOnlyItsMissingLocalRouteAndPreservesPeerRoute() = runBlocking {
+        val store = SharedTasksDataStore()
+        val canonical = task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-a"), revision = 7L)
+        store.upsertTask("server-a", canonical)
+        store.upsertTask("server-b", canonical.copy(channelId = ChannelId("channel-b")))
+
+        store.publishSnapshot(
+            serverId = "server-a",
+            scope = SharedTasksScope.Server,
+            snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
+        )
+
+        assertEquals(null, store.mutationProjection("server-a", canonical.id, expectedRevision = 7L))
+        assertEquals(
+            ChannelId("channel-b"),
+            store.mutationProjection("server-b", canonical.id, expectedRevision = 7L)?.channelId
+        )
+        assertEquals(emptyList(), store.projection("server-a", SharedTasksScope.Server).tasks)
+        assertEquals(1, store.projection("server-b", SharedTasksScope.Server).tasks.size)
+    }
+
+    @Test
     fun sharedTasksDataStoreRealtimeUpsertStaysPartialUntilChannelSnapshotBackfills() = runBlocking {
         val store = SharedTasksDataStore()
         val recentTask = task("task-recent", TaskStatus.InProgress, channelId = ChannelId("channel-1"))
@@ -1534,7 +1690,7 @@ class SharedTasksStoreTest {
     }
 
     @Test
-    fun unloadedChatMutationOwnerPublishesAndMutatesExactlyOnce() = runBlocking {
+    fun unloadedChatMutationWithoutLocalProjectionMakesZeroNetworkCalls() = runBlocking {
         val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sharedStore = SharedTasksDataStore()
         val previousTask = task("task-1", TaskStatus.InReview, channelId = ChannelId("channel-1"))
@@ -1575,12 +1731,9 @@ class SharedTasksStoreTest {
         viewModel.dispatch(SharedTasksRouteIntent.UpdateStatus(previousTask, TaskStatus.Closed))
         yield()
 
-        val projection =
-            sharedStore
-                .projectionFlow("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
-                .first()
-        assertEquals(1, repository.updateCalls)
-        assertEquals(TaskStatus.Closed, projection.tasks.single().status)
+        val projection = sharedStore.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
+        assertEquals(0, repository.updateCalls)
+        assertEquals(emptyList(), projection.tasks)
         assertEquals(null, viewModel.state.value.statusUpdatingTaskId)
         runtimeScope.cancel()
     }
@@ -1617,6 +1770,7 @@ class SharedTasksStoreTest {
                         scope = SharedTasksScope.Channel(ChannelId("channel-1"))
                     )
             )
+        sharedStore.upsertTask("server-1", previousTask)
 
         viewModel.dispatch(SharedTasksRouteIntent.UpdateStatus(previousTask, TaskStatus.Closed))
         yield()
@@ -1777,6 +1931,28 @@ class SharedTasksStoreTest {
         assertEquals(2, visible.channelScopedContent.tasks.size)
         assertEquals(1, visible.channelScopedContent.summaryCounts[TaskStatus.Todo])
         assertEquals(1, visible.channelScopedContent.summaryCounts[TaskStatus.InReview])
+    }
+
+    @Test
+    fun assigneeCandidatesDedupeTheSameGlobalHumanAcrossServerProjections() {
+        val host = MemberProfile(MemberId("global-user-1"), "Artin Host", "artin", MemberKind.Human)
+        val peer = MemberProfile(MemberId("global-user-1"), "Artin Peer", "artin", MemberKind.Human)
+        val agent = MemberProfile(MemberId("global-user-1"), "Agent One", "agent-one", MemberKind.Agent)
+
+        val visible =
+            TasksContent(summaryCounts = emptyMap(), tasks = emptyList()).visibleContent(
+                selectedFilter = null,
+                presentationState = TasksPresentationState(),
+                showChannelFilter = true,
+                identityOptions = listOf(host, peer, agent)
+            )
+
+        assertEquals(
+            setOf("user:global-user-1", "agent:global-user-1"),
+            visible.assigneeOptions.mapTo(mutableSetOf()) { it.tasksIdentityFilterId() }
+        )
+        assertEquals(2, visible.assigneeOptions.size)
+        assertEquals(visible.creatorOptions, visible.assigneeOptions)
     }
 
     @Test
@@ -1995,7 +2171,8 @@ class SharedTasksStoreTest {
         channelName: String? = null,
         title: String = "Task $id",
         assignee: MemberProfile? = null,
-        creator: MemberProfile? = null
+        creator: MemberProfile? = null,
+        revision: Long? = null
     ): TaskSummary =
         TaskSummary(
             id = TaskId(id),
@@ -2007,6 +2184,7 @@ class SharedTasksStoreTest {
             channelName = channelName,
             assignee = assignee,
             creator = creator,
+            revision = revision,
             updatedAtLabel = "now"
         )
 
@@ -2122,6 +2300,7 @@ class SharedTasksStoreTest {
         }
 
         override suspend fun loadChannelTasks(
+            serverId: ServerId,
             channelId: ChannelId,
             filter: TaskFilter,
             priority: DataRequestPriority
@@ -2132,10 +2311,18 @@ class SharedTasksStoreTest {
             return channelLoadResult
         }
 
-        override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult> =
+        override suspend fun updateTaskStatus(
+            serverId: ServerId,
+            taskId: TaskId,
+            status: TaskStatus
+        ): DataResult<TaskActionResult> =
             updateResult
 
-        override suspend fun createTasks(channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot> =
+        override suspend fun createTasks(
+            serverId: ServerId,
+            channelId: ChannelId,
+            titles: List<String>
+        ): DataResult<TaskSnapshot> =
             createResult
     }
 }

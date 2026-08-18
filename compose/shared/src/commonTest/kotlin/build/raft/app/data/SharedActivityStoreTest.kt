@@ -3205,6 +3205,71 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun jointTaskActivityFactDedupesAndOpensThroughEachServerLocalRoute() = runBlocking {
+        val tasksDataStore = SharedTasksDataStore()
+        val canonicalTask =
+            TaskSummary(
+                id = TaskId("task-joint"),
+                title = "Joint task",
+                status = TaskStatus.InProgress,
+                taskNumber = 441,
+                messageId = MessageId("joint-parent-message"),
+                channelId = ChannelId("host-channel"),
+                revision = 7L,
+                updatedAtLabel = "now"
+            )
+        tasksDataStore.upsertTask("server-host", canonicalTask)
+        tasksDataStore.upsertTask(
+            "server-peer",
+            canonicalTask.copy(channelId = ChannelId("peer-channel"), canClaim = false)
+        )
+        val hostCandidate =
+            threadItem("thread-host")
+                .copy(
+                    parentChannelId = ChannelId("host-channel"),
+                    parentMessageId = canonicalTask.messageId
+                )
+        val peerCandidate =
+            threadItem("thread-peer")
+                .copy(
+                    parentChannelId = ChannelId("peer-channel"),
+                    parentMessageId = canonicalTask.messageId
+                )
+
+        suspend fun load(serverId: String): InboxItem {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val store =
+                activityStore(
+                    scope = scope,
+                    authStore = InMemorySlockAuthSessionStore(sampleSession(serverId = serverId)),
+                    inboxRepository =
+                        FakeInboxRepository(
+                            initialSnapshots =
+                                listOf(
+                                    snapshot(
+                                        items = listOf(peerCandidate, hostCandidate),
+                                        serverId = serverId
+                                    )
+                                )
+                        ),
+                    tasksDataStore = tasksDataStore
+                )
+            store.dispatch(SharedActivityIntent.LoadInitial)
+            return store.state.value.items.single().also { scope.cancel() }
+        }
+
+        val hostRow = load("server-host")
+        val peerRow = load("server-peer")
+
+        assertEquals("thread:thread-host", hostRow.key)
+        assertEquals(ChannelId("host-channel"), hostRow.parentChannelId)
+        assertEquals("thread:thread-peer", peerRow.key)
+        assertEquals(ChannelId("peer-channel"), peerRow.parentChannelId)
+        assertEquals(441, hostRow.taskNumber)
+        assertEquals(441, peerRow.taskNumber)
+    }
+
+    @Test
     fun persistedActivityRowsUseMemberStoreSenderNamesBeforeRefreshCompletes() = runBlocking {
         val persistStorage = InMemoryPersistStorage()
         val persistSlice = createSharedActivityPersistSlice(persistStorage)
@@ -4050,13 +4115,14 @@ class SharedActivityStoreTest {
 
     private fun snapshot(
         items: List<InboxItem>,
+        serverId: String = "server-1",
         hasMore: Boolean = false,
         nextOffset: Int? = null,
         totalCount: Int = items.size,
         totalUnreadCount: Int = items.sumOf { it.unreadCount }
     ): InboxSnapshot =
         InboxSnapshot(
-            server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+            server = ServerSummary(id = ServerId(serverId), name = "Slock"),
             items = items,
             totalCount = totalCount,
             totalUnreadCount = totalUnreadCount,

@@ -481,7 +481,9 @@ data class TaskSummary(
     val channelName: String? = null,
     val updatedAtLabel: String,
     val canClaim: Boolean = true,
-    val description: String? = null
+    val description: String? = null,
+    /** Monotonic revision of the canonical task fact. Projection-local channel fields are not part of it. */
+    val revision: Long? = null
 )
 
 // Inbox Models
