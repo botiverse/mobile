@@ -108,6 +108,14 @@ data class SharedServerChannelMembersSlice(
         }
 }
 
+internal sealed interface SharedServerChannelMembersHandoff {
+    data class Accepted(val slice: SharedServerChannelMembersSlice) : SharedServerChannelMembersHandoff
+
+    data object Unavailable : SharedServerChannelMembersHandoff
+
+    data object Rejected : SharedServerChannelMembersHandoff
+}
+
 data class SharedServerMembersState(
     val entriesByServerId: Map<String, SharedServerMembersEntry> = emptyMap(),
     /**
@@ -546,6 +554,32 @@ class SharedServerMembersStore internal constructor(
             members =
                 slice.members
                     .withServerMemberPresenceFacts(presenceFactsNow(serverId))
+        )
+    }
+
+    internal fun currentChannelMembersHandoff(
+        owner: AuthenticatedRouteOwner,
+        channelId: ChannelId,
+    ): SharedServerChannelMembersHandoff {
+        val normalizedOwner = owner.normalizedOrNull()
+            ?: return SharedServerChannelMembersHandoff.Rejected
+        val serverId = ServerId(normalizedOwner.serverId)
+        val binding = currentChannelMembersOwner(serverId)
+            ?: return SharedServerChannelMembersHandoff.Unavailable
+        if (!binding.matches(normalizedOwner)) return SharedServerChannelMembersHandoff.Rejected
+        val scope = binding.scope(channelId)
+            ?: return SharedServerChannelMembersHandoff.Rejected
+        val slice = _state.value.channelMemberSlices[scope]
+            ?: return SharedServerChannelMembersHandoff.Accepted(
+                binding.emptyChannelMemberSlice(channelId)
+            )
+        if (slice.ownerWriteGeneration != binding.writeGeneration) {
+            return SharedServerChannelMembersHandoff.Rejected
+        }
+        return SharedServerChannelMembersHandoff.Accepted(
+            slice.copy(
+                members = slice.members.withServerMemberPresenceFacts(presenceFactsNow(serverId))
+            )
         )
     }
 
@@ -2474,6 +2508,18 @@ private fun AuthenticatedRouteOwner.emptyChannelMemberSlice(
         accountId = accountId,
         serverId = serverId,
         channelId = channelId.value.trim()
+    )
+
+private fun SharedServerChannelMembersOwnerBinding.emptyChannelMemberSlice(
+    channelId: ChannelId
+): SharedServerChannelMembersSlice =
+    SharedServerChannelMembersSlice(
+        environmentId = environmentId,
+        accountId = accountId,
+        serverId = serverId,
+        channelId = channelId.value.trim(),
+        ownerWriteGeneration = writeGeneration,
+        status = SharedServerMembersLoadStatus.InFlight
     )
 
 private fun List<MemberProfile>.upsertServerMember(member: MemberProfile): List<MemberProfile> {
