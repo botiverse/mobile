@@ -161,6 +161,7 @@ private fun ChannelSettingsPageScreen() {
     val authorityGateway = remember(sharedStores, storeScope) {
         sharedStores.authenticatedRouteAuthorityGateway(storeScope)
     }
+    val snapshotCache = remember(sharedStores) { sharedStores.channelSettingsSnapshotCache }
     val scope = rememberCoroutineScope()
     val dataSource = remember(route, routeOwner, authStore, authorityGateway) {
         RealChannelSettingsDataSource(
@@ -171,12 +172,29 @@ private fun ChannelSettingsPageScreen() {
             logger = { bridge.log("channel_settings_store $it") },
         )
     }
-    val settingsStore = remember(route, dataSource, scope) {
-        ChannelSettingsStore(route = route, dataSource = dataSource, scope = scope)
+    val settingsStore = remember(
+        route,
+        routeOwner,
+        dataSource,
+        snapshotCache,
+        sharedStores,
+        storeScope,
+        scope,
+    ) {
+        ChannelSettingsStore(
+            route = route,
+            owner = routeOwner,
+            dataSource = dataSource,
+            snapshotCache = snapshotCache,
+            initialAuthorityAccepted =
+                sharedStores.currentAuthenticatedRouteOwner(storeScope) == routeOwner,
+            scope = scope,
+        )
     }
     val settingsState by settingsStore.state.collectAsState()
     val homeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
-    val channel = settingsState.channel
+    val authorityAccepted = liveOwner == routeOwner
+    val channel = settingsState.channel.takeIf { authorityAccepted }
     val memberSlice = settingsState.memberSlice
     val canManage = settingsState.canManage
     val pinned = settingsState.isPinned(route.channelId.value)
@@ -187,7 +205,7 @@ private fun ChannelSettingsPageScreen() {
 
     LaunchedEffect(settingsStore, liveOwner, routeOwner) {
         if (liveOwner == routeOwner) {
-            settingsStore.dispatch(ChannelSettingsIntent.Load)
+            settingsStore.dispatch(ChannelSettingsIntent.Refresh)
         } else {
             dialog = null
             settingsStore.invalidateAuthority()
@@ -258,6 +276,7 @@ private fun ChannelSettingsPageScreen() {
                         memberSlice = memberSlice,
                         pinned = pinned,
                         canManage = canManage,
+                        writeActionsEnabled = settingsState.writeActionsEnabled && authorityAccepted,
                         onEdit = { dialog = ChannelSettingsDialog.Edit },
                         onOpenMembers = {
                             pager.openSlockPage(
@@ -344,6 +363,7 @@ private fun ChannelSettingsContent(
     memberSlice: SharedServerChannelMembersSlice,
     pinned: Boolean,
     canManage: Boolean,
+    writeActionsEnabled: Boolean,
     onEdit: () -> Unit,
     onOpenMembers: () -> Unit,
     onToggleMute: () -> Unit,
@@ -358,7 +378,11 @@ private fun ChannelSettingsContent(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item(key = "identity") {
-            ChannelIdentityCard(channel = channel, editable = canManage, onClick = onEdit)
+            ChannelIdentityCard(
+                channel = channel,
+                editable = canManage && writeActionsEnabled,
+                onClick = onEdit,
+            )
         }
         item(key = "members") {
             ChannelMembersCard(slice = memberSlice, fallbackCount = channel.memberCount, onClick = onOpenMembers)
@@ -368,11 +392,12 @@ private fun ChannelSettingsContent(
                 muteSupported = channel.activityMuteSupported,
                 muted = channel.activityMuted,
                 pinned = pinned,
+                enabled = writeActionsEnabled,
                 onToggleMute = onToggleMute,
                 onTogglePin = onTogglePin
             )
         }
-        if (canManage) {
+        if (canManage && writeActionsEnabled) {
             item(key = "management") {
                 ChannelManagementCard(
                     showMakePrivate = channelSettingsCanMakePrivate(channel),
@@ -509,6 +534,7 @@ private fun ChannelPreferencesCard(
     muteSupported: Boolean,
     muted: Boolean,
     pinned: Boolean,
+    enabled: Boolean,
     onToggleMute: () -> Unit,
     onTogglePin: () -> Unit
 ) {
@@ -523,7 +549,7 @@ private fun ChannelPreferencesCard(
             title = stringResource(MR.strings.channel_settings_mute),
             detail = stringResource(MR.strings.channel_settings_mute_detail),
             checked = muted,
-            enabled = muteSupported,
+            enabled = muteSupported && enabled,
             onClick = onToggleMute
         )
         ChannelSettingsDivider()
@@ -531,7 +557,7 @@ private fun ChannelPreferencesCard(
             title = stringResource(MR.strings.channel_settings_pin),
             detail = stringResource(MR.strings.channel_settings_pin_detail),
             checked = pinned,
-            enabled = true,
+            enabled = enabled,
             onClick = onTogglePin
         )
     }
