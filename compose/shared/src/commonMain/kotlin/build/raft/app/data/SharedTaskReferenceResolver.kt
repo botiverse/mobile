@@ -56,7 +56,14 @@ internal suspend fun resolveSharedTaskReference(
         ) {
             is DataResult.Content -> {
                 val task = channelResult.data.task
-                tasksDataStore?.upsertTask(serverId.value, task)
+                val foldOutcome = tasksDataStore?.upsertTaskForCurrentServer(serverId.value, task)
+                if (tasksDataStore != null && foldOutcome != SharedTaskFactFoldOutcome.Accepted) {
+                    return tasksDataStore.loadedTaskReferenceResolution(
+                        serverId = serverId.value,
+                        taskNumber = taskNumber,
+                        currentChannelId = currentChannelId
+                    ) ?: SharedTaskReferenceResolution.Failed
+                }
                 return SharedTaskReferenceResolution.Found(
                     task = task,
                     source = SharedTaskReferenceResolutionSource.NetworkChannel

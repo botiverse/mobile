@@ -3,8 +3,6 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import build.raft.app.network.MultipartFile
-import build.raft.app.model.TaskStatus
-import build.raft.app.model.TaskSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -464,11 +462,6 @@ class ThreadApiTest {
         assertIs<ThreadApiResult.Success<Unit>>(api.unsaveMessage("msg-1"))
         assertIs<ThreadApiResult.Success<MessageMutationSummary>>(api.addReaction("msg-1", "rocket"))
         assertIs<ThreadApiResult.Success<MessageMutationSummary>>(api.removeReaction("msg-1", "rocket"))
-        val taskStatusResult =
-            assertIs<ThreadApiResult.Success<TaskSummary?>>(
-                api.updateTaskStatus(ServerId("server-peer"), "task-1", TaskStatus.InReview)
-            )
-        assertEquals("task-1", taskStatusResult.data?.id?.value)
         assertIs<ThreadApiResult.Success<ThreadActionResult>>(api.createOrOpenThread("channel-1", "parent-1"))
         assertIs<ThreadApiResult.Success<List<PendingMentionActionExecuteResult>>>(
             api.executePendingMentionActions("notify", listOf("res-1"))
@@ -489,7 +482,6 @@ class ThreadApiTest {
                 "DELETE channels/saved/msg-1 priority=Foreground query= server= body=",
                 """POST messages/msg-1/reactions priority=Foreground query= server= body={"emoji":"rocket"}""",
                 """DELETE messages/msg-1/reactions priority=Foreground query= server= body={"emoji":"rocket"}""",
-                """PATCH tasks/task-1/status priority=Foreground query= server=server-peer body={"status":"in_review"}""",
                 """POST channels/channel-1/threads priority=Foreground query= server= body={"parentMessageId":"parent-1"}""",
                 """POST messages/mention-actions/execute priority=Foreground query= server= body={"action":"notify","resolutionIds":["res-1"]}"""
             ),
@@ -588,9 +580,6 @@ class ThreadApiTest {
         override suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = reactionBody)
 
-        override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse =
-            HomeNetworkResponse(code = 200, bodyText = """{"task":{"id":"$taskId","status":"in_review"}}""")
-
         override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = createThreadBody)
 
@@ -624,10 +613,6 @@ class ThreadApiTest {
                 normalizedPath == "channels/saved" && method == "POST" -> ok("""{"ok":true}""")
                 normalizedPath.startsWith("channels/saved/") && method == "DELETE" -> ok("""{"ok":true}""")
                 normalizedPath.endsWith("/reactions") -> ok(reactionBody)
-                normalizedPath.startsWith("tasks/") && normalizedPath.endsWith("/status") -> {
-                    val taskId = normalizedPath.removePrefix("tasks/").removeSuffix("/status")
-                    ok("""{"task":{"id":"$taskId","status":"in_review"}}""")
-                }
                 normalizedPath.endsWith("/threads") -> ok(createThreadBody)
                 else -> HomeNetworkResponse(code = 404, bodyText = null, errorBodyText = "not found")
             }

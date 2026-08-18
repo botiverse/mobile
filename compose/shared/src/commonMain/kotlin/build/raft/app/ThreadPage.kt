@@ -6052,10 +6052,10 @@ internal fun SharedThreadRouteContent(
         )
     }
 
-    val latestThreadFeatureRealtimeEventHandler by rememberUpdatedState<suspend (RealtimeEvent) -> Unit>(
-        { event ->
+    val latestThreadFeatureRealtimeEventHandler by rememberUpdatedState<suspend (String, RealtimeEvent) -> Unit>(
+        { serverId, event ->
             if (event is TaskUpdated) {
-                tasksViewModel?.applyRealtimeTaskUpdate(event.task)
+                tasksViewModel?.applyRealtimeTaskUpdate(serverId, event.task)
             }
             if (
                 event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId) &&
@@ -6081,7 +6081,7 @@ internal fun SharedThreadRouteContent(
         }
     )
     suspend fun deliverThreadFeatureRealtimeEvent(serverId: String, event: RealtimeEvent) {
-        latestThreadFeatureRealtimeEventHandler(event)
+        latestThreadFeatureRealtimeEventHandler(serverId, event)
     }
     DisposableEffect(
         canonicalFinalLifecycleEffects,
@@ -9316,9 +9316,6 @@ internal fun SharedThreadRouteContent(
                     if (loadingPayload == null) {
                         bridge.toast(localizedUnableToOpenTaskNumber(modalState.taskNumber))
                     } else {
-                        currentServerId?.let { serverId ->
-                            tasksDataStore?.upsertTask(serverId, task)
-                        }
                         bridge.log(
                             "thread_markdown_task_select taskNumber=${modalState.taskNumber} taskId=${task.id.value} " +
                                 "parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +

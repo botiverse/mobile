@@ -3,8 +3,6 @@ package build.raft.app.data
 import build.raft.app.base.BridgeModule
 import build.raft.app.flushSlockPlatformDiagnosticsDownstream
 import build.raft.app.flushSlockPlatformLogs
-import build.raft.app.model.ServerId
-import build.raft.app.model.TaskStatus
 import build.raft.app.slockPlatformSupportsConversationForwardGesture
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
@@ -986,8 +984,5 @@ internal interface SharedThreadNetworkApi {
     suspend fun unsaveMessage(messageId: String): HomeNetworkResponse
     suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse
     suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse
-    suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse
-    suspend fun updateTaskStatus(serverId: ServerId, taskId: String, status: TaskStatus): HomeNetworkResponse =
-        HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse
 }

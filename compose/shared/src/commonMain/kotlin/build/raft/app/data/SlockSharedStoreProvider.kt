@@ -1628,6 +1628,9 @@ internal class SlockSharedStoreProvider private constructor(
                         authStore.readSession()?.let { session ->
                             "${apiEnvironmentStore.current().apiBaseUrl.trimEnd('/')}|${session.user.id}"
                         }
+                    },
+                    currentServerIdProvider = {
+                        authStore.readSession()?.currentServerId
                     }
                 )
             CoroutineScope(SupervisorJob()).launch {
@@ -2675,7 +2678,11 @@ internal class SharedRealtimeDomainEventOwner(
                 )
                 return@forEach
             }
-            acceptedEvent.patchSharedTaskProjection(resolvedServerId)
+            if (acceptedEvent.updatesSharedTaskProjection()) {
+                activeSinks?.log?.invoke(
+                    "tasks_realtime_drop source=$source serverId=$resolvedServerId reason=owner_admission_missing"
+                )
+            }
             activeSinks?.applyHomeShell?.invoke(resolvedServerId, acceptedEvent)
             if (acceptedEvent is DirectMessageCreated) {
                 activeSinks?.joinChannel?.invoke(acceptedEvent.channelId.value)
@@ -2958,10 +2965,10 @@ internal class SharedRealtimeDomainEventOwner(
         return true
     }
 
-    private fun RealtimeEvent.patchSharedTaskProjection(serverId: String) {
+    private suspend fun RealtimeEvent.patchSharedTaskProjection(serverId: String) {
         val store = tasksDataStore ?: return
-        fun patch(task: TaskSummary) {
-            when (store.upsertTask(serverId, task)) {
+        suspend fun patch(task: TaskSummary) {
+            when (store.upsertTaskForCurrentOwner(serverId, task)) {
                 SharedTaskFactFoldOutcome.Accepted -> Unit
                 SharedTaskFactFoldOutcome.StaleIgnored ->
                     sinks?.log?.invoke(
@@ -2971,18 +2978,31 @@ internal class SharedRealtimeDomainEventOwner(
                 SharedTaskFactFoldOutcome.Conflict ->
                     sinks?.log?.invoke(
                         "tasks_canonical_conflict serverId=$serverId taskId=${task.id.value} " +
-                            "revision=${task.revision ?: -1L} requires=authoritative_refetch"
+                        "revision=${task.revision ?: -1L} requires=authoritative_refetch"
+                    )
+                null ->
+                    sinks?.log?.invoke(
+                        "tasks_realtime_drop serverId=$serverId taskId=${task.id.value} reason=owner_changed"
                     )
             }
         }
         when (this) {
-            is TaskCreated -> tasks.forEach(::patch)
+            is TaskCreated -> tasks.forEach { task -> patch(task) }
             is TaskUpdated -> patch(task)
-            is TaskDeleted -> store.removeTask(serverId, taskId)
+            is TaskDeleted -> {
+                if (!store.removeTaskForCurrentOwner(serverId, taskId)) {
+                    sinks?.log?.invoke(
+                        "tasks_realtime_drop serverId=$serverId taskId=${taskId.value} reason=owner_changed"
+                    )
+                }
+            }
             else -> Unit
         }
     }
 }
+
+private fun RealtimeEvent.updatesSharedTaskProjection(): Boolean =
+    this is TaskCreated || this is TaskUpdated || this is TaskDeleted
 
 private fun RealtimeEvent.refreshesMemberDetail(): Boolean =
     this is AgentCreated ||

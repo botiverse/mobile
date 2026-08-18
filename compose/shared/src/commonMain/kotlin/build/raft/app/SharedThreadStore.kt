@@ -103,7 +103,6 @@ import build.raft.app.model.Presence
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskId
-import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
@@ -3264,28 +3263,6 @@ internal class SharedThreadDataSource(
         return when (response) {
             is ThreadApiResult.Success -> DataResult.Content(Unit)
             is ThreadApiResult.Failure -> response.toThreadDataError("thread_attachment_comment_send_network")
-        }
-    }
-
-    suspend fun updateTaskStatus(
-        serverId: ServerId,
-        taskId: String,
-        status: TaskStatus
-    ): DataResult<TaskSummary?> {
-        if (taskId.isBlank()) {
-            return DataResult.Error(ScreenError(code = "task_id_missing", retryable = false))
-        }
-        val response =
-            try {
-                api.updateTaskStatus(serverId, taskId, status)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                return DataResult.Error(ScreenError(code = "thread_task_status_network", retryable = true))
-            }
-        return when (response) {
-            is ThreadApiResult.Success -> DataResult.Content(response.data)
-            is ThreadApiResult.Failure -> response.toThreadDataError("thread_task_status_network")
         }
     }
 

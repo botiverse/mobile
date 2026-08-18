@@ -20,7 +20,6 @@ import build.raft.app.model.RuntimeHostUserState
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.model.ServerId
-import build.raft.app.model.TaskStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -213,7 +212,6 @@ private class UnusedThreadNetworkApi : SharedThreadNetworkApi {
     override suspend fun unsaveMessage(messageId: String) = unused()
     override suspend fun addReaction(messageId: String, emoji: String) = unused()
     override suspend fun removeReaction(messageId: String, emoji: String) = unused()
-    override suspend fun updateTaskStatus(taskId: String, status: TaskStatus) = unused()
     override suspend fun createOrOpenThread(channelId: String, parentMessageId: String) = unused()
     override suspend fun messageContext(messageId: String, channelId: String?) = unused()
 

@@ -37,8 +37,6 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.model.TaskStatus
-import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CompletableDeferred
@@ -991,7 +989,6 @@ class SharedThreadReplyCacheProvenanceTest {
                 override suspend fun unsaveMessage(messageId: String): ThreadApiResult<Unit> = unused()
                 override suspend fun addReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary> = unused()
                 override suspend fun removeReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary> = unused()
-                override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): ThreadApiResult<TaskSummary?> = unused()
                 override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): ThreadApiResult<ThreadActionResult> = unused()
                 override suspend fun messageContext(messageId: String, channelId: String?): ThreadApiResult<SharedMessagesPayload> = unused()
             }

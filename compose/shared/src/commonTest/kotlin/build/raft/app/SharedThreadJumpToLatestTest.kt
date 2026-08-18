@@ -5,7 +5,6 @@ import build.raft.app.data.InMemorySlockAuthSessionStore
 import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
-import build.raft.app.model.TaskStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -160,7 +159,6 @@ class SharedThreadJumpToLatestTest {
         override suspend fun unsaveMessage(messageId: String) = unused()
         override suspend fun addReaction(messageId: String, emoji: String) = unused()
         override suspend fun removeReaction(messageId: String, emoji: String) = unused()
-        override suspend fun updateTaskStatus(taskId: String, status: TaskStatus) = unused()
         override suspend fun createOrOpenThread(channelId: String, parentMessageId: String) = unused()
         override suspend fun messageContext(messageId: String, channelId: String?) = unused()
 
