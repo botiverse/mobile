@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-16T22:08:48.430Z",
+  "generatedAt": "2026-08-18T22:07:21.044Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 85,
-    "pending": 1
+    "ready": 83,
+    "pending": 3
   },
   "cases": [
     {
@@ -460,7 +460,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe9ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe0ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-10T22:11:45.609Z",
       "severity": "low",
       "summary": [
@@ -552,7 +552,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41496209659952354
+      "metricMismatch": 0.41497942386831277
     },
     {
       "id": "components.ui.spinner.states",
@@ -1294,7 +1294,7 @@
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80007ffe800607fe800000022000e002803ce7fefc1e63befc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff01defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
+      "imageHash": "p1:01fe01fc80007ffe800e07fe800000022000e002803ce7fefc1e63befc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff01defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
       "generatedAt": "2026-07-26T22:12:50.062Z",
       "severity": "high",
       "summary": [
@@ -1326,7 +1326,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.414442824158464
+      "metricMismatch": 0.4141069523770946
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1362,7 +1362,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.422764342906523
+      "metricMismatch": 0.42276501802568156
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1572,7 +1572,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26934081365360985
+      "metricMismatch": 0.2693425014515062
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1606,12 +1606,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26917608457892817
+      "metricMismatch": 0.2691730465427148
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fcfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa7fff",
+      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fcfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa3fff",
       "generatedAt": "2026-07-30T04:34:27.469Z",
       "severity": "medium",
       "summary": [
@@ -1643,7 +1643,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19034039699008576
+      "metricMismatch": 0.19040118216688673
     },
     {
       "id": "components.home.activity.results",
@@ -1677,7 +1677,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1897755140539521
+      "metricMismatch": 0.1897954264394559
     },
     {
       "id": "components.tasks.panel.states",
@@ -1822,44 +1822,22 @@
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000007ffc3ffc7df83ff83f5c3f7c01fc00fc7ffc3ffc7ffc2ffc3ffc203c7ffc3ffc1ffc3ffc3ffc3ffc7ffc27fc07fc2ffc3ffc3ffc3ffc3ffc7ff42ffc7ffc3ffc7ffc2ffc03fc27fc6ffc3ffc3ffc2ffc1ffc2ffc7ffc7ffc7ffc3ffc7ffc3ffc3ffc3d007ffc3ffc7f7c0000380000000000ffffffff",
-      "generatedAt": "2026-08-14T22:11:02.639Z",
-      "severity": "high",
-      "summary": [
-        "Android shows additional Provider field with helper text below it that is absent in React baseline",
-        "React has a 'Models could not be loaded from this Computer' error block with 'Retry model check' link that Android does not render",
-        "Android model select is partially clipped at the bottom of the viewport, while React fully fits with a '> MORE' expandable affordance",
-        "Dialog vertical scroll position differs: React is scrolled to top, Android scrolled lower revealing Provider/Model sections",
-        "Runtime select state differs: React shows 'Select...' placeholder, Android shows 'Claude Code' as selected value"
-      ],
-      "likelyCauses": [
-        "Android implementation renders extra Provider dropdown and helper copy not present in React source",
-        "Missing error/empty-state UI for failed model loading in Android",
-        "Layout/scroll container height not accounting for new Provider block, causing bottom clipping",
-        "Inconsistent default values or hydration between web and native runtime state"
-      ],
-      "suggestedOwner": "Android engineering",
-      "suggestedFixes": [
-        "Hide the Provider field on Android to match React baseline, or update React baseline if Provider is intentional and add it to both",
-        "Implement the 'Models could not be loaded' error block with Retry action on Android",
-        "Increase dialog max-height or enable proper scroll so Model dropdown and action buttons are not clipped",
-        "Align initial Runtime value ('Select...' vs 'Claude Code') across platforms",
-        "If Provider field is intended, ensure accompanying helper text and Model reload icon exist on React baseline as well"
-      ],
-      "intentional": [
-        "Android may intentionally include Provider selector as a native-only advanced option"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.29368189735488315
+      "status": "pending",
+      "imageHash": "p1:ffffffff0000000000007ffc7ffe7ffc7ffc7ffc7ffe41fc61fe7ffc7ffe7ffc7ffe7ffc607c7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffe7ffc6ffe7dfc6ffc00007ffe00007ffe00007ffc00007ffe00007ffe00007ffe00007fc600007ffe00000000000000000000ffffffff",
+      "generatedAt": "2026-08-18T22:07:20.422Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4950635287128178
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:08:47.755Z",
+      "generatedAt": "2026-08-18T22:07:20.321Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1907,40 +1885,16 @@
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "ready",
-      "imageHash": "p1:ffffffffffff000087fd0000fffd0000ffff0000ffff0000ffff7ffcffff7ff8cffd7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017c7c80017ffc80017ffc800140008001000080014000ffff0000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
-      "generatedAt": "2026-08-01T22:14:59.204Z",
-      "severity": "high",
-      "summary": [
-        "Header is full-width yellow banner on React vs compact modal-style 'EDIT CHANNEL' header on Android",
-        "Android version rendered as a centered modal dialog over a dark backdrop instead of a full-screen panel",
-        "Footer button order differs: React places Cancel/Save Changes inside the main panel at the bottom; Android places them between form and actions",
-        "'CHANNEL INFO' section title and helper description text are missing on Android",
-        "'CHANNEL ACTIONS' section title and helper description text are missing on Android"
-      ],
-      "likelyCauses": [
-        "Android implementation rebuilt this screen as a modal dialog instead of reusing the React panel layout spec",
-        "Section headers and helper copy were dropped during native port",
-        "Extra 'Pin' action suggests Android shipped a different action set / API surface",
-        "Form dirty/validation state was not initialized, leaving Save Changes disabled",
-        "Header branding/title text was localized differently per platform without alignment to baseline"
-      ],
-      "suggestedOwner": "android-channel-settings",
-      "suggestedFixes": [
-        "Match React layout: render panel full-width without modal backdrop and remove the centered dialog frame",
-        "Restore 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers with their helper descriptions",
-        "Remove the 'Pin' action or gate it behind a flag so it does not appear in baseline parity",
-        "Reorder footer: move Cancel/Save Changes out of the form area or align position with React baseline",
-        "Ensure Save Changes is enabled by default when form values match the initial state"
-      ],
-      "intentional": [
-        "Pin action may be platform-specific and intentional on Android",
-        "Modal presentation may be intentional on Android per Material guidelines"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.9019045111462173
+      "status": "pending",
+      "imageHash": "p1:ffffffffffff000087fd0000fffd0000ffff0000ffff0000ffff7ffcffff7ff8cffd7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017cfc80017ffc80017ffc80014000800100008001400080010000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
+      "generatedAt": "2026-08-18T22:07:20.491Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.8766651814045179
     },
     {
       "id": "components.channel.members.add-panel",
@@ -2149,7 +2103,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19862714519112623
+      "metricMismatch": 0.1986028409014191
     },
     {
       "id": "components.settings.notifications.page",
@@ -2256,7 +2210,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e2817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
       "generatedAt": "2026-08-14T22:11:11.250Z",
       "severity": "high",
       "summary": [
@@ -2321,7 +2275,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06130115715423767
+      "metricMismatch": 0.061318035133201
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2564,7 +2518,7 @@
     {
       "id": "screens.home.loading",
       "status": "ready",
-      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfff8ffe9ffefffe9ffec3fe9ffebffe9ffebffed7ffbffec3ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffe93fefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
+      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfff8ffe9ffefffe9ffec3fe9ffebffe9ffebffed7ffbffec3ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffebbfefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
       "generatedAt": "2026-07-13T22:11:37.533Z",
       "severity": "medium",
       "summary": [
@@ -2592,7 +2546,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.15698917108869714
+      "metricMismatch": 0.15698849596953868
     },
     {
       "id": "components.thread.message-row.rich-content",

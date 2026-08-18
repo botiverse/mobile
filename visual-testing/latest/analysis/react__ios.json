@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-16T22:08:51.306Z",
+  "generatedAt": "2026-08-18T22:07:23.937Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 78,
+    "pending": 8
   },
   "cases": [
     {
@@ -467,29 +467,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-14T22:11:29.160Z",
-      "severity": "low",
-      "summary": [
-        "Pixel-perfect similarity is 99.77% with only 0.23% mismatch, indicating near-identical rendering.",
-        "Header layout, status dot colors, and \"Waiting pulse\" label align closely between React and iOS.",
-        "\"Waiting pulse\" pulse animation ring on iOS may render at slightly different phase/opacity than React in the captured frame."
-      ],
-      "likelyCauses": [
-        "Animated pulse state captured at a different keyframe/phase between React and iOS platforms.",
-        "Minor platform-specific animation timing differences in the pulse effect."
-      ],
-      "suggestedOwner": "iOS engineer",
-      "suggestedFixes": [
-        "If the pulse animation mismatch is unintentional, normalize the animation timing/duration across platforms.",
-        "Re-run the comparison on a static frame (paused animation) to isolate non-animation differences.",
-        "Confirm the status dot fill colors and stroke widths match the design tokens on both platforms."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
+      "generatedAt": "2026-08-18T22:07:22.582Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -549,7 +535,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062097122642146285
+      "metricMismatch": 0.062095097284670775
     },
     {
       "id": "components.ui.spinner.states",
@@ -1282,7 +1268,7 @@
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80007ffe800607ee800000022000e002803ce7fefc1e001efc0e001efc00001efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff2bdefffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fffa3fff",
+      "imageHash": "p1:01fe01fc80007ffe800e07ee800000022000e002803ce7fefc1e001efc0e001efc00001efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff2bdefffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fffa3fff",
       "generatedAt": "2026-08-02T22:44:06.053Z",
       "severity": "medium",
       "summary": [
@@ -1312,7 +1298,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09331800812843472
+      "metricMismatch": 0.09273200469882936
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1552,7 +1538,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26933845073655505
+      "metricMismatch": 0.2693394634152928
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1585,7 +1571,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26947246188952345
+      "metricMismatch": 0.2694721243299443
     },
     {
       "id": "components.home.saved.results",
@@ -1621,7 +1607,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11135280376986534
+      "metricMismatch": 0.11140006211096254
     },
     {
       "id": "components.home.activity.results",
@@ -1656,7 +1642,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10929774105129553
+      "metricMismatch": 0.10930449224288086
     },
     {
       "id": "components.tasks.panel.states",
@@ -1838,7 +1824,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:08:50.725Z",
+      "generatedAt": "2026-08-18T22:07:23.285Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1886,38 +1872,16 @@
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "ready",
-      "imageHash": "p1:ffffffffffff000087fd0000fffd0000ffff0000ffff0000ffff7ffcffff7df8cffd7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017c7c80017ffc80017ffc800140008001000080014000ffff0000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
-      "generatedAt": "2026-08-02T22:44:32.224Z",
-      "severity": "high",
-      "summary": [
-        "React renders a full-screen settings panel with a yellow header ('CHANNEL / SETTINGS / #design') and section descriptions ('CHANNEL INFO', 'CHANNEL ACTIONS') spanning the viewport; iOS renders a centered modal dialog ('EDIT CHANNEL') over a dark backdrop.",
-        "iOS adds a 'Pin' action button between description and 'Make Private' that is missing on React baseline.",
-        "iOS places 'Cancel' and 'Save Changes' buttons inline next to the description, while React puts them in a bottom footer bar; React's Save Changes is pink/active, iOS's is disabled (greyed).",
-        "React header uses large bold 'SETTINGS' title with #design hashtag; iOS uses smaller 'EDIT CHANNEL' title without hashtag/subtitle.",
-        "iOS adds a dark scrim/backdrop around the modal; React has no overlay (full-page layout)."
-      ],
-      "likelyCauses": [
-        "Platform-specific layout: iOS implemented as modal sheet vs React as full-page panel.",
-        "iOS design system adds a Pin control not present in React baseline.",
-        "Footer action bar repositioned to header area on iOS per platform conventions.",
-        "React and iOS diverge on which fields require a 'dirty' check before enabling Save."
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "Decide canonical behavior: full-page panel vs centered modal and align both platforms.",
-        "Add or remove the 'Pin' action consistently across React and iOS.",
-        "Move Cancel/Save actions to a consistent location (footer vs inline) or document platform-specific placement.",
-        "Unify the header label and supporting text ('SETTINGS' + '#design' vs 'EDIT CHANNEL').",
-        "Sync Save Changes enabled/disabled logic so visual state matches form-dirty status on both platforms."
-      ],
-      "intentional": [
-        "iOS may intentionally render settings as a modal with backdrop per platform UX conventions."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.9020182687244298
+      "status": "pending",
+      "imageHash": "p1:ffffffffffff000087fd0000fffd0000ffff0000ffff0000ffff7ffcffff7ff8cffd7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017cfc80017ffc80017ffc80014000800100008001400080010000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
+      "generatedAt": "2026-08-18T22:07:23.450Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.8753703028584545
     },
     {
       "id": "components.channel.members.add-panel",
@@ -2092,7 +2056,7 @@
     {
       "id": "components.settings.appearance.page",
       "status": "ready",
-      "imageHash": "p1:0ffe0ffe8fff1ffe81fe01fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c07fc81fc3d0cbffc007c9ffc007c807400008004007cb3fc0004800020008000000081f0ffffbfdcffffa3fcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffff7fff",
+      "imageHash": "p1:0ffe0ffe8fff1ffe81fe01fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c07fc81fc3d0cbffc007c9ffc007c807400008004007cb3fc0004800020008000000081f0ffffbfdcffffa3fcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffffffff",
       "generatedAt": "2026-08-14T22:11:36.163Z",
       "severity": "high",
       "summary": [
@@ -2121,7 +2085,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1963533438651922
+      "metricMismatch": 0.19633005225422284
     },
     {
       "id": "components.settings.notifications.page",
@@ -2227,7 +2191,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:08:50.971Z",
+      "generatedAt": "2026-08-18T22:07:23.553Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2240,7 +2204,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:08:50.971Z",
+      "generatedAt": "2026-08-18T22:07:23.553Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2253,7 +2217,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:08:50.971Z",
+      "generatedAt": "2026-08-18T22:07:23.553Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2266,7 +2230,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:08:50.971Z",
+      "generatedAt": "2026-08-18T22:07:23.553Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2279,7 +2243,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-16T22:08:50.971Z",
+      "generatedAt": "2026-08-18T22:07:23.553Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2449,7 +2413,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19329201604083124
+      "metricMismatch": 0.19329100336209337
     },
     {
       "id": "components.thread.message-row.rich-content",
