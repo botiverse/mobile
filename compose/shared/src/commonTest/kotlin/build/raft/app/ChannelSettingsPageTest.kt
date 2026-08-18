@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.SharedServerChannelMembersSlice
+import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
@@ -13,6 +15,18 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ChannelSettingsPageTest {
+    @Test
+    fun missingMemberSliceRendersLoadingInsteadOfZero() {
+        val missing =
+            SharedServerChannelMembersSlice(
+                serverId = "server-1",
+                channelId = "channel-1",
+                status = SharedServerMembersLoadStatus.InFlight,
+            )
+
+        assertEquals("Loading", channelSettingsMemberCountLabel(missing, fallbackCount = null, loadingLabel = "Loading"))
+    }
+
     @Test
     fun routeCarriesIdentityOnly() {
         val pageData = channelSettingsPageData(ServerId("server-1"), ChannelId("channel-9"))

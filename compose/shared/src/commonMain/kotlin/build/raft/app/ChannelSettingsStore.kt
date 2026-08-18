@@ -11,6 +11,7 @@ import build.raft.app.data.ChannelVisibility
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealMemberRepository
@@ -20,11 +21,13 @@ import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.SettingsServerSidebarOrderUpdateRequest
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedServerChannelMembersSlice
+import build.raft.app.data.SharedServerChannelMembersHandoff
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockOwnerScopedBoundedCache
 import build.raft.app.data.SlockOwnerScopedCacheOwner
 import build.raft.app.data.map
+import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.toHomeChannelRow
 import build.raft.app.data.typedPinnedOrLegacy
 import kotlinx.coroutines.CancellationException
@@ -66,6 +69,67 @@ internal data class ChannelSettingsSnapshot(
     val canManage: Boolean,
     val memberSlice: SharedServerChannelMembersSlice,
 )
+
+internal sealed interface ChannelSettingsSharedHandoff {
+    data class Accepted(val snapshot: ChannelSettingsSnapshot) : ChannelSettingsSharedHandoff
+
+    data object Unavailable : ChannelSettingsSharedHandoff
+
+    data object Rejected : ChannelSettingsSharedHandoff
+}
+
+internal fun channelSettingsSharedHandoffSnapshot(
+    owner: AuthenticatedRouteOwner,
+    route: ChannelSettingsRoute,
+    homeSnapshot: HomeSnapshot?,
+    membersHandoff: SharedServerChannelMembersHandoff,
+): ChannelSettingsSharedHandoff {
+    val normalizedOwner = owner.normalizedOrNull() ?: return ChannelSettingsSharedHandoff.Rejected
+    if (normalizedOwner.serverId != route.serverId.value.trim()) {
+        return ChannelSettingsSharedHandoff.Rejected
+    }
+    val home = homeSnapshot ?: return ChannelSettingsSharedHandoff.Unavailable
+    if (
+        home.server.id.value.trim() != normalizedOwner.serverId ||
+        home.currentMember.id.value.trim() != normalizedOwner.accountId
+    ) {
+        return ChannelSettingsSharedHandoff.Rejected
+    }
+    val channel =
+        home.channels.firstOrNull { candidate ->
+            candidate.channelId.value.trim() == route.channelId.value.trim()
+        } ?: return ChannelSettingsSharedHandoff.Rejected
+    val sidebarOrder = home.sidebarOrder ?: return ChannelSettingsSharedHandoff.Unavailable
+    val acceptedMemberSlice =
+        when (membersHandoff) {
+            is SharedServerChannelMembersHandoff.Accepted -> membersHandoff.slice
+            SharedServerChannelMembersHandoff.Unavailable ->
+                SharedServerChannelMembersSlice(
+                    environmentId = normalizedOwner.environmentId,
+                    accountId = normalizedOwner.accountId,
+                    serverId = normalizedOwner.serverId,
+                    channelId = channel.channelId.value.trim(),
+                    status = SharedServerMembersLoadStatus.InFlight,
+                )
+            SharedServerChannelMembersHandoff.Rejected -> return ChannelSettingsSharedHandoff.Rejected
+        }
+    if (
+        acceptedMemberSlice.environmentId?.trim()?.trimEnd('/') != normalizedOwner.environmentId ||
+        acceptedMemberSlice.accountId?.trim() != normalizedOwner.accountId ||
+        acceptedMemberSlice.serverId?.trim() != normalizedOwner.serverId ||
+        acceptedMemberSlice.channelId.trim() != channel.channelId.value.trim()
+    ) {
+        return ChannelSettingsSharedHandoff.Rejected
+    }
+    return ChannelSettingsSharedHandoff.Accepted(
+        ChannelSettingsSnapshot(
+            channel = channel,
+            sidebarOrder = sidebarOrder,
+            canManage = home.server.permissions.canManageSettings,
+            memberSlice = acceptedMemberSlice,
+        )
+    )
+}
 
 private data class ChannelSettingsSnapshotCacheResource(
     val serverId: String,
@@ -294,14 +358,25 @@ internal class ChannelSettingsStore(
     private val owner: AuthenticatedRouteOwner,
     private val dataSource: ChannelSettingsDataSource,
     private val snapshotCache: ChannelSettingsSnapshotCache,
+    initialSharedHandoff: ChannelSettingsSharedHandoff = ChannelSettingsSharedHandoff.Unavailable,
     initialAuthorityAccepted: Boolean,
     private val scope: CoroutineScope,
 ) {
-    private val cachedSnapshot =
-        if (initialAuthorityAccepted) snapshotCache.get(owner, route) else null
+    private val initialSnapshot =
+        if (initialAuthorityAccepted) {
+            when (initialSharedHandoff) {
+                is ChannelSettingsSharedHandoff.Accepted ->
+                    initialSharedHandoff.snapshot
+                        .takeIf { snapshot -> snapshotCache.put(owner, route, snapshot) }
+                ChannelSettingsSharedHandoff.Unavailable -> snapshotCache.get(owner, route)
+                ChannelSettingsSharedHandoff.Rejected -> null
+            }
+        } else {
+            null
+        }
     private val mutableState =
         MutableStateFlow(
-            cachedSnapshot?.toCachedState()
+            initialSnapshot?.toCachedState()
                 ?: ChannelSettingsState(
                     memberSlice =
                         SharedServerChannelMembersSlice(
