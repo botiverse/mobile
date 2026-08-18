@@ -40,6 +40,9 @@ enum class SharedServerMembersLoadStatus {
 
 data class SharedServerMembersEntry(
     val serverId: String,
+    val ownerEnvironmentId: String? = null,
+    val ownerAccountId: String? = null,
+    val ownerWriteGeneration: Long = 0L,
     val server: ServerSummary? = null,
     val members: List<MemberProfile> = emptyList(),
     val status: SharedServerMembersLoadStatus = SharedServerMembersLoadStatus.Idle,
@@ -90,7 +93,8 @@ data class SharedServerChannelMembersSlice(
     val channelId: String,
     val ownerWriteGeneration: Long = 0L,
     val members: List<MemberProfile> = emptyList(),
-    val canAddMembers: Boolean = true,
+    val canAddMembers: Boolean = false,
+    val canAddMembersKnown: Boolean = false,
     val status: SharedServerMembersLoadStatus = SharedServerMembersLoadStatus.Idle,
     val errorCode: String? = null
 ) {
@@ -383,7 +387,7 @@ class SharedServerMembersStore internal constructor(
     }
 ) {
     private val mutex = Mutex()
-    private val publishedProcessVersionsByOwner = mutableMapOf<ProcessServerMembersOwner, Long>()
+    private val publishedProcessVersionsByOwner = mutableMapOf<SharedServerChannelMembersOwnerBinding, Long>()
     private val deletedAgentIdsByServerId = mutableMapOf<String, Set<String>>()
     private val _state = MutableStateFlow(SharedServerMembersState())
     val state: StateFlow<SharedServerMembersState> = _state.asStateFlow()
@@ -412,6 +416,40 @@ class SharedServerMembersStore internal constructor(
             if (facts.isEmpty()) entry
             else entry.copy(members = entry.members.withServerMemberPresenceFacts(facts))
         }.distinctUntilChanged()
+    }
+
+    internal fun currentServerMembersEntry(owner: AuthenticatedRouteOwner): SharedServerMembersEntry {
+        val normalizedOwner = owner.normalizedOrNull()
+            ?: return SharedServerMembersEntry(serverId = owner.serverId.trim())
+        val serverId = ServerId(normalizedOwner.serverId)
+        val binding = currentDirectoryOwnerBinding(serverId)
+            ?.takeIf { it.matches(normalizedOwner) }
+            ?: return normalizedOwner.emptyServerMembersEntry()
+        return _state.value.entryFor(serverId)
+            ?.takeIf { it.matches(binding) }
+            ?.visibleDirectoryEntry()
+            ?: normalizedOwner.emptyServerMembersEntry(binding.writeGeneration)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    internal fun serverMembersEntryFlow(owner: AuthenticatedRouteOwner): Flow<SharedServerMembersEntry> {
+        val normalizedOwner = owner.normalizedOrNull()
+            ?: return flowOf(SharedServerMembersEntry(serverId = owner.serverId.trim()))
+        val serverId = ServerId(normalizedOwner.serverId)
+        return channelMembersOwnerFlow(serverId)
+            .flatMapLatest { binding ->
+                if (binding == null || !binding.matches(normalizedOwner)) {
+                    flowOf(normalizedOwner.emptyServerMembersEntry())
+                } else {
+                    state.map { current ->
+                        current.entryFor(serverId)
+                            ?.takeIf { it.matches(binding) }
+                            ?.visibleDirectoryEntry()
+                            ?: normalizedOwner.emptyServerMembersEntry(binding.writeGeneration)
+                    }
+                }
+            }
+            .distinctUntilChanged()
     }
 
     fun currentServerMembers(serverId: ServerId): List<MemberProfile> =
@@ -457,6 +495,9 @@ class SharedServerMembersStore internal constructor(
             ?.takeIf { binding -> binding.serverId == serverKey }
     }
 
+    private fun currentDirectoryOwnerBinding(serverId: ServerId): SharedServerChannelMembersOwnerBinding? =
+        currentChannelMembersOwner(serverId)
+
     private fun currentOwnerChannelMemberSlices(serverId: ServerId): List<SharedServerChannelMembersSlice> {
         val binding = currentChannelMembersOwner(serverId) ?: return emptyList()
         return _state.value.channelMemberSlices
@@ -488,6 +529,24 @@ class SharedServerMembersStore internal constructor(
         val binding = currentChannelMembersOwner(serverId) ?: return emptyList()
         return _state.value.channelMemberSlice(binding, channelId).members
             .withServerMemberPresenceFacts(presenceFactsNow(serverId))
+    }
+
+    internal fun currentChannelMemberSlice(
+        owner: AuthenticatedRouteOwner,
+        channelId: ChannelId
+    ): SharedServerChannelMembersSlice {
+        val normalizedOwner = owner.normalizedOrNull()
+            ?: return SharedServerChannelMembersSlice(channelId = channelId.value.trim())
+        val serverId = ServerId(normalizedOwner.serverId)
+        val binding = currentChannelMembersOwner(serverId)
+            ?.takeIf { it.matches(normalizedOwner) }
+            ?: return normalizedOwner.emptyChannelMemberSlice(channelId)
+        val slice = _state.value.channelMemberSlice(binding, channelId)
+        return slice.copy(
+            members =
+                slice.members
+                    .withServerMemberPresenceFacts(presenceFactsNow(serverId))
+        )
     }
 
     fun currentCanonicalMentionHandle(
@@ -550,6 +609,25 @@ class SharedServerMembersStore internal constructor(
                 }
             }
             .distinctUntilChanged()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    internal fun channelMemberSliceFlow(
+        owner: AuthenticatedRouteOwner,
+        channelId: ChannelId
+    ): Flow<SharedServerChannelMembersSlice> {
+        val normalizedOwner = owner.normalizedOrNull()
+            ?: return flowOf(SharedServerChannelMembersSlice(channelId = channelId.value.trim()))
+        val serverId = ServerId(normalizedOwner.serverId)
+        return channelMembersOwnerFlow(serverId)
+            .flatMapLatest { binding ->
+                if (binding == null || !binding.matches(normalizedOwner)) {
+                    flowOf(normalizedOwner.emptyChannelMemberSlice(channelId))
+                } else {
+                    state.map { current -> current.channelMemberSlice(binding, channelId) }
+                }
+            }
+            .distinctUntilChanged()
+    }
 
     fun memberStatusFlow(
         serverId: ServerId?,
@@ -652,10 +730,14 @@ class SharedServerMembersStore internal constructor(
                         .filterDeletedAgents(key)
             )
         cacheProfiles(key, directoryMembers)
+        val binding = currentDirectoryOwnerBinding(ServerId(key))
         putEntry(
             key,
             SharedServerMembersEntry(
                 serverId = key,
+                ownerEnvironmentId = binding?.environmentId,
+                ownerAccountId = binding?.accountId,
+                ownerWriteGeneration = binding?.writeGeneration ?: 0L,
                 server = snapshot.server,
                 members = directoryMembers,
                 status = SharedServerMembersLoadStatus.Loaded,
@@ -998,10 +1080,44 @@ class SharedServerMembersStore internal constructor(
         serverId: ServerId,
         request: AddChannelMemberRequest,
         priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<ChannelMemberActionResult> =
+        addChannelMember(serverId, request, priority, expectedOwner = null)
+
+    internal suspend fun addChannelMember(
+        owner: AuthenticatedRouteOwner,
+        request: AddChannelMemberRequest,
+        priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<ChannelMemberActionResult> {
+        val normalizedOwner = owner.normalizedOrNull() ?: return staleChannelMembersOwnerResult()
+        return addChannelMember(
+            serverId = ServerId(normalizedOwner.serverId),
+            request = request,
+            priority = priority,
+            expectedOwner = normalizedOwner
+        )
+    }
+
+    private suspend fun addChannelMember(
+        serverId: ServerId,
+        request: AddChannelMemberRequest,
+        priority: DataRequestPriority,
+        expectedOwner: AuthenticatedRouteOwner?
     ): DataResult<ChannelMemberActionResult> {
         val serverKey = serverId.value.trim()
         val channelKey = request.channelId.value.trim()
         val binding = currentChannelMembersOwner(ServerId(serverKey)) ?: return authSessionRequiredResult()
+        if (expectedOwner != null && !binding.matches(expectedOwner)) return staleChannelMembersOwnerResult()
+        if (expectedOwner != null) {
+            val permission = _state.value.channelMemberSlice(binding, ChannelId(channelKey))
+            if (!permission.canAddMembersKnown || !permission.canAddMembers) {
+                return DataResult.NoPermission(
+                    PermissionBlocker(
+                        code = "channel_member_add_not_allowed",
+                        requiredCapability = "add_channel_members"
+                    )
+                )
+            }
+        }
         val result =
             try {
                 memberRepository.addChannelMember(priority, request)
@@ -1031,10 +1147,33 @@ class SharedServerMembersStore internal constructor(
         serverId: ServerId,
         request: RemoveChannelMemberRequest,
         priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<ChannelMemberActionResult> =
+        removeChannelMember(serverId, request, priority, expectedOwner = null)
+
+    internal suspend fun removeChannelMember(
+        owner: AuthenticatedRouteOwner,
+        request: RemoveChannelMemberRequest,
+        priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<ChannelMemberActionResult> {
+        val normalizedOwner = owner.normalizedOrNull() ?: return staleChannelMembersOwnerResult()
+        return removeChannelMember(
+            serverId = ServerId(normalizedOwner.serverId),
+            request = request,
+            priority = priority,
+            expectedOwner = normalizedOwner
+        )
+    }
+
+    private suspend fun removeChannelMember(
+        serverId: ServerId,
+        request: RemoveChannelMemberRequest,
+        priority: DataRequestPriority,
+        expectedOwner: AuthenticatedRouteOwner?
     ): DataResult<ChannelMemberActionResult> {
         val serverKey = serverId.value.trim()
         val channelKey = request.channelId.value.trim()
         val binding = currentChannelMembersOwner(ServerId(serverKey)) ?: return authSessionRequiredResult()
+        if (expectedOwner != null && !binding.matches(expectedOwner)) return staleChannelMembersOwnerResult()
         val result =
             try {
                 memberRepository.removeChannelMember(priority, request)
@@ -1164,14 +1303,32 @@ class SharedServerMembersStore internal constructor(
         force: Boolean = false,
         reason: String = "unspecified"
     ): DataResult<Unit> {
-        return loadMembersIntoStore(serverId, priority, force, reason)
+        return loadMembersIntoStore(serverId, priority, force, reason, expectedOwner = null)
+    }
+
+    internal suspend fun refreshMembers(
+        owner: AuthenticatedRouteOwner,
+        priority: DataRequestPriority = DataRequestPriority.Visible,
+        force: Boolean = false,
+        reason: String = "unspecified"
+    ): DataResult<Unit> {
+        val normalizedOwner = owner.normalizedOrNull()
+            ?: return DataResult.Error(ScreenError(code = "members_owner_stale", retryable = true))
+        return loadMembersIntoStore(
+            serverId = ServerId(normalizedOwner.serverId),
+            priority = priority,
+            force = force,
+            reason = reason,
+            expectedOwner = normalizedOwner
+        )
     }
 
     private suspend fun loadMembersIntoStore(
         serverId: ServerId,
         priority: DataRequestPriority,
         force: Boolean,
-        reason: String
+        reason: String,
+        expectedOwner: AuthenticatedRouteOwner?
     ): DataResult<Unit> {
         val startedAt = TimeSource.Monotonic.markNow()
         val key = serverId.value.trim()
@@ -1192,6 +1349,12 @@ class SharedServerMembersStore internal constructor(
             )
             return authSessionRequiredResult()
         }
+        val directoryBinding = currentDirectoryOwnerBinding(ServerId(key))
+            ?.takeIf { it.matches(owner) }
+            ?: return authSessionRequiredResult()
+        if (expectedOwner != null && !directoryBinding.matches(expectedOwner)) {
+            return DataResult.Error(ScreenError(code = "members_owner_stale", retryable = true))
+        }
         val rosterPresenceRequest =
             if (!force) {
                 null
@@ -1207,17 +1370,25 @@ class SharedServerMembersStore internal constructor(
             }
         val localSeed =
             mutex.withLock {
-                if (publishedProcessVersionsByOwner[owner] == null) {
-                    cachedLoadedSnapshot(key, force = false)
+                publishedProcessVersionsByOwner.keys.removeAll { binding ->
+                    binding.serverId == key && binding != directoryBinding
+                }
+                if (publishedProcessVersionsByOwner[directoryBinding] == null) {
+                    cachedLoadedSnapshot(key, directoryBinding, force = false)
                 } else {
                     null
                 }
             }
         if (localSeed != null) {
-            val seedResult = processCore.seedIfAbsent(owner, localSeed)
+            val seedResult =
+                processCore.seedIfAbsent(
+                    owner = owner,
+                    snapshot = localSeed,
+                    ownerWriteGeneration = directoryBinding.writeGeneration
+                )
             mutex.withLock {
-                if (seedResult.inserted && publishedProcessVersionsByOwner[owner] == null) {
-                    publishedProcessVersionsByOwner[owner] = seedResult.version
+                if (seedResult.inserted && publishedProcessVersionsByOwner[directoryBinding] == null) {
+                    publishedProcessVersionsByOwner[directoryBinding] = seedResult.version
                 }
             }
         }
@@ -1227,13 +1398,18 @@ class SharedServerMembersStore internal constructor(
                 priority = priority,
                 force = force,
                 reason = reason,
+                ownerWriteGeneration = directoryBinding.writeGeneration,
                 onFlight = { permit ->
                     mutex.withLock {
                         processCore.commitFlightIfCurrent(permit) {
+                            if (currentDirectoryOwnerBinding(ServerId(key)) != directoryBinding) {
+                                return@commitFlightIfCurrent
+                            }
                             val previous = _state.value.entriesByServerId[key]
+                                ?.takeIf { it.matches(directoryBinding) }
                             putEntry(
                                 key,
-                                (previous ?: SharedServerMembersEntry(serverId = key)).copy(
+                                (previous ?: directoryBinding.emptyServerMembersEntry()).copy(
                                     status = SharedServerMembersLoadStatus.InFlight,
                                     errorCode = null
                                 )
@@ -1243,7 +1419,11 @@ class SharedServerMembersStore internal constructor(
                 }
             )
         val currentOwner = processOwner(ServerId(key))
-        if (!processResult.publicationCurrent || currentOwner != owner) {
+        if (
+            !processResult.publicationCurrent ||
+            currentOwner != owner ||
+            currentDirectoryOwnerBinding(ServerId(key)) != directoryBinding
+        ) {
             logger(
                 "store_load domain=server_members serverId=$key result=stale_owner_ignored " +
                     "force=$force priority=${priority.name} reason=$reason " +
@@ -1254,10 +1434,13 @@ class SharedServerMembersStore internal constructor(
         beforeProcessPublication()
         val publishStartedAt = TimeSource.Monotonic.markNow()
         return mutex.withLock {
+            if (currentDirectoryOwnerBinding(ServerId(key)) != directoryBinding) {
+                return@withLock DataResult.Error(ScreenError(code = "members_owner_stale", retryable = true))
+            }
             processCore.commitIfCurrent(processResult) {
                 if (
                     processResult.version > 0L &&
-                    publishedProcessVersionsByOwner[owner] == processResult.version
+                    publishedProcessVersionsByOwner[directoryBinding] == processResult.version
                 ) {
                     logger(
                         "store_load domain=server_members serverId=$key result=version_unchanged " +
@@ -1268,6 +1451,7 @@ class SharedServerMembersStore internal constructor(
                     processResult.result.map { Unit }
                 } else {
                     val previous = _state.value.entriesByServerId[key]
+                        ?.takeIf { it.matches(directoryBinding) }
                     val result = processResult.result
                     when (result) {
                         is DataResult.Content -> {
@@ -1294,6 +1478,9 @@ class SharedServerMembersStore internal constructor(
                                 normalizedKey,
                                 SharedServerMembersEntry(
                                     serverId = normalizedKey,
+                                    ownerEnvironmentId = directoryBinding.environmentId,
+                                    ownerAccountId = directoryBinding.accountId,
+                                    ownerWriteGeneration = directoryBinding.writeGeneration,
                                     server = snapshot.server,
                                     members = snapshot.members,
                                     status = SharedServerMembersLoadStatus.Loaded,
@@ -1310,13 +1497,16 @@ class SharedServerMembersStore internal constructor(
                                     "reduceMs=${processResult.reduceMs} publishMs=${publishStartedAt.elapsedNow().inWholeMilliseconds} " +
                                     "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
                             )
-                            publishedProcessVersionsByOwner[owner] = processResult.version
+                            publishedProcessVersionsByOwner[directoryBinding] = processResult.version
                         }
                         is DataResult.Empty -> {
                             putEntry(
                                 key,
                                 SharedServerMembersEntry(
                                     serverId = key,
+                                    ownerEnvironmentId = directoryBinding.environmentId,
+                                    ownerAccountId = directoryBinding.accountId,
+                                    ownerWriteGeneration = directoryBinding.writeGeneration,
                                     server = previous?.server,
                                     members = emptyList(),
                                     status = SharedServerMembersLoadStatus.Loaded,
@@ -1330,7 +1520,7 @@ class SharedServerMembersStore internal constructor(
                                     "reduceMs=${processResult.reduceMs} publishMs=${publishStartedAt.elapsedNow().inWholeMilliseconds} " +
                                     "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
                             )
-                            publishedProcessVersionsByOwner[owner] = processResult.version
+                            publishedProcessVersionsByOwner[directoryBinding] = processResult.version
                         }
                         is DataResult.Error -> {
                             markFailure(key, previous, result.error.code)
@@ -1382,6 +1572,31 @@ class SharedServerMembersStore internal constructor(
         channelId: ChannelId,
         priority: DataRequestPriority = DataRequestPriority.Visible,
         force: Boolean = false
+    ): DataResult<ChannelMemberSnapshot> =
+        loadChannelMembers(serverId, channelId, priority, force, expectedOwner = null)
+
+    internal suspend fun loadChannelMembers(
+        owner: AuthenticatedRouteOwner,
+        channelId: ChannelId,
+        priority: DataRequestPriority = DataRequestPriority.Visible,
+        force: Boolean = false
+    ): DataResult<ChannelMemberSnapshot> {
+        val normalizedOwner = owner.normalizedOrNull() ?: return staleChannelMembersOwnerResult()
+        return loadChannelMembers(
+            serverId = ServerId(normalizedOwner.serverId),
+            channelId = channelId,
+            priority = priority,
+            force = force,
+            expectedOwner = normalizedOwner
+        )
+    }
+
+    private suspend fun loadChannelMembers(
+        serverId: ServerId,
+        channelId: ChannelId,
+        priority: DataRequestPriority,
+        force: Boolean,
+        expectedOwner: AuthenticatedRouteOwner?
     ): DataResult<ChannelMemberSnapshot> {
         val serverKey = serverId.value.trim()
         val channelKey = channelId.value.trim()
@@ -1389,6 +1604,9 @@ class SharedServerMembersStore internal constructor(
             return DataResult.Error(ScreenError(code = "channel_members_scope_missing", retryable = false))
         }
         val initialBinding = currentChannelMembersOwner(ServerId(serverKey)) ?: return authSessionRequiredResult()
+        if (expectedOwner != null && !initialBinding.matches(expectedOwner)) {
+            return staleChannelMembersOwnerResult()
+        }
         val scope = initialBinding.scope(ChannelId(channelKey))
             ?: return DataResult.Error(ScreenError(code = "channel_members_owner_missing", retryable = true))
         cachedLoadedChannelSnapshot(scope, initialBinding.writeGeneration, force)?.let {
@@ -1471,6 +1689,7 @@ class SharedServerMembersStore internal constructor(
                             ownerWriteGeneration = admittedBinding.writeGeneration,
                             members = members,
                             canAddMembers = result.data.canAddMembers,
+                            canAddMembersKnown = true,
                             status = SharedServerMembersLoadStatus.Loaded,
                             errorCode = null
                         )
@@ -1498,7 +1717,12 @@ class SharedServerMembersStore internal constructor(
                             channelId = channelKey,
                             ownerWriteGeneration = admittedBinding.writeGeneration,
                             members = emptyList(),
-                            canAddMembers = previousForBinding?.canAddMembers ?: true,
+                            canAddMembers =
+                                previousForBinding
+                                    ?.takeIf { it.canAddMembersKnown }
+                                    ?.canAddMembers
+                                    ?: false,
+                            canAddMembersKnown = previousForBinding?.canAddMembersKnown == true,
                             status = SharedServerMembersLoadStatus.Loaded,
                             errorCode = null
                         )
@@ -1660,9 +1884,14 @@ class SharedServerMembersStore internal constructor(
         return true
     }
 
-    private fun cachedLoadedSnapshot(key: String, force: Boolean): MemberSnapshot? {
+    private fun cachedLoadedSnapshot(
+        key: String,
+        binding: SharedServerChannelMembersOwnerBinding,
+        force: Boolean
+    ): MemberSnapshot? {
         if (force) return null
         val entry = _state.value.entriesByServerId[key] ?: return null
+        if (!entry.matches(binding)) return null
         if (entry.status != SharedServerMembersLoadStatus.Loaded) return null
         return entry.snapshotOrNull()
     }
@@ -2202,6 +2431,50 @@ private fun SharedServerChannelMembersScope.matches(binding: SharedServerChannel
     environmentId == binding.environmentId &&
         accountId == binding.accountId &&
         serverId == binding.serverId
+
+private fun SharedServerChannelMembersOwnerBinding.matches(owner: AuthenticatedRouteOwner): Boolean =
+    environmentId == owner.environmentId &&
+        accountId == owner.accountId &&
+        serverId == owner.serverId
+
+private fun SharedServerChannelMembersOwnerBinding.matches(owner: ProcessServerMembersOwner): Boolean =
+    environmentId == owner.environmentId.normalizedChannelMembersEnvironmentId() &&
+        accountId == owner.accountId.normalizedServerMembersId() &&
+        serverId == owner.serverId.normalizedServerMembersId()
+
+private fun SharedServerMembersEntry.matches(binding: SharedServerChannelMembersOwnerBinding): Boolean =
+    ownerEnvironmentId.normalizedChannelMembersEnvironmentId() == binding.environmentId &&
+        ownerAccountId.normalizedServerMembersId() == binding.accountId &&
+        serverId.normalizedServerMembersId() == binding.serverId &&
+        ownerWriteGeneration == binding.writeGeneration
+
+private fun SharedServerChannelMembersOwnerBinding.emptyServerMembersEntry(): SharedServerMembersEntry =
+    SharedServerMembersEntry(
+        serverId = serverId,
+        ownerEnvironmentId = environmentId,
+        ownerAccountId = accountId,
+        ownerWriteGeneration = writeGeneration
+    )
+
+private fun AuthenticatedRouteOwner.emptyServerMembersEntry(
+    ownerWriteGeneration: Long = 0L
+): SharedServerMembersEntry =
+    SharedServerMembersEntry(
+        serverId = serverId,
+        ownerEnvironmentId = environmentId,
+        ownerAccountId = accountId,
+        ownerWriteGeneration = ownerWriteGeneration
+    )
+
+private fun AuthenticatedRouteOwner.emptyChannelMemberSlice(
+    channelId: ChannelId
+): SharedServerChannelMembersSlice =
+    SharedServerChannelMembersSlice(
+        environmentId = environmentId,
+        accountId = accountId,
+        serverId = serverId,
+        channelId = channelId.value.trim()
+    )
 
 private fun List<MemberProfile>.upsertServerMember(member: MemberProfile): List<MemberProfile> {
     val key = member.id.value.trim()

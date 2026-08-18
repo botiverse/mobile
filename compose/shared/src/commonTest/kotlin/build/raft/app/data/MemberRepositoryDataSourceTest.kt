@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.SlockFilePreviewPayload
 import build.raft.app.englishErrorPresentationStringsForTest
 import build.raft.app.withAgentWorkspaceLoadError
+import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeModelConfig
@@ -20,6 +21,23 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 
 class MemberRepositoryDataSourceTest {
+    @Test
+    fun emptyChannelRosterPreservesCanonicalAddPermission() = runBlocking {
+        val network =
+            FakeMemberNetworkClient().apply {
+                channelMembersResponse = HomeNetworkResponse(200, """{"humans":[],"agents":[]}""")
+            }
+        val repository = RealMemberRepository(sampleStore(), network)
+
+        val result =
+            assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+                repository.getChannelMembers(DataRequestPriority.Visible, ChannelId("channel-empty"))
+            )
+
+        assertEquals(emptyList(), result.data.members)
+        assertTrue(result.data.canAddMembers)
+    }
+
     @Test
     fun explicitServerMembersLoadDoesNotRequireSelectedServerToAlreadySwitch() = runBlocking {
         val session =
@@ -502,6 +520,7 @@ class MemberRepositoryDataSourceTest {
         var agentSummaryActivityDetail: String = "Ready"
         var agentsListActivity: String = "idle"
         var agentsListActivityDetail: String = "Ready"
+        var channelMembersResponse: HomeNetworkResponse? = null
         var startBlocker: CompletableDeferred<Unit>? = null
 
         override suspend fun request(
@@ -639,6 +658,8 @@ class MemberRepositoryDataSourceTest {
                     calls += "DELETE agents/agent-1"
                     ok("""{"ok":true}""")
                 }
+                normalized == "channels/channel-empty/members" && method == "GET" ->
+                    channelMembersResponse ?: error("Missing channel members response")
                 else -> error("Unhandled request $method $normalized query=$query")
             }
         }

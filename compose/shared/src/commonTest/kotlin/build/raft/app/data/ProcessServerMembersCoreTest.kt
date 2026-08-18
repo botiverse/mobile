@@ -113,6 +113,72 @@ class ProcessServerMembersCoreTest {
     }
 
     @Test
+    fun changedOwnerWriteGenerationDoesNotReusePriorGenerationCache() = runBlocking {
+        var fetches = 0
+        val core =
+            ProcessServerMembersCore(fetchMembers = { _, _ ->
+                fetches += 1
+                DataResult.Content(
+                    snapshot(
+                        serverId = "server-1",
+                        memberId = if (fetches == 1) "old" else "new"
+                    )
+                )
+            })
+        val owner = owner("server-1")
+
+        val first =
+            core.load(
+                owner = owner,
+                priority = DataRequestPriority.Visible,
+                force = false,
+                reason = "generation_one",
+                ownerWriteGeneration = 1L
+            )
+        val second =
+            core.load(
+                owner = owner,
+                priority = DataRequestPriority.Visible,
+                force = false,
+                reason = "generation_two",
+                ownerWriteGeneration = 2L
+            )
+
+        assertEquals("old", assertIs<DataResult.Content<MemberSnapshot>>(first.result).data.members.single().id.value)
+        assertEquals("new", assertIs<DataResult.Content<MemberSnapshot>>(second.result).data.members.single().id.value)
+        assertEquals(2, fetches)
+    }
+
+    @Test
+    fun everyJoinedFailureConsumerCanCommitBeforeBoundedTerminalEviction() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val core =
+            ProcessServerMembersCore(
+                fetchMembers = { _, _ ->
+                    started.complete(Unit)
+                    release.await()
+                    DataResult.Error(ScreenError(code = "offline"))
+                },
+                maxEntries = 1
+            )
+        val sharedOwner = owner("server-1")
+        val first = async { core.load(sharedOwner, DataRequestPriority.Visible, true, "first") }
+        started.await()
+        val second = async { core.load(sharedOwner, DataRequestPriority.Visible, false, "second") }
+        yield()
+        release.complete(Unit)
+        val firstResult = first.await()
+        val secondResult = second.await()
+
+        assertEquals("first", core.commitIfCurrent(firstResult) { "first" })
+        assertEquals("second", core.commitIfCurrent(secondResult) { "second" })
+
+        core.load(owner("server-2"), DataRequestPriority.Visible, true, "evict")
+        assertEquals(null, core.commitIfCurrent(firstResult) { "stale" })
+    }
+
+    @Test
     fun invalidationRejectsOldCompletionAndNewGenerationWinsCache() = runBlocking {
         val oldStarted = CompletableDeferred<Unit>()
         val releaseOld = CompletableDeferred<Unit>()

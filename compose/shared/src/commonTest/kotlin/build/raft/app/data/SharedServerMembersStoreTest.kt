@@ -447,13 +447,15 @@ class SharedServerMembersStoreTest {
             SharedServerMembersStore(
                 memberRepository = oldRepository,
                 processCore = core,
-                processOwner = { owner }
+                processOwner = { owner },
+                channelMembersOwner = { owner.channelMembersOwnerBinding() }
             )
         val newStore =
             SharedServerMembersStore(
                 memberRepository = newRepository,
                 processCore = core,
-                processOwner = { owner }
+                processOwner = { owner },
+                channelMembersOwner = { owner.channelMembersOwnerBinding() }
             )
         oldStore.seed(MemberSnapshot(server("server-1"), listOf(member("u1", "Old"))))
 
@@ -483,6 +485,7 @@ class SharedServerMembersStoreTest {
                 memberRepository = FakeMemberRepository(),
                 processCore = core,
                 processOwner = { owner },
+                channelMembersOwner = { owner.channelMembersOwnerBinding() },
                 beforeProcessPublication = {
                     beforePublish.complete(Unit)
                     releasePublish.await()
@@ -519,13 +522,15 @@ class SharedServerMembersStoreTest {
             SharedServerMembersStore(
                 memberRepository = firstRepository,
                 processCore = core,
-                processOwner = { owner }
+                processOwner = { owner },
+                channelMembersOwner = { owner.channelMembersOwnerBinding() }
             )
         val secondStore =
             SharedServerMembersStore(
                 memberRepository = secondRepository,
                 processCore = core,
-                processOwner = { owner }
+                processOwner = { owner },
+                channelMembersOwner = { owner.channelMembersOwnerBinding() }
             )
 
         val first = async { firstStore.refreshMembers(ServerId("server-1"), force = true) }
@@ -541,6 +546,90 @@ class SharedServerMembersStoreTest {
         assertIs<DataResult.Content<Unit>>(second.await())
         assertEquals(listOf("u1"), firstStore.currentServerMembers(ServerId("server-1")).map { it.id.value })
         assertEquals(listOf("u1"), secondStore.currentServerMembers(ServerId("server-1")).map { it.id.value })
+    }
+
+    @Test
+    fun shellFacadesSharingFailedProcessFlightBothReachTerminalError() = runBlocking {
+        val owner =
+            ProcessServerMembersOwner(
+                environmentId = "https://api.example.test",
+                accountId = "account-1",
+                serverId = "server-1"
+            )
+        val processRepository =
+            FakeMemberRepository().apply {
+                membersResultOverride = DataResult.Error(ScreenError(code = "offline"))
+                getMembersStarted = CompletableDeferred()
+                releaseGetMembers = CompletableDeferred()
+            }
+        val core = ProcessServerMembersCore(processRepository::getMembers)
+        val firstStore =
+            SharedServerMembersStore(
+                memberRepository = FakeMemberRepository(),
+                processCore = core,
+                processOwner = { owner },
+                channelMembersOwner = { owner.channelMembersOwnerBinding() }
+            )
+        val secondStore =
+            SharedServerMembersStore(
+                memberRepository = FakeMemberRepository(),
+                processCore = core,
+                processOwner = { owner },
+                channelMembersOwner = { owner.channelMembersOwnerBinding() }
+            )
+
+        val first = async { firstStore.refreshMembers(ServerId("server-1"), force = true) }
+        processRepository.getMembersStarted?.await()
+        val second = async { secondStore.refreshMembers(ServerId("server-1"), force = false) }
+        yield()
+        processRepository.releaseGetMembers?.complete(Unit)
+
+        assertEquals("offline", assertIs<DataResult.Error>(first.await()).error.code)
+        assertEquals("offline", assertIs<DataResult.Error>(second.await()).error.code)
+        assertEquals(SharedServerMembersLoadStatus.Error, firstStore.state.value.entryFor(ServerId("server-1"))?.status)
+        assertEquals(SharedServerMembersLoadStatus.Error, secondStore.state.value.entryFor(ServerId("server-1"))?.status)
+    }
+
+    @Test
+    fun shellFacadesSharingDeniedProcessFlightBothReachTerminalError() = runBlocking {
+        val owner =
+            ProcessServerMembersOwner(
+                environmentId = "https://api.example.test",
+                accountId = "account-1",
+                serverId = "server-1"
+            )
+        val processRepository =
+            FakeMemberRepository().apply {
+                membersResultOverride = DataResult.NoPermission(PermissionBlocker(code = "forbidden"))
+                getMembersStarted = CompletableDeferred()
+                releaseGetMembers = CompletableDeferred()
+            }
+        val core = ProcessServerMembersCore(processRepository::getMembers)
+        val firstStore =
+            SharedServerMembersStore(
+                memberRepository = FakeMemberRepository(),
+                processCore = core,
+                processOwner = { owner },
+                channelMembersOwner = { owner.channelMembersOwnerBinding() }
+            )
+        val secondStore =
+            SharedServerMembersStore(
+                memberRepository = FakeMemberRepository(),
+                processCore = core,
+                processOwner = { owner },
+                channelMembersOwner = { owner.channelMembersOwnerBinding() }
+            )
+
+        val first = async { firstStore.refreshMembers(ServerId("server-1"), force = true) }
+        processRepository.getMembersStarted?.await()
+        val second = async { secondStore.refreshMembers(ServerId("server-1"), force = false) }
+        yield()
+        processRepository.releaseGetMembers?.complete(Unit)
+
+        assertEquals("forbidden", assertIs<DataResult.NoPermission>(first.await()).blocker.code)
+        assertEquals("forbidden", assertIs<DataResult.NoPermission>(second.await()).blocker.code)
+        assertEquals(SharedServerMembersLoadStatus.Error, firstStore.state.value.entryFor(ServerId("server-1"))?.status)
+        assertEquals(SharedServerMembersLoadStatus.Error, secondStore.state.value.entryFor(ServerId("server-1"))?.status)
     }
 
     @Test
@@ -1222,6 +1311,288 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun standalonePageSliceUsesCachedRosterOnlyForExactOwnerAndChannel() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.channelMembersByChannel["channel-1"] = listOf(member("user-1", "Cached"))
+        val processOwner = ProcessServerMembersOwner("https://api.raft.build/api", "account-a", "server-1")
+        val store =
+            SharedServerMembersStore(
+                repository,
+                processOwner = { processOwner },
+                channelMembersOwner = { processOwner.channelMembersOwnerBinding() }
+            )
+        store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"))
+
+        val matchingOwner =
+            AuthenticatedRouteOwner("https://api.raft.build/api", "account-a", "server-1")
+        assertEquals(
+            listOf("user-1"),
+            store.currentChannelMemberSlice(matchingOwner, ChannelId("channel-1"))
+                .members
+                .map { it.id.value },
+        )
+        assertEquals(
+            emptyList(),
+            store.currentChannelMemberSlice(
+                matchingOwner.copy(environmentId = "https://staging.raft.build/api"),
+                ChannelId("channel-1"),
+            ).members
+        )
+        assertEquals(
+            emptyList(),
+            store.currentChannelMemberSlice(
+                matchingOwner.copy(accountId = "account-b"),
+                ChannelId("channel-1"),
+            ).members
+        )
+        assertEquals(
+            emptyList(),
+            store.currentChannelMemberSlice(
+                matchingOwner.copy(serverId = "server-2"),
+                ChannelId("channel-1"),
+            ).members
+        )
+        assertEquals(
+            emptyList(),
+            store.currentChannelMemberSlice(matchingOwner, ChannelId("channel-2")).members
+        )
+        assertEquals(
+            listOf("user-1"),
+            store.channelMemberSliceFlow(matchingOwner, ChannelId("channel-1"))
+                .first()
+                .members
+                .map { it.id.value }
+        )
+    }
+
+    @Test
+    fun standalonePageSliceKeepsCachedRosterDuringRefreshAndAfterFailure() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.channelMembersByChannel["channel-1"] = listOf(member("user-1", "Cached"))
+        val processOwner = ProcessServerMembersOwner("https://api.raft.build/api", "account-a", "server-1")
+        val routeOwner = AuthenticatedRouteOwner("https://api.raft.build/api", "account-a", "server-1")
+        val store =
+            SharedServerMembersStore(
+                repository,
+                processOwner = { processOwner },
+                channelMembersOwner = { processOwner.channelMembersOwnerBinding() }
+            )
+        store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"))
+        repository.getChannelMembersStarted = CompletableDeferred()
+        repository.releaseGetChannelMembers = CompletableDeferred()
+        repository.channelMembersResultOverride = DataResult.Error(ScreenError(code = "offline"))
+
+        val refresh =
+            async {
+                store.loadChannelMembers(
+                    owner = routeOwner,
+                    channelId = ChannelId("channel-1"),
+                    force = true
+                )
+            }
+        repository.getChannelMembersStarted?.await()
+        assertEquals(
+            SharedServerMembersLoadStatus.InFlight,
+            store.currentChannelMemberSlice(routeOwner, ChannelId("channel-1")).status
+        )
+        assertEquals(
+            listOf("user-1"),
+            store.currentChannelMemberSlice(routeOwner, ChannelId("channel-1"))
+                .members
+                .map { it.id.value }
+        )
+
+        repository.releaseGetChannelMembers?.complete(Unit)
+        assertEquals("offline", assertIs<DataResult.Error>(refresh.await()).error.code)
+        val failedSlice = store.currentChannelMemberSlice(routeOwner, ChannelId("channel-1"))
+        assertEquals(SharedServerMembersLoadStatus.Error, failedSlice.status)
+        assertEquals("offline", failedSlice.errorCode)
+        assertEquals(listOf("user-1"), failedSlice.members.map { it.id.value })
+    }
+
+    @Test
+    fun standaloneDirectorySliceDoesNotReuseAnotherAccountOnSameServer() = runBlocking {
+        val repository = FakeMemberRepository()
+        var processOwner = ProcessServerMembersOwner("https://api.raft.build/api", "account-a", "server-1")
+        var writeGeneration = 3L
+        val store =
+            SharedServerMembersStore(
+                repository,
+                processOwner = { processOwner },
+                channelMembersOwner = {
+                    processOwner.channelMembersOwnerBinding(writeGeneration)
+                }
+            )
+        val ownerA = AuthenticatedRouteOwner(processOwner.environmentId, processOwner.accountId, processOwner.serverId)
+        repository.membersByServer["server-1"] = listOf(member("member-a", "Member A"))
+        store.refreshMembers(ownerA, force = true)
+
+        processOwner = processOwner.copy(accountId = "account-b")
+        writeGeneration += 1
+        val ownerB = AuthenticatedRouteOwner(processOwner.environmentId, processOwner.accountId, processOwner.serverId)
+
+        assertEquals(emptyList(), store.currentServerMembersEntry(ownerB).members)
+        assertEquals(emptyList(), store.serverMembersEntryFlow(ownerB).first().members)
+
+        repository.membersByServer["server-1"] = listOf(member("member-b", "Member B"))
+        assertIs<DataResult.Content<Unit>>(store.refreshMembers(ownerB, force = false))
+        assertEquals(listOf("member-b"), store.currentServerMembersEntry(ownerB).members.map { it.id.value })
+        assertEquals(2, repository.getMembersCalls)
+    }
+
+    @Test
+    fun standaloneDirectorySliceRetiresSameOwnerAfterAuthClearGeneration() = runBlocking {
+        val repository = FakeMemberRepository()
+        val processOwner = ProcessServerMembersOwner("https://api.raft.build/api", "account-a", "server-1")
+        var writeGeneration = 7L
+        val store =
+            SharedServerMembersStore(
+                repository,
+                processOwner = { processOwner },
+                channelMembersOwner = {
+                    processOwner.channelMembersOwnerBinding(writeGeneration)
+                }
+            )
+        val routeOwner = AuthenticatedRouteOwner(processOwner.environmentId, processOwner.accountId, processOwner.serverId)
+        repository.membersByServer["server-1"] = listOf(member("before-clear", "Before"))
+        store.refreshMembers(routeOwner, force = true)
+
+        writeGeneration += 1
+        assertEquals(emptyList(), store.currentServerMembersEntry(routeOwner).members)
+
+        repository.membersByServer["server-1"] = listOf(member("after-clear", "After"))
+        assertIs<DataResult.Content<Unit>>(store.refreshMembers(routeOwner, force = false))
+        assertEquals(listOf("after-clear"), store.currentServerMembersEntry(routeOwner).members.map { it.id.value })
+        assertEquals(2, repository.getMembersCalls)
+    }
+
+    @Test
+    fun standaloneDirectoryFirstFrameAppliesHiddenHumanPolicy() {
+        val repository = FakeMemberRepository()
+        val routeOwner = AuthenticatedRouteOwner("local", "local", "server-1")
+        val store = SharedServerMembersStore(repository)
+        store.seed(
+            MemberSnapshot(
+                server("server-1").copy(role = "member", hideHumansFromMembers = true),
+                listOf(
+                    member("human-1", "Human"),
+                    member("agent-1", "Agent").copy(kind = MemberKind.Agent)
+                )
+            )
+        )
+
+        assertEquals(listOf("agent-1"), store.currentServerMembersEntry(routeOwner).members.map { it.id.value })
+    }
+
+    @Test
+    fun routeOwnedAddFailsClosedUntilCanonicalPermissionIsKnown() = runBlocking {
+        val repository = FakeMemberRepository()
+        val processOwner = ProcessServerMembersOwner("https://api.raft.build/api", "account-a", "server-1")
+        val routeOwner = AuthenticatedRouteOwner(processOwner.environmentId, processOwner.accountId, processOwner.serverId)
+        val store =
+            SharedServerMembersStore(
+                repository,
+                processOwner = { processOwner },
+                channelMembersOwner = { processOwner.channelMembersOwnerBinding() }
+            )
+
+        val result =
+            store.addChannelMember(
+                owner = routeOwner,
+                request = AddChannelMemberRequest(ChannelId("channel-1"), MemberId("u2"), MemberKind.Human)
+            )
+
+        assertEquals("channel_member_add_not_allowed", assertIs<DataResult.NoPermission>(result).blocker.code)
+        assertEquals(0, repository.addChannelMemberCalls)
+        assertEquals(false, store.currentChannelMemberSlice(routeOwner, ChannelId("channel-1")).canAddMembers)
+        assertEquals(false, store.currentChannelMemberSlice(routeOwner, ChannelId("channel-1")).canAddMembersKnown)
+    }
+
+    @Test
+    fun routeOwnedAddRejectsKnownFalsePermission() = runBlocking {
+        val repository = FakeMemberRepository()
+        val processOwner = ProcessServerMembersOwner("https://api.raft.build/api", "account-a", "server-1")
+        val routeOwner = AuthenticatedRouteOwner(processOwner.environmentId, processOwner.accountId, processOwner.serverId)
+        val store =
+            SharedServerMembersStore(
+                repository,
+                processOwner = { processOwner },
+                channelMembersOwner = { processOwner.channelMembersOwnerBinding() }
+            )
+        repository.channelMembersCanAdd = false
+        store.loadChannelMembers(owner = routeOwner, channelId = ChannelId("channel-1"))
+
+        val result =
+            store.addChannelMember(
+                owner = routeOwner,
+                request = AddChannelMemberRequest(ChannelId("channel-1"), MemberId("u2"), MemberKind.Human)
+            )
+
+        assertIs<DataResult.NoPermission>(result)
+        assertEquals(0, repository.addChannelMemberCalls)
+        assertEquals(true, store.currentChannelMemberSlice(routeOwner, ChannelId("channel-1")).canAddMembersKnown)
+    }
+
+    @Test
+    fun canonicalEmptyChannelPermissionAllowsFirstMemberAdd() = runBlocking {
+        val repository = FakeMemberRepository()
+        val processOwner = ProcessServerMembersOwner("https://api.raft.build/api", "account-a", "server-1")
+        val routeOwner = AuthenticatedRouteOwner(processOwner.environmentId, processOwner.accountId, processOwner.serverId)
+        val store =
+            SharedServerMembersStore(
+                repository,
+                processOwner = { processOwner },
+                channelMembersOwner = { processOwner.channelMembersOwnerBinding() }
+            )
+        repository.channelMembersCanAdd = true
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+            store.loadChannelMembers(owner = routeOwner, channelId = ChannelId("channel-empty"))
+        )
+
+        val emptySlice = store.currentChannelMemberSlice(routeOwner, ChannelId("channel-empty"))
+        assertEquals(emptyList(), emptySlice.members)
+        assertTrue(emptySlice.canAddMembersKnown)
+        assertTrue(emptySlice.canAddMembers)
+        assertIs<DataResult.Content<ChannelMemberActionResult>>(
+            store.addChannelMember(
+                owner = routeOwner,
+                request = AddChannelMemberRequest(ChannelId("channel-empty"), MemberId("u2"), MemberKind.Human)
+            )
+        )
+        assertEquals(1, repository.addChannelMemberCalls)
+    }
+
+    @Test
+    fun knownAddPermissionSurvivesRefreshFailure() = runBlocking {
+        val repository = FakeMemberRepository()
+        val processOwner = ProcessServerMembersOwner("https://api.raft.build/api", "account-a", "server-1")
+        val routeOwner = AuthenticatedRouteOwner(processOwner.environmentId, processOwner.accountId, processOwner.serverId)
+        val store =
+            SharedServerMembersStore(
+                repository,
+                processOwner = { processOwner },
+                channelMembersOwner = { processOwner.channelMembersOwnerBinding() }
+            )
+        repository.channelMembersCanAdd = true
+        store.loadChannelMembers(owner = routeOwner, channelId = ChannelId("channel-1"))
+        repository.channelMembersResultOverride = DataResult.Error(ScreenError(code = "offline"))
+        assertIs<DataResult.Error>(
+            store.loadChannelMembers(owner = routeOwner, channelId = ChannelId("channel-1"), force = true)
+        )
+
+        val failedSlice = store.currentChannelMemberSlice(routeOwner, ChannelId("channel-1"))
+        assertEquals(true, failedSlice.canAddMembersKnown)
+        assertEquals(true, failedSlice.canAddMembers)
+        assertIs<DataResult.Content<ChannelMemberActionResult>>(
+            store.addChannelMember(
+                owner = routeOwner,
+                request = AddChannelMemberRequest(ChannelId("channel-1"), MemberId("u2"), MemberKind.Human)
+            )
+        )
+        assertEquals(1, repository.addChannelMemberCalls)
+    }
+
+    @Test
     fun jointChannelLoadKeepsParticipantsScopedAndRemoteProfilesOutOfServerCache() = runBlocking {
         val repository = FakeMemberRepository()
         repository.channelMembersByChannel["joint-1"] =
@@ -1472,6 +1843,59 @@ class SharedServerMembersStoreTest {
             ).suggestions
         assertEquals(true, suggestions.single { it.memberId == "agent-1" }.inMentionChannel)
         assertEquals(1, repository.addChannelMemberCalls)
+    }
+
+    @Test
+    fun routeOwnedMutationDoesNotPatchSliceAfterAccountChanges() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.channelMembersByChannel["channel-1"] = listOf(member("u1", "Cindy"))
+        repository.membersByServer["server-1"] = listOf(member("u2", "Candidate"))
+        repository.addChannelMemberStarted = CompletableDeferred()
+        repository.releaseAddChannelMember = CompletableDeferred()
+        var processOwner = ProcessServerMembersOwner("https://api.raft.build/api", "account-a", "server-1")
+        val store =
+            SharedServerMembersStore(
+                repository,
+                processOwner = { processOwner },
+                channelMembersOwner = { processOwner.channelMembersOwnerBinding() }
+            )
+        store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"))
+        val routeOwner = AuthenticatedRouteOwner("https://api.raft.build/api", "account-a", "server-1")
+
+        val result =
+            async {
+                store.addChannelMember(
+                    owner = routeOwner,
+                    request =
+                        AddChannelMemberRequest(
+                            channelId = ChannelId("channel-1"),
+                            memberId = MemberId("u2"),
+                            kind = MemberKind.Human
+                        )
+                )
+            }
+        repository.addChannelMemberStarted?.await()
+        processOwner = processOwner.copy(accountId = "account-b")
+        repository.releaseAddChannelMember?.complete(Unit)
+
+        assertEquals("channel_members_owner_stale", assertIs<DataResult.Error>(result.await()).error.code)
+        assertEquals(
+            emptyList(),
+            store.currentChannelMemberSlice(routeOwner, ChannelId("channel-1")).members
+        )
+        assertEquals(
+            listOf("u1"),
+            store.state.value.channelMemberSlices.getValue(
+                SharedServerChannelMembersScope(
+                    environmentId = "https://api.raft.build/api",
+                    accountId = "account-a",
+                    serverId = "server-1",
+                    channelId = "channel-1"
+                )
+            )
+                .members
+                .map { it.id.value }
+        )
     }
 
     @Test
@@ -2257,8 +2681,15 @@ class SharedServerMembersStoreTest {
         var removeChannelMemberCalls = 0
         var deleteAgentCalls = 0
         var retainDeletedAgentsInRoster = false
+        var membersResultOverride: DataResult<MemberSnapshot>? = null
         var getMembersStarted: CompletableDeferred<Unit>? = null
         var releaseGetMembers: CompletableDeferred<Unit>? = null
+        var getChannelMembersStarted: CompletableDeferred<Unit>? = null
+        var releaseGetChannelMembers: CompletableDeferred<Unit>? = null
+        var channelMembersResultOverride: DataResult<ChannelMemberSnapshot>? = null
+        var channelMembersCanAdd: Boolean = true
+        var addChannelMemberStarted: CompletableDeferred<Unit>? = null
+        var releaseAddChannelMember: CompletableDeferred<Unit>? = null
 
         override suspend fun getMembers(
             priority: DataRequestPriority,
@@ -2267,6 +2698,7 @@ class SharedServerMembersStoreTest {
             getMembersCalls += 1
             getMembersStarted?.complete(Unit)
             releaseGetMembers?.await()
+            membersResultOverride?.let { return it }
             return DataResult.Content(MemberSnapshot(server(serverId.value), membersByServer[serverId.value].orEmpty()))
         }
 
@@ -2310,10 +2742,14 @@ class SharedServerMembersStoreTest {
             channelId: ChannelId
         ): DataResult<ChannelMemberSnapshot> {
             getChannelMembersCalls += 1
+            getChannelMembersStarted?.complete(Unit)
+            releaseGetChannelMembers?.await()
+            channelMembersResultOverride?.let { return it }
             return DataResult.Content(
                 ChannelMemberSnapshot(
                     channelId = channelId,
-                    members = channelMembersByChannel[channelId.value].orEmpty()
+                    members = channelMembersByChannel[channelId.value].orEmpty(),
+                    canAddMembers = channelMembersCanAdd
                 )
             )
         }
@@ -2322,6 +2758,8 @@ class SharedServerMembersStoreTest {
             request: AddChannelMemberRequest
         ): DataResult<ChannelMemberActionResult> {
             addChannelMemberCalls += 1
+            addChannelMemberStarted?.complete(Unit)
+            releaseAddChannelMember?.await()
             val member =
                 membersByServer.values
                     .asSequence()
@@ -2366,6 +2804,16 @@ private fun server(id: String): ServerSummary =
 
 private fun member(id: String, name: String): MemberProfile =
     MemberProfile(id = MemberId(id), displayName = name, handle = name.lowercase(), kind = MemberKind.Human)
+
+private fun ProcessServerMembersOwner.channelMembersOwnerBinding(
+    writeGeneration: Long = 0L
+): SharedServerChannelMembersOwnerBinding =
+    SharedServerChannelMembersOwnerBinding(
+        environmentId = environmentId.trim().trimEnd('/'),
+        accountId = accountId.trim(),
+        serverId = serverId.trim(),
+        writeGeneration = writeGeneration
+    )
 
 private fun List<MemberProfile>.upsertFakeMember(member: MemberProfile): List<MemberProfile> {
     val current = filterNot { it.id == member.id && it.kind == member.kind }
