@@ -1,5 +1,10 @@
 package build.raft.app.data
 
+import build.raft.app.SlockAvatarHttpCacheState
+import build.raft.app.SlockAvatarHttpLoadSnapshot
+import build.raft.app.refreshWhenHttpLoadAdmitted
+import build.raft.app.slockAvatarHttpAdmittedImageModel
+import build.raft.app.slockAvatarHttpRefreshEffectKey
 import build.raft.app.model.MemberKind
 import build.raft.app.network.SharedBinaryConditionalDownloadResult
 import build.raft.app.network.SharedBinaryConditionalHttpException
@@ -43,6 +48,156 @@ class SlockAvatarMountedBindingTest {
         assertEquals(owner().nativePartitionKey, descriptor.slot.nativePartitionKey)
         assertEquals(0, downloader.calls)
         assertEquals(0, provider.reserveCalls)
+    }
+
+    @Test
+    fun freshDurableModelIsAdmittedBeforeProcessHttpCoordinatorWarms() = runBlocking {
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 500L) }
+        val binding = binding(store, FakeNativeProvider(), RecordingDownloader())
+
+        val managedModel = assertNotNull(binding.mount(subject(), RemoteUrl).imageModel.value)
+
+        assertNotNull(parseSlockAvatarMountedRenderModel(managedModel))
+        assertEquals(
+            managedModel,
+            slockAvatarHttpAdmittedImageModel(
+                candidateImageModel = managedModel,
+                loadState = SlockAvatarHttpLoadSnapshot(cache = SlockAvatarHttpCacheState.Idle),
+                ownsCurrentRequest = false
+            )
+        )
+    }
+
+    @Test
+    fun anotherAccountDurableEntryCannotReachEarlyRenderAdmission() = runBlocking {
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 500L) }
+        val otherAccountOwner = owner(accountId = "account-b")
+        val binding =
+            binding(store, FakeNativeProvider(), RecordingDownloader()) {
+                otherAccountOwner
+            }
+
+        val handle = binding.mount(subject(), RemoteUrl, serverId = otherAccountOwner.serverId)
+
+        assertNull(handle.imageModel.value)
+    }
+
+    @Test
+    fun mountedMissAndStaleRefreshRequireHttpLeaseOrReadyGeneration() = runBlocking {
+        val missDownloader = RecordingDownloader.modified(byteArrayOf(1, 2))
+        val missBinding = binding(FakeMetadataStore(), FakeNativeProvider(), missDownloader)
+        val missHandle = missBinding.mount(subject(), RemoteUrl)
+
+        assertFalse(
+            missBinding.refreshWhenHttpLoadAdmitted(
+                handle = missHandle,
+                loadState = SlockAvatarHttpLoadSnapshot(cache = SlockAvatarHttpCacheState.Idle),
+                ownsCurrentRequest = false
+            )
+        )
+        assertEquals(0, missDownloader.calls, "an idle cache miss must not bypass the HTTP lease")
+
+        val staleStore = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 50L) }
+        val staleDownloader = RecordingDownloader.modified(byteArrayOf(3, 4))
+        val staleBinding = binding(staleStore, FakeNativeProvider(), staleDownloader)
+        val staleHandle = staleBinding.mount(subject(), RemoteUrl)
+        assertNotNull(staleHandle.imageModel.value, "stale durable bytes remain renderable")
+
+        assertFalse(
+            staleBinding.refreshWhenHttpLoadAdmitted(
+                handle = staleHandle,
+                loadState =
+                    SlockAvatarHttpLoadSnapshot(
+                        cache = SlockAvatarHttpCacheState.Cooldown,
+                        generation = 1L,
+                        retryAtMillis = 1_000L
+                    ),
+                ownsCurrentRequest = false
+            )
+        )
+        assertEquals(0, staleDownloader.calls, "cooldown without a lease must suppress revalidation")
+
+        assertTrue(
+            staleBinding.refreshWhenHttpLoadAdmitted(
+                handle = staleHandle,
+                loadState =
+                    SlockAvatarHttpLoadSnapshot(
+                        cache = SlockAvatarHttpCacheState.InFlight,
+                        generation = 2L,
+                        ownerToken = 7L
+                    ),
+                ownsCurrentRequest = true
+            )
+        )
+        assertEquals(1, staleDownloader.calls, "the current in-flight owner may revalidate")
+    }
+
+    @Test
+    fun staleFirstFrameSuccessKeepsOneAdmittedRefreshAndLetsItComplete() = runBlocking {
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 50L) }
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val downloader = RecordingDownloader.modified(byteArrayOf(5, 6), gate)
+        val binding = binding(store, FakeNativeProvider(), downloader)
+        val handle = binding.mount(subject(), RemoteUrl)
+        val staleModel = handle.imageModel.value
+        val inFlight =
+            SlockAvatarHttpLoadSnapshot(
+                cache = SlockAvatarHttpCacheState.InFlight,
+                generation = 1L,
+                ownerToken = 7L
+            )
+        val readyAfterManagedFirstFrame =
+            SlockAvatarHttpLoadSnapshot(
+                cache = SlockAvatarHttpCacheState.Ready,
+                generation = 1L
+            )
+
+        val inFlightKey = slockAvatarHttpRefreshEffectKey(RemoteUrl, inFlight, ownsCurrentRequest = true)
+        val firstFrameSuccessKey =
+            slockAvatarHttpRefreshEffectKey(
+                RemoteUrl,
+                readyAfterManagedFirstFrame,
+                ownsCurrentRequest = false
+            )
+        assertEquals(
+            inFlightKey,
+            firstFrameSuccessKey,
+            "managed first-frame success must not restart the same admitted generation"
+        )
+        assertNotEquals(
+            inFlightKey,
+            slockAvatarHttpRefreshEffectKey(
+                "https://cdn.example/avatar-v2.webp",
+                inFlight,
+                ownsCurrentRequest = true
+            )
+        )
+        assertNotEquals(
+            inFlightKey,
+            slockAvatarHttpRefreshEffectKey(
+                RemoteUrl,
+                inFlight.copy(generation = 2L),
+                ownsCurrentRequest = true
+            )
+        )
+
+        val refresh =
+            async {
+                binding.refreshWhenHttpLoadAdmitted(
+                    handle = handle,
+                    loadState = inFlight,
+                    ownsCurrentRequest = true
+                )
+            }
+        yield()
+        assertEquals(1, downloader.calls, "the original refresh must own the suspended download")
+
+        // Compose keeps the running LaunchedEffect because the two production keys are equal.
+        // Release the native/download gate and require that same refresh to publish its reload.
+        gate.complete(Unit)
+        assertTrue(refresh.await())
+        assertEquals(1, downloader.calls)
+        assertNotEquals(staleModel, handle.imageModel.value)
     }
 
     @Test
@@ -376,7 +531,10 @@ class SlockAvatarMountedBindingTest {
         )
     }
 
-    private fun owner() = SlockAvatarCacheOwner("https://api.example", "account-a", "server-a")
+    private fun owner(
+        accountId: String = "account-a",
+        serverId: String = "server-a"
+    ) = SlockAvatarCacheOwner("https://api.example", accountId, serverId)
     private fun subject() = SlockAvatarCacheSubject.Member(MemberKind.Agent, "member-a")
     private fun key(subject: SlockAvatarCacheSubject = subject()) =
         SlockAvatarCacheKey(owner(), subject, slockAvatarContentIdentity(RemoteUrl))
