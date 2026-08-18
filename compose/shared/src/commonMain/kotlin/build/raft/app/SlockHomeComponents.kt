@@ -1391,6 +1391,7 @@ internal fun SlockStructuralHomeShell(
     pendingServerId: String? = null,
     prefersChineseCommunity: Boolean = false,
     applyTopSafeArea: Boolean = true,
+    topSafeAreaOverride: Dp? = null,
     activitySelected: Boolean = false,
     searchSelected: Boolean = false,
     savedSelected: Boolean = false,
@@ -1743,7 +1744,13 @@ internal fun SlockStructuralHomeShell(
     val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
     val sidebarInteractionsEnabled = true
     val disabledListAction: () -> Unit = {}
-    val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
+    val resolvedTopSafeArea = slockTopSafeAreaPadding()
+    val topSafeArea =
+        homeShellTopSafeArea(
+            applyTopSafeArea = applyTopSafeArea,
+            resolvedTopSafeArea = resolvedTopSafeArea,
+            topSafeAreaOverride = topSafeAreaOverride,
+        )
     val bottomSafeArea = if (showBottomBar) slockBottomSafeAreaPadding() else 0.dp
     val effectiveBottomContentPadding =
         if (showBottomBar) {
@@ -2912,6 +2919,13 @@ internal fun homeServerSwitcherPanelTopOffset(topSafeArea: Dp): Dp =
 
 internal fun homeShellHeaderHeight(topSafeArea: Dp): Dp =
     topSafeArea + SlockSize.PageHeaderHeight
+
+internal fun homeShellTopSafeArea(
+    applyTopSafeArea: Boolean,
+    resolvedTopSafeArea: Dp,
+    topSafeAreaOverride: Dp?,
+): Dp =
+    topSafeAreaOverride ?: if (applyTopSafeArea) resolvedTopSafeArea else 0.dp
 
 internal fun homeServerSwitcherServerListMaxHeight(serverCount: Int): Dp? {
     if (serverCount <= HomeServerSwitcherMaxVisibleRows) return null
