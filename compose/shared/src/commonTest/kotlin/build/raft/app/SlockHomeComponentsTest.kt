@@ -53,6 +53,58 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeTitlebarAndHostedDrawerShareAppShellSafeAreaAndPageHeaderHeight() {
+        assertEquals(SlockSize.PageHeaderHeight, homeShellHeaderHeight(0.dp))
+        assertEquals(86.dp, homeShellHeaderHeight(24.dp))
+
+        val appShellSafeArea = 24.dp
+        val laterResolvedSafeArea = 22.dp
+        val sharedSafeArea =
+            homeShellTopSafeArea(
+                applyTopSafeArea = true,
+                resolvedTopSafeArea = laterResolvedSafeArea,
+                topSafeAreaOverride = appShellSafeArea,
+            )
+        assertEquals(appShellSafeArea, sharedSafeArea)
+        assertEquals(86.dp, homeShellHeaderHeight(sharedSafeArea))
+        assertEquals(
+            laterResolvedSafeArea,
+            homeShellTopSafeArea(
+                applyTopSafeArea = true,
+                resolvedTopSafeArea = laterResolvedSafeArea,
+                topSafeAreaOverride = null,
+            ),
+        )
+        assertEquals(
+            0.dp,
+            homeShellTopSafeArea(
+                applyTopSafeArea = false,
+                resolvedTopSafeArea = laterResolvedSafeArea,
+                topSafeAreaOverride = null,
+            ),
+        )
+    }
+
+    @Test
+    fun homeServerDrawerHeaderSpinsOnlyWhileLoadingOrRefreshing() {
+        listOf(HomeServerDrawerLoadStatus.Loading, HomeServerDrawerLoadStatus.Refreshing).forEach { status ->
+            assertTrue(homeServerDrawerHeaderSpinning(status))
+        }
+
+        listOf(
+            HomeServerDrawerLoadStatus.Unloaded,
+            HomeServerDrawerLoadStatus.Cached,
+            HomeServerDrawerLoadStatus.Loaded,
+            HomeServerDrawerLoadStatus.Empty,
+            HomeServerDrawerLoadStatus.Unavailable,
+            HomeServerDrawerLoadStatus.ErrorWithCache,
+            HomeServerDrawerLoadStatus.ErrorEmpty,
+        ).forEach { status ->
+            assertFalse(homeServerDrawerHeaderSpinning(status))
+        }
+    }
+
+    @Test
     fun homeInlineAndDrawerErrorsKeepDiagnosticCodesOutOfVisibleCopy() {
         val inlineError =
             SlockHomeInlineError(
