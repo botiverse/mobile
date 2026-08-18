@@ -1,5 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.SlockAvatarHttpCacheState
+import build.raft.app.SlockAvatarHttpLoadSnapshot
+import build.raft.app.slockAvatarHttpAdmittedImageModel
 import build.raft.app.model.MemberKind
 import build.raft.app.network.SharedBinaryConditionalDownloadResult
 import build.raft.app.network.SharedBinaryConditionalHttpException
@@ -43,6 +46,38 @@ class SlockAvatarMountedBindingTest {
         assertEquals(owner().nativePartitionKey, descriptor.slot.nativePartitionKey)
         assertEquals(0, downloader.calls)
         assertEquals(0, provider.reserveCalls)
+    }
+
+    @Test
+    fun freshDurableModelIsAdmittedBeforeProcessHttpCoordinatorWarms() = runBlocking {
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 500L) }
+        val binding = binding(store, FakeNativeProvider(), RecordingDownloader())
+
+        val managedModel = assertNotNull(binding.mount(subject(), RemoteUrl).imageModel.value)
+
+        assertNotNull(parseSlockAvatarMountedRenderModel(managedModel))
+        assertEquals(
+            managedModel,
+            slockAvatarHttpAdmittedImageModel(
+                candidateImageModel = managedModel,
+                loadState = SlockAvatarHttpLoadSnapshot(cache = SlockAvatarHttpCacheState.Idle),
+                ownsCurrentRequest = false
+            )
+        )
+    }
+
+    @Test
+    fun anotherAccountDurableEntryCannotReachEarlyRenderAdmission() = runBlocking {
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 500L) }
+        val otherAccountOwner = owner(accountId = "account-b")
+        val binding =
+            binding(store, FakeNativeProvider(), RecordingDownloader()) {
+                otherAccountOwner
+            }
+
+        val handle = binding.mount(subject(), RemoteUrl, serverId = otherAccountOwner.serverId)
+
+        assertNull(handle.imageModel.value)
     }
 
     @Test
@@ -376,7 +411,10 @@ class SlockAvatarMountedBindingTest {
         )
     }
 
-    private fun owner() = SlockAvatarCacheOwner("https://api.example", "account-a", "server-a")
+    private fun owner(
+        accountId: String = "account-a",
+        serverId: String = "server-a"
+    ) = SlockAvatarCacheOwner("https://api.example", accountId, serverId)
     private fun subject() = SlockAvatarCacheSubject.Member(MemberKind.Agent, "member-a")
     private fun key(subject: SlockAvatarCacheSubject = subject()) =
         SlockAvatarCacheKey(owner(), subject, slockAvatarContentIdentity(RemoteUrl))
