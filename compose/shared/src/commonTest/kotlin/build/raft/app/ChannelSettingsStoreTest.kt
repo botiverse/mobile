@@ -125,6 +125,43 @@ class ChannelSettingsStoreTest {
     }
 
     @Test
+    fun mismatchedSnapshotRetiresExistingExactCacheKey() {
+        val cache = ChannelSettingsSnapshotCache()
+        assertTrue(cache.put(routeOwner(), route(), snapshot("#cached")))
+        val source = snapshot("#wrong")
+        val mismatched =
+            source.copy(channel = source.channel.copy(channelId = ChannelId("channel-2")))
+
+        assertFalse(cache.put(routeOwner(), route(), mismatched))
+
+        assertEquals(null, cache.get(routeOwner(), route()))
+    }
+
+    @Test
+    fun mismatchedAuthoritativeSnapshotIsNeitherCachedNorPublished() = runBlocking {
+        val cache = ChannelSettingsSnapshotCache()
+        cache.put(routeOwner(), route(), snapshot("#cached"))
+        val source = snapshot("#wrong")
+        val mismatched =
+            source.copy(channel = source.channel.copy(channelId = ChannelId("channel-2")))
+        val store =
+            store(
+                FakeChannelSettingsDataSource(loadResult = DataResult.Content(mismatched)),
+                cache = cache,
+            )
+
+        store.dispatch(ChannelSettingsIntent.Refresh)
+        yield()
+
+        assertEquals(ChannelSettingsLoadStatus.Error, store.state.value.status)
+        assertEquals(null, store.state.value.channel)
+        assertEquals(CHANNEL_SETTINGS_IDENTITY_MISMATCH, store.state.value.errorCode)
+        assertFalse(store.state.value.writeActionsEnabled)
+        assertEquals(null, cache.get(routeOwner(), route()))
+        store.clear()
+    }
+
+    @Test
     fun cachedContentRendersReadOnlyUntilBackgroundRefreshSucceeds() = runBlocking {
         val cache = ChannelSettingsSnapshotCache()
         cache.put(routeOwner(), route(), snapshot("#cached"))
