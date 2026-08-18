@@ -10,10 +10,14 @@ import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeNetworkResponse
+import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedServerChannelMembersSlice
+import build.raft.app.data.SharedServerChannelMembersHandoff
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SlockExpectedAuthBinding
 import build.raft.app.data.SlockNetworkClient
@@ -23,18 +27,134 @@ import build.raft.app.data.StoredAuthUser
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
+import build.raft.app.model.ServerPermissions
+import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ChannelSettingsStoreTest {
+    @Test
+    fun sharedHandoffPublishesExactOwnerFirstFrameWithoutWaitingForSettingsNetwork() = runBlocking {
+        val handoff =
+            channelSettingsSharedHandoffSnapshot(
+                owner = routeOwner(),
+                route = route(),
+                homeSnapshot = homeSnapshot(),
+                membersHandoff = SharedServerChannelMembersHandoff.Accepted(ownerMemberSlice()),
+            )
+        val loadGate = CompletableDeferred<DataResult<ChannelSettingsSnapshot>>()
+        val dataSource = FakeChannelSettingsDataSource(loadGate = loadGate)
+        val store = store(dataSource, initialSharedHandoff = handoff)
+
+        assertEquals(ChannelSettingsLoadStatus.Content, store.state.value.status)
+        assertEquals("#from-channel", store.state.value.channel?.name)
+        assertEquals(SharedServerMembersLoadStatus.Loaded, store.state.value.memberSlice.status)
+        assertFalse(store.state.value.writeActionsEnabled)
+        assertEquals(0, dataSource.loadCalls)
+
+        store.dispatch(ChannelSettingsIntent.Refresh)
+        yield()
+        assertEquals(1, dataSource.loadCalls)
+        assertTrue(store.state.value.refreshing)
+        assertEquals("#from-channel", store.state.value.channel?.name)
+
+        loadGate.complete(DataResult.Content(snapshot("#fresh")))
+        yield()
+        assertEquals("#fresh", store.state.value.channel?.name)
+        assertTrue(store.state.value.writeActionsEnabled)
+        store.clear()
+    }
+
+    @Test
+    fun sharedHandoffRejectsAccountServerChannelAndMemberOwnerDrift() {
+        val exactHome = homeSnapshot()
+        val exactMembers = ownerMemberSlice()
+
+        assertEquals(
+            ChannelSettingsSharedHandoff.Rejected,
+            channelSettingsSharedHandoffSnapshot(
+                routeOwner(accountId = "user-2"),
+                route(),
+                exactHome,
+                SharedServerChannelMembersHandoff.Accepted(exactMembers),
+            ),
+        )
+        assertEquals(
+            ChannelSettingsSharedHandoff.Rejected,
+            channelSettingsSharedHandoffSnapshot(
+                routeOwner(),
+                ChannelSettingsRoute(ServerId("server-2"), ChannelId("channel-1")),
+                exactHome,
+                SharedServerChannelMembersHandoff.Accepted(exactMembers),
+            ),
+        )
+        assertEquals(
+            ChannelSettingsSharedHandoff.Rejected,
+            channelSettingsSharedHandoffSnapshot(
+                routeOwner(),
+                ChannelSettingsRoute(ServerId("server-1"), ChannelId("channel-2")),
+                exactHome,
+                SharedServerChannelMembersHandoff.Accepted(exactMembers),
+            ),
+        )
+        assertEquals(
+            ChannelSettingsSharedHandoff.Rejected,
+            channelSettingsSharedHandoffSnapshot(
+                routeOwner(),
+                route(),
+                exactHome,
+                SharedServerChannelMembersHandoff.Accepted(exactMembers.copy(accountId = "user-2")),
+            ),
+        )
+    }
+
+    @Test
+    fun rejectedSharedHandoffDoesNotFallBackToSettingsCache() = runBlocking {
+        val cache = ChannelSettingsSnapshotCache()
+        assertTrue(cache.put(routeOwner(), route(), snapshot("#cached")))
+        val store =
+            store(
+                dataSource = FakeChannelSettingsDataSource(),
+                cache = cache,
+                initialSharedHandoff = ChannelSettingsSharedHandoff.Rejected,
+            )
+
+        assertEquals(ChannelSettingsLoadStatus.Loading, store.state.value.status)
+        assertNull(store.state.value.channel)
+        store.clear()
+    }
+
+    @Test
+    fun unavailableMemberStoreStillHandsOffExactHomeAsReadOnlyContent() = runBlocking {
+        val handoff =
+            channelSettingsSharedHandoffSnapshot(
+                owner = routeOwner(),
+                route = route(),
+                homeSnapshot = homeSnapshot(),
+                membersHandoff = SharedServerChannelMembersHandoff.Unavailable,
+            )
+        val store = store(FakeChannelSettingsDataSource(), initialSharedHandoff = handoff)
+
+        assertEquals(ChannelSettingsLoadStatus.Content, store.state.value.status)
+        assertEquals("#from-channel", store.state.value.channel?.name)
+        assertEquals(SharedServerMembersLoadStatus.InFlight, store.state.value.memberSlice.status)
+        assertFalse(store.state.value.writeActionsEnabled)
+        store.clear()
+    }
+
     @Test
     fun mismatchedOwnerRejectsLoadAndEveryMutationBeforeNetworkClient() = runBlocking {
         val gateway = RejectingChannelSettingsGateway()
@@ -67,7 +187,7 @@ class ChannelSettingsStoreTest {
     @Test
     fun coldLoadProducesStandaloneCanonicalContent() = runBlocking {
         val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
-        val store = ChannelSettingsStore(route(), dataSource, this)
+        val store = store(dataSource)
 
         store.dispatch(ChannelSettingsIntent.Load)
         yield()
@@ -75,8 +195,206 @@ class ChannelSettingsStoreTest {
         assertEquals(1, dataSource.loadCalls)
         assertEquals(ChannelSettingsLoadStatus.Content, store.state.value.status)
         assertEquals("#canonical", store.state.value.channel?.name)
+        assertTrue(store.state.value.writeActionsEnabled)
         assertTrue(store.state.value.isPinned("channel-1"))
         assertEquals(SharedServerMembersLoadStatus.Loaded, store.state.value.memberSlice.status)
+        store.clear()
+    }
+
+    @Test
+    fun snapshotCacheIsPartitionedByEnvironmentAndAccount() = runBlocking {
+        val cache = ChannelSettingsSnapshotCache()
+        assertTrue(cache.put(routeOwner(), route(), snapshot("#account-a")))
+
+        val accountA = store(FakeChannelSettingsDataSource(), cache = cache)
+        val accountB =
+            store(
+                FakeChannelSettingsDataSource(),
+                cache = cache,
+                owner = routeOwner(accountId = "user-2"),
+            )
+        val staging =
+            store(
+                FakeChannelSettingsDataSource(),
+                cache = cache,
+                owner = routeOwner(environmentId = "https://staging.raft.build/api"),
+            )
+        val staleRouteOwner =
+            store(
+                FakeChannelSettingsDataSource(),
+                cache = cache,
+                initialAuthorityAccepted = false,
+            )
+
+        assertEquals("#account-a", accountA.state.value.channel?.name)
+        assertFalse(accountA.state.value.writeActionsEnabled)
+        assertEquals(ChannelSettingsLoadStatus.Loading, accountB.state.value.status)
+        assertEquals(null, accountB.state.value.channel)
+        assertEquals(ChannelSettingsLoadStatus.Loading, staging.state.value.status)
+        assertEquals(null, staging.state.value.channel)
+        assertEquals(ChannelSettingsLoadStatus.Loading, staleRouteOwner.state.value.status)
+        assertEquals(null, staleRouteOwner.state.value.channel)
+
+        accountA.clear()
+        accountB.clear()
+        staging.clear()
+        staleRouteOwner.clear()
+    }
+
+    @Test
+    fun mismatchedSnapshotRetiresExistingExactCacheKey() {
+        val cache = ChannelSettingsSnapshotCache()
+        assertTrue(cache.put(routeOwner(), route(), snapshot("#cached")))
+        val source = snapshot("#wrong")
+        val mismatched =
+            source.copy(channel = source.channel.copy(channelId = ChannelId("channel-2")))
+
+        assertFalse(cache.put(routeOwner(), route(), mismatched))
+
+        assertEquals(null, cache.get(routeOwner(), route()))
+    }
+
+    @Test
+    fun mismatchedAuthoritativeSnapshotIsNeitherCachedNorPublished() = runBlocking {
+        val cache = ChannelSettingsSnapshotCache()
+        cache.put(routeOwner(), route(), snapshot("#cached"))
+        val source = snapshot("#wrong")
+        val mismatched =
+            source.copy(channel = source.channel.copy(channelId = ChannelId("channel-2")))
+        val store =
+            store(
+                FakeChannelSettingsDataSource(loadResult = DataResult.Content(mismatched)),
+                cache = cache,
+            )
+
+        store.dispatch(ChannelSettingsIntent.Refresh)
+        yield()
+
+        assertEquals(ChannelSettingsLoadStatus.Error, store.state.value.status)
+        assertEquals(null, store.state.value.channel)
+        assertEquals(CHANNEL_SETTINGS_IDENTITY_MISMATCH, store.state.value.errorCode)
+        assertFalse(store.state.value.writeActionsEnabled)
+        assertEquals(null, cache.get(routeOwner(), route()))
+        store.clear()
+    }
+
+    @Test
+    fun cachedContentRendersReadOnlyUntilBackgroundRefreshSucceeds() = runBlocking {
+        val cache = ChannelSettingsSnapshotCache()
+        cache.put(routeOwner(), route(), snapshot("#cached"))
+        val loadGate = CompletableDeferred<DataResult<ChannelSettingsSnapshot>>()
+        val dataSource = FakeChannelSettingsDataSource(loadGate = loadGate)
+        val store = store(dataSource, cache = cache)
+
+        assertEquals(ChannelSettingsLoadStatus.Content, store.state.value.status)
+        assertEquals("#cached", store.state.value.channel?.name)
+        assertFalse(store.state.value.refreshing)
+        assertFalse(store.state.value.writeActionsEnabled)
+
+        store.dispatch(ChannelSettingsIntent.Refresh)
+        yield()
+        assertEquals(1, dataSource.loadCalls)
+        assertTrue(store.state.value.refreshing)
+
+        store.dispatch(ChannelSettingsIntent.ToggleMute)
+        store.dispatch(ChannelSettingsIntent.TogglePin)
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("renamed", "description"))
+        store.dispatch(ChannelSettingsIntent.MakePrivate)
+        store.dispatch(ChannelSettingsIntent.Archive)
+        store.dispatch(ChannelSettingsIntent.Delete)
+        yield()
+        assertEquals(0, dataSource.muteCalls)
+        assertEquals(0, dataSource.pinCalls)
+        assertEquals(0, dataSource.profileCalls)
+        assertEquals(0, dataSource.makePrivateCalls)
+        assertEquals(0, dataSource.archiveCalls)
+        assertEquals(0, dataSource.deleteCalls)
+
+        loadGate.complete(DataResult.Content(snapshot("#fresh")))
+        yield()
+        assertEquals("#fresh", store.state.value.channel?.name)
+        assertFalse(store.state.value.refreshing)
+        assertTrue(store.state.value.writeActionsEnabled)
+
+        store.dispatch(ChannelSettingsIntent.TogglePin)
+        yield()
+        assertEquals(1, dataSource.pinCalls)
+
+        val reopened = store(FakeChannelSettingsDataSource(), cache = cache)
+        assertEquals("#fresh", reopened.state.value.channel?.name)
+        assertFalse(reopened.state.value.writeActionsEnabled)
+        store.clear()
+        reopened.clear()
+    }
+
+    @Test
+    fun noPermissionClearsCachedContentAndRetiresSnapshot() = runBlocking {
+        val cache = ChannelSettingsSnapshotCache()
+        cache.put(routeOwner(), route(), snapshot("#cached"))
+        val loadGate = CompletableDeferred<DataResult<ChannelSettingsSnapshot>>()
+        val dataSource = FakeChannelSettingsDataSource(loadGate = loadGate)
+        val store = store(dataSource, cache = cache)
+
+        store.dispatch(ChannelSettingsIntent.Refresh)
+        yield()
+        loadGate.complete(DataResult.NoPermission(PermissionBlocker(code = "channel_forbidden")))
+        yield()
+
+        assertEquals(ChannelSettingsLoadStatus.Error, store.state.value.status)
+        assertEquals(null, store.state.value.channel)
+        assertEquals("channel_forbidden", store.state.value.errorCode)
+        assertEquals(null, cache.get(routeOwner(), route()))
+        store.clear()
+    }
+
+    @Test
+    fun identityMismatchClearsCachedContentAndDoesNotReappearOnReopen() = runBlocking {
+        val cache = ChannelSettingsSnapshotCache()
+        cache.put(routeOwner(), route(), snapshot("#cached"))
+        val dataSource =
+            FakeChannelSettingsDataSource(
+                loadResult =
+                    DataResult.Error(
+                        ScreenError(code = CHANNEL_SETTINGS_IDENTITY_MISMATCH, retryable = false)
+                    )
+            )
+        val store = store(dataSource, cache = cache)
+
+        store.dispatch(ChannelSettingsIntent.Refresh)
+        yield()
+
+        assertEquals(ChannelSettingsLoadStatus.Error, store.state.value.status)
+        assertEquals(null, store.state.value.channel)
+        assertEquals(CHANNEL_SETTINGS_IDENTITY_MISMATCH, store.state.value.errorCode)
+        assertFalse(store.state.value.writeActionsEnabled)
+        assertEquals(null, cache.get(routeOwner(), route()))
+
+        val reopened = store(FakeChannelSettingsDataSource(), cache = cache)
+        assertEquals(ChannelSettingsLoadStatus.Loading, reopened.state.value.status)
+        assertEquals(null, reopened.state.value.channel)
+        assertFalse(reopened.state.value.writeActionsEnabled)
+        store.clear()
+        reopened.clear()
+    }
+
+    @Test
+    fun transientRefreshFailureKeepsCachedContentReadOnly() = runBlocking {
+        val cache = ChannelSettingsSnapshotCache()
+        cache.put(routeOwner(), route(), snapshot("#cached"))
+        val dataSource =
+            FakeChannelSettingsDataSource(
+                loadResult = DataResult.Error(ScreenError(code = "network_unavailable"))
+            )
+        val store = store(dataSource, cache = cache)
+
+        store.dispatch(ChannelSettingsIntent.Refresh)
+        yield()
+
+        assertEquals(ChannelSettingsLoadStatus.Content, store.state.value.status)
+        assertEquals("#cached", store.state.value.channel?.name)
+        assertEquals("network_unavailable", store.state.value.errorCode)
+        assertFalse(store.state.value.writeActionsEnabled)
+        assertEquals("#cached", cache.get(routeOwner(), route())?.channel?.name)
         store.clear()
     }
 
@@ -88,7 +406,7 @@ class ChannelSettingsStoreTest {
                 loadResult = DataResult.Content(snapshot()),
                 pinResult = pinResult,
             )
-        val store = ChannelSettingsStore(route(), dataSource, this)
+        val store = store(dataSource)
         store.dispatch(ChannelSettingsIntent.Load)
         yield()
 
@@ -107,26 +425,55 @@ class ChannelSettingsStoreTest {
 
     @Test
     fun authorityInvalidationDropsLateLoadResult() = runBlocking {
+        val cache = ChannelSettingsSnapshotCache()
+        cache.put(routeOwner(), route(), snapshot("#cached"))
         val loadGate = CompletableDeferred<DataResult<ChannelSettingsSnapshot>>()
         val dataSource = FakeChannelSettingsDataSource(loadGate = loadGate)
-        val store = ChannelSettingsStore(route(), dataSource, this)
+        val store = store(dataSource, cache = cache)
 
-        store.dispatch(ChannelSettingsIntent.Load)
+        store.dispatch(ChannelSettingsIntent.Refresh)
         yield()
         store.invalidateAuthority()
+        store.dispatch(ChannelSettingsIntent.TogglePin)
         loadGate.complete(DataResult.Content(snapshot()))
         yield()
 
         assertEquals(ChannelSettingsLoadStatus.AuthorityRejected, store.state.value.status)
         assertEquals(AUTHENTICATED_ROUTE_AUTHORITY_CHANGED, store.state.value.errorCode)
         assertEquals(null, store.state.value.channel)
+        assertEquals(0, dataSource.pinCalls)
+        assertEquals(null, cache.get(routeOwner(), route()))
+        store.clear()
+    }
+
+    @Test
+    fun mutationAuthorityFailureClearsVisibleAndCachedContent() = runBlocking {
+        val cache = ChannelSettingsSnapshotCache()
+        val pinResult = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
+        val dataSource =
+            FakeChannelSettingsDataSource(
+                loadResult = DataResult.Content(snapshot()),
+                pinResult = pinResult,
+            )
+        val store = store(dataSource, cache = cache)
+        store.dispatch(ChannelSettingsIntent.Load)
+        yield()
+
+        store.dispatch(ChannelSettingsIntent.TogglePin)
+        yield()
+        pinResult.complete(DataResult.Error(ScreenError(AUTHENTICATED_ROUTE_AUTHORITY_CHANGED)))
+        yield()
+
+        assertEquals(ChannelSettingsLoadStatus.AuthorityRejected, store.state.value.status)
+        assertEquals(null, store.state.value.channel)
+        assertEquals(null, cache.get(routeOwner(), route()))
         store.clear()
     }
 
     @Test
     fun visibilitySuccessUpdatesRouteLocalCanonicalState() = runBlocking {
         val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
-        val store = ChannelSettingsStore(route(), dataSource, this)
+        val store = store(dataSource)
         store.dispatch(ChannelSettingsIntent.Load)
         yield()
 
@@ -150,7 +497,7 @@ class ChannelSettingsStoreTest {
                     )
             )
         val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(jointSnapshot))
-        val store = ChannelSettingsStore(route(), dataSource, this)
+        val store = store(dataSource)
         store.dispatch(ChannelSettingsIntent.Load)
         yield()
 
@@ -194,8 +541,28 @@ class ChannelSettingsStoreTest {
     private fun route(): ChannelSettingsRoute =
         ChannelSettingsRoute(ServerId("server-1"), ChannelId("channel-1"))
 
-    private fun routeOwner(): AuthenticatedRouteOwner =
-        AuthenticatedRouteOwner("https://api.raft.build/api", "user-1", "server-1")
+    private fun CoroutineScope.store(
+        dataSource: ChannelSettingsDataSource,
+        cache: ChannelSettingsSnapshotCache = ChannelSettingsSnapshotCache(),
+        owner: AuthenticatedRouteOwner = routeOwner(),
+        initialSharedHandoff: ChannelSettingsSharedHandoff = ChannelSettingsSharedHandoff.Unavailable,
+        initialAuthorityAccepted: Boolean = true,
+    ): ChannelSettingsStore =
+        ChannelSettingsStore(
+            route = route(),
+            owner = owner,
+            dataSource = dataSource,
+            snapshotCache = cache,
+            initialSharedHandoff = initialSharedHandoff,
+            initialAuthorityAccepted = initialAuthorityAccepted,
+            scope = this,
+        )
+
+    private fun routeOwner(
+        environmentId: String = "https://api.raft.build/api",
+        accountId: String = "user-1",
+    ): AuthenticatedRouteOwner =
+        AuthenticatedRouteOwner(environmentId, accountId, "server-1")
 
     private fun authStore(): InMemorySlockAuthSessionStore =
         InMemorySlockAuthSessionStore(
@@ -208,13 +575,13 @@ class ChannelSettingsStoreTest {
             )
         )
 
-    private fun snapshot(): ChannelSettingsSnapshot =
+    private fun snapshot(name: String = "#canonical"): ChannelSettingsSnapshot =
         ChannelSettingsSnapshot(
             channel =
                 HomeChannelRow(
                     threadId = ThreadId("channel-1"),
                     channelId = ChannelId("channel-1"),
-                    name = "#canonical",
+                    name = name,
                 ),
             sidebarOrder =
                 SettingsServerSidebarOrderSnapshot(
@@ -228,6 +595,46 @@ class ChannelSettingsStoreTest {
                     status = SharedServerMembersLoadStatus.Loaded,
                 ),
         )
+
+    private fun homeSnapshot(): HomeSnapshot =
+        HomeSnapshot(
+            server =
+                ServerSummary(
+                    id = ServerId("server-1"),
+                    name = "Raft",
+                    permissions = ServerPermissions(canManageSettings = true),
+                ),
+            currentMember =
+                MemberProfile(
+                    id = MemberId("user-1"),
+                    displayName = "User One",
+                    handle = "user-one",
+                    kind = MemberKind.Human,
+                ),
+            channels =
+                listOf(
+                    HomeChannelRow(
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        name = "#from-channel",
+                    )
+                ),
+            directMessages = emptyList(),
+            unreadTotal = 0,
+            sidebarOrder =
+                SettingsServerSidebarOrderSnapshot(
+                    pinned = listOf(SettingsServerSidebarPinnedItem("channel", "channel-1"))
+                ),
+        )
+
+    private fun ownerMemberSlice(): SharedServerChannelMembersSlice =
+        SharedServerChannelMembersSlice(
+            environmentId = "https://api.raft.build/api",
+            accountId = "user-1",
+            serverId = "server-1",
+            channelId = "channel-1",
+            status = SharedServerMembersLoadStatus.Loaded,
+        )
 }
 
 private class FakeChannelSettingsDataSource(
@@ -236,8 +643,11 @@ private class FakeChannelSettingsDataSource(
     private val pinResult: CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>? = null,
 ) : ChannelSettingsDataSource {
     var loadCalls = 0
+    var muteCalls = 0
     var pinCalls = 0
+    var profileCalls = 0
     var makePrivateCalls = 0
+    var archiveCalls = 0
     var deleteCalls = 0
 
     override suspend fun load(): DataResult<ChannelSettingsSnapshot> {
@@ -245,28 +655,37 @@ private class FakeChannelSettingsDataSource(
         return loadGate?.await() ?: requireNotNull(loadResult)
     }
 
-    override suspend fun setMuted(muted: Boolean): DataResult<ChannelActivityMuteSettings> =
-        DataResult.Content(
+    override suspend fun setMuted(muted: Boolean): DataResult<ChannelActivityMuteSettings> {
+        muteCalls += 1
+        return DataResult.Content(
             ChannelActivityMuteSettings(
                 channelId = ChannelId("channel-1"),
                 activityNotificationPreference =
                     ChannelActivityNotificationPreference(activityMuteSupported = true),
             )
         )
+    }
 
     override suspend fun togglePinned(): DataResult<SettingsServerSidebarOrderSnapshot> {
         pinCalls += 1
         return pinResult?.await() ?: DataResult.Content(SettingsServerSidebarOrderSnapshot())
     }
 
-    override suspend fun updateProfile(name: String, description: String): DataResult<ChannelProfileUpdateResult> =
-        DataResult.Content(ChannelProfileUpdateResult(ChannelId("channel-1"), name, description))
+    override suspend fun updateProfile(name: String, description: String): DataResult<ChannelProfileUpdateResult> {
+        profileCalls += 1
+        return DataResult.Content(ChannelProfileUpdateResult(ChannelId("channel-1"), name, description))
+    }
 
     override suspend fun makePrivate(): DataResult<Unit> {
         makePrivateCalls += 1
         return DataResult.Content(Unit)
     }
-    override suspend fun archive(): DataResult<Unit> = DataResult.Content(Unit)
+
+    override suspend fun archive(): DataResult<Unit> {
+        archiveCalls += 1
+        return DataResult.Content(Unit)
+    }
+
     override suspend fun delete(): DataResult<Unit> {
         deleteCalls += 1
         return DataResult.Content(Unit)

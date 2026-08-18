@@ -4,6 +4,7 @@ import build.raft.app.base.BridgeModule
 import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
 import build.raft.app.CoroutineThreadComposerDraftPersistenceScheduler
+import build.raft.app.ChannelSettingsSnapshotCache
 import build.raft.app.KeyValuePixelAvatarStore
 import build.raft.app.ProcessAttachmentAuthScopes
 import build.raft.app.ReplyCacheProvenance
@@ -389,6 +390,7 @@ internal class SlockSharedStoreProvider private constructor(
     val messageBodyFontSizeStore: SharedMessageBodyFontSizeStore,
     val threadMessageStore: SharedThreadMessageStore,
     val threadPayloadStore: SharedThreadPayloadStore,
+    val channelSettingsSnapshotCache: ChannelSettingsSnapshotCache,
     val foregroundReconciler: SharedForegroundReconciler,
     private val homeStoreScope: CoroutineScope,
     private val homeActivityStoreScope: CoroutineScope,
@@ -2138,6 +2140,7 @@ internal class SlockSharedStoreProvider private constructor(
                 messageBodyFontSizeStore = messageBodyFontSizeStore,
                 threadMessageStore = SharedThreadMessageStore(),
                 threadPayloadStore = SharedThreadPayloadStore(CoroutineScope(SupervisorJob())),
+                channelSettingsSnapshotCache = ChannelSettingsSnapshotCache(),
                 foregroundReconciler = foregroundReconciler,
                 homeStoreScope = CoroutineScope(SupervisorJob()),
                 homeActivityStoreScope = CoroutineScope(SupervisorJob()),

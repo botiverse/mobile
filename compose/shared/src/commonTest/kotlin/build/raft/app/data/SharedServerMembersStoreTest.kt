@@ -1358,11 +1358,69 @@ class SharedServerMembersStoreTest {
         )
         assertEquals(
             listOf("user-1"),
+            (store.currentChannelMembersHandoff(matchingOwner, ChannelId("channel-1"))
+                as SharedServerChannelMembersHandoff.Accepted)
+                .slice.members.map { it.id.value },
+        )
+        assertEquals(
+            listOf("user-1"),
             store.channelMemberSliceFlow(matchingOwner, ChannelId("channel-1"))
                 .first()
                 .members
                 .map { it.id.value }
         )
+    }
+
+    @Test
+    fun standalonePageAcceptedSliceRejectsSameOwnerAfterGenerationChanges() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.channelMembersByChannel["channel-1"] = listOf(member("user-1", "Cached"))
+        val processOwner = ProcessServerMembersOwner("https://api.raft.build/api", "account-a", "server-1")
+        var writeGeneration = 7L
+        val store =
+            SharedServerMembersStore(
+                repository,
+                processOwner = { processOwner },
+                channelMembersOwner = {
+                    processOwner.channelMembersOwnerBinding(writeGeneration)
+                },
+            )
+        val routeOwner =
+            AuthenticatedRouteOwner(processOwner.environmentId, processOwner.accountId, processOwner.serverId)
+        store.loadChannelMembers(routeOwner, ChannelId("channel-1"))
+
+        assertEquals(
+            listOf("user-1"),
+            (store.currentChannelMembersHandoff(routeOwner, ChannelId("channel-1"))
+                as SharedServerChannelMembersHandoff.Accepted)
+                .slice.members.map { it.id.value },
+        )
+
+        writeGeneration += 1
+        assertEquals(
+            SharedServerChannelMembersHandoff.Rejected,
+            store.currentChannelMembersHandoff(routeOwner, ChannelId("channel-1")),
+        )
+    }
+
+    @Test
+    fun standalonePageHandoffUsesCurrentBindingWhenChannelSliceIsMissing() {
+        val processOwner = ProcessServerMembersOwner("https://api.raft.build/api", "account-a", "server-1")
+        val store =
+            SharedServerMembersStore(
+                FakeMemberRepository(),
+                processOwner = { processOwner },
+                channelMembersOwner = { processOwner.channelMembersOwnerBinding(writeGeneration = 11L) },
+            )
+        val routeOwner =
+            AuthenticatedRouteOwner(processOwner.environmentId, processOwner.accountId, processOwner.serverId)
+
+        val handoff = assertIs<SharedServerChannelMembersHandoff.Accepted>(
+            store.currentChannelMembersHandoff(routeOwner, ChannelId("channel-1"))
+        )
+        assertEquals("account-a", handoff.slice.accountId)
+        assertEquals(11L, handoff.slice.ownerWriteGeneration)
+        assertEquals(SharedServerMembersLoadStatus.InFlight, handoff.slice.status)
     }
 
     @Test
