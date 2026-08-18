@@ -139,7 +139,7 @@ class LocalPreferencesTest {
         assertEquals(false, snapshot.activitySenderAvatarsEnabled)
         assertEquals(false, snapshot.composerSendKeyEnabled)
         assertEquals(false, snapshot.multiShellHostEnabled)
-        assertEquals(true, snapshot.serverDrawerEnabled)
+        assertEquals(false, snapshot.serverDrawerEnabled)
         assertEquals(false, snapshot.newDesignSettingsEnabled)
         assertEquals(false, snapshot.homeServerAvatarEnabled)
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
@@ -153,15 +153,15 @@ class LocalPreferencesTest {
     }
 
     @Test
-    fun serverDrawerDefaultsOnButPreservesExplicitOff() = runBlocking {
+    fun serverDrawerDefaultsOffButPreservesExplicitOn() = runBlocking {
         val store = InMemorySlockKeyValueStore()
         val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
 
-        assertEquals(true, repository.getChatLayoutPreference().serverDrawerEnabled)
-
-        repository.setServerDrawerEnabled(false)
-
         assertEquals(false, repository.getChatLayoutPreference().serverDrawerEnabled)
+
+        repository.setServerDrawerEnabled(true)
+
+        assertEquals(true, repository.getChatLayoutPreference().serverDrawerEnabled)
     }
 
     @Test
