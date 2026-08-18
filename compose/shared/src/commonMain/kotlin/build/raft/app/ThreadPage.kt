@@ -1961,6 +1961,7 @@ internal data class KuiklyThreadPendingSendContext(
     val asTask: Boolean = false,
     val attachmentIds: List<String> = emptyList(),
     val attachments: List<KuiklyPendingAttachmentItem> = emptyList(),
+    val ownedTemporaryFileRefs: List<String> = emptyList(),
     val externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList(),
     val mentionChannelId: String? = null,
     val parentMessageId: String? = null,
@@ -1968,6 +1969,21 @@ internal data class KuiklyThreadPendingSendContext(
     val memberScopedMentions: Boolean = false,
     val randomId: String? = null
 )
+
+internal fun threadPendingSendOwnedTemporaryFileRefs(
+    attachments: List<SharedThreadComposerAttachment>,
+    attachmentIds: Collection<String>
+): List<String> {
+    val acceptedIds = attachmentIds.toSet()
+    val ownedTemporarySources = setOf("platform_picker", "platform_camera")
+    return attachments
+        .asSequence()
+        .filter { attachment -> attachment.id in acceptedIds }
+        .filter { attachment -> attachment.source in ownedTemporarySources }
+        .mapNotNull { attachment -> attachment.fileRef?.trim()?.takeIf(String::isNotBlank) }
+        .distinct()
+        .toList()
+}
 
 internal fun threadComposerMessageBodyForSend(draftText: String, attachmentCount: Int): String {
     val cleanDraft = draftText.trim()
@@ -7044,6 +7060,12 @@ internal fun SharedThreadRouteContent(
                         SharedThreadComposerDraftIntent.ApplyPendingMentionActions(pendingMentionActions)
                     )
                 }
+                if (context.ownedTemporaryFileRefs.isNotEmpty()) {
+                    bridge.retireFilePreviewTemporaryFiles(
+                        sessionId = "thread-send-$localMessageId",
+                        fileRefs = context.ownedTemporaryFileRefs
+                    )
+                }
                 return@launch
             }
         }
@@ -7217,6 +7239,13 @@ internal fun SharedThreadRouteContent(
                                                     mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
                                                     previewUri = previewUri,
                                                     status = "ready",
+                                                    fileRef =
+                                                        sourceAttachment
+                                                            ?.takeIf { source ->
+                                                                source.source in
+                                                                    setOf("platform_picker", "platform_camera")
+                                                            }
+                                                            ?.fileRef,
                                                     source = sourceAttachment?.source,
                                                     externalShareToken = sourceAttachment?.externalShareToken,
                                                     externalShareAccountId = sourceAttachment?.externalShareAccountId,
@@ -7320,6 +7349,11 @@ internal fun SharedThreadRouteContent(
             return false
         }
         val pendingAttachments = currentComposer.pendingAttachments
+        val ownedTemporaryFileRefs =
+            threadPendingSendOwnedTemporaryFileRefs(
+                attachments = currentDraftState.uploadedAttachments,
+                attachmentIds = attachmentIds
+            )
         val pendingContext =
             KuiklyThreadPendingSendContext(
                 channelId = threadId ?: return false,
@@ -7331,6 +7365,7 @@ internal fun SharedThreadRouteContent(
                 asTask = currentDraftState.seedAsTask,
                 attachmentIds = attachmentIds,
                 attachments = pendingAttachments,
+                ownedTemporaryFileRefs = ownedTemporaryFileRefs,
                 externalShareSources = externalShareSources,
                 mentionChannelId = composerSurface.mentionScopeChannelId,
                 parentMessageId = composerSurface.parentMessageId,

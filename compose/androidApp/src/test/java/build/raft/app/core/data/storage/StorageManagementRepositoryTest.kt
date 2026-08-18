@@ -20,6 +20,8 @@ class StorageManagementRepositoryTest {
             attachmentCache.resolve("draft.apk").writeBytesOfSize(12)
             val logs = root.resolve("logs").also { it.mkdirs() }
             logs.resolve("crash.txt").writeBytesOfSize(6)
+            val pickedAttachments = root.resolve("slock-picked-thread-attachments").also { it.mkdirs() }
+            pickedAttachments.resolve("picked.png").writeBytesOfSize(7)
 
             val repository =
                     StorageManagementRepository(
@@ -28,7 +30,7 @@ class StorageManagementRepositoryTest {
                                             databaseFiles = listOf(database, wal),
                                             imageCacheDirs = listOf(imageCache),
                                             attachmentDownloadCacheDirs = listOf(attachmentCache),
-                                            temporaryAndLogDirs = listOf(logs)
+                                            temporaryAndLogDirs = listOf(logs, pickedAttachments)
                                     )
                     )
 
@@ -37,8 +39,8 @@ class StorageManagementRepositoryTest {
             assertEquals(14L, snapshot.localDatabaseBytes)
             assertEquals(8L, snapshot.imageCacheBytes)
             assertEquals(12L, snapshot.attachmentDownloadBytes)
-            assertEquals(6L, snapshot.temporaryAndLogBytes)
-            assertEquals(40L, snapshot.totalBytes)
+            assertEquals(13L, snapshot.temporaryAndLogBytes)
+            assertEquals(47L, snapshot.totalBytes)
         } finally {
             root.deleteRecursively()
         }
@@ -77,6 +79,39 @@ class StorageManagementRepositoryTest {
             assertFalse(image.exists())
             assertTrue(attachment.exists())
             assertTrue(log.exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun clearTemporaryFilesAlsoDeletesPickedThreadAttachmentStaging() {
+        val root = Files.createTempDirectory("slock-storage-picked-clear-test").toFile()
+        try {
+            val database = root.resolve("slock_shared.db").writeBytesOfSize(10)
+            val pickedAttachments = root.resolve("slock-picked-thread-attachments").also { it.mkdirs() }
+            val picked = pickedAttachments.resolve("picked.png").writeBytesOfSize(7)
+            val logs = root.resolve("logs").also { it.mkdirs() }
+            val log = logs.resolve("app.jsonl").writeBytesOfSize(6)
+            val repository =
+                    StorageManagementRepository(
+                            roots =
+                                    StorageManagementRoots(
+                                            databaseFiles = listOf(database),
+                                            imageCacheDirs = emptyList(),
+                                            attachmentDownloadCacheDirs = emptyList(),
+                                            temporaryAndLogDirs = listOf(logs, pickedAttachments)
+                                    )
+                    )
+
+            val before = repository.snapshot()
+            val after = repository.clear(StorageClearTarget.TemporaryAndLogs)
+
+            assertEquals(13L, before.temporaryAndLogBytes)
+            assertEquals(0L, after.temporaryAndLogBytes)
+            assertTrue(database.exists())
+            assertFalse(picked.exists())
+            assertFalse(log.exists())
         } finally {
             root.deleteRecursively()
         }
