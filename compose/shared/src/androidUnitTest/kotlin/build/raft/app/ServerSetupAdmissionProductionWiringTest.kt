@@ -18,7 +18,7 @@ class ServerSetupAdmissionProductionWiringTest {
 
     @Test
     fun shellServerChooserMutationsUseOriginatingShellAuthority() {
-        val source = repositoryFile("compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt").readText()
+        val source = repositoryFile("compose/shared/src/commonMain/kotlin/build/raft/app/AuthChooseServerPage.kt").readText()
         assertTrue(source.contains("if (fromShell) sharedStores.authStore(sourceStoreScope) else sharedStores.authStore"))
         assertTrue(
             source.contains(
