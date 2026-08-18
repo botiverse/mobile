@@ -162,6 +162,16 @@ private fun ChannelSettingsPageScreen() {
         sharedStores.authenticatedRouteAuthorityGateway(storeScope)
     }
     val snapshotCache = remember(sharedStores) { sharedStores.channelSettingsSnapshotCache }
+    val homeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
+    val membersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
+    val initialSharedHandoff = remember(route, routeOwner, homeStore, membersStore) {
+        channelSettingsSharedHandoffSnapshot(
+            owner = routeOwner,
+            route = route,
+            homeSnapshot = homeStore?.snapshotFor(route.serverId),
+            membersHandoff = membersStore.currentChannelMembersHandoff(routeOwner, route.channelId),
+        )
+    }
     val scope = rememberCoroutineScope()
     val dataSource = remember(route, routeOwner, authStore, authorityGateway) {
         RealChannelSettingsDataSource(
@@ -186,13 +196,13 @@ private fun ChannelSettingsPageScreen() {
             owner = routeOwner,
             dataSource = dataSource,
             snapshotCache = snapshotCache,
+            initialSharedHandoff = initialSharedHandoff,
             initialAuthorityAccepted =
                 sharedStores.currentAuthenticatedRouteOwner(storeScope) == routeOwner,
             scope = scope,
         )
     }
     val settingsState by settingsStore.state.collectAsState()
-    val homeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
     val authorityAccepted = liveOwner == routeOwner
     val channel = settingsState.channel.takeIf { authorityAccepted }
     val memberSlice = settingsState.memberSlice
@@ -483,7 +493,12 @@ private fun ChannelMembersCard(
     onClick: () -> Unit
 ) {
     val members = slice.members.distinctBy { it.id }.take(if (slice.canAddMembers) 4 else 5)
-    val count = if (slice.status == SharedServerMembersLoadStatus.Loaded) slice.members.size else fallbackCount ?: slice.members.size
+    val countLabel =
+        channelSettingsMemberCountLabel(
+            slice = slice,
+            fallbackCount = fallbackCount,
+            loadingLabel = stringResource(MR.strings.common_loading),
+        )
     SlockBrutalCard(
         modifier = Modifier.clickable(onClick = onClick),
         contentPadding = 16.dp,
@@ -496,7 +511,7 @@ private fun ChannelMembersCard(
                 color = SlockColor.TextBlack
             )
             Spacer(Modifier.weight(1f))
-            Text(text = count.toString(), style = SlockType.Body, color = SlockColor.TextMutedGray)
+            Text(text = countLabel, style = SlockType.Body, color = SlockColor.TextMutedGray)
             SlockLucideIcon(SlockLucideIconName.ChevronRight, Modifier.size(20.dp), color = "#FF666666")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -516,6 +531,17 @@ private fun ChannelMembersCard(
         }
     }
 }
+
+internal fun channelSettingsMemberCountLabel(
+    slice: SharedServerChannelMembersSlice,
+    fallbackCount: Int?,
+    loadingLabel: String,
+): String =
+    when {
+        slice.status == SharedServerMembersLoadStatus.Loaded -> slice.members.size.toString()
+        slice.status == SharedServerMembersLoadStatus.InFlight && slice.members.isEmpty() -> loadingLabel
+        else -> (fallbackCount ?: slice.members.size).toString()
+    }
 
 @Composable
 private fun ChannelSettingsMemberAvatar(member: MemberProfile) {
