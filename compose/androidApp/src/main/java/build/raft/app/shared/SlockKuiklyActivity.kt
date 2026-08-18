@@ -528,6 +528,7 @@ open class SlockKuiklyActivity :
     override fun onCreate(savedInstanceState: Bundle?) {
         prepareHomeColdStartSplashIfNeeded()
         super.onCreate(savedInstanceState)
+        schedulePickedThreadAttachmentCacheCleanup()
         installHuaweiAndroid12InsetsAnimationWorkaroundIfNeeded()
         pendingAttachmentSaveAs =
                 savedInstanceState
@@ -1760,16 +1761,30 @@ open class SlockKuiklyActivity :
             File(applicationContext.cacheDir, PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME)
 
     private fun cleanupPickedThreadAttachmentCache(cacheDir: File = pickedThreadAttachmentCacheDir()) {
-        val now = System.currentTimeMillis()
-        val files = cacheDir.listFiles()?.filter { it.isFile }.orEmpty()
-        files
-                .filter { now - it.lastModified() > PICKED_THREAD_ATTACHMENT_CACHE_MAX_AGE_MS }
-                .forEach { runCatching { it.delete() } }
-        files
-                .filter { it.exists() && now - it.lastModified() <= PICKED_THREAD_ATTACHMENT_CACHE_MAX_AGE_MS }
-                .sortedByDescending { it.lastModified() }
-                .drop(PICKED_THREAD_ATTACHMENT_CACHE_MAX_FILES)
-                .forEach { runCatching { it.delete() } }
+        cleanupPickedThreadAttachmentCache(
+                cacheDir = cacheDir,
+                nowMillis = System.currentTimeMillis(),
+                maxAgeMillis = PICKED_THREAD_ATTACHMENT_CACHE_MAX_AGE_MS,
+                maxFiles = PICKED_THREAD_ATTACHMENT_CACHE_MAX_FILES
+        )
+    }
+
+    private fun schedulePickedThreadAttachmentCacheCleanup() {
+        if (!ProcessPickedThreadAttachmentCacheCleanup.claim()) return
+        lifecycleScope.launch(Dispatchers.IO) {
+            val result =
+                    cleanupPickedThreadAttachmentCache(
+                            cacheDir = pickedThreadAttachmentCacheDir(),
+                            nowMillis = System.currentTimeMillis(),
+                            maxAgeMillis = PICKED_THREAD_ATTACHMENT_CACHE_MAX_AGE_MS,
+                            maxFiles = PICKED_THREAD_ATTACHMENT_CACHE_MAX_FILES
+                    )
+            SlockAppLog.record(
+                    "SlockKuiklyAttachment",
+                    "picker_cache_startup_cleanup stale=${result.deletedStaleCount} " +
+                            "overflow=${result.deletedOverflowCount} retained=${result.retainedCount}"
+            )
+        }
     }
 
     private fun queryPickedFileName(uri: Uri): String? =
@@ -2431,6 +2446,37 @@ private data class PickedThreadAttachment(
         val previewUri: String,
         val sizeBytes: Long?
 )
+
+private object ProcessPickedThreadAttachmentCacheCleanup {
+    private val claimed = AtomicBoolean(false)
+
+    fun claim(): Boolean = claimed.compareAndSet(false, true)
+}
+
+internal data class PickedThreadAttachmentCacheCleanupResult(
+        val deletedStaleCount: Int,
+        val deletedOverflowCount: Int,
+        val retainedCount: Int
+)
+
+internal fun cleanupPickedThreadAttachmentCache(
+        cacheDir: File,
+        nowMillis: Long,
+        maxAgeMillis: Long,
+        maxFiles: Int
+): PickedThreadAttachmentCacheCleanupResult {
+    val files = cacheDir.listFiles()?.filter(File::isFile).orEmpty()
+    val staleFiles = files.filter { file -> nowMillis - file.lastModified() > maxAgeMillis.coerceAtLeast(0L) }
+    val deletedStaleCount = staleFiles.count { file -> runCatching { file.delete() }.getOrDefault(false) }
+    val retainedByAge = files.filter(File::exists).sortedByDescending(File::lastModified)
+    val overflowFiles = retainedByAge.drop(maxFiles.coerceAtLeast(0))
+    val deletedOverflowCount = overflowFiles.count { file -> runCatching { file.delete() }.getOrDefault(false) }
+    return PickedThreadAttachmentCacheCleanupResult(
+            deletedStaleCount = deletedStaleCount,
+            deletedOverflowCount = deletedOverflowCount,
+            retainedCount = cacheDir.listFiles()?.count(File::isFile) ?: 0
+    )
+}
 
 internal fun safePickedThreadAttachmentFileName(
         fileName: String,

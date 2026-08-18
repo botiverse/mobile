@@ -6,6 +6,7 @@ import java.io.File
 private const val SlockDatabaseName = "slock_shared.db"
 private const val SlockImageDiskCacheDir = "image_cache"
 private const val SlockAttachmentDownloadCacheDir = "slock-attachments"
+private const val SlockPickedThreadAttachmentCacheDir = "slock-picked-thread-attachments"
 
 data class StorageManagementSnapshot(
         val localDatabaseBytes: Long,
@@ -78,6 +79,7 @@ data class StorageManagementRoots(
                                     context.cacheDir.resolve("temp"),
                                     context.cacheDir.resolve("logs"),
                                     context.cacheDir.resolve("diagnostics"),
+                                    context.cacheDir.resolve(SlockPickedThreadAttachmentCacheDir),
                                     externalCache?.resolve("tmp"),
                                     externalCache?.resolve("temp"),
                                     externalCache?.resolve("logs"),
