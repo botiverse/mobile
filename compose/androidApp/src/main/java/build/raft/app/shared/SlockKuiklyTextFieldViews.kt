@@ -224,6 +224,13 @@ internal class SlockKuiklyTextAreaView(
     override fun setProp(propKey: String, propValue: Any): Boolean =
         when (propKey) {
             PROP_RETURN_KEY_TYPE -> setReturnKeyType(propValue)
+            KRTextProps.PROP_KEY_NUMBER_OF_LINES -> {
+                val applied = super.setProp(propKey, propValue)
+                if (applied && propValue.toSlockLineCount() != 1) {
+                    configureReturnKeyStructure()
+                }
+                applied
+            }
             else -> super.setProp(propKey, propValue)
         }
 
@@ -247,19 +254,10 @@ internal class SlockKuiklyTextAreaView(
     }
 
     private fun setReturnKeyType(value: Any): Boolean {
-        if (!returnKeyStructureConfigured) {
-            val method = transformationMethod
-            // Compose applies maxLines and the initial keyboard options before it registers any
-            // editing callbacks. Establish the Android multiline + IME-action compatibility once
-            // in that setup window. Repeating this structure change on the later None <-> Send
-            // suggestion edge makes TextView's watcher publish same-text state with selection 0
-            // before a restored cursor can help.
-            isSingleLine = true
-            transformationMethod = method
-            maxLines = Integer.MAX_VALUE
-            setHorizontallyScrolling(false)
-            returnKeyStructureConfigured = true
-        }
+        // A multiline numberOfLines prop normally establishes the structure before callbacks are
+        // registered. Keep this fallback for hosts that omit that prop, but never repeat the
+        // structural TextView mutation on a later suggestion-driven None <-> Send edge.
+        configureReturnKeyStructure()
         imeOptions =
             when (value as String) {
                 "none" -> EditorInfo.IME_ACTION_NONE
@@ -272,6 +270,19 @@ internal class SlockKuiklyTextAreaView(
                 else -> EditorInfo.IME_NULL
             }
         return true
+    }
+
+    private fun configureReturnKeyStructure() {
+        if (returnKeyStructureConfigured) return
+        val method = transformationMethod
+        // Android resets the editor's structure when isSingleLine changes. Do this once, before
+        // controlled editing callbacks are connected, so a later IME-action-only update cannot
+        // publish a transient same-text selection 0..0 to the composer.
+        isSingleLine = true
+        transformationMethod = method
+        maxLines = Integer.MAX_VALUE
+        setHorizontallyScrolling(false)
+        returnKeyStructureConfigured = true
     }
 }
 
