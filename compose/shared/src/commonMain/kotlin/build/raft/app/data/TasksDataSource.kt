@@ -157,7 +157,11 @@ internal suspend fun convertMessageToCanonicalTask(
         }
         val sharedStore = tasksDataStore
             ?: return DataResult.Error(ScreenError(code = "tasks_store_missing", retryable = false))
-        sharedStore.upsertTask(resolvedServerId.value, responseTask)
+        val outcome = sharedStore.upsertTaskForCurrentServer(resolvedServerId.value, responseTask)
+            ?: return DataResult.Error(ScreenError(code = "tasks_owner_changed", retryable = true))
+        if (outcome == SharedTaskFactFoldOutcome.Conflict) {
+            return DataResult.Error(ScreenError(code = "tasks_canonical_conflict", retryable = true))
+        }
         diagnosticsLogger(
             "tasks_convert_projection source=response taskId=${responseTask.id.value} serverId=${resolvedServerId.value}"
         )

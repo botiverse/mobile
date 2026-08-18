@@ -361,8 +361,6 @@ private class ThreadNewerAutoPaginationNetworkApi(
 
     override suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse = okResponse()
 
-    override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse = okResponse()
-
     override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse =
         HomeNetworkResponse(
             code = 200,

@@ -1,7 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.model.TaskStatus
-import build.raft.app.model.TaskSummary
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
@@ -68,9 +66,6 @@ internal interface SlockThreadApi {
     suspend fun unsaveMessage(messageId: String): ThreadApiResult<Unit>
     suspend fun addReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary>
     suspend fun removeReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary>
-    suspend fun updateTaskStatus(taskId: String, status: TaskStatus): ThreadApiResult<TaskSummary?>
-    suspend fun updateTaskStatus(serverId: ServerId, taskId: String, status: TaskStatus): ThreadApiResult<TaskSummary?> =
-        ThreadApiResult.Failure(code = 501, contractCode = "thread_task_status_server_required")
     suspend fun createOrOpenThread(channelId: String, parentMessageId: String): ThreadApiResult<ThreadActionResult>
 }
 
@@ -239,16 +234,6 @@ internal class SlockThreadApiClient(
                 wire.toMessageMutationSummary()
             }
 
-    override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): ThreadApiResult<TaskSummary?> =
-        transport.updateTaskStatus(taskId, status).mapThreadTaskMutation()
-
-    override suspend fun updateTaskStatus(
-        serverId: ServerId,
-        taskId: String,
-        status: TaskStatus
-    ): ThreadApiResult<TaskSummary?> =
-        transport.updateTaskStatus(serverId, taskId, status).mapThreadTaskMutation()
-
     override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): ThreadApiResult<ThreadActionResult> =
         transport.createOrOpenThread(channelId, parentMessageId)
             .mapThreadBody(
@@ -403,27 +388,6 @@ internal class NetworkSlockThreadApi(
             path = "messages/${messageId.trim()}/reactions",
             method = "DELETE",
             bodyText = buildSharedReactionBody(emoji)
-        )
-
-    override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse =
-        networkClient.request(
-            priority = DataRequestPriority.Foreground,
-            path = "tasks/${taskId.trim()}/status",
-            method = "PATCH",
-            bodyText = buildSharedTaskStatusBody(status)
-        )
-
-    override suspend fun updateTaskStatus(
-        serverId: ServerId,
-        taskId: String,
-        status: TaskStatus
-    ): HomeNetworkResponse =
-        networkClient.request(
-            priority = DataRequestPriority.Foreground,
-            path = "tasks/${taskId.trim()}/status",
-            method = "PATCH",
-            bodyText = buildSharedTaskStatusBody(status),
-            serverIdOverride = serverId
         )
 
     override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse =
@@ -637,15 +601,6 @@ private fun HomeNetworkResponse.mapThreadSendBodySync(contractCode: String): Thr
 
 private fun HomeNetworkResponse.mapThreadUnit(): ThreadApiResult<Unit> =
     if (isSuccessful) ThreadApiResult.Success(Unit) else toThreadApiFailure()
-
-private fun HomeNetworkResponse.mapThreadTaskMutation(): ThreadApiResult<TaskSummary?> {
-    if (!isSuccessful) return toThreadApiFailure()
-    val body = bodyText?.takeIf { it.isNotBlank() } ?: return ThreadApiResult.Success(null)
-    val envelope = runCatching { threadApiJson.decodeFromString(TaskEnvelope.serializer(), body) }.getOrNull()
-    envelope?.task?.let { return ThreadApiResult.Success(it.toTaskSummary()) }
-    val directTask = runCatching { threadApiJson.decodeFromString(TaskWireDto.serializer(), body) }.getOrNull()
-    return ThreadApiResult.Success(directTask?.toTaskSummary())
-}
 
 // ── Wire DTOs ──
 

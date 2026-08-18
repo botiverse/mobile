@@ -11657,25 +11657,6 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun updateTaskStatusReturnsPatchTaskWithoutWritingPayload() = runBlocking {
-        val localStore = InMemoryComposeLocalDataStore()
-        val api = FakeThreadApi()
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-            )
-
-        val result = dataSource.updateTaskStatus(ServerId("server-route"), "task-1", TaskStatus.Done)
-
-        assertTrue(result is DataResult.Content)
-        assertEquals("task-1", result.data?.id?.value)
-        assertEquals(TaskStatus.Done, result.data?.status)
-        assertEquals(listOf(Triple("server-route", "task-1", TaskStatus.Done)), api.updatedTaskStatuses)
-        assertEquals(null, localStore.readThread(ThreadId("channel-1")))
-    }
-
-    @Test
     fun createOrOpenReplyThreadFetchesReplyChannelAndPreservesOrigin() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("reply body", id = "reply-1", seq = 11, channelId = "thread-m1"))
         val dataSource =
@@ -13487,7 +13468,6 @@ class SharedThreadStoreTest {
         val unsavedMessageIds: MutableList<String> = mutableListOf()
         val addedReactions: MutableList<Pair<String, String>> = mutableListOf()
         val removedReactions: MutableList<Pair<String, String>> = mutableListOf()
-        val updatedTaskStatuses: MutableList<Triple<String, String, TaskStatus>> = mutableListOf()
         val createdThreads: MutableList<Pair<String, String>> = mutableListOf()
         val mentionActionRequests: MutableList<Pair<String, List<String>>> = mutableListOf()
         val sentAttachmentComments: MutableList<Pair<String, String>> = mutableListOf()
@@ -13624,19 +13604,6 @@ class SharedThreadStoreTest {
         override suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse {
             removedReactions += messageId to emoji
             return HomeNetworkResponse(code = 200, bodyText = """{"id":"$messageId","reactions":[]}""")
-        }
-
-        override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse {
-            error("ambient task status mutation must not be used")
-        }
-
-        override suspend fun updateTaskStatus(
-            serverId: ServerId,
-            taskId: String,
-            status: TaskStatus
-        ): HomeNetworkResponse {
-            updatedTaskStatuses += Triple(serverId.value, taskId, status)
-            return HomeNetworkResponse(code = 200, bodyText = """{"id":"$taskId","status":"${status.name}"}""")
         }
 
         override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse {

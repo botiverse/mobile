@@ -11,10 +11,12 @@ import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
@@ -274,8 +276,32 @@ internal class SharedTasksViewModel(
         }
     }
 
-    fun applyRealtimeTaskUpdate(task: TaskSummary) {
-        store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(task))
+    fun applyRealtimeTaskUpdate(serverId: String, task: TaskSummary) {
+        runtimeScope.launch {
+            val currentServerId = useCase.currentServerId()?.value
+            if (currentServerId != serverId) {
+                diagnosticsLogger(
+                    "tasks_realtime_reject reason=server_changed taskId=${task.id.value} " +
+                        "eventServerId=$serverId currentServerId=${currentServerId.orEmpty()}"
+                )
+                return@launch
+            }
+            val sharedStore = sharedTasksDataStore
+            if (sharedStore == null) {
+                store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(task))
+                return@launch
+            }
+            when (sharedStore.upsertTaskForCurrentServer(serverId, task)) {
+                SharedTaskFactFoldOutcome.Accepted ->
+                    store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(task))
+                SharedTaskFactFoldOutcome.StaleIgnored ->
+                    diagnosticsLogger("tasks_realtime_ignore reason=stale taskId=${task.id.value} serverId=$serverId")
+                SharedTaskFactFoldOutcome.Conflict ->
+                    diagnosticsLogger("tasks_realtime_ignore reason=conflict taskId=${task.id.value} serverId=$serverId")
+                null ->
+                    diagnosticsLogger("tasks_realtime_reject reason=owner_changed taskId=${task.id.value} serverId=$serverId")
+            }
+        }
     }
 
     private fun load(intent: SharedTasksRouteIntent) {
@@ -436,10 +462,16 @@ internal class SharedTasksViewModel(
     ) {
         val sharedStore = sharedTasksDataStore ?: return
         val resolvedServerId = serverId ?: useCase.currentServerId() ?: return
-        sharedStore.upsertTask(resolvedServerId.value, task)
+        val outcome = sharedStore.upsertTaskForCurrentServer(resolvedServerId.value, task)
+        if (outcome == null) {
+            diagnosticsLogger(
+                "tasks_projection_reject source=$source taskId=${task.id.value} serverId=${resolvedServerId.value}"
+            )
+            return
+        }
         diagnosticsLogger(
             "tasks_projection_upsert source=$source taskId=${task.id.value} status=${task.status.name} " +
-                "serverId=${resolvedServerId.value}"
+                "serverId=${resolvedServerId.value} outcome=${outcome.name}"
         )
     }
 
@@ -509,22 +541,24 @@ internal class SharedTasksViewModel(
             return
         }
         val mutationServerId = useCase.currentServerId()
+        val sharedStore = sharedTasksDataStore
+        val mutationPermit =
+            if (sharedStore != null && mutationServerId != null) {
+                sharedStore.beginStatusMutation(
+                    serverId = mutationServerId.value,
+                    scope = scope,
+                    taskId = task.id,
+                    expectedRevision = task.revision,
+                    status = status
+                )
+            } else {
+                null
+            }
         val mutationTask =
-            if (sharedTasksDataStore == null) {
+            if (sharedStore == null) {
                 task
             } else {
-                val localProjection =
-                    sharedTasksDataStore.mutationProjection(
-                        serverId = mutationServerId?.value,
-                        taskId = task.id,
-                        expectedRevision = task.revision
-                    )
-                val isScopeRoute =
-                    when (scope) {
-                        SharedTasksScope.Server -> localProjection != null
-                        is SharedTasksScope.Channel -> localProjection?.channelId == scope.channelId
-                    }
-                localProjection.takeIf { isScopeRoute }
+                mutationPermit?.previousTask
             }
         if (mutationServerId == null || mutationTask == null) {
             diagnosticsLogger(
@@ -544,8 +578,22 @@ internal class SharedTasksViewModel(
                     )
             ) {
                 is DataResult.Content -> {
-                    publishSharedTaskUpdate(result.data.task, "status_result", mutationServerId)
-                    store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(result.data.task))
+                    val acceptedTask =
+                        if (sharedStore == null) {
+                            result.data.task
+                        } else {
+                            mutationPermit?.let { permit ->
+                                sharedStore.completeStatusMutation(permit, result.data.task)
+                            }
+                        }
+                    if (acceptedTask != null) {
+                        store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(acceptedTask))
+                    } else {
+                        diagnosticsLogger(
+                            "tasks_status_result_ignore reason=permit_superseded taskId=${task.id.value} " +
+                                "serverId=${mutationServerId.value}"
+                        )
+                    }
                 }
                 else -> {
                     val errorCode = result.failureCodeOrNull() ?: "tasks_status_unknown"
@@ -554,32 +602,76 @@ internal class SharedTasksViewModel(
                         errorCode == TASKS_STATUS_APPLIED_WITHOUT_PROJECTION
                     ) {
                         val acceptedTask =
-                            state.value.currentTaskSummary(task.id.value)?.copy(status = status)
-                                ?: mutationTask.copy(status = status)
-                        store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(acceptedTask))
-                        if (sharedTasksDataStore != null) {
-                            runtimeScope.launch { load(SharedTasksRouteIntent.Refresh) }
-                        }
-                        diagnosticsLogger(
-                            "tasks_status_update_accepted taskId=${task.id.value} status=${status.name} " +
-                                "serverCode=$errorCode"
-                        )
-                    } else {
-                        events.emit(SharedTasksEvent.OperationFailed(errorCode))
-                        store.accept(
-                            SharedTasksIntent.TaskStatusUpdateFailed(
-                                previousTask = mutationTask,
-                                errorCode = errorCode
+                            if (sharedStore == null) {
+                                state.value.currentTaskSummary(task.id.value)?.copy(status = status)
+                                    ?: mutationTask.copy(status = status)
+                            } else {
+                                mutationPermit?.let { permit ->
+                                    sharedStore.completeStatusMutationWithoutProjection(permit)
+                                }
+                            }
+                        if (acceptedTask != null) {
+                            store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(acceptedTask))
+                            if (sharedStore != null) {
+                                runtimeScope.launch { load(SharedTasksRouteIntent.Refresh) }
+                            }
+                            diagnosticsLogger(
+                                "tasks_status_update_accepted taskId=${task.id.value} status=${status.name} " +
+                                    "serverCode=$errorCode"
                             )
-                        )
+                        } else {
+                            diagnosticsLogger(
+                                "tasks_status_result_ignore reason=permit_superseded taskId=${task.id.value} " +
+                                    "serverId=${mutationServerId.value} serverCode=$errorCode"
+                            )
+                        }
+                    } else {
+                        val restoredTask =
+                            if (sharedStore == null) {
+                                mutationTask
+                            } else {
+                                mutationPermit?.let { permit -> sharedStore.rollbackStatusMutation(permit) }
+                            }
+                        if (restoredTask != null) {
+                            events.emit(SharedTasksEvent.OperationFailed(errorCode))
+                            store.accept(
+                                SharedTasksIntent.TaskStatusUpdateFailed(
+                                    previousTask = restoredTask,
+                                    errorCode = errorCode
+                                )
+                            )
+                        } else {
+                            diagnosticsLogger(
+                                "tasks_status_failure_ignore reason=permit_superseded taskId=${task.id.value} " +
+                                    "serverId=${mutationServerId.value} errorCode=$errorCode"
+                            )
+                        }
                     }
                 }
             }
         } catch (cancellation: CancellationException) {
+            if (sharedStore != null && mutationPermit != null) {
+                withContext(NonCancellable) {
+                    sharedStore.rollbackStatusMutation(mutationPermit)
+                }
+            }
             throw cancellation
         } catch (_: Throwable) {
-            events.emit(SharedTasksEvent.OperationFailed("tasks_status_network"))
-            store.accept(SharedTasksIntent.TaskStatusUpdateFailed(mutationTask, "tasks_status_network"))
+            val restoredTask =
+                if (sharedStore == null) {
+                    mutationTask
+                } else {
+                    mutationPermit?.let { permit -> sharedStore.rollbackStatusMutation(permit) }
+                }
+            if (restoredTask != null) {
+                events.emit(SharedTasksEvent.OperationFailed("tasks_status_network"))
+                store.accept(SharedTasksIntent.TaskStatusUpdateFailed(restoredTask, "tasks_status_network"))
+            } else {
+                diagnosticsLogger(
+                    "tasks_status_failure_ignore reason=permit_superseded taskId=${task.id.value} " +
+                        "serverId=${mutationServerId.value} errorCode=tasks_status_network"
+                )
+            }
         }
     }
 

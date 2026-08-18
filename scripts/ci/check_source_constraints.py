@@ -40,6 +40,16 @@ VENDOR_PARAGRAPH = (
     "com/tencent/kuiklybase/markdown/compose/elements/MarkdownParagraph.kt"
 )
 BRIDGE_AUTH = "compose/shared/src/commonMain/kotlin/build/raft/app/data/BridgeAuth.kt"
+SHARED_THREAD_STORE = "compose/shared/src/commonMain/kotlin/build/raft/app/SharedThreadStore.kt"
+THREAD_API = "compose/shared/src/commonMain/kotlin/build/raft/app/data/ThreadApi.kt"
+SHARED_TASKS_DATA_STORE = (
+    "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedTasksDataStore.kt"
+)
+SHARED_TASKS_STORE = "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedTasksStore.kt"
+TASKS_DATA_SOURCE = "compose/shared/src/commonMain/kotlin/build/raft/app/data/TasksDataSource.kt"
+SLOCK_SHARED_STORE_PROVIDER = (
+    "compose/shared/src/commonMain/kotlin/build/raft/app/data/SlockSharedStoreProvider.kt"
+)
 ANDROID_ACTIVITY = "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"
 COMPOSER_IME_CONNECTED_TEST = (
     "compose/androidApp/src/androidTest/java/build/raft/app/shared/"
@@ -212,6 +222,61 @@ def check_forward_row_identity(thread_page: str) -> None:
             "task #803 anchor missing: forward picker rows must pass the "
             "render-time captured rowTarget to TargetSelected"
         )
+
+
+def check_tasks_single_mutation_authority(
+    shared_thread_store: str,
+    thread_api: str,
+    bridge_auth: str,
+    shared_tasks_data_store: str,
+    shared_tasks_store: str,
+    tasks_data_source: str,
+    slock_shared_store_provider: str,
+) -> None:
+    """Incident: task #17 (Thread retained a second task-status PATCH chain).
+
+    Task status writes must enter through SharedTasksDataStore's owner/server/channel/task
+    permit and the typed Tasks data source. Thread may render or dispatch a Tasks intent, but
+    it must not regain its own data-source/API/network mutation method.
+    """
+    for label, source in (
+        ("SharedThreadStore", shared_thread_store),
+        ("ThreadApi", thread_api),
+        ("SharedThreadNetworkApi", bridge_auth),
+    ):
+        if re.search(r"\b(?:suspend\s+fun|fun|override\s+suspend\s+fun)\s+updateTaskStatus\s*\(", source):
+            raise Violation(
+                f"task #17 regression: {label} reintroduced a private updateTaskStatus chain; "
+                "route task writes through SharedTasksDataStore"
+            )
+
+    required = {
+        "SharedTasksDataStore": (
+            (shared_tasks_data_store, "suspend fun beginStatusMutation("),
+            (shared_tasks_data_store, "suspend fun completeStatusMutation("),
+            (shared_tasks_data_store, "suspend fun rollbackStatusMutation("),
+            (shared_tasks_data_store, "currentServerIdProvider"),
+            (shared_tasks_data_store, "ownerGeneration"),
+        ),
+        "SharedTasksStore": (
+            (shared_tasks_store, "sharedStore.beginStatusMutation("),
+            (shared_tasks_store, "sharedStore.completeStatusMutation("),
+            (shared_tasks_store, "sharedStore.rollbackStatusMutation("),
+        ),
+        "TasksDataSource": (
+            (tasks_data_source, '"tasks/${taskId.value}/status"'),
+            (tasks_data_source, 'method = "PATCH"'),
+        ),
+        "SharedRealtimeDomainEventOwner": (
+            (slock_shared_store_provider, "store.upsertTaskForCurrentOwner("),
+            (slock_shared_store_provider, "store.removeTaskForCurrentOwner("),
+            (slock_shared_store_provider, "reason=owner_admission_missing"),
+        ),
+    }
+    for owner, tokens in required.items():
+        for source, token in tokens:
+            if token not in source:
+                raise Violation(f"task #17 authority anchor missing from {owner}: {token!r}")
 
 
 def check_no_layout_direction_flip(sources: dict[str, str]) -> None:
@@ -614,6 +679,15 @@ def run(root: Path) -> None:
     )
     check_gesture_owner_generation_fence(read(GESTURE_OWNER))
     check_forward_row_identity(thread_page)
+    check_tasks_single_mutation_authority(
+        shared_thread_store=read(SHARED_THREAD_STORE),
+        thread_api=read(THREAD_API),
+        bridge_auth=read(BRIDGE_AUTH),
+        shared_tasks_data_store=read(SHARED_TASKS_DATA_STORE),
+        shared_tasks_store=read(SHARED_TASKS_STORE),
+        tasks_data_source=read(TASKS_DATA_SOURCE),
+        slock_shared_store_provider=read(SLOCK_SHARED_STORE_PROVIDER),
+    )
     check_system_selectable_text_dialog(thread_page)
     check_thread_ime_tail_pixel_probe_scope(thread_page)
     check_composer_retirement_uses_bounded_waits(read(COMPOSER_IME_CONNECTED_TEST))
@@ -800,6 +874,69 @@ active = false
             pass
         else:
             raise SystemExit("self-test: row-identity checker accepted a violation")
+
+    good_tasks_data_store = """
+private val currentServerIdProvider: (suspend () -> String?)? = null
+private var ownerGeneration: Long = 0L
+suspend fun beginStatusMutation() = Unit
+suspend fun completeStatusMutation() = Unit
+suspend fun rollbackStatusMutation() = Unit
+"""
+    good_tasks_store = """
+sharedStore.beginStatusMutation()
+sharedStore.completeStatusMutation()
+sharedStore.rollbackStatusMutation()
+"""
+    good_tasks_data_source = '''
+request(path = "tasks/${taskId.value}/status", method = "PATCH")
+'''
+    good_shared_store_provider = """
+store.upsertTaskForCurrentOwner()
+store.removeTaskForCurrentOwner()
+log("reason=owner_admission_missing")
+"""
+    good_task_authority_sources = (
+        "thread renders only",
+        "thread api reads only",
+        "thread network reads only",
+        good_tasks_data_store,
+        good_tasks_store,
+        good_tasks_data_source,
+        good_shared_store_provider,
+    )
+    check_tasks_single_mutation_authority(*good_task_authority_sources)
+    for source_index in range(3):
+        bad = list(good_task_authority_sources)
+        bad[source_index] += "\nsuspend fun updateTaskStatus(taskId: String) = Unit"
+        try:
+            check_tasks_single_mutation_authority(*bad)
+        except Violation:
+            pass
+        else:
+            raise SystemExit("self-test: task #17 checker accepted a private Thread mutation chain")
+    for source_index, token in (
+        (3, "suspend fun beginStatusMutation("),
+        (3, "suspend fun completeStatusMutation("),
+        (3, "suspend fun rollbackStatusMutation("),
+        (3, "currentServerIdProvider"),
+        (3, "ownerGeneration"),
+        (4, "sharedStore.beginStatusMutation("),
+        (4, "sharedStore.completeStatusMutation("),
+        (4, "sharedStore.rollbackStatusMutation("),
+        (5, '"tasks/${taskId.value}/status"'),
+        (5, 'method = "PATCH"'),
+        (6, "store.upsertTaskForCurrentOwner("),
+        (6, "store.removeTaskForCurrentOwner("),
+        (6, "reason=owner_admission_missing"),
+    ):
+        bad = list(good_task_authority_sources)
+        bad[source_index] = bad[source_index].replace(token, "removed", 1)
+        try:
+            check_tasks_single_mutation_authority(*bad)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: task #17 checker accepted missing {token!r}")
 
     good_pixel_probe_scope = """
 val coroutineScope = rememberCoroutineScope()
@@ -1119,7 +1256,7 @@ def main(argv: list[str]) -> int:
         return 1
     print(
         "source constraints hold "
-        "(tasks #800/#803/#361/#161/#924/#82/#183/#76/#127/#991 structural faces)"
+        "(tasks #17/#800/#803/#361/#161/#924/#82/#183/#76/#127/#991 structural faces)"
     )
     return 0
 

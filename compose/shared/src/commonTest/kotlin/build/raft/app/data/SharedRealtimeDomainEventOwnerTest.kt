@@ -616,14 +616,22 @@ class SharedRealtimeDomainEventOwnerTest {
             snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
         )
 
-        owner.accept("server-1", TaskUpdated(task), source = "app_shell")
+        owner.deliverGuardedAppShellDomainFinal(
+            sinks = RealtimeGuardedDomainEventSinks(),
+            serverId = "server-1",
+            event = TaskUpdated(task)
+        )
 
         val projected =
             tasksDataStore.channelProjectionFlow("server-1", "channel-1", null).first()
         assertEquals(SharedTasksDataStoreStatus.Loaded, projected.status)
         assertEquals(listOf(task), projected.tasks)
 
-        owner.accept("server-1", TaskDeleted(task.id), source = "app_shell")
+        owner.deliverGuardedAppShellDomainFinal(
+            sinks = RealtimeGuardedDomainEventSinks(),
+            serverId = "server-1",
+            event = TaskDeleted(task.id)
+        )
 
         val afterDelete =
             tasksDataStore.channelProjectionFlow("server-1", "channel-1", null).first()
@@ -651,8 +659,16 @@ class SharedRealtimeDomainEventOwnerTest {
                 revision = 9L
             )
 
-        owner.accept("server-host", TaskUpdated(host), source = "host_wire")
-        owner.accept("server-peer", TaskUpdated(peer), source = "peer_wire")
+        owner.deliverGuardedAppShellDomainFinal(
+            sinks = RealtimeGuardedDomainEventSinks(),
+            serverId = "server-host",
+            event = TaskUpdated(host)
+        )
+        owner.deliverGuardedAppShellDomainFinal(
+            sinks = RealtimeGuardedDomainEventSinks(),
+            serverId = "server-peer",
+            event = TaskUpdated(peer)
+        )
 
         val hostProjection = tasksDataStore.projection("server-host", SharedTasksScope.Server).tasks.single()
         val peerProjection = tasksDataStore.projection("server-peer", SharedTasksScope.Server).tasks.single()

@@ -68,7 +68,6 @@ import build.raft.app.model.MessageNew
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.CurrentGrantMessageShadowCommitOutcome
 import build.raft.app.network.sync.DurablePartitionKey
@@ -1216,7 +1215,6 @@ private class ActualHostThreadApi(
     override suspend fun unsaveMessage(messageId: String): HomeNetworkResponse = okResponse()
     override suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse = okResponse()
     override suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse = okResponse()
-    override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse = okResponse()
     override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse =
         HomeNetworkResponse(code = 200, bodyText = """{"threadChannelId":"host-thread","parentMessageId":"$parentMessageId","created":true}""")
 

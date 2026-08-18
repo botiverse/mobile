@@ -32,7 +32,6 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CompletableDeferred
@@ -81,8 +80,6 @@ internal object ReplyThreadAccessNetworkApi : SharedThreadNetworkApi {
     override suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse = error("unused")
 
     override suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse = error("unused")
-
-    override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse = error("unused")
 
     override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse = error("unused")
 }
