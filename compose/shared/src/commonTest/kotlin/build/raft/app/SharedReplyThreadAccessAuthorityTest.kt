@@ -49,7 +49,7 @@ class SharedReplyThreadAccessAuthorityTest {
     }
 
     @Test
-    fun parentCompletionAfterAccessValidationWritesOnlyToCapturedIdentity() = runBlocking {
+    fun parentCompletionAfterOwnerChangeFailsClosedAndWritesOnlyToCapturedIdentity() = runBlocking {
         val authStore = InMemorySlockAuthSessionStore(accountSession("account-1", "server-1"))
         val messageStore = SharedThreadMessageStore()
         val releaseParent = CompletableDeferred<Unit>()
@@ -79,10 +79,10 @@ class SharedReplyThreadAccessAuthorityTest {
         releaseAccessValidation.complete(Unit)
         releaseParent.complete(Unit)
 
-        val payload = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(fetch.await()).data
+        val result = assertIs<DataResult.Error>(fetch.await())
+        assertEquals("thread_reply_cache_provenance_stale", result.error.code)
+        assertEquals(false, result.error.retryable)
         val parentMessageId = MessageId("m1")
-        assertEquals("parent body", payload.originMessage?.body)
-        assertEquals("account one reply", payload.messages.single().body)
         assertEquals(
             "parent body",
             messageStore.getScoped(

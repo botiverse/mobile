@@ -948,8 +948,15 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadComposerWaitsForResolvedPayloadAndTimelineInBothConversationSurfaces() {
-        assertFalse(KuiklyThreadScreenPayload(status = "loading").hasRenderableContentForComposer())
+    fun cachedTimelineRendersWhileComposerWaitsForResolvedAccessInBothConversationSurfaces() {
+        val uncachedLoadingPayload = KuiklyThreadScreenPayload(status = "loading")
+        assertFalse(uncachedLoadingPayload.hasRenderableContentForComposer())
+        assertTrue(
+            uncachedLoadingPayload.shouldRenderThreadLoadingShell(
+                timelineSlice = uncachedLoadingPayload.toThreadTimelineSlice(),
+                accessResolution = ThreadAccessResolution.Loading
+            )
+        )
         listOf(KuiklyThreadSurfaceKind.Channel, KuiklyThreadSurfaceKind.ReplyThread).forEach { surfaceKind ->
             val cachedLoadingPayload =
                 KuiklyThreadScreenPayload(
@@ -978,18 +985,27 @@ class ThreadPayloadTest {
                     accessResolution = ThreadAccessResolution.Loading
                 )
             )
-            assertTrue(
+            assertFalse(
                 cachedContentPayload.shouldRenderThreadLoadingShell(
                     timelineSlice = cachedContentPayload.toThreadTimelineSlice(),
                     accessResolution = ThreadAccessResolution.Loading
                 )
             )
             assertEquals(
-                ThreadRouteMountPlan.LoadingShell,
+                ThreadRouteMountPlan.FeatureSurfaces,
                 cachedContentPayload.threadRouteMountPlan(
                     timelineSlice = cachedContentPayload.toThreadTimelineSlice(),
                     accessResolution = ThreadAccessResolution.Loading
                 )
+            )
+            assertEquals(
+                ThreadRouteMountPlan.LoadingShell,
+                cachedContentPayload
+                    .copy(selectedTab = "tasks")
+                    .threadRouteMountPlan(
+                        timelineSlice = cachedContentPayload.toThreadTimelineSlice(),
+                        accessResolution = ThreadAccessResolution.Loading
+                    )
             )
             assertFalse(
                 cachedContentPayload.shouldRenderThreadLoadingShell(

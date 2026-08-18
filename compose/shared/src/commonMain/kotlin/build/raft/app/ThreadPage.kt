@@ -666,7 +666,15 @@ internal fun KuiklyThreadScreenPayload.shouldRenderThreadLoadingShell(
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution
 ): Boolean =
-    accessResolution == ThreadAccessResolution.Loading ||
+    // An owner/identity-accepted timeline cache is safe to show while canonical access refreshes.
+    // Composer admission and every write action remain independently fail-closed on Resolved.
+    (
+        accessResolution == ThreadAccessResolution.Loading &&
+            (
+                KuiklyThreadTab.fromWireValue(selectedTab) != KuiklyThreadTab.Chat ||
+                    timelineSlice.status !in ThreadResolvedContentStatuses
+            )
+    ) ||
         shouldRenderThreadEarlyLoadingShell(timelineSlice)
 
 internal enum class ThreadRouteMountPlan {
@@ -3264,7 +3272,13 @@ private fun ThreadPageScreen(
         if (nextPayload.sourceThreadId?.isNotBlank() == true &&
             (nextPayload.originMessage != null || nextPayload.messages.isNotEmpty())
         ) {
-            dataSource.cachePayload(nextPayload)
+            dataSource.cachePayload(
+                nextPayload,
+                ownerScopeId =
+                    dataSource.replyCacheProvenanceState.value
+                        ?.threadPayloadOwnerScopeId
+                        .orEmpty()
+            )
             openPage()
             return
         }
@@ -5233,8 +5247,8 @@ internal fun SharedThreadRouteContent(
         threadFeatureOwnerMountPlan(
             routeMountPlan = routeMountPlan,
             selectedTab = selectedThreadTab.wireValue,
-            joined = payload.joined,
-            showComposer = payload.showComposer,
+            joined = payload.joined && renderSlice.writeActionsEnabled,
+            showComposer = payload.showComposer && renderSlice.writeActionsEnabled,
             suggestionDemand = composerSuggestionDemand
         )
     val headerProjectionMapDiagnostics =
@@ -6839,8 +6853,10 @@ internal fun SharedThreadRouteContent(
         ) {
             renderedTimelineSlice.visibleReadMarkerKey(renderedThread.sourceThreadId)
     }
-    LaunchedEffect(visibleReadMarkerKey, active, threadHostForeground) {
-        if (shouldMarkThreadVisibleRead(
+    LaunchedEffect(visibleReadMarkerKey, active, threadHostForeground, renderSlice.writeActionsEnabled) {
+        if (
+            renderSlice.writeActionsEnabled &&
+            shouldMarkThreadVisibleRead(
                 routeActive = active,
                 observedHostForeground = threadHostForeground,
                 currentHostVisibility = isSlockHostVisible(storeScope.shellInstanceId),
@@ -6856,6 +6872,8 @@ internal fun SharedThreadRouteContent(
         startedFromComposer: Boolean
     ) {
         val sendBasePayload = threadViewModel.state.value.payload
+        val sendProvenance = dataSource.currentReplyCacheProvenance()
+        val sendRoute = sendBasePayload.resolveThreadRouteIdentity()
         val localMessage =
             sendBasePayload.messages.firstOrNull { it.id == localMessageId }
                 ?: buildThreadPendingSendMessage(
@@ -6879,21 +6897,22 @@ internal fun SharedThreadRouteContent(
                 )
         )
         threadSendScope.launch {
+            fun sendAuthorityStillCurrent(): Boolean =
+                sendProvenance != null &&
+                    dataSource.isCurrentReplyCacheProvenance(sendProvenance) &&
+                    threadViewModel.state.value.payload.resolveThreadRouteIdentity() == sendRoute
+
             suspend fun markFailed(errorCode: String?, errorMessage: String? = null) {
-                dataSource.cacheLocalSendFailure(
-                    basePayload = sendBasePayload,
-                    localMessage = localMessage,
-                    errorCode = errorCode,
-                    errorMessage = errorMessage
-                )
-                threadViewModel.dispatch(
+                threadViewModel.accept(
                     SharedThreadIntent.ApplyLocalSendFailure(
                         messageId = localMessageId,
                         errorCode = errorCode,
-                        errorMessage = errorMessage
+                        errorMessage = errorMessage,
+                        expectedProvenance = sendProvenance,
+                        expectedRoute = sendRoute
                     )
                 )
-                if (startedFromComposer) {
+                if (startedFromComposer && sendAuthorityStillCurrent()) {
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
                 }
             }
@@ -7013,12 +7032,14 @@ internal fun SharedThreadRouteContent(
                     markFailed("empty_response")
                     return@launch
                 }
-                dataSource.cacheLocalSendSuccess(
-                    basePayload = sendBasePayload,
-                    localMessage = localMessage,
-                    sentPage = sentPage
+                threadViewModel.accept(
+                    SharedThreadIntent.ReplaceLocalSendWithSentPage(
+                        messageId = localMessageId,
+                        page = sentPage,
+                        expectedProvenance = sendProvenance,
+                        expectedRoute = sendRoute
+                    )
                 )
-                threadViewModel.dispatch(SharedThreadIntent.ReplaceLocalSendWithSentPage(localMessageId, sentPage))
                 bridge.performanceMarker(
                     phase = "composer_send",
                     routeName = "kuikly_thread",
@@ -7051,6 +7072,7 @@ internal fun SharedThreadRouteContent(
                             }
                     }
                 }
+                if (!sendAuthorityStillCurrent()) return@launch
                 if (startedFromComposer) {
                     composerDraftViewModel.dispatch(
                         SharedThreadComposerDraftIntent.CompleteSend(pendingMentionActions = pendingMentionActions)
