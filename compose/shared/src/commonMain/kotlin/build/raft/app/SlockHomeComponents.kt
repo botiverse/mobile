@@ -29,9 +29,11 @@ import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockAvatarCacheSubject
+import build.raft.app.data.SlockAvatarMountedBinding
 import build.raft.app.data.SlockAvatarMountedHandle
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.parseSlockAvatarMountedRenderModel
 import build.raft.app.data.parseSlockHome
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
@@ -6182,6 +6184,59 @@ private fun SlockAvatarHttpImage(
     val loadStateFlow = remember(loadKey) { slockAvatarHttpLoadCoordinator.stateFlow(loadKey) }
     val loadState by loadStateFlow.collectAsState()
     var lease by remember(loadKey) { mutableStateOf<SlockAvatarHttpLoadLease?>(null) }
+    val activeSource = loadKey.sourceFor(loadState.endpoint) ?: return
+    val avatarMountedBinding = SlockSharedStoreRegistry.currentOrNull()?.avatarMountedBinding
+    var mountedHandle by
+        remember(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
+            mutableStateOf<SlockAvatarMountedHandle?>(null)
+        }
+
+    // Durable bytes are an owner-scoped render source, not a process-session HTTP result. Inspect
+    // them before the HTTP painter gate so a restarted process can render an already committed
+    // avatar without first exposing the default icon. Cache misses and unsupported providers still
+    // return no managed model here and remain subject to the coordinator below.
+    LaunchedEffect(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
+        mountedHandle =
+            if (avatarMountedBinding == null || cacheSubject == null) {
+                null
+            } else {
+                avatarMountedBinding.mount(
+                    subject = cacheSubject,
+                    remoteUrl = activeSource,
+                    serverId = cacheServerId
+                )
+            }
+    }
+    DisposableEffect(avatarMountedBinding, mountedHandle) {
+        val ownedHandle = mountedHandle
+        onDispose {
+            if (ownedHandle != null) avatarMountedBinding?.dispose(ownedHandle)
+        }
+    }
+    val ownsCurrentRequest =
+        loadState.cache == SlockAvatarHttpCacheState.InFlight &&
+            lease?.generation == loadState.generation &&
+            lease?.ownerToken == loadState.ownerToken
+    val refreshEffectKey =
+        slockAvatarHttpRefreshEffectKey(
+            activeSource = activeSource,
+            loadState = loadState,
+            ownsCurrentRequest = ownsCurrentRequest
+        )
+    LaunchedEffect(
+        avatarMountedBinding,
+        mountedHandle,
+        refreshEffectKey
+    ) {
+        val binding = avatarMountedBinding ?: return@LaunchedEffect
+        val handle = mountedHandle ?: return@LaunchedEffect
+        if (!refreshEffectKey.refreshAdmitted) return@LaunchedEffect
+        binding.refreshWhenHttpLoadAdmitted(
+            handle = handle,
+            loadState = loadState,
+            ownsCurrentRequest = ownsCurrentRequest
+        )
+    }
 
     DisposableEffect(loadKey, lease?.ownerToken) {
         val ownedLease = lease
@@ -6213,46 +6268,19 @@ private fun SlockAvatarHttpImage(
         )
     }
 
-    val ownsCurrentRequest =
-        loadState.cache == SlockAvatarHttpCacheState.InFlight &&
-            lease?.generation == loadState.generation &&
-            lease?.ownerToken == loadState.ownerToken
-    if (!ownsCurrentRequest && loadState.cache != SlockAvatarHttpCacheState.Ready) return
-    val activeSource = loadKey.sourceFor(loadState.endpoint) ?: return
-    val avatarMountedBinding = SlockSharedStoreRegistry.currentOrNull()?.avatarMountedBinding
-    var mountedHandle by
-        remember(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
-            mutableStateOf<SlockAvatarMountedHandle?>(null)
-        }
-    LaunchedEffect(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
-        mountedHandle =
-            if (avatarMountedBinding == null || cacheSubject == null) {
-                null
-            } else {
-                avatarMountedBinding.mount(
-                    subject = cacheSubject,
-                    remoteUrl = activeSource,
-                    serverId = cacheServerId
-                )
-            }
-    }
-    DisposableEffect(avatarMountedBinding, mountedHandle) {
-        val ownedHandle = mountedHandle
-        onDispose {
-            if (ownedHandle != null) avatarMountedBinding?.dispose(ownedHandle)
-        }
-    }
-    LaunchedEffect(avatarMountedBinding, mountedHandle) {
-        val handle = mountedHandle ?: return@LaunchedEffect
-        avatarMountedBinding?.refresh(handle)
-    }
-    val imageModel =
+    val candidateImageModel =
         if (avatarMountedBinding == null || cacheSubject == null) {
             activeSource
         } else {
             val handle = mountedHandle ?: return
             handle.imageModel.collectAsState().value ?: return
         }
+    val imageModel =
+        slockAvatarHttpAdmittedImageModel(
+            candidateImageModel = candidateImageModel,
+            loadState = loadState,
+            ownsCurrentRequest = ownsCurrentRequest
+        ) ?: return
     val painter = rememberAsyncImagePainter(model = imageModel)
     val imageState by painter.state.collectAsState()
     LaunchedEffect(imageState, imageModel, loadState.generation, lease?.ownerToken) {
@@ -6271,6 +6299,61 @@ private fun SlockAvatarHttpImage(
         modifier = modifier,
         contentScale = ContentScale.FillBounds
     )
+}
+
+/**
+ * A committed mounted descriptor is already fenced by environment/account/server/subject/content
+ * identity, so it may render before the process-local HTTP painter coordinator is warm. Ordinary
+ * URLs (including the unsupported-provider fallback) keep the existing single-flight gate.
+ */
+internal fun slockAvatarHttpAdmittedImageModel(
+    candidateImageModel: String,
+    loadState: SlockAvatarHttpLoadSnapshot,
+    ownsCurrentRequest: Boolean
+): String? {
+    if (parseSlockAvatarMountedRenderModel(candidateImageModel) != null) return candidateImageModel
+    return candidateImageModel.takeIf { slockAvatarHttpLoadIsAdmitted(loadState, ownsCurrentRequest) }
+}
+
+/**
+ * Durable mounted bytes may bypass this gate for rendering only. Any refresh or ordinary URL load
+ * still requires the current coordinator lease, or reuse of an already-ready HTTP generation.
+ */
+internal fun slockAvatarHttpLoadIsAdmitted(
+    loadState: SlockAvatarHttpLoadSnapshot,
+    ownsCurrentRequest: Boolean
+): Boolean = ownsCurrentRequest || loadState.cache == SlockAvatarHttpCacheState.Ready
+
+/**
+ * Stable render-axis identity for the mounted refresh effect. A successful managed first frame
+ * changes cache/ownership, but not the admitted generation; keeping those transient fields out of
+ * the key lets the original refresh finish instead of cancelling and restarting its transport.
+ */
+internal data class SlockAvatarHttpRefreshEffectKey(
+    val activeSource: String,
+    val generation: Long,
+    val refreshAdmitted: Boolean
+)
+
+internal fun slockAvatarHttpRefreshEffectKey(
+    activeSource: String,
+    loadState: SlockAvatarHttpLoadSnapshot,
+    ownsCurrentRequest: Boolean
+): SlockAvatarHttpRefreshEffectKey =
+    SlockAvatarHttpRefreshEffectKey(
+        activeSource = activeSource,
+        generation = loadState.generation,
+        refreshAdmitted = slockAvatarHttpLoadIsAdmitted(loadState, ownsCurrentRequest)
+    )
+
+internal suspend fun SlockAvatarMountedBinding.refreshWhenHttpLoadAdmitted(
+    handle: SlockAvatarMountedHandle,
+    loadState: SlockAvatarHttpLoadSnapshot,
+    ownsCurrentRequest: Boolean
+): Boolean {
+    if (!slockAvatarHttpLoadIsAdmitted(loadState, ownsCurrentRequest)) return false
+    refresh(handle)
+    return true
 }
 
 private fun AsyncImagePainter.State.toSlockAvatarHttpPainterPhase(): SlockAvatarHttpPainterPhase =
