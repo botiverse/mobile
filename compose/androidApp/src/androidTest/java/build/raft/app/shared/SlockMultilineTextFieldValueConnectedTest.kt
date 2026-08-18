@@ -25,11 +25,11 @@ class SlockMultilineTextFieldValueConnectedTest {
             listOf("@", "#").forEach { trigger ->
                 val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
 
-                // CoreTextField applies line count and the initial keyboard options before it
-                // registers any editing callbacks. Mirror that production creation order so the
-                // one-time Android multiline + IME-action structure setup happens off-channel.
-                assertTrue(editor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, Int.MAX_VALUE))
-                assertTrue(editor.setProp("returnKeyType", "none"))
+                // Composer uses maxLines=4. CoreTextField applies that line count before it
+                // registers editing callbacks, but it does not emit returnKeyTypeNone for a
+                // multiline field. The first return-key prop arrives only when cold @/#
+                // suggestions become visible, so there must be no synthetic initial "none" here.
+                assertTrue(editor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
 
                 val textInputStateEvents = mutableListOf<Any?>()
                 val legacyTextEvents = mutableListOf<Any?>()
