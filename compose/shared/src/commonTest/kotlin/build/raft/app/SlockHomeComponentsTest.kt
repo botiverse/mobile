@@ -53,6 +53,31 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeTitlebarAndHostedDrawerSharePageHeaderHeightAcrossSafeAreas() {
+        assertEquals(SlockSize.PageHeaderHeight, homeShellHeaderHeight(0.dp))
+        assertEquals(86.dp, homeShellHeaderHeight(24.dp))
+    }
+
+    @Test
+    fun homeServerDrawerHeaderSpinsOnlyWhileLoadingOrRefreshing() {
+        listOf(HomeServerDrawerLoadStatus.Loading, HomeServerDrawerLoadStatus.Refreshing).forEach { status ->
+            assertTrue(homeServerDrawerHeaderSpinning(status))
+        }
+
+        listOf(
+            HomeServerDrawerLoadStatus.Unloaded,
+            HomeServerDrawerLoadStatus.Cached,
+            HomeServerDrawerLoadStatus.Loaded,
+            HomeServerDrawerLoadStatus.Empty,
+            HomeServerDrawerLoadStatus.Unavailable,
+            HomeServerDrawerLoadStatus.ErrorWithCache,
+            HomeServerDrawerLoadStatus.ErrorEmpty,
+        ).forEach { status ->
+            assertFalse(homeServerDrawerHeaderSpinning(status))
+        }
+    }
+
+    @Test
     fun homeInlineAndDrawerErrorsKeepDiagnosticCodesOutOfVisibleCopy() {
         val inlineError =
             SlockHomeInlineError(

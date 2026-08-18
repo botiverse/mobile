@@ -2910,6 +2910,9 @@ internal fun homeServerSwitcherJoinCommunityActions(
 internal fun homeServerSwitcherPanelTopOffset(topSafeArea: Dp): Dp =
     topSafeArea + SlockSize.PageHeaderHeight + HomeServerSwitcherTopGap
 
+internal fun homeShellHeaderHeight(topSafeArea: Dp): Dp =
+    topSafeArea + SlockSize.PageHeaderHeight
+
 internal fun homeServerSwitcherServerListMaxHeight(serverCount: Int): Dp? {
     if (serverCount <= HomeServerSwitcherMaxVisibleRows) return null
     return (HomeServerSwitcherRowMinHeight.value * HomeServerSwitcherMaxVisibleRows).dp
@@ -3464,7 +3467,7 @@ private fun HomeTitlebar(
     onBlankClick: (() -> Unit)? = null,
     onNotificationToggle: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxWidth().height(topSafeArea + SlockSize.PageHeaderHeight).background(SlockColor.BrandYellow)) {
+    Box(modifier = Modifier.fillMaxWidth().height(homeShellHeaderHeight(topSafeArea)).background(SlockColor.BrandYellow)) {
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack).align(Alignment.BottomCenter))
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier =
@@ -4165,7 +4168,7 @@ internal fun HomeServerDrawerHostedPanel(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(HomeServerDrawerHeaderHeight + topSafeArea)
+                        .height(homeShellHeaderHeight(topSafeArea))
                         .background(SlockColor.BrandYellow)
             ) {
                 Row(
@@ -4363,6 +4366,9 @@ internal enum class HomeServerDrawerHeaderAction {
     ToggleSection,
 }
 
+internal fun homeServerDrawerHeaderSpinning(status: HomeServerDrawerLoadStatus): Boolean =
+    status == HomeServerDrawerLoadStatus.Loading || status == HomeServerDrawerLoadStatus.Refreshing
+
 internal fun dispatchHomeServerDrawerHeaderAction(
     action: HomeServerDrawerHeaderAction,
     serverId: String,
@@ -4382,7 +4388,7 @@ private fun HomeServerDrawerServerHeader(
     onServerClick: (String) -> Unit,
     onSectionToggle: (String) -> Unit,
 ) {
-    val busy = section.status == HomeServerDrawerLoadStatus.Loading || section.status == HomeServerDrawerLoadStatus.Refreshing
+    val busy = homeServerDrawerHeaderSpinning(section.status)
     val failed = section.status == HomeServerDrawerLoadStatus.ErrorEmpty || section.status == HomeServerDrawerLoadStatus.ErrorWithCache
     val unavailable = section.status == HomeServerDrawerLoadStatus.Unavailable
     val interactive = !unavailable || hasCachedConversations
@@ -4429,7 +4435,12 @@ private fun HomeServerDrawerServerHeader(
             }
             if (!unavailable) ServerSwitcherUnreadIndicator(section.server)
             if (busy) {
-                SlockLucideIcon(SlockLucideIconName.LoaderCircle, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
+                SlockLucideIcon(
+                    SlockLucideIconName.LoaderCircle,
+                    Modifier.size(14.dp),
+                    color = SlockColor.TextMutedGrayArgb,
+                    spinning = busy,
+                )
             } else if (failed) {
                 SlockLucideIcon(SlockLucideIconName.BadgeInfo, Modifier.size(14.dp), color = SlockColor.AccentRedArgb)
             } else if (unavailable) {
