@@ -33,6 +33,7 @@ internal class SharedAuthRefreshCoordinator(
     private val refreshAttemptTimeoutMillis: Long = AUTH_REFRESH_ATTEMPT_TIMEOUT_MILLIS,
     private val attemptIdFactory: () -> String = ::newAuthRefreshAttemptId,
     private val installationIdFactory: () -> String = ::newAuthInstallationId,
+    private val beforeFlightRetirement: suspend (resultAlreadyPublished: Boolean) -> Unit = {},
 ) {
     suspend fun refreshSession(
         failedAccessToken: String? = null,
@@ -180,15 +181,18 @@ internal class SharedAuthRefreshCoordinator(
                     }
                 }
             } catch (cancellation: CancellationException) {
-                flight.result.cancel(cancellation)
                 cleanupFlight(refreshToken, flight, exchange = null)
+                flight.result.cancel(cancellation)
                 throw cancellation
             } catch (throwable: Throwable) {
                 RefreshExchange.Exception(throwable)
             }
 
-        flight.result.complete(exchange)
+        // Retire the single-flight owner and publish its durable terminal consequence before
+        // waking callers. Otherwise an immediate retry can rejoin a completed ambiguous flight
+        // and suppress the next authoritative unauthorized response.
         cleanupFlight(refreshToken, flight, exchange)
+        flight.result.complete(exchange)
     }
 
     private suspend fun refreshWithAmbiguousTimeoutRecovery(
@@ -248,6 +252,7 @@ internal class SharedAuthRefreshCoordinator(
         flight: InFlightRefresh,
         exchange: RefreshExchange?
     ) {
+        beforeFlightRetirement(flight.result.isCompleted)
         coordinationMutex.withLock {
             if (inFlightByRefreshToken[refreshToken] === flight) {
                 inFlightByRefreshToken.remove(refreshToken)

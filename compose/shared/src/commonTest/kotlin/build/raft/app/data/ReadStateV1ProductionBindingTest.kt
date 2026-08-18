@@ -398,6 +398,7 @@ class ReadStateV1ProductionBindingTest {
 internal class TestReadStateV1Store(
     private val events: MutableList<String> = mutableListOf(),
     var failCommit: Boolean = false,
+    private val beforeCommit: suspend (ReadStateV1Fact) -> Unit = {},
 ) : ReadStateV1Store {
     val facts = mutableMapOf<ReadStateV1Scope, ReadStateV1Fact>()
 
@@ -408,6 +409,7 @@ internal class TestReadStateV1Store(
         guard: ReadStateV1CommitGuard,
     ): ReadStateV1StoreResult {
         if (failCommit) error("commit failed")
+        beforeCommit(fact)
         if (!guard.isCurrent()) return ReadStateV1StoreResult.RejectedCurrentGrant
         val transition = facts[scope]?.let { reduceReadStateV1(it, fact) }
         val result =

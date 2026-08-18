@@ -5,6 +5,7 @@ import build.raft.app.settingsBillingWebViewInjectedJavaScript
 import build.raft.app.settingsComputersWebViewInjectedJavaScript
 import build.raft.app.settingsMarketplaceWebViewInjectedJavaScript
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
@@ -17,12 +18,14 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SharedAuthTokenProviderTest {
     @Test
     fun persistsAttemptBeforeTransportAndAtomicallyClearsItWithSuccessor() = runBlocking {
+        var resultPublishedBeforeRetirement: Boolean? = null
         val original = sampleSession(accessToken = "crash-old-access", refreshToken = "crash-old-refresh")
         val store = InMemorySlockAuthSessionStore(original)
         var persistedBeforeTransport: StoredAuthRefreshAttempt? = null
@@ -44,6 +47,7 @@ class SharedAuthTokenProviderTest {
                 clockMillis = { 123L },
                 attemptIdFactory = { "arf_0000000000000001" },
                 installationIdFactory = { "ari_00000000000000000000000000000002" },
+                beforeFlightRetirement = { resultPublishedBeforeRetirement = it },
             )
 
         val result = coordinator.refreshSession(failedAccessToken = original.accessToken)
@@ -55,6 +59,7 @@ class SharedAuthTokenProviderTest {
         assertEquals("crash-new-access", committed.accessToken)
         assertNull(committed.refreshAttempt)
         assertNull(store.readSession()?.refreshAttempt)
+        assertEquals(false, resultPublishedBeforeRetirement)
     }
 
     @Test
@@ -715,6 +720,7 @@ class SharedAuthTokenProviderTest {
 
     @Test
     fun ambiguousRetryUnauthorizedRemainsTerminalForDurableAttempt() = runBlocking {
+        var resultPublishedBeforeRetirement: Boolean? = null
         val criticalLogs = mutableListOf<String>()
         val store =
             InMemorySlockAuthSessionStore(
@@ -738,6 +744,7 @@ class SharedAuthTokenProviderTest {
                 authApi = api,
                 clockMillis = { 0L },
                 criticalLogger = criticalLogs::add,
+                beforeFlightRetirement = { resultPublishedBeforeRetirement = it },
             )
 
         val result =
@@ -753,10 +760,45 @@ class SharedAuthTokenProviderTest {
         assertEquals(401, (result as SharedAuthRefreshResult.Failure).response.code)
         assertNull(store.readSession())
         assertEquals(1, criticalLogs.count { it.contains("refresh_unauthorized_session_cleared") })
+        assertEquals(false, resultPublishedBeforeRetirement)
+    }
+
+    @Test
+    fun cancelledOwnerRetiresFlightBeforeWaitersObserveCancellation() = runBlocking {
+        var resultPublishedBeforeRetirement: Boolean? = null
+        val store = InMemorySlockAuthSessionStore(
+            sampleSession("cancelled-flight-access", "cancelled-flight-refresh")
+        )
+        val api = FakeAuthApi(
+            refreshTokenAssertion = "cancelled-flight-refresh",
+            responses = listOf(
+                AuthApiResult.Success(AuthRefreshResponse("unused", "unused")),
+                AuthApiResult.Success(AuthRefreshResponse("recovered-access", "recovered-refresh")),
+            ),
+            beforeResponse = { call ->
+                if (call == 1) throw CancellationException("cancel owner before publication")
+            },
+        )
+        val coordinator = SharedAuthRefreshCoordinator(
+            sessionStore = store,
+            authApi = api,
+            clockMillis = { 0L },
+            beforeFlightRetirement = { resultPublishedBeforeRetirement = it },
+        )
+
+        assertFailsWith<CancellationException> {
+            coordinator.refreshSession(failedAccessToken = "cancelled-flight-access")
+        }
+        val recovered = coordinator.refreshSession(failedAccessToken = "cancelled-flight-access")
+
+        assertEquals(2, api.refreshCalls)
+        assertEquals("recovered-access", (recovered as SharedAuthRefreshResult.Success).session.accessToken)
+        assertEquals(false, resultPublishedBeforeRetirement)
     }
 
     @Test
     fun priorAmbiguousFlightCannotSuppressLaterDurableUnauthorized() = runBlocking {
+        val immediateRetryCompleted = CompletableDeferred<Unit>()
         val criticalLogs = mutableListOf<String>()
         val store =
             InMemorySlockAuthSessionStore(
@@ -781,19 +823,23 @@ class SharedAuthTokenProviderTest {
                 authApi = api,
                 clockMillis = { 1_000L },
                 criticalLogger = criticalLogs::add,
+                beforeFlightRetirement = { resultAlreadyPublished ->
+                    if (resultAlreadyPublished) immediateRetryCompleted.await()
+                },
             )
 
-        val ambiguous = coordinator.refreshSession(
-            failedAccessToken = "near-expiry-access",
-            failedRefreshToken = "near-expiry-refresh",
-        )
-        assertEquals(0, (ambiguous as SharedAuthRefreshResult.Failure).response.code)
-        assertEquals("near-expiry-refresh", store.readSession()?.refreshToken)
-        val terminal =
-            coordinator.refreshSession(
+        val terminal = async {
+            val ambiguous = coordinator.refreshSession(
                 failedAccessToken = "near-expiry-access",
                 failedRefreshToken = "near-expiry-refresh",
             )
+            assertEquals(0, (ambiguous as SharedAuthRefreshResult.Failure).response.code)
+            assertEquals("near-expiry-refresh", store.readSession()?.refreshToken)
+            coordinator.refreshSession(
+                failedAccessToken = "near-expiry-access",
+                failedRefreshToken = "near-expiry-refresh",
+            ).also { immediateRetryCompleted.complete(Unit) }
+        }.await()
 
         assertEquals(3, api.refreshCalls)
         assertEquals(401, (terminal as SharedAuthRefreshResult.Failure).response.code)

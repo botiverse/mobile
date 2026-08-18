@@ -127,6 +127,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -3724,13 +3725,40 @@ class SharedThreadStoreTest {
     fun refreshCanonicalAccessWinsInEitherInitialLookupCompletionOrder() = runBlocking {
         for (homeCompletesFirst in listOf(false, true)) {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-            val releaseHome = CompletableDeferred<Unit>()
+            val homeCalls = Channel<Pair<CompletableDeferred<Unit>, CompletableDeferred<Unit>>>(Channel.UNLIMITED)
+            val canonicalCalls = Channel<Pair<CompletableDeferred<Unit>, CompletableDeferred<Unit>>>(Channel.UNLIMITED)
             val channelRepository =
                 FakeChannelRepository {
-                    releaseHome.await()
-                    DataResult.Content(unjoinedHomeSnapshot())
+                    val release = CompletableDeferred<Unit>()
+                    val finished = CompletableDeferred<Unit>()
+                    homeCalls.send(release to finished)
+                    try {
+                        release.await()
+                        DataResult.Content(unjoinedHomeSnapshot())
+                    } finally {
+                        finished.complete(Unit)
+                    }
                 }
-            val repository = FakeConversationRepository()
+            var canonicalCallCount = 0
+            val repository =
+                object : ConversationRepository by FakeConversationRepository() {
+                    override suspend fun getThread(
+                        threadId: ThreadId,
+                        includeFollowedSummaries: Boolean,
+                        limit: Int,
+                    ): DataResult<ThreadSnapshot> {
+                        val callIndex = ++canonicalCallCount
+                        val release = CompletableDeferred<Unit>()
+                        val finished = CompletableDeferred<Unit>()
+                        canonicalCalls.send(release to finished)
+                        return try {
+                            release.await()
+                            DataResult.Content(threadSnapshot(body = "canonical-$callIndex"))
+                        } finally {
+                            finished.complete(Unit)
+                        }
+                    }
+                }
             val dataSource =
                 SharedThreadDataSource(
                     networkApi = FakeThreadApi(failChannelMessages = true),
@@ -3741,53 +3769,60 @@ class SharedThreadStoreTest {
             val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
             store.dispatch(SharedThreadIntent.Start(basePayload()))
+            val (releaseFirstHome, firstHomeFinished) = withTimeout(1_000) { homeCalls.receive() }
+            val (releaseFirstCanonical, firstCanonicalFinished) = withTimeout(1_000) { canonicalCalls.receive() }
+            releaseFirstCanonical.complete(Unit)
+            withTimeout(1_000) { firstCanonicalFinished.await() }
             withTimeout(1_000) {
-                while (store.state.value.payload.status != "content" || channelRepository.homeCalls < 1) {
-                    delay(10)
-                }
+                store.state.first { it.payload.messages.singleOrNull()?.body == "canonical-1" }
             }
             assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
 
-            if (homeCompletesFirst) {
-                repository.getThreadStarted = CompletableDeferred()
-                repository.releaseGetThread = CompletableDeferred()
-            }
             store.dispatch(SharedThreadIntent.Refresh)
-            withTimeout(1_000) {
-                while (channelRepository.homeCalls < 2) {
-                    delay(10)
-                }
-            }
+            withTimeout(500) { firstHomeFinished.await() }
+            val (releaseSecondHome, secondHomeFinished) = withTimeout(1_000) { homeCalls.receive() }
+            val (releaseSecondCanonical, secondCanonicalFinished) = withTimeout(1_000) { canonicalCalls.receive() }
             if (homeCompletesFirst) {
-                repository.getThreadStarted?.await()
-                releaseHome.complete(Unit)
+                releaseSecondHome.complete(Unit)
+                withTimeout(1_000) { secondHomeFinished.await() }
                 withTimeout(1_000) {
-                    while (!store.state.value.initialHomeAccessLookupComplete) {
-                        delay(10)
-                    }
+                    store.state.first { it.initialHomeAccessLookupComplete }
                 }
-                repository.releaseGetThread?.complete(Unit)
+                releaseSecondCanonical.complete(Unit)
+                withTimeout(1_000) { secondCanonicalFinished.await() }
+                withTimeout(1_000) {
+                    store.state.first { it.payload.messages.singleOrNull()?.body == "canonical-2" }
+                }
             } else {
+                releaseSecondCanonical.complete(Unit)
+                withTimeout(1_000) { secondCanonicalFinished.await() }
                 withTimeout(1_000) {
-                    while (
-                        !store.state.value.canonicalAccessResolved ||
-                            store.state.value.initialHomeAccessLookupComplete
-                    ) {
-                        delay(10)
+                    store.state.first { it.payload.messages.singleOrNull()?.body == "canonical-2" }
+                }
+                releaseSecondHome.complete(Unit)
+                withTimeout(1_000) { secondHomeFinished.await() }
+                withTimeout(1_000) {
+                    store.state.first { it.initialHomeAccessLookupComplete }
+                }
+            }
+            releaseFirstHome.complete(Unit)
+
+            val resolved =
+                withTimeout(1_000) {
+                    store.state.first {
+                        it.initialHomeAccessLookupComplete &&
+                            it.accessResolution == ThreadAccessResolution.Resolved &&
+                            it.payload.messages.singleOrNull()?.body == "canonical-2" &&
+                            it.payload.joined &&
+                            it.payload.canSend &&
+                            it.payload.composer.enabled &&
+                            it.writeActionsEnabled
                     }
                 }
-                releaseHome.complete(Unit)
-            }
-            withTimeout(1_000) {
-                while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
-                    delay(10)
-                }
-            }
-
-            assertTrue(store.state.value.payload.joined)
-            assertTrue(store.state.value.payload.canSend)
-            assertTrue(store.state.value.payload.composer.enabled)
-            assertTrue(store.state.value.writeActionsEnabled)
+            assertTrue(resolved.payload.joined)
+            assertTrue(resolved.payload.canSend)
+            assertTrue(resolved.payload.composer.enabled)
+            assertTrue(resolved.writeActionsEnabled)
             scope.cancel()
         }
     }
