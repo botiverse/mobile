@@ -6217,15 +6217,20 @@ private fun SlockAvatarHttpImage(
         loadState.cache == SlockAvatarHttpCacheState.InFlight &&
             lease?.generation == loadState.generation &&
             lease?.ownerToken == loadState.ownerToken
+    val refreshEffectKey =
+        slockAvatarHttpRefreshEffectKey(
+            activeSource = activeSource,
+            loadState = loadState,
+            ownsCurrentRequest = ownsCurrentRequest
+        )
     LaunchedEffect(
         avatarMountedBinding,
         mountedHandle,
-        loadState.cache,
-        loadState.generation,
-        ownsCurrentRequest
+        refreshEffectKey
     ) {
         val binding = avatarMountedBinding ?: return@LaunchedEffect
         val handle = mountedHandle ?: return@LaunchedEffect
+        if (!refreshEffectKey.refreshAdmitted) return@LaunchedEffect
         binding.refreshWhenHttpLoadAdmitted(
             handle = handle,
             loadState = loadState,
@@ -6318,6 +6323,28 @@ internal fun slockAvatarHttpLoadIsAdmitted(
     loadState: SlockAvatarHttpLoadSnapshot,
     ownsCurrentRequest: Boolean
 ): Boolean = ownsCurrentRequest || loadState.cache == SlockAvatarHttpCacheState.Ready
+
+/**
+ * Stable render-axis identity for the mounted refresh effect. A successful managed first frame
+ * changes cache/ownership, but not the admitted generation; keeping those transient fields out of
+ * the key lets the original refresh finish instead of cancelling and restarting its transport.
+ */
+internal data class SlockAvatarHttpRefreshEffectKey(
+    val activeSource: String,
+    val generation: Long,
+    val refreshAdmitted: Boolean
+)
+
+internal fun slockAvatarHttpRefreshEffectKey(
+    activeSource: String,
+    loadState: SlockAvatarHttpLoadSnapshot,
+    ownsCurrentRequest: Boolean
+): SlockAvatarHttpRefreshEffectKey =
+    SlockAvatarHttpRefreshEffectKey(
+        activeSource = activeSource,
+        generation = loadState.generation,
+        refreshAdmitted = slockAvatarHttpLoadIsAdmitted(loadState, ownsCurrentRequest)
+    )
 
 internal suspend fun SlockAvatarMountedBinding.refreshWhenHttpLoadAdmitted(
     handle: SlockAvatarMountedHandle,

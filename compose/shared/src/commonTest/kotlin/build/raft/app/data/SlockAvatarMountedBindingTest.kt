@@ -4,6 +4,7 @@ import build.raft.app.SlockAvatarHttpCacheState
 import build.raft.app.SlockAvatarHttpLoadSnapshot
 import build.raft.app.refreshWhenHttpLoadAdmitted
 import build.raft.app.slockAvatarHttpAdmittedImageModel
+import build.raft.app.slockAvatarHttpRefreshEffectKey
 import build.raft.app.model.MemberKind
 import build.raft.app.network.SharedBinaryConditionalDownloadResult
 import build.raft.app.network.SharedBinaryConditionalHttpException
@@ -129,6 +130,74 @@ class SlockAvatarMountedBindingTest {
             )
         )
         assertEquals(1, staleDownloader.calls, "the current in-flight owner may revalidate")
+    }
+
+    @Test
+    fun staleFirstFrameSuccessKeepsOneAdmittedRefreshAndLetsItComplete() = runBlocking {
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 50L) }
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val downloader = RecordingDownloader.modified(byteArrayOf(5, 6), gate)
+        val binding = binding(store, FakeNativeProvider(), downloader)
+        val handle = binding.mount(subject(), RemoteUrl)
+        val staleModel = handle.imageModel.value
+        val inFlight =
+            SlockAvatarHttpLoadSnapshot(
+                cache = SlockAvatarHttpCacheState.InFlight,
+                generation = 1L,
+                ownerToken = 7L
+            )
+        val readyAfterManagedFirstFrame =
+            SlockAvatarHttpLoadSnapshot(
+                cache = SlockAvatarHttpCacheState.Ready,
+                generation = 1L
+            )
+
+        val inFlightKey = slockAvatarHttpRefreshEffectKey(RemoteUrl, inFlight, ownsCurrentRequest = true)
+        val firstFrameSuccessKey =
+            slockAvatarHttpRefreshEffectKey(
+                RemoteUrl,
+                readyAfterManagedFirstFrame,
+                ownsCurrentRequest = false
+            )
+        assertEquals(
+            inFlightKey,
+            firstFrameSuccessKey,
+            "managed first-frame success must not restart the same admitted generation"
+        )
+        assertNotEquals(
+            inFlightKey,
+            slockAvatarHttpRefreshEffectKey(
+                "https://cdn.example/avatar-v2.webp",
+                inFlight,
+                ownsCurrentRequest = true
+            )
+        )
+        assertNotEquals(
+            inFlightKey,
+            slockAvatarHttpRefreshEffectKey(
+                RemoteUrl,
+                inFlight.copy(generation = 2L),
+                ownsCurrentRequest = true
+            )
+        )
+
+        val refresh =
+            async {
+                binding.refreshWhenHttpLoadAdmitted(
+                    handle = handle,
+                    loadState = inFlight,
+                    ownsCurrentRequest = true
+                )
+            }
+        yield()
+        assertEquals(1, downloader.calls, "the original refresh must own the suspended download")
+
+        // Compose keeps the running LaunchedEffect because the two production keys are equal.
+        // Release the native/download gate and require that same refresh to publish its reload.
+        gate.complete(Unit)
+        assertTrue(refresh.await())
+        assertEquals(1, downloader.calls)
+        assertNotEquals(staleModel, handle.imageModel.value)
     }
 
     @Test
