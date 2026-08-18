@@ -32,6 +32,32 @@ class SlockAvatarHttpLoadCoordinatorTest {
     }
 
     @Test
+    fun ordinaryUrlAndMalformedManagedModelRemainBehindHttpGate() {
+        val url = "https://cdn.example/avatar.webp"
+        val malformedManagedModel = "slock-avatar-render-v1:not-base64"
+        val idle = SlockAvatarHttpLoadSnapshot(cache = SlockAvatarHttpCacheState.Idle)
+        val joined =
+            SlockAvatarHttpLoadSnapshot(
+                cache = SlockAvatarHttpCacheState.InFlight,
+                generation = 1L,
+                ownerToken = 7L
+            )
+        val ready = SlockAvatarHttpLoadSnapshot(cache = SlockAvatarHttpCacheState.Ready)
+
+        assertNull(slockAvatarHttpAdmittedImageModel(url, idle, ownsCurrentRequest = false))
+        assertNull(slockAvatarHttpAdmittedImageModel(url, joined, ownsCurrentRequest = false))
+        assertNull(
+            slockAvatarHttpAdmittedImageModel(
+                malformedManagedModel,
+                idle,
+                ownsCurrentRequest = false
+            )
+        )
+        assertEquals(url, slockAvatarHttpAdmittedImageModel(url, joined, ownsCurrentRequest = true))
+        assertEquals(url, slockAvatarHttpAdmittedImageModel(url, ready, ownsCurrentRequest = false))
+    }
+
+    @Test
     fun dnsFailureFallsBackThenCooldownAllowsSameUrlToRecover() {
         var nowMillis = 1_000L
         val coordinator =
