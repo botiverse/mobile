@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.AUTHENTICATED_ROUTE_AUTHORITY_CHANGED
 import build.raft.app.data.AuthenticatedRouteAuthorityGateway
+import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.AuthenticatedRouteOperationRunner
 import build.raft.app.data.ChannelActivityMuteSettings
 import build.raft.app.data.ChannelProfileUpdateRequest
@@ -22,8 +23,11 @@ import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.map
+import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.toHomeChannelRow
 import build.raft.app.data.typedPinnedOrLegacy
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -38,6 +42,8 @@ internal enum class ChannelSettingsLoadStatus {
     Error,
     AuthorityRejected,
 }
+
+internal const val CHANNEL_SETTINGS_IDENTITY_MISMATCH = "channel_settings_identity_mismatch"
 
 internal enum class ChannelSettingsAction {
     Mute,
@@ -62,6 +68,69 @@ internal data class ChannelSettingsSnapshot(
     val memberSlice: SharedServerChannelMembersSlice,
 )
 
+private data class ChannelSettingsSnapshotCacheKey(
+    val environmentId: String,
+    val accountId: String,
+    val serverId: String,
+    val channelId: String,
+)
+
+internal class ChannelSettingsSnapshotCache(
+    private val maxEntries: Int = 64,
+) {
+    private val lock = SynchronizedObject()
+    private val entries = linkedMapOf<ChannelSettingsSnapshotCacheKey, ChannelSettingsSnapshot>()
+
+    fun get(owner: AuthenticatedRouteOwner, route: ChannelSettingsRoute): ChannelSettingsSnapshot? {
+        val key = cacheKey(owner, route) ?: return null
+        return synchronized(lock) {
+            val snapshot = entries.remove(key) ?: return@synchronized null
+            entries[key] = snapshot
+            snapshot
+        }
+    }
+
+    fun put(
+        owner: AuthenticatedRouteOwner,
+        route: ChannelSettingsRoute,
+        snapshot: ChannelSettingsSnapshot,
+    ): Boolean {
+        val key = cacheKey(owner, route) ?: return false
+        if (snapshot.channel.channelId.value.trim() != key.channelId) return false
+        if (snapshot.memberSlice.serverId?.trim() != key.serverId) return false
+        if (snapshot.memberSlice.channelId.trim() != key.channelId) return false
+        synchronized(lock) {
+            entries.remove(key)
+            entries[key] = snapshot
+            while (entries.size > maxEntries.coerceAtLeast(1)) {
+                entries.remove(entries.keys.firstOrNull() ?: break)
+            }
+        }
+        return true
+    }
+
+    fun remove(owner: AuthenticatedRouteOwner, route: ChannelSettingsRoute) {
+        val key = cacheKey(owner, route) ?: return
+        synchronized(lock) { entries.remove(key) }
+    }
+
+    private fun cacheKey(
+        owner: AuthenticatedRouteOwner,
+        route: ChannelSettingsRoute,
+    ): ChannelSettingsSnapshotCacheKey? {
+        val normalizedOwner = owner.normalizedOrNull() ?: return null
+        val routeServerId = route.serverId.value.trim()
+        val channelId = route.channelId.value.trim().takeIf(String::isNotBlank) ?: return null
+        if (normalizedOwner.serverId != routeServerId) return null
+        return ChannelSettingsSnapshotCacheKey(
+            environmentId = normalizedOwner.environmentId,
+            accountId = normalizedOwner.accountId,
+            serverId = normalizedOwner.serverId,
+            channelId = channelId,
+        )
+    }
+}
+
 internal data class ChannelSettingsState(
     val status: ChannelSettingsLoadStatus = ChannelSettingsLoadStatus.Loading,
     val channel: HomeChannelRow? = null,
@@ -69,6 +138,7 @@ internal data class ChannelSettingsState(
     val canManage: Boolean = false,
     val memberSlice: SharedServerChannelMembersSlice = SharedServerChannelMembersSlice(channelId = ""),
     val refreshing: Boolean = false,
+    val writeActionsEnabled: Boolean = false,
     val actionInFlight: ChannelSettingsAction? = null,
     val profileStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val profileErrorCode: String? = null,
@@ -126,7 +196,7 @@ internal class RealChannelSettingsDataSource(
                 ?: return@run detail.withoutContent()
             if (channel.channelId != route.channelId) {
                 return@run DataResult.Error(
-                    ScreenError(code = "channel_settings_identity_mismatch", retryable = false)
+                    ScreenError(code = CHANNEL_SETTINGS_IDENTITY_MISMATCH, retryable = false)
                 )
             }
 
@@ -223,18 +293,24 @@ internal class RealChannelSettingsDataSource(
 
 internal class ChannelSettingsStore(
     private val route: ChannelSettingsRoute,
+    private val owner: AuthenticatedRouteOwner,
     private val dataSource: ChannelSettingsDataSource,
+    private val snapshotCache: ChannelSettingsSnapshotCache,
+    initialAuthorityAccepted: Boolean,
     private val scope: CoroutineScope,
 ) {
+    private val cachedSnapshot =
+        if (initialAuthorityAccepted) snapshotCache.get(owner, route) else null
     private val mutableState =
         MutableStateFlow(
-            ChannelSettingsState(
-                memberSlice =
-                    SharedServerChannelMembersSlice(
-                        serverId = route.serverId.value,
-                        channelId = route.channelId.value,
-                    )
-            )
+            cachedSnapshot?.toCachedState()
+                ?: ChannelSettingsState(
+                    memberSlice =
+                        SharedServerChannelMembersSlice(
+                            serverId = route.serverId.value,
+                            channelId = route.channelId.value,
+                        )
+                )
         )
     val state: StateFlow<ChannelSettingsState> = mutableState.asStateFlow()
 
@@ -248,21 +324,28 @@ internal class ChannelSettingsStore(
             ChannelSettingsIntent.Load -> load(force = false)
             ChannelSettingsIntent.Refresh -> load(force = true)
             ChannelSettingsIntent.ToggleMute -> {
+                if (!mutableState.value.writeActionsEnabled) return
                 val channel = mutableState.value.channel ?: return
                 launchAction(ChannelSettingsAction.Mute) { dataSource.setMuted(!channel.activityMuted) }
             }
-            ChannelSettingsIntent.TogglePin ->
+            ChannelSettingsIntent.TogglePin -> {
+                if (!mutableState.value.writeActionsEnabled) return
                 launchAction(ChannelSettingsAction.Pin, dataSource::togglePinned)
+            }
             is ChannelSettingsIntent.UpdateProfile -> updateProfile(intent)
             ChannelSettingsIntent.MakePrivate -> {
+                if (!mutableState.value.writeActionsEnabled) return
                 val channel = mutableState.value.channel ?: return
                 if (channelSettingsCanMakePrivate(channel)) {
                     launchAction(ChannelSettingsAction.Visibility, dataSource::makePrivate)
                 }
             }
-            ChannelSettingsIntent.Archive ->
+            ChannelSettingsIntent.Archive -> {
+                if (!mutableState.value.writeActionsEnabled) return
                 launchAction(ChannelSettingsAction.Archive, dataSource::archive)
+            }
             ChannelSettingsIntent.Delete -> {
+                if (!mutableState.value.writeActionsEnabled) return
                 val channel = mutableState.value.channel ?: return
                 if (channelSettingsCanDelete(channel)) {
                     launchAction(ChannelSettingsAction.Delete, dataSource::delete)
@@ -286,6 +369,7 @@ internal class ChannelSettingsStore(
         actionJob?.cancel()
         loadJob = null
         actionJob = null
+        snapshotCache.remove(owner, route)
         mutableState.value =
             ChannelSettingsState(
                 status = ChannelSettingsLoadStatus.AuthorityRejected,
@@ -326,16 +410,16 @@ internal class ChannelSettingsStore(
                 mutableState.value =
                     when (result) {
                         is DataResult.Content ->
-                            ChannelSettingsState(
-                                status = ChannelSettingsLoadStatus.Content,
-                                channel = result.data.channel,
-                                sidebarOrder = result.data.sidebarOrder,
-                                canManage = result.data.canManage,
-                                memberSlice = result.data.memberSlice,
-                            )
+                            result.data.also { snapshot ->
+                                snapshotCache.put(owner, route, snapshot)
+                            }.toResolvedState()
                         is DataResult.Error ->
                             if (result.error.code == AUTHENTICATED_ROUTE_AUTHORITY_CHANGED) {
+                                snapshotCache.remove(owner, route)
                                 authorityRejectedState()
+                            } else if (result.error.code == CHANNEL_SETTINGS_IDENTITY_MISMATCH) {
+                                snapshotCache.remove(owner, route)
+                                terminalReadFailureState(result.error.code)
                             } else if (previous.channel != null) {
                                 previous.copy(refreshing = false, errorCode = result.error.code)
                             } else {
@@ -345,25 +429,55 @@ internal class ChannelSettingsStore(
                                     errorCode = result.error.code,
                                 )
                             }
-                        is DataResult.NoPermission ->
-                            previous.copy(
-                                status = ChannelSettingsLoadStatus.Error,
-                                refreshing = false,
-                                errorCode = result.blocker.code,
-                            )
-                        is DataResult.Empty ->
-                            previous.copy(
-                                status = ChannelSettingsLoadStatus.Error,
-                                refreshing = false,
-                                errorCode = result.reason.name,
-                            )
+                        is DataResult.NoPermission -> {
+                            snapshotCache.remove(owner, route)
+                            terminalReadFailureState(result.blocker.code)
+                        }
+                        is DataResult.Empty -> {
+                            snapshotCache.remove(owner, route)
+                            terminalReadFailureState(result.reason.name)
+                        }
                     }
             }
     }
 
+    private fun ChannelSettingsSnapshot.toCachedState(): ChannelSettingsState =
+        ChannelSettingsState(
+            status = ChannelSettingsLoadStatus.Content,
+            channel = channel,
+            sidebarOrder = sidebarOrder,
+            canManage = canManage,
+            memberSlice = memberSlice,
+            writeActionsEnabled = false,
+        )
+
+    private fun ChannelSettingsSnapshot.toResolvedState(): ChannelSettingsState =
+        ChannelSettingsState(
+            status = ChannelSettingsLoadStatus.Content,
+            channel = channel,
+            sidebarOrder = sidebarOrder,
+            canManage = canManage,
+            memberSlice = memberSlice,
+            writeActionsEnabled = true,
+        )
+
+    private fun terminalReadFailureState(code: String): ChannelSettingsState =
+        ChannelSettingsState(
+            status = ChannelSettingsLoadStatus.Error,
+            memberSlice =
+                SharedServerChannelMembersSlice(
+                    serverId = route.serverId.value,
+                    channelId = route.channelId.value,
+                    status = SharedServerMembersLoadStatus.Error,
+                    errorCode = code,
+                ),
+            errorCode = code,
+        )
+
     private fun updateProfile(intent: ChannelSettingsIntent.UpdateProfile) {
         if (
             mutableState.value.status != ChannelSettingsLoadStatus.Content ||
+            !mutableState.value.writeActionsEnabled ||
             mutableState.value.actionInFlight != null
         ) {
             return
@@ -386,6 +500,7 @@ internal class ChannelSettingsStore(
     ) {
         if (
             mutableState.value.status != ChannelSettingsLoadStatus.Content ||
+            !mutableState.value.writeActionsEnabled ||
             mutableState.value.actionInFlight != null
         ) {
             return
@@ -419,7 +534,7 @@ internal class ChannelSettingsStore(
 
     private fun applyMutationSuccess(action: ChannelSettingsAction, value: Any?) {
         val current = mutableState.value
-        mutableState.value =
+        val next =
             when (action) {
                 ChannelSettingsAction.Mute -> {
                     val settings = value as ChannelActivityMuteSettings
@@ -462,10 +577,28 @@ internal class ChannelSettingsStore(
                 ChannelSettingsAction.Delete ->
                     current.copy(actionInFlight = null, effect = ChannelSettingsEffect.Close)
             }
+        mutableState.value = next
+        if (action == ChannelSettingsAction.Archive || action == ChannelSettingsAction.Delete) {
+            snapshotCache.remove(owner, route)
+        } else {
+            next.toSnapshotOrNull()?.let { snapshot -> snapshotCache.put(owner, route, snapshot) }
+        }
+    }
+
+    private fun ChannelSettingsState.toSnapshotOrNull(): ChannelSettingsSnapshot? {
+        val currentChannel = channel ?: return null
+        val currentSidebarOrder = sidebarOrder ?: return null
+        return ChannelSettingsSnapshot(
+            channel = currentChannel,
+            sidebarOrder = currentSidebarOrder,
+            canManage = canManage,
+            memberSlice = memberSlice,
+        )
     }
 
     private fun applyMutationFailure(action: ChannelSettingsAction, code: String) {
         if (code == AUTHENTICATED_ROUTE_AUTHORITY_CHANGED) {
+            snapshotCache.remove(owner, route)
             mutableState.value = authorityRejectedState()
             return
         }
