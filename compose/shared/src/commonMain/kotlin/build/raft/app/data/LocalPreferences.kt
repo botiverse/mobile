@@ -2,7 +2,7 @@ package build.raft.app.data
 
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
-internal const val DEFAULT_SERVER_DRAWER_ENABLED = true
+internal const val DEFAULT_SERVER_DRAWER_ENABLED = false
 
 enum class AppLocale(
     val storageKey: String,
