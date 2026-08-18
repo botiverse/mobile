@@ -40,7 +40,7 @@ export function verifyTierResults(needs) {
   if (runAttachment && !runAndroid) throw new Error("attachment legs require Android");
 
   const expected = new Map([
-    ["kuikly-artifacts", runAndroid || runOhos],
+    ["kuikly-artifacts", runAndroid || runIos || runOhos],
     ["fork-deps", runOhos],
     ["android", runAndroid],
     ["ios", runIos],
@@ -86,7 +86,7 @@ function fixture({ android, ios, ohos, deviceSuite, canonicalFinal, attachmentLe
       },
     },
   };
-  needs["kuikly-artifacts"] = { result: android || ohos ? "success" : "skipped" };
+  needs["kuikly-artifacts"] = { result: android || ios || ohos ? "success" : "skipped" };
   needs["fork-deps"] = { result: ohos ? "success" : "skipped" };
   needs.android = { result: android ? "success" : "skipped" };
   needs.ios = { result: ios ? "success" : "skipped" };
@@ -139,6 +139,14 @@ function selfTest() {
   const accidentalAttachment = fixture({ ...none, android: true });
   accidentalAttachment[ATTACHMENT_JOB].result = "success";
   expectFailure(accidentalAttachment, "unplanned attachment cost");
+
+  const accidentalArtifacts = fixture(none);
+  accidentalArtifacts["kuikly-artifacts"].result = "success";
+  expectFailure(accidentalArtifacts, "unplanned kuikly-artifacts cost");
+
+  const iosOnlyMissingArtifacts = fixture({ ...none, ios: true });
+  iosOnlyMissingArtifacts["kuikly-artifacts"].result = "skipped";
+  expectFailure(iosOnlyMissingArtifacts, "ios-only plan without kuikly-artifacts admission");
 
   const deviceWithoutAndroid = fixture({ ...none, ios: true });
   deviceWithoutAndroid.plan.outputs.run_device_suite = "true";
