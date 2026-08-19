@@ -51,7 +51,7 @@ permissions:
 jobs:
   android-release-contract:
     name: Android Hands release contract
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 5
     steps:
       - name: Checkout
