@@ -3000,39 +3000,106 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun enrichSavedStatus(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
-        val session = readSession() ?: return payload
-        return payload.withSavedStatus(session)
+        val context = captureReplyCacheProducerContext() ?: return payload
+        return when (val result = enrichSavedStatus(payload, context)) {
+            is DataResult.Content -> result.data
+            is DataResult.Empty,
+            is DataResult.Error,
+            is DataResult.NoPermission -> payload
+        }
+    }
+
+    /**
+     * Enrich saved state using the producer's already-captured owner. The secondary
+     * timeline must never re-sample the process-global session between the summary
+     * request and this lookup: doing so can turn an A result into a B projection.
+     */
+    internal suspend fun enrichSavedStatus(
+        payload: KuiklyThreadScreenPayload,
+        expectedContext: ReplyCacheProducerContext,
+    ): DataResult<KuiklyThreadScreenPayload> {
+        if (!isCurrentReplyCacheProvenance(expectedContext.provenance)) {
+            return staleReplyCacheProvenanceResult()
+        }
+        val serverId =
+            expectedContext.provenance.serverId.takeIf { it.isNotBlank() }?.let(::ServerId)
+                ?: return DataResult.Content(payload)
+        val result = payload.withSavedStatus(serverId)
+        if (!isCurrentReplyCacheProvenance(expectedContext.provenance)) {
+            return staleReplyCacheProvenanceResult()
+        }
+        return DataResult.Content(result)
     }
 
     suspend fun fetchFollowedThreadPayload(
         basePayload: KuiklyThreadScreenPayload,
-        onSummaries: (ThreadReplySummariesSnapshot) -> Unit = {}
+        onSummaries: (ThreadReplySummariesSnapshot) -> Unit = {},
     ): DataResult<KuiklyThreadScreenPayload> {
+        return fetchFollowedThreadPayloadForContext(
+            basePayload = basePayload,
+            expectedContext = null,
+            onSummaries = onSummaries,
+        )
+    }
+
+    internal suspend fun fetchFollowedThreadPayloadForContext(
+        basePayload: KuiklyThreadScreenPayload,
+        expectedContext: ReplyCacheProducerContext?,
+        onSummaries: (ThreadReplySummariesSnapshot) -> Unit = {},
+    ): DataResult<KuiklyThreadScreenPayload> {
+        if (expectedContext != null && !isCurrentReplyCacheProvenance(expectedContext.provenance)) {
+            return staleReplyCacheProvenanceResult()
+        }
         if (conversationRepository == null) return DataResult.Content(basePayload)
         if (basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
             return DataResult.Content(basePayload)
         }
-        readSession() ?: return authSessionRequiredResult()
+        val context = expectedContext ?: captureReplyCacheProducerContext()
+            ?: return authSessionRequiredResult()
+        if (!isCurrentReplyCacheProvenance(context.provenance)) {
+            return staleReplyCacheProvenanceResult()
+        }
         val resolvedThreadId =
             basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
                 ?: basePayload.streamChannelId?.takeIf { it.isNotBlank() }
                 ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
         val parentMessageIds = basePayload.messages.map { MessageId(it.id) }
-        return conversationRepository
+        val result = conversationRepository
             .getThreadReplySummaries(
                 threadId = ThreadId(resolvedThreadId),
                 parentMessageIds = parentMessageIds
             )
-            .map { summaries ->
-                onSummaries(summaries)
-                basePayload.withReplySummaries(summaries)
+        if (!isCurrentReplyCacheProvenance(context.provenance)) {
+            return staleReplyCacheProvenanceResult()
+        }
+        return when (result) {
+            is DataResult.Content -> {
+                onSummaries(result.data)
+                if (!isCurrentReplyCacheProvenance(context.provenance)) {
+                    staleReplyCacheProvenanceResult()
+                } else {
+                    DataResult.Content(basePayload.withReplySummaries(result.data))
+                }
             }
+            is DataResult.Empty -> result
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
     }
 
+    /**
+     * Linearizes the matching Store publication and reply-count fact write under
+     * the same exact owner. `null` means owner rejection; `false` means the Store
+     * declined a stale route; `true` means the owner-bound commit was admitted.
+     */
     fun cacheReplyCountProjection(
         threadId: String,
-        snapshot: ThreadReplySummariesSnapshot
-    ) {
+        snapshot: ThreadReplySummariesSnapshot,
+        serverId: String,
+        principalId: String,
+        expectedProvenance: ReplyCacheProvenance,
+        commit: () -> Boolean,
+    ): Boolean? {
         val facts =
             snapshot.threads.mapNotNull { summary ->
                 val parentMessageId = summary.parentMessageId?.value ?: return@mapNotNull null
@@ -3042,13 +3109,22 @@ internal class SharedThreadDataSource(
                         replyCount = summary.replyCount
                     )
             }
-        if (facts.isEmpty()) return
-        payloadCache.recordReplyCountFacts(
-            serverId = cacheServerId.value,
-            threadId = threadId,
-            principalId = cachePrincipalId.value,
-            facts = facts
-        )
+        if (serverId != expectedProvenance.serverId || principalId != expectedProvenance.principalId) {
+            return null
+        }
+        return synchronized(replyCacheProvenanceLock) {
+            if (replyCacheProvenance.value != expectedProvenance) return@synchronized null
+            if (!commit()) return@synchronized false
+            if (facts.isNotEmpty()) {
+                payloadCache.recordReplyCountFacts(
+                    serverId = serverId,
+                    threadId = threadId,
+                    principalId = principalId,
+                    facts = facts
+                )
+            }
+            true
+        }
     }
 
     /**
@@ -4767,10 +4843,9 @@ internal class SharedThreadDataSource(
     }
 
     private suspend fun KuiklyThreadScreenPayload.withSavedStatus(
-        session: StoredAuthSession
+        serverId: ServerId
     ): KuiklyThreadScreenPayload {
         val repository = savedStatusRepository ?: return this
-        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
         val messageIds =
             (messages.map { it.id } + listOfNotNull(originMessage?.id))
                 .map { it.trim() }
@@ -5517,6 +5592,13 @@ internal class SharedThreadStore(
         payload: KuiklyThreadScreenPayload,
     ): ThreadRepliesPageIdentity? {
         val context = dataSource.captureReplyCacheProducerContext() ?: return null
+        return captureThreadRepliesPageIdentity(payload, context)
+    }
+
+    private fun captureThreadRepliesPageIdentity(
+        payload: KuiklyThreadScreenPayload,
+        context: ReplyCacheProducerContext,
+    ): ThreadRepliesPageIdentity? {
         val parentScopeId =
             if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
                 payload.parentChannelId
@@ -5541,6 +5623,7 @@ internal class SharedThreadStore(
         previous: KuiklyThreadScreenPayload,
         page: ThreadRepliesPageIdentity?,
         generation: Long?,
+        expectedProvenance: ReplyCacheProvenance? = null,
     ): KuiklyThreadScreenPayload {
         val authorityAvailable =
             replySummariesAuthority == build.raft.app.data.ThreadReplySummariesAuthority.Embedded ||
@@ -5589,7 +5672,19 @@ internal class SharedThreadStore(
                 }
             }
         val accepted =
-            threadRepliesSyncHost.ingestAuthoritativeSnapshots(page, generation, snapshots)
+            threadRepliesSyncHost.ingestAuthoritativeSnapshots(
+                page = page,
+                generation = generation,
+                snapshots = snapshots,
+                withCommitAdmission =
+                    expectedProvenance?.let { provenance ->
+                        { commit ->
+                            dataSource.withCurrentReplyCacheProvenance(provenance) {
+                                commit()
+                            }
+                        }
+                    },
+            )
                 ?: return withAcceptedThreadRepliesProjection(emptyMap(), previous)
                     .copy(replySummariesAuthority = previous.replySummariesAuthority)
         return withAcceptedThreadRepliesProjection(accepted, previous)
@@ -6279,17 +6374,39 @@ internal class SharedThreadStore(
         if (!beforeFetch.hasRenderableThreadContent()) {
             return
         }
+        val producerContext = dataSource.captureReplyCacheProducerContext() ?: return
+        val expectedProvenance = producerContext.provenance
         val repliesPageIdentity =
             if (beforeFetch.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
                 null
             } else {
-                captureThreadRepliesPageIdentity(routePayload)
+                captureThreadRepliesPageIdentity(routePayload, producerContext)
             }
         val repliesRebaselineGeneration =
             repliesPageIdentity?.let { page ->
                 val generation = ++nextThreadRepliesRebaselineGeneration
                 generation.takeIf { threadRepliesSyncHost.beginAuthoritativeRebaseline(page, generation) }
             }
+        fun abortRebaseline() {
+            if (repliesPageIdentity != null && repliesRebaselineGeneration != null) {
+                threadRepliesSyncHost.abortAuthoritativeRebaseline(
+                    repliesPageIdentity,
+                    repliesRebaselineGeneration,
+                )
+            }
+        }
+        fun dropForOwnerChange(stage: String) {
+            abortRebaseline()
+            diagnosticsLogger?.invoke(
+                "thread_secondary_refresh_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                    "ignored=true reason=owner_changed stage=$stage " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
+        }
+        if (!dataSource.isCurrentReplyCacheProvenance(expectedProvenance)) {
+            dropForOwnerChange("before_summary")
+            return
+        }
         var replySummaries: ThreadReplySummariesSnapshot? = null
         val followedPayload =
             if (beforeFetch.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
@@ -6305,9 +6422,10 @@ internal class SharedThreadStore(
             } else {
                 val followedStartedAt = TimeSource.Monotonic.markNow()
                 val followedResult =
-                    dataSource.fetchFollowedThreadPayload(beforeFetch) { snapshot ->
-                        replySummaries = snapshot
-                    }
+                    dataSource.fetchFollowedThreadPayloadForContext(
+                        basePayload = beforeFetch,
+                        expectedContext = producerContext,
+                    ) { snapshot -> replySummaries = snapshot }
                 diagnosticsLogger?.invoke(
                     "thread_secondary_followed_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
                         "result=${followedResult.threadDiagnosticsResult()} " +
@@ -6320,28 +6438,36 @@ internal class SharedThreadStore(
                     is DataResult.NoPermission -> beforeFetch
                 }
             }
-        val enriched = dataSource.enrichSavedStatus(followedPayload)
+        if (!dataSource.isCurrentReplyCacheProvenance(expectedProvenance)) {
+            dropForOwnerChange("after_summary")
+            return
+        }
+        val enrichedResult = dataSource.enrichSavedStatus(followedPayload, producerContext)
+        if (!dataSource.isCurrentReplyCacheProvenance(expectedProvenance)) {
+            dropForOwnerChange("after_saved_status")
+            return
+        }
+        val enriched =
+            when (enrichedResult) {
+                is DataResult.Content -> enrichedResult.data
+                is DataResult.Empty,
+                is DataResult.Error,
+                is DataResult.NoPermission -> {
+                    dropForOwnerChange("saved_status_rejected")
+                    return
+                }
+            }
         val latest = _state.value.payload
         if (
             !staleTokenStillCurrent(staleToken, "thread_secondary_refresh", "after_fetch", routePayload, latest) ||
             !routeStillCurrent(routePayload, "thread_secondary_refresh", "after_fetch", latest)
         ) {
-            if (repliesPageIdentity != null && repliesRebaselineGeneration != null) {
-                threadRepliesSyncHost.abortAuthoritativeRebaseline(
-                    repliesPageIdentity,
-                    repliesRebaselineGeneration,
-                )
-            }
+            abortRebaseline()
             diagnosticsLogger?.invoke(
                 "thread_secondary_refresh_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
                     "ignored=true reason=stale_route durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
             )
             return
-        }
-        replySummaries?.let { snapshot ->
-            routePayload.cacheThreadId()?.let { threadId ->
-                dataSource.cacheReplyCountProjection(threadId, snapshot)
-            }
         }
         val replyProjectedEnriched =
             if (replySummaries != null) {
@@ -6351,49 +6477,100 @@ internal class SharedThreadStore(
                         previous = latest,
                         page = repliesPageIdentity,
                         generation = repliesRebaselineGeneration,
+                        expectedProvenance = expectedProvenance,
                     )
             } else {
-                if (repliesPageIdentity != null && repliesRebaselineGeneration != null) {
-                    threadRepliesSyncHost.abortAuthoritativeRebaseline(
-                        repliesPageIdentity,
-                        repliesRebaselineGeneration,
-                    )
-                }
+                abortRebaseline()
                 enriched
                     .withRouteContext(routePayload)
                     .withAcceptedThreadRepliesProjection(emptyMap(), latest)
             }
+        if (!dataSource.isCurrentReplyCacheProvenance(expectedProvenance)) {
+            dropForOwnerChange("after_rebaseline")
+            return
+        }
         val patch = replyProjectedEnriched.preserveStableTimelineFrom(latest)
         var emitted = false
-        fun commitSecondary(accepted: Map<String, ThreadRepliesAcceptedProjection>) {
-            emitted = reducePayloadPatch(cachePayload = true) { currentPayload ->
+        var committedPayload: KuiklyThreadScreenPayload? = null
+        fun commitState(accepted: Map<String, ThreadRepliesAcceptedProjection>): Boolean {
+            val currentPayload = _state.value.payload
+            if (
+                !staleTokenStillCurrent(
+                    staleToken,
+                    "thread_secondary_refresh",
+                    "apply",
+                    routePayload,
+                    currentPayload,
+                ) ||
+                !routeStillCurrent(routePayload, "thread_secondary_refresh", "apply", currentPayload)
+            ) {
+                return false
+            }
+            val commitPatch = patch.withAcceptedThreadRepliesProjection(accepted, currentPayload)
+            emitted = reducePayloadPatch(cachePayload = false) { applyingPayload ->
                 if (
                     !staleTokenStillCurrent(
                         staleToken,
                         "thread_secondary_refresh",
                         "apply",
                         routePayload,
-                        currentPayload
+                        applyingPayload
                     ) ||
-                    !routeStillCurrent(routePayload, "thread_secondary_refresh", "apply", currentPayload)
+                    !routeStillCurrent(routePayload, "thread_secondary_refresh", "apply", applyingPayload)
                 ) {
-                    return@reducePayloadPatch currentPayload
+                    return@reducePayloadPatch applyingPayload
                 }
-                val commitPatch = patch.withAcceptedThreadRepliesProjection(accepted, currentPayload)
-                currentPayload.withSecondaryTimelineProjectionFrom(
+                applyingPayload.withSecondaryTimelineProjectionFrom(
                     patch = commitPatch,
                     previous = latest,
                 )
             }
+            if (emitted) committedPayload = _state.value.payload
+            return true
+        }
+        fun commitSecondary(accepted: Map<String, ThreadRepliesAcceptedProjection>): Boolean? {
+            val snapshot = replySummaries
+            val threadId = routePayload.cacheThreadId()
+            return if (snapshot != null && threadId != null) {
+                dataSource.cacheReplyCountProjection(
+                    threadId = threadId,
+                    snapshot = snapshot,
+                    serverId = expectedProvenance.serverId,
+                    principalId = expectedProvenance.principalId,
+                    expectedProvenance = expectedProvenance,
+                ) {
+                    commitState(accepted)
+                }
+            } else {
+                dataSource.withCurrentReplyCacheProvenance(expectedProvenance) {
+                    commitState(accepted)
+                }
+            }
         }
         val replyIdentities =
             repliesPageIdentity?.let { page -> patch.threadRepliesScopeIdentities(page, latest) }.orEmpty()
-        if (replyIdentities.isEmpty()) {
-            commitSecondary(emptyMap())
-        } else {
-            threadRepliesSyncHost.withCurrentAcceptedProjections(replyIdentities) { accepted ->
-                commitSecondary(accepted)
+        val committed =
+            if (replyIdentities.isEmpty()) {
+                commitSecondary(emptyMap())
+            } else {
+                threadRepliesSyncHost.withCurrentAcceptedProjections(replyIdentities) { accepted ->
+                    commitSecondary(accepted)
+                }
             }
+        if (committed != true) {
+            if (committed == null) {
+                dropForOwnerChange("commit")
+            } else {
+                abortRebaseline()
+            }
+            return
+        }
+        committedPayload?.let { payload ->
+            dataSource.cachePayload(
+                payload = payload,
+                ownerScopeId = expectedProvenance.threadPayloadOwnerScopeId.orEmpty(),
+                expectedProvenance = expectedProvenance,
+            )
         }
         diagnosticsLogger?.invoke(
             "thread_secondary_refresh_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
