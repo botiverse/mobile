@@ -272,11 +272,14 @@ internal tasks, CI detail, or unshipped work. Record the final message ids.
 
 The four templates below preserve the release owner's selected historical
 Android and iOS Chinese/English public messages as the canonical channel
-format. Keep the title, introductory sentence, link label, closing sentence,
-section order, and platform-specific delivery wording. Replace only bracketed
-placeholders and the reviewed user-visible bullets. Do not substitute a
-Hands/CI receipt, release ID, artifact hash, rollout percentage, internal gate,
-or engineering status report for these announcements.
+presentation format. The templates own titles, introductory sentences, link
+labels, closing sentences, section labels and icons, section order, and
+platform-specific delivery wording. The platform locale files own the reviewed
+user-visible bullet text and its order; their Hands-specific section icons are
+not channel presentation authority. Replace only bracketed placeholders and
+the reviewed bullet text. Do not substitute a Hands/CI receipt, release ID,
+artifact hash, rollout percentage, internal gate, or engineering status report
+for these announcements.
 
 Android Chinese:
 
@@ -354,12 +357,19 @@ TestFlight: <[current verified join URL]>
 This is a TestFlight beta, not an App Store production release. The canonical TestFlight version is `[marketing version] ([build number])`.
 ```
 
-For Android, omit a changelog section only when its reviewed locale file has
-no items in that category; never leave a placeholder or invent filler. For
-iOS, keep one flat bullet list under `本次更新包括：` / `Highlights:`. Publish
-Chinese and English as four separate top-level messages, one message per
-platform and locale. Draft them from the platform's reviewed locale files,
-then compare the final rendered copy against these templates before posting.
+For Android, map the reviewed New/Improved/Fixed bullet groups into the
+template's `✨` / `🔧` / `🐛` sections. Omit a section only when its reviewed
+locale file has no items in that category; never leave a placeholder or invent
+filler. For iOS, remove only the locale file's section headings and place every
+reviewed bullet in its original order into one flat list under
+`本次更新包括：` / `Highlights:`. Do not select, summarize, drop, rewrite, or
+reorder bullets during that transformation. A shorter highlights subset is a
+new announcement artifact and requires its own explicit copy review.
+
+Publish Chinese and English as four separate top-level messages, one message
+per platform and locale. Draft them from the platform's reviewed locale files,
+then compare presentation against these templates and bullet text/order against
+the locale files before posting.
 The reviewed `ja.md` files remain the Japanese Hands release-note source; they
 are not a fifth or sixth `#raft-mobile` announcement unless the release owner
 explicitly requests Japanese channel posts and approves their templates.
