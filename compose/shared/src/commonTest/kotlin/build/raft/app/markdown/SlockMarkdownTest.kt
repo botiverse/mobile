@@ -36,6 +36,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
+import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
 import kotlin.test.assertFalse
@@ -430,6 +431,32 @@ class SlockMarkdownTest {
             setOf("slock:23", "slock:46"),
             rendered[1].slockMarkdownClickableTags()
         )
+    }
+
+    @Test
+    fun markdownTaskListCheckboxAcceptsCanonicalCaseVariantsOnly() {
+        assertTrue(markdownTaskListCheckboxChecked("[x]"))
+        assertTrue(markdownTaskListCheckboxChecked("[X]"))
+        assertFalse(markdownTaskListCheckboxChecked("[ ]"))
+        assertFalse(markdownTaskListCheckboxChecked("[xx]"))
+        assertFalse(markdownTaskListCheckboxChecked("[x] trailing"))
+    }
+
+    @Test
+    fun bareCheckboxTextDoesNotBecomeTaskListState() {
+        val body = "[x] bare text\n\n- [X] completed"
+        val parserContent = MarkdownParserContent.from(body).parserContent
+        val parsedTree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val checkboxNodes = mutableListOf<ASTNode>()
+
+        fun collect(node: ASTNode) {
+            if (node.type.name == "CHECK_BOX") checkboxNodes += node
+            node.children.forEach(::collect)
+        }
+        collect(parsedTree)
+
+        assertEquals(1, checkboxNodes.size)
+        assertTrue(markdownTaskListCheckboxChecked(checkboxNodes.single().getTextInNode(parserContent).toString()))
     }
 
     @Test

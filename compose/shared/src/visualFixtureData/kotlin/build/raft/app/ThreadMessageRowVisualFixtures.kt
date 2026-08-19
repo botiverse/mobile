@@ -941,7 +941,13 @@ internal fun threadVisualFixture(
                                     "Command should wrap with the same neutral fill and no frame: `./gradlew :shared:testDebugUnitTest --tests build.raft.app.markdown.SlockMarkdownTest --tests build.raft.app.visual.KmpVisualScreenshotCaptureTest.captureThreadMessageRowLongInlineCode`.\n\n" +
                                     "> Quote block keeps normal markdown flow beside inline `code` and Slock tags.\n\n" +
                                     "- Link: https://raft.build/visual-testing\n" +
-                                    "- File: `compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt`",
+                                    "- File: `compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt`\n\n" +
+                                    "Task-list parity in the real message consumer:\n" +
+                                    "- [ ] Pending item wraps across the message column and keeps typed task #42 independent from its read-only checkbox.\n" +
+                                    "- [x] Completed lower-case marker\n" +
+                                    "  - [X] Completed upper-case nested marker\n" +
+                                    "1. [ ] Ordered pending item\n\n" +
+                                    "[x] Bare marker stays ordinary text.",
                             threadChannelId = "thread-msg-long-inline-code-visual",
                             replyCount = 4,
                             unreadReplyCount = 1,

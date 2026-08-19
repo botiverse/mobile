@@ -2049,4 +2049,7 @@
     <string name="home_adaptive_select_conversation">Select a conversation</string>
     <string name="composer_add_image">Add image</string>
     <string name="composer_take_photo">Take photo</string>
+    <string name="markdown_task_list_checkbox">Task list checkbox</string>
+    <string name="markdown_task_list_checked">Completed</string>
+    <string name="markdown_task_list_unchecked">Not completed</string>
 </resources>

@@ -2049,4 +2049,7 @@
     <string name="home_adaptive_select_conversation">会話を選択</string>
     <string name="composer_add_image">画像を追加</string>
     <string name="composer_take_photo">写真を撮る</string>
+    <string name="markdown_task_list_checkbox">タスクリストのチェックボックス</string>
+    <string name="markdown_task_list_checked">完了</string>
+    <string name="markdown_task_list_unchecked">未完了</string>
 </resources>
