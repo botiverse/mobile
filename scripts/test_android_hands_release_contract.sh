@@ -66,8 +66,10 @@ ruby -e '
   end
   raise "missing create_hands_draft job" unless jobs.key?("create_hands_draft")
   publish_job = jobs.fetch("create_hands_draft")
-  unless publish_job.fetch("if").strip == "needs.resolve.outputs.create_hands_draft == '\''true'\''"
-    raise "draft job is not gated by create_hands_draft"
+  expected_draft_gate = "github.event_name == '\''workflow_dispatch'\'' &&\n" \
+    "needs.resolve.outputs.create_hands_draft == '\''true'\''"
+  unless publish_job.fetch("if").strip == expected_draft_gate
+    raise "draft job is not restricted to opted-in manual dispatches"
   end
   share_step = publish_job.fetch("steps").find { |step| step["id"] == "create-share-page" }
   raise "missing independent share step" unless share_step
@@ -298,6 +300,8 @@ grep -Eq '^  create_hands_draft:$' .github/workflows/android-release.yml ||
   fail "android-release.yml is missing the create_hands_draft job"
 grep -Eq 'needs\.resolve\.outputs\.create_hands_draft' .github/workflows/android-release.yml ||
   fail "draft job is not gated by the canonical create_hands_draft output"
+grep -Eq "github\.event_name == 'workflow_dispatch'" .github/workflows/android-release.yml ||
+  fail "draft job is not structurally restricted to manual dispatches"
 if grep -Eq 'publish_hands' .github/workflows/android-release.yml .github/workflows/ios-release.yml; then
   fail "release workflows still overload publish_hands"
 fi

@@ -625,6 +625,7 @@ jobs:
     timeout-minutes: 15
     needs: [resolve, build_android_release]
     if: |
+      github.event_name == 'workflow_dispatch' &&
       needs.resolve.outputs.create_hands_draft == 'true'
     environment:
       name: production
