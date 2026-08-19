@@ -7,7 +7,6 @@ import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
-import android.view.inputmethod.EditorInfo
 import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.localizedThreadComposerInsertNewlineTitle
 import com.tencent.kuikly.core.render.android.css.ktx.toDpF
@@ -223,7 +222,15 @@ internal class SlockKuiklyTextAreaView(
 
     override fun setProp(propKey: String, propValue: Any): Boolean =
         when (propKey) {
-            PROP_RETURN_KEY_TYPE -> setReturnKeyType(propValue)
+            PROP_RETURN_KEY_TYPE -> {
+                // Keep the one-time structural setup separate from the renderer's return-key
+                // contract. KRTextFieldView preserves the non-action IME flags and restarts an
+                // active input connection after changing the action; delegating here keeps a
+                // replacement editor's first Send connection in sync without rebuilding the
+                // TextView or leaking a transient selection callback.
+                configureReturnKeyStructure()
+                super.setProp(propKey, propValue)
+            }
             KRTextProps.PROP_KEY_NUMBER_OF_LINES -> {
                 val applied = super.setProp(propKey, propValue)
                 if (applied && propValue.toSlockLineCount() != 1) {
@@ -251,25 +258,6 @@ internal class SlockKuiklyTextAreaView(
         callback?.invoke(
             mapOf("height" to kuiklyRenderContext.toDpF(layout.height.toFloat()))
         )
-    }
-
-    private fun setReturnKeyType(value: Any): Boolean {
-        // A multiline numberOfLines prop normally establishes the structure before callbacks are
-        // registered. Keep this fallback for hosts that omit that prop, but never repeat the
-        // structural TextView mutation on a later suggestion-driven None <-> Send edge.
-        configureReturnKeyStructure()
-        imeOptions =
-            when (value as String) {
-                "none" -> EditorInfo.IME_ACTION_NONE
-                "search" -> EditorInfo.IME_ACTION_SEARCH
-                "send" -> EditorInfo.IME_ACTION_SEND
-                "done" -> EditorInfo.IME_ACTION_DONE
-                "next" -> EditorInfo.IME_ACTION_NEXT
-                "go" -> EditorInfo.IME_ACTION_GO
-                "previous" -> EditorInfo.IME_ACTION_PREVIOUS
-                else -> EditorInfo.IME_NULL
-            }
-        return true
     }
 
     private fun configureReturnKeyStructure() {
