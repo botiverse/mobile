@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>ff2da678-20260819220528</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-19T22:08:19.818Z" data-timestamp="2026-08-19T22:08:19.818Z" title="2026-08-19T22:08:19.818Z">2026-08-19 22:08:19 UTC</time></p>
+    <p class="runMeta"><code>ff2da678-20260819220528</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-19T22:12:49.978Z" data-timestamp="2026-08-19T22:12:49.978Z" title="2026-08-19T22:12:49.978Z">2026-08-19 22:12:49 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 85</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 82/86 ready</span>
+      <span class="pill">AI 85/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -3856,7 +3856,12 @@
       <p><code>RGB 91.1%</code><br/><code>Pixel 81.47%</code><br/><code>Mismatch 18.53%</code><br/><code>Raw 1026×1860 / 1026×1860</code><br/><code>Canvas 1026×1860</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×620 / component-bounds 342×620</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · mobile#1039 (Activity card parity)</summary>
+    <ul><li>Activity card title text appears bolded/heavier on Android side vs lighter weight on React (e.g., 'Captured the Android visual artifact for #product:f8e569cb...', 'Captured the previous visual baseline before leaving the workspace.').</li><li>Android side displays a leading filled-circle bullet on title rows where React uses a hollow square marker (e.g., before 'Captured the...').</li><li>Android side shows a small checkmark icon in the top-right of each activity card; React side has none.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Unify the title font-weight between React and Android (pick the bolder Android weight as the target).</li><li>Decide on a single leading bullet/icon glyph for activity cards and align both platforms.</li><li>Add the trailing checkmark/action affordance to the React card or remove it from Android to match.</li><li>Add the thread/play tag chip and edit-pencil action to the React Activity card if they are intended product features.</li><li>Make the pill/tag row layout consistent (single row vs wrapped) across platforms.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.home.activity.results.png" data-current-src="android/components.home.activity.results.png" data-overlay-width="1026" data-overlay-height="1860">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4177,7 +4182,12 @@
       <p><code>RGB 83.0%</code><br/><code>Pixel 70.65%</code><br/><code>Mismatch 29.35%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · Android UI implementation owner with design-system and dialog-layout support</summary>
+    <ul><li>Android dialog is substantially taller and positioned closer to the top and right viewport edges, exposing fields beyond the baseline scroll/crop area.</li><li>Android content uses a smaller overall type scale; the title, alert text, labels, input text, and button text are all visibly reduced.</li><li>Android replaces the React runtime placeholder with &quot;Claude Code&quot; and inserts a provider section with explanatory helper text and a model refresh icon.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Apply the React dialog’s outer dimensions, viewport margins, content padding, and action-bar dimensions to Android.</li><li>Use the shared React typography scale for the title, alert, labels, inputs, counters, helper text, and actions.</li><li>Make the runtime field render &quot;Select...&quot; until selected, and hide or collapse the provider section when using the default behavior.</li><li>Match the React model-load error presentation or keep that section hidden while models are unavailable.</li><li>Ensure the content container scrolls and leaves clear space above the action bar so the entire model selector and its value are visible.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.claude-dialog.png" data-current-src="android/components.members.create-agent.claude-dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -5469,7 +5479,12 @@
       <p><code>RGB 85.9%</code><br/><code>Pixel 15.98%</code><br/><code>Mismatch 84.02%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop screen-route 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android</summary>
+    <ul><li>Modal horizontal position differs: React modal anchored closer to the left edge with a right-side scrollbar visible; Android modal shifted right, omitting the left side of underlying content</li><li>Modal background scrim appears darker/more opaque on Android vs. React</li><li>Warning message text differs: React renders plain paragraph flow; Android renders inline bolding with no space between 'delete' and 'Visual Server' causing text to read as 'deleteVisual Serverand'</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize modal horizontal/vertical anchoring so the modal renders at the same offset on both platforms</li><li>Ensure string template rendering on Android preserves a space between interpolation tokens like 'delete ' and '{{serverName}}' so bolded name is separated</li><li>Wire Delete Server button disabled state to confirmation input value (not permanently disabled) and use the same red fill as React</li><li>Verify the compare capture crops the modal identically (same contract) before flagging pixel mismatch from positional shift alone</li><li>Consider adding a contrast/dimmed scrim color token shared between React and Android themes</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/screens.settings.server-danger-modal.png" data-current-src="android/screens.settings.server-danger-modal.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

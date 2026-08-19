@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-19T22:08:13.864Z",
+  "generatedAt": "2026-08-19T22:12:44.062Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 78,
-    "pending": 8
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -1624,15 +1624,37 @@
     },
     {
       "id": "components.home.activity.results",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ff83ffc87fc07fe82fc06ff000000030040000300000007cbfd3fc780fd8027801d803f807d007f807d007fc1fd1fff801de7c78fbd00078ffd00ffeffd1fff83fd3ffffffd1fc7fffd03e7fffdfffffffdfffffffdffff0005fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000fffe1fff",
-      "generatedAt": "2026-08-19T22:08:13.146Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-19T22:10:48.371Z",
+      "severity": "medium",
+      "summary": [
+        "iOS renders a checkmark/dismiss toggle in the top-right of each activity card; React card has no such control.",
+        "First activity card on iOS shows an additional teal `#607 @Mahua` thread-context chip and a small pencil/edit affordance that React does not display.",
+        "iOS title text uses a heavier/bolder weight and a slightly larger size than React's title.",
+        "iOS activity cards have noticeably larger internal padding and taller line-height, making the list items visibly bulkier than React's.",
+        "iOS timestamp uses different numeric data ('14 days ago' vs '59 days ago', '16 days ago' vs '61 days ago'), confirming these are independent renders rather than a same-data diff."
+      ],
+      "likelyCauses": [
+        "Card component on iOS was updated to include dismiss/collapse controls and a thread-context chip without a corresponding React implementation.",
+        "Typography token for card title weight/size diverges between iOS and React style sheets.",
+        "Spacing/padding tokens for activity cards differ between the iOS native implementation and the React web implementation.",
+        "Stale screenshot or different fixture data on one side producing different relative timestamps."
+      ],
+      "suggestedOwner": "mobile-activity-card",
+      "suggestedFixes": [
+        "Decide whether the dismiss chevron and `#607 @Mahua` thread-context chip should exist on React; if yes, port the iOS card markup to the React Activity card.",
+        "Align the card title font-weight and font-size between iOS and React using a shared design token.",
+        "Normalize activity card padding, line-height, and row spacing across platforms via shared tokens.",
+        "Re-capture both sides with identical fixture data (same relative timestamps) so future diffs isolate real visual deltas.",
+        "Move React's timestamp from the title row to the right-aligned tag row to match the intentional Android/iOS layout described in mobile#1039/#1171."
+      ],
+      "intentional": [
+        "Timestamp placement: iOS places '14/16 days ago' on the right-aligned channel-tag row; React places it beside the title. This is the documented react-adopts-later divergence and not a defect on iOS."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.10672789997434551
     },
     {
@@ -1815,7 +1837,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:08:13.150Z",
+      "generatedAt": "2026-08-19T22:12:43.366Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2205,7 +2227,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:08:13.430Z",
+      "generatedAt": "2026-08-19T22:12:43.651Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2218,7 +2240,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:08:13.430Z",
+      "generatedAt": "2026-08-19T22:12:43.651Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2231,7 +2253,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:08:13.430Z",
+      "generatedAt": "2026-08-19T22:12:43.651Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2244,7 +2266,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:08:13.430Z",
+      "generatedAt": "2026-08-19T22:12:43.651Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2257,7 +2279,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:08:13.430Z",
+      "generatedAt": "2026-08-19T22:12:43.651Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2368,15 +2390,35 @@
     },
     {
       "id": "screens.settings.server-danger-modal",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff800180018001000180010001800180018000000180000001800000018000fffd8000fffc8000fffcfffefffcfffefffdfffefffdfffefffdfffefffdfffefffdfffefffdfffefffdfffefffdfffefffd80000001800180018001800180018001800180018001800180018001800180018001000180018001ffffffff",
-      "generatedAt": "2026-08-19T22:08:13.667Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-19T22:10:48.822Z",
+      "severity": "high",
+      "summary": [
+        "iOS modal has a warning icon and pink/red-tinted background on the warning text block; React modal does not.",
+        "iOS Delete Server button is rendered disabled (faded) with light text, while React shows it active in solid red.",
+        "iOS modal header close (X) icon uses a lighter, thinner stroke; React uses a heavier, darker X.",
+        "iOS modal is positioned higher in the viewport leaving large empty space below; React modal is centered vertically against the profile section.",
+        "iOS layout wraps the description text earlier (narrower line length) and has tighter input field padding compared to React."
+      ],
+      "likelyCauses": [
+        "iOS custom modal component diverges from shared React/web modal design (added warning icon, background tint, disabled-until-confirmed state).",
+        "Responsive modal sizing differs between web (390px) and iOS (1170px) breakpoints without unified spacing tokens.",
+        "Button disabled-state styling not synced across platforms; React does not dim the Delete button when input is empty.",
+        "Platform-specific icon asset (warning triangle) not present in React build."
+      ],
+      "suggestedOwner": "Design Systems / Cross-platform UI",
+      "suggestedFixes": [
+        "Add the warning icon and pink-tinted background block to the React modal to match iOS intent.",
+        "Apply unified disabled-state styling for the Delete Server button (faded fill + light text) when confirmation text is empty.",
+        "Use a shared token for modal vertical centering and padding so both platforms align identically.",
+        "Unify close (X) icon weight and color across React and iOS.",
+        "Tighten modal padding and max-width so the description wraps similarly on both platforms."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.8382357111030097
     },
     {

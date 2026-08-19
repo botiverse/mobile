@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-19T22:08:17.747Z",
+  "generatedAt": "2026-08-19T22:12:47.958Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 81,
+    "pending": 5
   },
   "cases": [
     {
@@ -1723,15 +1723,35 @@
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc7dfc3df86df83f6c3ffc01ec00cc3ffc3ffc3ffc3ffc3ffc39fc3ffc3ffc3ffc1ffc3ffc31fc3ffc03fc03fc07fc3ffc3ffc3ffc7ffc3ff47f7c3ffc78743ffc000023fc80012ffcdef33ffcffff2ffcffff3ffcffff3ffcbff83ffc1ff83ffc8ff03ffc0ff03f7c80013800800100008001ffffffff",
-      "generatedAt": "2026-08-19T22:08:17.106Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-19T22:11:12.181Z",
+      "severity": "high",
+      "summary": [
+        "iOS keyboard is visible and occupies the lower half of the screen, shifting the dialog upward and clipping the RUNTIME, PROVIDER, and MODEL fields below DESCRIPTION.",
+        "On iOS, the Name input shows a text cursor caret, indicating the field is focused; on Android no caret is visible.",
+        "The Cancel/Create Agent button row is positioned higher on iOS (imposed above the keyboard) vs. Android where it sits at the bottom of the scrollable form.",
+        "Dialog content is vertically compressed on iOS, causing DESCRIPTION textarea height to shrink and the (optional) hint to appear tighter against the field.",
+        "Android shows additional fully rendered form sections (RUNTIME, PROVIDER, MODEL with helper text) that are not visible on iOS within the same viewport."
+      ],
+      "likelyCauses": [
+        "iOS keyboard avoidance layout is reducing the dialog's available height and pushing the form content into a scroll region that isn't auto-scrolled.",
+        "Focus state on the Name field on iOS triggers the system keyboard which the layout isn't accounting for properly on the Kuikly render side.",
+        "iOS and Android rendering branches use different scroll/keyboard-avoidance behavior for the dialog.",
+        "Height calculation for the dialog modal differs between platforms when the soft keyboard is present."
+      ],
+      "suggestedOwner": "kuikly-mobile / dialog-component owner",
+      "suggestedFixes": [
+        "Ensure the dialog body uses a scrollable container and the focused input is auto-scrolled into view on iOS when the keyboard appears.",
+        "Apply platform-consistent keyboard avoidance: shrink/inset the dialog by keyboard height on iOS the same way Android handles its IME.",
+        "Verify the Cancel/Create Agent action bar is either sticky inside the dialog or repositioned consistently across platforms when keyboard is up.",
+        "Force-show/hide the scroll position so RUNTIME, PROVIDER, MODEL fields remain reachable on iOS without manual scrolling.",
+        "Unify the focused-field rendering (caret visibility) so both platforms show consistent input affordance."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3638622216821269
     },
     {
@@ -2108,7 +2128,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:08:17.291Z",
+      "generatedAt": "2026-08-19T22:12:47.510Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2121,7 +2141,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:08:17.291Z",
+      "generatedAt": "2026-08-19T22:12:47.510Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2134,7 +2154,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:08:17.291Z",
+      "generatedAt": "2026-08-19T22:12:47.510Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2147,7 +2167,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:08:17.291Z",
+      "generatedAt": "2026-08-19T22:12:47.510Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2160,7 +2180,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:08:17.291Z",
+      "generatedAt": "2026-08-19T22:12:47.510Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

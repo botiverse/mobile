@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-19T22:08:10.537Z",
+  "generatedAt": "2026-08-19T22:12:40.752Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 82,
-    "pending": 4
+    "ready": 85,
+    "pending": 1
   },
   "cases": [
     {
@@ -1647,15 +1647,38 @@
     },
     {
       "id": "components.home.activity.results",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffc0ffc3ffe3ffe83fe81fe877e977e000000008040804000000000fffefffecffedff0c1fec011807ec00ec38e800e807e83fec07e801efffe87fec0fe8ffec01efff2801e81318ffe801afffe800efffe8ffec3fe8ffefffefff2fffe9ff1fffed9fafffefffefffefffefffefffefffefffefffefffe00000000fffe7fff",
-      "generatedAt": "2026-08-19T22:08:09.700Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-19T22:10:36.393Z",
+      "severity": "low",
+      "summary": [
+        "Activity card title text appears bolded/heavier on Android side vs lighter weight on React (e.g., 'Captured the Android visual artifact for #product:f8e569cb...', 'Captured the previous visual baseline before leaving the workspace.').",
+        "Android side displays a leading filled-circle bullet on title rows where React uses a hollow square marker (e.g., before 'Captured the...').",
+        "Android side shows a small checkmark icon in the top-right of each activity card; React side has none.",
+        "Android side renders an extra cyan/blue play-tag chip ('#607 @Mahua') and a small pencil/edit icon below the message body; React side has neither.",
+        "Tag/pill layout on Android wraps to two rows (5 replies / @ you on row 1; 2 new / pencil on row 2) versus React's single row of pills."
+      ],
+      "likelyCauses": [
+        "Different title typography weight configured between the React and Android Activity card components.",
+        "Different leading glyph/icon used for unread vs read cards between platforms (filled circle vs hollow square).",
+        "Android Activity card renders trailing action icons (checkmark, pencil) that the React card does not include.",
+        "React card does not yet render the thread/play tag chip and edit action that exist in the Android variant.",
+        "Android pill row uses wrap-to-next-line layout whereas React constrains pills to a single row."
+      ],
+      "suggestedOwner": "mobile#1039 (Activity card parity)",
+      "suggestedFixes": [
+        "Unify the title font-weight between React and Android (pick the bolder Android weight as the target).",
+        "Decide on a single leading bullet/icon glyph for activity cards and align both platforms.",
+        "Add the trailing checkmark/action affordance to the React card or remove it from Android to match.",
+        "Add the thread/play tag chip and edit-pencil action to the React Activity card if they are intended product features.",
+        "Make the pill/tag row layout consistent (single row vs wrapped) across platforms."
+      ],
+      "intentional": [
+        "Activity card timestamp is right-aligned on the top channel-tag row on Android (e.g., '14 days ago', '16 days ago'), whereas React places it inline with the title — android behavior is the desired product direction per #wg-nightly-visual-fix (mobile#1039/#1171)."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.18525121046343462
     },
     {
@@ -1801,22 +1824,46 @@
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff0000000000007ffc3ffc7df83ff83f5c3f7c01fc00fc7ffc3ffc7ffc2ffc3ffc203c7ffc3ffc1ffc3ffc3ffc3ffc7ffc27fc07fc2ffc3ffc3ffc3ffc3ffc7ff42ffc7ffc3ffc7ffc2ffc03fc27fc6ffc3ffc3ffc2ffc1ffc2ffc7ffc7ffc7ffc3ffc7ffc3ffc3ffc3d007ffc3ffc7f7c0000380000000000ffffffff",
-      "generatedAt": "2026-08-19T22:08:09.814Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-19T22:10:36.605Z",
+      "severity": "high",
+      "summary": [
+        "Android dialog is substantially taller and positioned closer to the top and right viewport edges, exposing fields beyond the baseline scroll/crop area.",
+        "Android content uses a smaller overall type scale; the title, alert text, labels, input text, and button text are all visibly reduced.",
+        "Android replaces the React runtime placeholder with \"Claude Code\" and inserts a provider section with explanatory helper text and a model refresh icon.",
+        "Android’s model selector is clipped by the bottom action bar; its selected value is only partially visible.",
+        "The React model-load error state, retry link, and \"More\" disclosure are missing on Android."
+      ],
+      "likelyCauses": [
+        "The Android dialog was laid out using compact native spacing and typography tokens rather than the React design values.",
+        "The Android form renders all sections at once without the equivalent scrolling or progressive/collapsed content behavior.",
+        "Runtime and provider data loaded on Android but remained unavailable or uninitialized in the React capture.",
+        "The model section was measured below the visible dialog viewport, and the fixed action bar overlays it.",
+        "Agent-limit state is applied on Android, disabling submission, but the disabled treatment is too faint against the viewport background."
+      ],
+      "suggestedOwner": "Android UI implementation owner with design-system and dialog-layout support",
+      "suggestedFixes": [
+        "Apply the React dialog’s outer dimensions, viewport margins, content padding, and action-bar dimensions to Android.",
+        "Use the shared React typography scale for the title, alert, labels, inputs, counters, helper text, and actions.",
+        "Make the runtime field render \"Select...\" until selected, and hide or collapse the provider section when using the default behavior.",
+        "Match the React model-load error presentation or keep that section hidden while models are unavailable.",
+        "Ensure the content container scrolls and leaves clear space above the action bar so the entire model selector and its value are visible."
+      ],
+      "intentional": [
+        "Both implementations display the agent-limit warning and prevent creation after the 2/2 Free-plan limit is reached.",
+        "Both select a computer and show Product-QA-Bot as the agent name."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2934739606540554
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:08:09.709Z",
+      "generatedAt": "2026-08-19T22:12:39.934Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2483,15 +2530,37 @@
     },
     {
       "id": "screens.settings.server-danger-modal",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff800180018001000180010001800180018000000180000001800000018000fffd8000fffc8000fffcfffefffdfffefffdfffefffdfffefffdfffefffdfffefffdfffefffdfffefffdfffefffdfffefffd80008001800180018001800180018001800180018001800180018001800180018001000180018001ffffffff",
-      "generatedAt": "2026-08-19T22:08:10.335Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-19T22:10:37.068Z",
+      "severity": "medium",
+      "summary": [
+        "Modal horizontal position differs: React modal anchored closer to the left edge with a right-side scrollbar visible; Android modal shifted right, omitting the left side of underlying content",
+        "Modal background scrim appears darker/more opaque on Android vs. React",
+        "Warning message text differs: React renders plain paragraph flow; Android renders inline bolding with no space between 'delete' and 'Visual Server' causing text to read as 'deleteVisual Serverand'",
+        "Cancel/Delete button order/alignment differs: React shows buttons right-aligned with Delete on the right (red); Android shows Delete button dimmed/disabled (light pink) and appears cut off at the modal edge",
+        "Close (X) icon position differs: React places X to the right of the title; Android places X near the right edge with extra offset"
+      ],
+      "likelyCauses": [
+        "Different modal positioning logic between React web layout and Android native dialog (e.g., centered vs. anchored with margin)",
+        "Android AlertDialog text styling not preserving whitespace around interpolated bold tokens",
+        "Native Android disabled-state styling on the primary destructive button applied when confirmation input is empty",
+        "Scrollbar visible only in React because the modal content forces vertical overflow; Android version fits within viewport resulting in different crop coords"
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Normalize modal horizontal/vertical anchoring so the modal renders at the same offset on both platforms",
+        "Ensure string template rendering on Android preserves a space between interpolation tokens like 'delete ' and '{{serverName}}' so bolded name is separated",
+        "Wire Delete Server button disabled state to confirmation input value (not permanently disabled) and use the same red fill as React",
+        "Verify the compare capture crops the modal identically (same contract) before flagging pixel mismatch from positional shift alone",
+        "Consider adding a contrast/dimmed scrim color token shared between React and Android themes"
+      ],
+      "intentional": [
+        "Modal positioned lower on React due to scrollbar offset may be platform-specific and acceptable"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.8401520368345012
     },
     {

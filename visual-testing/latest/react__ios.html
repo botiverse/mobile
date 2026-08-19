@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>ff2da678-20260819220528</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-19T22:08:19.818Z" data-timestamp="2026-08-19T22:08:19.818Z" title="2026-08-19T22:08:19.818Z">2026-08-19 22:08:19 UTC</time></p>
+    <p class="runMeta"><code>ff2da678-20260819220528</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-19T22:12:49.978Z" data-timestamp="2026-08-19T22:12:49.978Z" title="2026-08-19T22:12:49.978Z">2026-08-19 22:12:49 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 13</span>
       <span class="pill">Different 56</span>
       <span class="pill">Missing 6</span>
-      <span class="pill">AI 78/86 ready</span>
+      <span class="pill">AI 80/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -3856,7 +3856,12 @@
       <p><code>RGB 91.4%</code><br/><code>Pixel 89.33%</code><br/><code>Mismatch 10.67%</code><br/><code>Raw 1026×1860 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×620 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · mobile-activity-card</summary>
+    <ul><li>iOS renders a checkmark/dismiss toggle in the top-right of each activity card; React card has no such control.</li><li>First activity card on iOS shows an additional teal `#607 @Mahua` thread-context chip and a small pencil/edit affordance that React does not display.</li><li>iOS title text uses a heavier/bolder weight and a slightly larger size than React's title.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Decide whether the dismiss chevron and `#607 @Mahua` thread-context chip should exist on React; if yes, port the iOS card markup to the React Activity card.</li><li>Align the card title font-weight and font-size between iOS and React using a shared design token.</li><li>Normalize activity card padding, line-height, and row spacing across platforms via shared tokens.</li><li>Re-capture both sides with identical fixture data (same relative timestamps) so future diffs isolate real visual deltas.</li><li>Move React's timestamp from the title row to the right-aligned tag row to match the intentional Android/iOS layout described in mobile#1039/#1171.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.home.activity.results.png" data-current-src="ios/components.home.activity.results.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -5299,7 +5304,12 @@
       <p><code>RGB 86.0%</code><br/><code>Pixel 16.18%</code><br/><code>Mismatch 83.82%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop screen-route 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · Design Systems / Cross-platform UI</summary>
+    <ul><li>iOS modal has a warning icon and pink/red-tinted background on the warning text block; React modal does not.</li><li>iOS Delete Server button is rendered disabled (faded) with light text, while React shows it active in solid red.</li><li>iOS modal header close (X) icon uses a lighter, thinner stroke; React uses a heavier, darker X.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Add the warning icon and pink-tinted background block to the React modal to match iOS intent.</li><li>Apply unified disabled-state styling for the Delete Server button (faded fill + light text) when confirmation text is empty.</li><li>Use a shared token for modal vertical centering and padding so both platforms align identically.</li><li>Unify close (X) icon weight and color across React and iOS.</li><li>Tighten modal padding and max-width so the description wraps similarly on both platforms.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/screens.settings.server-danger-modal.png" data-current-src="ios/screens.settings.server-danger-modal.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">

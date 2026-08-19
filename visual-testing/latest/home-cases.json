@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-19T22:08:19.818Z",
+  "generatedAt": "2026-08-19T22:12:49.978Z",
   "runId": "ff2da678-20260819220528",
   "cases": [
     {
@@ -18619,17 +18619,37 @@
         "currentHeight": 1860
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-19T22:08:11.104Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-19T22:10:36.393Z",
+        "severity": "low",
+        "summary": [
+          "Activity card title text appears bolded/heavier on Android side vs lighter weight on React (e.g., 'Captured the Android visual artifact for #product:f8e569cb...', 'Captured the previous visual baseline before leaving the workspace.').",
+          "Android side displays a leading filled-circle bullet on title rows where React uses a hollow square marker (e.g., before 'Captured the...').",
+          "Android side shows a small checkmark icon in the top-right of each activity card; React side has none.",
+          "Android side renders an extra cyan/blue play-tag chip ('#607 @Mahua') and a small pencil/edit icon below the message body; React side has neither.",
+          "Tag/pill layout on Android wraps to two rows (5 replies / @ you on row 1; 2 new / pencil on row 2) versus React's single row of pills."
+        ],
+        "likelyCauses": [
+          "Different title typography weight configured between the React and Android Activity card components.",
+          "Different leading glyph/icon used for unread vs read cards between platforms (filled circle vs hollow square).",
+          "Android Activity card renders trailing action icons (checkmark, pencil) that the React card does not include.",
+          "React card does not yet render the thread/play tag chip and edit action that exist in the Android variant.",
+          "Android pill row uses wrap-to-next-line layout whereas React constrains pills to a single row."
+        ],
+        "suggestedOwner": "mobile#1039 (Activity card parity)",
+        "suggestedFixes": [
+          "Unify the title font-weight between React and Android (pick the bolder Android weight as the target).",
+          "Decide on a single leading bullet/icon glyph for activity cards and align both platforms.",
+          "Add the trailing checkmark/action affordance to the React card or remove it from Android to match.",
+          "Add the thread/play tag chip and edit-pencil action to the React Activity card if they are intended product features.",
+          "Make the pill/tag row layout consistent (single row vs wrapped) across platforms."
+        ],
+        "intentional": [
+          "Activity card timestamp is right-aligned on the top channel-tag row on Android (e.g., '14 days ago', '16 days ago'), whereas React places it inline with the title — android behavior is the desired product direction per #wg-nightly-visual-fix (mobile#1039/#1171)."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -18716,17 +18736,37 @@
             "currentHeight": 1860
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-19T22:08:11.104Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-19T22:10:36.393Z",
+            "severity": "low",
+            "summary": [
+              "Activity card title text appears bolded/heavier on Android side vs lighter weight on React (e.g., 'Captured the Android visual artifact for #product:f8e569cb...', 'Captured the previous visual baseline before leaving the workspace.').",
+              "Android side displays a leading filled-circle bullet on title rows where React uses a hollow square marker (e.g., before 'Captured the...').",
+              "Android side shows a small checkmark icon in the top-right of each activity card; React side has none.",
+              "Android side renders an extra cyan/blue play-tag chip ('#607 @Mahua') and a small pencil/edit icon below the message body; React side has neither.",
+              "Tag/pill layout on Android wraps to two rows (5 replies / @ you on row 1; 2 new / pencil on row 2) versus React's single row of pills."
+            ],
+            "likelyCauses": [
+              "Different title typography weight configured between the React and Android Activity card components.",
+              "Different leading glyph/icon used for unread vs read cards between platforms (filled circle vs hollow square).",
+              "Android Activity card renders trailing action icons (checkmark, pencil) that the React card does not include.",
+              "React card does not yet render the thread/play tag chip and edit action that exist in the Android variant.",
+              "Android pill row uses wrap-to-next-line layout whereas React constrains pills to a single row."
+            ],
+            "suggestedOwner": "mobile#1039 (Activity card parity)",
+            "suggestedFixes": [
+              "Unify the title font-weight between React and Android (pick the bolder Android weight as the target).",
+              "Decide on a single leading bullet/icon glyph for activity cards and align both platforms.",
+              "Add the trailing checkmark/action affordance to the React card or remove it from Android to match.",
+              "Add the thread/play tag chip and edit-pencil action to the React Activity card if they are intended product features.",
+              "Make the pill/tag row layout consistent (single row vs wrapped) across platforms."
+            ],
+            "intentional": [
+              "Activity card timestamp is right-aligned on the top channel-tag row on Android (e.g., '14 days ago', '16 days ago'), whereas React places it inline with the title — android behavior is the desired product direction per #wg-nightly-visual-fix (mobile#1039/#1171)."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -18749,17 +18789,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-19T22:08:15.063Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-19T22:10:48.371Z",
+            "severity": "medium",
+            "summary": [
+              "iOS renders a checkmark/dismiss toggle in the top-right of each activity card; React card has no such control.",
+              "First activity card on iOS shows an additional teal `#607 @Mahua` thread-context chip and a small pencil/edit affordance that React does not display.",
+              "iOS title text uses a heavier/bolder weight and a slightly larger size than React's title.",
+              "iOS activity cards have noticeably larger internal padding and taller line-height, making the list items visibly bulkier than React's.",
+              "iOS timestamp uses different numeric data ('14 days ago' vs '59 days ago', '16 days ago' vs '61 days ago'), confirming these are independent renders rather than a same-data diff."
+            ],
+            "likelyCauses": [
+              "Card component on iOS was updated to include dismiss/collapse controls and a thread-context chip without a corresponding React implementation.",
+              "Typography token for card title weight/size diverges between iOS and React style sheets.",
+              "Spacing/padding tokens for activity cards differ between the iOS native implementation and the React web implementation.",
+              "Stale screenshot or different fixture data on one side producing different relative timestamps."
+            ],
+            "suggestedOwner": "mobile-activity-card",
+            "suggestedFixes": [
+              "Decide whether the dismiss chevron and `#607 @Mahua` thread-context chip should exist on React; if yes, port the iOS card markup to the React Activity card.",
+              "Align the card title font-weight and font-size between iOS and React using a shared design token.",
+              "Normalize activity card padding, line-height, and row spacing across platforms via shared tokens.",
+              "Re-capture both sides with identical fixture data (same relative timestamps) so future diffs isolate real visual deltas.",
+              "Move React's timestamp from the title row to the right-aligned tag row to match the intentional Android/iOS layout described in mobile#1039/#1171."
+            ],
+            "intentional": [
+              "Timestamp placement: iOS places '14/16 days ago' on the right-aligned channel-tag row; React places it beside the title. This is the documented react-adopts-later divergence and not a defect on iOS."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -18834,17 +18893,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-19T22:08:15.063Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-19T22:10:48.371Z",
+            "severity": "medium",
+            "summary": [
+              "iOS renders a checkmark/dismiss toggle in the top-right of each activity card; React card has no such control.",
+              "First activity card on iOS shows an additional teal `#607 @Mahua` thread-context chip and a small pencil/edit affordance that React does not display.",
+              "iOS title text uses a heavier/bolder weight and a slightly larger size than React's title.",
+              "iOS activity cards have noticeably larger internal padding and taller line-height, making the list items visibly bulkier than React's.",
+              "iOS timestamp uses different numeric data ('14 days ago' vs '59 days ago', '16 days ago' vs '61 days ago'), confirming these are independent renders rather than a same-data diff."
+            ],
+            "likelyCauses": [
+              "Card component on iOS was updated to include dismiss/collapse controls and a thread-context chip without a corresponding React implementation.",
+              "Typography token for card title weight/size diverges between iOS and React style sheets.",
+              "Spacing/padding tokens for activity cards differ between the iOS native implementation and the React web implementation.",
+              "Stale screenshot or different fixture data on one side producing different relative timestamps."
+            ],
+            "suggestedOwner": "mobile-activity-card",
+            "suggestedFixes": [
+              "Decide whether the dismiss chevron and `#607 @Mahua` thread-context chip should exist on React; if yes, port the iOS card markup to the React Activity card.",
+              "Align the card title font-weight and font-size between iOS and React using a shared design token.",
+              "Normalize activity card padding, line-height, and row spacing across platforms via shared tokens.",
+              "Re-capture both sides with identical fixture data (same relative timestamps) so future diffs isolate real visual deltas.",
+              "Move React's timestamp from the title row to the right-aligned tag row to match the intentional Android/iOS layout described in mobile#1039/#1171."
+            ],
+            "intentional": [
+              "Timestamp placement: iOS places '14/16 days ago' on the right-aligned channel-tag row; React places it beside the title. This is the documented react-adopts-later divergence and not a defect on iOS."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -20490,17 +20568,38 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-19T22:08:11.231Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-19T22:10:36.605Z",
+        "severity": "high",
+        "summary": [
+          "Android dialog is substantially taller and positioned closer to the top and right viewport edges, exposing fields beyond the baseline scroll/crop area.",
+          "Android content uses a smaller overall type scale; the title, alert text, labels, input text, and button text are all visibly reduced.",
+          "Android replaces the React runtime placeholder with \"Claude Code\" and inserts a provider section with explanatory helper text and a model refresh icon.",
+          "Android’s model selector is clipped by the bottom action bar; its selected value is only partially visible.",
+          "The React model-load error state, retry link, and \"More\" disclosure are missing on Android."
+        ],
+        "likelyCauses": [
+          "The Android dialog was laid out using compact native spacing and typography tokens rather than the React design values.",
+          "The Android form renders all sections at once without the equivalent scrolling or progressive/collapsed content behavior.",
+          "Runtime and provider data loaded on Android but remained unavailable or uninitialized in the React capture.",
+          "The model section was measured below the visible dialog viewport, and the fixed action bar overlays it.",
+          "Agent-limit state is applied on Android, disabling submission, but the disabled treatment is too faint against the viewport background."
+        ],
+        "suggestedOwner": "Android UI implementation owner with design-system and dialog-layout support",
+        "suggestedFixes": [
+          "Apply the React dialog’s outer dimensions, viewport margins, content padding, and action-bar dimensions to Android.",
+          "Use the shared React typography scale for the title, alert, labels, inputs, counters, helper text, and actions.",
+          "Make the runtime field render \"Select...\" until selected, and hide or collapse the provider section when using the default behavior.",
+          "Match the React model-load error presentation or keep that section hidden while models are unavailable.",
+          "Ensure the content container scrolls and leaves clear space above the action bar so the entire model selector and its value are visible."
+        ],
+        "intentional": [
+          "Both implementations display the agent-limit warning and prevent creation after the 2/2 Free-plan limit is reached.",
+          "Both select a computer and show Product-QA-Bot as the agent name."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -20587,17 +20686,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-19T22:08:11.231Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-19T22:10:36.605Z",
+            "severity": "high",
+            "summary": [
+              "Android dialog is substantially taller and positioned closer to the top and right viewport edges, exposing fields beyond the baseline scroll/crop area.",
+              "Android content uses a smaller overall type scale; the title, alert text, labels, input text, and button text are all visibly reduced.",
+              "Android replaces the React runtime placeholder with \"Claude Code\" and inserts a provider section with explanatory helper text and a model refresh icon.",
+              "Android’s model selector is clipped by the bottom action bar; its selected value is only partially visible.",
+              "The React model-load error state, retry link, and \"More\" disclosure are missing on Android."
+            ],
+            "likelyCauses": [
+              "The Android dialog was laid out using compact native spacing and typography tokens rather than the React design values.",
+              "The Android form renders all sections at once without the equivalent scrolling or progressive/collapsed content behavior.",
+              "Runtime and provider data loaded on Android but remained unavailable or uninitialized in the React capture.",
+              "The model section was measured below the visible dialog viewport, and the fixed action bar overlays it.",
+              "Agent-limit state is applied on Android, disabling submission, but the disabled treatment is too faint against the viewport background."
+            ],
+            "suggestedOwner": "Android UI implementation owner with design-system and dialog-layout support",
+            "suggestedFixes": [
+              "Apply the React dialog’s outer dimensions, viewport margins, content padding, and action-bar dimensions to Android.",
+              "Use the shared React typography scale for the title, alert, labels, inputs, counters, helper text, and actions.",
+              "Make the runtime field render \"Select...\" until selected, and hide or collapse the provider section when using the default behavior.",
+              "Match the React model-load error presentation or keep that section hidden while models are unavailable.",
+              "Ensure the content container scrolls and leaves clear space above the action bar so the entire model selector and its value are visible."
+            ],
+            "intentional": [
+              "Both implementations display the agent-limit warning and prevent creation after the 2/2 Free-plan limit is reached.",
+              "Both select a computer and show Product-QA-Bot as the agent name."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -20674,17 +20794,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-19T22:08:19.155Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-19T22:11:12.181Z",
+            "severity": "high",
+            "summary": [
+              "iOS keyboard is visible and occupies the lower half of the screen, shifting the dialog upward and clipping the RUNTIME, PROVIDER, and MODEL fields below DESCRIPTION.",
+              "On iOS, the Name input shows a text cursor caret, indicating the field is focused; on Android no caret is visible.",
+              "The Cancel/Create Agent button row is positioned higher on iOS (imposed above the keyboard) vs. Android where it sits at the bottom of the scrollable form.",
+              "Dialog content is vertically compressed on iOS, causing DESCRIPTION textarea height to shrink and the (optional) hint to appear tighter against the field.",
+              "Android shows additional fully rendered form sections (RUNTIME, PROVIDER, MODEL with helper text) that are not visible on iOS within the same viewport."
+            ],
+            "likelyCauses": [
+              "iOS keyboard avoidance layout is reducing the dialog's available height and pushing the form content into a scroll region that isn't auto-scrolled.",
+              "Focus state on the Name field on iOS triggers the system keyboard which the layout isn't accounting for properly on the Kuikly render side.",
+              "iOS and Android rendering branches use different scroll/keyboard-avoidance behavior for the dialog.",
+              "Height calculation for the dialog modal differs between platforms when the soft keyboard is present."
+            ],
+            "suggestedOwner": "kuikly-mobile / dialog-component owner",
+            "suggestedFixes": [
+              "Ensure the dialog body uses a scrollable container and the focused input is auto-scrolled into view on iOS when the keyboard appears.",
+              "Apply platform-consistent keyboard avoidance: shrink/inset the dialog by keyboard height on iOS the same way Android handles its IME.",
+              "Verify the Cancel/Create Agent action bar is either sticky inside the dialog or repositioned consistently across platforms when keyboard is up.",
+              "Force-show/hide the scroll position so RUNTIME, PROVIDER, MODEL fields remain reachable on iOS without manual scrolling.",
+              "Unify the focused-field rendering (caret visibility) so both platforms show consistent input affordance."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -20765,17 +20902,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-19T22:08:19.155Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-19T22:11:12.181Z",
+            "severity": "high",
+            "summary": [
+              "iOS keyboard is visible and occupies the lower half of the screen, shifting the dialog upward and clipping the RUNTIME, PROVIDER, and MODEL fields below DESCRIPTION.",
+              "On iOS, the Name input shows a text cursor caret, indicating the field is focused; on Android no caret is visible.",
+              "The Cancel/Create Agent button row is positioned higher on iOS (imposed above the keyboard) vs. Android where it sits at the bottom of the scrollable form.",
+              "Dialog content is vertically compressed on iOS, causing DESCRIPTION textarea height to shrink and the (optional) hint to appear tighter against the field.",
+              "Android shows additional fully rendered form sections (RUNTIME, PROVIDER, MODEL with helper text) that are not visible on iOS within the same viewport."
+            ],
+            "likelyCauses": [
+              "iOS keyboard avoidance layout is reducing the dialog's available height and pushing the form content into a scroll region that isn't auto-scrolled.",
+              "Focus state on the Name field on iOS triggers the system keyboard which the layout isn't accounting for properly on the Kuikly render side.",
+              "iOS and Android rendering branches use different scroll/keyboard-avoidance behavior for the dialog.",
+              "Height calculation for the dialog modal differs between platforms when the soft keyboard is present."
+            ],
+            "suggestedOwner": "kuikly-mobile / dialog-component owner",
+            "suggestedFixes": [
+              "Ensure the dialog body uses a scrollable container and the focused input is auto-scrolled into view on iOS when the keyboard appears.",
+              "Apply platform-consistent keyboard avoidance: shrink/inset the dialog by keyboard height on iOS the same way Android handles its IME.",
+              "Verify the Cancel/Create Agent action bar is either sticky inside the dialog or repositioned consistently across platforms when keyboard is up.",
+              "Force-show/hide the scroll position so RUNTIME, PROVIDER, MODEL fields remain reachable on iOS without manual scrolling.",
+              "Unify the focused-field rendering (caret visibility) so both platforms show consistent input affordance."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20805,7 +20959,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-19T22:08:10.544Z",
+        "generatedAt": "2026-08-19T22:12:40.760Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20866,7 +21020,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:10.544Z",
+            "generatedAt": "2026-08-19T22:12:40.760Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20888,7 +21042,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:13.869Z",
+            "generatedAt": "2026-08-19T22:12:44.068Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20963,7 +21117,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:13.869Z",
+            "generatedAt": "2026-08-19T22:12:44.068Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25437,7 +25591,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:13.869Z",
+            "generatedAt": "2026-08-19T22:12:44.068Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25459,7 +25613,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:17.753Z",
+            "generatedAt": "2026-08-19T22:12:47.965Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25484,7 +25638,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:13.869Z",
+            "generatedAt": "2026-08-19T22:12:44.068Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25507,7 +25661,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:17.753Z",
+            "generatedAt": "2026-08-19T22:12:47.965Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25707,7 +25861,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:13.869Z",
+            "generatedAt": "2026-08-19T22:12:44.068Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25729,7 +25883,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:17.753Z",
+            "generatedAt": "2026-08-19T22:12:47.965Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25754,7 +25908,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:13.869Z",
+            "generatedAt": "2026-08-19T22:12:44.068Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25777,7 +25931,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:17.753Z",
+            "generatedAt": "2026-08-19T22:12:47.965Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25977,7 +26131,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:13.869Z",
+            "generatedAt": "2026-08-19T22:12:44.068Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25999,7 +26153,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:17.753Z",
+            "generatedAt": "2026-08-19T22:12:47.965Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26024,7 +26178,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:13.869Z",
+            "generatedAt": "2026-08-19T22:12:44.068Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26047,7 +26201,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:17.753Z",
+            "generatedAt": "2026-08-19T22:12:47.965Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26243,7 +26397,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:13.869Z",
+            "generatedAt": "2026-08-19T22:12:44.068Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26265,7 +26419,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:17.753Z",
+            "generatedAt": "2026-08-19T22:12:47.965Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26290,7 +26444,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:13.869Z",
+            "generatedAt": "2026-08-19T22:12:44.068Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26313,7 +26467,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:17.753Z",
+            "generatedAt": "2026-08-19T22:12:47.965Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26509,7 +26663,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:13.869Z",
+            "generatedAt": "2026-08-19T22:12:44.068Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26531,7 +26685,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:17.753Z",
+            "generatedAt": "2026-08-19T22:12:47.965Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26556,7 +26710,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:13.869Z",
+            "generatedAt": "2026-08-19T22:12:44.068Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26579,7 +26733,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-19T22:08:17.753Z",
+            "generatedAt": "2026-08-19T22:12:47.965Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27765,17 +27919,36 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-19T22:08:11.728Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-19T22:10:37.068Z",
+        "severity": "medium",
+        "summary": [
+          "Modal horizontal position differs: React modal anchored closer to the left edge with a right-side scrollbar visible; Android modal shifted right, omitting the left side of underlying content",
+          "Modal background scrim appears darker/more opaque on Android vs. React",
+          "Warning message text differs: React renders plain paragraph flow; Android renders inline bolding with no space between 'delete' and 'Visual Server' causing text to read as 'deleteVisual Serverand'",
+          "Cancel/Delete button order/alignment differs: React shows buttons right-aligned with Delete on the right (red); Android shows Delete button dimmed/disabled (light pink) and appears cut off at the modal edge",
+          "Close (X) icon position differs: React places X to the right of the title; Android places X near the right edge with extra offset"
+        ],
+        "likelyCauses": [
+          "Different modal positioning logic between React web layout and Android native dialog (e.g., centered vs. anchored with margin)",
+          "Android AlertDialog text styling not preserving whitespace around interpolated bold tokens",
+          "Native Android disabled-state styling on the primary destructive button applied when confirmation input is empty",
+          "Scrollbar visible only in React because the modal content forces vertical overflow; Android version fits within viewport resulting in different crop coords"
+        ],
+        "suggestedOwner": "android",
+        "suggestedFixes": [
+          "Normalize modal horizontal/vertical anchoring so the modal renders at the same offset on both platforms",
+          "Ensure string template rendering on Android preserves a space between interpolation tokens like 'delete ' and '{{serverName}}' so bolded name is separated",
+          "Wire Delete Server button disabled state to confirmation input value (not permanently disabled) and use the same red fill as React",
+          "Verify the compare capture crops the modal identically (same contract) before flagging pixel mismatch from positional shift alone",
+          "Consider adding a contrast/dimmed scrim color token shared between React and Android themes"
+        ],
+        "intentional": [
+          "Modal positioned lower on React due to scrollbar offset may be platform-specific and acceptable"
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -27862,17 +28035,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-19T22:08:11.728Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-19T22:10:37.068Z",
+            "severity": "medium",
+            "summary": [
+              "Modal horizontal position differs: React modal anchored closer to the left edge with a right-side scrollbar visible; Android modal shifted right, omitting the left side of underlying content",
+              "Modal background scrim appears darker/more opaque on Android vs. React",
+              "Warning message text differs: React renders plain paragraph flow; Android renders inline bolding with no space between 'delete' and 'Visual Server' causing text to read as 'deleteVisual Serverand'",
+              "Cancel/Delete button order/alignment differs: React shows buttons right-aligned with Delete on the right (red); Android shows Delete button dimmed/disabled (light pink) and appears cut off at the modal edge",
+              "Close (X) icon position differs: React places X to the right of the title; Android places X near the right edge with extra offset"
+            ],
+            "likelyCauses": [
+              "Different modal positioning logic between React web layout and Android native dialog (e.g., centered vs. anchored with margin)",
+              "Android AlertDialog text styling not preserving whitespace around interpolated bold tokens",
+              "Native Android disabled-state styling on the primary destructive button applied when confirmation input is empty",
+              "Scrollbar visible only in React because the modal content forces vertical overflow; Android version fits within viewport resulting in different crop coords"
+            ],
+            "suggestedOwner": "android",
+            "suggestedFixes": [
+              "Normalize modal horizontal/vertical anchoring so the modal renders at the same offset on both platforms",
+              "Ensure string template rendering on Android preserves a space between interpolation tokens like 'delete ' and '{{serverName}}' so bolded name is separated",
+              "Wire Delete Server button disabled state to confirmation input value (not permanently disabled) and use the same red fill as React",
+              "Verify the compare capture crops the modal identically (same contract) before flagging pixel mismatch from positional shift alone",
+              "Consider adding a contrast/dimmed scrim color token shared between React and Android themes"
+            ],
+            "intentional": [
+              "Modal positioned lower on React due to scrollbar offset may be platform-specific and acceptable"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -27895,17 +28087,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-19T22:08:15.535Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-19T22:10:48.822Z",
+            "severity": "high",
+            "summary": [
+              "iOS modal has a warning icon and pink/red-tinted background on the warning text block; React modal does not.",
+              "iOS Delete Server button is rendered disabled (faded) with light text, while React shows it active in solid red.",
+              "iOS modal header close (X) icon uses a lighter, thinner stroke; React uses a heavier, darker X.",
+              "iOS modal is positioned higher in the viewport leaving large empty space below; React modal is centered vertically against the profile section.",
+              "iOS layout wraps the description text earlier (narrower line length) and has tighter input field padding compared to React."
+            ],
+            "likelyCauses": [
+              "iOS custom modal component diverges from shared React/web modal design (added warning icon, background tint, disabled-until-confirmed state).",
+              "Responsive modal sizing differs between web (390px) and iOS (1170px) breakpoints without unified spacing tokens.",
+              "Button disabled-state styling not synced across platforms; React does not dim the Delete button when input is empty.",
+              "Platform-specific icon asset (warning triangle) not present in React build."
+            ],
+            "suggestedOwner": "Design Systems / Cross-platform UI",
+            "suggestedFixes": [
+              "Add the warning icon and pink-tinted background block to the React modal to match iOS intent.",
+              "Apply unified disabled-state styling for the Delete Server button (faded fill + light text) when confirmation text is empty.",
+              "Use a shared token for modal vertical centering and padding so both platforms align identically.",
+              "Unify close (X) icon weight and color across React and iOS.",
+              "Tighten modal padding and max-width so the description wraps similarly on both platforms."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -27977,17 +28186,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-19T22:08:15.535Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-19T22:10:48.822Z",
+            "severity": "high",
+            "summary": [
+              "iOS modal has a warning icon and pink/red-tinted background on the warning text block; React modal does not.",
+              "iOS Delete Server button is rendered disabled (faded) with light text, while React shows it active in solid red.",
+              "iOS modal header close (X) icon uses a lighter, thinner stroke; React uses a heavier, darker X.",
+              "iOS modal is positioned higher in the viewport leaving large empty space below; React modal is centered vertically against the profile section.",
+              "iOS layout wraps the description text earlier (narrower line length) and has tighter input field padding compared to React."
+            ],
+            "likelyCauses": [
+              "iOS custom modal component diverges from shared React/web modal design (added warning icon, background tint, disabled-until-confirmed state).",
+              "Responsive modal sizing differs between web (390px) and iOS (1170px) breakpoints without unified spacing tokens.",
+              "Button disabled-state styling not synced across platforms; React does not dim the Delete button when input is empty.",
+              "Platform-specific icon asset (warning triangle) not present in React build."
+            ],
+            "suggestedOwner": "Design Systems / Cross-platform UI",
+            "suggestedFixes": [
+              "Add the warning icon and pink-tinted background block to the React modal to match iOS intent.",
+              "Apply unified disabled-state styling for the Delete Server button (faded fill + light text) when confirmation text is empty.",
+              "Use a shared token for modal vertical centering and padding so both platforms align identically.",
+              "Unify close (X) icon weight and color across React and iOS.",
+              "Tighten modal padding and max-width so the description wraps similarly on both platforms."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {

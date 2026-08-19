@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-19T22:08:19.818Z",
+  "generatedAt": "2026-08-19T22:12:49.978Z",
   "runId": "ff2da678-20260819220528",
   "commit": "ff2da678-20260819220528",
   "commitSubject": "fix(thread): render cached timeline during access refresh (#2180)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 82,
-        "pending": 4
+        "ready": 85,
+        "pending": 1
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 78,
-        "pending": 8
+        "ready": 80,
+        "pending": 6
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 80,
-        "pending": 6
+        "ready": 81,
+        "pending": 5
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 86,
-    "ready": 82,
-    "pending": 4
+    "ready": 85,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 114,

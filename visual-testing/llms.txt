@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-19 22:08:19 UTC
+Generated: 2026-08-19 22:12:49 UTC
 Latest run: ff2da678-20260819220528
 Latest commit: ff2da678-20260819220528
 Commit subject: fix(thread): render cached timeline during access refresh (#2180)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 86, same 0, pass 0, basic-pass 0, different 85, missing 1
-AI analysis: ready 82 / total 86, pending 4
+AI analysis: ready 85 / total 86, pending 1
 Visual coverage matrix: active 95 / total 114, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
