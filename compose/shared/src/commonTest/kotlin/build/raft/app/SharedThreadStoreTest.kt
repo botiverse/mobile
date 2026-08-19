@@ -4965,7 +4965,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -5368,8 +5368,8 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage("local-1", "sent body")))
-        store.accept(SharedThreadIntent.ReplaceLocalSendWithSentPage("local-1", sentPage("server-1", "sent body")))
+        store.startLocalSendForCurrentOwner(dataSource, localPendingMessage("local-1", "sent body"))
+        store.replaceLocalSendForCurrentOwner(dataSource, "local-1", sentPage("server-1", "sent body"))
 
         val messages = store.state.value.payload.messages
         assertFalse(messages.any { it.id == "local-1" })
@@ -5389,27 +5389,17 @@ class SharedThreadStoreTest {
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
-        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage("local-1", "first")))
-        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage("local-2", "second")))
+        store.startLocalSendForCurrentOwner(dataSource, localPendingMessage("local-1", "first"))
+        store.startLocalSendForCurrentOwner(dataSource, localPendingMessage("local-2", "second"))
 
         sessionStore.parkNextRead()
         val firstCompletion =
             async {
-                store.accept(
-                    SharedThreadIntent.ReplaceLocalSendWithSentPage(
-                        "local-1",
-                        sentPage("server-1", "first")
-                    )
-                )
+                store.replaceLocalSendForCurrentOwner(dataSource, "local-1", sentPage("server-1", "first"))
             }
         sessionStore.nextReadStarted.await()
 
-        store.accept(
-            SharedThreadIntent.ReplaceLocalSendWithSentPage(
-                "local-2",
-                sentPage("server-2", "second")
-            )
-        )
+        store.replaceLocalSendForCurrentOwner(dataSource, "local-2", sentPage("server-2", "second"))
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
                 MessageNew(
@@ -5454,21 +5444,18 @@ class SharedThreadStoreTest {
         val refresh = async { store.accept(SharedThreadIntent.Refresh) }
         api.channelMessagesStarted?.await()
 
-        store.accept(
-            SharedThreadIntent.ApplyLocalSendStarted(
-                localPendingMessage("local-send-a", "first", randomId = "rid-a")
-            )
+        store.startLocalSendForCurrentOwner(
+            dataSource,
+            localPendingMessage("local-send-a", "first", randomId = "rid-a")
         )
-        store.accept(
-            SharedThreadIntent.ApplyLocalSendStarted(
-                localPendingMessage("local-send-b", "second", randomId = "rid-b")
-            )
+        store.startLocalSendForCurrentOwner(
+            dataSource,
+            localPendingMessage("local-send-b", "second", randomId = "rid-b")
         )
-        store.accept(
-            SharedThreadIntent.ReplaceLocalSendWithSentPage(
-                "local-send-a",
-                sentPage("server-a", "first", randomId = "rid-a")
-            )
+        store.replaceLocalSendForCurrentOwner(
+            dataSource,
+            "local-send-a",
+            sentPage("server-a", "first", randomId = "rid-a")
         )
 
         api.releaseChannelMessages?.complete(Unit)
@@ -5512,6 +5499,17 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository =
+                    FakeConversationRepository(
+                        threadResult =
+                            DataResult.Content(
+                                threadSnapshot(
+                                    body = "cached body",
+                                    seq = 10,
+                                    conversation = conversationSummary().copy(joined = true)
+                                )
+                            )
+                    )
             )
         val cachedPayload =
             contentPayload("cached body").let { content ->
@@ -5521,10 +5519,9 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        store.accept(
-            SharedThreadIntent.ApplyLocalSendStarted(
-                localPendingMessage("local-send-channel-1-1", "sent body")
-            )
+        store.startLocalSendForCurrentOwner(
+            dataSource,
+            localPendingMessage("local-send-channel-1-1", "sent body")
         )
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
@@ -5565,10 +5562,9 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        store.accept(
-            SharedThreadIntent.ApplyLocalSendStarted(
-                localPendingMessage("local-send-channel-1-1", "sent body")
-            )
+        store.startLocalSendForCurrentOwner(
+            dataSource,
+            localPendingMessage("local-send-channel-1-1", "sent body")
         )
         store.accept(SharedThreadIntent.AppendSentPage(sentPage("server-1", "sent body")))
 
@@ -5585,13 +5581,13 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage("local-1", "sent body")))
-        store.accept(SharedThreadIntent.ReplaceLocalSendWithSentPage("local-1", sentPage("server-1", "sent body")))
+        store.startLocalSendForCurrentOwner(dataSource, localPendingMessage("local-1", "sent body"))
+        store.replaceLocalSendForCurrentOwner(dataSource, "local-1", sentPage("server-1", "sent body"))
 
         assertNull(localStore.readThread(ThreadId("channel-1")))
         val cachedMessages = dataSource.cachedPayload("channel-1")?.messages.orEmpty()
@@ -5700,6 +5696,165 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun retiredOwnerNullProvenanceGapRejectsLocalSendBeforeApiOrStateMutation() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val payloadStore = SharedThreadPayloadStore(scope, prewarmStartIntervalMillis = 0L)
+        val api = FakeThreadApi()
+        val ownerASession =
+            sampleSession().copy(
+                user = StoredAuthUser(id = "u-a", email = "a@example.test", displayName = "Owner A"),
+                accessToken = "access-a",
+                refreshToken = "refresh-a"
+            )
+        val ownerBSession =
+            sampleSession().copy(
+                user = StoredAuthUser(id = "u-b", email = "b@example.test", displayName = "Owner B"),
+                accessToken = "access-b",
+                refreshToken = "refresh-b"
+            )
+        val ownerAIdentity =
+            ThreadReplyCacheIdentitySnapshot(
+                session = ownerASession,
+                environmentId = "https://prod.example.test",
+                principalId = "u-a",
+                serverId = "server-1",
+                authGeneration = 1L,
+                selectionGeneration = 1L
+            )
+        val ownerBIdentity =
+            ThreadReplyCacheIdentitySnapshot(
+                session = ownerBSession,
+                environmentId = "https://prod.example.test",
+                principalId = "u-b",
+                serverId = "server-1",
+                authGeneration = 2L,
+                selectionGeneration = 1L
+            )
+        var identity: ThreadReplyCacheIdentitySnapshot? = ownerAIdentity
+        val transitionWaiterEntered = CompletableDeferred<Unit>()
+        val releaseTransitionWaiter = CompletableDeferred<Unit>()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                conversationRepository = FakeConversationRepository(),
+                replyCacheIdentityAuthority = { identity },
+                replyCacheIdentityTransitionWaiter = {
+                    transitionWaiterEntered.complete(Unit)
+                    releaseTransitionWaiter.await()
+                    true
+                },
+                payloadStore = payloadStore
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        withTimeout(1_000) {
+            while (!store.state.value.writeActionsEnabled) {
+                delay(10)
+            }
+        }
+        val ownerA = requireNotNull(dataSource.currentReplyCacheProvenance())
+        val ownerAAuthority =
+            requireNotNull(
+                dataSource.captureThreadLocalSendAuthority(
+                    state = store.state.value,
+                    mountedOwnerProvenance = ownerA
+                )
+            )
+        val beforeGapState = store.state.value
+        val beforeGapOwnerACache =
+            payloadStore.get(
+                serverId = "server-1",
+                threadId = "channel-1",
+                ownerScopeId = ownerA.threadPayloadOwnerScopeId.orEmpty()
+            )
+
+        identity = null
+        val ownerTransition = async(Dispatchers.Default) { dataSource.captureReplyCacheProducerContext() }
+        transitionWaiterEntered.await()
+
+        assertTrue(store.state.value.writeActionsEnabled)
+        assertNull(dataSource.currentReplyCacheProvenance())
+        assertNull(
+            dataSource.captureThreadLocalSendAuthority(
+                state = store.state.value,
+                mountedOwnerProvenance = ownerA
+            )
+        )
+        val admittedDuringGap =
+            store.admitLocalSend(
+                message = localPendingMessage("local-gap", "must not send"),
+                expectedProvenance = ownerAAuthority.provenance,
+                expectedRoute = ownerAAuthority.route
+            )
+        if (admittedDuringGap) {
+            dataSource.sendMessage(
+                channelId = "channel-1",
+                body = "must not send",
+                asTask = false,
+                attachmentIds = emptyList(),
+                randomId = "rid-gap"
+            )
+        }
+
+        assertFalse(admittedDuringGap)
+        assertEquals(0, api.sendMessageCalls)
+        assertEquals(beforeGapState, store.state.value)
+
+        identity = ownerBIdentity
+        releaseTransitionWaiter.complete(Unit)
+        val ownerB = requireNotNull(ownerTransition.await()).provenance
+        assertEquals("u-b", ownerB.principalId)
+        assertNull(
+            dataSource.captureThreadLocalSendAuthority(
+                state = store.state.value,
+                mountedOwnerProvenance = ownerA
+            )
+        )
+        assertFalse(
+            store.admitLocalSend(
+                message = localPendingMessage("local-gap", "must not send"),
+                expectedProvenance = ownerAAuthority.provenance,
+                expectedRoute = ownerAAuthority.route
+            )
+        )
+        store.accept(
+            SharedThreadIntent.ReplaceLocalSendWithSentPage(
+                messageId = "local-gap",
+                page = sentPage("server-gap", "must not send"),
+                expectedProvenance = ownerAAuthority.provenance,
+                expectedRoute = ownerAAuthority.route
+            )
+        )
+        store.accept(
+            SharedThreadIntent.ApplyLocalSendFailure(
+                messageId = "local-gap",
+                errorCode = "owner_a_failure",
+                expectedProvenance = ownerAAuthority.provenance,
+                expectedRoute = ownerAAuthority.route
+            )
+        )
+        assertEquals(beforeGapState, store.state.value)
+        assertEquals(
+            beforeGapOwnerACache,
+            payloadStore.get(
+                serverId = "server-1",
+                threadId = "channel-1",
+                ownerScopeId = ownerA.threadPayloadOwnerScopeId.orEmpty()
+            )
+        )
+        assertNull(
+            payloadStore.get(
+                serverId = "server-1",
+                threadId = "channel-1",
+                ownerScopeId = ownerB.threadPayloadOwnerScopeId.orEmpty()
+            )
+        )
+        assertFalse(store.state.value.payload.messages.any { it.id == "local-gap" || it.id == "server-gap" })
+        scope.cancel()
+    }
+
+    @Test
     fun replyThreadLocalSendSuccessKeepsCanonicalSentMessageWhenEchoUsesParentChannel() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -5707,12 +5862,33 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository =
+                    FakeConversationRepository(
+                        threadResult =
+                            DataResult.Content(
+                                threadSnapshot(
+                                    threadId = "thread-m1",
+                                    messages = emptyList(),
+                                    parentMessage =
+                                        message(
+                                            threadId = "channel-1",
+                                            id = "m1",
+                                            seq = 10,
+                                            body = "parent body"
+                                        ),
+                                    conversation = replyThreadConversation(joined = true, canSend = true)
+                                )
+                            )
+                    ),
+                channelRepository = FakeChannelRepository { DataResult.Content(joinedHomeSnapshot()) }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val base =
             replyPayload(parentMessageId = "m1", threadId = "thread-m1")
                 .copy(
                     status = "empty",
+                    parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    parentChannelKind = "channel",
                     originStatus = "loaded",
                     originMessage =
                         KuiklyThreadMessageItem(
@@ -5725,16 +5901,14 @@ class SharedThreadStoreTest {
                 )
 
         store.accept(SharedThreadIntent.Start(base))
-        store.accept(
-            SharedThreadIntent.ApplyLocalSendStarted(
-                localPendingMessage("local-1", "sent body", streamChannelId = "thread-m1")
-            )
+        store.startLocalSendForCurrentOwner(
+            dataSource,
+            localPendingMessage("local-1", "sent body", streamChannelId = "thread-m1")
         )
-        store.accept(
-            SharedThreadIntent.ReplaceLocalSendWithSentPage(
-                "local-1",
-                sentPage("server-1", "sent body", channelId = "channel-1", threadId = null)
-            )
+        store.replaceLocalSendForCurrentOwner(
+            dataSource,
+            "local-1",
+            sentPage("server-1", "sent body", channelId = "channel-1", threadId = null)
         )
 
         val payload = store.state.value.payload
@@ -5908,17 +6082,16 @@ class SharedThreadStoreTest {
         val localMessageId = "local-send-channel-1-1"
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        store.accept(
-            SharedThreadIntent.ApplyLocalSendStarted(
-                localPendingMessage(
-                    id = localMessageId,
-                    body = "retry body",
-                    asTask = true,
-                    attachmentIds = listOf("att-1")
-                )
+        store.startLocalSendForCurrentOwner(
+            dataSource,
+            localPendingMessage(
+                id = localMessageId,
+                body = "retry body",
+                asTask = true,
+                attachmentIds = listOf("att-1")
             )
         )
-        store.accept(SharedThreadIntent.ApplyLocalSendFailure(localMessageId, "network_error"))
+        store.failLocalSendForCurrentOwner(dataSource, localMessageId, "network_error")
 
         assertNull(localStore.readThread(ThreadId("channel-1")))
         val cachedPayload = dataSource.cachedPayload("channel-1")
@@ -5943,14 +6116,13 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val localMessageId = "local-send-channel-1-1"
         store.accept(SharedThreadIntent.Start(basePayload()))
-        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage(localMessageId, "retry body")))
+        store.startLocalSendForCurrentOwner(dataSource, localPendingMessage(localMessageId, "retry body"))
 
-        store.accept(
-            SharedThreadIntent.ApplyLocalSendFailure(
-                messageId = localMessageId,
-                errorCode = "body_too_large",
-                errorMessage = "Body is too large"
-            )
+        store.failLocalSendForCurrentOwner(
+            dataSource = dataSource,
+            messageId = localMessageId,
+            errorCode = "body_too_large",
+            errorMessage = "Body is too large"
         )
 
         val failed = store.state.value.payload.messages.first { it.id == localMessageId }
@@ -6032,8 +6204,8 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val localMessageId = "local-send-channel-1-1"
         store.accept(SharedThreadIntent.Start(basePayload()))
-        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage(localMessageId, "delete me")))
-        store.accept(SharedThreadIntent.ApplyLocalSendFailure(localMessageId, "network_error"))
+        store.startLocalSendForCurrentOwner(dataSource, localPendingMessage(localMessageId, "delete me"))
+        store.failLocalSendForCurrentOwner(dataSource, localMessageId, "network_error")
 
         store.accept(SharedThreadIntent.DismissLocalFailedSend(localMessageId))
 
@@ -6056,7 +6228,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val localMessageId = "local-send-channel-1-1"
         store.accept(SharedThreadIntent.Start(basePayload()))
-        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage(localMessageId, "cancel me")))
+        store.startLocalSendForCurrentOwner(dataSource, localPendingMessage(localMessageId, "cancel me"))
 
         store.accept(SharedThreadIntent.CancelLocalSend(localMessageId))
 
@@ -6079,8 +6251,8 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val localMessageId = "local-send-channel-1-1"
         store.accept(SharedThreadIntent.Start(basePayload()))
-        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage(localMessageId, "retry body")))
-        store.accept(SharedThreadIntent.ApplyLocalSendFailure(localMessageId, "network_error"))
+        store.startLocalSendForCurrentOwner(dataSource, localPendingMessage(localMessageId, "retry body"))
+        store.failLocalSendForCurrentOwner(dataSource, localMessageId, "network_error")
 
         store.accept(SharedThreadIntent.Refresh)
 
@@ -6095,28 +6267,24 @@ class SharedThreadStoreTest {
     @Test
     fun localSendFailureKeepsFailedBubbleWithRetryContext() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store =
-            SharedThreadStore(
-                dataSource =
-                    SharedThreadDataSource(
-                        networkApi = FakeThreadApi(),
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-                    ),
-                scope = scope
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
-        store.accept(
-            SharedThreadIntent.ApplyLocalSendStarted(
-                localPendingMessage(
-                    id = "local-1",
-                    body = "retry body",
-                    asTask = true,
-                    attachmentIds = listOf("att-1")
-                )
+        store.startLocalSendForCurrentOwner(
+            dataSource,
+            localPendingMessage(
+                id = "local-1",
+                body = "retry body",
+                asTask = true,
+                attachmentIds = listOf("att-1")
             )
         )
 
-        store.accept(SharedThreadIntent.ApplyLocalSendFailure("local-1", "network_error"))
+        store.failLocalSendForCurrentOwner(dataSource, "local-1", "network_error")
 
         val failed = store.state.value.payload.messages.first { it.id == "local-1" }
         assertEquals(ThreadMessageDeliveryFailed, failed.deliveryState)
@@ -6130,30 +6298,33 @@ class SharedThreadStoreTest {
     @Test
     fun retryFailureReusesSameTempBubbleAndRetrySuccessReplacesIt() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store =
-            SharedThreadStore(
-                dataSource =
-                    SharedThreadDataSource(
-                        networkApi = FakeThreadApi(),
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-                    ),
-                scope = scope
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
         val local = localPendingMessage("local-1", "retry body")
-        store.accept(SharedThreadIntent.ApplyLocalSendStarted(local))
-        store.accept(SharedThreadIntent.ApplyLocalSendFailure("local-1", "offline"))
+        store.startLocalSendForCurrentOwner(dataSource, local)
+        store.failLocalSendForCurrentOwner(dataSource, "local-1", "offline")
 
-        store.accept(SharedThreadIntent.ApplyLocalSendStarted(local.copy(deliveryState = ThreadMessageDeliverySending)))
-        store.accept(SharedThreadIntent.ApplyLocalSendFailure("local-1", "still_offline"))
+        store.startLocalSendForCurrentOwner(
+            dataSource,
+            local.copy(deliveryState = ThreadMessageDeliverySending)
+        )
+        store.failLocalSendForCurrentOwner(dataSource, "local-1", "still_offline")
 
         val failedMessages = store.state.value.payload.messages.filter { it.id == "local-1" }
         assertEquals(1, failedMessages.size)
         assertEquals(ThreadMessageDeliveryFailed, failedMessages.single().deliveryState)
         assertEquals("still_offline", failedMessages.single().pendingSendErrorCode)
 
-        store.accept(SharedThreadIntent.ApplyLocalSendStarted(failedMessages.single().copy(deliveryState = ThreadMessageDeliverySending)))
-        store.accept(SharedThreadIntent.ReplaceLocalSendWithSentPage("local-1", sentPage("server-1", "retry body")))
+        store.startLocalSendForCurrentOwner(
+            dataSource,
+            failedMessages.single().copy(deliveryState = ThreadMessageDeliverySending)
+        )
+        store.replaceLocalSendForCurrentOwner(dataSource, "local-1", sentPage("server-1", "retry body"))
 
         val messages = store.state.value.payload.messages
         assertFalse(messages.any { it.id == "local-1" })
@@ -6164,20 +6335,17 @@ class SharedThreadStoreTest {
     @Test
     fun localSendReplacementDoesNotDuplicateServerMessageAlreadyInFlow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store =
-            SharedThreadStore(
-                dataSource =
-                    SharedThreadDataSource(
-                        networkApi = FakeThreadApi(),
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-                    ),
-                scope = scope
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
-        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage("local-1", "sent body")))
+        store.startLocalSendForCurrentOwner(dataSource, localPendingMessage("local-1", "sent body"))
         store.accept(SharedThreadIntent.AppendSentPage(sentPage("server-1", "sent body")))
 
-        store.accept(SharedThreadIntent.ReplaceLocalSendWithSentPage("local-1", sentPage("server-1", "sent body")))
+        store.replaceLocalSendForCurrentOwner(dataSource, "local-1", sentPage("server-1", "sent body"))
 
         val messages = store.state.value.payload.messages
         assertFalse(messages.any { it.id == "local-1" })
@@ -6188,15 +6356,12 @@ class SharedThreadStoreTest {
     @Test
     fun retryPreservesAttachmentIdsAcrossFailureAndRetryCycle() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store =
-            SharedThreadStore(
-                dataSource =
-                    SharedThreadDataSource(
-                        networkApi = FakeThreadApi(),
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-                    ),
-                scope = scope
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
         val local =
             localPendingMessage(
@@ -6204,15 +6369,18 @@ class SharedThreadStoreTest {
                 body = "with attachments",
                 attachmentIds = listOf("att-1", "att-2")
             )
-        store.accept(SharedThreadIntent.ApplyLocalSendStarted(local))
-        store.accept(SharedThreadIntent.ApplyLocalSendFailure("local-1", "network_error"))
+        store.startLocalSendForCurrentOwner(dataSource, local)
+        store.failLocalSendForCurrentOwner(dataSource, "local-1", "network_error")
 
         val failed = store.state.value.payload.messages.first { it.id == "local-1" }
         assertEquals(ThreadMessageDeliveryFailed, failed.deliveryState)
         assertEquals(listOf("att-1", "att-2"), failed.pendingSendContext?.attachmentIds)
         assertEquals(2, failed.attachments.size)
 
-        store.accept(SharedThreadIntent.ApplyLocalSendStarted(failed.copy(deliveryState = ThreadMessageDeliverySending)))
+        store.startLocalSendForCurrentOwner(
+            dataSource,
+            failed.copy(deliveryState = ThreadMessageDeliverySending)
+        )
 
         val retried = store.state.value.payload.messages.first { it.id == "local-1" }
         assertEquals(ThreadMessageDeliverySending, retried.deliveryState)
@@ -10641,7 +10809,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun prepareForLocalSendClearsFocusedNewerContext() = runBlocking {
+    fun localSendAdmissionClearsFocusedNewerContext() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource =
             SharedThreadDataSource(
@@ -10655,7 +10823,10 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "m10")))
         store.accept(SharedThreadIntent.SetPagingAvailability(canLoadMoreBefore = true, canLoadMoreAfter = true))
 
-        store.accept(SharedThreadIntent.PrepareForLocalSend)
+        store.startLocalSendForCurrentOwner(
+            dataSource,
+            localPendingMessage("local-prepare", "send body")
+        )
 
         val payload = store.state.value.payload
         assertEquals(null, payload.focusedMessageId)
@@ -10960,7 +11131,17 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository =
+                    FakeConversationRepository(
+                        threadResult =
+                            DataResult.Content(
+                                threadSnapshot(
+                                    body = "cached body",
+                                    conversation = conversationSummary().copy(joined = true)
+                                )
+                            )
+                    )
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -10972,10 +11153,9 @@ class SharedThreadStoreTest {
         }
         timelineEvents.clear()
 
-        store.accept(
-            SharedThreadIntent.ApplyLocalSendStarted(
-                contentPayload("local send", id = "local-1").messages.single()
-            )
+        store.startLocalSendForCurrentOwner(
+            dataSource,
+            contentPayload("local send", id = "local-1").messages.single()
         )
 
         assertEquals(listOf("cached body", "local send"), timelineEvents.single().messages.map { it.body })
@@ -14189,6 +14369,7 @@ class SharedThreadStoreTest {
         val channelMessageLimits: MutableList<Int> = mutableListOf()
         val syncLimits: MutableList<Int> = mutableListOf()
         val channelIds: MutableList<String> = mutableListOf()
+        var sendMessageCalls: Int = 0
         var lastAttachmentIds: List<String> = emptyList()
         var lastRandomId: String? = null
         val savedMessageIds: MutableList<String> = mutableListOf()
@@ -14263,6 +14444,7 @@ class SharedThreadStoreTest {
             attachmentIds: List<String>,
             randomId: String?
         ): HomeNetworkResponse {
+            sendMessageCalls += 1
             lastAttachmentIds = attachmentIds
             lastRandomId = randomId
             return HomeNetworkResponse(code = 200, bodyText = messagesResponse(body))
@@ -14936,6 +15118,60 @@ class SharedThreadStoreTest {
         override suspend fun writeThread(snapshot: ThreadSnapshot) {
             error("thread write failed")
         }
+    }
+
+    private fun SharedThreadStore.startLocalSendForCurrentOwner(
+        dataSource: SharedThreadDataSource,
+        message: KuiklyThreadMessageItem,
+        composerSeed: ThreadLocalSendComposerSeed? = null
+    ) {
+        val provenance = requireNotNull(dataSource.currentReplyCacheProvenance())
+        val admitted =
+            admitLocalSend(
+                message = message,
+                expectedProvenance = provenance,
+                expectedRoute = state.value.payload.resolveThreadRouteIdentity(),
+                composerSeed = composerSeed
+            )
+        assertTrue(
+            admitted,
+            "local send not admitted: writeActionsEnabled=${state.value.writeActionsEnabled} " +
+                "access=${state.value.accessResolution} status=${state.value.payload.status}"
+        )
+    }
+
+    private suspend fun SharedThreadStore.failLocalSendForCurrentOwner(
+        dataSource: SharedThreadDataSource,
+        messageId: String,
+        errorCode: String?,
+        errorMessage: String? = null
+    ) {
+        val provenance = requireNotNull(dataSource.currentReplyCacheProvenance())
+        accept(
+            SharedThreadIntent.ApplyLocalSendFailure(
+                messageId = messageId,
+                errorCode = errorCode,
+                errorMessage = errorMessage,
+                expectedProvenance = provenance,
+                expectedRoute = state.value.payload.resolveThreadRouteIdentity()
+            )
+        )
+    }
+
+    private suspend fun SharedThreadStore.replaceLocalSendForCurrentOwner(
+        dataSource: SharedThreadDataSource,
+        messageId: String,
+        page: ThreadMessagesPage
+    ) {
+        val provenance = requireNotNull(dataSource.currentReplyCacheProvenance())
+        accept(
+            SharedThreadIntent.ReplaceLocalSendWithSentPage(
+                messageId = messageId,
+                page = page,
+                expectedProvenance = provenance,
+                expectedRoute = state.value.payload.resolveThreadRouteIdentity()
+            )
+        )
     }
 
     private fun basePayload(): KuiklyThreadScreenPayload =

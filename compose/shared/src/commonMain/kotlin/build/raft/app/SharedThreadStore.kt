@@ -5094,32 +5094,31 @@ private data class ThreadVisibleReadMarker(
     val latestSeq: Long?
 )
 
+internal data class ThreadLocalSendComposerSeed(
+    val sentBody: String,
+    val sentAttachmentIds: Set<String>
+)
+
 internal sealed interface SharedThreadIntent {
     data class Start(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
     data class ApplyRouteIntent(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
     data object Refresh : SharedThreadIntent
     data object RetryAccessResolution : SharedThreadIntent
     data class AppendSentPage(val page: ThreadMessagesPage) : SharedThreadIntent
-    data class ApplyLocalSendStarted(val message: KuiklyThreadMessageItem) : SharedThreadIntent
     data class ApplyLocalSendFailure(
         val messageId: String,
         val errorCode: String? = null,
         val errorMessage: String? = null,
-        val expectedProvenance: ReplyCacheProvenance? = null,
-        val expectedRoute: ThreadRouteIdentity? = null
+        val expectedProvenance: ReplyCacheProvenance,
+        val expectedRoute: ThreadRouteIdentity
     ) : SharedThreadIntent
     data class CancelLocalSend(val messageId: String) : SharedThreadIntent
     data class DismissLocalFailedSend(val messageId: String) : SharedThreadIntent
     data class ReplaceLocalSendWithSentPage(
         val messageId: String,
         val page: ThreadMessagesPage,
-        val expectedProvenance: ReplyCacheProvenance? = null,
-        val expectedRoute: ThreadRouteIdentity? = null
-    ) : SharedThreadIntent
-    data object PrepareForLocalSend : SharedThreadIntent
-    data class ConsumeComposerSeedForSend(
-        val sentBody: String,
-        val sentAttachmentIds: Set<String>
+        val expectedProvenance: ReplyCacheProvenance,
+        val expectedRoute: ThreadRouteIdentity
     ) : SharedThreadIntent
     data class ApplyMessageReactionSelection(
         val messageId: String,
@@ -5311,13 +5310,10 @@ internal class SharedThreadStore(
             }
             is SharedThreadIntent.AppendSentPage,
             is SharedThreadIntent.ApplyRouteIntent,
-            is SharedThreadIntent.ApplyLocalSendStarted,
             is SharedThreadIntent.ApplyLocalSendFailure,
             is SharedThreadIntent.CancelLocalSend,
             is SharedThreadIntent.DismissLocalFailedSend,
             is SharedThreadIntent.ReplaceLocalSendWithSentPage,
-            SharedThreadIntent.PrepareForLocalSend,
-            is SharedThreadIntent.ConsumeComposerSeedForSend,
             is SharedThreadIntent.ApplyMessageReactionSelection,
             is SharedThreadIntent.ApplyMessageReactions,
             is SharedThreadIntent.ApplyReplyThreadRead,
@@ -5379,7 +5375,6 @@ internal class SharedThreadStore(
                 )
             SharedThreadIntent.RetryAccessResolution -> retryAccessResolution()
             is SharedThreadIntent.AppendSentPage -> appendSentPage(intent.page)
-            is SharedThreadIntent.ApplyLocalSendStarted -> applyLocalSendStarted(intent.message)
             is SharedThreadIntent.ApplyLocalSendFailure ->
                 applyLocalSendFailure(
                     intent.messageId,
@@ -5397,9 +5392,6 @@ internal class SharedThreadStore(
                     intent.expectedProvenance,
                     intent.expectedRoute
                 )
-            SharedThreadIntent.PrepareForLocalSend -> prepareForLocalSend()
-            is SharedThreadIntent.ConsumeComposerSeedForSend ->
-                consumeComposerSeedForSend(intent.sentBody, intent.sentAttachmentIds)
             is SharedThreadIntent.ApplyMessageReactionSelection ->
                 applyMessageReactionSelection(intent.messageId, intent.emoji, intent.selected)
             is SharedThreadIntent.ApplyMessageReactions ->
@@ -7843,42 +7835,61 @@ internal class SharedThreadStore(
         }
     }
 
-    private fun applyLocalSendStarted(message: KuiklyThreadMessageItem) {
-        reducePayloadPatch { payload ->
-            payload.withLocalSendStarted(message)
-        }
-    }
+    internal fun admitLocalSend(
+        message: KuiklyThreadMessageItem,
+        expectedProvenance: ReplyCacheProvenance,
+        expectedRoute: ThreadRouteIdentity,
+        composerSeed: ThreadLocalSendComposerSeed? = null
+    ): Boolean =
+        dataSource.withCurrentReplyCacheProvenance(expectedProvenance) {
+            val current = _state.value
+            if (
+                !current.writeActionsEnabled ||
+                expectedProvenance.threadPayloadOwnerScopeId == null ||
+                current.payload.resolveThreadRouteIdentity() != expectedRoute
+            ) {
+                false
+            } else {
+                val prepared =
+                    current.payload.copy(
+                        focusedMessageId = null,
+                        canLoadMoreAfter = false,
+                        newerMessagesStatus = "idle"
+                    )
+                val withLocalSend = prepared.withLocalSendStarted(message)
+                val nextPayload =
+                    composerSeed?.let { seed ->
+                        withLocalSend.consumeComposerSeedForSend(
+                            sentBody = seed.sentBody,
+                            sentAttachmentIds = seed.sentAttachmentIds
+                        )
+                    } ?: withLocalSend
+                reduceState(current.copy(payload = nextPayload))
+            }
+        } ?: false
 
     private suspend fun applyLocalSendFailure(
         messageId: String,
         errorCode: String?,
         errorMessage: String?,
-        expectedProvenance: ReplyCacheProvenance?,
-        expectedRoute: ThreadRouteIdentity?
+        expectedProvenance: ReplyCacheProvenance,
+        expectedRoute: ThreadRouteIdentity
     ) {
         val emitted =
-            if (expectedProvenance == null) {
-                reducePayloadPatch { payload ->
-                    payload.withLocalSendFailure(messageId, errorCode, errorMessage)
-                }
-            } else {
-                dataSource.withCurrentReplyCacheProvenance(expectedProvenance) {
-                    val payload = _state.value.payload
-                    if (expectedRoute != null && payload.resolveThreadRouteIdentity() != expectedRoute) {
-                        false
-                    } else {
-                        reducePayloadPatch { current ->
-                            current.withLocalSendFailure(messageId, errorCode, errorMessage)
-                        }
+            dataSource.withCurrentReplyCacheProvenance(expectedProvenance) {
+                val payload = _state.value.payload
+                if (payload.resolveThreadRouteIdentity() != expectedRoute) {
+                    false
+                } else {
+                    reducePayloadPatch { current ->
+                        current.withLocalSendFailure(messageId, errorCode, errorMessage)
                     }
-                } ?: false
-            }
+                }
+            } ?: false
         if (emitted) {
             dataSource.cachePayload(
                 payload = _state.value.payload,
-                ownerScopeId =
-                    expectedProvenance?.threadPayloadOwnerScopeId
-                        ?: visiblePayloadOwnerScopeId.orEmpty(),
+                ownerScopeId = expectedProvenance.threadPayloadOwnerScopeId.orEmpty(),
                 expectedProvenance = expectedProvenance
             )
         }
@@ -7899,8 +7910,8 @@ internal class SharedThreadStore(
     private suspend fun replaceLocalSendWithSentPage(
         messageId: String,
         page: ThreadMessagesPage,
-        expectedProvenance: ReplyCacheProvenance?,
-        expectedRoute: ThreadRouteIdentity?
+        expectedProvenance: ReplyCacheProvenance,
+        expectedRoute: ThreadRouteIdentity
     ) {
         if (page.messages.isEmpty()) return
         val routePayload = _state.value.payload
@@ -7915,7 +7926,7 @@ internal class SharedThreadStore(
                 if (!routeStillCurrent(routePayload, "thread_send", "replace_apply", payload)) {
                     return@reducePayloadPatch payload
                 }
-                if (expectedRoute != null && payload.resolveThreadRouteIdentity() != expectedRoute) {
+                if (payload.resolveThreadRouteIdentity() != expectedRoute) {
                     return@reducePayloadPatch payload
                 }
                 val appended =
@@ -7939,19 +7950,13 @@ internal class SharedThreadStore(
                 payload.withThreadContentProjectionFrom(selected)
             }
         val emitted =
-            if (expectedProvenance == null) {
+            dataSource.withCurrentReplyCacheProvenance(expectedProvenance) {
                 applyToCurrentPayload()
-            } else {
-                dataSource.withCurrentReplyCacheProvenance(expectedProvenance) {
-                    applyToCurrentPayload()
-                } ?: false
-            }
+            } ?: false
         if (emitted) {
             dataSource.cachePayload(
                 payload = _state.value.payload,
-                ownerScopeId =
-                    expectedProvenance?.threadPayloadOwnerScopeId
-                        ?: visiblePayloadOwnerScopeId.orEmpty(),
+                ownerScopeId = expectedProvenance.threadPayloadOwnerScopeId.orEmpty(),
                 expectedProvenance = expectedProvenance
             )
         }
@@ -8138,25 +8143,6 @@ internal class SharedThreadStore(
             it.copy(
                 selectedTab = switchToTab?.takeIf { tab -> tab.isNotBlank() } ?: it.selectedTab,
                 focusedMessageId = normalizedMessageId
-            )
-        }
-    }
-
-    private fun prepareForLocalSend() {
-        reducePayloadPatch {
-            it.copy(
-                focusedMessageId = null,
-                canLoadMoreAfter = false,
-                newerMessagesStatus = "idle"
-            )
-        }
-    }
-
-    private fun consumeComposerSeedForSend(sentBody: String, sentAttachmentIds: Set<String>) {
-        reducePayloadPatch {
-            it.consumeComposerSeedForSend(
-                sentBody = sentBody,
-                sentAttachmentIds = sentAttachmentIds
             )
         }
     }
@@ -8409,6 +8395,19 @@ internal class SharedThreadViewModel(
     fun dispatch(intent: SharedThreadIntent) {
         store.dispatch(intent)
     }
+
+    fun admitLocalSend(
+        message: KuiklyThreadMessageItem,
+        expectedProvenance: ReplyCacheProvenance,
+        expectedRoute: ThreadRouteIdentity,
+        composerSeed: ThreadLocalSendComposerSeed? = null
+    ): Boolean =
+        store.admitLocalSend(
+            message = message,
+            expectedProvenance = expectedProvenance,
+            expectedRoute = expectedRoute,
+            composerSeed = composerSeed
+        )
 
     suspend fun accept(intent: SharedThreadIntent) {
         store.accept(intent)
