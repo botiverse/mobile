@@ -6,6 +6,7 @@ import build.raft.app.model.MemberKind
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.text.TextRange
+import com.tencent.kuikly.compose.ui.text.input.ImeAction
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
@@ -799,6 +800,12 @@ class ThreadComposerLayoutTest {
                 channelCount = 0
             )
         )
+    }
+
+    @Test
+    fun multilineComposerUsesNativeReturnKeyWhenImeActionIsUnowned() {
+        assertEquals(ImeAction.Default, threadComposerImeAction(composerUsesImeAction = false))
+        assertEquals(ImeAction.Send, threadComposerImeAction(composerUsesImeAction = true))
     }
 
     @Test
