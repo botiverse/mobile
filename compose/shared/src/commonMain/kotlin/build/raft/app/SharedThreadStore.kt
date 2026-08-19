@@ -1743,12 +1743,20 @@ internal class SharedThreadDataSource(
         return payloadCache.replyThreadAccessFailure(key)
     }
 
-    suspend fun clearRememberedReplyThreadAccessFailure(
-        basePayload: KuiklyThreadScreenPayload
-    ) {
-        val resolutionScope = readReplyResolutionScope() ?: return
-        val key = replyThreadAccessFlightKey(resolutionScope, basePayload) ?: return
+    internal suspend fun clearRememberedReplyThreadAccessFailure(
+        basePayload: KuiklyThreadScreenPayload,
+        context: ReplyCacheProducerContext,
+    ): Boolean {
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return false
+        val resolutionScope =
+            ReplyResolutionScope(
+                session = context.session,
+                provenance = context.provenance,
+                sharedMessageStore = messageStore != null,
+            )
+        val key = replyThreadAccessFlightKey(resolutionScope, basePayload) ?: return true
         payloadCache.clearReplyThreadAccessFailure(key)
+        return isCurrentReplyCacheProvenance(context.provenance)
     }
 
     private fun replyThreadAccessFlightKey(
@@ -1800,6 +1808,22 @@ internal class SharedThreadDataSource(
         val ownerScopeId = cachePayloadOwnerScopeId.value.takeIf { it.isNotBlank() } ?: return
         payloadCache.remove(cacheServerId.value, threadId, ownerScopeId)
     }
+
+    internal fun invalidateCachedPayload(
+        payload: KuiklyThreadScreenPayload,
+        expectedProvenance: ReplyCacheProvenance,
+    ): Boolean =
+        synchronized(replyCacheProvenanceLock) {
+            if (replyCacheProvenance.value != expectedProvenance) return@synchronized false
+            val threadId =
+                payload.resolveThreadRouteIdentity().timelineChannelId
+                    ?: return@synchronized false
+            val ownerScopeId =
+                expectedProvenance.threadPayloadOwnerScopeId
+                    ?: return@synchronized false
+            payloadCache.remove(expectedProvenance.serverId, threadId, ownerScopeId)
+            true
+        }
 
     suspend fun withCachedReplyParentCandidate(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
         val context = captureReplyCacheProducerContext() ?: return basePayload
@@ -2630,6 +2654,35 @@ internal class SharedThreadDataSource(
             replyResolutionScope = null,
             replaceReplyAccessFailure = replaceReplyAccessFailure
         )
+
+    /**
+     * Runs a visible Store refresh under the exact owner captured before the refresh began.
+     * Re-sampling here could turn an A-owned Store request into a B-owned network request while
+     * the surrounding Store generation still belongs to A.
+     */
+    internal suspend fun fetchThreadPayloadForContext(
+        basePayload: KuiklyThreadScreenPayload,
+        expectedContext: ReplyCacheProducerContext,
+        persistResult: Boolean = true,
+        reusePrewarm: Boolean = false,
+        replaceReplyAccessFailure: Boolean = false,
+    ): DataResult<KuiklyThreadScreenPayload> {
+        if (!isCurrentReplyCacheProvenance(expectedContext.provenance)) {
+            return staleReplyCacheProvenanceResult()
+        }
+        return fetchThreadPayloadWithResolutionScope(
+            basePayload = basePayload,
+            persistResult = persistResult,
+            reusePrewarm = reusePrewarm,
+            replyResolutionScope =
+                ReplyResolutionScope(
+                    session = expectedContext.session,
+                    provenance = expectedContext.provenance,
+                    sharedMessageStore = messageStore != null,
+                ),
+            replaceReplyAccessFailure = replaceReplyAccessFailure,
+        )
+    }
 
     private suspend fun fetchThreadPayloadWithResolutionScope(
         basePayload: KuiklyThreadScreenPayload,
@@ -5698,8 +5751,13 @@ internal class SharedThreadStore(
         explicitRetry: Boolean = false
     ) {
         val refreshStartedAt = TimeSource.Monotonic.markNow()
-        if (explicitRetry) {
-            dataSource.clearRememberedReplyThreadAccessFailure(basePayload)
+        val refreshProducerContext = dataSource.captureReplyCacheProducerContext() ?: return
+        val refreshProvenance = refreshProducerContext.provenance
+        if (
+            explicitRetry &&
+            !dataSource.clearRememberedReplyThreadAccessFailure(basePayload, refreshProducerContext)
+        ) {
+            return
         }
         var refreshStartState = _state.value
         val resolvingInitialAccessAtStart =
@@ -5709,17 +5767,24 @@ internal class SharedThreadStore(
                 !refreshStartState.writeActionsEnabled
         if (resolvingInitialAccessAtStart) {
             initialAccessStateMutex.withLock {
-                val latest = _state.value
-                reduceState(
-                    latest.copy(
-                        accessResolution = ThreadAccessResolution.Loading,
-                        canonicalAccessResolved = false,
-                        initialHomeAccessLookupComplete = false,
-                        initialHomeAccessCandidate = null
-                    )
-                )
-                refreshStartState = _state.value
+                val admitted =
+                    dataSource.withCurrentReplyCacheProvenance(refreshProvenance) {
+                        val latest = _state.value
+                        reduceState(
+                            latest.copy(
+                                accessResolution = ThreadAccessResolution.Loading,
+                                canonicalAccessResolved = false,
+                                initialHomeAccessLookupComplete = false,
+                                initialHomeAccessCandidate = null
+                            )
+                        )
+                        refreshStartState = _state.value
+                    }
+                if (admitted == null) {
+                    return
+                }
             }
+            if (!dataSource.isCurrentReplyCacheProvenance(refreshProvenance)) return
             launchInitialAccessResolution(basePayload, staleToken)
         } else if (retryingReadOnlyParentAccess) {
             // A readable reply timeline must stay terminal while Refresh retries
@@ -5732,12 +5797,33 @@ internal class SharedThreadStore(
             return
         }
         val refreshObservedMessageIds = existing.messages.mapTo(mutableSetOf()) { message -> message.id }
-        val repliesPageIdentity = captureThreadRepliesPageIdentity(basePayload)
+        val repliesPageIdentity = captureThreadRepliesPageIdentity(basePayload, refreshProducerContext)
         val repliesRebaselineGeneration =
             repliesPageIdentity?.let { page ->
                 val generation = ++nextThreadRepliesRebaselineGeneration
                 generation.takeIf { threadRepliesSyncHost.beginAuthoritativeRebaseline(page, generation) }
             }
+        fun abortRepliesRebaseline() {
+            if (repliesPageIdentity != null && repliesRebaselineGeneration != null) {
+                threadRepliesSyncHost.abortAuthoritativeRebaseline(
+                    repliesPageIdentity,
+                    repliesRebaselineGeneration,
+                )
+            }
+        }
+        fun dropForOwnerChange(stage: String, result: DataResult<KuiklyThreadScreenPayload>? = null) {
+            abortRepliesRebaseline()
+            diagnosticsLogger?.invoke(
+                "thread_refresh_result threadId=${basePayload.sourceThreadId.orEmpty()} " +
+                    "result=${result?.threadDiagnosticsResult().orEmpty()} ignored=true " +
+                    "reason=owner_changed stage=$stage " +
+                    "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds}"
+            )
+        }
+        if (!dataSource.isCurrentReplyCacheProvenance(refreshProvenance)) {
+            dropForOwnerChange("before_loading")
+            return
+        }
         val hasRenderableContent = existing.hasRenderableThreadContent()
         diagnosticsLogger?.invoke(
             "thread_refresh_start threadId=${basePayload.sourceThreadId.orEmpty()} " +
@@ -5754,34 +5840,44 @@ internal class SharedThreadStore(
             "thread_loading_patch threadId=${basePayload.sourceThreadId.orEmpty()} status=${loadingBase.status} " +
                 "messages=${loadingBase.messages.size} " + loadingBase.originDiagnostics()
         )
-        reducePayloadPatch { currentPayload ->
-            if (!routeStillCurrent(basePayload, "thread_refresh", "loading_apply", currentPayload)) {
-                return@reducePayloadPatch currentPayload
+        val loadingAdmitted =
+            dataSource.withCurrentReplyCacheProvenance(refreshProvenance) {
+                reducePayloadPatch { currentPayload ->
+                    if (!routeStillCurrent(basePayload, "thread_refresh", "loading_apply", currentPayload)) {
+                        return@reducePayloadPatch currentPayload
+                    }
+                    currentPayload.withThreadContentProjectionFrom(loadingBase)
+                }
             }
-            currentPayload.withThreadContentProjectionFrom(loadingBase)
+        if (loadingAdmitted == null) {
+            dropForOwnerChange("loading_apply")
+            return
         }
         afterRefreshLoadingStateApplied?.invoke(_state.value.payload)
         if (!hasRenderableContent) {
             delay(SharedThreadFirstFrameDelayMillis)
         }
         val result =
-            dataSource.fetchThreadPayload(
+            dataSource.fetchThreadPayloadForContext(
                 basePayload = basePayload,
+                expectedContext = refreshProducerContext,
                 persistResult = true,
                 reusePrewarm = reusePrewarm,
                 replaceReplyAccessFailure = explicitRetry
             )
         val latest = _state.value.payload
         if (
+            !dataSource.isCurrentReplyCacheProvenance(refreshProvenance) ||
+            (result is DataResult.Error && result.error.code == ReplyCacheProvenanceStaleCode)
+        ) {
+            dropForOwnerChange("after_fetch", result)
+            return
+        }
+        if (
             !staleTokenStillCurrent(staleToken, "thread_refresh", "after_fetch", basePayload, latest) ||
             !routeStillCurrent(basePayload, "thread_refresh", "after_fetch", latest)
         ) {
-            if (repliesPageIdentity != null && repliesRebaselineGeneration != null) {
-                threadRepliesSyncHost.abortAuthoritativeRebaseline(
-                    repliesPageIdentity,
-                    repliesRebaselineGeneration,
-                )
-            }
+            abortRepliesRebaseline()
             diagnosticsLogger?.invoke(
                 "thread_refresh_result threadId=${basePayload.sourceThreadId.orEmpty()} " +
                     "result=${result.threadDiagnosticsResult()} ignored=true reason=stale_route " +
@@ -5798,8 +5894,13 @@ internal class SharedThreadStore(
                         previous = latest,
                         page = repliesPageIdentity,
                         generation = repliesRebaselineGeneration,
+                        expectedProvenance = refreshProvenance,
                     )
                 }
+        if (!dataSource.isCurrentReplyCacheProvenance(refreshProvenance)) {
+            dropForOwnerChange("after_rebaseline", result)
+            return
+        }
         val visiblePayload =
             repliesProjectedResult
                 ?.preserveStableTimelineFrom(
@@ -5824,102 +5925,113 @@ internal class SharedThreadStore(
                     // the cached first-frame candidate is unrecoverable-stale
                     // (permission/visibility change) — drop it. Transient
                     // network errors deliberately keep the warm cache.
-                    dataSource.invalidateCachedPayload(basePayload)
                     latest.asRefreshNoPermission(basePayload, result.blocker.code)
                 }
             }.copy(backgroundRefreshing = false)
-        initialAccessStateMutex.withLock {
-            val currentState = _state.value
-            val currentPayload = currentState.payload
-            if (
-                staleTokenStillCurrent(staleToken, "thread_refresh", "access_apply", basePayload, currentPayload) &&
-                routeStillCurrent(basePayload, "thread_refresh", "apply", currentPayload)
-            ) {
-                val resolvingInitialAccess = currentState.accessResolution != ThreadAccessResolution.Resolved
-                val refreshStableNextPayload =
-                    if (result is DataResult.Content) {
-                        nextPayload.preserveStableTimelineFrom(
-                            previous = currentPayload,
-                            preserveAuxiliaryProjectionFromPrevious = true,
-                            refreshObservedMessageIds = refreshObservedMessageIds,
-                            sendEchoMatchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId
-                        )
-                    } else {
-                        nextPayload
-                    }
-                fun commitWithAcceptedReplies(
-                    acceptedReplies: Map<String, ThreadRepliesAcceptedProjection>,
-                ) {
-                    val commitNextPayload =
-                        refreshStableNextPayload.withAcceptedThreadRepliesProjection(
-                            acceptedReplies,
-                            currentPayload,
-                        )
-                    val projectedPayload =
-                        currentPayload
-                            .withThreadContentProjectionFrom(commitNextPayload)
-                            .let { payload ->
-                                if (
-                                    resolvingInitialAccess &&
-                                    result is DataResult.Content &&
-                                    payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread
-                                ) {
-                                    payload.withCanonicalConversationAccessFrom(nextPayload)
-                                } else {
-                                    payload
-                                }
-                            }
-                            .withInitialHomeConversationAccessFallbackUnlessCanonical(
-                                canonicalAccessResolved =
-                                    currentState.canonicalAccessResolved ||
-                                        (resolvingInitialAccess && result is DataResult.Content),
-                                candidate = currentState.initialHomeAccessCandidate,
-                            )
-                            .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
-                                homeLookupComplete = currentState.initialHomeAccessLookupComplete,
-                                homeAccessCandidate = currentState.initialHomeAccessCandidate
-                            )
-                    val canonicalAccessResolved =
-                        currentState.canonicalAccessResolved ||
-                            (resolvingInitialAccess && result.resolvesCanonicalConversationAccess())
-                    val projectedAccessResolution =
-                        currentState.accessResolution.afterRefreshResult(
-                            result = result,
-                            canonicalAccessResolved = canonicalAccessResolved,
-                            homeLookupComplete = currentState.initialHomeAccessLookupComplete,
-                            homeAccessCandidate = currentState.initialHomeAccessCandidate,
-                            requiresParentAccessCandidate =
-                                projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread,
-                            hasReadableCanonicalReplyContent =
-                                projectedPayload.hasReadableCanonicalReplyContent()
-                        )
-                    val authorityProjectedPayload =
-                        projectedPayload.withTerminalAccessWriteAuthorityClosed(projectedAccessResolution)
-                    val didEmit =
-                        reduceState(
-                            currentState.copy(
-                                payload = authorityProjectedPayload,
-                                accessResolution = projectedAccessResolution,
-                                canonicalAccessResolved = canonicalAccessResolved,
-                                writeActionsEnabled =
-                                    authorityProjectedPayload.hasWriteAuthorityForAccess(
-                                        accessResolution = projectedAccessResolution,
-                                        homeLookupComplete = currentState.initialHomeAccessLookupComplete,
-                                        homeAccessCandidate = currentState.initialHomeAccessCandidate
-                                    )
-                            )
-                        )
-                    if (didEmit && visiblePayload != null) {
-                        dataSource.cachePayload(
-                            authorityProjectedPayload,
-                            ownerScopeId = visiblePayloadOwnerScopeId.orEmpty()
-                        )
-                    }
-                }
+        var committedPayload: KuiklyThreadScreenPayload? = null
+        val committed =
+            initialAccessStateMutex.withLock<Boolean?> {
+                val identityPayload = _state.value.payload
                 val replyIdentities =
                     repliesPageIdentity?.let { page ->
-                        refreshStableNextPayload.threadRepliesScopeIdentities(page, currentPayload)
+                        nextPayload.threadRepliesScopeIdentities(page, identityPayload)
                     }.orEmpty()
+                fun commitWithAcceptedReplies(
+                    acceptedReplies: Map<String, ThreadRepliesAcceptedProjection>,
+                ): Boolean? =
+                    dataSource.withCurrentReplyCacheProvenance(refreshProvenance) {
+                        val currentState = _state.value
+                        val currentPayload = currentState.payload
+                        if (
+                            !staleTokenStillCurrent(
+                                staleToken,
+                                "thread_refresh",
+                                "access_apply",
+                                basePayload,
+                                currentPayload,
+                            ) ||
+                            !routeStillCurrent(basePayload, "thread_refresh", "apply", currentPayload)
+                        ) {
+                            false
+                        } else {
+                            val resolvingInitialAccess =
+                                currentState.accessResolution != ThreadAccessResolution.Resolved
+                            val refreshStableNextPayload =
+                                if (result is DataResult.Content) {
+                                    nextPayload.preserveStableTimelineFrom(
+                                        previous = currentPayload,
+                                        preserveAuxiliaryProjectionFromPrevious = true,
+                                        refreshObservedMessageIds = refreshObservedMessageIds,
+                                        sendEchoMatchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId,
+                                    )
+                                } else {
+                                    nextPayload
+                                }
+                            val commitNextPayload =
+                                refreshStableNextPayload.withAcceptedThreadRepliesProjection(
+                                    acceptedReplies,
+                                    currentPayload,
+                                )
+                            val projectedPayload =
+                                currentPayload
+                                    .withThreadContentProjectionFrom(commitNextPayload)
+                                    .let { payload ->
+                                        if (
+                                            resolvingInitialAccess &&
+                                            result is DataResult.Content &&
+                                            payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread
+                                        ) {
+                                            payload.withCanonicalConversationAccessFrom(nextPayload)
+                                        } else {
+                                            payload
+                                        }
+                                    }
+                                    .withInitialHomeConversationAccessFallbackUnlessCanonical(
+                                        canonicalAccessResolved =
+                                            currentState.canonicalAccessResolved ||
+                                                (resolvingInitialAccess && result is DataResult.Content),
+                                        candidate = currentState.initialHomeAccessCandidate,
+                                    )
+                                    .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
+                                        homeLookupComplete = currentState.initialHomeAccessLookupComplete,
+                                        homeAccessCandidate = currentState.initialHomeAccessCandidate,
+                                    )
+                            val canonicalAccessResolved =
+                                currentState.canonicalAccessResolved ||
+                                    (resolvingInitialAccess && result.resolvesCanonicalConversationAccess())
+                            val projectedAccessResolution =
+                                currentState.accessResolution.afterRefreshResult(
+                                    result = result,
+                                    canonicalAccessResolved = canonicalAccessResolved,
+                                    homeLookupComplete = currentState.initialHomeAccessLookupComplete,
+                                    homeAccessCandidate = currentState.initialHomeAccessCandidate,
+                                    requiresParentAccessCandidate =
+                                        projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread,
+                                    hasReadableCanonicalReplyContent =
+                                        projectedPayload.hasReadableCanonicalReplyContent(),
+                                )
+                            val authorityProjectedPayload =
+                                projectedPayload.withTerminalAccessWriteAuthorityClosed(projectedAccessResolution)
+                            val didEmit =
+                                reduceState(
+                                    currentState.copy(
+                                        payload = authorityProjectedPayload,
+                                        accessResolution = projectedAccessResolution,
+                                        canonicalAccessResolved = canonicalAccessResolved,
+                                        writeActionsEnabled =
+                                            authorityProjectedPayload.hasWriteAuthorityForAccess(
+                                                accessResolution = projectedAccessResolution,
+                                                homeLookupComplete = currentState.initialHomeAccessLookupComplete,
+                                                homeAccessCandidate = currentState.initialHomeAccessCandidate,
+                                            ),
+                                    )
+                                )
+                            if (didEmit && visiblePayload != null) {
+                                committedPayload = authorityProjectedPayload
+                            }
+                            true
+                        }
+                    }
                 if (replyIdentities.isEmpty()) {
                     commitWithAcceptedReplies(emptyMap())
                 } else {
@@ -5928,6 +6040,28 @@ internal class SharedThreadStore(
                     }
                 }
             }
+        if (committed != true) {
+            if (committed == null) {
+                dropForOwnerChange("commit", result)
+            } else {
+                abortRepliesRebaseline()
+            }
+            return
+        }
+        if (result is DataResult.NoPermission) {
+            dataSource.invalidateCachedPayload(basePayload, refreshProvenance)
+        } else {
+            committedPayload?.let { payload ->
+                dataSource.cachePayload(
+                    payload = payload,
+                    serverId = refreshProvenance.serverId,
+                    ownerScopeId = refreshProvenance.threadPayloadOwnerScopeId.orEmpty(),
+                    expectedProvenance = refreshProvenance,
+                )
+            }
+        }
+        if (!dataSource.isCurrentReplyCacheProvenance(refreshProvenance)) {
+            return
         }
         diagnosticsLogger?.invoke(
             "thread_refresh_result threadId=${basePayload.sourceThreadId.orEmpty()} " +

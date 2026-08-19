@@ -29,12 +29,117 @@ import build.raft.app.network.sync.ThreadRepliesSyncHost
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SharedThreadSecondaryTimelineProvenanceTest {
+    @Test
+    fun blockedAccountARefreshCannotPublishErrorOrCacheAfterSameServerSwitchToAccountB() = runBlocking {
+        val storeJob = SupervisorJob()
+        val storeScope = CoroutineScope(coroutineContext + storeJob)
+        val accountASession = session("account-a")
+        val authStore = InMemorySlockAuthSessionStore(accountASession)
+        val refreshStarted = CompletableDeferred<Unit>()
+        val releaseRefresh = CompletableDeferred<Unit>()
+        val repository =
+            BlockingRefreshRepository(
+                delegate =
+                    ReplyThreadAccessConversationRepositoryRecorder(
+                        replyResult = DataResult.Error(ScreenError("unused", retryable = false)),
+                        threadResult = DataResult.Content(initialSnapshot()),
+                    ),
+                refreshStarted = refreshStarted,
+                releaseRefresh = releaseRefresh,
+            )
+        val payloadStore = SharedThreadPayloadStore(scope = storeScope)
+        var accountId = "account-a"
+        var authGeneration = 1L
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = ReplyThreadAccessNetworkApi,
+                sessionStore = authStore,
+                conversationRepository = repository,
+                payloadStore = payloadStore,
+                replyCacheIdentityAuthority = {
+                    ThreadReplyCacheIdentitySnapshot(
+                        session = session(accountId),
+                        environmentId = "https://prod.example.test",
+                        principalId = accountId,
+                        serverId = ServerIdValue,
+                        authGeneration = authGeneration,
+                        selectionGeneration = 1L,
+                    )
+                },
+            )
+        val aborted = mutableListOf<Pair<ThreadRepliesPageIdentity, Long>>()
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = storeScope,
+                threadRepliesSyncHost =
+                    ThreadRepliesSyncHost(
+                        onAuthoritativeRebaselineAborted = { page, generation ->
+                            aborted += page to generation
+                        },
+                    ),
+            )
+
+        try {
+            store.accept(SharedThreadIntent.Start(routePayload()))
+            assertEquals("account A canonical message", store.state.value.payload.messages.single().body)
+            assertNull(store.state.value.payload.errorCode)
+            val accountA = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+            payloadStore.clearForTest()
+            val abortCountBeforeRefresh = aborted.size
+
+            repository.blockRefresh = true
+            val refresh = storeScope.launch { store.accept(SharedThreadIntent.Refresh) }
+            refreshStarted.await()
+            val stateBeforeOwnerSwitch = store.state.value
+            assertTrue(stateBeforeOwnerSwitch.payload.backgroundRefreshing)
+            assertNull(stateBeforeOwnerSwitch.payload.errorCode)
+
+            accountId = "account-b"
+            authGeneration = 2L
+            val accountB = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+            assertEquals("account-b", accountB.principalId)
+
+            releaseRefresh.complete(Unit)
+            refresh.join()
+
+            assertEquals(stateBeforeOwnerSwitch, store.state.value)
+            assertNull(store.state.value.payload.errorCode)
+            assertEquals(abortCountBeforeRefresh + 1, aborted.size)
+            assertEquals("account-a", aborted.last().first.principalId)
+            assertNull(
+                payloadStore.get(
+                    serverId = ServerIdValue,
+                    threadId = ThreadIdValue,
+                    principalId = "account-a",
+                    ownerScopeId = accountA.threadPayloadOwnerScopeId.orEmpty(),
+                )
+            )
+            assertNull(
+                payloadStore.get(
+                    serverId = ServerIdValue,
+                    threadId = ThreadIdValue,
+                    principalId = "account-b",
+                    ownerScopeId = accountB.threadPayloadOwnerScopeId.orEmpty(),
+                )
+            )
+        } finally {
+            releaseRefresh.complete(Unit)
+            store.clear()
+            payloadStore.clearForTest()
+            storeJob.cancel()
+        }
+    }
+
     @Test
     fun blockedAccountASummaryCannotPublishOrCacheAfterSameServerSwitchToAccountB() = runBlocking {
         val storeJob = SupervisorJob()
@@ -155,6 +260,26 @@ class SharedThreadSecondaryTimelineProvenanceTest {
             summaryStarted.complete(Unit)
             releaseSummary.await()
             return DataResult.Content(lateSummary())
+        }
+    }
+
+    private class BlockingRefreshRepository(
+        private val delegate: ConversationRepository,
+        private val refreshStarted: CompletableDeferred<Unit>,
+        private val releaseRefresh: CompletableDeferred<Unit>,
+    ) : ConversationRepository by delegate {
+        var blockRefresh: Boolean = false
+
+        override suspend fun getThread(
+            threadId: ThreadId,
+            includeFollowedSummaries: Boolean,
+            limit: Int,
+        ): DataResult<ThreadSnapshot> {
+            if (blockRefresh) {
+                refreshStarted.complete(Unit)
+                releaseRefresh.await()
+            }
+            return delegate.getThread(threadId, includeFollowedSummaries, limit)
         }
     }
 
