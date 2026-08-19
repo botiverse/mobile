@@ -7,7 +7,6 @@ import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
-import android.view.inputmethod.EditorInfo
 import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.localizedThreadComposerInsertNewlineTitle
 import com.tencent.kuikly.core.render.android.css.ktx.toDpF
@@ -209,7 +208,7 @@ internal class SlockKuiklyTextAreaView(
     context: Context,
     softInputMode: Int?
 ) : SlockKuiklyTextFieldView(context, softInputMode) {
-    private var suppressReturnKeySelectionChange = false
+    private var returnKeyStructureConfigured = false
 
     init {
         gravity = Gravity.LEFT or Gravity.TOP
@@ -223,17 +222,27 @@ internal class SlockKuiklyTextAreaView(
 
     override fun setProp(propKey: String, propValue: Any): Boolean =
         when (propKey) {
-            PROP_RETURN_KEY_TYPE -> setReturnKeyType(propValue)
+            PROP_RETURN_KEY_TYPE -> {
+                // Keep the one-time structural setup separate from the renderer's return-key
+                // contract. KRTextFieldView preserves the non-action IME flags and restarts an
+                // active input connection after changing the action; delegating here keeps a
+                // replacement editor's first Send connection in sync without rebuilding the
+                // TextView or leaking a transient selection callback.
+                configureReturnKeyStructure()
+                super.setProp(propKey, propValue)
+            }
+            KRTextProps.PROP_KEY_NUMBER_OF_LINES -> {
+                val applied = super.setProp(propKey, propValue)
+                if (applied && propValue.toSlockLineCount() != 1) {
+                    configureReturnKeyStructure()
+                }
+                applied
+            }
             else -> super.setProp(propKey, propValue)
         }
 
     override fun initSingleLine() {
         isSingleLine = false
-    }
-
-    override fun onSelectionChanged(selStart: Int, selEnd: Int) {
-        if (suppressReturnKeySelectionChange) return
-        super.onSelectionChanged(selStart, selEnd)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -251,49 +260,17 @@ internal class SlockKuiklyTextAreaView(
         )
     }
 
-    private fun setReturnKeyType(value: Any): Boolean {
-        val selectionStartBeforeReconfiguration = selectionStart
-        val selectionEndBeforeReconfiguration = selectionEnd
+    private fun configureReturnKeyStructure() {
+        if (returnKeyStructureConfigured) return
         val method = transformationMethod
-        // Android resets the live selection to 0 while setSingleLine reconfigures the
-        // editor. Kuikly forwards onSelectionChanged synchronously, so an async
-        // loading -> visible suggestion transition would otherwise publish that
-        // transient value back into the controlled composer before we can restore it.
-        suppressReturnKeySelectionChange = true
-        try {
-            isSingleLine = true
-            transformationMethod = method
-            maxLines = Integer.MAX_VALUE
-            setHorizontallyScrolling(false)
-        } finally {
-            suppressReturnKeySelectionChange = false
-        }
-        restoreSelectionAfterReturnKeyReconfiguration(
-            selectionStartBeforeReconfiguration,
-            selectionEndBeforeReconfiguration
-        )
-        imeOptions =
-            when (value as String) {
-                "none" -> EditorInfo.IME_ACTION_NONE
-                "search" -> EditorInfo.IME_ACTION_SEARCH
-                "send" -> EditorInfo.IME_ACTION_SEND
-                "done" -> EditorInfo.IME_ACTION_DONE
-                "next" -> EditorInfo.IME_ACTION_NEXT
-                "go" -> EditorInfo.IME_ACTION_GO
-                "previous" -> EditorInfo.IME_ACTION_PREVIOUS
-                else -> EditorInfo.IME_NULL
-            }
-        return true
-    }
-
-    private fun restoreSelectionAfterReturnKeyReconfiguration(start: Int, end: Int) {
-        if (start < 0 || end < 0) return
-        val textLength = text?.length ?: 0
-        val boundedStart = start.coerceIn(0, textLength)
-        val boundedEnd = end.coerceIn(0, textLength)
-        if (selectionStart != boundedStart || selectionEnd != boundedEnd) {
-            setSelection(boundedStart, boundedEnd)
-        }
+        // Android resets the editor's structure when isSingleLine changes. Do this once, before
+        // controlled editing callbacks are connected, so a later IME-action-only update cannot
+        // publish a transient same-text selection 0..0 to the composer.
+        isSingleLine = true
+        transformationMethod = method
+        maxLines = Integer.MAX_VALUE
+        setHorizontallyScrolling(false)
+        returnKeyStructureConfigured = true
     }
 }
 
