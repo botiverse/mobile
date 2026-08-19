@@ -11,6 +11,9 @@ import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_K
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
 import build.raft.app.network.sync.DiagnosticFeatureFlagScope
 import build.raft.app.toSlockMessagePermalinkTarget
+import build.raft.app.components.SlockCheckMarker
+import build.raft.app.components.SlockCheckMarkerTone
+import build.raft.app.resources.MR
 import build.raft.app.slockFontFamilyForWeight
 import build.raft.app.slockMonoFamilyForWeight
 import build.raft.app.withResolvedSlockFontFamily
@@ -39,12 +42,18 @@ import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.layout.wrapContentWidth
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.text.InlineTextContent
 import com.tencent.kuikly.compose.foundation.text.appendInlineContent
 import com.tencent.kuikly.compose.material3.Text as KuiklyText
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.semantics.contentDescription
+import com.tencent.kuikly.compose.ui.semantics.Role
+import com.tencent.kuikly.compose.ui.semantics.role
+import com.tencent.kuikly.compose.ui.semantics.semantics
+import com.tencent.kuikly.compose.ui.semantics.stateDescription
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Rect
@@ -121,9 +130,11 @@ import com.tencent.kuiklybase.markdown.compose.elements.MarkdownHeader
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownTable
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownTableHeader
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownParagraph
+import com.tencent.kuiklybase.markdown.compose.components.MarkdownComponentModel
 import com.tencent.kuiklybase.markdown.model.MarkdownDimens
 import com.tencent.kuiklybase.markdown.model.markdownPadding
 import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
+import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -582,6 +593,15 @@ internal fun shouldLogSlockMarkdownPerformance(durationMs: Long): Boolean =
 
 fun threadMarkdownTaskReferenceKey(label: String): String =
     label.removePrefix("#").trim().lowercase()
+
+/**
+ * GFM task-list markers are parsed as a dedicated CHECK_BOX token. Keep the
+ * state test exact while accepting the standard upper-case `[X]` spelling.
+ * Bare `[x]` text never reaches this helper because the parser only emits the
+ * token inside a list item.
+ */
+internal fun markdownTaskListCheckboxChecked(markerText: String): Boolean =
+    markerText.trim().equals("[x]", ignoreCase = true)
 
 fun threadMarkdownTagDisplayLabel(label: String): String {
     val trimmed = label.trim()
@@ -1723,6 +1743,44 @@ internal const val SlockMarkdownPendingActionIndicator = " …"
 private const val SlockMarkdownBodyClickTag = "slock-markdown-body-click"
 private val LocalSlockMarkdownBodyClick = compositionLocalOf<(() -> Unit)?> { null }
 
+@Composable
+private fun SlockMarkdownTaskCheckbox(model: MarkdownComponentModel) {
+    val checked = markdownTaskListCheckboxChecked(model.node.getTextInNode(model.content).toString())
+    val checkboxLabel = stringResource(MR.strings.markdown_task_list_checkbox)
+    val stateLabel =
+        stringResource(
+            if (checked) MR.strings.markdown_task_list_checked
+            else MR.strings.markdown_task_list_unchecked
+        )
+    Row(modifier = Modifier.wrapContentWidth()) {
+        Box(
+            modifier =
+                Modifier
+                    .slockMarkdownTaskCheckboxSemantics(
+                        checkboxLabel = checkboxLabel,
+                        stateLabel = stateLabel
+                    )
+                    .padding(end = 4.dp)
+        ) {
+            SlockCheckMarker(
+                checked = checked,
+                tone = SlockCheckMarkerTone.BlackFill,
+                size = 14.dp
+            )
+        }
+    }
+}
+
+internal fun Modifier.slockMarkdownTaskCheckboxSemantics(
+    checkboxLabel: String,
+    stateLabel: String,
+): Modifier =
+    semantics {
+        role = Role.Checkbox
+        contentDescription = checkboxLabel
+        stateDescription = stateLabel
+    }
+
 /**
  * #367 light-path override resolution, mirroring resolveActivityStableOrderEnabled:
  * the diagnostics "Local Feature Overrides" latch wins over the (default-off)
@@ -2206,6 +2264,9 @@ fun SlockMarkdownBody(
                 MarkdownCodeBlock(model.content, model.node) { code, language, style ->
                     SlockMarkdownCodeBlockWithCopy(code, language, style)
                 }
+            },
+            checkbox = { model ->
+                SlockMarkdownTaskCheckbox(model)
             }
         )
     }

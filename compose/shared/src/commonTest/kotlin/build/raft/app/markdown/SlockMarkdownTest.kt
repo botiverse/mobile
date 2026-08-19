@@ -22,6 +22,13 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.semantics.Role
+import com.tencent.kuikly.compose.ui.semantics.SemanticsActions
+import com.tencent.kuikly.compose.ui.semantics.SemanticsConfiguration
+import com.tencent.kuikly.compose.ui.semantics.SemanticsModifier
+import com.tencent.kuikly.compose.ui.semantics.SemanticsProperties
+import com.tencent.kuikly.compose.ui.semantics.getOrNull
 import com.tencent.kuikly.core.base.Size
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.appendSlockInlineCodeWithEdgeBoxes
@@ -36,6 +43,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
+import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
 import kotlin.test.assertFalse
@@ -430,6 +438,48 @@ class SlockMarkdownTest {
             setOf("slock:23", "slock:46"),
             rendered[1].slockMarkdownClickableTags()
         )
+    }
+
+    @Test
+    fun markdownTaskListCheckboxAcceptsCanonicalCaseVariantsOnly() {
+        assertTrue(markdownTaskListCheckboxChecked("[x]"))
+        assertTrue(markdownTaskListCheckboxChecked("[X]"))
+        assertFalse(markdownTaskListCheckboxChecked("[ ]"))
+        assertFalse(markdownTaskListCheckboxChecked("[xx]"))
+        assertFalse(markdownTaskListCheckboxChecked("[x] trailing"))
+    }
+
+    @Test
+    fun markdownTaskListCheckboxPublishesReadOnlyCheckboxRole() {
+        val config =
+            Modifier
+                .slockMarkdownTaskCheckboxSemantics(
+                    checkboxLabel = "Task list checkbox",
+                    stateLabel = "Completed"
+                )
+                .semanticsConfiguration()
+
+        assertEquals(Role.Checkbox, config.getOrNull(SemanticsProperties.Role))
+        assertEquals("Task list checkbox", config.getOrNull(SemanticsProperties.ContentDescription)?.firstOrNull())
+        assertEquals("Completed", config.getOrNull(SemanticsProperties.StateDescription))
+        assertFalse(config.getOrNull(SemanticsActions.OnClick) != null)
+    }
+
+    @Test
+    fun bareCheckboxTextDoesNotBecomeTaskListState() {
+        val body = "[x] bare text\n\n- [X] completed"
+        val parserContent = MarkdownParserContent.from(body).parserContent
+        val parsedTree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val checkboxNodes = mutableListOf<ASTNode>()
+
+        fun collect(node: ASTNode) {
+            if (node.type.name == "CHECK_BOX") checkboxNodes += node
+            node.children.forEach(::collect)
+        }
+        collect(parsedTree)
+
+        assertEquals(1, checkboxNodes.size)
+        assertTrue(markdownTaskListCheckboxChecked(checkboxNodes.single().getTextInNode(parserContent).toString()))
     }
 
     @Test
@@ -2208,3 +2258,9 @@ class SlockMarkdownTest {
     private fun inlineCodeSegment(code: String): String =
         code
 }
+
+private fun Modifier.semanticsConfiguration(): SemanticsConfiguration =
+    foldIn(emptyList<SemanticsConfiguration>()) { current, element ->
+        val semantics = (element as? SemanticsModifier)?.semanticsConfiguration
+        if (semantics == null) current else current + listOf(semantics)
+    }.lastOrNull() ?: error("Expected a semantics modifier")
