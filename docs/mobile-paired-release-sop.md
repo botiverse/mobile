@@ -185,8 +185,7 @@ gh workflow run ios-release.yml \
   -f release_notes_version=X.Y.Z \
   -f hands_channel=main \
   -f export_method=app-store-connect \
-  -f release_mode=draft \
-  -f publish_hands=true
+  -f release_mode=draft
 ```
 
 Draft creation does not authorize activation or distribution. If source drifts
