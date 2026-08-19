@@ -254,8 +254,12 @@ named TestFlight groups. The receipt must state that intent explicitly.
 Store approved community copy under:
 
 ```text
-change-logs/X.Y.Z/community-announcement.zh-CN.md
-change-logs/X.Y.Z/community-announcement.en.md
+change-logs/X.Y.Z/android/zh-CN.md
+change-logs/X.Y.Z/android/en.md
+change-logs/X.Y.Z/android/ja.md
+change-logs/X.Y.Z/ios/zh-CN.md
+change-logs/X.Y.Z/ios/en.md
+change-logs/X.Y.Z/ios/ja.md
 ```
 
 Announce only platforms that reached their intended community boundary. For
@@ -263,6 +267,114 @@ iOS TestFlight, fresh-read the exact build and audience, include marketing
 version/build number and the current verified join URL, and state that it is a
 TestFlight beta rather than an App Store production release. Do not expose
 internal tasks, CI detail, or unshipped work. Record the final message ids.
+
+### Fixed `#raft-mobile` announcement templates
+
+The four templates below preserve the release owner's selected historical
+Android and iOS Chinese/English public messages as the canonical channel
+presentation format. The templates own titles, introductory sentences, link
+labels, closing sentences, section labels and icons, section order, and
+platform-specific delivery wording. The platform locale files own the reviewed
+user-visible bullet text and its order; their Hands-specific section icons are
+not channel presentation authority. Replace only bracketed placeholders and
+the reviewed bullet text. Do not substitute a Hands/CI receipt, release ID,
+artifact hash, rollout percentage, internal gate, or engineering status report
+for these announcements.
+
+Android Chinese:
+
+```markdown
+# Raft Android [marketing version] 已发布
+
+Raft Android [marketing version] 现已上线。已经安装 Raft 的用户可以在「设置 → 关于 → 检查更新」中直接升级。
+
+- 下载更新：<[verified Hands share URL]>
+
+✨ **新功能**
+
+- [reviewed user-visible item]
+
+🔧 **改进**
+
+- [reviewed user-visible item]
+
+🐛 **修复**
+
+- [reviewed user-visible item]
+
+遇到问题，欢迎通过「设置 → 发送反馈」告诉我们。感谢大家一直以来的使用与反馈。
+```
+
+Android English:
+
+```markdown
+# Raft Android [marketing version] is now available
+
+Raft Android [marketing version] is now available. If you already have Raft installed, update directly from Settings > About > Check for updates.
+
+- Download: <[verified Hands share URL]>
+
+✨ **New**
+
+- [reviewed user-visible item]
+
+🔧 **Improved**
+
+- [reviewed user-visible item]
+
+🐛 **Fixed**
+
+- [reviewed user-visible item]
+
+If you run into an issue, please use Settings > Send feedback. Thank you for using Raft and sharing your feedback.
+```
+
+iOS Chinese:
+
+```markdown
+📱 Raft iOS [marketing version] ([build number]) 已在 TestFlight 提供测试
+
+本次更新包括：
+
+- [reviewed user-visible item]
+
+TestFlight：<[current verified join URL]>
+
+说明：这是 TestFlight 测试版本，不是 App Store 正式发布。版本号以 TestFlight 中显示的 `[marketing version] ([build number])` 为准。
+```
+
+iOS English:
+
+```markdown
+📱 Raft iOS [marketing version] ([build number]) is now available on TestFlight
+
+Highlights:
+
+- [reviewed user-visible item]
+
+TestFlight: <[current verified join URL]>
+
+This is a TestFlight beta, not an App Store production release. The canonical TestFlight version is `[marketing version] ([build number])`.
+```
+
+For Android, map the reviewed New/Improved/Fixed bullet groups into the
+template's `✨` / `🔧` / `🐛` sections. Omit a section only when its reviewed
+locale file has no items in that category; never leave a placeholder or invent
+filler. For iOS, remove only the locale file's section headings and place every
+reviewed bullet in its original order into one flat list under
+`本次更新包括：` / `Highlights:`. Do not select, summarize, drop, rewrite, or
+reorder bullets during that transformation. A shorter highlights subset is a
+new announcement artifact and requires its own explicit copy review. The
+English `Highlights:` label is retained as historical template wording; it is
+not an instruction to select a subset.
+
+Publish Chinese and English as four separate top-level messages, one message
+per platform and locale. Draft them from the platform's reviewed locale files,
+then compare presentation against these templates and bullet text/order against
+the locale files before posting.
+The reviewed `ja.md` files remain the Japanese Hands release-note source; they
+are not a fifth or sixth `#raft-mobile` announcement unless the release owner
+explicitly requests Japanese channel posts and approves their templates.
 
 ## 10. Handle Post-Distribution Defects Honestly
 
