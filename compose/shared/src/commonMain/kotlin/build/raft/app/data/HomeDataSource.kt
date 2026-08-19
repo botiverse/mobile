@@ -418,7 +418,9 @@ private fun ComputerListSummary.toSharedHomeMachineNotifications(
     }
     val outdatedMachines =
         machines.filter { machine ->
-            machine.status == ComputerStatus.Online && isDaemonOutdated(machine.daemonVersion, latestDaemonVersion)
+            !machine.isComputer &&
+                machine.status == ComputerStatus.Online &&
+                isDaemonOutdated(machine.daemonVersion, latestDaemonVersion)
         }
     if (outdatedMachines.isNotEmpty()) {
         val sortedIds = outdatedMachines.map { it.id }.sorted()
