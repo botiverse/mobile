@@ -9,10 +9,10 @@ import android.view.inputmethod.InputConnection
 import android.widget.EditText
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import com.tencent.kuikly.core.render.android.expand.component.KRTextProps
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -22,44 +22,76 @@ class SlockMultilineTextFieldValueConnectedTest {
     fun returnKeyTypeChangesPreserveLiveSelectionWithoutTransientZeroCallback() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
-            editor.setText("@draft")
-            editor.setSelection(editor.length())
+            listOf("@", "#").forEach { trigger ->
+                val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
 
-            val selectionEvents = mutableListOf<Pair<Int, Int>>()
-            val selectionCallback: KuiklyRenderCallback = { result ->
-                val state = result as Map<*, *>
-                selectionEvents +=
-                    (state["selectionStart"] as Number).toInt() to
-                        (state["selectionEnd"] as Number).toInt()
+                // Composer uses maxLines=4. CoreTextField applies that line count before it
+                // registers editing callbacks, but it does not emit returnKeyTypeNone for a
+                // multiline field. The first return-key prop arrives only when cold @/#
+                // suggestions become visible, so there must be no synthetic initial "none" here.
+                assertTrue(editor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+
+                val textInputStateEvents = mutableListOf<Any?>()
+                val legacyTextEvents = mutableListOf<Any?>()
+                val selectionEvents = mutableListOf<Any?>()
+                val textInputStateCallback: KuiklyRenderCallback = { result ->
+                    textInputStateEvents += result
+                }
+                val legacyTextCallback: KuiklyRenderCallback = { result ->
+                    legacyTextEvents += result
+                }
+                val selectionCallback: KuiklyRenderCallback = { result ->
+                    selectionEvents += result
+                }
+                assertTrue(editor.setProp("textInputStateChange", textInputStateCallback))
+                assertTrue(editor.setProp("textDidChange", legacyTextCallback))
+                assertTrue(editor.setProp("selectionChange", selectionCallback))
+
+                editor.setText(trigger)
+                editor.setSelection(editor.length())
+                textInputStateEvents.clear()
+                legacyTextEvents.clear()
+                selectionEvents.clear()
+
+                assertTrue(editor.setProp("returnKeyType", "send"))
+
+                assertEquals(trigger, editor.text.toString())
+                assertEquals(editor.length(), editor.selectionStart)
+                assertEquals(editor.length(), editor.selectionEnd)
+                assertNoEditingCallbacks(
+                    "$trigger cold None -> Send",
+                    textInputStateEvents,
+                    legacyTextEvents,
+                    selectionEvents
+                )
+                assertEquals(
+                    EditorInfo.IME_ACTION_SEND,
+                    editor.imeOptions and EditorInfo.IME_MASK_ACTION
+                )
+
+                val multilineText = "$trigger draft\nnext"
+                editor.setText(multilineText)
+                editor.setSelection(2, 5)
+                textInputStateEvents.clear()
+                legacyTextEvents.clear()
+                selectionEvents.clear()
+
+                assertTrue(editor.setProp("returnKeyType", "none"))
+
+                assertEquals(multilineText, editor.text.toString())
+                assertEquals(2, editor.selectionStart)
+                assertEquals(5, editor.selectionEnd)
+                assertNoEditingCallbacks(
+                    "$trigger Send -> None with ranged selection",
+                    textInputStateEvents,
+                    legacyTextEvents,
+                    selectionEvents
+                )
+                assertEquals(
+                    EditorInfo.IME_ACTION_NONE,
+                    editor.imeOptions and EditorInfo.IME_MASK_ACTION
+                )
             }
-            assertTrue(editor.setProp("selectionChange", selectionCallback))
-
-            assertTrue(editor.setProp("returnKeyType", "send"))
-
-            assertEquals("@draft", editor.text.toString())
-            assertEquals(editor.length(), editor.selectionStart)
-            assertEquals(editor.length(), editor.selectionEnd)
-            assertFalse(
-                "return-key reconfiguration must not publish a transient zero selection: $selectionEvents",
-                selectionEvents.any { it != (editor.length() to editor.length()) }
-            )
-            assertEquals(EditorInfo.IME_ACTION_SEND, editor.imeOptions and EditorInfo.IME_MASK_ACTION)
-
-            editor.setText("@draft\nnext")
-            editor.setSelection(2, 5)
-            selectionEvents.clear()
-
-            assertTrue(editor.setProp("returnKeyType", "none"))
-
-            assertEquals("@draft\nnext", editor.text.toString())
-            assertEquals(2, editor.selectionStart)
-            assertEquals(5, editor.selectionEnd)
-            assertFalse(
-                "return-key reconfiguration must preserve the exact range: $selectionEvents",
-                selectionEvents.any { it != (2 to 5) }
-            )
-            assertEquals(EditorInfo.IME_ACTION_NONE, editor.imeOptions and EditorInfo.IME_MASK_ACTION)
         }
     }
 
@@ -81,6 +113,9 @@ class SlockMultilineTextFieldValueConnectedTest {
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             scenario.waitForEditorSnapshot("", 0, 0, -1, -1)
 
+            scenario.awaitVisualInputHostReadyForEditorFocus(
+                "attachment-comment fixture editor"
+            ) { activity -> activity.window.decorView.findOnlyEditText() != null }
             scenario.onActivity { activity ->
                 val editor = activity.window.decorView.requireOnlyEditText()
                 assertTrue("attachment-comment editor should accept focus", editor.requestFocus())
@@ -129,6 +164,26 @@ class SlockMultilineTextFieldValueConnectedTest {
             scenario.waitForEditorSnapshot(retyped, 2, 2, -1, -1)
         }
     }
+}
+
+private fun assertNoEditingCallbacks(
+    transition: String,
+    textInputStateEvents: List<Any?>,
+    legacyTextEvents: List<Any?>,
+    selectionEvents: List<Any?>
+) {
+    assertTrue(
+        "$transition must not publish complete editing state: $textInputStateEvents",
+        textInputStateEvents.isEmpty()
+    )
+    assertTrue(
+        "$transition must not publish legacy text: $legacyTextEvents",
+        legacyTextEvents.isEmpty()
+    )
+    assertTrue(
+        "$transition must not publish selection: $selectionEvents",
+        selectionEvents.isEmpty()
+    )
 }
 
 private fun ActivityScenario<SlockKuiklyActivity>.waitForEditorSnapshot(
