@@ -189,6 +189,53 @@ class HomeDataSourceTest {
     }
 
     @Test
+    fun outdatedDaemonAlertsExcludeManagedComputersButKeepRawDaemons() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = "admin")),
+                api = FakeHomeApi(),
+                computersApi =
+                    ConcurrentComputersApi(
+                        announcementsStarted = CompletableDeferred(Unit),
+                        bodyText =
+                            """
+                            {
+                              "latestDaemonVersion": "1.0.17",
+                              "machines": [
+                                {
+                                  "id": "managed-computer",
+                                  "name": "Managed computer",
+                                  "status": "online",
+                                  "statusVersion": 1,
+                                  "daemonVersion": "1.0.16",
+                                  "isComputer": true
+                                },
+                                {
+                                  "id": "raw-daemon",
+                                  "name": "Raw daemon",
+                                  "status": "online",
+                                  "statusVersion": 1,
+                                  "daemonVersion": "1.0.16",
+                                  "isComputer": false
+                                }
+                              ]
+                            }
+                            """.trimIndent(),
+                    ),
+                parseHome = { _, session ->
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                },
+            )
+
+        val notifications = (source.loadNotifications() as DataResult.Content).data
+
+        val notification = notifications.single()
+        assertEquals("machine-outdated:1.0.17:raw-daemon", notification.id)
+        assertEquals("Raw daemon is running an outdated daemon", notification.title)
+        assertEquals("raw-daemon", notification.targetId)
+    }
+
+    @Test
     fun machineNotificationsRequireManageMachinesPermissionWithoutHidingAppUpdates() = runBlocking {
         val computersApi = RejectingComputersApi()
         val source =
