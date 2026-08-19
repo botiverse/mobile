@@ -10,8 +10,6 @@ fail() {
 }
 
 for script in \
-  scripts/resolve_android_publish_hands_input.sh \
-  scripts/test_resolve_android_publish_hands_input.sh \
   scripts/release_android_hands_github.sh \
   scripts/publish_android_hands_release.sh \
   scripts/finalize_android_hands_release.sh \
@@ -19,19 +17,19 @@ for script in \
   bash -n "${script}"
 done
 
-scripts/test_resolve_android_publish_hands_input.sh
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_verify_android_dex_packaging.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_verify_android_elf_alignment.py
 
-env -u SLOCK_PUBLISH_HANDS \
+env -u SLOCK_CREATE_HANDS_DRAFT \
   scripts/release_android_hands_github.sh --help |
-  grep -q 'publish_hands=true' || fail "canonical wrapper help does not expose publish_hands"
+  grep -q 'create_hands_draft=true' || fail "canonical wrapper help does not expose draft creation"
 
 ruby -e '
   require "json"
   require "rexml/document"
   require "yaml"
   workflow = YAML.load_file(".github/workflows/android-release.yml")
+  ios_workflow = YAML.load_file(".github/workflows/ios-release.yml")
   update_workflow = YAML.load_file(".github/workflows/android-update-qa.yml")
   signoff_workflow = YAML.load_file(".github/workflows/commit-signoff.yml")
   YAML.load_file(".github/workflows/android-release-contract.yml")
@@ -40,7 +38,7 @@ ruby -e '
   raise "Commit Sign-off does not cover release branches" unless signoff_branches.include?("main") && signoff_branches.include?("release-*")
 
   inputs = workflow.fetch(true).fetch("workflow_dispatch").fetch("inputs")
-  raise "missing publish_hands input" unless inputs.key?("publish_hands")
+  raise "manual release must not expose a skip-draft switch" if inputs.key?("publish_hands") || inputs.key?("create_hands_draft")
   dex_input = inputs.fetch("dex_packaging")
   raise "release workflow does not default to compressed DEX" unless dex_input.fetch("default") == "compressed"
   raise "release workflow DEX choices drifted" unless dex_input.fetch("options") == %w[current compressed mmap]
@@ -66,10 +64,10 @@ ruby -e '
       resolve_run.include?("JNI_PACKAGING=\"${{ inputs.jni_packaging }}\"")
     raise "packaging input expression is injected into shell source"
   end
-  raise "missing publish_hands job" unless jobs.key?("publish_hands")
-  publish_job = jobs.fetch("publish_hands")
-  unless publish_job.fetch("if").include?("needs.resolve.outputs.publish_hands == '\''true'\''")
-    raise "publish job is not gated by publish_hands"
+  raise "missing create_hands_draft job" unless jobs.key?("create_hands_draft")
+  publish_job = jobs.fetch("create_hands_draft")
+  unless publish_job.fetch("if").strip == "needs.resolve.outputs.create_hands_draft == '\''true'\''"
+    raise "draft job is not gated by create_hands_draft"
   end
   share_step = publish_job.fetch("steps").find { |step| step["id"] == "create-share-page" }
   raise "missing independent share step" unless share_step
@@ -81,6 +79,15 @@ ruby -e '
   raise "release workflow does not require reviewed Japanese notes" unless publish_run.include?("/ja.md") && publish_run.include?("SLOCK_RELEASE_CHANGELOG_JA_FILE")
   summary_run = publish_job.fetch("steps").find { |step| step["name"] == "Step summary" }.fetch("run")
   raise "release workflow summary drops Japanese notes" unless summary_run.include?("--changelog-file ja=ja.md")
+
+  ios_inputs = ios_workflow.fetch(true).fetch("workflow_dispatch").fetch("inputs")
+  raise "iOS release still exposes publish_hands" if ios_inputs.key?("publish_hands")
+  raise "iOS release mode is not draft-only" unless ios_inputs.fetch("release_mode").fetch("options") == ["draft"]
+  ios_draft_job = ios_workflow.fetch("jobs").fetch("create_hands_draft")
+  raise "iOS draft upload is still optional" if ios_draft_job.key?("if")
+  raise "iOS draft job can activate" unless ios_draft_job.fetch("env").fetch("SLOCK_HANDS_DRAFT") == "1"
+  ios_publish_run = ios_draft_job.fetch("steps").find { |step| step["id"] == "publish-hands-release" }.fetch("run")
+  raise "iOS CI does not force a draft" unless ios_publish_run.include?("--draft") && !ios_publish_run.include?("--publish")
 
   call_inputs = workflow.fetch(true).fetch("workflow_call").fetch("inputs")
   raise "reusable release workflow lacks source_sha" unless call_inputs.key?("source_sha")
@@ -99,7 +106,7 @@ ruby -e '
   %w[baseline target].each do |name|
     call = update_jobs.fetch(name)
     raise "#{name} does not reuse android-release" unless call.fetch("uses") == "./.github/workflows/android-release.yml"
-    raise "#{name} can publish Hands" unless call.fetch("with").fetch("publish_hands") == "false"
+    raise "#{name} can create a Hands draft" unless call.fetch("with").fetch("create_hands_draft") == false
     raise "#{name} is not release variant" unless call.fetch("with").fetch("android_variant") == "release"
     raise "#{name} is not debug carrier" unless call.fetch("with").fetch("hands_channel") == "debug"
   end
@@ -285,14 +292,15 @@ ruby -e '
   raise "1.8.0 release notes contain an empty section" unless release_note_counts.first.all?(&:positive?)
 '
 
-grep -Eq '^      publish_hands:$' .github/workflows/android-release.yml ||
-  fail "android-release.yml is missing the canonical publish_hands input"
-grep -Eq '^  publish_hands:$' .github/workflows/android-release.yml ||
-  fail "android-release.yml is missing the canonical publish_hands job"
-grep -Eq 'needs\.resolve\.outputs\.publish_hands' .github/workflows/android-release.yml ||
-  fail "publish job is not gated by the canonical publish_hands output"
-grep -Eq -- '-f "publish_hands=\$\{publish_hands\}"' scripts/release_android_hands_github.sh ||
-  fail "canonical dispatch wrapper does not send publish_hands"
+grep -Eq '^      create_hands_draft:$' .github/workflows/android-release.yml ||
+  fail "android-release.yml is missing the reusable build-only draft control"
+grep -Eq '^  create_hands_draft:$' .github/workflows/android-release.yml ||
+  fail "android-release.yml is missing the create_hands_draft job"
+grep -Eq 'needs\.resolve\.outputs\.create_hands_draft' .github/workflows/android-release.yml ||
+  fail "draft job is not gated by the canonical create_hands_draft output"
+if grep -Eq 'publish_hands' .github/workflows/android-release.yml .github/workflows/ios-release.yml; then
+  fail "release workflows still overload publish_hands"
+fi
 grep -Eq -- '-f "dex_packaging=\$\{DEX_PACKAGING\}"' scripts/release_android_hands_github.sh ||
   fail "canonical dispatch wrapper does not send dex_packaging"
 grep -Eq -- '-f "jni_packaging=\$\{JNI_PACKAGING\}"' scripts/release_android_hands_github.sh ||

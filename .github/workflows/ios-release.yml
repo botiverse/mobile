@@ -53,18 +53,12 @@ on:
           - enterprise
           - development
       release_mode:
-        description: "draft = CI creates a draft Hands release for review; publish = immediately active"
+        description: "CI always creates a draft Hands release; publish separately after review"
         required: true
         type: choice
         default: "draft"
         options:
           - draft
-          - publish
-      publish_hands:
-        description: "If true, upload the signed IPA + dSYM to Hands"
-        required: true
-        type: boolean
-        default: false
 
 env:
   # Do NOT set -Xmx here: gradle.properties (project + $GRADLE_USER_HOME) takes
@@ -94,7 +88,6 @@ jobs:
       hands_channel: ${{ steps.p.outputs.hands_channel }}
       export_method: ${{ steps.p.outputs.export_method }}
       release_mode: ${{ steps.p.outputs.release_mode }}
-      publish_hands: ${{ steps.p.outputs.publish_hands }}
     steps:
       - id: p
         shell: bash
@@ -128,7 +121,6 @@ jobs:
             echo "hands_channel=${{ inputs.hands_channel }}"
             echo "export_method=${{ inputs.export_method }}"
             echo "release_mode=${{ inputs.release_mode }}"
-            echo "publish_hands=${{ inputs.publish_hands }}"
           } >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
@@ -432,19 +424,18 @@ jobs:
             echo "| **IPA sha256** | \`${{ steps.validate.outputs.ipa_sha256 || '(not validated)' }}\` |"
             echo "| **dSYM sha256** | \`${{ steps.validate.outputs.dsym_sha256 || '(not validated)' }}\` |"
             echo "| **Hands channel target** | \`${{ needs.resolve.outputs.hands_channel }}\` |"
-            echo "| **Publish to Hands** | \`${{ needs.resolve.outputs.publish_hands }}\` |"
+            echo "| **Create Hands draft** | \`true\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Gradle failure diagnostics
         if: failure()
         uses: ./.github/actions/gradle-failure-diagnostics
 
-  publish_hands:
-    name: Publish to Hands
+  create_hands_draft:
+    name: Upload to Hands + create draft
     runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 15
     needs: [resolve, build_ios_release]
-    if: needs.resolve.outputs.publish_hands == 'true'
     environment:
       name: production
     env:
@@ -457,7 +448,7 @@ jobs:
       RAFT_IOS_VERSION_CODE: ${{ needs.resolve.outputs.version_code }}
       SLOCK_IOS_EXPORT_METHOD: ${{ needs.resolve.outputs.export_method }}
       SLOCK_HANDS_RELEASE_TYPE: stable
-      SLOCK_HANDS_DRAFT: ${{ needs.resolve.outputs.release_mode == 'publish' && '0' || '1' }}
+      SLOCK_HANDS_DRAFT: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -544,7 +535,7 @@ jobs:
             --channel "${HANDS_CHANNEL}" \
             --release-type "${SLOCK_HANDS_RELEASE_TYPE}" \
             --export-method "${SLOCK_IOS_EXPORT_METHOD}" \
-            ${{ needs.resolve.outputs.release_mode == 'publish' && '--publish' || '--draft' }} \
+            --draft \
             | tee hands-publish.log
           RELEASE_ID="$(awk '/^[[:space:]]*release:/ {print $2}' hands-publish.log | tail -n 1)"
           if [ -n "${RELEASE_ID}" ]; then

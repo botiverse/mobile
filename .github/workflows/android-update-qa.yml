@@ -84,7 +84,7 @@ jobs:
       hands_channel: debug
       android_variant: release
       release_mode: draft
-      publish_hands: "false"
+      create_hands_draft: false
       create_share_page: false
 
   target:
@@ -102,7 +102,7 @@ jobs:
       hands_channel: debug
       android_variant: release
       release_mode: draft
-      publish_hands: "false"
+      create_hands_draft: false
       create_share_page: false
 
   manifest:

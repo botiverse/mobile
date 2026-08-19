@@ -12,7 +12,7 @@ CHANNEL="${SLOCK_HANDS_CHANNEL:-main}"
 VARIANT="${SLOCK_ANDROID_VARIANT:-release}"
 DEX_PACKAGING="${SLOCK_ANDROID_DEX_PACKAGING:-compressed}"
 JNI_PACKAGING="${SLOCK_ANDROID_JNI_PACKAGING:-current}"
-PUBLISH_HANDS_RAW="${SLOCK_PUBLISH_HANDS:-}"
+CREATE_HANDS_DRAFT="${SLOCK_CREATE_HANDS_DRAFT:-true}"
 RELEASE_MODE="${SLOCK_RELEASE_MODE:-draft}"
 CREATE_SHARE_PAGE="${SLOCK_CREATE_SHARE_PAGE:-true}"
 SHARE_TTL_SECONDS="${SLOCK_SHARE_TTL_SECONDS:-604800}"
@@ -45,7 +45,7 @@ Defaults create a Hands **draft** release with release preflight enforced:
   dex_packaging=compressed
   jni_packaging=current
   release_mode=draft
-  publish_hands=true
+  create_hands_draft=true
   create_share_page=true
 
 This script never activates a release. Review the generated draft, replace the
@@ -73,8 +73,6 @@ Options:
                           diagnosing the release lane.
   --skip-hands-version-check
                           Offline diagnostic only; prohibited for main.
-  --build-only            Build workflow artifact only; do not create a Hands draft.
-  --no-publish-hands      Alias for --build-only.
   --no-share-page         Create the Hands draft but skip share page creation.
   --share-ttl <seconds>   Share page TTL. Default: 604800 (7 days).
   --wait                  Wait for the GitHub Actions run to finish.
@@ -86,7 +84,7 @@ Environment overrides:
   SLOCK_HANDS_CHANNEL=main
   SLOCK_ANDROID_DEX_PACKAGING=compressed
   SLOCK_ANDROID_JNI_PACKAGING=current
-  SLOCK_PUBLISH_HANDS=true
+  SLOCK_CREATE_HANDS_DRAFT=true
   SLOCK_RELEASE_MODE=draft
   SLOCK_RELEASE_WAIT=1
   SLOCK_RELEASE_PARALLEL_PREFLIGHT=1
@@ -127,11 +125,6 @@ json_bool() {
   esac
 }
 
-PUBLISH_HANDS="$(
-  bash "${ROOT_DIR}/scripts/resolve_android_publish_hands_input.sh" \
-    "${PUBLISH_HANDS_RAW}" \
-    true
-)"
 
 find_dispatched_run() {
   local dispatch_started_at="$1"
@@ -257,8 +250,7 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --build-only|--no-publish-hands)
-      PUBLISH_HANDS=false
-      shift
+      die "$1 is no longer supported: release dispatches always upload assets and create a Hands draft"
       ;;
     --no-share-page)
       CREATE_SHARE_PAGE=false
@@ -339,7 +331,7 @@ fi
 
 release_version="$(version_name)"
 release_code="$(version_code)"
-publish_hands="$(json_bool "${PUBLISH_HANDS}")"
+create_hands_draft="$(json_bool "${CREATE_HANDS_DRAFT}")"
 create_share_page="$(json_bool "${CREATE_SHARE_PAGE}")"
 
 echo "==> Preparing Android draft release request"
@@ -350,7 +342,7 @@ echo "    variant: ${VARIANT}"
 echo "    dex_packaging: ${DEX_PACKAGING}"
 echo "    jni_packaging: ${JNI_PACKAGING}"
 echo "    release_mode: ${RELEASE_MODE}"
-echo "    publish_hands: ${publish_hands}"
+echo "    create_hands_draft: ${create_hands_draft}"
 echo "    create_share_page: ${create_share_page}"
 
 if [ "${PARALLEL_PREFLIGHT}" = "0" ]; then
@@ -375,7 +367,6 @@ gh workflow run android-release.yml \
     -f "dex_packaging=${DEX_PACKAGING}" \
     -f "jni_packaging=${JNI_PACKAGING}" \
     -f "release_mode=${RELEASE_MODE}" \
-    -f "publish_hands=${publish_hands}" \
     -f "create_share_page=${create_share_page}" \
     -f "share_ttl_seconds=${SHARE_TTL_SECONDS}"
 

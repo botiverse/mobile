@@ -57,11 +57,11 @@ on:
         required: false
         type: string
         default: "draft"
-      publish_hands:
-        description: "Canonical Hands draft switch; reusable callers should keep this false for build-only use"
+      create_hands_draft:
+        description: "Create a Hands draft with uploaded installable/support assets; reusable build-only callers keep this false"
         required: false
-        type: string
-        default: "false"
+        type: boolean
+        default: false
       create_share_page:
         required: false
         type: boolean
@@ -181,13 +181,8 @@ on:
         default: "draft"
         options:
           - draft
-      publish_hands:
-        description: "Canonical Hands draft switch: true | false. Blank defaults to false."
-        required: false
-        type: string
-        default: ""
       create_share_page:
-        description: "If true (and publish_hands resolves true), create a /share/<token> page for the draft"
+        description: "Create a /share/<token> page for the automatically uploaded Hands draft"
         required: true
         type: boolean
         default: true
@@ -224,7 +219,7 @@ jobs:
       dex_packaging: ${{ steps.p.outputs.dex_packaging }}
       jni_packaging: ${{ steps.p.outputs.jni_packaging }}
       release_mode: ${{ steps.p.outputs.release_mode }}
-      publish_hands: ${{ steps.p.outputs.publish_hands }}
+      create_hands_draft: ${{ steps.p.outputs.create_hands_draft }}
       create_share_page: ${{ steps.p.outputs.create_share_page }}
       share_ttl_seconds: ${{ steps.p.outputs.share_ttl_seconds }}
     steps:
@@ -234,18 +229,18 @@ jobs:
       - id: p
         shell: bash
         env:
-          INPUT_PUBLISH_HANDS: ${{ inputs.publish_hands }}
+          INPUT_CREATE_HANDS_DRAFT: ${{ inputs.create_hands_draft }}
           INPUT_DEX_PACKAGING: ${{ inputs.dex_packaging }}
           INPUT_JNI_PACKAGING: ${{ inputs.jni_packaging }}
         run: |
           set -euo pipefail
           VERSION_NAME="${{ inputs.version_major }}.${{ inputs.version_minor }}.${{ inputs.version_patch }}"
           [ -n "${{ inputs.version_suffix }}" ] && VERSION_NAME="${VERSION_NAME}-${{ inputs.version_suffix }}"
-          PUBLISH_HANDS="$(
-            scripts/resolve_android_publish_hands_input.sh \
-              "${INPUT_PUBLISH_HANDS}" \
-              false
-          )"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            CREATE_HANDS_DRAFT=true
+          else
+            CREATE_HANDS_DRAFT="${INPUT_CREATE_HANDS_DRAFT}"
+          fi
           DEX_PACKAGING="${INPUT_DEX_PACKAGING}"
           case "${DEX_PACKAGING}" in
             current|compressed|mmap) ;;
@@ -274,7 +269,7 @@ jobs:
             echo "dex_packaging=${DEX_PACKAGING}"
             echo "jni_packaging=${JNI_PACKAGING}"
             echo "release_mode=draft"
-            echo "publish_hands=${PUBLISH_HANDS}"
+            echo "create_hands_draft=${CREATE_HANDS_DRAFT}"
             echo "create_share_page=${{ inputs.create_share_page }}"
             echo "share_ttl_seconds=${{ inputs.share_ttl_seconds }}"
           } >> "$GITHUB_OUTPUT"
@@ -617,20 +612,20 @@ jobs:
             echo "| **DEX packaging** | \`${{ needs.resolve.outputs.dex_packaging }}\` |"
             echo "| **JNI packaging** | \`${{ needs.resolve.outputs.jni_packaging }}\` |"
             echo "| **Hands channel target** | \`${{ needs.resolve.outputs.hands_channel }}\` |"
-            echo "| **Create Hands draft** | \`${{ needs.resolve.outputs.publish_hands }}\` |"
+            echo "| **Create Hands draft** | \`${{ needs.resolve.outputs.create_hands_draft }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Gradle failure diagnostics
         if: failure()
         uses: ./.github/actions/gradle-failure-diagnostics
 
-  publish_hands:
+  create_hands_draft:
     name: Create Hands draft + optional share page
     runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 15
     needs: [resolve, build_android_release]
     if: |
-      github.event_name == 'workflow_dispatch' && needs.resolve.outputs.publish_hands == 'true'
+      needs.resolve.outputs.create_hands_draft == 'true'
     environment:
       name: production
       # Optional: enforce manual approval for `production` env in repo settings.
