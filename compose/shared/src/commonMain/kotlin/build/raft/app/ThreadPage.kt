@@ -666,7 +666,15 @@ internal fun KuiklyThreadScreenPayload.shouldRenderThreadLoadingShell(
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution
 ): Boolean =
-    accessResolution == ThreadAccessResolution.Loading ||
+    // An owner/identity-accepted timeline cache is safe to show while canonical access refreshes.
+    // Composer admission and every write action remain independently fail-closed on Resolved.
+    (
+        accessResolution == ThreadAccessResolution.Loading &&
+            (
+                KuiklyThreadTab.fromWireValue(selectedTab) != KuiklyThreadTab.Chat ||
+                    timelineSlice.status !in ThreadResolvedContentStatuses
+            )
+    ) ||
         shouldRenderThreadEarlyLoadingShell(timelineSlice)
 
 internal enum class ThreadRouteMountPlan {
@@ -781,6 +789,25 @@ internal fun threadEventAllowed(writeActionsEnabled: Boolean, action: String): B
 
 internal fun threadComposerEventAllowed(writeActionsEnabled: Boolean, action: String): Boolean =
     writeActionsEnabled || !threadComposerEventRequiresWriteAccess(action)
+
+internal data class ThreadLocalSendAuthority(
+    val provenance: ReplyCacheProvenance,
+    val route: ThreadRouteIdentity
+)
+
+internal fun SharedThreadDataSource.captureThreadLocalSendAuthority(
+    state: SharedThreadState,
+    mountedOwnerProvenance: ReplyCacheProvenance?
+): ThreadLocalSendAuthority? {
+    if (!state.writeActionsEnabled) return null
+    val provenance = mountedOwnerProvenance ?: return null
+    if (provenance.threadPayloadOwnerScopeId == null) return null
+    if (!isCurrentReplyCacheProvenance(provenance)) return null
+    return ThreadLocalSendAuthority(
+        provenance = provenance,
+        route = state.payload.resolveThreadRouteIdentity()
+    )
+}
 
 internal suspend fun <T> runThreadWriteActionIfEnabled(
     writeActionsEnabled: () -> Boolean,
@@ -3264,7 +3291,13 @@ private fun ThreadPageScreen(
         if (nextPayload.sourceThreadId?.isNotBlank() == true &&
             (nextPayload.originMessage != null || nextPayload.messages.isNotEmpty())
         ) {
-            dataSource.cachePayload(nextPayload)
+            dataSource.cachePayload(
+                nextPayload,
+                ownerScopeId =
+                    dataSource.replyCacheProvenanceState.value
+                        ?.threadPayloadOwnerScopeId
+                        .orEmpty()
+            )
             openPage()
             return
         }
@@ -5233,8 +5266,8 @@ internal fun SharedThreadRouteContent(
         threadFeatureOwnerMountPlan(
             routeMountPlan = routeMountPlan,
             selectedTab = selectedThreadTab.wireValue,
-            joined = payload.joined,
-            showComposer = payload.showComposer,
+            joined = payload.joined && renderSlice.writeActionsEnabled,
+            showComposer = payload.showComposer && renderSlice.writeActionsEnabled,
             suggestionDemand = composerSuggestionDemand
         )
     val headerProjectionMapDiagnostics =
@@ -6839,8 +6872,10 @@ internal fun SharedThreadRouteContent(
         ) {
             renderedTimelineSlice.visibleReadMarkerKey(renderedThread.sourceThreadId)
     }
-    LaunchedEffect(visibleReadMarkerKey, active, threadHostForeground) {
-        if (shouldMarkThreadVisibleRead(
+    LaunchedEffect(visibleReadMarkerKey, active, threadHostForeground, renderSlice.writeActionsEnabled) {
+        if (
+            renderSlice.writeActionsEnabled &&
+            shouldMarkThreadVisibleRead(
                 routeActive = active,
                 observedHostForeground = threadHostForeground,
                 currentHostVisibility = isSlockHostVisible(storeScope.shellInstanceId),
@@ -6853,9 +6888,12 @@ internal fun SharedThreadRouteContent(
     fun sendPendingLocalMessage(
         localMessageId: String,
         context: KuiklyThreadPendingSendContext,
-        startedFromComposer: Boolean
+        startedFromComposer: Boolean,
+        authority: ThreadLocalSendAuthority
     ) {
         val sendBasePayload = threadViewModel.state.value.payload
+        val sendProvenance = authority.provenance
+        val sendRoute = authority.route
         val localMessage =
             sendBasePayload.messages.firstOrNull { it.id == localMessageId }
                 ?: buildThreadPendingSendMessage(
@@ -6879,21 +6917,29 @@ internal fun SharedThreadRouteContent(
                 )
         )
         threadSendScope.launch {
-            suspend fun markFailed(errorCode: String?, errorMessage: String? = null) {
-                dataSource.cacheLocalSendFailure(
-                    basePayload = sendBasePayload,
-                    localMessage = localMessage,
-                    errorCode = errorCode,
-                    errorMessage = errorMessage
+            fun sendAuthorityStillCurrent(): Boolean =
+                dataSource.isCurrentReplyCacheProvenance(sendProvenance) &&
+                    threadViewModel.state.value.payload.resolveThreadRouteIdentity() == sendRoute
+
+            if (!sendAuthorityStillCurrent()) {
+                bridge.logWarn(
+                    "thread_send_drop localMessageId=$localMessageId " +
+                        "channelId=${context.channelId} reason=owner_changed_before_request"
                 )
-                threadViewModel.dispatch(
+                return@launch
+            }
+
+            suspend fun markFailed(errorCode: String?, errorMessage: String? = null) {
+                threadViewModel.accept(
                     SharedThreadIntent.ApplyLocalSendFailure(
                         messageId = localMessageId,
                         errorCode = errorCode,
-                        errorMessage = errorMessage
+                        errorMessage = errorMessage,
+                        expectedProvenance = sendProvenance,
+                        expectedRoute = sendRoute
                     )
                 )
-                if (startedFromComposer) {
+                if (startedFromComposer && sendAuthorityStillCurrent()) {
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
                 }
             }
@@ -6904,6 +6950,13 @@ internal fun SharedThreadRouteContent(
                     maxSilentRetries = ThreadSendMaxSilentRetries
                 )
             while (true) {
+                if (!sendAuthorityStillCurrent()) {
+                    bridge.logWarn(
+                        "thread_send_drop localMessageId=$localMessageId " +
+                            "channelId=${context.channelId} reason=owner_changed_before_attempt"
+                    )
+                    return@launch
+                }
                 val attempt = sendAttemptState.attempt
                 val sendResult =
                     runCatchingPreservingCancellation {
@@ -7013,12 +7066,14 @@ internal fun SharedThreadRouteContent(
                     markFailed("empty_response")
                     return@launch
                 }
-                dataSource.cacheLocalSendSuccess(
-                    basePayload = sendBasePayload,
-                    localMessage = localMessage,
-                    sentPage = sentPage
+                threadViewModel.accept(
+                    SharedThreadIntent.ReplaceLocalSendWithSentPage(
+                        messageId = localMessageId,
+                        page = sentPage,
+                        expectedProvenance = sendProvenance,
+                        expectedRoute = sendRoute
+                    )
                 )
-                threadViewModel.dispatch(SharedThreadIntent.ReplaceLocalSendWithSentPage(localMessageId, sentPage))
                 bridge.performanceMarker(
                     phase = "composer_send",
                     routeName = "kuikly_thread",
@@ -7051,6 +7106,7 @@ internal fun SharedThreadRouteContent(
                             }
                     }
                 }
+                if (!sendAuthorityStillCurrent()) return@launch
                 if (startedFromComposer) {
                     composerDraftViewModel.dispatch(
                         SharedThreadComposerDraftIntent.CompleteSend(pendingMentionActions = pendingMentionActions)
@@ -7348,6 +7404,15 @@ internal fun SharedThreadRouteContent(
             )
             return false
         }
+        val sendAuthority =
+            dataSource.captureThreadLocalSendAuthority(
+                state = threadViewModel.state.value,
+                mountedOwnerProvenance = replyCacheProvenance
+            )
+                ?: run {
+                    bridge.logWarn("thread_composer_send_rejected reason=missing_owner_provenance")
+                    return false
+                }
         val pendingAttachments = currentComposer.pendingAttachments
         val ownedTemporaryFileRefs =
             threadPendingSendOwnedTemporaryFileRefs(
@@ -7375,25 +7440,35 @@ internal fun SharedThreadRouteContent(
             )
         val localMessageId = ThreadLocalSendNextId.value(composerInstanceId)
         val localTimestampLabel = buildThreadPendingSendTimestampLabel(bridge, payload.nowEpochMillis)
-        threadViewModel.dispatch(SharedThreadIntent.PrepareForLocalSend)
-        threadViewModel.dispatch(
-            SharedThreadIntent.ApplyLocalSendStarted(
-                buildThreadPendingSendMessage(
-                    localMessageId = localMessageId,
-                    context = pendingContext,
-                    session = currentSession,
-                    timestampLabel = localTimestampLabel
-                )
+        val localMessage =
+            buildThreadPendingSendMessage(
+                localMessageId = localMessageId,
+                context = pendingContext,
+                session = currentSession,
+                timestampLabel = localTimestampLabel
             )
-        )
+        if (
+            !threadViewModel.admitLocalSend(
+                message = localMessage,
+                expectedProvenance = sendAuthority.provenance,
+                expectedRoute = sendAuthority.route,
+                composerSeed =
+                    ThreadLocalSendComposerSeed(
+                        sentBody = pendingContext.body,
+                        sentAttachmentIds = pendingContext.attachmentIds.toSet()
+                    )
+            )
+        ) {
+            bridge.logWarn("thread_composer_send_rejected reason=owner_changed_before_admission")
+            return false
+        }
         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginSend)
-        threadViewModel.dispatch(
-            SharedThreadIntent.ConsumeComposerSeedForSend(
-                sentBody = pendingContext.body,
-                sentAttachmentIds = pendingContext.attachmentIds.toSet()
-            )
+        sendPendingLocalMessage(
+            localMessageId = localMessageId,
+            context = pendingContext,
+            startedFromComposer = true,
+            authority = sendAuthority
         )
-        sendPendingLocalMessage(localMessageId, pendingContext, startedFromComposer = true)
         return true
     }
     fun handleComposerSendRequest(request: ThreadComposerSendRequest): ThreadComposerSendAdmission {
@@ -8988,17 +9063,36 @@ internal fun SharedThreadRouteContent(
                     if (!message.canRetryLocalSend()) {
                         return@ThreadPageContent
                     }
-                    threadViewModel.dispatch(SharedThreadIntent.PrepareForLocalSend)
-                    threadViewModel.dispatch(
-                        SharedThreadIntent.ApplyLocalSendStarted(
-                            message.copy(
-                                deliveryState = ThreadMessageDeliverySending,
-                                pendingSendErrorCode = null,
-                                pendingSendErrorMessage = null
-                            )
+                    val sendAuthority =
+                        dataSource.captureThreadLocalSendAuthority(
+                            state = threadViewModel.state.value,
+                            mountedOwnerProvenance = replyCacheProvenance
                         )
+                            ?: run {
+                                bridge.logWarn("thread_local_send_retry_rejected reason=missing_owner_provenance")
+                                return@ThreadPageContent
+                            }
+                    val admitted =
+                        threadViewModel.admitLocalSend(
+                            message =
+                                message.copy(
+                                    deliveryState = ThreadMessageDeliverySending,
+                                    pendingSendErrorCode = null,
+                                    pendingSendErrorMessage = null
+                                ),
+                            expectedProvenance = sendAuthority.provenance,
+                            expectedRoute = sendAuthority.route
+                        )
+                    if (!admitted) {
+                        bridge.logWarn("thread_local_send_retry_rejected reason=owner_changed_before_admission")
+                        return@ThreadPageContent
+                    }
+                    sendPendingLocalMessage(
+                        localMessageId = message.id,
+                        context = pendingContext,
+                        startedFromComposer = false,
+                        authority = sendAuthority
                     )
-                    sendPendingLocalMessage(message.id, pendingContext, startedFromComposer = false)
                 }
                 else -> {
                     bridge.log(

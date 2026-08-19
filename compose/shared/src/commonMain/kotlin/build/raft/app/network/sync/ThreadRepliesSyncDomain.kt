@@ -51,6 +51,12 @@ internal data class ThreadRepliesAcceptedProjection(
     val revision: Long,
 )
 
+internal typealias ThreadRepliesAuthoritativeCommit =
+    () -> Map<String, ThreadRepliesAcceptedProjection>?
+
+internal typealias ThreadRepliesAuthoritativeCommitAdmission =
+    (ThreadRepliesAuthoritativeCommit) -> Map<String, ThreadRepliesAcceptedProjection>?
+
 private data class ThreadRepliesDomainEvent(
     val reply: ReplyPreview,
     val replyCount: Int,
@@ -69,6 +75,8 @@ internal class ThreadRepliesSyncHost(
     private val beforeAuthoritativeSwap: (() -> Unit)? = null,
     /** Deterministic concurrency seam: current revisions re-read, Store callback not yet committed. */
     private val beforeProjectionCommit: (() -> Unit)? = null,
+    /** Deterministic observation seam for owner/route retirement tests. */
+    private val onAuthoritativeRebaselineAborted: ((ThreadRepliesPageIdentity, Long) -> Unit)? = null,
 ) {
     private class ScopeOwner(
         val lock: SynchronizedObject = SynchronizedObject(),
@@ -114,10 +122,19 @@ internal class ThreadRepliesSyncHost(
     }
 
     fun abortAuthoritativeRebaseline(page: ThreadRepliesPageIdentity, generation: Long) {
-        synchronized(linearizationLock) {
-            synchronized(pendingLock) {
-                if (pendingByPage[page.key]?.generation == generation) pendingByPage.remove(page.key)
+        val aborted =
+            synchronized(linearizationLock) {
+                synchronized(pendingLock) {
+                    if (pendingByPage[page.key]?.generation == generation) {
+                        pendingByPage.remove(page.key)
+                        true
+                    } else {
+                        false
+                    }
+                }
             }
+        if (aborted) {
+            onAuthoritativeRebaselineAborted?.invoke(page, generation)
         }
     }
 
@@ -185,9 +202,19 @@ internal class ThreadRepliesSyncHost(
         page: ThreadRepliesPageIdentity,
         generation: Long,
         snapshots: List<ThreadRepliesAuthoritativeSnapshot>,
+        // The host lock remains outer so Store admission can hold its owner lock
+        // through the swap without reversing the realtime host -> owner order.
+        withCommitAdmission: ThreadRepliesAuthoritativeCommitAdmission? = null,
     ): Map<String, ThreadRepliesAcceptedProjection>? =
         synchronized(linearizationLock) {
-            ingestAuthoritativeSnapshotsLocked(page, generation, snapshots)
+            val commit = {
+                ingestAuthoritativeSnapshotsLocked(page, generation, snapshots)
+            }
+            if (withCommitAdmission == null) {
+                commit()
+            } else {
+                withCommitAdmission(commit)
+            }
         }
 
     private fun ingestAuthoritativeSnapshotsLocked(

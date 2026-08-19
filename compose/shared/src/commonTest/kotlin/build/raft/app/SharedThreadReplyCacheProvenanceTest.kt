@@ -404,7 +404,7 @@ class SharedThreadReplyCacheProvenanceTest {
     }
 
     @Test
-    fun lateCanonicalConversationDetailFromRetiredReplyCacheScopeIsNotPublished() = runBlocking {
+    fun lateCanonicalConversationDetailFromRetiredReplyCacheScopeFailsClosedAndIsNotPublished() = runBlocking {
         val authStore = InMemorySlockAuthSessionStore(session("account-a"))
         val release = CompletableDeferred<Unit>()
         val repository =
@@ -430,8 +430,10 @@ class SharedThreadReplyCacheProvenanceTest {
         assertEquals("account-b", dataSource.captureReplyCacheProducerContext()?.provenance?.principalId)
         release.complete(Unit)
 
-        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(request.await())
-        assertTrue(published.isEmpty())
+        val result = assertIs<DataResult.Error>(request.await())
+        assertEquals("thread_reply_cache_provenance_stale", result.error.code)
+        assertEquals(false, result.error.retryable)
+        assertEquals(emptyList(), published)
     }
 
     @Test
