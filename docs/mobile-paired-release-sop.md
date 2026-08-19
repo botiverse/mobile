@@ -254,8 +254,12 @@ named TestFlight groups. The receipt must state that intent explicitly.
 Store approved community copy under:
 
 ```text
-change-logs/X.Y.Z/community-announcement.zh-CN.md
-change-logs/X.Y.Z/community-announcement.en.md
+change-logs/X.Y.Z/android/zh-CN.md
+change-logs/X.Y.Z/android/en.md
+change-logs/X.Y.Z/android/ja.md
+change-logs/X.Y.Z/ios/zh-CN.md
+change-logs/X.Y.Z/ios/en.md
+change-logs/X.Y.Z/ios/ja.md
 ```
 
 Announce only platforms that reached their intended community boundary. For
@@ -266,12 +270,13 @@ internal tasks, CI detail, or unshipped work. Record the final message ids.
 
 ### Fixed `#raft-mobile` announcement templates
 
-The four templates below are the canonical public channel format. Keep the
-title, introductory sentence, link label, closing sentence, section order, and
-platform-specific delivery wording. Replace only bracketed placeholders and
-the reviewed user-visible bullets. Do not substitute a Hands/CI receipt,
-release ID, artifact hash, rollout percentage, internal gate, or engineering
-status report for these announcements.
+The four templates below preserve the release owner's selected historical
+Android and iOS Chinese/English public messages as the canonical channel
+format. Keep the title, introductory sentence, link label, closing sentence,
+section order, and platform-specific delivery wording. Replace only bracketed
+placeholders and the reviewed user-visible bullets. Do not substitute a
+Hands/CI receipt, release ID, artifact hash, rollout percentage, internal gate,
+or engineering status report for these announcements.
 
 Android Chinese:
 
@@ -355,6 +360,9 @@ iOS, keep one flat bullet list under `本次更新包括：` / `Highlights:`. Pu
 Chinese and English as four separate top-level messages, one message per
 platform and locale. Draft them from the platform's reviewed locale files,
 then compare the final rendered copy against these templates before posting.
+The reviewed `ja.md` files remain the Japanese Hands release-note source; they
+are not a fifth or sixth `#raft-mobile` announcement unless the release owner
+explicitly requests Japanese channel posts and approves their templates.
 
 ## 10. Handle Post-Distribution Defects Honestly
 
