@@ -36,7 +36,7 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       source_sha: ${{ steps.inputs.outputs.source_sha }}
       fixture_generation: ${{ steps.inputs.outputs.fixture_generation }}
@@ -107,7 +107,7 @@ jobs:
 
   manifest:
     needs: [validate, baseline, target]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Create immutable build-pair manifest
         env:
