@@ -22,6 +22,13 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.semantics.Role
+import com.tencent.kuikly.compose.ui.semantics.SemanticsActions
+import com.tencent.kuikly.compose.ui.semantics.SemanticsConfiguration
+import com.tencent.kuikly.compose.ui.semantics.SemanticsModifier
+import com.tencent.kuikly.compose.ui.semantics.SemanticsProperties
+import com.tencent.kuikly.compose.ui.semantics.getOrNull
 import com.tencent.kuikly.core.base.Size
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.appendSlockInlineCodeWithEdgeBoxes
@@ -440,6 +447,22 @@ class SlockMarkdownTest {
         assertFalse(markdownTaskListCheckboxChecked("[ ]"))
         assertFalse(markdownTaskListCheckboxChecked("[xx]"))
         assertFalse(markdownTaskListCheckboxChecked("[x] trailing"))
+    }
+
+    @Test
+    fun markdownTaskListCheckboxPublishesReadOnlyCheckboxRole() {
+        val config =
+            Modifier
+                .slockMarkdownTaskCheckboxSemantics(
+                    checkboxLabel = "Task list checkbox",
+                    stateLabel = "Completed"
+                )
+                .semanticsConfiguration()
+
+        assertEquals(Role.Checkbox, config.getOrNull(SemanticsProperties.Role))
+        assertEquals("Task list checkbox", config.getOrNull(SemanticsProperties.ContentDescription)?.firstOrNull())
+        assertEquals("Completed", config.getOrNull(SemanticsProperties.StateDescription))
+        assertFalse(config.getOrNull(SemanticsActions.OnClick) != null)
     }
 
     @Test
@@ -2235,3 +2258,9 @@ class SlockMarkdownTest {
     private fun inlineCodeSegment(code: String): String =
         code
 }
+
+private fun Modifier.semanticsConfiguration(): SemanticsConfiguration =
+    foldIn(emptyList<SemanticsConfiguration>()) { current, element ->
+        val semantics = (element as? SemanticsModifier)?.semanticsConfiguration
+        if (semantics == null) current else current + listOf(semantics)
+    }.lastOrNull() ?: error("Expected a semantics modifier")

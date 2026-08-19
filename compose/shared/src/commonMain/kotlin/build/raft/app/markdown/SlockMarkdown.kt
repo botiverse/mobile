@@ -50,6 +50,8 @@ import com.tencent.kuikly.compose.material3.Text as KuiklyText
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.semantics.contentDescription
+import com.tencent.kuikly.compose.ui.semantics.Role
+import com.tencent.kuikly.compose.ui.semantics.role
 import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.semantics.stateDescription
 import com.tencent.kuikly.core.pager.Pager
@@ -1754,10 +1756,10 @@ private fun SlockMarkdownTaskCheckbox(model: MarkdownComponentModel) {
         Box(
             modifier =
                 Modifier
-                    .semantics {
-                        contentDescription = checkboxLabel
-                        stateDescription = stateLabel
-                    }
+                    .slockMarkdownTaskCheckboxSemantics(
+                        checkboxLabel = checkboxLabel,
+                        stateLabel = stateLabel
+                    )
                     .padding(end = 4.dp)
         ) {
             SlockCheckMarker(
@@ -1768,6 +1770,16 @@ private fun SlockMarkdownTaskCheckbox(model: MarkdownComponentModel) {
         }
     }
 }
+
+internal fun Modifier.slockMarkdownTaskCheckboxSemantics(
+    checkboxLabel: String,
+    stateLabel: String,
+): Modifier =
+    semantics {
+        role = Role.Checkbox
+        contentDescription = checkboxLabel
+        stateDescription = stateLabel
+    }
 
 /**
  * #367 light-path override resolution, mirroring resolveActivityStableOrderEnabled:
