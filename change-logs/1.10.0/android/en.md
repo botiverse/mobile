@@ -9,7 +9,7 @@
 
 - Avatars load faster and more reliably: cached avatars appear immediately after a restart or when re-entering a page, new uploads show up promptly, and failures retry automatically
 - Thread reading: adjustable message font size, clearer timestamps and unread anchors, the keyboard no longer covers messages, more stable text selection and long-press toolbar (copy, share), and Markdown tables now render bold headers correctly
-- Attachments and previews: image annotation is now a standard capability and preserves full drafts, oversize files are clearly flagged against server limits, long-pressing an image can capture a photo, MOV video preview is supported, attachments keep their canonical names, and preview identity is more stable
+- Attachments and previews: image annotation is now a standard capability, oversize files are clearly flagged against server limits, long-pressing an image can capture a photo, MOV video preview is supported, attachments keep their canonical names, and preview identity is more stable
 - Direct messages and link navigation: more accurate DM and parent-message headers, quoted previews for Raft permalinks, direct thread links in conversations, and more reliable back navigation
 - Improved Activity navigation, mute settings, and system-event anchors; the server switcher shows numeric unread badges again — an exact count wins when available, otherwise it falls back to the legacy broader unread number (which can differ from the Activity total), and an authoritative zero stays hidden
 
