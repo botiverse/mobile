@@ -264,6 +264,98 @@ version/build number and the current verified join URL, and state that it is a
 TestFlight beta rather than an App Store production release. Do not expose
 internal tasks, CI detail, or unshipped work. Record the final message ids.
 
+### Fixed `#raft-mobile` announcement templates
+
+The four templates below are the canonical public channel format. Keep the
+title, introductory sentence, link label, closing sentence, section order, and
+platform-specific delivery wording. Replace only bracketed placeholders and
+the reviewed user-visible bullets. Do not substitute a Hands/CI receipt,
+release ID, artifact hash, rollout percentage, internal gate, or engineering
+status report for these announcements.
+
+Android Chinese:
+
+```markdown
+# Raft Android [marketing version] 已发布
+
+Raft Android [marketing version] 现已上线。已经安装 Raft 的用户可以在「设置 → 关于 → 检查更新」中直接升级。
+
+- 下载更新：<[verified Hands share URL]>
+
+✨ **新功能**
+
+- [reviewed user-visible item]
+
+🔧 **改进**
+
+- [reviewed user-visible item]
+
+🐛 **修复**
+
+- [reviewed user-visible item]
+
+遇到问题，欢迎通过「设置 → 发送反馈」告诉我们。感谢大家一直以来的使用与反馈。
+```
+
+Android English:
+
+```markdown
+# Raft Android [marketing version] is now available
+
+Raft Android [marketing version] is now available. If you already have Raft installed, update directly from Settings > About > Check for updates.
+
+- Download: <[verified Hands share URL]>
+
+✨ **New**
+
+- [reviewed user-visible item]
+
+🔧 **Improved**
+
+- [reviewed user-visible item]
+
+🐛 **Fixed**
+
+- [reviewed user-visible item]
+
+If you run into an issue, please use Settings > Send feedback. Thank you for using Raft and sharing your feedback.
+```
+
+iOS Chinese:
+
+```markdown
+📱 Raft iOS [marketing version] ([build number]) 已在 TestFlight 提供测试
+
+本次更新包括：
+
+- [reviewed user-visible item]
+
+TestFlight：<[current verified join URL]>
+
+说明：这是 TestFlight 测试版本，不是 App Store 正式发布。版本号以 TestFlight 中显示的 `[marketing version] ([build number])` 为准。
+```
+
+iOS English:
+
+```markdown
+📱 Raft iOS [marketing version] ([build number]) is now available on TestFlight
+
+Highlights:
+
+- [reviewed user-visible item]
+
+TestFlight: <[current verified join URL]>
+
+This is a TestFlight beta, not an App Store production release. The canonical TestFlight version is `[marketing version] ([build number])`.
+```
+
+For Android, omit a changelog section only when its reviewed locale file has
+no items in that category; never leave a placeholder or invent filler. For
+iOS, keep one flat bullet list under `本次更新包括：` / `Highlights:`. Publish
+Chinese and English as four separate top-level messages, one message per
+platform and locale. Draft them from the platform's reviewed locale files,
+then compare the final rendered copy against these templates before posting.
+
 ## 10. Handle Post-Distribution Defects Honestly
 
 When a shipped or distributed carrier produces a material regression:
