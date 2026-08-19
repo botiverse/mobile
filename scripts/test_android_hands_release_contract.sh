@@ -305,6 +305,12 @@ grep -Eq "github\.event_name == 'workflow_dispatch'" .github/workflows/android-r
 if grep -Eq 'publish_hands' .github/workflows/android-release.yml .github/workflows/ios-release.yml; then
   fail "release workflows still overload publish_hands"
 fi
+if grep -R -Eq 'publish_hands' docs; then
+  fail "release documentation still references the removed publish_hands input"
+fi
+if grep -R -Eq --include='*.sh' --exclude='test_*' 'publish_hands' scripts; then
+  fail "production scripts still reference the removed publish_hands input"
+fi
 grep -Eq -- '-f "dex_packaging=\$\{DEX_PACKAGING\}"' scripts/release_android_hands_github.sh ||
   fail "canonical dispatch wrapper does not send dex_packaging"
 grep -Eq -- '-f "jni_packaging=\$\{JNI_PACKAGING\}"' scripts/release_android_hands_github.sh ||

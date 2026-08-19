@@ -155,9 +155,11 @@ scripts/release_android_hands_github.sh \
   --wait
 ```
 
-The canonical workflow switch is `publish_hands=true|false`, and the wrapper
-sets it through `SLOCK_PUBLISH_HANDS`. Legacy publish aliases are rejected. See
-[Android Hands release input migration](android-hands-release-migration-2026-07-24.md).
+Every manual release dispatch uploads the signed carrier and creates a Hands
+draft. The canonical wrapper therefore has no skip-draft switch. Reusable QA
+callers remain build-only by explicitly setting `create_hands_draft: false`;
+they cannot enter the manual draft job. See [Android Hands release input
+migration](android-hands-release-migration-2026-07-24.md).
 
 Android 1.8 production dispatches default to `dex_packaging=compressed` and
 `jni_packaging=current`. The DEX choice is admitted only with the 45 MiB APK

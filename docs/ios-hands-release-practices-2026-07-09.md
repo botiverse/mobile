@@ -73,11 +73,10 @@ Default dispatch behavior:
 7. validate IPA/dSYM boundary
 8. upload workflow artifacts
 
-The lane can optionally publish to Hands with `publish_hands=true`. The publish
-helper fails fast if the installed CLI package does not expose
-`builds publish-ios`. The signed IPA and dSYM stay available as workflow
-artifacts, so the CI side is not blocked by the Hands receiver rollout or npm
-publication timing.
+Every dispatch uploads the signed IPA and dSYM to Hands and creates a draft.
+The helper fails fast if the installed CLI package does not expose
+`builds publish-ios`. CI never activates that draft; activation remains a
+separate owner-authorized operation after review.
 
 Reviewed trilingual release notes live at
 `change-logs/<version>/ios/{zh-CN,en,ja}.md`. The workflow sends all three
@@ -137,9 +136,9 @@ separate TestFlight group-publish action is publisher gated. Use the supported
 Hands CLI or Raft integration actions for each step; CI and operators must not
 work around the boundary by exporting the ASC credential.
 
-`publish_hands=true` registers the signed IPA and dSYM before server-side
-submission. Hands remains the sole TestFlight delivery boundary after CI has
-published those artifacts.
+CI always registers the signed IPA and dSYM in a Hands draft before any
+server-side submission. Hands remains the sole TestFlight delivery boundary
+after CI has uploaded those artifacts.
 
 ## Post-Delivery Git Audit Tag
 
@@ -233,8 +232,9 @@ Optional:
 - `SLOCK_IOS_CODE_SIGN_IDENTITY`: defaults to `Apple Distribution`.
 - `SLOCK_IOS_EXPORT_OPTIONS_PLIST_BASE64`: base64 encoded ExportOptions.plist.
   If omitted, CI generates one from the workflow input `export_method`.
-- `HANDS_BEARER_TOKEN`: runtime variable required only when
-  `publish_hands=true`; CI sources it from the existing repository secret.
+- `HANDS_BEARER_TOKEN`: runtime variable required by every release dispatch so
+  CI can upload the signed IPA and dSYM into a draft; CI sources it from the
+  existing repository secret.
 
 The ASC credential is managed only in Hands. GitHub Actions needs the Apple
 signing material listed above and the Hands publishing token, but it does not
