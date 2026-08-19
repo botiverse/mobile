@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-18T22:10:53.142Z",
+  "generatedAt": "2026-08-19T22:07:48.137Z",
   "baseline": "react",
   "current": "ios",
   "key": "react__ios",
@@ -50,7 +50,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:39:46.894Z"
+        "capturedAt": "2026-08-19T21:40:31.415Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -136,7 +136,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:39:48.136Z"
+        "capturedAt": "2026-08-19T21:40:32.465Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -222,7 +222,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:39:49.200Z"
+        "capturedAt": "2026-08-19T21:40:33.518Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -308,7 +308,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:39:50.247Z"
+        "capturedAt": "2026-08-19T21:40:34.624Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -394,7 +394,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:39:51.249Z"
+        "capturedAt": "2026-08-19T21:40:35.787Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -479,7 +479,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:39:52.277Z"
+        "capturedAt": "2026-08-19T21:40:36.748Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -565,7 +565,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:39:53.297Z"
+        "capturedAt": "2026-08-19T21:40:37.741Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -587,7 +587,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "86203a7f6348557e8a4f3c6b3027d92ba76932637f1524b5e0df9e7a08dfd91d",
+      "baselineSha256": "73033c2bab35d48c9a851814f83706946d23b4583cf462b65e5aacf58c6adeb3",
       "currentSha256": "0f6a0f9f20f9dbda066269c4cba2ade304d3cd690d4091c876f1c466a3e29f95",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.ui.form-field.states.side-by-side.png",
@@ -598,9 +598,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9119060506827437,
-        "pixelPerfectSimilarity": 0.9499007574836958,
-        "pixelMismatchRatio": 0.050099242516304154,
+        "rgbSimilarity": 0.9122509695020921,
+        "pixelPerfectSimilarity": 0.9500901284076639,
+        "pixelMismatchRatio": 0.049909871592336064,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -650,7 +650,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:39:54.320Z"
+        "capturedAt": "2026-08-19T21:40:38.724Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -672,7 +672,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "basic-pass",
-      "baselineSha256": "3bdecae2f9ec2f9e3e53bdf3e3d67a0848f9adce15fd330693f4e7975b665540",
+      "baselineSha256": "f1e739c84339e39b9be9f3ce3e282cabc286afbf9ea6badc98490eabc08e32ea",
       "currentSha256": "ffa85014fccf0ad18702bb72880572428c31d4d6e3d2609f60362314104f0ba3",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.ui.form-field.states.elegant.side-by-side.png",
@@ -683,14 +683,14 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9692038703654635,
-        "pixelPerfectSimilarity": 0.9710016067835973,
-        "pixelMismatchRatio": 0.02899839321640274,
+        "rgbSimilarity": 0.9695486876963151,
+        "pixelPerfectSimilarity": 0.9712331726549736,
+        "pixelMismatchRatio": 0.028766827345026447,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
       },
-      "acceptance": "basic pass: pixel perfect 97.10% > 96%",
+      "acceptance": "basic pass: pixel perfect 97.12% > 96%",
       "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
     },
     {
@@ -736,7 +736,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:39:55.306Z"
+        "capturedAt": "2026-08-19T21:40:39.740Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -821,7 +821,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:39:56.270Z"
+        "capturedAt": "2026-08-19T21:40:40.757Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -906,7 +906,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:39:57.246Z"
+        "capturedAt": "2026-08-19T21:40:42.017Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -992,7 +992,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:39:58.179Z"
+        "capturedAt": "2026-08-19T21:40:43.098Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1078,7 +1078,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:39:59.094Z"
+        "capturedAt": "2026-08-19T21:40:44.079Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1164,7 +1164,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:00.024Z"
+        "capturedAt": "2026-08-19T21:40:45.045Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1250,7 +1250,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:00.975Z"
+        "capturedAt": "2026-08-19T21:40:46.064Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1336,7 +1336,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:01.909Z"
+        "capturedAt": "2026-08-19T21:40:47.202Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1422,7 +1422,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:02.810Z"
+        "capturedAt": "2026-08-19T21:40:48.534Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1507,7 +1507,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:03.708Z"
+        "capturedAt": "2026-08-19T21:40:49.613Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1593,7 +1593,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:04.659Z"
+        "capturedAt": "2026-08-19T21:40:50.583Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1679,7 +1679,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:05.590Z"
+        "capturedAt": "2026-08-19T21:40:51.596Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1765,7 +1765,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:06.476Z"
+        "capturedAt": "2026-08-19T21:40:52.528Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1851,7 +1851,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:07.432Z"
+        "capturedAt": "2026-08-19T21:40:53.536Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1936,7 +1936,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:08.397Z"
+        "capturedAt": "2026-08-19T21:40:54.503Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2022,7 +2022,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:09.378Z"
+        "capturedAt": "2026-08-19T21:40:55.824Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2107,7 +2107,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:10.261Z"
+        "capturedAt": "2026-08-19T21:40:57.345Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2192,7 +2192,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:11.164Z"
+        "capturedAt": "2026-08-19T21:40:58.605Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2277,7 +2277,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:12.138Z"
+        "capturedAt": "2026-08-19T21:41:00.009Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2364,7 +2364,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:13.006Z"
+        "capturedAt": "2026-08-19T21:41:01.467Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2450,7 +2450,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:13.942Z"
+        "capturedAt": "2026-08-19T21:41:02.730Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2538,7 +2538,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:14.842Z"
+        "capturedAt": "2026-08-19T21:41:04.132Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2626,7 +2626,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:15.933Z"
+        "capturedAt": "2026-08-19T21:41:05.790Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2713,7 +2713,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:17.027Z"
+        "capturedAt": "2026-08-19T21:41:07.199Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2801,7 +2801,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:18.305Z"
+        "capturedAt": "2026-08-19T21:41:08.762Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2825,7 +2825,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "34becc97b07fd96f9fb67ec15cf74574ee7a82cf63f6d95c830c4a8da3a8e2a0",
+      "baselineSha256": "1ad04fa9d4dddbf5a2c2291aa79e859cff5b358bb5677b8810c35735739208e1",
       "currentSha256": "d0e008f4c2d5074263b23adaa3f36ca49b39f0949eb27943f63ab574081a79c6",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.thread.composer.member-suggestions.side-by-side.png",
@@ -2836,7 +2836,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8445797700941413,
+        "rgbSimilarity": 0.8445799893975545,
         "pixelPerfectSimilarity": 0.890799476107533,
         "pixelMismatchRatio": 0.10920052389246704,
         "compositor": "sharp",
@@ -2888,7 +2888,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:19.433Z"
+        "capturedAt": "2026-08-19T21:41:10.223Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2975,7 +2975,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:30.632Z"
+        "capturedAt": "2026-08-19T21:41:21.552Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3062,7 +3062,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:31.652Z"
+        "capturedAt": "2026-08-19T21:41:22.911Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3084,8 +3084,8 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "116ea55a8a83eecbc67e56a887c164f5a3bbc5e7b5195da6d1ca658e434badb8",
-      "currentSha256": "6f0af5f0f1a6241cbab23d193ce727c3ed5221f29e147293ab9a89f0cb0c1448",
+      "baselineSha256": "69ff22f881c7db6f7e1e81f57f994b0bca298fe2fd9898ead4ae8292fa979d2d",
+      "currentSha256": "949e720801e3cfc5178a42d7109e430c44cda6915591ae73353e8cae3001ced4",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.thread.files.list.side-by-side.png",
       "metrics": {
@@ -3095,9 +3095,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9167195223192279,
-        "pixelPerfectSimilarity": 0.9326933203710455,
-        "pixelMismatchRatio": 0.06730667962895454,
+        "rgbSimilarity": 0.9166802387680343,
+        "pixelPerfectSimilarity": 0.932735852878033,
+        "pixelMismatchRatio": 0.06726414712196704,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -3147,7 +3147,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:32.702Z"
+        "capturedAt": "2026-08-19T21:41:24.314Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3233,7 +3233,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:33.623Z"
+        "capturedAt": "2026-08-19T21:41:25.411Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3263,8 +3263,8 @@
         "declaredDivergences": []
       },
       "status": "different",
-      "baselineSha256": "bbf5c0f326f8a7d401ba773d496e5e0e7160ca00564cd8635e4665f85011169d",
-      "currentSha256": "14c0e250d8319361460342b7f543fb1021cfcefeff76a3c977ce6bc06edd2987",
+      "baselineSha256": "c112d38330646fc227651683eed162dc4846e39e5efd8eb2f5c42b9a7e8ebf9e",
+      "currentSha256": "d8c9c3a24bacf65f33ea1b452c41b6eac05b58de04f8ff49c5123a226438820b",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.thread.message.row.side-by-side.png",
       "metrics": {
@@ -3274,7 +3274,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8825883834677352,
+        "rgbSimilarity": 0.8825804885448749,
         "pixelPerfectSimilarity": 0.9591455016810467,
         "pixelMismatchRatio": 0.04085449831895327,
         "compositor": "sharp",
@@ -3326,7 +3326,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:34.522Z"
+        "capturedAt": "2026-08-19T21:41:26.445Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3414,7 +3414,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:35.515Z"
+        "capturedAt": "2026-08-19T21:41:27.762Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3445,8 +3445,8 @@
         "declaredDivergences": []
       },
       "status": "different",
-      "baselineSha256": "af79b9417f478456eb951764cc33d190b65d868e6d7db810e323a261d7443dee",
-      "currentSha256": "f8f87ab4397ad120670e88c540af415e7cd73b45958b56554db8b981c2f7b150",
+      "baselineSha256": "89e7acb87616de57d14d504bd8e7bcff7930f5b4fda4f250a2ede18e4a64851f",
+      "currentSha256": "254162959777f2d3228a6d2b6cf2273fd21dfd00b384b02d40d2bafb1627098f",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.thread.message-menu.default.side-by-side.png",
       "metrics": {
@@ -3456,7 +3456,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9322036387951863,
+        "rgbSimilarity": 0.9322053866036746,
         "pixelPerfectSimilarity": 0.9072679953011706,
         "pixelMismatchRatio": 0.09273200469882936,
         "compositor": "sharp",
@@ -3508,7 +3508,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:36.531Z"
+        "capturedAt": "2026-08-19T21:41:28.971Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3540,7 +3540,7 @@
       },
       "status": "different",
       "baselineSha256": "8a7047cfea4f29950ae01f8c1635e4d667cc13800680d92064e503ac4449a016",
-      "currentSha256": "26d5be706ee39175474436cbe278301a6356e83519623b65185a2fdd535e9f18",
+      "currentSha256": "3ece20829b6785d5ccf6ac46c2a166319184a0659367b4781725db9018b17383",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.thread.message-menu.task.side-by-side.png",
       "metrics": {
@@ -3550,7 +3550,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9284699937774278,
+        "rgbSimilarity": 0.9284771522467798,
         "pixelPerfectSimilarity": 0.8982328756025438,
         "pixelMismatchRatio": 0.10176712439745617,
         "compositor": "sharp",
@@ -3602,7 +3602,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:37.481Z"
+        "capturedAt": "2026-08-19T21:41:30.005Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3695,7 +3695,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:38.636Z"
+        "capturedAt": "2026-08-19T21:41:31.106Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3781,7 +3781,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:39.652Z"
+        "capturedAt": "2026-08-19T21:41:32.310Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3873,7 +3873,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:40.726Z"
+        "capturedAt": "2026-08-19T21:41:33.442Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3958,7 +3958,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:41.735Z"
+        "capturedAt": "2026-08-19T21:41:34.577Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4043,7 +4043,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:43.712Z"
+        "capturedAt": "2026-08-19T21:41:36.793Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4065,7 +4065,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "258e4833e065fd29915b7c2c9007fd24947cfa1f0eb037957860973c69886fe4",
+      "baselineSha256": "12fe9cc5dc0905bf6529df8ad9a1f3c9f9fb9ccf15395852241fa447b7970624",
       "currentSha256": "02085a29b8329b5a90898641948d89399a15bed6cb53d8562e80deed0d1d8c7b",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.home.search.results.side-by-side.png",
@@ -4076,9 +4076,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8870856817994276,
-        "pixelPerfectSimilarity": 0.7306605365847072,
-        "pixelMismatchRatio": 0.2693394634152928,
+        "rgbSimilarity": 0.8870867893478511,
+        "pixelPerfectSimilarity": 0.7306632370613413,
+        "pixelMismatchRatio": 0.2693367629386587,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4128,7 +4128,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:46.532Z"
+        "capturedAt": "2026-08-19T21:41:38.961Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4150,7 +4150,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "f1b54d0c29133df8d2c25f9792a955fd6505a00c4780a28df72a70698ae87028",
+      "baselineSha256": "4e82c0bfbb84a2e246524d9b2e3920cdffce4479193a8ebde269ab426babac5f",
       "currentSha256": "009bdb4a6a307eff9d0a4a78212d95acd5d9f94fcbd5cc502cb8758ed4074a49",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.home.search.channel-dropdown.side-by-side.png",
@@ -4161,9 +4161,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8780285126198836,
-        "pixelPerfectSimilarity": 0.7305278756700557,
-        "pixelMismatchRatio": 0.2694721243299443,
+        "rgbSimilarity": 0.8780270882508363,
+        "pixelPerfectSimilarity": 0.730523149835946,
+        "pixelMismatchRatio": 0.269476850164054,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4213,7 +4213,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:49.531Z"
+        "capturedAt": "2026-08-19T21:41:41.035Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4235,7 +4235,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "ff30c3fc22a51b8127cc85f90825d90dd37855629c1705355738f53c1ae9482e",
+      "baselineSha256": "39d0c62909f57694f5e59ea09da314edd3e1cbb53be0cfa13301163ac8840f98",
       "currentSha256": "cee576638797659281095daffc6ebf02007f467f25e457ae012e45b4a0480649",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.home.saved.results.side-by-side.png",
@@ -4246,9 +4246,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9112667927065669,
-        "pixelPerfectSimilarity": 0.8885999378890375,
-        "pixelMismatchRatio": 0.11140006211096254,
+        "rgbSimilarity": 0.9112651860994713,
+        "pixelPerfectSimilarity": 0.8885881233037631,
+        "pixelMismatchRatio": 0.11141187669623687,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4298,7 +4298,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:52.484Z"
+        "capturedAt": "2026-08-19T21:41:43.018Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4320,7 +4320,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "f1eb3b44395e79d5a2ac57874a5d2010ce4cf984a038fdfd7c93bf272a7fb331",
+      "baselineSha256": "334ea81a84b2818f52b40598d7090620b43ec0c57c4c31f17239bc324fd2a746",
       "currentSha256": "0ff2c7ddacebf34100d0a8abc7070f0e45cfe0c68a3befb7f16af34b02e3b221",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.home.activity.results.side-by-side.png",
@@ -4331,9 +4331,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9088477578058081,
-        "pixelPerfectSimilarity": 0.8906955077571191,
-        "pixelMismatchRatio": 0.10930449224288086,
+        "rgbSimilarity": 0.9135184046749792,
+        "pixelPerfectSimilarity": 0.8932721000256545,
+        "pixelMismatchRatio": 0.10672789997434551,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4383,7 +4383,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:54.352Z"
+        "capturedAt": "2026-08-19T21:41:44.360Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4468,7 +4468,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:55.952Z"
+        "capturedAt": "2026-08-19T21:41:45.482Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4554,7 +4554,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:57.118Z"
+        "capturedAt": "2026-08-19T21:41:46.526Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4576,7 +4576,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "9c24b89258e02e082866ec27f2c14f9713ce9b4f8ff1ea4df3f4462778934b56",
+      "baselineSha256": "e318ed369ae655522fbbe86c6beca37496dc4051f514a14d02472c8347805a94",
       "currentSha256": "6dc2da29c5b4e3a69d008fa048baaa391cf4f144c9b4d952c93868c7740f5305",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.home.create-channel.dialog.side-by-side.png",
@@ -4587,9 +4587,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.7997782304167858,
-        "pixelPerfectSimilarity": 0.5530468127624526,
-        "pixelMismatchRatio": 0.4469531872375474,
+        "rgbSimilarity": 0.800347088467332,
+        "pixelPerfectSimilarity": 0.5545357880665938,
+        "pixelMismatchRatio": 0.44546421193340624,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4639,7 +4639,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:58.242Z"
+        "capturedAt": "2026-08-19T21:41:47.628Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4661,7 +4661,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "2327d4129db3b5f7d30b4370d66eea8b7228de1a424a44078345b9290b70b1aa",
+      "baselineSha256": "34cf516b4aefe585eb2b55553ecf965d51dd96df87e7413ec0da2c170626ecca",
       "currentSha256": "98021823537e2b495d9c30a2d7e0c5be9f3c58ff4e1027faac806c69442eae3e",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.members.create-agent.dialog.side-by-side.png",
@@ -4672,9 +4672,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.7740708485051425,
-        "pixelPerfectSimilarity": 0.486489515399468,
-        "pixelMismatchRatio": 0.5135104846005321,
+        "rgbSimilarity": 0.7741042999975662,
+        "pixelPerfectSimilarity": 0.4866728102510093,
+        "pixelMismatchRatio": 0.5133271897489907,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4724,7 +4724,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:40:59.336Z"
+        "capturedAt": "2026-08-19T21:41:48.658Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4746,7 +4746,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "2327d4129db3b5f7d30b4370d66eea8b7228de1a424a44078345b9290b70b1aa",
+      "baselineSha256": "34cf516b4aefe585eb2b55553ecf965d51dd96df87e7413ec0da2c170626ecca",
       "currentSha256": "98021823537e2b495d9c30a2d7e0c5be9f3c58ff4e1027faac806c69442eae3e",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.members.create-agent.claude-dialog.side-by-side.png",
@@ -4757,9 +4757,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.7740708485051425,
-        "pixelPerfectSimilarity": 0.486489515399468,
-        "pixelMismatchRatio": 0.5135104846005321,
+        "rgbSimilarity": 0.7741042999975662,
+        "pixelPerfectSimilarity": 0.4866728102510093,
+        "pixelMismatchRatio": 0.5133271897489907,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4846,7 +4846,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:31.236Z"
+        "capturedAt": "2026-08-19T21:42:20.381Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4869,7 +4869,7 @@
       },
       "status": "different",
       "baselineSha256": "2ddd0dc4030bf86777fcb4bc02709a080bbde628de12a2ad4b6dc8ea9b5cfa49",
-      "currentSha256": "71c5ea9d99d736ad46f04801a4695c17e0bdbf6012c56349b32d2920719c24f0",
+      "currentSha256": "db804d8eaf10ee8995d3ed78e81cf0e36d789ead3563f63c433c832f9c5aca05",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.members.agent-detail.profile.side-by-side.png",
       "metrics": {
@@ -4879,7 +4879,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8991221963913311,
+        "rgbSimilarity": 0.8991143054397547,
         "pixelPerfectSimilarity": 0.8145103360743171,
         "pixelMismatchRatio": 0.1854896639256829,
         "compositor": "sharp",
@@ -4931,7 +4931,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:32.901Z"
+        "capturedAt": "2026-08-19T21:42:21.479Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4953,7 +4953,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "1babf104468a9315fc3e24f7cf696180e078719074adb4a0ddb3bae66720ab68",
+      "baselineSha256": "cd096e19df374c5d3e8af4568c73af428514c02c850ff049a37e8027f364f77f",
       "currentSha256": "940afcc6a559e7a5011caa3038b2eefd6de184215b231f0539cd780820b2d6f3",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.channel.settings.panel.side-by-side.png",
@@ -4964,7 +4964,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.6531477951459845,
+        "rgbSimilarity": 0.6532568255663185,
         "pixelPerfectSimilarity": 0.12462969714154548,
         "pixelMismatchRatio": 0.8753703028584545,
         "compositor": "sharp",
@@ -5016,7 +5016,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:34.837Z"
+        "capturedAt": "2026-08-19T21:42:22.851Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5038,7 +5038,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "0fe98bd2375e30dcc20e051ecf90be9a612d1b2c9ce514756b7d2dfc605d422c",
+      "baselineSha256": "a18d8cf0ce52679586edc13389b5938c7d3905e2a5a571c6fbdc49705c62eca1",
       "currentSha256": "688a20843e8a956f6ab3f9143e65c22ee84b21e115b6bf04411f10e81a7423b4",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.channel.members.add-panel.side-by-side.png",
@@ -5049,9 +5049,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.7616428923234472,
-        "pixelPerfectSimilarity": 0.28795688689053617,
-        "pixelMismatchRatio": 0.7120431131094638,
+        "rgbSimilarity": 0.7631555876965314,
+        "pixelPerfectSimilarity": 0.29062529536463183,
+        "pixelMismatchRatio": 0.7093747046353682,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -5101,7 +5101,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:36.358Z"
+        "capturedAt": "2026-08-19T21:42:23.916Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5188,7 +5188,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:37.783Z"
+        "capturedAt": "2026-08-19T21:42:25.062Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5274,7 +5274,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:39.127Z"
+        "capturedAt": "2026-08-19T21:42:26.176Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5360,7 +5360,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:40.291Z"
+        "capturedAt": "2026-08-19T21:42:27.263Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5446,7 +5446,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:41.421Z"
+        "capturedAt": "2026-08-19T21:42:28.512Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5472,7 +5472,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "fa79503570690aec6647c83ed7c72d56c51f7aebf301381cb29f49bf01a0d1d7",
+      "baselineSha256": "ace562f0873c95a4b225871d9c2c1486d842bbd29cc33ccc1124ee69bd0d98f1",
       "currentSha256": "9df5a11d10a1d4f62440ad40b4811aa0fb7f26cc3f13121ceb3299c5181e4938",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.settings.appearance.page.side-by-side.png",
@@ -5483,9 +5483,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9139965858386032,
-        "pixelPerfectSimilarity": 0.8036699477457772,
-        "pixelMismatchRatio": 0.19633005225422284,
+        "rgbSimilarity": 0.9139931122843445,
+        "pixelPerfectSimilarity": 0.8036577956009235,
+        "pixelMismatchRatio": 0.19634220439907646,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -5535,7 +5535,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:42.590Z"
+        "capturedAt": "2026-08-19T21:42:29.643Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5622,7 +5622,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:43.961Z"
+        "capturedAt": "2026-08-19T21:42:30.769Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5708,7 +5708,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:45.257Z"
+        "capturedAt": "2026-08-19T21:42:31.854Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5795,7 +5795,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:46.886Z"
+        "capturedAt": "2026-08-19T21:42:33.128Z"
       },
       "currentMetadata": null,
       "status": "missing"
@@ -5843,7 +5843,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:48.706Z"
+        "capturedAt": "2026-08-19T21:42:34.368Z"
       },
       "currentMetadata": null,
       "status": "missing"
@@ -5891,7 +5891,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:50.121Z"
+        "capturedAt": "2026-08-19T21:42:35.652Z"
       },
       "currentMetadata": null,
       "status": "missing"
@@ -5939,7 +5939,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:51.773Z"
+        "capturedAt": "2026-08-19T21:42:36.972Z"
       },
       "currentMetadata": null,
       "status": "missing"
@@ -5987,7 +5987,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:53.522Z"
+        "capturedAt": "2026-08-19T21:42:38.478Z"
       },
       "currentMetadata": null,
       "status": "missing"
@@ -6035,7 +6035,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:55.237Z"
+        "capturedAt": "2026-08-19T21:42:39.890Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6120,7 +6120,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:56.968Z"
+        "capturedAt": "2026-08-19T21:42:41.481Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6206,7 +6206,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:41:58.981Z"
+        "capturedAt": "2026-08-19T21:42:43.129Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6229,8 +6229,8 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "dae3ef131d04cfb0e8f26a1806abc24221dec80c618a96cf16499b7552853762",
-      "currentSha256": "02df2ac33e21f11fa64afdd488c1abc624a04fe80e9876009d58d1876db243a1",
+      "baselineSha256": "73d26ffe37397bd624bb6437a6f34faaa22aba012bb925897e41f96d08a28996",
+      "currentSha256": "3cba3d1394bec7921edac6d3a190f93d1902658f1142858518cb0a4cdf92164c",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.members.avatar-management.side-by-side.png",
       "metrics": {
@@ -6240,9 +6240,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8639914355175673,
-        "pixelPerfectSimilarity": 0.7574219224693158,
-        "pixelMismatchRatio": 0.24257807753068417,
+        "rgbSimilarity": 0.86399130711255,
+        "pixelPerfectSimilarity": 0.7574225975884744,
+        "pixelMismatchRatio": 0.2425774024115256,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6292,7 +6292,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:42:00.830Z"
+        "capturedAt": "2026-08-19T21:42:44.645Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6315,8 +6315,8 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "2c8c11276afc801400adbe12ac923e14b738fabdc84788879720d3a7a6a4ab7d",
-      "currentSha256": "48681d9d885b68f1c40afc504fe538e3ff11403877ab0545cd8f3376d2c3e4fe",
+      "baselineSha256": "bf13699655db88615a2d776fa0feaeacd1c50411a5de0714f5e50c932a25aee4",
+      "currentSha256": "199cd721f72fafba79c70b7959f6093ec745765dcdc2dc0076278407135b2206",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/screens.settings.server-danger-modal.side-by-side.png",
       "metrics": {
@@ -6326,9 +6326,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8546755452341379,
-        "pixelPerfectSimilarity": 0.1130797585773889,
-        "pixelMismatchRatio": 0.886920241422611,
+        "rgbSimilarity": 0.8595929049119855,
+        "pixelPerfectSimilarity": 0.16176428889699032,
+        "pixelMismatchRatio": 0.8382357111030097,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6378,7 +6378,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:42:02.414Z"
+        "capturedAt": "2026-08-19T21:42:45.857Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6400,7 +6400,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "36feacee5241d5b51bd106f498041fbf65c27dfb7f44475d358ac87e184eb22b",
+      "baselineSha256": "e297129d47d6f9e15acf6d30372e8c510d8bc3be7887b4b4e4524161ad7d19d2",
       "currentSha256": "899e0183065c021a8ee930b988b5df7d23746d32475da8feb79195b7bfbb54b6",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/screens.home.loading.side-by-side.png",
@@ -6411,7 +6411,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9624353988184313,
+        "rgbSimilarity": 0.9622501090559648,
         "pixelPerfectSimilarity": 0.8067089966379066,
         "pixelMismatchRatio": 0.19329100336209337,
         "compositor": "sharp",
@@ -6463,7 +6463,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:42:03.885Z"
+        "capturedAt": "2026-08-19T21:42:47.054Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6487,7 +6487,7 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "807290402978c64a12e830403a9420b352ee75d09d54f194b034adfe10b3a70f",
+      "baselineSha256": "61c9fb78ed8c7407f958d8978009af7f0a48b3b32be1176ad6d379d08bd2b251",
       "currentSha256": "b22086aaaf41a0e7968c0747c50f43ce5a443f6a96b96a94fe11b6c70fa70411",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.thread.message-row.rich-content.side-by-side.png",
@@ -6498,9 +6498,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9187913240214951,
-        "pixelPerfectSimilarity": 0.9038282631884528,
-        "pixelMismatchRatio": 0.09617173681154723,
+        "rgbSimilarity": 0.9187909445427533,
+        "pixelPerfectSimilarity": 0.9038302885459284,
+        "pixelMismatchRatio": 0.0961697114540716,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6550,7 +6550,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:42:05.338Z"
+        "capturedAt": "2026-08-19T21:42:48.425Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6580,7 +6580,7 @@
         "declaredDivergences": []
       },
       "status": "different",
-      "baselineSha256": "ec1c248ca139255cdf7bb3e4e2ff7d78f2af474e34c8a02c0f205e409d1e059a",
+      "baselineSha256": "aac9459743512a277233aba3c9ae285fb809229bd4eda5f0765e93337e4c12c8",
       "currentSha256": "6382915fe78e710fa26a1b038247b88c66b58408c9506779bd0ff2370d7d7892",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.thread.message-row.long-inline-code.side-by-side.png",
@@ -6591,7 +6591,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8597585226731153,
+        "rgbSimilarity": 0.8597594603386133,
         "pixelPerfectSimilarity": 0.6193289990683356,
         "pixelMismatchRatio": 0.3806710009316644,
         "compositor": "sharp",
@@ -6643,7 +6643,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:42:06.664Z"
+        "capturedAt": "2026-08-19T21:42:49.724Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6730,7 +6730,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:42:08.069Z"
+        "capturedAt": "2026-08-19T21:42:51.040Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6760,7 +6760,7 @@
         "declaredDivergences": []
       },
       "status": "different",
-      "baselineSha256": "8cd58b84e5a26b03019b974c7bfbfc8cd72736b98d6337b65f8e28a348499194",
+      "baselineSha256": "5816183c9aa904c45dfbc8d02315694ee44f31c0ec1345ef0f55c29c80a55483",
       "currentSha256": "6bede5e041b8990589bae3c7c96460db0cb7670006f0ae2caa5cf3fbef824c9c",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.thread.message-row.md-latest-release.side-by-side.png",
@@ -6771,7 +6771,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8815393766999664,
+        "rgbSimilarity": 0.8815384681572555,
         "pixelPerfectSimilarity": 0.9159972860209827,
         "pixelMismatchRatio": 0.08400271397901726,
         "compositor": "sharp",
@@ -6823,7 +6823,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:42:09.609Z"
+        "capturedAt": "2026-08-19T21:42:52.437Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6853,7 +6853,7 @@
         "declaredDivergences": []
       },
       "status": "different",
-      "baselineSha256": "0c47f012b8f3fe3235c446d5f96048092d3a310807469b26e93b6fbda28eb65d",
+      "baselineSha256": "5969bdb3f741a1717e5d5694fd4ab9f08d1a12cfdda819fb88647b4ffecca81a",
       "currentSha256": "0686a3f58c0c32c6f8f157d335206f272df44ca2dbfc012a812edb343ca44358",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.thread.message-row.md-wrap-slice1.side-by-side.png",
@@ -6864,7 +6864,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8863283997567106,
+        "rgbSimilarity": 0.886325580582656,
         "pixelPerfectSimilarity": 0.8572838606013962,
         "pixelMismatchRatio": 0.14271613939860384,
         "compositor": "sharp",
@@ -6916,7 +6916,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:42:11.261Z"
+        "capturedAt": "2026-08-19T21:42:53.768Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6946,7 +6946,7 @@
         "declaredDivergences": []
       },
       "status": "different",
-      "baselineSha256": "f22aed3827da37084a5b7284f307e2a9784a947a610be4ae71b98e0ef4ec0c3f",
+      "baselineSha256": "d21f7ffa9bc03d50904f4ab9240ff9136b65d623d333b355b557592cfeecc191",
       "currentSha256": "82a4b4d993cf656935081b6d0a2aeafde5281661e51eeb4d52206667224b1037",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.thread.message-row.md-wrap-clarify.side-by-side.png",
@@ -6957,7 +6957,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8810538451213134,
+        "rgbSimilarity": 0.8810534051907245,
         "pixelPerfectSimilarity": 0.9093608646926182,
         "pixelMismatchRatio": 0.09063913530738177,
         "compositor": "sharp",
@@ -7009,7 +7009,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:42:13.186Z"
+        "capturedAt": "2026-08-19T21:42:54.973Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -7039,7 +7039,7 @@
         "declaredDivergences": []
       },
       "status": "different",
-      "baselineSha256": "181b0d5c58d4a3617625a4b3ee5924d3dbf30cc258408896aeed3271071c7b7f",
+      "baselineSha256": "326afd9dc35e47e9d5883a5107c3bc5b30455fd433b85dbe16311ed9674670b7",
       "currentSha256": "d44236a62fdc471c91b55b9b0920fb265338a17601f238095e2fb7191e7b5dde",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.thread.message-row.md-wrap-adjacent.side-by-side.png",
@@ -7050,7 +7050,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8972628917532322,
+        "rgbSimilarity": 0.8972520841103893,
         "pixelPerfectSimilarity": 0.9567218239019187,
         "pixelMismatchRatio": 0.04327817609808127,
         "compositor": "sharp",
@@ -7102,7 +7102,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:42:14.978Z"
+        "capturedAt": "2026-08-19T21:42:56.184Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -7132,7 +7132,7 @@
         "declaredDivergences": []
       },
       "status": "different",
-      "baselineSha256": "172f443ac4ca86901088c4168c16bd0f141c185eabedac358ecc124d312e9861",
+      "baselineSha256": "8a86a2ed1dd0b9fd243a0d94e81857b19bccf597a56d22f40e12eb85a7f5dcb5",
       "currentSha256": "eca3b6d8312c930800de751e01dd52b2aa2426639691d7bfce5a87d99dfb6f0b",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.thread.message-row.md-wrap-status606.side-by-side.png",
@@ -7143,7 +7143,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8776167605347132,
+        "rgbSimilarity": 0.877609428211147,
         "pixelPerfectSimilarity": 0.8665100390218874,
         "pixelMismatchRatio": 0.1334899609781126,
         "compositor": "sharp",
@@ -7195,7 +7195,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-08-18T21:42:16.961Z"
+        "capturedAt": "2026-08-19T21:42:57.367Z"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -7225,7 +7225,7 @@
         "declaredDivergences": []
       },
       "status": "different",
-      "baselineSha256": "b6e60676e7643866d5edb28c5dc6efd73f40946a91ff03384741b901b3b64e6e",
+      "baselineSha256": "5b64398c636ebee9820ccf15784994224a6586f1329909954463cf72c08adad5",
       "currentSha256": "dbce28453976f119dceccb274a019a14b096ee5c8e561cd11fe94962daf99620",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__ios/components.thread.message-row.md-wrap-task607.side-by-side.png",
@@ -7236,7 +7236,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8830056353475985,
+        "rgbSimilarity": 0.8830044439608493,
         "pixelPerfectSimilarity": 0.9333248943438517,
         "pixelMismatchRatio": 0.06667510565614831,
         "compositor": "sharp",

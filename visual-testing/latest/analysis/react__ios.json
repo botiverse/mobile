@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-18T22:11:15.828Z",
+  "generatedAt": "2026-08-19T22:08:13.864Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 78,
+    "pending": 8
   },
   "cases": [
     {
@@ -240,7 +240,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.050099242516304154
+      "metricMismatch": 0.049909871592336064
     },
     {
       "id": "components.ui.form-field.states.elegant",
@@ -274,7 +274,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.02899839321640274
+      "metricMismatch": 0.028766827345026447
     },
     {
       "id": "components.ui.textarea.states",
@@ -1171,7 +1171,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06730667962895454
+      "metricMismatch": 0.06726414712196704
     },
     {
       "id": "components.thread.header.states",
@@ -1551,7 +1551,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2693394634152928
+      "metricMismatch": 0.2693367629386587
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1584,7 +1584,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2694721243299443
+      "metricMismatch": 0.269476850164054
     },
     {
       "id": "components.home.saved.results",
@@ -1620,42 +1620,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11140006211096254
+      "metricMismatch": 0.11141187669623687
     },
     {
       "id": "components.home.activity.results",
-      "status": "ready",
-      "imageHash": "p1:1ff83ffc87fc07fe82fc06ff000000030040000300000007cbf13fc780f18027801d803f807d007f807d007fc1e11fff8011e7c78fbd00078ffd00ffeff11fff83f13ffffffd1fc7fffd03e7fffdfffffffdfffffffdffff0005fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000fffe1fff",
-      "generatedAt": "2026-08-02T22:44:23.617Z",
-      "severity": "medium",
-      "summary": [
-        "First activity card is significantly taller on iOS due to extra chips (cyan '#607 @Mahua' chip and edit/pencil icon) and wrapped title pushing layout",
-        "First activity card title is truncated with ellipsis on React ('artifa...') but wraps to two full lines on iOS",
-        "iOS places a cyan '#607 @Mahua' link chip that is absent on React, alongside an extra pencil/edit icon button on the second chip row",
-        "Second activity card channel label shows '# android-artifacts' on React vs '#android-artifacts' on iOS (inconsistent hash placement)",
-        "Card vertical density/spacing differs: iOS cards have larger paddings and gap between meta chips vs React's tighter layout"
-      ],
-      "likelyCauses": [
-        "iOS render includes additional thread/message metadata chips (link to source message and edit indicator) that React omits",
-        "React truncates the title with a single-line ellipsis while iOS uses multi-line wrap",
-        "Inconsistent channel-tag formatting (leading space before '#') between platforms",
-        "Different card padding/spacing tokens applied across web and iOS implementations"
-      ],
-      "suggestedOwner": "mobile-frontend",
-      "suggestedFixes": [
-        "Decide on a single source of truth for which meta chips render in activity cards (link chip, edit icon) and align React",
-        "Standardize title wrapping behavior so React matches iOS two-line layout (or apply consistent truncation policy)",
-        "Normalize channel label formatting so '#' has no leading space on both sides",
-        "Reconcile activity card padding/margin tokens with the shared design system spacing scale",
-        "Verify the intentional timestamp-on-tag-row divergence is the only intentional delta before shipping"
-      ],
-      "intentional": [
-        "Relative timestamp ('14 days ago'/'16 days ago') appears on the right-aligned top tag row on iOS instead of next to the title as on React — current-side (iOS/Android) behavior is the desired product feature per mobile#1039/#1171"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.10930449224288086
+      "status": "pending",
+      "imageHash": "p1:1ff83ffc87fc07fe82fc06ff000000030040000300000007cbfd3fc780fd8027801d803f807d007f807d007fc1fd1fff801de7c78fbd00078ffd00ffeffd1fff83fd3ffffffd1fc7fffd03e7fffdfffffffdfffffffdffff0005fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000fffe1fff",
+      "generatedAt": "2026-08-19T22:08:13.146Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10672789997434551
     },
     {
       "id": "components.tasks.panel.states",
@@ -1761,7 +1739,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4469531872375474
+      "metricMismatch": 0.44546421193340624
     },
     {
       "id": "components.members.create-agent.dialog",
@@ -1794,7 +1772,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.5135104846005321
+      "metricMismatch": 0.5133271897489907
     },
     {
       "id": "components.members.create-agent.claude-dialog",
@@ -1831,13 +1809,13 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.5135104846005321
+      "metricMismatch": 0.5133271897489907
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:11:15.222Z",
+      "generatedAt": "2026-08-19T22:08:13.150Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1950,7 +1928,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7120431131094638
+      "metricMismatch": 0.7093747046353682
     },
     {
       "id": "components.settings.root.page",
@@ -2121,7 +2099,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19633005225422284
+      "metricMismatch": 0.19634220439907646
     },
     {
       "id": "components.settings.notifications.page",
@@ -2227,7 +2205,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:11:15.461Z",
+      "generatedAt": "2026-08-19T22:08:13.430Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2240,7 +2218,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:11:15.461Z",
+      "generatedAt": "2026-08-19T22:08:13.430Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2253,7 +2231,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:11:15.461Z",
+      "generatedAt": "2026-08-19T22:08:13.430Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2266,7 +2244,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:11:15.461Z",
+      "generatedAt": "2026-08-19T22:08:13.430Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2279,7 +2257,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:11:15.461Z",
+      "generatedAt": "2026-08-19T22:08:13.430Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2386,37 +2364,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.24257807753068417
+      "metricMismatch": 0.2425774024115256
     },
     {
       "id": "screens.settings.server-danger-modal",
-      "status": "ready",
-      "imageHash": "p1:ffffffff800180018000000180000001800100018000000180000001800000018000fffd8000fffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcffc6fffdfffe0001800080018001000180010001800100018001000180010001800100018000000180018001ffffffff",
-      "generatedAt": "2026-08-02T22:44:50.237Z",
-      "severity": "high",
-      "summary": [
-        "Modal vertical position differs: React places it lower (~mid-screen) while iOS renders it near the top, overlapping the PROFILE card.",
-        "Modal button order/spacing inverted: React shows Cancel then Delete Server with normal red fill; iOS shows Cancel then a disabled (faded/pink) Delete Server button on the right.",
-        "Background page differs: React shows server avatar block ('V' tile) and full name text behind modal; iOS shows just the Name input field behind the modal.",
-        "Delete Server button state differs: React is enabled (solid red), iOS is disabled with low-opacity pink fill and white text."
-      ],
-      "likelyCauses": [
-        "iOS modal not centered vertically — uses top-aligned sheet instead of centered dialog.",
-        "iOS confirmation text validation does not treat the pre-filled 'visual' value as satisfied, so Delete remains disabled.",
-        "Different layout underlay due to iOS rendering the Name field instead of avatar card behind the modal (page state mismatch)."
-      ],
-      "suggestedOwner": "ios",
-      "suggestedFixes": [
-        "Center the Delete Server modal vertically in iOS to match React's centered dialog layout.",
-        "Pre-seed the confirmation field with the server name and validate case-insensitively so Delete Server becomes active.",
-        "Ensure the underlying page shows the avatar/name card before opening the modal, matching React's backdrop.",
-        "Match button order and spacing (Cancel left, Delete Server right) with equal gaps and a consistent red active color."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.886920241422611
+      "status": "pending",
+      "imageHash": "p1:ffffffff800180018001000180010001800180018000000180000001800000018000fffd8000fffc8000fffcfffefffcfffefffdfffefffdfffefffdfffefffdfffefffdfffefffdfffefffdfffefffdfffefffd80000001800180018001800180018001800180018001800180018001800180018001000180018001ffffffff",
+      "generatedAt": "2026-08-19T22:08:13.667Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.8382357111030097
     },
     {
       "id": "screens.home.loading",
@@ -2483,7 +2444,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09617173681154723
+      "metricMismatch": 0.0961697114540716
     },
     {
       "id": "components.thread.message-row.long-inline-code",

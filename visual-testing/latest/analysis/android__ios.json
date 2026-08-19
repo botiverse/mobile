@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-18T22:11:19.256Z",
+  "generatedAt": "2026-08-19T22:08:17.747Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 81,
-    "pending": 5
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -1141,7 +1141,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0594840739390502
+      "metricMismatch": 0.05948373637947102
     },
     {
       "id": "components.thread.header.states",
@@ -1274,7 +1274,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3693445268089818
+      "metricMismatch": 0.3693441892494025
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1307,7 +1307,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3719268575903647
+      "metricMismatch": 0.3719261824712061
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1723,37 +1723,16 @@
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000007ffc7ffc7ffc7ffc3ffc7ffc21fc41fc7ffc7ffc7ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc3ffc7ffc7ffc7f7c7ffc7cfc7ffc00007dfcce630000ffff0000ffff0000ffff0000ffff0000bffd0000bffd00008ff100008ff00000ffff00009ffb0000ffffffffffff",
-      "generatedAt": "2026-08-18T22:10:00.126Z",
-      "severity": "medium",
-      "summary": [
-        "iOS renders the on-screen keyboard below the dialog, which overlaps/replaces the bottom area of the form, while Android has no keyboard and the dialog sits near the top with empty space below.",
-        "On iOS, the Cancel/Create Agent buttons are repositioned just above the keyboard, narrower and tighter spacing; on Android they sit at the natural bottom of the dialog with more vertical breathing room.",
-        "On iOS, the character counter '72/3000' under the Description field is not visible (likely clipped or hidden by the repositioned layout), whereas Android shows it clearly bottom-right of the textarea.",
-        "iOS uses a thinner/lighter font weight for body and labels (notably 'COMPUTER', 'NAME', 'DESCRIPTION' headings and field text) compared to Android's bolder/heavier weight.",
-        "Field border strokes and Cancel button outlines render slightly thicker/darker on iOS than on Android."
-      ],
-      "likelyCauses": [
-        "iOS does not auto-scroll or compress the dialog when the soft keyboard appears, so the layout overlaps the bottom controls.",
-        "Font weight mapping differs between the Kuikly Android and iOS renderers (system font fallback or different weight resolution).",
-        "Description field char-counter may be hidden when the keyboard pushes the field, or the counter component is positioned absolutely and clipped by the keyboard on iOS."
-      ],
-      "suggestedOwner": "ui-platform",
-      "suggestedFixes": [
-        "Adjust the dialog container to add bottom safe-area/inset padding equal to keyboard height so the buttons and char-counter remain visible on iOS.",
-        "Ensure the iOS font weight for headings and inputs resolves to the same bold weight as Android (or set explicit fontWeight in the shared style).",
-        "Anchor the char-counter relative to the Description field bounds so it doesn't get clipped by the keyboard, or scroll the focused field above the keyboard.",
-        "Verify the Cancel/Create Agent button row uses the same flex layout and spacing tokens on both platforms."
-      ],
-      "intentional": [
-        "Keyboard appearance and its system-rendered layout differences are platform-native and expected.",
-        "Minor stroke thickness differences may be acceptable if within the 1dp tolerance."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.47259691335520715
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003ffc7dfc3df86df83f6c3ffc01ec00cc3ffc3ffc3ffc3ffc3ffc39fc3ffc3ffc3ffc1ffc3ffc31fc3ffc03fc03fc07fc3ffc3ffc3ffc7ffc3ff47f7c3ffc78743ffc000023fc80012ffcdef33ffcffff2ffcffff3ffcffff3ffcbff83ffc1ff83ffc8ff03ffc0ff03f7c80013800800100008001ffffffff",
+      "generatedAt": "2026-08-19T22:08:17.106Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3638622216821269
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
@@ -2129,7 +2108,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:11:18.839Z",
+      "generatedAt": "2026-08-19T22:08:17.291Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2142,7 +2121,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:11:18.839Z",
+      "generatedAt": "2026-08-19T22:08:17.291Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2155,7 +2134,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:11:18.839Z",
+      "generatedAt": "2026-08-19T22:08:17.291Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2168,7 +2147,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:11:18.839Z",
+      "generatedAt": "2026-08-19T22:08:17.291Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2181,7 +2160,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-18T22:11:18.839Z",
+      "generatedAt": "2026-08-19T22:08:17.291Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2255,7 +2234,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0986555001957845
+      "metricMismatch": 0.0986558377553638
     },
     {
       "id": "components.members.avatar-management",
@@ -2316,7 +2295,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10790429510808652
+      "metricMismatch": 0.10991007412808362
     },
     {
       "id": "screens.home.loading",
