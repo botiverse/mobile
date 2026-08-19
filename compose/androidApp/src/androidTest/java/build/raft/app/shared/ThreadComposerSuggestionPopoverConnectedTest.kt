@@ -49,8 +49,14 @@ class ThreadComposerSuggestionPopoverConnectedTest {
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             try {
+                scenario.onActivity { activity -> activity.hideSystemBarsForSuggestionTest() }
+                // Visual pages clear native focus when their window first gains focus, then post
+                // the same cleanup once more. Requesting editor focus while that initial window
+                // transition is still pending makes the harness dismiss its own suggestion panel.
+                scenario.awaitVisualInputHostReadyForEditorFocus(
+                    "interaction fixture composer"
+                ) { activity -> activity.window.decorView.findComposerEditText() != null }
                 scenario.onActivity { activity ->
-                    activity.hideSystemBarsForSuggestionTest()
                     val editor = requireNotNull(activity.window.decorView.findComposerEditText())
                     assertTrue("composer should accept focus", editor.requestFocus())
                     editor.setSelection(editor.text.length)
@@ -179,6 +185,9 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                 waitUntil("empty composer should attach before '${case.trigger}'") {
                     scenario.composerText() == ""
                 }
+                scenario.awaitVisualInputHostReadyForEditorFocus(
+                    "late '${case.trigger}' fixture composer"
+                ) { activity -> activity.window.decorView.findComposerEditText() != null }
                 scenario.onActivity { activity ->
                     val editor = requireNotNull(activity.window.decorView.findComposerEditText())
                     assertTrue("composer should accept focus", editor.requestFocus())

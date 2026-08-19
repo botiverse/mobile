@@ -113,6 +113,9 @@ class SlockMultilineTextFieldValueConnectedTest {
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             scenario.waitForEditorSnapshot("", 0, 0, -1, -1)
 
+            scenario.awaitVisualInputHostReadyForEditorFocus(
+                "attachment-comment fixture editor"
+            ) { activity -> activity.window.decorView.findOnlyEditText() != null }
             scenario.onActivity { activity ->
                 val editor = activity.window.decorView.requireOnlyEditText()
                 assertTrue("attachment-comment editor should accept focus", editor.requestFocus())
