@@ -1,0 +1,272 @@
+name: Task141 OHOS Consumer Resolution Gate
+
+# TEMPORARY, ONE-SHOT EVIDENCE BRANCH — DO NOT MERGE TO main.
+#
+# Authorised in #Kuiklybase:8d8d3ee7 by @Codex-Android-DevOPS as option (i'):
+# a Mobile same-repo gate branch that runs once, produces receipts, then has its
+# PR closed and branch deleted. It adds only gate workflow / init-script /
+# report files. It must never touch build.ohos.gradle.kts, version catalogs,
+# lockfiles or any dependency declaration.
+#
+# Purpose: prove, BEFORE the first Raft Artifacts PUT of the task #141 45-file
+# packet, that the real Mobile OHOS test compilation resolves
+# kotlinx-coroutines-test:1.8.0-KBA-002 from the frozen bytes without any
+# Tencent fallback for the family under test, and that nothing in the real graph
+# requires kotlin-stdlib{,-common}:2.0.21-KBA-001.
+#
+# pull_request trigger is deliberate: a workflow_dispatch entry would require
+# this file to already exist on the default branch, which would defeat the
+# never-merge constraint.
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/task141-consumer-gate.yml
+      - tools/task141-gate/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: task141-consumer-gate-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: false
+
+env:
+  # The task #141 manifest as landed in the PUBLIC KuiklyUI repo. Fetching it by
+  # exact commit binds this gate to the reviewed, landed frozen bytes and keeps
+  # the data out of the Mobile tree.
+  KUIKLY_LANDED_SHA: 71f0e0b03e7895f429fc3d17b1ea3b11683a13b9
+  MANIFEST_URL: https://raw.githubusercontent.com/botiverse/KuiklyUI/71f0e0b03e7895f429fc3d17b1ea3b11683a13b9/publish/predecessors/task141-coroutines-test-manifest.tsv
+  STAGING_DIR: /tmp/task141-staging
+  GATE_INIT: tools/task141-gate/task141-gate.init.gradle.kts
+
+jobs:
+  consumer-gate:
+    name: OHOS consumer resolution gate
+    # Mirrors the existing "OHOS shared compile" job in test.yml so the gate
+    # inherits Mobile's real Kotlin/KGP/toolchain rather than replicating it.
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    container:
+      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1@sha256:333681267bdf66eaba96d311d34eada49cfd86621f33c21cdf9a19fed343f5e5
+    timeout-minutes: 90
+    # The harmonyos-ci-image defaults to sh, so `set -o pipefail` and
+    # ${PIPESTATUS[@]} would be illegal options without this.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          # Full history so the PR base is present locally: credentials are
+          # stripped, so a later `git fetch` of a private remote cannot work.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # actions/checkout writes safe.directory through a temporary HOME, which
+      # later container steps do not see. Same reusable step the OHOS job in
+      # test.yml uses.
+      - name: Establish Git repository context
+        uses: ./.github/actions/git-safe-workspace
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Deliberately NOT using gradle-cache-policy or setup-gradle here: this
+      # gate requires a cold cache, so no Gradle cache may be restored.
+
+      - name: Record exact source identity
+        run: |
+          set -euo pipefail
+          echo "TASK141_MOBILE_EXACT $(git rev-parse HEAD)"
+          echo "TASK141_MOBILE_TREE $(git rev-parse HEAD^{tree})"
+          echo "TASK141_MOBILE_BASE ${{ github.event.pull_request.base.sha }}"
+          echo "TASK141_KUIKLY_LANDED $KUIKLY_LANDED_SHA"
+          echo "TASK141_CONTAINER ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1@sha256:333681267bdf66eaba96d311d34eada49cfd86621f33c21cdf9a19fed343f5e5"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Prove no dependency or product file changed
+        run: |
+          set -euo pipefail
+          base='${{ github.event.pull_request.base.sha }}'
+          changed="$(git diff --name-only "$base"...HEAD)"
+          echo "TASK141_CHANGED_FILES"; echo "$changed"
+          # The authorisation covers gate files only.
+          if echo "$changed" | grep -vE '^(\.github/workflows/task141-consumer-gate\.yml|tools/task141-gate/)' | grep -q .; then
+            echo "gate branch changed a non-gate file" >&2
+            exit 1
+          fi
+
+      - name: Future contract — OHOS coroutines-test coordinate
+        run: |
+          set -euo pipefail
+          python3 tools/task141-gate/task141_gate_support.py ohos-test-contract \
+            --build-file compose/shared/build.ohos.gradle.kts
+
+      - name: Stage the frozen 45-file packet
+        run: |
+          set -euo pipefail
+          curl -fsSL "$MANIFEST_URL" -o /tmp/task141-manifest.tsv
+          echo "TASK141_MANIFEST_SHA256 $(sha256sum /tmp/task141-manifest.tsv | cut -d' ' -f1)"
+          python3 tools/task141-gate/task141_gate_support.py stage \
+            --manifest /tmp/task141-manifest.tsv \
+            --output "$STAGING_DIR"
+
+      - name: GREEN — real OHOS test compile against frozen bytes
+        id: green
+        working-directory: compose
+        env:
+          SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
+          OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
+          DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
+          TASK141_STAGING_DIR: ${{ env.STAGING_DIR }}
+          GRADLE_USER_HOME: /tmp/task141-gradle-home-green
+        run: |
+          set -euo pipefail
+          ./gradlew \
+            -c settings.ohos.gradle.kts \
+            -I "../$GATE_INIT" \
+            :shared:task141ReportOhosTestGraph \
+            :shared:compileTestKotlinOhosArm64 \
+            --no-daemon --console=plain --refresh-dependencies --info \
+            2>&1 | tee /tmp/task141-green.log
+          echo "TASK141_GREEN_EXIT ok"
+
+      - name: Positive evidence — compile task really consumed the frozen klib
+        run: |
+          set -euo pipefail
+          grep -E '^TASK141_COMPILE_INPUT_CONFIRMED' /tmp/task141-green.log
+          grep -E '^TASK141_TEST_COORDINATE .*kotlinx-coroutines-test:1\.8\.0-KBA-002' /tmp/task141-green.log
+          grep -E '^TASK141_CORE_COORDINATE .*kotlinx-coroutines-core:1\.8\.0-KBA-002' /tmp/task141-green.log
+          echo "--- selected stdlib ---"
+          grep -E '^TASK141_SELECTED_STDLIB' /tmp/task141-green.log
+          echo "--- artifact origins for the families under test ---"
+          grep -iE 'Downloading|Download https' /tmp/task141-green.log \
+            | grep -E 'kotlinx-coroutines-(test|core)|atomicfu|kotlin-stdlib' || true
+          # Cold-cache positive evidence. A warm cache emits no download lines,
+          # so their presence proves both that the cache was cold and that the
+          # bytes came from staging/Raft. Absence means this round proved
+          # nothing about provenance, not that provenance was fine.
+          if ! grep -iE 'Downloading|Download https' /tmp/task141-green.log \
+            | grep -qE 'kotlinx-coroutines-(test|core)|atomicfu|kotlin-stdlib'; then
+            echo "GATE INVALID: no download URIs for the family under test — cache was not cold, provenance unproven" >&2
+            exit 1
+          fi
+          # Nothing in the family under test may come from Tencent.
+          if grep -iE 'Downloading|Download https' /tmp/task141-green.log \
+            | grep -E 'kotlinx-coroutines-(test|core)|atomicfu|kotlin-stdlib' \
+            | grep -q 'mirrors\.tencent\.com'; then
+            echo "family under test resolved from Tencent" >&2
+            exit 1
+          fi
+          # KBA-001 must never appear as a selected stdlib.
+          if grep -E '^TASK141_SELECTED_STDLIB' /tmp/task141-green.log | grep -q '2\.0\.21-KBA-001'; then
+            echo "graph selected kotlin-stdlib 2.0.21-KBA-001" >&2
+            exit 1
+          fi
+
+      - name: RED 1 — staging removed must fail on coroutines-test
+        working-directory: compose
+        env:
+          SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
+          OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
+          DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
+          TASK141_STAGING_DIR: /tmp/task141-staging-empty
+          GRADLE_USER_HOME: /tmp/task141-gradle-home-red1
+        run: |
+          set +e
+          mkdir -p /tmp/task141-staging-empty
+          ./gradlew -c settings.ohos.gradle.kts -I "../$GATE_INIT" \
+            :shared:compileTestKotlinOhosArm64 \
+            --no-daemon --console=plain --refresh-dependencies \
+            2>&1 | tee /tmp/task141-red1.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          # If this does not go red the gate is INVALID this round — it is not
+          # a pass and not "could not reproduce". Most likely cause: warm cache.
+          test "$rc" -ne 0 || { echo "GATE INVALID: staging removed but build still succeeded — check cache" >&2; exit 1; }
+          grep -qE 'kotlinx-coroutines-test' /tmp/task141-red1.log \
+            || { echo "GATE INVALID: RED 1 failed for an unrelated reason" >&2; exit 1; }
+          # A RED is only meaningful if it failed at artifact resolution. 401,
+          # script-compilation and compile errors mean this round proved nothing.
+          if grep -qE '401 Unauthorized|Script compilation error|startup failed|Unable to load class' /tmp/task141-red1.log; then
+            echo "GATE INVALID: RED 1 failed on a 401/script error, not artifact resolution" >&2
+            exit 1
+          fi
+          echo "TASK141_RED1_CONFIRMED staging removed -> coroutines-test unresolvable"
+
+      - name: RED 2 — forced kotlin-stdlib 2.0.21-KBA-001 must fail
+        working-directory: compose
+        env:
+          SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
+          OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
+          DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
+          TASK141_STAGING_DIR: ${{ env.STAGING_DIR }}
+          TASK141_FORCE_COORDINATE: org.jetbrains.kotlin:kotlin-stdlib:2.0.21-KBA-001
+          GRADLE_USER_HOME: /tmp/task141-gradle-home-red2
+        run: |
+          set +e
+          ./gradlew -c settings.ohos.gradle.kts -I "../$GATE_INIT" \
+            :shared:compileTestKotlinOhosArm64 \
+            --no-daemon --console=plain --refresh-dependencies \
+            2>&1 | tee /tmp/task141-red2.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -ne 0 || { echo "GATE INVALID: forced stdlib KBA-001 resolved — something covered it" >&2; exit 1; }
+          grep -qE 'kotlin-stdlib.*2\.0\.21-KBA-001' /tmp/task141-red2.log \
+            || { echo "RED 2 failed without naming the coordinate" >&2; exit 1; }
+          # A RED is only meaningful if it failed at artifact resolution. 401,
+          # script-compilation and compile errors mean this round proved nothing.
+          if grep -qE '401 Unauthorized|Script compilation error|startup failed|Unable to load class' /tmp/task141-red2.log; then
+            echo "GATE INVALID: RED 2 failed on a 401/script error, not artifact resolution" >&2
+            exit 1
+          fi
+          echo "TASK141_RED2_CONFIRMED stdlib KBA-001 is caught, not covered by Tencent"
+
+      - name: RED 3 — forced kotlin-stdlib-common 2.0.21-KBA-001 must fail
+        working-directory: compose
+        env:
+          SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
+          OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
+          DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
+          TASK141_STAGING_DIR: ${{ env.STAGING_DIR }}
+          TASK141_FORCE_COORDINATE: org.jetbrains.kotlin:kotlin-stdlib-common:2.0.21-KBA-001
+          GRADLE_USER_HOME: /tmp/task141-gradle-home-red3
+        run: |
+          set +e
+          ./gradlew -c settings.ohos.gradle.kts -I "../$GATE_INIT" \
+            :shared:compileTestKotlinOhosArm64 \
+            --no-daemon --console=plain --refresh-dependencies \
+            2>&1 | tee /tmp/task141-red3.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -ne 0 || { echo "GATE INVALID: forced stdlib-common KBA-001 resolved — Tencent covered it" >&2; exit 1; }
+          grep -qE 'kotlin-stdlib-common.*2\.0\.21-KBA-001' /tmp/task141-red3.log \
+            || { echo "RED 3 failed without naming the coordinate" >&2; exit 1; }
+          # A RED is only meaningful if it failed at artifact resolution. 401,
+          # script-compilation and compile errors mean this round proved nothing.
+          if grep -qE '401 Unauthorized|Script compilation error|startup failed|Unable to load class' /tmp/task141-red3.log; then
+            echo "GATE INVALID: RED 3 failed on a 401/script error, not artifact resolution" >&2
+            exit 1
+          fi
+          echo "TASK141_RED3_CONFIRMED stdlib-common KBA-001 is caught, not covered by Tencent"
+
+      - name: Worktree must still be clean
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Upload gate receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: task141-consumer-gate-receipts
+          path: |
+            /tmp/task141-green.log
+            /tmp/task141-red1.log
+            /tmp/task141-red2.log
+            /tmp/task141-red3.log
+            /tmp/task141-manifest.tsv
