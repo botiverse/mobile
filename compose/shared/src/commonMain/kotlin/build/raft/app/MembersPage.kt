@@ -7406,15 +7406,12 @@ private fun MembersAgentProfileTab(
     val canonicalRuntimeModel = canonicalRuntimeConfig?.model
     val runtimeEditorReady =
         canonicalRuntimeConfig != null &&
-            membersAgentRuntimeConfigSaveEnabled(
+            membersAgentRuntimeConfigSaveAttemptEnabled(
                 runtime = canonicalRuntimeConfig.runtime,
                 model = canonicalRuntimeConfig.toMembersRuntimeModelValue(),
                 customModelMode = canonicalRuntimeModel is RuntimeModelConfig.Custom,
                 customModelName = (canonicalRuntimeModel as? RuntimeModelConfig.Custom)?.name.orEmpty(),
-                machineRuntimeIds = agentMachineRuntimes,
-                runtimeModelsCatalog = agentRuntimeModelsByRuntime[canonicalRuntimeConfig.runtime],
-                runtimeModelsLoading = canonicalRuntimeConfig.runtime in agentRuntimeModelLoadsInFlight,
-                runtimeModelsError = agentRuntimeModelErrorsByRuntime[canonicalRuntimeConfig.runtime]
+                machineRuntimeIds = agentMachineRuntimes
             )
     val scope = rememberCoroutineScope()
     val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
@@ -8783,6 +8780,10 @@ private fun MembersAgentRuntimeConfigDialog(
     var acceptedCatalogGeneration by remember(stableInitialConfig) {
         mutableStateOf(runtimeModelGenerationsByRuntime[stableInitialConfig.runtime] ?: 0L)
     }
+    var pendingCatalogValidatedSave by remember(stableInitialConfig) {
+        mutableStateOf<MembersPendingRuntimeConfigSave?>(null)
+    }
+    var saveValidationError by remember(stableInitialConfig) { mutableStateOf<String?>(null) }
     var advancedOpen by remember(stableInitialConfig) {
         mutableStateOf(command.isNotBlank() || envVarEntries.isNotEmpty())
     }
@@ -8820,6 +8821,7 @@ private fun MembersAgentRuntimeConfigDialog(
     val runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
     val runtimeModelsLoading = runtime in runtimeModelLoadsInFlight
     val runtimeModelsError = runtimeModelErrorsByRuntime[runtime]
+    val catalogValidationInFlight = pendingCatalogValidatedSave != null
     val retainBuiltInProviderSecret =
         membersCanRetainBuiltInProviderSecret(
             initialConfig = stableInitialConfig,
@@ -8846,15 +8848,12 @@ private fun MembersAgentRuntimeConfigDialog(
     val runtimeConfigSaveEnabled =
         if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
             builtInConfigForSave != null && !builtInFormLoading && builtInFormError == null
-        } else membersAgentRuntimeConfigSaveEnabled(
+        } else membersAgentRuntimeConfigSaveAttemptEnabled(
             runtime = runtime,
             model = model,
             customModelMode = customModelMode,
             customModelName = customModelName,
-            machineRuntimeIds = machineRuntimeIds,
-            runtimeModelsCatalog = runtimeModelsCatalog,
-            runtimeModelsLoading = runtimeModelsLoading,
-            runtimeModelsError = runtimeModelsError
+            machineRuntimeIds = machineRuntimeIds
         )
 
     LaunchedEffect(runtime) {
@@ -8931,12 +8930,76 @@ private fun MembersAgentRuntimeConfigDialog(
             awaitingServerModelForRuntime = false
         }
     }
-    val runtimeEditorAuthorityCurrent =
+    LaunchedEffect(
+        runtime,
+        model,
+        customModelMode,
+        customModelName,
+        providerMode,
+        providerApiUrl,
+        providerApiKey.text,
+        piProviderId,
+        piProviderApiKey.text,
+        fastMode,
+        reasoningEffort,
+        command,
+        envVarEntries
+    ) {
+        saveValidationError = null
+    }
+    LaunchedEffect(
+        pendingCatalogValidatedSave,
+        runtimeModelsLoading,
+        runtimeModelsError,
+        runtimeModelsCatalog,
+        runtimeModelGenerationsByRuntime
+    ) {
+        val pending = pendingCatalogValidatedSave ?: return@LaunchedEffect
+        val currentGeneration = runtimeModelGenerationsByRuntime[pending.runtime] ?: 0L
+        if (currentGeneration < pending.requestGeneration || runtimeModelsLoading) {
+            return@LaunchedEffect
+        }
+        val catalog = runtimeModelsByRuntime[pending.runtime]
+        val validationError = runtimeModelErrorsByRuntime[pending.runtime]
+        if (validationError != null || catalog == null) {
+            saveValidationError =
+                validationError
+                    ?: "runtime_models_unavailable".userFacingErrorCodeMessage(errorStrings)
+            pendingCatalogValidatedSave = null
+            return@LaunchedEffect
+        }
+        if (!membersAgentRuntimeConfigSaveEnabled(
+                runtime = pending.runtime,
+                model = pending.model,
+                customModelMode = pending.customModelMode,
+                customModelName = pending.customModelName,
+                machineRuntimeIds = machineRuntimeIds,
+                runtimeModelsCatalog = catalog,
+                runtimeModelsLoading = false,
+                runtimeModelsError = null
+            )
+        ) {
+            saveValidationError = "runtime_models_unavailable".userFacingErrorCodeMessage(errorStrings)
+            pendingCatalogValidatedSave = null
+            return@LaunchedEffect
+        }
+        acceptedCatalogGeneration = currentGeneration
+        pendingCatalogValidatedSave = null
+        if (membersRuntimeConfigSwitchConfirmation(stableInitialConfig, pending.config, activeAgent) != null) {
+            pendingRuntimeSwitchConfig = pending.config
+            pendingRetainBuiltInProviderSecret = pending.retainBuiltInProviderSecret
+        } else {
+            onSave(pending.config, currentGeneration, pending.retainBuiltInProviderSecret)
+        }
+    }
+    val runtimeEditorProfileAuthorityCurrent =
         membersAgentProfileEditAuthorityMatches(
             opened = openedProfileAuthority,
             current = currentProfileAuthority,
-            openedCatalogGeneration = acceptedCatalogGeneration,
-            currentCatalogGeneration = runtimeModelGenerationsByRuntime[runtime] ?: 0L
+            // Catalog freshness is checked by the Save attempt. A background refresh must
+            // never disable the editor before the user asks to validate the draft.
+            openedCatalogGeneration = 0L,
+            currentCatalogGeneration = 0L
         )
 
     val runtimeConfigListState = rememberLazyListState()
@@ -9044,7 +9107,7 @@ private fun MembersAgentRuntimeConfigDialog(
                             onEnvVarEntriesChange = { envVarEntries = it },
                             advancedOpen = advancedOpen,
                             onAdvancedOpenChange = { advancedOpen = it },
-                            enabled = !saving
+                            enabled = !saving && !catalogValidationInFlight
                         )
                         builtInFormError?.let { formError ->
                             Text(
@@ -9126,13 +9189,15 @@ private fun MembersAgentRuntimeConfigDialog(
                         },
                         runtimeModelsOverride = runtimeModelsOverride,
                         runtimeModelsLoading = runtimeModelsLoading,
-                        runtimeAvailabilityError = runtimeModelsError,
+                        // Catalog prefetch is advisory while editing. Only a Save attempt may
+                        // surface its failure; the persisted draft must remain visible/editable.
+                        runtimeAvailabilityError = null,
                         onRuntimeModelsRefresh = {
                             onRuntimeModelsRequest(runtime, true)
                         },
                         retainUnavailableSelectedPreset = true,
                         machineRuntimeIds = machineRuntimeIds,
-                        enabled = !saving,
+                        enabled = !saving && !catalogValidationInFlight,
                         providerMode = providerMode,
                         onProviderModeChange = { providerMode = it },
                         providerApiUrl = providerApiUrl,
@@ -9157,15 +9222,6 @@ private fun MembersAgentRuntimeConfigDialog(
                         advancedOpen = advancedOpen,
                         onAdvancedOpenChange = { advancedOpen = it }
                     )
-                    if (runtime != CREATE_AGENT_BUILTIN_RUNTIME_ID && runtimeModelsError != null) {
-                        SlockBrutalActionButton(
-                            label = stringResource(MR.strings.common_retry),
-                            leadingIcon = SlockLucideIconName.RefreshCw,
-                            enabled = !runtimeModelsLoading && !saving,
-                            backgroundColor = SlockColor.SurfaceWhite,
-                            onClick = { onRuntimeModelsRequest(runtime, true) }
-                        )
-                    }
                 }
                 item {
                     Text(
@@ -9175,6 +9231,16 @@ private fun MembersAgentRuntimeConfigDialog(
                     )
                 }
                 error?.takeIf { it.isNotBlank() }?.let { message ->
+                    item {
+                        Text(
+                            text = message,
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold)
+                                .copy(color = SlockColor.AccentRed),
+                            color = SlockColor.AccentRed
+                        )
+                    }
+                }
+                saveValidationError?.takeIf { it.isNotBlank() }?.let { message ->
                     item {
                         Text(
                             text = message,
@@ -9201,8 +9267,9 @@ private fun MembersAgentRuntimeConfigDialog(
                     label = if (saving) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.member_action_save_runtime_config),
                     enabled =
                         !saving &&
+                            !catalogValidationInFlight &&
                             runtimeConfigSaveEnabled &&
-                            runtimeEditorAuthorityCurrent &&
+                            runtimeEditorProfileAuthorityCurrent &&
                             !customModelMissing &&
                             !providerUrlInvalid &&
                             !providerKeyInvalid &&
@@ -9237,11 +9304,42 @@ private fun MembersAgentRuntimeConfigDialog(
                                 envVars = envVarEntries.toMembersRuntimeEnvVars(),
                                 command = command
                             )
+                        if (runtime != CREATE_AGENT_BUILTIN_RUNTIME_ID &&
+                            !membersAgentRuntimeConfigSaveEnabled(
+                                runtime = runtime,
+                                model = model,
+                                customModelMode = customModelMode,
+                                customModelName = customModelName,
+                                machineRuntimeIds = machineRuntimeIds,
+                                runtimeModelsCatalog = runtimeModelsCatalog,
+                                runtimeModelsLoading = runtimeModelsLoading,
+                                runtimeModelsError = runtimeModelsError
+                            )
+                        ) {
+                            saveValidationError = null
+                            val requestGeneration =
+                                (runtimeModelGenerationsByRuntime[runtime] ?: 0L) + 1L
+                            pendingCatalogValidatedSave =
+                                MembersPendingRuntimeConfigSave(
+                                    config = nextConfig,
+                                    runtime = runtime,
+                                    model = model,
+                                    customModelMode = customModelMode,
+                                    customModelName = customModelName,
+                                    retainBuiltInProviderSecret = retainBuiltInProviderSecret,
+                                    requestGeneration = requestGeneration
+                                )
+                            onRuntimeModelsRequest(runtime, true)
+                            return@SlockBrutalActionButton
+                        }
+                        val validatedCatalogGeneration =
+                            runtimeModelGenerationsByRuntime[runtime] ?: 0L
+                        acceptedCatalogGeneration = validatedCatalogGeneration
                         if (membersRuntimeConfigSwitchConfirmation(stableInitialConfig, nextConfig, activeAgent) != null) {
                             pendingRuntimeSwitchConfig = nextConfig
                             pendingRetainBuiltInProviderSecret = retainBuiltInProviderSecret
                         } else {
-                            onSave(nextConfig, acceptedCatalogGeneration, retainBuiltInProviderSecret)
+                            onSave(nextConfig, validatedCatalogGeneration, retainBuiltInProviderSecret)
                         }
                     }
                 )
@@ -9275,6 +9373,16 @@ private fun MembersAgentRuntimeConfigDialog(
         }
     }
 }
+
+private data class MembersPendingRuntimeConfigSave(
+    val config: RuntimeConfig,
+    val runtime: String,
+    val model: String,
+    val customModelMode: Boolean,
+    val customModelName: String,
+    val retainBuiltInProviderSecret: Boolean,
+    val requestGeneration: Long
+)
 
 internal data class MembersRuntimeConfigSwitchConfirmation(
     val title: StringDesc,
@@ -9460,6 +9568,21 @@ internal fun membersAgentRuntimeConfigSaveEnabled(
         customModelName.trim().isNotBlank()
     } else {
         runtimeModelsCatalog.models.any { it.id == model }
+    }
+}
+
+internal fun membersAgentRuntimeConfigSaveAttemptEnabled(
+    runtime: String,
+    model: String,
+    customModelMode: Boolean,
+    customModelName: String,
+    machineRuntimeIds: List<String>
+): Boolean {
+    if (runtime !in machineRuntimeIds) return false
+    return if (customModelMode) {
+        customModelName.trim().isNotBlank()
+    } else {
+        model.trim().isNotBlank()
     }
 }
 
