@@ -764,6 +764,55 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun agentRuntimeSaveAttemptUsesDraftFieldsBeforeCanonicalCatalogValidation() {
+        assertTrue(
+            membersAgentRuntimeConfigSaveAttemptEnabled(
+                runtime = "codex",
+                model = "gpt-5.6-sol",
+                customModelMode = false,
+                customModelName = "",
+                machineRuntimeIds = listOf("codex")
+            )
+        )
+        assertTrue(
+            membersAgentRuntimeConfigSaveAttemptEnabled(
+                runtime = "claude",
+                model = "",
+                customModelMode = true,
+                customModelName = "vendor/private-model",
+                machineRuntimeIds = listOf("claude")
+            )
+        )
+        assertFalse(
+            membersAgentRuntimeConfigSaveAttemptEnabled(
+                runtime = "codex",
+                model = "",
+                customModelMode = false,
+                customModelName = "",
+                machineRuntimeIds = listOf("codex")
+            )
+        )
+        assertFalse(
+            membersAgentRuntimeConfigSaveAttemptEnabled(
+                runtime = "claude",
+                model = "",
+                customModelMode = true,
+                customModelName = "   ",
+                machineRuntimeIds = listOf("claude")
+            )
+        )
+        assertFalse(
+            membersAgentRuntimeConfigSaveAttemptEnabled(
+                runtime = "codex",
+                model = "gpt-5.6-sol",
+                customModelMode = false,
+                customModelName = "",
+                machineRuntimeIds = listOf("claude")
+            )
+        )
+    }
+
+    @Test
     fun openedRuntimeEditorFailsClosedAfterIdentityProfileOrCatalogGenerationChanges() {
         val opened =
             MembersAgentProfileEditAuthority(
