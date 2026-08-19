@@ -364,7 +364,9 @@ filler. For iOS, remove only the locale file's section headings and place every
 reviewed bullet in its original order into one flat list under
 `本次更新包括：` / `Highlights:`. Do not select, summarize, drop, rewrite, or
 reorder bullets during that transformation. A shorter highlights subset is a
-new announcement artifact and requires its own explicit copy review.
+new announcement artifact and requires its own explicit copy review. The
+English `Highlights:` label is retained as historical template wording; it is
+not an instruction to select a subset.
 
 Publish Chinese and English as four separate top-level messages, one message
 per platform and locale. Draft them from the platform's reviewed locale files,
