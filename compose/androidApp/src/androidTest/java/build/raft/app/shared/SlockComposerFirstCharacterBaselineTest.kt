@@ -42,6 +42,9 @@ class SlockComposerFirstCharacterBaselineTest {
                 ready
             }
 
+            scenario.awaitVisualInputHostReadyForEditorFocus(
+                "first-character fixture composer"
+            ) { activity -> activity.window.decorView.findComposerEditText() != null }
             scenario.onActivity { activity ->
                 val editText = activity.window.decorView.findComposerEditText()
                 assertNotNull("composer EditText should be present", editText)
