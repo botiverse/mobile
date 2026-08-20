@@ -1140,6 +1140,11 @@ open class SlockKuiklyActivity :
         if (hostErrorSurfaceShown || isFinishing || isDestroyed) return
         val container = findViewById<ViewGroup?>(R.id.slock_kuikly_container) ?: return
         hostErrorSurfaceShown = true
+        SlockAndroidLocalDiagnostics.recordLog(
+            "error",
+            "SlockKuikly",
+            "visual_host_error_surface reason=$reasonCode page=${pageSpec?.pageName ?: pageName}"
+        )
         val density = resources.displayMetrics.density
         fun dp(value: Int): Int = (value * density).toInt()
         val surface =

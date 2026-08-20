@@ -161,6 +161,7 @@ class KmpVisualScreenshotCaptureTest {
     private var lastCaptureMethod: String? = null
     private var lastStableFrameCount = 0
     private var lastReadyTokenObserved = false
+    private var lastReadyTokenRequired = false
 
 
     @Test
@@ -2060,7 +2061,12 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-gfm-task-list-short")
                     .put("visualFixture", "gfm_task_list_short"),
-            crop = FULL_VIEWPORT_CROP
+            crop = FULL_VIEWPORT_CROP,
+            // This route is the regression consumer for task #211.  A native
+            // CALL_KOTLIN fallback can still produce a rich-looking PNG and
+            // therefore must not be admitted by the generic colour/stability
+            // checks alone.
+            readyToken = "thread_visual_ready fixtureKey=gfm_task_list_short"
         )
     }
 
@@ -3680,6 +3686,16 @@ class KmpVisualScreenshotCaptureTest {
                 waitForIdleBounded()
             }
             lastReadyTokenObserved = readyToken?.let { awaitVisualReadyToken(caseId, it) } ?: false
+            lastReadyTokenRequired = readyToken != null
+            onActivityNoIdle { activity ->
+                val hostErrorShown = activity.javaClass
+                    .getDeclaredField("hostErrorSurfaceShown")
+                    .apply { isAccessible = true }
+                    .getBoolean(activity)
+                require(!hostErrorShown) {
+                    "$caseId host error surface was rendered; refusing to capture CALL_KOTLIN fallback"
+                }
+            }
             val effectiveCrop = cropOverride?.invoke() ?: crop
             val normalized =
                 if (capturedBitmapAfterBeforeScreenshot != null) {
@@ -5127,6 +5143,7 @@ class KmpVisualScreenshotCaptureTest {
                   "dominantRatio": ${stats.dominantRatio}
                 },
                 "readyTokenObserved": $lastReadyTokenObserved,
+                "readyTokenRequired": $lastReadyTokenRequired,
                 "stableFrameCount": $lastStableFrameCount
               },
               "diagnostics": $diagnostics,
