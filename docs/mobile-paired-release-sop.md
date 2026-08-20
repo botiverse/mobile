@@ -390,9 +390,9 @@ When a shipped or distributed carrier produces a material regression:
 
 ### Freeze and resume Hands updates
 
-The release owner decides whether an incident requires freezing the public
-update pointer. The release operator may execute that decision only against a
-fresh-read exact release and revision. A freeze, rollback, share revocation,
+The release owner named in the release plan decides whether an incident
+requires freezing the public update pointer. The release operator may execute
+that decision only against a fresh-read exact release and revision. A freeze, rollback, share revocation,
 release deletion, and removal of an installed build are different mutations;
 authorization for one never implies another.
 
@@ -405,17 +405,13 @@ The Mobile incident/release receipt must record:
 
 - the release-owner directive and exact affected release/source;
 - release revision and rollout before and after the authorized mutation;
-- the previous eligible release observed while frozen;
-- public latest/update readbacks, including each querying client version and
-  whether a device id was supplied;
-- the existing share readback and whether it remained reachable;
+- the resolver, probe-identity, eligible-release, and share readbacks required
+  by the authoritative Hands `Staged rollouts` contract;
 - the incident owner, open blocker, and explicit lift condition.
 
 Resuming distribution requires a new release-owner directive naming the target
-release and rollout. Never infer that target from the frozen release or default
-to full rollout. Before and after resuming, repeat the authoritative Hands
-readbacks and preserve them in the receipt. A rollout number changing is not,
-by itself, evidence that clients resolve the intended version.
+release and rollout. Execute the resume and preserve its readbacks exactly as
+required by the authoritative Hands `Staged rollouts` contract.
 
 Repository closeout may continue so shipped source and evidence are durable,
 but the receipt must preserve the open product blocker and its lift condition.
