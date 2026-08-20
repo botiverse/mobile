@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-19T22:12:44.062Z",
+  "generatedAt": "2026-08-20T22:08:16.025Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 79,
+    "pending": 7
   },
   "cases": [
     {
@@ -467,28 +467,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-18T22:09:48.208Z",
-      "severity": "low",
-      "summary": [
-        "Visual layout, dot colors, and typography appear nearly identical between React and iOS renders.",
-        "Pixel-perfect similarity is 99.77% with only 0.23% mismatch, well within tolerance.",
-        "No missing elements, clipping, or alignment differences observed in the inspected region."
-      ],
-      "likelyCauses": [
-        "Minor sub-pixel antialiasing differences between web and native font/shape rendering.",
-        "Tiny color rendering variance between React and iOS rendering pipelines."
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "No action required; results are within tolerance.",
-        "If a stricter match is desired, normalize dot stroke width and font weight between platforms."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-08-20T22:08:14.580Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -1551,7 +1538,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2693367629386587
+      "metricMismatch": 0.26933811317697576
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1584,7 +1571,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.269476850164054
+      "metricMismatch": 0.2694785379619503
     },
     {
       "id": "components.home.saved.results",
@@ -1620,7 +1607,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11141187669623687
+      "metricMismatch": 0.11140242502801745
     },
     {
       "id": "components.home.activity.results",
@@ -1655,7 +1642,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10672789997434551
+      "metricMismatch": 0.10675085402573559
     },
     {
       "id": "components.tasks.panel.states",
@@ -1831,13 +1818,13 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.5133271897489907
+      "metricMismatch": 0.5133373165363686
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:12:43.366Z",
+      "generatedAt": "2026-08-20T22:08:15.343Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1950,7 +1937,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7093747046353682
+      "metricMismatch": 0.709325083377216
     },
     {
       "id": "components.settings.root.page",
@@ -2121,7 +2108,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19634220439907646
+      "metricMismatch": 0.19633646588622888
     },
     {
       "id": "components.settings.notifications.page",
@@ -2227,7 +2214,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:12:43.651Z",
+      "generatedAt": "2026-08-20T22:08:15.610Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2240,7 +2227,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:12:43.651Z",
+      "generatedAt": "2026-08-20T22:08:15.610Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2253,7 +2240,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:12:43.651Z",
+      "generatedAt": "2026-08-20T22:08:15.610Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2266,7 +2253,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:12:43.651Z",
+      "generatedAt": "2026-08-20T22:08:15.610Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2279,7 +2266,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-19T22:12:43.651Z",
+      "generatedAt": "2026-08-20T22:08:15.610Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2386,7 +2373,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2425774024115256
+      "metricMismatch": 0.24257807753068417
     },
     {
       "id": "screens.settings.server-danger-modal",
