@@ -6209,6 +6209,9 @@ private fun SettingsNativeDetailPageContent(
                     onCheckHandsUpdate = {
                         onSettingsIntent(SharedSettingsIntent.CheckHandsUpdate)
                     },
+                    onPrefetchReleaseNotes = { url ->
+                        settingsCapabilities.prefetchReleaseNotes(url)
+                    },
                     onOpenSourceLicenses = onOpenSourceLicensesPage,
                     onCopyEnvironmentInfo = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
                     onOpenApiEnvironment = onOpenApiEnvironmentPage,
@@ -10683,6 +10686,7 @@ internal fun SharedSettingsAboutContent(
     webUrl: String = SharedSettingsDefaultWebBaseUrl,
     onOpenSlock: (String) -> Unit,
     onCheckHandsUpdate: () -> Unit,
+    onPrefetchReleaseNotes: suspend (String) -> Unit = {},
     onOpenSourceLicenses: () -> Unit,
     onCopyEnvironmentInfo: () -> Unit,
     onOpenApiEnvironment: () -> Unit,
@@ -10694,6 +10698,16 @@ internal fun SharedSettingsAboutContent(
             is ScreenLoadState.Content -> state.data
             else -> fallback
         }
+    val releaseNotesUrl =
+        remember(snapshot.buildLabel) {
+            releaseNotesSanitizeVersionCode(snapshot.buildLabel)
+                .takeIf(String::isNotBlank)
+                ?.let(::sharedSettingsReleaseNotesUrl)
+                .orEmpty()
+        }
+    LaunchedEffect(releaseNotesUrl) {
+        releaseNotesUrl.takeIf(String::isNotBlank)?.let { onPrefetchReleaseNotes(it) }
+    }
     val aboutPayload =
         snapshot.toAboutPayload(
             webUrl = webUrl,

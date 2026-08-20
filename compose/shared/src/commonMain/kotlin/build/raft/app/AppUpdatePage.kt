@@ -153,12 +153,9 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
             }
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            val changelog = appUpdateInlineChangelog(snapshot)
             val versionCode = snapshot?.latestVersionCode?.takeIf { it > 0L }?.toString().orEmpty()
-            if (changelog != null) {
-                ReleaseNotesMarkdownBody(changelog)
-            } else if (versionCode.isNotBlank()) {
-                ReleaseNotesNativeBody(versionCode)
+            if (versionCode.isNotBlank()) {
+                ReleaseNotesWebViewBody(versionCode)
             } else {
                 ReleaseNotesLoadingCover()
             }
@@ -196,9 +193,6 @@ internal class AppUpdateRefreshGate {
         refreshPending = false
     }
 }
-
-internal fun appUpdateInlineChangelog(snapshot: SharedSettingsUpdateCheckSnapshot?): String? =
-    snapshot?.latestChangelog?.takeIf(String::isNotBlank)
 
 internal fun SharedSettingsUpdateCheckSnapshot.withAppUpdateDisplayFallback(
     previous: SharedSettingsUpdateCheckSnapshot?
