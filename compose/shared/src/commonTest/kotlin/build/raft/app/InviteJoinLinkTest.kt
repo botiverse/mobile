@@ -18,6 +18,18 @@ class InviteJoinLinkTest {
     }
 
     @Test
+    fun enforcesTheTokenLengthBoundary() {
+        val maxLengthToken = "a".repeat(256)
+        val overLimitToken = "a".repeat(257)
+
+        assertEquals(
+            SlockInviteJoinIntent(maxLengthToken),
+            parseSlockInviteJoinUrl("https://app.raft.build/join/$maxLengthToken"),
+        )
+        assertNull(parseSlockInviteJoinUrl("https://app.raft.build/join/$overLimitToken"))
+    }
+
+    @Test
     fun rejectsNonProductionOrContentBearingUrls() {
         listOf(
             null,
