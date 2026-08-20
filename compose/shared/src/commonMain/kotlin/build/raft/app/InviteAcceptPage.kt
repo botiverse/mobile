@@ -66,6 +66,25 @@ private data class PendingInviteAccept(
     val agreementId: String?,
 )
 
+/**
+ * Applies the invite page's failure cleanup at the page/provider boundary. Environment
+ * integrity failures retain the provider-owned witness so page recreation cannot rebind the
+ * token under a different live environment; ordinary failures retire the pending flow.
+ */
+internal fun clearInviteResumeAfterInviteFailure(
+    errorCode: String,
+    clearInviteResume: () -> Unit,
+) {
+    if (!isInviteEnvironmentIntegrityFailure(errorCode)) {
+        clearInviteResume()
+    }
+}
+
+/** The only unconditional page cleanup: accept and finalization both completed successfully. */
+internal fun clearInviteResumeAfterInviteCompletion(clearInviteResume: () -> Unit) {
+    clearInviteResume()
+}
+
 @Composable
 private fun InviteAcceptScreen() {
     val pager = LocalActivity.current.getPager() as Pager
@@ -110,7 +129,7 @@ private fun InviteAcceptScreen() {
                 // A failed preview is not a completed invite flow. In particular, an
                 // auth_authority_changed result is the terminal Invalidated witness and must
                 // survive page destruction/recreation and a later duplicate delivery.
-                if (!isInviteEnvironmentIntegrityFailure(infoResult.errorCode)) {
+                clearInviteResumeAfterInviteFailure(infoResult.errorCode) {
                     sharedStores.clearInviteResume(normalizedToken)
                 }
                 state = InviteScreenState.Error(infoResult.errorCode)
@@ -159,7 +178,9 @@ private fun InviteAcceptScreen() {
                     // environment and replay the invite/finalization flow.
                     state = InviteScreenState.Error(AuthAuthorityChangedMessage)
                 } else {
-                    sharedStores.clearInviteResume(normalizedToken)
+                    clearInviteResumeAfterInviteCompletion {
+                        sharedStores.clearInviteResume(normalizedToken)
+                    }
                 }
             }
             is SharedInviteAcceptResult.AgreementRequired -> {
@@ -174,7 +195,7 @@ private fun InviteAcceptScreen() {
                 accepting = false
                 // Typed authority invalidation is terminal and must survive page recreation;
                 // ordinary retryable/expired failures retain the previous cleanup behavior.
-                if (!isInviteEnvironmentIntegrityFailure(accepted.errorCode)) {
+                clearInviteResumeAfterInviteFailure(accepted.errorCode) {
                     sharedStores.clearInviteResume(normalizedToken)
                 }
                 state = InviteScreenState.Error(accepted.errorCode)

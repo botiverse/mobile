@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.clearInviteResumeAfterInviteFailure
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -131,7 +132,7 @@ class SharedInviteResumeStoreTest {
 
         // Mirror InviteAcceptPage's typed failure cleanup policy: authority invalidation is
         // terminal, so the page must not clear the witness before a later recreation.
-        if (!isInviteEnvironmentIntegrityFailure(AuthAuthorityChangedMessage)) {
+        clearInviteResumeAfterInviteFailure(AuthAuthorityChangedMessage) {
             store.clear("invite-token")
         }
         assertEquals(invalidated, store.current("invite-token"))
@@ -159,7 +160,7 @@ class SharedInviteResumeStoreTest {
         // than clear it before a recreation.
         val invalidated =
             store.capture("invite-token", staging) as SharedInviteResumeCaptureResult.Invalidated
-        if (!isInviteEnvironmentIntegrityFailure(AuthAuthorityChangedMessage)) {
+        clearInviteResumeAfterInviteFailure(AuthAuthorityChangedMessage) {
             store.clear("invite-token")
         }
         assertEquals(invalidated, store.current("invite-token"))
@@ -213,10 +214,10 @@ class SharedInviteResumeStoreTest {
 
         // Exercise the same typed cleanup decision used by InviteAcceptPage for both failure
         // results. Neither environment-integrity failure may retire Bound(A).
-        if (!isInviteEnvironmentIntegrityFailure(unavailablePreview.errorCode)) {
+        clearInviteResumeAfterInviteFailure(unavailablePreview.errorCode) {
             resumeStore.clear("invite-token")
         }
-        if (!isInviteEnvironmentIntegrityFailure(unavailableAccept.errorCode)) {
+        clearInviteResumeAfterInviteFailure(unavailableAccept.errorCode) {
             resumeStore.clear("invite-token")
         }
         assertEquals(
