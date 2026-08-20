@@ -98,6 +98,7 @@ private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 internal const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
 internal const val AUTH_PENDING_INVITE_TOKEN_KEY = "slockPendingInviteToken"
 private const val AUTH_MESSAGE_KEY = "slockAuthMessage"
+private const val AUTH_ERROR_CODE_KEY = "slockAuthErrorCode"
 private const val AUTH_LEGAL_PROVIDER_KEY = "slockAuthLegalProvider"
 private const val AUTH_LEGAL_PLATFORM_KEY = "slockAuthLegalPlatform"
 private const val AUTH_LEGAL_CODE_KEY = "slockAuthLegalCode"
@@ -157,6 +158,12 @@ private fun AuthErrorPresentation?.localizedMessage(): String? =
         is AuthErrorPresentation.Dynamic -> message
         is AuthErrorPresentation.Static -> message.localized()
         null -> null
+    }
+
+private fun authErrorDescriptionForCode(code: String?): StringDesc? =
+    when (code?.trim()?.lowercase()?.replace('-', '_')) {
+        "invite_invalid", "ios_mobile_oauth_invalid_invite_token" -> MR.strings.auth_error_invite_invalid.desc()
+        else -> null
     }
 
 @Composable
@@ -286,6 +293,10 @@ private fun LoginScreen() {
     val routeMessage = remember(paramsSignature) {
         pager.pageData.params.optString(AUTH_MESSAGE_KEY).takeIf { it.isNotBlank() }
     }
+    val routeErrorDescription = remember(paramsSignature) {
+        authErrorDescriptionForCode(pager.pageData.params.optString(AUTH_ERROR_CODE_KEY))
+    }
+    val routeErrorMessage = routeErrorDescription?.localized()
     val pendingInviteToken = remember(paramsSignature) {
         normalizeSlockInviteTokenOrNull(pager.pageData.params.optString(AUTH_PENDING_INVITE_TOKEN_KEY))
     }
@@ -349,9 +360,11 @@ private fun LoginScreen() {
                 errorMessage = null
             )
             errorPresentation =
-                response?.optString("message")
-                    .takeUnless { it.isNullOrBlank() }
-                    ?.let(AuthErrorPresentation::Dynamic)
+                authErrorDescriptionForCode(response?.optString("code"))
+                    ?.let(AuthErrorPresentation::Static)
+                    ?: response?.optString("message")
+                        .takeUnless { it.isNullOrBlank() }
+                        ?.let(AuthErrorPresentation::Dynamic)
                     ?: AuthErrorPresentation.Static(
                         StringDesc.ResourceFormatted(
                             MR.strings.auth_error_provider_unavailable,
@@ -404,7 +417,8 @@ private fun LoginScreen() {
         email = emailFieldValue,
         password = passwordFieldValue,
         submitting = state.submitting,
-        errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage ?: routeMessage,
+        errorMessage =
+            errorPresentation.localizedMessage() ?: state.errorMessage ?: routeErrorMessage ?: routeMessage,
         emailError = state.emailFormatError.localizedMessage(),
         passwordError = state.passwordError.localizedMessage(),
         socialProviders = socialProviders,
@@ -2070,6 +2084,7 @@ private fun Pager.openAuthPage(
     replaceCurrent: Boolean = pageName == SLOCK_APP_SHELL_PAGE,
     message: String? = null,
     pendingInviteToken: String? = null,
+    errorCode: String? = null,
 ) {
     val pageData =
         authPageData(
@@ -2077,6 +2092,7 @@ private fun Pager.openAuthPage(
             replaceCurrent = replaceCurrent,
             message = message,
             pendingInviteToken = pendingInviteToken,
+            errorCode = errorCode,
         )
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
 }
@@ -2174,12 +2190,14 @@ internal fun loginPageData(
     replaceCurrent: Boolean = false,
     message: String? = null,
     pendingInviteToken: String? = null,
+    errorCode: String? = null,
 ): JSONObject =
     authPageData(
         pageName = LOGIN_PAGE,
         replaceCurrent = replaceCurrent,
         message = message,
         pendingInviteToken = pendingInviteToken,
+        errorCode = errorCode,
     )
 
 internal fun authPageData(
@@ -2187,12 +2205,16 @@ internal fun authPageData(
     replaceCurrent: Boolean = false,
     message: String? = null,
     pendingInviteToken: String? = null,
+    errorCode: String? = null,
 ): JSONObject =
     JSONObject().apply {
         put("pageName", pageName)
         message
             ?.takeIf { it.isNotBlank() }
             ?.let { put(AUTH_MESSAGE_KEY, it) }
+        errorCode
+            ?.takeIf { it.isNotBlank() }
+            ?.let { put(AUTH_ERROR_CODE_KEY, it) }
         normalizeSlockInviteTokenOrNull(pendingInviteToken)
             ?.let { put(AUTH_PENDING_INVITE_TOKEN_KEY, it) }
         if (replaceCurrent) {

@@ -11,6 +11,8 @@ import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.data.AuthInviteAgreement
 import build.raft.app.data.AuthInviteInfo
+import build.raft.app.data.AuthAuthorityChangedMessage
+import build.raft.app.data.AuthInviteEnvironmentUnavailableCode
 import build.raft.app.data.BridgeSlockAvatarNativeCache
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedInviteAcceptResult
@@ -19,6 +21,7 @@ import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -31,6 +34,7 @@ import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.pager.Pager
@@ -49,7 +53,7 @@ internal class ComposeInviteAcceptPage : build.raft.app.base.BasePager() {
 private sealed interface InviteScreenState {
     data object Loading : InviteScreenState
     data class Ready(val info: AuthInviteInfo, val authenticated: Boolean) : InviteScreenState
-    data class Error(val message: String) : InviteScreenState
+    data class Error(val errorCode: String) : InviteScreenState
     data class Accepted(val serverName: String) : InviteScreenState
 }
 
@@ -61,6 +65,7 @@ private data class PendingInviteAccept(
 @Composable
 private fun InviteAcceptScreen() {
     val pager = LocalActivity.current.getPager() as Pager
+    rememberKmmResourceLocaleSeed(pager)
     val pageDataSignature = pager.pageData.params.toString()
     val token = remember(pageDataSignature) {
         pager.pageData.params.optString(INVITE_TOKEN_KEY).trim()
@@ -87,11 +92,11 @@ private fun InviteAcceptScreen() {
     LaunchedEffect(token) {
         val normalizedToken = normalizeSlockInviteTokenOrNull(token)
         if (normalizedToken == null) {
-            state = InviteScreenState.Error("This invite link is invalid or has expired.")
+            state = InviteScreenState.Error("invalid_token")
             return@LaunchedEffect
         }
         when (val infoResult = authDataSource.loadInviteInfo(normalizedToken)) {
-            is SharedInviteInfoResult.Failure -> state = InviteScreenState.Error(infoResult.message)
+            is SharedInviteInfoResult.Failure -> state = InviteScreenState.Error(infoResult.errorCode)
             is SharedInviteInfoResult.Success -> {
                 val info = infoResult.data.copy(agreement = agreementOverride ?: infoResult.data.agreement)
                 val session = authDataSource.currentSession()
@@ -116,18 +121,24 @@ private fun InviteAcceptScreen() {
         if (normalizedToken == null) {
             pendingAccept = null
             accepting = false
-            state = InviteScreenState.Error("This invite link is invalid or has expired.")
+            state = InviteScreenState.Error("invalid_token")
             return@LaunchedEffect
         }
         accepting = true
         when (val accepted = authDataSource.acceptInvite(normalizedToken, request.agreementId)) {
-            is SharedInviteAcceptResult.Success -> finishInvite(
-                pager = pager,
-                authDataSource = authDataSource,
-                serverId = accepted.data.serverId,
-                serverName = accepted.data.serverName,
-                onAccepted = { state = InviteScreenState.Accepted(accepted.data.serverName) },
-            )
+            is SharedInviteAcceptResult.Success -> {
+                val completed = finishInvite(
+                    pager = pager,
+                    authDataSource = authDataSource,
+                    serverId = accepted.data.serverId,
+                    ownerAccountId = accepted.ownerAccountId,
+                    onAccepted = { state = InviteScreenState.Accepted(accepted.data.serverName) },
+                )
+                if (!completed) {
+                    accepting = false
+                    state = InviteScreenState.Error(AuthAuthorityChangedMessage)
+                }
+            }
             is SharedInviteAcceptResult.AgreementRequired -> {
                 agreementOverride = accepted.agreement
                 accepting = false
@@ -138,7 +149,7 @@ private fun InviteAcceptScreen() {
             }
             is SharedInviteAcceptResult.Failure -> {
                 accepting = false
-                state = InviteScreenState.Error(accepted.message)
+                state = InviteScreenState.Error(accepted.errorCode)
             }
             SharedInviteAcceptResult.Unauthenticated -> {
                 accepting = false
@@ -151,28 +162,38 @@ private fun InviteAcceptScreen() {
 
     AuthScaffold(contentScrollable = true) {
         when (val current = state) {
-            InviteScreenState.Loading -> Text("Loading invite…", style = SlockType.PageTitle, color = SlockColor.TextBlack)
-            is InviteScreenState.Error -> InviteErrorContent(current.message)
+            InviteScreenState.Loading ->
+                Text(
+                    stringResource(MR.strings.invite_state_loading),
+                    style = SlockType.PageTitle,
+                    color = SlockColor.TextBlack,
+                )
+            is InviteScreenState.Error -> InviteErrorContent(current.errorCode)
             is InviteScreenState.Accepted -> InviteAcceptedContent(current.serverName)
             is InviteScreenState.Ready -> {
                 Text(
-                    text = if (current.info.kind == "join_link") "Join this server" else "You’re invited",
+                    text =
+                        if (current.info.kind == "join_link") {
+                            stringResource(MR.strings.invite_title_join_server)
+                        } else {
+                            stringResource(MR.strings.invite_title_invited)
+                        },
                     style = SlockType.PageTitle,
                     color = SlockColor.TextBlack,
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "Use this link to join ${current.info.serverName} on Raft.",
+                    text = stringResource(MR.strings.invite_description, current.info.serverName),
                     style = SlockType.Body,
                     color = SlockColor.TextMutedGray,
                 )
-                if (!current.info.insideCountsHidden && (current.info.memberCount > 0 || current.info.agentCount > 0)) {
+                if (
+                    !current.info.insideCountsHidden &&
+                        (current.info.memberCount > 0 || current.info.agentCount > 0)
+                ) {
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Meet ${current.info.memberCount} human(s) and ${current.info.agentCount} agent(s) inside.",
-                        style = SlockType.Body,
-                        color = SlockColor.TextMutedGray,
-                    )
+                    InviteCountText(count = current.info.memberCount, human = true)
+                    InviteCountText(count = current.info.agentCount, human = false)
                 }
                 current.info.agreement?.let { agreement ->
                     Spacer(Modifier.height(16.dp))
@@ -181,15 +202,24 @@ private fun InviteAcceptScreen() {
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(agreement.title, style = SlockType.SectionLabel, color = SlockColor.TextBlack)
-                        Text("Version ${agreement.version}", style = SlockType.Caption, color = SlockColor.TextMutedGray)
-                        Text(agreement.bodyMarkdown, style = SlockType.Body, color = SlockColor.TextBlack)
+                        Text(
+                            stringResource(MR.strings.invite_agreement_version, agreement.version),
+                            style = SlockType.Caption,
+                            color = SlockColor.TextMutedGray,
+                        )
+                        Text(
+                            agreement.bodyMarkdown,
+                            style = SlockType.Body,
+                            color = SlockColor.TextBlack,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
                 if (current.info.humanSeatLimitReached) {
                     Spacer(Modifier.height(12.dp))
                     Text(
                         current.info.humanSeatLimitMessage
-                            ?: "This server has no available human seats right now.",
+                            ?: stringResource(MR.strings.invite_error_seat_limit),
                         style = SlockType.Body,
                         color = SlockColor.TextMutedGray,
                     )
@@ -197,13 +227,13 @@ private fun InviteAcceptScreen() {
                 Spacer(Modifier.height(20.dp))
                 if (!current.authenticated) {
                     Text(
-                        "Sign in or create an account to accept this invite.",
+                        stringResource(MR.strings.invite_sign_in_prompt),
                         style = SlockType.Body,
                         color = SlockColor.TextMutedGray,
                     )
                     Spacer(Modifier.height(12.dp))
                     SlockBrutalActionButton(
-                        label = "Sign In",
+                        label = stringResource(MR.strings.invite_action_sign_in),
                         onClick = { pager.openInviteAuthPage(LOGIN_PAGE, token) },
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !accepting && !current.info.humanSeatLimitReached,
@@ -211,14 +241,19 @@ private fun InviteAcceptScreen() {
                     )
                     Spacer(Modifier.height(8.dp))
                     SlockBrutalActionButton(
-                        label = "Create Account",
+                        label = stringResource(MR.strings.invite_action_create_account),
                         onClick = { pager.openInviteAuthPage(REGISTER_PAGE, token) },
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !accepting && !current.info.humanSeatLimitReached,
                     )
                 } else if (current.info.agreement != null) {
                     SlockBrutalActionButton(
-                        label = if (accepting) "Joining server…" else "Agree & Join",
+                        label =
+                            if (accepting) {
+                                stringResource(MR.strings.invite_action_joining)
+                            } else {
+                                stringResource(MR.strings.invite_action_agree_join)
+                            },
                         onClick = {
                             if (accepting) return@SlockBrutalActionButton
                             accepting = true
@@ -238,39 +273,78 @@ private fun InviteAcceptScreen() {
 }
 
 @Composable
-private fun InviteErrorContent(message: String) {
-    Text("Invite error", style = SlockType.PageTitle, color = SlockColor.TextBlack)
+private fun InviteErrorContent(errorCode: String) {
+    Text(stringResource(MR.strings.invite_error_title), style = SlockType.PageTitle, color = SlockColor.TextBlack)
     Spacer(Modifier.height(12.dp))
-    Text(message, style = SlockType.Body, color = SlockColor.TextMutedGray)
+    Text(inviteErrorMessage(errorCode), style = SlockType.Body, color = SlockColor.TextMutedGray)
 }
 
 @Composable
 private fun InviteAcceptedContent(serverName: String) {
-    Text("You’re in", style = SlockType.PageTitle, color = SlockColor.TextBlack)
+    Text(stringResource(MR.strings.invite_accepted_title), style = SlockType.PageTitle, color = SlockColor.TextBlack)
     Spacer(Modifier.height(12.dp))
-    Text("You’ve joined $serverName.", style = SlockType.Body, color = SlockColor.TextMutedGray)
+    Text(
+        stringResource(MR.strings.invite_accepted_description, serverName),
+        style = SlockType.Body,
+        color = SlockColor.TextMutedGray,
+    )
 }
+
+@Composable
+private fun InviteCountText(count: Int, human: Boolean) {
+    val text =
+        when {
+            human && count == 0 -> stringResource(MR.strings.invite_human_count_zero)
+            human && count == 1 -> stringResource(MR.strings.invite_human_count_one, count)
+            human -> stringResource(MR.strings.invite_human_count_many, count)
+            !human && count == 0 -> stringResource(MR.strings.invite_agent_count_zero)
+            !human && count == 1 -> stringResource(MR.strings.invite_agent_count_one, count)
+            else -> stringResource(MR.strings.invite_agent_count_many, count)
+        }
+    Text(text, style = SlockType.Body, color = SlockColor.TextMutedGray)
+}
+
+@Composable
+private fun inviteErrorMessage(errorCode: String): String =
+    when (errorCode.trim().lowercase().replace('-', '_')) {
+        "invalid_token", "ios_mobile_oauth_invalid_invite_token" ->
+            stringResource(MR.strings.invite_error_invalid)
+        "auth_required" -> stringResource(MR.strings.invite_error_auth_required)
+        "already_member" -> stringResource(MR.strings.invite_error_already_member)
+        "seat_limit" -> stringResource(MR.strings.invite_error_seat_limit)
+        "network" -> stringResource(MR.strings.invite_error_network)
+        "rate_limited" -> stringResource(MR.strings.invite_error_rate_limited)
+        AuthAuthorityChangedMessage -> stringResource(MR.strings.invite_error_authority_changed)
+        AuthInviteEnvironmentUnavailableCode -> stringResource(MR.strings.invite_error_environment)
+        else -> stringResource(MR.strings.invite_error_generic)
+    }
 
 private suspend fun finishInvite(
     pager: Pager,
     authDataSource: SharedAuthDataSource,
     serverId: String,
-    serverName: String,
+    ownerAccountId: String,
     onAccepted: () -> Unit,
-) {
+): Boolean {
     val restored = runCatchingPreservingCancellation { authDataSource.restoreSession() }.getOrNull()
-    val selected =
-        if (restored is SharedAuthResult.Success) {
-            runCatchingPreservingCancellation { authDataSource.selectServer(serverId) }.getOrNull()
-        } else {
-            null
-        }
-    val session = (selected as? SharedAuthResult.Success)?.data
-        ?: (restored as? SharedAuthResult.Success)?.data
-    onAccepted()
-    if (session != null) {
-        pager.openPostAuthRoute(session)
+    val restoredSession = (restored as? SharedAuthResult.Success)?.data ?: return false
+    if (ownerAccountId.isBlank() || restoredSession.user.id != ownerAccountId) return false
+
+    // Selection is a CAS against the current account/token generation. Whether it succeeds or
+    // fails because the server is not in the cached list, read the latest session before routing;
+    // never route with the pre-CAS snapshot after a concurrent A→B/logout transition.
+    runCatchingPreservingCancellation {
+        authDataSource.selectInviteServer(serverId, ownerAccountId)
     }
+    val currentSession =
+        (runCatchingPreservingCancellation { authDataSource.currentSession() }.getOrNull()
+            as? SharedAuthResult.Success)?.data
+            ?: return false
+    if (currentSession.user.id != ownerAccountId) return false
+
+    onAccepted()
+    pager.openPostAuthRoute(currentSession)
+    return true
 }
 
 internal fun Pager.openInviteAuthPage(pageName: String, token: String) {

@@ -14,6 +14,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 
 internal const val AuthAuthorityChangedMessage = "auth_authority_changed"
+internal const val AuthInviteEnvironmentUnavailableCode = "invite_environment_unavailable"
+internal const val AuthInviteEnvironmentUnavailableMessage =
+    "Invite links are available only in the production environment."
 
 private val authJson = Json {
     ignoreUnknownKeys = true
@@ -26,7 +29,8 @@ class SharedAuthDataSource(
     private val api: SlockAuthApi,
     private val sessionStore: SlockAuthSessionStore,
     private val diagnosticsLogger: (String) -> Unit = {},
-    private val criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger
+    private val criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger,
+    private val inviteEnvironmentKey: () -> String = { SharedApiEnvironmentStore.Production.key },
 ) {
     private var avatarCacheRuntime: SlockAvatarCacheRuntime? = null
     private var avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
@@ -56,12 +60,14 @@ class SharedAuthDataSource(
         transport: SlockAuthTransport,
         sessionStore: SlockAuthSessionStore,
         diagnosticsLogger: (String) -> Unit = {},
-        criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger
+        criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger,
+        inviteEnvironmentKey: () -> String = { SharedApiEnvironmentStore.Production.key },
     ) : this(
         api = SlockAuthApiClient(transport, diagnosticsLogger),
         sessionStore = sessionStore,
         diagnosticsLogger = diagnosticsLogger,
-        criticalDiagnosticsLogger = criticalDiagnosticsLogger
+        criticalDiagnosticsLogger = criticalDiagnosticsLogger,
+        inviteEnvironmentKey = inviteEnvironmentKey,
     )
 
     fun logDiagnostics(message: String) {
@@ -88,6 +94,13 @@ class SharedAuthDataSource(
      * identity, agreement and seat state comes from this canonical response.
      */
     suspend fun loadInviteInfo(token: String): SharedInviteInfoResult {
+        if (!inviteEnvironmentIsProduction()) {
+            return SharedInviteInfoResult.Failure(
+                code = 409,
+                errorCode = AuthInviteEnvironmentUnavailableCode,
+                message = AuthInviteEnvironmentUnavailableMessage,
+            )
+        }
         val normalizedToken = token.trim()
         if (normalizedToken.isBlank()) {
             return SharedInviteInfoResult.Failure(
@@ -107,6 +120,13 @@ class SharedAuthDataSource(
         token: String,
         agreementId: String? = null,
     ): SharedInviteAcceptResult {
+        if (!inviteEnvironmentIsProduction()) {
+            return SharedInviteAcceptResult.Failure(
+                code = 409,
+                errorCode = AuthInviteEnvironmentUnavailableCode,
+                message = AuthInviteEnvironmentUnavailableMessage,
+            )
+        }
         val normalizedToken = token.trim()
         if (normalizedToken.isBlank()) {
             return SharedInviteAcceptResult.Failure(
@@ -115,7 +135,7 @@ class SharedAuthDataSource(
                 message = "This invite link is invalid or has expired.",
             )
         }
-        val session = sessionStore.readSession() ?: return SharedInviteAcceptResult.Unauthenticated
+        var session = sessionStore.readSession() ?: return SharedInviteAcceptResult.Unauthenticated
         var response = api.acceptInvite(
             authorization = session.bearer(),
             token = normalizedToken,
@@ -133,31 +153,70 @@ class SharedAuthDataSource(
             ) {
                 is SharedAuthResult.Success -> {
                     if (refreshed.data.user.id != session.user.id) {
-                        return SharedInviteAcceptResult.Failure(
-                            code = 401,
-                            errorCode = AuthAuthorityChangedMessage,
-                            message = AuthAuthorityChangedMessage,
-                        )
+                        return inviteAuthorityChangedFailure()
                     }
+                    session = refreshed.data
                     response = api.acceptInvite(
                         authorization = refreshed.data.bearer(),
                         token = normalizedToken,
                         agreementId = agreementId?.trim()?.takeIf { it.isNotBlank() },
                     )
                 }
-                SharedAuthResult.Unauthenticated -> return SharedInviteAcceptResult.Unauthenticated
+                SharedAuthResult.Unauthenticated ->
+                    return fenceInviteCompletion(session, SharedInviteAcceptResult.Unauthenticated)
                 is SharedAuthResult.Failure ->
-                    return SharedInviteAcceptResult.Failure(
-                        code = 0,
-                        errorCode = "auth_refresh_failed",
-                        message = refreshed.message,
+                    return fenceInviteCompletion(
+                        session,
+                        SharedInviteAcceptResult.Failure(
+                            code = 0,
+                            errorCode = "auth_refresh_failed",
+                            message = refreshed.message,
+                        )
                     )
             }
         }
-        return when (response) {
-            is AuthApiResult.Success -> SharedInviteAcceptResult.Success(response.data)
+        val result = when (response) {
+            is AuthApiResult.Success ->
+                SharedInviteAcceptResult.Success(
+                    data = response.data,
+                    ownerAccountId = session.user.id,
+                )
             is AuthApiResult.Failure -> response.toInviteAcceptFailure()
         }
+        return fenceInviteCompletion(session, result)
+    }
+
+    private fun inviteEnvironmentIsProduction(): Boolean =
+        runCatching { inviteEnvironmentKey().trim() == SharedApiEnvironmentStore.Production.key }
+            .getOrDefault(false)
+
+    private fun inviteAuthorityChangedFailure(): SharedInviteAcceptResult.Failure =
+        SharedInviteAcceptResult.Failure(
+            code = 409,
+            errorCode = AuthAuthorityChangedMessage,
+            message = AuthAuthorityChangedMessage,
+        )
+
+    /**
+     * The invite write is an external side effect. A response may arrive after the local auth
+     * owner was replaced or logged out, so every terminal result is published only while the
+     * captured account owner is still current. Token rotation for the same account deliberately
+     * passes this fence.
+     */
+    private suspend fun fenceInviteCompletion(
+        capturedSession: StoredAuthSession,
+        result: SharedInviteAcceptResult,
+    ): SharedInviteAcceptResult {
+        val currentOwnerId = sessionStore.readSession()?.user?.id
+        if (currentOwnerId == capturedSession.user.id) return result
+
+        if (result is SharedInviteAcceptResult.Success) {
+            criticalDiagnosticsLogger(
+                "auth_invite_accept_owner_fence_rejected serverId=${result.data.serverId} " +
+                    "ownerChanged=true"
+            )
+        }
+        return inviteAuthorityChangedFailure()
     }
 
     suspend fun login(email: String, password: String): SharedAuthResult<StoredAuthSession> {
@@ -1169,6 +1228,24 @@ class SharedAuthDataSource(
 
     suspend fun selectServer(serverId: String): SharedAuthResult<StoredAuthSession> {
         val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
+        return selectStoredAuthServer(
+            sessionStore = sessionStore,
+            expectedSession = session,
+            serverId = serverId,
+            serverSelectionMemory = serverSelectionMemory,
+        )
+    }
+
+    /** Selects the server returned by an invite only for the owner that performed that invite write. */
+    suspend fun selectInviteServer(
+        serverId: String,
+        expectedAccountId: String,
+    ): SharedAuthResult<StoredAuthSession> {
+        val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
+        if (session.user.id != expectedAccountId) return SharedAuthResult.Failure(
+            SharedAuthErrorCode.Unknown,
+            AuthAuthorityChangedMessage,
+        )
         return selectStoredAuthServer(
             sessionStore = sessionStore,
             expectedSession = session,
@@ -2270,7 +2347,11 @@ sealed interface SharedInviteInfoResult {
 }
 
 sealed interface SharedInviteAcceptResult {
-    data class Success(val data: AuthInviteAcceptResponse) : SharedInviteAcceptResult
+    data class Success(
+        val data: AuthInviteAcceptResponse,
+        /** Account owner captured for the external write; tokens may rotate, owner may not. */
+        val ownerAccountId: String = "",
+    ) : SharedInviteAcceptResult
     data class AgreementRequired(val agreement: AuthInviteAgreement) : SharedInviteAcceptResult
     data object Unauthenticated : SharedInviteAcceptResult
     data class Failure(

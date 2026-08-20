@@ -1956,6 +1956,145 @@ class AuthDataSourceTest {
         assertEquals(successor, store.readSession())
     }
 
+    @Test
+    fun acceptInviteAllowsSameAccountTokenRotationAtCompletion() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val api =
+            FakeAuthApi(
+                acceptInviteResponse = AuthNetworkResponse(
+                    200,
+                    """{"serverId":"server-1","serverName":"Slock"}""",
+                ),
+                onAcceptInviteRequest = {
+                    store.updateTokens("rotated-access", "rotated-refresh")
+                },
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.acceptInvite(" invite-token ")
+
+        assertTrue(result is SharedInviteAcceptResult.Success)
+        assertEquals("user-1", result.ownerAccountId)
+        assertEquals(listOf("invite-token"), api.acceptInviteTokens)
+        assertEquals("rotated-access", store.readSession()?.accessToken)
+    }
+
+    @Test
+    fun acceptInviteRetryAfter401CanPublishForTheSameAccount() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val api =
+            FakeAuthApi(
+                acceptInviteResponses =
+                    ArrayDeque(
+                        listOf(
+                            AuthNetworkResponse(401, null),
+                            AuthNetworkResponse(
+                                200,
+                                """{"serverId":"server-1","serverName":"Slock"}""",
+                            ),
+                        )
+                    ),
+                refreshResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """{"accessToken":"fresh-access","refreshToken":"fresh-refresh"}""",
+                    ),
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.acceptInvite("invite-token")
+
+        assertTrue(result is SharedInviteAcceptResult.Success)
+        assertEquals("user-1", result.ownerAccountId)
+        assertEquals(
+            listOf("Bearer access-token", "Bearer fresh-access"),
+            api.acceptInviteAuthorizations,
+        )
+        assertEquals("fresh-access", store.readSession()?.accessToken)
+    }
+
+    @Test
+    fun acceptInviteSuppressesSuccessAfterAccountSwitchAndRecordsTheIrreversibleWrite() = runBlocking {
+        val original = storedSession()
+        val successor =
+            storedSession(accessToken = "successor-access").copy(
+                user = StoredAuthUser(id = "user-2", email = "user2@slock.ai"),
+                refreshToken = "successor-refresh",
+            )
+        val store = InMemorySlockAuthSessionStore(original)
+        val critical = mutableListOf<String>()
+        val api =
+            FakeAuthApi(
+                acceptInviteResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """{"serverId":"server-1","serverName":"Slock"}""",
+                    ),
+                onAcceptInviteRequest = { store.saveSession(successor) },
+            )
+        val source =
+            SharedAuthDataSource(
+                transport = api,
+                sessionStore = store,
+                criticalDiagnosticsLogger = critical::add,
+            )
+
+        val result = source.acceptInvite("invite-token")
+
+        assertTrue(result is SharedInviteAcceptResult.Failure)
+        assertEquals(AuthAuthorityChangedMessage, result.errorCode)
+        assertEquals(successor, store.readSession())
+        assertTrue(
+            critical.any {
+                "auth_invite_accept_owner_fence_rejected" in it &&
+                    "serverId=server-1" in it &&
+                    "ownerChanged=true" in it
+            }
+        )
+    }
+
+    @Test
+    fun acceptInviteSuppressesCompletionAfterLogout() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val api =
+            FakeAuthApi(
+                acceptInviteResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """{"serverId":"server-1","serverName":"Slock"}""",
+                    ),
+                onAcceptInviteRequest = { store.clearSession(reason = "test", source = "test") },
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.acceptInvite("invite-token")
+
+        assertTrue(result is SharedInviteAcceptResult.Failure)
+        assertEquals(AuthAuthorityChangedMessage, result.errorCode)
+        assertNull(store.readSession())
+    }
+
+    @Test
+    fun acceptInviteKeepsAgreementRequiredForTheCurrentOwner() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val api =
+            FakeAuthApi(
+                acceptInviteResponse =
+                    AuthNetworkResponse(
+                        409,
+                        null,
+                        """{"error":"agreement_required","agreement":{"id":"agreement-1","title":"Rules","bodyMarkdown":"Be kind.","version":2}}""",
+                    ),
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.acceptInvite("invite-token")
+
+        assertTrue(result is SharedInviteAcceptResult.AgreementRequired)
+        assertEquals("agreement-1", result.agreement.id)
+        assertEquals("user-1", store.readSession()?.user?.id)
+    }
+
     private fun storedSession(accessToken: String = "access-token"): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
@@ -2044,6 +2183,9 @@ class AuthDataSourceTest {
             AuthNetworkResponse(201, """{"id":"server-2","name":"Ops","slug":"ops"}"""),
         private val createServerResponses: ArrayDeque<AuthNetworkResponse>? = null,
         private val serversResponses: ArrayDeque<AuthNetworkResponse>? = null,
+        private val inviteInfoResponse: AuthNetworkResponse = AuthNetworkResponse(501, null),
+        private val acceptInviteResponse: AuthNetworkResponse = AuthNetworkResponse(501, null),
+        private val acceptInviteResponses: ArrayDeque<AuthNetworkResponse>? = null,
         private val throwCurrentUser: Boolean = false,
         private val resendVerificationResponse: AuthNetworkResponse =
             AuthNetworkResponse(200, """{"ok":true}"""),
@@ -2057,6 +2199,7 @@ class AuthDataSourceTest {
         private val onServersRequest: suspend () -> Unit = {},
         private val onRefreshRequest: suspend () -> Unit = {},
         private val onCreateServerRequest: suspend (Int) -> Unit = {},
+        private val onAcceptInviteRequest: suspend () -> Unit = {},
         private val onLogoutRequest: suspend () -> Unit = {},
         private val onQaReadyRequest: suspend () -> Unit = {},
     ) : SlockAuthTransport {
@@ -2115,6 +2258,10 @@ class AuthDataSourceTest {
         var createServerBody: String? = null
             private set
         val createServerAuthorizations = mutableListOf<String>()
+        val inviteInfoTokens = mutableListOf<String>()
+        val acceptInviteAuthorizations = mutableListOf<String>()
+        val acceptInviteTokens = mutableListOf<String>()
+        val acceptInviteAgreementIds = mutableListOf<String?>()
         var qaConsumeBody: String? = null
             private set
         var qaReadyTicketDigest: String? = null
@@ -2266,6 +2413,25 @@ class AuthDataSourceTest {
                     responses.first()
                 }
             } ?: createServerResponse
+        }
+
+        override suspend fun inviteInfo(token: String): AuthNetworkResponse {
+            inviteInfoTokens += token
+            return inviteInfoResponse
+        }
+
+        override suspend fun acceptInvite(authorization: String, bodyText: String): AuthNetworkResponse {
+            acceptInviteAuthorizations += authorization
+            acceptInviteTokens += bodyText.substringAfter("\"token\":\"").substringBefore('"')
+            acceptInviteAgreementIds +=
+                bodyText
+                    .substringAfter("\"agreementId\":\"", "")
+                    .takeIf { it.isNotEmpty() }
+                    ?.substringBefore('"')
+            onAcceptInviteRequest()
+            return acceptInviteResponses?.let { responses ->
+                if (responses.size > 1) responses.removeFirst() else responses.first()
+            } ?: acceptInviteResponse
         }
 
         override suspend fun consumeQaBootstrap(bodyText: String): AuthNetworkResponse {

@@ -4,6 +4,8 @@ import build.raft.app.network.MultipartFile
 import build.raft.app.network.SlockHttpExecutor
 import build.raft.app.network.SlockHttpExecutorResponse
 import build.raft.app.network.SlockRequestPriority
+import build.raft.app.network.SlockRequestScheduler
+import build.raft.app.network.SlockRequestTimeoutException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -11,6 +13,68 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
 class SharedApiEnvironmentNetworkClientTest {
+    @Test
+    fun authInviteTransportKeepsRawExecutorUrlButRedactsSuccessAndHttpFailureDiagnostics() = runBlocking {
+        val token = "invite-capability-token"
+        listOf(200, 500).forEach { responseCode ->
+            val logs = mutableListOf<String>()
+            val schedulerLogs = mutableListOf<String>()
+            val executor = RecordingHttpExecutor(responseCode = responseCode)
+            val transport =
+                SharedSlockAuthTransport(
+                    baseUrl = "https://api.raft.build/api/",
+                    executor = executor,
+                    warningLogger = logs::add,
+                    requestScheduler = SlockRequestScheduler(logger = schedulerLogs::add),
+                )
+
+            val response = transport.inviteInfo(token)
+
+            assertEquals(responseCode, response.code)
+            assertEquals(
+                "https://api.raft.build/api/auth/invite-info?token=$token",
+                executor.urls.single(),
+            )
+            val diagnostics = (logs + schedulerLogs).joinToString("\n")
+            assertFalse(diagnostics.contains(token))
+            assertTrue(logs.any { "path=auth/invite-info?token=[redacted]" in it })
+            assertTrue(schedulerLogs.any { "key=auth/invite-info?token=[redacted]" in it })
+        }
+    }
+
+    @Test
+    fun authInviteTransportDoesNotCopyRawTimeoutExceptionTextIntoErrorOrDiagnostics() = runBlocking {
+        val token = "invite-timeout-capability"
+        val logs = mutableListOf<String>()
+        val schedulerLogs = mutableListOf<String>()
+        val executor =
+            RecordingHttpExecutor(
+                executeException =
+                    SlockRequestTimeoutException(
+                        "executor timeout url=https://api.raft.build/api/auth/invite-info?token=$token#fragment",
+                    ),
+            )
+        val transport =
+            SharedSlockAuthTransport(
+                baseUrl = "https://api.raft.build/api/",
+                executor = executor,
+                warningLogger = logs::add,
+                requestScheduler = SlockRequestScheduler(logger = schedulerLogs::add),
+            )
+
+        val response = transport.inviteInfo(token)
+
+        assertEquals(0, response.code)
+        assertFalse(response.errorBodyText.orEmpty().contains(token))
+        assertEquals(
+            "https://api.raft.build/api/auth/invite-info?token=$token",
+            executor.urls.single(),
+        )
+        val diagnostics = (logs + schedulerLogs).joinToString("\n")
+        assertFalse(diagnostics.contains(token))
+        assertTrue(response.errorBodyText.orEmpty().contains("request_timeout"))
+    }
+
     @Test
     fun refreshAttemptUsesCanonicalReplayHeaders() = runBlocking {
         val executor = RecordingHttpExecutor(responseCode = 401)
@@ -206,6 +270,101 @@ class SharedApiEnvironmentNetworkClientTest {
     }
 
     @Test
+    fun productionInviteInfoUsesProductionTransportAndNonProductionHasZeroEgress() = runBlocking {
+        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val executor =
+            RecordingHttpExecutor(
+                responseBodyText =
+                    """{"kind":"join_link","serverName":"Raft","memberCount":1,"agentCount":0}""",
+            )
+        val dataSource =
+            createSharedAuthDataSourceForCurrentEnvironment(
+                apiEnvironmentStore = environmentStore,
+                authStore = InMemorySlockAuthSessionStore(),
+                transportFactory = { baseUrlProvider ->
+                    SharedSlockAuthTransport(baseUrlProvider = baseUrlProvider, executor = executor)
+                },
+            )
+        val token = "production-invite-token"
+
+        val production = dataSource.loadInviteInfo(token)
+
+        assertTrue(production is SharedInviteInfoResult.Success)
+        assertEquals(
+            listOf("${SharedApiEnvironmentStore.Production.apiBaseUrl.trimEnd('/')}/auth/invite-info?token=$token"),
+            executor.urls,
+        )
+
+        environmentStore.select("staging")
+        val staging = dataSource.loadInviteInfo(token)
+        assertTrue(staging is SharedInviteInfoResult.Failure)
+        assertEquals(AuthInviteEnvironmentUnavailableCode, staging.errorCode)
+        assertEquals(1, executor.urls.size)
+
+        environmentStore.save(
+            SharedSettingsApiEnvironmentRequest(
+                key = SharedApiEnvironmentStore.CustomKey,
+                label = "Custom",
+                apiBaseUrl = "http://evil.example/api/",
+                socketBaseUrl = "http://evil.example",
+                webUrl = "http://evil.example",
+            )
+        )
+        val custom = dataSource.loadInviteInfo(token)
+        assertTrue(custom is SharedInviteInfoResult.Failure)
+        assertEquals(AuthInviteEnvironmentUnavailableCode, custom.errorCode)
+        assertEquals(1, executor.urls.size)
+    }
+
+    @Test
+    fun productionInviteAcceptUsesProductionTransportAndNonProductionHasZeroEgress() = runBlocking {
+        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val sessionStore = authenticatedSessionStore()
+        val executor =
+            RecordingHttpExecutor(
+                responseBodyText = """{"serverId":"server-1","serverName":"Raft"}""",
+            )
+        val dataSource =
+            createSharedAuthDataSourceForCurrentEnvironment(
+                apiEnvironmentStore = environmentStore,
+                authStore = sessionStore,
+                transportFactory = { baseUrlProvider ->
+                    SharedSlockAuthTransport(baseUrlProvider = baseUrlProvider, executor = executor)
+                },
+            )
+        val token = "production-invite-token"
+
+        val production = dataSource.acceptInvite(token)
+
+        assertTrue(production is SharedInviteAcceptResult.Success)
+        assertEquals("user-1", production.ownerAccountId)
+        assertEquals(
+            listOf("${SharedApiEnvironmentStore.Production.apiBaseUrl.trimEnd('/')}/auth/accept-invite"),
+            executor.urls,
+        )
+
+        environmentStore.select("staging")
+        val staging = dataSource.acceptInvite(token)
+        assertTrue(staging is SharedInviteAcceptResult.Failure)
+        assertEquals(AuthInviteEnvironmentUnavailableCode, staging.errorCode)
+        assertEquals(1, executor.urls.size)
+
+        environmentStore.save(
+            SharedSettingsApiEnvironmentRequest(
+                key = SharedApiEnvironmentStore.CustomKey,
+                label = "Custom",
+                apiBaseUrl = "http://evil.example/api/",
+                socketBaseUrl = "http://evil.example",
+                webUrl = "http://evil.example",
+            )
+        )
+        val custom = dataSource.acceptInvite(token)
+        assertTrue(custom is SharedInviteAcceptResult.Failure)
+        assertEquals(AuthInviteEnvironmentUnavailableCode, custom.errorCode)
+        assertEquals(1, executor.urls.size)
+    }
+
+    @Test
     fun sharedNetworkClientReadsLatestApiEnvironmentForEachRequest() = runBlocking {
         val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
         val executor = RecordingHttpExecutor()
@@ -294,6 +453,9 @@ class SharedApiEnvironmentNetworkClientTest {
 
     private class RecordingHttpExecutor(
         private val responseCode: Int = 200,
+        private val responseBodyText: String? = "{}",
+        private val responseErrorBodyText: String? = null,
+        private val executeException: Throwable? = null,
         private val onExecute: (String) -> Unit = {},
     ) : SlockHttpExecutor {
         val urls = mutableListOf<String>()
@@ -311,7 +473,12 @@ class SharedApiEnvironmentNetworkClientTest {
             urls += url
             this.headers += headers
             onExecute(url)
-            return SlockHttpExecutorResponse(code = responseCode, bodyText = "{}", errorBodyText = null)
+            executeException?.let { throw it }
+            return SlockHttpExecutorResponse(
+                code = responseCode,
+                bodyText = responseBodyText,
+                errorBodyText = responseErrorBodyText,
+            )
         }
 
         override suspend fun executeMultipart(
@@ -324,7 +491,11 @@ class SharedApiEnvironmentNetworkClientTest {
         ): SlockHttpExecutorResponse {
             multipartCalls += 1
             urls += url
-            return SlockHttpExecutorResponse(code = responseCode, bodyText = "{}", errorBodyText = null)
+            return SlockHttpExecutorResponse(
+                code = responseCode,
+                bodyText = responseBodyText,
+                errorBodyText = responseErrorBodyText,
+            )
         }
     }
 

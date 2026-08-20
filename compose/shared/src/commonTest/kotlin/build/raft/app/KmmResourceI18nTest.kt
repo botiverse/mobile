@@ -137,6 +137,7 @@ class KmmResourceI18nTest {
             MR.strings.auth_notice_source_licenses_sign_in,
             MR.strings.auth_notice_report_submitted_prefix,
             MR.strings.auth_notice_report_failed_diagnostics_copied,
+            MR.strings.auth_error_invite_invalid,
             MR.strings.member_error_report_issue,
             MR.strings.settings_error_join_link_load_prefix,
             MR.strings.settings_billing_action_compare_plans,
@@ -320,6 +321,47 @@ class KmmResourceI18nTest {
                 resource.desc() is ResourceStringDesc,
                 "create/invite modal resources must produce ResourceStringDesc entries"
             )
+        }
+    }
+
+    @Test
+    fun invitePageResourcesCoverStatesErrorsCountsAndPlaceholders() {
+        listOf(
+            MR.strings.invite_state_loading,
+            MR.strings.invite_title_join_server,
+            MR.strings.invite_title_invited,
+            MR.strings.invite_sign_in_prompt,
+            MR.strings.invite_action_sign_in,
+            MR.strings.invite_action_create_account,
+            MR.strings.invite_action_joining,
+            MR.strings.invite_action_agree_join,
+            MR.strings.invite_error_title,
+            MR.strings.invite_error_invalid,
+            MR.strings.invite_error_auth_required,
+            MR.strings.invite_error_already_member,
+            MR.strings.invite_error_seat_limit,
+            MR.strings.invite_error_network,
+            MR.strings.invite_error_rate_limited,
+            MR.strings.invite_error_authority_changed,
+            MR.strings.invite_error_environment,
+            MR.strings.invite_error_generic,
+            MR.strings.invite_accepted_title,
+        ).forEach { resource ->
+            assertTrue(resource.desc() is ResourceStringDesc)
+        }
+        listOf(
+            MR.strings.invite_description.format(listOf("Raft")),
+            MR.strings.invite_human_count_one.format(listOf(1)),
+            MR.strings.invite_human_count_many.format(listOf(2)),
+            MR.strings.invite_agent_count_one.format(listOf(1)),
+            MR.strings.invite_agent_count_many.format(listOf(2)),
+            MR.strings.invite_agreement_version.format(listOf(3)),
+            MR.strings.invite_accepted_description.format(listOf("Raft")),
+        ).forEach { formatted ->
+            assertTrue(formatted is ResourceFormattedStringDesc)
+        }
+        listOf(MR.strings.invite_human_count_zero, MR.strings.invite_agent_count_zero).forEach {
+            assertTrue(it.desc() is ResourceStringDesc)
         }
     }
 

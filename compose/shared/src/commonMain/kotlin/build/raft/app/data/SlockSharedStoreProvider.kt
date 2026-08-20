@@ -2278,7 +2278,8 @@ internal fun createSharedAuthDataSourceForCurrentEnvironment(
         transport = transportFactory { apiEnvironmentStore.current().apiBaseUrl },
         sessionStore = authStore,
         diagnosticsLogger = diagnosticsLogger,
-        criticalDiagnosticsLogger = criticalDiagnosticsLogger
+        criticalDiagnosticsLogger = criticalDiagnosticsLogger,
+        inviteEnvironmentKey = { apiEnvironmentStore.current().key },
     ).withAvatarCacheRuntime(
         runtime = avatarCacheRuntime,
         nativeCache = avatarCacheNativeCache,

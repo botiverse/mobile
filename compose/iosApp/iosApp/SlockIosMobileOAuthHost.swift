@@ -15,6 +15,7 @@ private let slockIosOAuthAppShellPage = "compose_slock_app_shell"
 private let slockIosInviteAcceptPage = "compose_invite_accept"
 private let slockIosInviteTokenKey = "slockInviteToken"
 private let slockIosPendingInviteTokenKey = "slockPendingInviteToken"
+private let slockIosAuthErrorCodeKey = "slockAuthErrorCode"
 private let slockIosReplaceCurrentPageKey = "slockReplaceCurrentPage"
 
 struct SlockIosOAuthDestination {
@@ -54,7 +55,7 @@ final class SlockIosOAuthRouteStore: ObservableObject {
                 )
             case "invite_accept":
                 guard let token = slockNormalizedInviteToken(result.inviteToken) else {
-                    self.replaceWithLoginError("This invite link is invalid or has expired.")
+                    self.replaceWithLoginErrorCode("invite_invalid")
                     return
                 }
                 self.applyInvite(token: token)
@@ -118,6 +119,21 @@ final class SlockIosOAuthRouteStore: ObservableObject {
         replaceWithLoginError(message, pendingInviteToken: nil)
     }
 
+    private func replaceWithLoginErrorCode(_ code: String, pendingInviteToken: String? = nil) {
+        var pageData: [String: Any] = [
+            "pageName": slockIosOAuthLoginPage,
+            slockIosAuthErrorCodeKey: code,
+            slockIosReplaceCurrentPageKey: true,
+        ]
+        if let token = slockNormalizedInviteToken(pendingInviteToken) {
+            pageData[slockIosPendingInviteTokenKey] = token
+        }
+        replace(
+            pageName: slockIosOAuthLoginPage,
+            pageData: pageData
+        )
+    }
+
     private func replaceWithLoginError(_ message: String, pendingInviteToken: String?) {
         var pageData: [String: Any] = [
             "pageName": slockIosOAuthLoginPage,
@@ -136,7 +152,7 @@ final class SlockIosOAuthRouteStore: ObservableObject {
     func applyInvite(token: String) {
         runOnMain { [weak self] in
             guard let self, let normalized = slockNormalizedInviteToken(token) else {
-                self?.replaceWithLoginError("This invite link is invalid or has expired.")
+                self?.replaceWithLoginErrorCode("invite_invalid")
                 return
             }
             self.replace(
@@ -245,8 +261,7 @@ final class SlockIosMobileOAuthHost: NSObject,
             let normalizedInvite = slockNormalizedInviteToken(pendingInviteToken)
             if let rawToken = pendingInviteToken, !rawToken.isEmpty, normalizedInvite == nil {
                 completion(self.startError(
-                    code: "ios_mobile_oauth_invalid_invite_token",
-                    message: "This invite link is invalid or has expired."
+                    code: "ios_mobile_oauth_invalid_invite_token"
                 ))
                 return
             }
@@ -866,8 +881,12 @@ final class SlockIosMobileOAuthHost: NSObject,
         return ["raft", "raft-alpha", "raft-beta", "raft-debug"].contains(scheme) ? scheme : nil
     }
 
-    private func startError(code: String, message: String) -> NSDictionary {
-        ["status": "error", "code": code, "message": message]
+    private func startError(code: String, message: String? = nil) -> NSDictionary {
+        var result: [String: Any] = ["status": "error", "code": code]
+        if let message, !message.isEmpty {
+            result["message"] = message
+        }
+        return result as NSDictionary
     }
 
     private func currentPresentationWindow() -> UIWindow? {

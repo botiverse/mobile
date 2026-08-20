@@ -737,16 +737,17 @@ class SharedSlockAuthTransport internal constructor(
     ): AuthNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val normalizedMethod = method.uppercase()
+        val diagnosticPath = path.authTransportDiagnosticsPath()
         val requestBytes = (bodyText?.encodeToByteArray()?.size ?: 0).toLong()
         warningLogger(
-            "slock_auth_transport_start path=$path method=$normalizedMethod " +
+            "slock_auth_transport_start path=$diagnosticPath method=$normalizedMethod " +
                 "authorizationPresent=${authorization != null} requestBytes=$requestBytes"
         )
         val response =
             try {
                 requestScheduler.run(
                     priority = SlockRequestPriority.Foreground,
-                    key = path,
+                    key = diagnosticPath,
                     reason = normalizedMethod
                 ) {
                     executor.execute(
@@ -764,7 +765,7 @@ class SharedSlockAuthTransport internal constructor(
                 }
             } catch (timeout: SlockRequestTimeoutException) {
                 return timeout.toTimeoutAuthNetworkResponse(
-                    path = path,
+                    path = diagnosticPath,
                     method = normalizedMethod,
                     requestBytes = requestBytes,
                     durationMs = startedAt.elapsedNow().inWholeMilliseconds,
@@ -772,7 +773,7 @@ class SharedSlockAuthTransport internal constructor(
                 )
             }
         warningLogger(
-            "slock_auth_transport_finish path=$path method=$normalizedMethod " +
+            "slock_auth_transport_finish path=$diagnosticPath method=$normalizedMethod " +
                 "authorizationPresent=${authorization != null} requestBytes=$requestBytes " +
                 "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                 "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
@@ -782,7 +783,7 @@ class SharedSlockAuthTransport internal constructor(
         )
         if (response.code == 0) {
             warningLogger(
-                "slock_auth_transport_failed path=$path method=$normalizedMethod " +
+                "slock_auth_transport_failed path=$diagnosticPath method=$normalizedMethod " +
                     "requestBytes=$requestBytes " +
                     "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                     "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
@@ -805,8 +806,12 @@ private fun SlockRequestTimeoutException.toTimeoutAuthNetworkResponse(
     durationMs: Long,
     warningLogger: (String) -> Unit
 ): AuthNetworkResponse {
+    // Executor/scheduler implementations are allowed to include their own diagnostic text in
+    // the exception. Do not copy it into the auth error envelope: this path may contain the
+    // original URL (including the invite capability token) even though the derived [path] above
+    // is already redacted.
     val errorBody =
-        """{"error":"network_timeout","message":"${message.orEmpty().jsonString()}"}"""
+        """{"error":"network_timeout","message":"request_timeout"}"""
     warningLogger(
         "slock_auth_transport_failed path=$path method=${method.uppercase()} " +
             "requestBytes=$requestBytes responseBytes=0 " +
@@ -1057,4 +1062,29 @@ private fun String.percentEncode(): String {
         }
     }
     return builder.toString()
+}
+
+/**
+ * Keeps auth transport diagnostics useful without allowing query/fragment values to become
+ * scheduler keys, timeout text, or log payloads. The caller still passes the original [String]
+ * to the HTTP executor; only this derived path is exposed outside the request itself.
+ */
+private fun String.authTransportDiagnosticsPath(): String {
+    val withoutFragment = substringBefore('#')
+    val queryStart = withoutFragment.indexOf('?')
+    if (queryStart < 0) return withoutFragment
+
+    val path = withoutFragment.substring(0, queryStart)
+    val query = withoutFragment.substring(queryStart + 1)
+    if (query.isBlank()) return path
+
+    val redactedQuery =
+        query
+            .split('&')
+            .filter { it.isNotBlank() }
+            .joinToString("&") { part ->
+                val key = part.substringBefore('=').ifBlank { "query" }.toSafeDiagnosticsToken()
+                "$key=[redacted]"
+            }
+    return if (redactedQuery.isBlank()) path else "$path?$redactedQuery"
 }
