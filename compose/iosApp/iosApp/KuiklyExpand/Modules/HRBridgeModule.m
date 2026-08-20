@@ -2590,6 +2590,7 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
         NSString *provider = SlockBridgeString(params[@"providerId"]);
         [[SlockIosMobileOAuthHost shared] startWithProvider:provider
                                                       mode:@"link"
+                                         pendingInviteToken:nil
                                                 completion:^(NSDictionary *result) {
             callback(result);
         }];
@@ -2813,8 +2814,13 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
         return;
     }
     NSString *provider = SlockBridgeString(params[@"provider"]);
+    NSString *pendingInviteToken = SlockBridgeString(params[@"pendingInviteToken"]);
+    if (pendingInviteToken.length == 0) {
+        pendingInviteToken = nil;
+    }
     [[SlockIosMobileOAuthHost shared] startWithProvider:provider
                                                   mode:@"login"
+                                     pendingInviteToken:pendingInviteToken
                                             completion:^(NSDictionary *result) {
         callback(result);
     }];

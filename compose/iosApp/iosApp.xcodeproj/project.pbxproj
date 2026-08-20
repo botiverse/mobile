@@ -23,6 +23,7 @@
 		A13000010000000000000002 /* SlockIosAdaptivePanePublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000001 /* SlockIosAdaptivePanePublisher.swift */; };
 		A13000010000000000000003 /* SlockIosAdaptivePanePublisherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */; };
 		A13000010000000000000004 /* SlockAdaptivePaneRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000003 /* SlockAdaptivePaneRuntimeTests.swift */; };
+		A13800010000000000000001 /* SlockIosInviteJoinLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13800020000000000000001 /* SlockIosInviteJoinLinkTests.swift */; };
 		A39600010000000000000001 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A39600020000000000000001 /* InfoPlist.strings */; };
 		A42400010000000000000001 /* SlockIosAvatarCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */; };
 		A42400010000000000000002 /* SlockIosAvatarCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */; };
@@ -89,6 +90,7 @@
 		A13000020000000000000001 /* SlockIosAdaptivePanePublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAdaptivePanePublisher.swift; sourceTree = "<group>"; };
 		A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAdaptivePanePublisherTests.swift; sourceTree = "<group>"; };
 		A13000020000000000000003 /* SlockAdaptivePaneRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockAdaptivePaneRuntimeTests.swift; sourceTree = "<group>"; };
+		A13800020000000000000001 /* SlockIosInviteJoinLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosInviteJoinLinkTests.swift; sourceTree = "<group>"; };
 		A39600030000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A39600030000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		A39600030000000000000003 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -273,6 +275,7 @@
 				A42400020000000000000002 /* SlockIosAvatarCacheProviderTests.swift */,
 				A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */,
 				A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */,
+				A13800020000000000000001 /* SlockIosInviteJoinLinkTests.swift */,
 				D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */,
 				D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */,
 			);
@@ -718,6 +721,7 @@
 				A12900010000000000000003 /* SlockIosNetworkRequestLifetimeAdapterTests.swift in Sources */,
 				A13000010000000000000002 /* SlockIosAdaptivePanePublisher.swift in Sources */,
 				A13000010000000000000003 /* SlockIosAdaptivePanePublisherTests.swift in Sources */,
+				A13800010000000000000001 /* SlockIosInviteJoinLinkTests.swift in Sources */,
 				D43B80312E18000100C0DE11 /* SlockStackedItemTabBar.m in Sources */,
 				D43B80412E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m in Sources */,
 				D43B80322E18000100C0DE11 /* SlockStackedItemTabBarTests.m in Sources */,

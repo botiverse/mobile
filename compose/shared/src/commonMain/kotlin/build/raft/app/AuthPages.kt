@@ -96,6 +96,7 @@ const val AUTH_LEGAL_ACCEPTANCE_PAGE = "compose_auth_legal_acceptance"
 const val AUTH_ABOUT_PAGE = "compose_auth_developer"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 internal const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
+internal const val AUTH_PENDING_INVITE_TOKEN_KEY = "slockPendingInviteToken"
 private const val AUTH_MESSAGE_KEY = "slockAuthMessage"
 private const val AUTH_LEGAL_PROVIDER_KEY = "slockAuthLegalProvider"
 private const val AUTH_LEGAL_PLATFORM_KEY = "slockAuthLegalPlatform"
@@ -285,6 +286,9 @@ private fun LoginScreen() {
     val routeMessage = remember(paramsSignature) {
         pager.pageData.params.optString(AUTH_MESSAGE_KEY).takeIf { it.isNotBlank() }
     }
+    val pendingInviteToken = remember(paramsSignature) {
+        normalizeSlockInviteTokenOrNull(pager.pageData.params.optString(AUTH_PENDING_INVITE_TOKEN_KEY))
+    }
 
     LaunchedEffect(pendingLogin) {
         val effect = pendingLogin ?: return@LaunchedEffect
@@ -309,7 +313,7 @@ private fun LoginScreen() {
                                 "serversCount=${result.data.servers.size} " +
                                 "selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
                         )
-                        pager.openPostAuthRoute(result.data)
+                        pager.openPostAuthRoute(result.data, pendingInviteToken)
                     }
                     PostAuthSessionReadback.Missing ->
                         state = state.copy(
@@ -335,7 +339,7 @@ private fun LoginScreen() {
     LaunchedEffect(pendingSocialAuth) {
         val effect = pendingSocialAuth ?: return@LaunchedEffect
         val providerId = effect.provider.providerId()
-        val response = runCatching { bridge.socialAuth(providerId) }.getOrNull()
+        val response = runCatching { bridge.socialAuth(providerId, pendingInviteToken) }.getOrNull()
         pendingSocialAuth = null
         socialSubmittingProvider = null
         val code = response?.optString("code").orEmpty().toIntOrNull()
@@ -437,8 +441,12 @@ private fun LoginScreen() {
                     provider = provider
                 )
         },
-        onForgotPassword = { pager.openAuthPage(FORGOT_PASSWORD_PAGE) },
-        onCreateAccount = { pager.openAuthPage(REGISTER_PAGE) },
+        onForgotPassword = {
+            pager.openAuthPage(FORGOT_PASSWORD_PAGE, pendingInviteToken = pendingInviteToken)
+        },
+        onCreateAccount = {
+            pager.openAuthPage(REGISTER_PAGE, pendingInviteToken = pendingInviteToken)
+        },
         onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
         onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
@@ -519,6 +527,9 @@ private fun AuthLegalAcceptanceScreen() {
     }
     val code = remember(paramsSignature) { pager.pageData.params.optString(AUTH_LEGAL_CODE_KEY) }
     val codeVerifier = remember(paramsSignature) { pager.pageData.params.optString(AUTH_LEGAL_CODE_VERIFIER_KEY) }
+    val pendingInviteToken = remember(paramsSignature) {
+        normalizeSlockInviteTokenOrNull(pager.pageData.params.optString(AUTH_PENDING_INVITE_TOKEN_KEY))
+    }
     var accepted by remember { mutableStateOf(false) }
     var submitting by remember { mutableStateOf(false) }
     var errorPresentation by remember {
@@ -573,7 +584,7 @@ private fun AuthLegalAcceptanceScreen() {
                         "serversCount=${result.data.servers.size} " +
                         "selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
                 )
-                pager.openPostAuthRoute(result.data)
+                pager.openPostAuthRoute(result.data, pendingInviteToken)
             }
             is SharedAuthResult.Failure -> {
                 submitting = false
@@ -611,13 +622,14 @@ private fun AuthLegalAcceptanceScreen() {
                 )
         },
         onBackToSignIn = {
-            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
-                LOGIN_PAGE,
-                loginPageData(
-                    replaceCurrent = true,
-                    message = providerCancelledMessage
+                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+                    LOGIN_PAGE,
+                    loginPageData(
+                        replaceCurrent = true,
+                        message = providerCancelledMessage,
+                        pendingInviteToken = pendingInviteToken,
+                    )
                 )
-            )
         },
         onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
         onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) }
@@ -630,6 +642,10 @@ private fun RegisterScreen() {
     rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
+    val paramsSignature = pager.pageData.params.toString()
+    val pendingInviteToken = remember(paramsSignature) {
+        normalizeSlockInviteTokenOrNull(pager.pageData.params.optString(AUTH_PENDING_INVITE_TOKEN_KEY))
+    }
     val reducer = remember { CreateAccountFormReducer() }
     var state by remember { mutableStateOf(CreateAccountFormState()) }
     var emailFieldValue by remember { mutableStateOf(TextFieldValue(state.email)) }
@@ -664,7 +680,7 @@ private fun RegisterScreen() {
                                 "serversCount=${result.data.servers.size} " +
                                 "selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
                         )
-                        pager.openPostAuthRoute(result.data)
+                        pager.openPostAuthRoute(result.data, pendingInviteToken)
                     }
                     PostAuthSessionReadback.Missing ->
                         state = state.copy(
@@ -731,7 +747,13 @@ private fun RegisterScreen() {
                 null -> Unit
             }
         },
-        onBackToSignIn = { pager.closeAuthSubPage() },
+        onBackToSignIn = {
+            pager.openAuthPage(
+                LOGIN_PAGE,
+                replaceCurrent = true,
+                pendingInviteToken = pendingInviteToken,
+            )
+        },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
     )
 }
@@ -742,6 +764,10 @@ private fun AuthProfileSetupScreen() {
     rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
+    val paramsSignature = pager.pageData.params.toString()
+    val pendingInviteToken = remember(paramsSignature) {
+        normalizeSlockInviteTokenOrNull(pager.pageData.params.optString(AUTH_PENDING_INVITE_TOKEN_KEY))
+    }
     val reducer = remember { IdentitySetupFormReducer() }
     var state by remember { mutableStateOf(IdentitySetupFormState()) }
     var handleFieldValue by remember { mutableStateOf(TextFieldValue(state.handle)) }
@@ -754,7 +780,7 @@ private fun AuthProfileSetupScreen() {
         when (val current = authDataSource.currentSession()) {
             is SharedAuthResult.Success -> {
                 if (!current.data.user.requiresProfileSetup) {
-                    pager.openPostAuthRoute(current.data)
+                    pager.openPostAuthRoute(current.data, pendingInviteToken)
                     return@LaunchedEffect
                 }
                 val handle = current.data.user.profileSetupSuggestedHandle.orEmpty()
@@ -764,7 +790,8 @@ private fun AuthProfileSetupScreen() {
                 displayNameFieldValue = TextFieldValue(displayName)
                 loaded = true
             }
-            SharedAuthResult.Unauthenticated -> pager.openAuthPage(LOGIN_PAGE)
+            SharedAuthResult.Unauthenticated ->
+                pager.openAuthPage(LOGIN_PAGE, pendingInviteToken = pendingInviteToken)
             is SharedAuthResult.Failure -> {
                 loaded = true
                 errorPresentation = AuthErrorPresentation.Dynamic(current.message)
@@ -780,12 +807,13 @@ private fun AuthProfileSetupScreen() {
             }.getOrNull()
         pendingProfileSetup = null
         when (result) {
-            is SharedAuthResult.Success -> pager.openPostAuthRoute(result.data)
+            is SharedAuthResult.Success -> pager.openPostAuthRoute(result.data, pendingInviteToken)
             is SharedAuthResult.Failure -> {
                 state = state.copy(submitting = false)
                 errorPresentation = AuthErrorPresentation.Dynamic(result.message)
             }
-            SharedAuthResult.Unauthenticated -> pager.openAuthPage(LOGIN_PAGE)
+            SharedAuthResult.Unauthenticated ->
+                pager.openAuthPage(LOGIN_PAGE, pendingInviteToken = pendingInviteToken)
             null -> {
                 state = state.copy(submitting = false)
                 errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_profile_setup_failed.desc())
@@ -851,6 +879,10 @@ private fun ForgotPasswordScreen() {
     rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
+    val paramsSignature = pager.pageData.params.toString()
+    val pendingInviteToken = remember(paramsSignature) {
+        normalizeSlockInviteTokenOrNull(pager.pageData.params.optString(AUTH_PENDING_INVITE_TOKEN_KEY))
+    }
     val reducer = remember { ForgotPasswordFormReducer() }
     var state by remember { mutableStateOf(ForgotPasswordFormState()) }
     var emailFieldValue by remember { mutableStateOf(TextFieldValue(state.email)) }
@@ -918,7 +950,13 @@ private fun ForgotPasswordScreen() {
                 null -> Unit
             }
         },
-        onBackToSignIn = { pager.closeAuthSubPage() },
+        onBackToSignIn = {
+            pager.openAuthPage(
+                LOGIN_PAGE,
+                replaceCurrent = true,
+                pendingInviteToken = pendingInviteToken,
+            )
+        },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
     )
 }
@@ -2027,16 +2065,42 @@ private fun ForgotPasswordSuccessPreview() {
     )
 }
 
-private fun Pager.openAuthPage(pageName: String) {
+private fun Pager.openAuthPage(
+    pageName: String,
+    replaceCurrent: Boolean = pageName == SLOCK_APP_SHELL_PAGE,
+    message: String? = null,
+    pendingInviteToken: String? = null,
+) {
     val pageData =
         authPageData(
             pageName = pageName,
-            replaceCurrent = pageName == SLOCK_APP_SHELL_PAGE
+            replaceCurrent = replaceCurrent,
+            message = message,
+            pendingInviteToken = pendingInviteToken,
         )
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
 }
 
-private fun Pager.openPostAuthRoute(session: StoredAuthSession) {
+internal fun Pager.openPostAuthRoute(
+    session: StoredAuthSession,
+    pendingInviteToken: String? = null,
+) {
+    val normalizedInviteToken = normalizeSlockInviteTokenOrNull(pendingInviteToken)
+    if (normalizedInviteToken != null) {
+        if (session.user.requiresProfileSetup) {
+            acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+                AUTH_PROFILE_SETUP_PAGE,
+                authPageData(
+                    pageName = AUTH_PROFILE_SETUP_PAGE,
+                    replaceCurrent = true,
+                    pendingInviteToken = normalizedInviteToken,
+                ),
+            )
+        } else {
+            openInviteAcceptPage(normalizedInviteToken)
+        }
+        return
+    }
     val destination = postAuthRouteDestination(session)
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(
@@ -2108,24 +2172,29 @@ private enum class PostAuthSessionReadback {
 
 internal fun loginPageData(
     replaceCurrent: Boolean = false,
-    message: String? = null
+    message: String? = null,
+    pendingInviteToken: String? = null,
 ): JSONObject =
     authPageData(
         pageName = LOGIN_PAGE,
         replaceCurrent = replaceCurrent,
-        message = message
+        message = message,
+        pendingInviteToken = pendingInviteToken,
     )
 
 internal fun authPageData(
     pageName: String,
     replaceCurrent: Boolean = false,
-    message: String? = null
+    message: String? = null,
+    pendingInviteToken: String? = null,
 ): JSONObject =
     JSONObject().apply {
         put("pageName", pageName)
         message
             ?.takeIf { it.isNotBlank() }
             ?.let { put(AUTH_MESSAGE_KEY, it) }
+        normalizeSlockInviteTokenOrNull(pendingInviteToken)
+            ?.let { put(AUTH_PENDING_INVITE_TOKEN_KEY, it) }
         if (replaceCurrent) {
             put(AUTH_REPLACE_CURRENT_PAGE, true)
         }

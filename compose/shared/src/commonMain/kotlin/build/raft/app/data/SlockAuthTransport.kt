@@ -29,6 +29,9 @@ interface SlockAuthTransport {
     suspend fun servers(authorization: String): AuthNetworkResponse
     suspend fun serverOrder(authorization: String): AuthNetworkResponse
     suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse
+    suspend fun inviteInfo(token: String): AuthNetworkResponse = AuthNetworkResponse(501, null)
+    suspend fun acceptInvite(authorization: String, bodyText: String): AuthNetworkResponse =
+        AuthNetworkResponse(501, null)
     suspend fun consumeQaBootstrap(bodyText: String): AuthNetworkResponse = AuthNetworkResponse(501, null)
     suspend fun readyQaBootstrap(ticketDigest: String, authorization: String, bodyText: String): AuthNetworkResponse =
         AuthNetworkResponse(501, null)

@@ -38,7 +38,14 @@ struct ContentView: View {
                 .id(destination.revision)
                 .ignoresSafeArea()
                 .onOpenURL { url in
-                    _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "swiftui_open_url")
+                    _ = SlockIosMobileOAuthHost.shared.acceptIncomingURL(url, source: "swiftui_open_url")
+                }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    guard let url = activity.webpageURL else { return }
+                    _ = SlockIosMobileOAuthHost.shared.acceptUniversalLinkURL(
+                        url,
+                        source: "swiftui_user_activity"
+                    )
                 }
                 .onAppear {
                     SlockIosMobileOAuthHost.shared.resumeDeferredCallbackIfNeeded()

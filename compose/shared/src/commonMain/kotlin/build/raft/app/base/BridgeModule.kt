@@ -1,6 +1,7 @@
 package build.raft.app.base
 
 import build.raft.app.AttachmentOwnerLease
+import build.raft.app.normalizeSlockInviteTokenOrNull
 import build.raft.app.data.SLOCK_SOCKET_BASE_URL
 import build.raft.app.network.AttachmentDownloadCoordinator
 import build.raft.app.slockLogDebug
@@ -767,10 +768,13 @@ internal class BridgeModule : Module() {
         callNativeMethod("appBadge", methodArgs, null)
     }
 
-    suspend fun socialAuth(provider: String): JSONObject? =
+    suspend fun socialAuth(provider: String, pendingInviteToken: String? = null): JSONObject? =
         suspendCoroutine { continuation ->
             val methodArgs = JSONObject()
             methodArgs.put("provider", provider)
+            normalizeSlockInviteTokenOrNull(pendingInviteToken)?.let { token ->
+                methodArgs.put("pendingInviteToken", token)
+            }
             callNativeMethod(SOCIAL_AUTH, methodArgs) {
                 continuation.resume(it)
             }

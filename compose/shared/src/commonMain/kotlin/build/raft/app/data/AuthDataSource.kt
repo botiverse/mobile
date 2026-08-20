@@ -83,6 +83,83 @@ class SharedAuthDataSource(
             }
         }
 
+    /**
+     * Loads the public invite preview. The route supplies only the opaque token; all server
+     * identity, agreement and seat state comes from this canonical response.
+     */
+    suspend fun loadInviteInfo(token: String): SharedInviteInfoResult {
+        val normalizedToken = token.trim()
+        if (normalizedToken.isBlank()) {
+            return SharedInviteInfoResult.Failure(
+                code = 400,
+                errorCode = "invalid_token",
+                message = "This invite link is invalid or has expired.",
+            )
+        }
+        return when (val response = api.inviteInfo(normalizedToken)) {
+            is AuthApiResult.Success -> SharedInviteInfoResult.Success(response.data)
+            is AuthApiResult.Failure -> response.toInviteInfoFailure()
+        }
+    }
+
+    /** Accepts an invite using the current authenticated session and never trusts route preview data. */
+    suspend fun acceptInvite(
+        token: String,
+        agreementId: String? = null,
+    ): SharedInviteAcceptResult {
+        val normalizedToken = token.trim()
+        if (normalizedToken.isBlank()) {
+            return SharedInviteAcceptResult.Failure(
+                code = 400,
+                errorCode = "invalid_token",
+                message = "This invite link is invalid or has expired.",
+            )
+        }
+        val session = sessionStore.readSession() ?: return SharedInviteAcceptResult.Unauthenticated
+        var response = api.acceptInvite(
+            authorization = session.bearer(),
+            token = normalizedToken,
+            agreementId = agreementId?.trim()?.takeIf { it.isNotBlank() },
+        )
+        if (response is AuthApiResult.Failure && response.code == 401) {
+            when (
+                val refreshed =
+                    refreshAfterUnauthorized(
+                        failedSession = session,
+                        clearOnUnauthorized = true,
+                        reason = "accept_invite_http_401",
+                        caller = "auth_data_source_accept_invite",
+                    )
+            ) {
+                is SharedAuthResult.Success -> {
+                    if (refreshed.data.user.id != session.user.id) {
+                        return SharedInviteAcceptResult.Failure(
+                            code = 401,
+                            errorCode = AuthAuthorityChangedMessage,
+                            message = AuthAuthorityChangedMessage,
+                        )
+                    }
+                    response = api.acceptInvite(
+                        authorization = refreshed.data.bearer(),
+                        token = normalizedToken,
+                        agreementId = agreementId?.trim()?.takeIf { it.isNotBlank() },
+                    )
+                }
+                SharedAuthResult.Unauthenticated -> return SharedInviteAcceptResult.Unauthenticated
+                is SharedAuthResult.Failure ->
+                    return SharedInviteAcceptResult.Failure(
+                        code = 0,
+                        errorCode = "auth_refresh_failed",
+                        message = refreshed.message,
+                    )
+            }
+        }
+        return when (response) {
+            is AuthApiResult.Success -> SharedInviteAcceptResult.Success(response.data)
+            is AuthApiResult.Failure -> response.toInviteAcceptFailure()
+        }
+    }
+
     suspend fun login(email: String, password: String): SharedAuthResult<StoredAuthSession> {
         if (email.isBlank() || password.isBlank()) {
             return SharedAuthResult.Failure(
@@ -1796,6 +1873,12 @@ interface SlockAuthApi {
     suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>>
     suspend fun serverOrder(authorization: String): AuthApiResult<ServerSwitcherOrderPreference>
     suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer>
+    suspend fun inviteInfo(token: String): AuthApiResult<AuthInviteInfo> = AuthApiResult.Failure(code = 501)
+    suspend fun acceptInvite(
+        authorization: String,
+        token: String,
+        agreementId: String? = null,
+    ): AuthApiResult<AuthInviteAcceptResponse> = AuthApiResult.Failure(code = 501)
     suspend fun consumeQaBootstrap(request: QaBootstrapConsumeRequest): AuthApiResult<QaBootstrapConsumeResponse> =
         AuthApiResult.Failure(501)
     suspend fun readyQaBootstrap(ticketDigest: String, authorization: String, sessionGeneration: String): AuthApiResult<QaBootstrapReadyResponse> =
@@ -2089,6 +2172,32 @@ class SlockAuthApiClient(
         transport.createServer(authorization, bodyText)
             .mapAuthBody("server_create_contract_mismatch", StoredAuthServer.serializer(), diagnosticsLogger) { it }
 
+    override suspend fun inviteInfo(token: String): AuthApiResult<AuthInviteInfo> =
+        transport.inviteInfo(token)
+            .mapAuthBody("auth_invite_info_contract_mismatch", AuthInviteInfoDto.serializer(), diagnosticsLogger) {
+                it.toDomain()
+            }
+
+    override suspend fun acceptInvite(
+        authorization: String,
+        token: String,
+        agreementId: String?,
+    ): AuthApiResult<AuthInviteAcceptResponse> =
+        transport.acceptInvite(
+            authorization = authorization,
+            bodyText =
+                authJson.encodeToString(
+                    AuthAcceptInviteRequestBody(
+                        token = token,
+                        agreementId = agreementId,
+                    )
+                ),
+        ).mapAuthBody(
+            "auth_accept_invite_contract_mismatch",
+            AuthInviteAcceptResponseDto.serializer(),
+            diagnosticsLogger,
+        ) { it.toDomain() }
+
     override suspend fun consumeQaBootstrap(request: QaBootstrapConsumeRequest): AuthApiResult<QaBootstrapConsumeResponse> =
         transport.consumeQaBootstrap(authJson.encodeToString(request))
             .mapAuthBody("qa_bootstrap_consume_contract_mismatch", QaBootstrapConsumeResponse.serializer(), diagnosticsLogger) { it }
@@ -2126,6 +2235,50 @@ data class AuthLoginResponse(
     val accessToken: String,
     val refreshToken: String
 )
+
+data class AuthInviteAgreement(
+    val id: String,
+    val title: String,
+    val bodyMarkdown: String,
+    val version: Int,
+)
+
+data class AuthInviteInfo(
+    val kind: String,
+    val serverName: String,
+    val inviterName: String? = null,
+    val memberCount: Int = 0,
+    val agentCount: Int = 0,
+    val insideCountsHidden: Boolean = false,
+    val humanSeatLimitReached: Boolean = false,
+    val humanSeatLimitMessage: String? = null,
+    val agreement: AuthInviteAgreement? = null,
+)
+
+data class AuthInviteAcceptResponse(
+    val serverId: String,
+    val serverName: String,
+)
+
+sealed interface SharedInviteInfoResult {
+    data class Success(val data: AuthInviteInfo) : SharedInviteInfoResult
+    data class Failure(
+        val code: Int,
+        val errorCode: String,
+        val message: String,
+    ) : SharedInviteInfoResult
+}
+
+sealed interface SharedInviteAcceptResult {
+    data class Success(val data: AuthInviteAcceptResponse) : SharedInviteAcceptResult
+    data class AgreementRequired(val agreement: AuthInviteAgreement) : SharedInviteAcceptResult
+    data object Unauthenticated : SharedInviteAcceptResult
+    data class Failure(
+        val code: Int,
+        val errorCode: String,
+        val message: String,
+    ) : SharedInviteAcceptResult
+}
 
 internal const val QA_BOOTSTRAP_LOGIN_PROTOCOL = "qa-bootstrap-login/v1"
 
@@ -2369,6 +2522,12 @@ data class AuthLoginRequestBody(
 )
 
 @kotlinx.serialization.Serializable
+data class AuthAcceptInviteRequestBody(
+    val token: String,
+    val agreementId: String? = null,
+)
+
+@kotlinx.serialization.Serializable
 data class AuthSocialCompleteRequestBody(
     val code: String? = null,
     val idToken: String? = null,
@@ -2519,6 +2678,70 @@ private fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failur
     }
 }
 
+private fun AuthApiResult.Failure.inviteErrorBody(): AuthInviteErrorDto? =
+    errorBodyText?.let { body ->
+        runCatching { authJson.decodeFromString(AuthInviteErrorDto.serializer(), body) }.getOrNull()
+    }
+
+private fun AuthApiResult.Failure.toInviteInfoFailure(): SharedInviteInfoResult.Failure {
+    val error = inviteErrorBody()
+    val errorCode = error?.error?.trim()?.lowercase().orEmpty().ifBlank {
+        when (code) {
+            404 -> "invalid_token"
+            429 -> "rate_limited"
+            else -> "invite_info_failed"
+        }
+    }
+    val message =
+        when {
+            code == 404 -> "This invite link is invalid or has expired."
+            code == 429 -> "Too many attempts. Please wait a minute and try again."
+            code == 0 -> "Could not reach Raft. Check your connection and try again."
+            code >= 500 -> "Failed to load invite link. Please try again."
+            else -> error?.message ?: error?.error ?: "Failed to load invite link. Please try again."
+        }
+    return SharedInviteInfoResult.Failure(code = code, errorCode = errorCode, message = message)
+}
+
+private fun AuthApiResult.Failure.toInviteAcceptFailure(): SharedInviteAcceptResult {
+    val error = inviteErrorBody()
+    val rawCode = error?.error?.trim()?.lowercase().orEmpty()
+    val normalizedCode = rawCode.replace('-', '_').replace(' ', '_')
+    val errorCode =
+        when {
+            normalizedCode == "agreement_required" || normalizedCode == "agreement_changed" -> normalizedCode
+            normalizedCode.contains("seat_limit") || normalizedCode.contains("limit_reached") || normalizedCode.contains("usage_limit") -> "seat_limit"
+            normalizedCode.contains("already") -> "already_member"
+            normalizedCode.contains("invalid") || normalizedCode.contains("expired") || normalizedCode.contains("revoked") -> "invalid_token"
+            normalizedCode.isNotBlank() -> normalizedCode
+            code == 401 -> "auth_required"
+            code == 0 -> "network"
+            else -> "accept_failed"
+        }
+    val message =
+        when (errorCode) {
+            "agreement_required", "agreement_changed" -> "Review the server agreement before joining."
+            "seat_limit" -> error?.error ?: "This server has no available human seats right now."
+            "already_member" -> "You are already a member of this server."
+            "invalid_token" -> "This invite link is invalid or has expired."
+            "auth_required" -> "Sign in again to continue."
+            "network" -> "Could not reach Raft. Check your connection and try again."
+            else -> error?.error ?: error?.message ?: "Failed to join server. Please try again."
+        }
+    val agreement = error?.agreement?.toDomain()
+    if (
+        agreement != null &&
+        (errorCode == "agreement_required" || errorCode == "agreement_changed" || code in 409..422)
+    ) {
+        return SharedInviteAcceptResult.AgreementRequired(agreement)
+    }
+    return SharedInviteAcceptResult.Failure(
+        code = code,
+        errorCode = errorCode,
+        message = message,
+    )
+}
+
 private fun AuthNetworkResponse.toAuthApiFailure(): AuthApiResult.Failure =
     AuthApiResult.Failure(code = code, errorBodyText = errorBodyText)
 
@@ -2573,6 +2796,64 @@ private data class AuthLoginResponseDto(
 
 private fun AuthLoginResponseDto.toDomain(): AuthLoginResponse =
     AuthLoginResponse(user = user, accessToken = accessToken, refreshToken = refreshToken)
+
+@Serializable
+private data class AuthInviteAgreementDto(
+    val id: String,
+    val title: String,
+    val bodyMarkdown: String,
+    val version: Int,
+)
+
+private fun AuthInviteAgreementDto.toDomain(): AuthInviteAgreement =
+    AuthInviteAgreement(
+        id = id,
+        title = title,
+        bodyMarkdown = bodyMarkdown,
+        version = version,
+    )
+
+@Serializable
+private data class AuthInviteInfoDto(
+    val kind: String,
+    val serverName: String,
+    val inviterName: String? = null,
+    val memberCount: Int = 0,
+    val agentCount: Int = 0,
+    val insideCountsHidden: Boolean = false,
+    val humanSeatLimitReached: Boolean = false,
+    val humanSeatLimitMessage: String? = null,
+    val agreement: AuthInviteAgreementDto? = null,
+)
+
+private fun AuthInviteInfoDto.toDomain(): AuthInviteInfo =
+    AuthInviteInfo(
+        kind = kind,
+        serverName = serverName,
+        inviterName = inviterName,
+        memberCount = memberCount,
+        agentCount = agentCount,
+        insideCountsHidden = insideCountsHidden,
+        humanSeatLimitReached = humanSeatLimitReached,
+        humanSeatLimitMessage = humanSeatLimitMessage,
+        agreement = agreement?.toDomain(),
+    )
+
+@Serializable
+private data class AuthInviteAcceptResponseDto(
+    val serverId: String,
+    val serverName: String,
+)
+
+private fun AuthInviteAcceptResponseDto.toDomain(): AuthInviteAcceptResponse =
+    AuthInviteAcceptResponse(serverId = serverId, serverName = serverName)
+
+@Serializable
+private data class AuthInviteErrorDto(
+    val error: String? = null,
+    val message: String? = null,
+    val agreement: AuthInviteAgreementDto? = null,
+)
 
 @Serializable
 private data class AuthSocialCompleteResponseDto(

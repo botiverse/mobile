@@ -692,6 +692,20 @@ class SharedSlockAuthTransport internal constructor(
     override suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse =
         request(path = "servers", method = "POST", authorization = authorization, bodyText = bodyText)
 
+    override suspend fun inviteInfo(token: String): AuthNetworkResponse =
+        request(
+            path = "auth/invite-info?token=${token.percentEncode()}",
+            method = "GET",
+        )
+
+    override suspend fun acceptInvite(authorization: String, bodyText: String): AuthNetworkResponse =
+        request(
+            path = "auth/accept-invite",
+            method = "POST",
+            authorization = authorization,
+            bodyText = bodyText,
+        )
+
     override suspend fun consumeQaBootstrap(bodyText: String): AuthNetworkResponse =
         request(path = "qa/session-bootstrap/consume", method = "POST", bodyText = bodyText)
 

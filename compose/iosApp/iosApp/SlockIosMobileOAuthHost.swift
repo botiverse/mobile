@@ -12,6 +12,10 @@ private let slockIosOAuthLoginPage = "compose_login"
 private let slockIosOAuthLegalPage = "compose_auth_legal_acceptance"
 private let slockIosOAuthChooseServerPage = "compose_auth_choose_server"
 private let slockIosOAuthAppShellPage = "compose_slock_app_shell"
+private let slockIosInviteAcceptPage = "compose_invite_accept"
+private let slockIosInviteTokenKey = "slockInviteToken"
+private let slockIosPendingInviteTokenKey = "slockPendingInviteToken"
+private let slockIosReplaceCurrentPageKey = "slockReplaceCurrentPage"
 
 struct SlockIosOAuthDestination {
     let pageName: String
@@ -48,6 +52,12 @@ final class SlockIosOAuthRouteStore: ObservableObject {
                     pageName: slockIosOAuthChooseServerPage,
                     pageData: ["pageName": slockIosOAuthChooseServerPage]
                 )
+            case "invite_accept":
+                guard let token = slockNormalizedInviteToken(result.inviteToken) else {
+                    self.replaceWithLoginError("This invite link is invalid or has expired.")
+                    return
+                }
+                self.applyInvite(token: token)
             case "legal_acceptance":
                 guard
                     let provider = result.provider, !provider.isEmpty,
@@ -57,19 +67,23 @@ final class SlockIosOAuthRouteStore: ObservableObject {
                     self.replaceWithLoginError("Sign-in request expired. Try again.")
                     return
                 }
-                self.replace(
-                    pageName: slockIosOAuthLegalPage,
-                    pageData: [
-                        "pageName": slockIosOAuthLegalPage,
-                        "slockAuthLegalProvider": provider,
-                        "slockAuthLegalPlatform": "ios",
-                        "slockAuthLegalCode": handoffCode,
-                        "slockAuthLegalCodeVerifier": codeVerifier,
-                        "slockReplaceCurrentPage": true,
-                    ]
-                )
+                var pageData: [String: Any] = [
+                    "pageName": slockIosOAuthLegalPage,
+                    "slockAuthLegalProvider": provider,
+                    "slockAuthLegalPlatform": "ios",
+                    "slockAuthLegalCode": handoffCode,
+                    "slockAuthLegalCodeVerifier": codeVerifier,
+                    slockIosReplaceCurrentPageKey: true,
+                ]
+                if let token = slockNormalizedInviteToken(result.inviteToken) {
+                    pageData[slockIosPendingInviteTokenKey] = token
+                }
+                self.replace(pageName: slockIosOAuthLegalPage, pageData: pageData)
             case "login_error":
-                self.replaceWithLoginError(result.message ?? "Mobile sign-in failed. Try again.")
+                self.replaceWithLoginError(
+                    result.message ?? "Mobile sign-in failed. Try again.",
+                    pendingInviteToken: result.inviteToken
+                )
             case "settings_account":
                 self.replace(
                     pageName: slockIosOAuthAppShellPage,
@@ -101,14 +115,39 @@ final class SlockIosOAuthRouteStore: ObservableObject {
     }
 
     private func replaceWithLoginError(_ message: String) {
+        replaceWithLoginError(message, pendingInviteToken: nil)
+    }
+
+    private func replaceWithLoginError(_ message: String, pendingInviteToken: String?) {
+        var pageData: [String: Any] = [
+            "pageName": slockIosOAuthLoginPage,
+            "slockAuthMessage": message,
+            slockIosReplaceCurrentPageKey: true,
+        ]
+        if let token = slockNormalizedInviteToken(pendingInviteToken) {
+            pageData[slockIosPendingInviteTokenKey] = token
+        }
         replace(
             pageName: slockIosOAuthLoginPage,
-            pageData: [
-                "pageName": slockIosOAuthLoginPage,
-                "slockAuthMessage": message,
-                "slockReplaceCurrentPage": true,
-            ]
+            pageData: pageData
         )
+    }
+
+    func applyInvite(token: String) {
+        runOnMain { [weak self] in
+            guard let self, let normalized = slockNormalizedInviteToken(token) else {
+                self?.replaceWithLoginError("This invite link is invalid or has expired.")
+                return
+            }
+            self.replace(
+                pageName: slockIosInviteAcceptPage,
+                pageData: [
+                    "pageName": slockIosInviteAcceptPage,
+                    slockIosInviteTokenKey: normalized,
+                    slockIosReplaceCurrentPageKey: true,
+                ]
+            )
+        }
     }
 
     private func replace(pageName: String, pageData: [String: Any]) {
@@ -126,6 +165,10 @@ final class SlockIosOAuthRouteStore: ObservableObject {
             DispatchQueue.main.async(execute: block)
         }
     }
+}
+
+private func slockNormalizedInviteToken(_ rawToken: String?) -> String? {
+    InviteJoinLinkKt.normalizeSlockInviteTokenOrNull(rawToken: rawToken)
 }
 
 @objcMembers
@@ -169,6 +212,7 @@ final class SlockIosMobileOAuthHost: NSObject,
     private var deferredRetryWorkItem: DispatchWorkItem?
     private var nativeAppleRetryWorkItem: DispatchWorkItem?
     private var appleCredentialRevocationObserver: NSObjectProtocol?
+    private var recentInviteIngress: [String: Date] = [:]
 
     private override init() {
         super.init()
@@ -187,16 +231,25 @@ final class SlockIosMobileOAuthHost: NSObject,
         }
     }
 
-    @objc(startWithProvider:mode:completion:)
+    @objc(startWithProvider:mode:pendingInviteToken:completion:)
     func start(
         provider: String,
         mode: String,
+        pendingInviteToken: String?,
         completion: @escaping (NSDictionary) -> Void
     ) {
         runOnMain { [weak self] in
             guard let self else { return }
             let normalizedProvider = provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             let normalizedMode = mode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let normalizedInvite = slockNormalizedInviteToken(pendingInviteToken)
+            if let rawToken = pendingInviteToken, !rawToken.isEmpty, normalizedInvite == nil {
+                completion(self.startError(
+                    code: "ios_mobile_oauth_invalid_invite_token",
+                    message: "This invite link is invalid or has expired."
+                ))
+                return
+            }
             guard slockIosOAuthProviderIds.contains(normalizedProvider), ["login", "link"].contains(normalizedMode) else {
                 completion(self.startError(code: "ios_mobile_oauth_invalid_request", message: "This sign-in provider is unavailable."))
                 return
@@ -363,7 +416,8 @@ final class SlockIosMobileOAuthHost: NSObject,
                     generation: generation,
                     returnUri: callbackReturnUri,
                     codeVerifier: pkce.verifier,
-                    codeChallenge: pkce.challenge
+                    codeChallenge: pkce.challenge,
+                    pendingInviteToken: normalizedInvite
                 ) { result in
                     handleStart(result)
                 }
@@ -374,7 +428,8 @@ final class SlockIosMobileOAuthHost: NSObject,
                     generation: generation,
                     returnUri: callbackReturnUri,
                     codeVerifier: pkce.verifier,
-                    codeChallenge: pkce.challenge
+                    codeChallenge: pkce.challenge,
+                    pendingInviteToken: normalizedInvite
                 ) { result in
                     handleStart(result)
                 }
@@ -385,6 +440,37 @@ final class SlockIosMobileOAuthHost: NSObject,
     @discardableResult
     func acceptCallbackURL(_ url: URL, source: String) -> Bool {
         acceptCallback(url, expectedGeneration: nil, source: source)
+    }
+
+    @discardableResult
+    func acceptUniversalLinkURL(_ url: URL, source: String) -> Bool {
+        guard let token = inviteToken(from: url) else { return false }
+        runOnMain { [weak self] in
+            guard let self else { return }
+            self.pruneRecentInviteIngress()
+            if self.recentInviteIngress[token] != nil {
+                SlockIosDiagnosticsRecord(
+                    "info",
+                    "SlockIosOAuth",
+                    "invite_link_ignored source=\(self.safeSource(source)) reason=duplicate"
+                )
+                return
+            }
+            self.recentInviteIngress[token] = Date()
+            SlockIosDiagnosticsRecord(
+                "info",
+                "SlockIosOAuth",
+                "invite_link_accepted source=\(self.safeSource(source))"
+            )
+            SlockIosOAuthRouteStore.shared.applyInvite(token: token)
+        }
+        return true
+    }
+
+    @discardableResult
+    func acceptIncomingURL(_ url: URL, source: String) -> Bool {
+        if acceptUniversalLinkURL(url, source: source) { return true }
+        return acceptCallbackURL(url, source: source)
     }
 
     func resumeDeferredCallbackIfNeeded() {
@@ -753,6 +839,23 @@ final class SlockIosMobileOAuthHost: NSObject,
             code: values["code"],
             error: values["error"] ?? values["error_description"]
         )
+    }
+
+    private func inviteToken(from url: URL) -> String? {
+        InviteJoinLinkKt.parseSlockInviteJoinUrl(rawUrl: url.absoluteString)?.token
+    }
+
+    private func pruneRecentInviteIngress() {
+        let cutoff = Date().addingTimeInterval(-2.0)
+        recentInviteIngress = recentInviteIngress.filter { $0.value >= cutoff }
+        if recentInviteIngress.count > 16 {
+            recentInviteIngress = Dictionary(
+                uniqueKeysWithValues: recentInviteIngress
+                    .sorted { $0.value > $1.value }
+                    .prefix(16)
+                    .map { ($0.key, $0.value) }
+            )
+        }
     }
 
     private func configuredCallbackScheme() -> String? {

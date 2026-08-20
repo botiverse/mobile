@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.SlockHostStrings
+import build.raft.app.normalizeSlockInviteTokenOrNull
 import build.raft.app.slockLogInfo
 import build.raft.app.slockLogWarn
 import kotlinx.coroutines.CoroutineScope
@@ -50,6 +51,7 @@ data class SlockIosMobileOAuthCompletionResult(
     val handoffCode: String? = null,
     val codeVerifier: String? = null,
     val generation: String? = null,
+    val inviteToken: String? = null,
 )
 
 internal data class IosMobileOAuthPendingRequest(
@@ -62,6 +64,7 @@ internal data class IosMobileOAuthPendingRequest(
     val callbackScheme: String,
     val environmentKey: String,
     val startedAtMillis: Long,
+    val inviteToken: String? = null,
 )
 
 internal class IosMobileOAuthPendingStore(
@@ -80,6 +83,7 @@ internal class IosMobileOAuthPendingStore(
         store.putString(KEY_CALLBACK_SCHEME, request.callbackScheme)
         store.putString(KEY_ENVIRONMENT_KEY, request.environmentKey)
         store.putString(KEY_STARTED_AT_MILLIS, request.startedAtMillis.toString())
+        store.putString(KEY_INVITE_TOKEN, request.inviteToken)
         store.putString(KEY_COMMITTED_GENERATION, request.generation)
     }
 
@@ -95,6 +99,9 @@ internal class IosMobileOAuthPendingStore(
         val callbackScheme = store.getString(KEY_CALLBACK_SCHEME).orEmpty()
         val environmentKey = store.getString(KEY_ENVIRONMENT_KEY).orEmpty()
         val startedAtMillis = store.getString(KEY_STARTED_AT_MILLIS)?.toLongOrNull() ?: return null
+        val inviteToken =
+            store.getString(KEY_INVITE_TOKEN)?.let(::normalizeSlockInviteTokenOrNull)
+        if (store.getString(KEY_INVITE_TOKEN)?.isNotBlank() == true && inviteToken == null) return null
         if (
             provider !in IosMobileOAuthProviders ||
             requestId.isBlank() ||
@@ -116,6 +123,7 @@ internal class IosMobileOAuthPendingStore(
             callbackScheme = callbackScheme,
             environmentKey = environmentKey,
             startedAtMillis = startedAtMillis,
+            inviteToken = inviteToken,
         )
     }
 
@@ -130,6 +138,7 @@ internal class IosMobileOAuthPendingStore(
         store.putString(KEY_CALLBACK_SCHEME, null)
         store.putString(KEY_ENVIRONMENT_KEY, null)
         store.putString(KEY_STARTED_AT_MILLIS, null)
+        store.putString(KEY_INVITE_TOKEN, null)
     }
 
     private companion object {
@@ -143,6 +152,7 @@ internal class IosMobileOAuthPendingStore(
         const val KEY_CALLBACK_SCHEME = "callbackScheme"
         const val KEY_ENVIRONMENT_KEY = "environmentKey"
         const val KEY_STARTED_AT_MILLIS = "startedAtMillis"
+        const val KEY_INVITE_TOKEN = "inviteToken"
     }
 }
 
@@ -444,11 +454,20 @@ internal class IosMobileOAuthCoordinator(
         codeVerifier: String,
         codeChallenge: String,
         returnUriOverride: String? = null,
+        pendingInviteToken: String? = null,
     ): SlockIosMobileOAuthStartResult =
         mutex.withLock {
             pendingStore.clear()
             val normalizedProvider = provider.trim().lowercase()
             val normalizedMode = mode.trim().lowercase()
+            val normalizedInviteToken =
+                pendingInviteToken?.let(::normalizeSlockInviteTokenOrNull)
+            if (pendingInviteToken?.isNotBlank() == true && normalizedInviteToken == null) {
+                return@withLock startError(
+                    code = "ios_mobile_oauth_invalid_invite_token",
+                    message = "This invite link is invalid or has expired.",
+                )
+            }
             if (
                 normalizedProvider !in IosBrowserOAuthProviders ||
                 normalizedMode !in IosMobileOAuthModes ||
@@ -523,6 +542,7 @@ internal class IosMobileOAuthCoordinator(
                             callbackScheme = callbackScheme,
                             environmentKey = environmentKey,
                             startedAtMillis = nowMillis(),
+                            inviteToken = normalizedInviteToken,
                         )
                     )
                     SlockIosMobileOAuthStartResult(
@@ -552,10 +572,19 @@ internal class IosMobileOAuthCoordinator(
         codeVerifier: String,
         codeChallenge: String,
         returnUriOverride: String? = null,
+        pendingInviteToken: String? = null,
     ): SlockIosMobileOAuthStartResult =
         mutex.withLock {
             pendingStore.clear()
             val normalizedMode = mode.trim().lowercase()
+            val normalizedInviteToken =
+                pendingInviteToken?.let(::normalizeSlockInviteTokenOrNull)
+            if (pendingInviteToken?.isNotBlank() == true && normalizedInviteToken == null) {
+                return@withLock startError(
+                    code = "ios_mobile_oauth_invalid_invite_token",
+                    message = "This invite link is invalid or has expired.",
+                )
+            }
             if (
                 normalizedMode !in IosMobileOAuthModes ||
                 generation.isBlank() ||
@@ -619,6 +648,7 @@ internal class IosMobileOAuthCoordinator(
                             callbackScheme = returnUri.substringBefore("://"),
                             environmentKey = environmentKey,
                             startedAtMillis = nowMillis(),
+                            inviteToken = normalizedInviteToken,
                         )
                     )
                     SlockIosMobileOAuthStartResult(
@@ -820,8 +850,16 @@ internal class IosMobileOAuthCoordinator(
         ) {
             is IosMobileOAuthLoginOutcome.Success ->
                 SlockIosMobileOAuthCompletionResult(
-                    status = if (outcome.selectedServerId.isNullOrBlank()) "choose_server" else "app_shell",
+                    status =
+                        if (pending.inviteToken != null) {
+                            "invite_accept"
+                        } else if (outcome.selectedServerId.isNullOrBlank()) {
+                            "choose_server"
+                        } else {
+                            "app_shell"
+                        },
                     provider = pending.provider,
+                    inviteToken = pending.inviteToken,
                 )
             is IosMobileOAuthLoginOutcome.LegalAcceptanceRequired ->
                 SlockIosMobileOAuthCompletionResult(
@@ -829,6 +867,7 @@ internal class IosMobileOAuthCoordinator(
                     provider = pending.provider,
                     handoffCode = code,
                     codeVerifier = pending.codeVerifier,
+                    inviteToken = pending.inviteToken,
                 )
             is IosMobileOAuthLoginOutcome.Failure ->
                 errorCompletion(pending, outcome.message)
@@ -899,6 +938,7 @@ private fun errorCompletion(
         status = if (pending.mode == IOS_MOBILE_OAUTH_LINK_MODE) "settings_account" else "login_error",
         message = message,
         provider = pending.provider,
+        inviteToken = pending.inviteToken,
     )
 
 private fun iosMobileOAuthActionFailedMessage(provider: String, mode: String): String =
@@ -978,6 +1018,7 @@ object SlockIosMobileOAuthBridge {
         returnUri: String,
         codeVerifier: String,
         codeChallenge: String,
+        pendingInviteToken: String? = null,
         completion: (SlockIosMobileOAuthStartResult) -> Unit,
     ) {
         scope.launch {
@@ -990,6 +1031,7 @@ object SlockIosMobileOAuthBridge {
                         codeVerifier,
                         codeChallenge,
                         returnUriOverride = returnUri,
+                        pendingInviteToken = pendingInviteToken,
                     )
                 }.getOrElse {
                     startError(
@@ -1012,6 +1054,7 @@ object SlockIosMobileOAuthBridge {
         returnUri: String,
         codeVerifier: String,
         codeChallenge: String,
+        pendingInviteToken: String? = null,
         completion: (SlockIosMobileOAuthStartResult) -> Unit,
     ) {
         scope.launch {
@@ -1023,6 +1066,7 @@ object SlockIosMobileOAuthBridge {
                         codeVerifier,
                         codeChallenge,
                         returnUriOverride = returnUri,
+                        pendingInviteToken = pendingInviteToken,
                     )
                 }.getOrElse {
                     startError(
