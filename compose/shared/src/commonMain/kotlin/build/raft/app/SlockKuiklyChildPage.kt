@@ -70,6 +70,7 @@ internal class SlockKuiklyChildPageView :
         super.didMoveToParentView()
         getPager().addPagerEventObserver(this)
         if (getPager().isAppeared) {
+            viewAppeared = true
             sendPagerEvent("viewDidAppear")
         }
         syncChildLifecycleVisibility()
