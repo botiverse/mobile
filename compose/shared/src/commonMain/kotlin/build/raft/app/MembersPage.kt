@@ -10824,16 +10824,6 @@ private fun MembersAgentActivityTab(
                 }
                 LaunchedEffect(detail?.agentId, rows.size, rows.lastOrNull()?.activityTimelineKey()) {
                     if (rows.isNotEmpty() && allowBottomAnchor && !listState.isScrollInProgress) {
-                        // ⚠️ The one place that can pull a reader away from what they are
-                        // looking at. Logged because it is the only device-observable
-                        // evidence of it: Kuikly draws to a canvas, so uiautomator reports
-                        // no text nodes and neither item keys nor anchor offsets can be
-                        // read back on a device (@HuaTuo measured). A jump with this line
-                        // absent from logcat did NOT come from here.
-                        slockLogInfo(
-                            "SlockAgentActivityAnchor",
-                            "follow-scroll rows=${rows.size} target=${rows.lastIndex}"
-                        )
                         listState.scrollToItem(rows.lastIndex)
                     }
                 }
@@ -10842,26 +10832,6 @@ private fun MembersAgentActivityTab(
                 state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
-                    // ⚠️ A real finger on the list retires bottom-follow HERE, synchronously.
-                    //
-                    // The snapshotFlow above cannot be trusted to do it: clearing the anchor
-                    // there requires OBSERVING `isScrollInProgress == true`, and a flick can
-                    // move both fields between two snapshots, so the sampled sequence goes
-                    // (idle, atBottom) -> (idle, awayFromBottom) with the scrolling state
-                    // never emitted. `else -> current` then keeps the anchor at its initial
-                    // `true` forever, and every later arriving row calls
-                    // scrollToItem(rows.lastIndex) on a reader who is browsing upward.
-                    //
-                    // A pointer event cannot be missed by sampling, which is why ThreadPage
-                    // already drives its own bottom anchor from TouchType.Move rather than
-                    // from scroll state. Only direct moves count: inertial settling and
-                    // programmatic scrolls produce no pointer move, so the mechanism cannot
-                    // retire its own anchor.
-                    .touchListenerWithConfiguration { type, _, _ ->
-                        if (type == TouchType.Move && allowBottomAnchor) {
-                            allowBottomAnchor = false
-                        }
-                    }
                     .weight(1f)
                     .nestedScroll(
                         scrollUp = NestedScrollMode.SELF_FIRST,
