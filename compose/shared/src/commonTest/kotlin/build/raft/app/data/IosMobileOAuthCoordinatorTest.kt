@@ -444,6 +444,112 @@ class IosMobileOAuthCoordinatorTest {
     }
 
     @Test
+    fun pendingInviteCallbackSurvivesColdRestartInTheSameEnvironment() = runBlocking {
+        val environmentPersistence = InMemorySlockKeyValueStore()
+        val pendingPersistence = InMemorySlockKeyValueStore()
+        val firstEnvironment = SharedApiEnvironmentStore(environmentPersistence)
+        val firstRuntime = FakeRuntime(environmentKey = "production").apply {
+            environmentStore = firstEnvironment
+        }
+        val firstCoordinator = IosMobileOAuthCoordinator(
+            pendingStore = IosMobileOAuthPendingStore(pendingPersistence),
+            runtimeProvider = { firstRuntime },
+            nowMillis = { 1_000L },
+        )
+
+        assertEquals(
+            "started",
+            firstCoordinator.startBrowser(
+                provider = "google",
+                mode = "login",
+                generation = "cold-restart-generation",
+                codeVerifier = Verifier,
+                codeChallenge = Challenge,
+                pendingInviteToken = "invite-token",
+            ).status,
+        )
+
+        val restartedRuntime = FakeRuntime(environmentKey = "production").apply {
+            environmentStore = SharedApiEnvironmentStore(environmentPersistence)
+        }
+        val restartedCoordinator = IosMobileOAuthCoordinator(
+            pendingStore = IosMobileOAuthPendingStore(pendingPersistence),
+            runtimeProvider = { restartedRuntime },
+            nowMillis = { 1_000L },
+        )
+        val completion = restartedCoordinator.complete(
+            IosMobileOAuthCallback(
+                scheme = "raft",
+                host = "oauth",
+                path = "/callback",
+                provider = null,
+                mode = null,
+                code = "cold-restart-handoff",
+                error = null,
+                expectedGeneration = "cold-restart-generation",
+            )
+        )
+
+        assertEquals("invite_accept", completion.status)
+        assertEquals(1, restartedRuntime.loginCompleteCount)
+    }
+
+    @Test
+    fun pendingInviteCallbackRejectsCrossProcessAbaEvenWhenEndpointReturnsToProduction() = runBlocking {
+        val environmentPersistence = InMemorySlockKeyValueStore()
+        val pendingPersistence = InMemorySlockKeyValueStore()
+        val environment = SharedApiEnvironmentStore(environmentPersistence)
+        val startRuntime = FakeRuntime(environmentKey = "production").apply {
+            environmentStore = environment
+        }
+        val startCoordinator = IosMobileOAuthCoordinator(
+            pendingStore = IosMobileOAuthPendingStore(pendingPersistence),
+            runtimeProvider = { startRuntime },
+            nowMillis = { 1_000L },
+        )
+
+        assertEquals(
+            "started",
+            startCoordinator.startBrowser(
+                provider = "google",
+                mode = "login",
+                generation = "aba-generation",
+                codeVerifier = Verifier,
+                codeChallenge = Challenge,
+                pendingInviteToken = "invite-token",
+            ).status,
+        )
+        environment.select(SharedApiEnvironmentStore.Staging.key)
+        environment.select(SharedApiEnvironmentStore.Production.key)
+
+        val restartedRuntime = FakeRuntime(environmentKey = "production").apply {
+            environmentStore = SharedApiEnvironmentStore(environmentPersistence)
+        }
+        val restartedCoordinator = IosMobileOAuthCoordinator(
+            pendingStore = IosMobileOAuthPendingStore(pendingPersistence),
+            runtimeProvider = { restartedRuntime },
+            nowMillis = { 1_000L },
+        )
+        val completion = restartedCoordinator.complete(
+            IosMobileOAuthCallback(
+                scheme = "raft",
+                host = "oauth",
+                path = "/callback",
+                provider = null,
+                mode = null,
+                code = "stale-aba-handoff",
+                error = null,
+                expectedGeneration = "aba-generation",
+            )
+        )
+
+        assertEquals("login_error", completion.status)
+        assertTrue(completion.message.orEmpty().contains("environment", ignoreCase = true))
+        assertEquals(0, restartedRuntime.loginCompleteCount)
+        assertNull(IosMobileOAuthPendingStore(pendingPersistence).read())
+    }
+
+    @Test
     fun runtimeNotReadyRetryPreservesAndReturnsExactGenerationForFencedCleanup() = runBlocking {
         val runtime = FakeRuntime(environmentKey = "production")
         var availableRuntime: IosMobileOAuthRuntime? = runtime
@@ -596,11 +702,11 @@ class IosMobileOAuthCoordinatorTest {
     private class FakeRuntime(
         override var environmentKey: String,
     ) : IosMobileOAuthRuntime {
+        var environmentStore: SharedApiEnvironmentStore? = null
         var environmentGeneration: Long = 0L
 
         override val environmentSnapshot: SharedApiEnvironmentSnapshot
-            get() =
-                SharedApiEnvironmentSnapshot(
+            get() = environmentStore?.currentSnapshot() ?: SharedApiEnvironmentSnapshot(
                     key = environmentKey,
                     apiBaseUrl =
                         if (environmentKey == SharedApiEnvironmentStore.Production.key) {

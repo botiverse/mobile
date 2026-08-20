@@ -397,7 +397,9 @@ private suspend fun finishInvite(
 
 internal fun Pager.openInviteAuthPage(pageName: String, token: String) {
     val normalizedToken = normalizeSlockInviteTokenOrNull(token) ?: return
-    SlockSharedStoreRegistry.get(Utils.bridgeModule(pagerId)).captureInviteResume(normalizedToken)
+    val capture =
+        SlockSharedStoreRegistry.get(Utils.bridgeModule(pagerId)).captureInviteResume(normalizedToken)
+    if (capture is build.raft.app.data.SharedInviteResumeCaptureResult.Invalidated) return
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         pageName,
         authPageData(
@@ -410,7 +412,9 @@ internal fun Pager.openInviteAuthPage(pageName: String, token: String) {
 
 internal fun Pager.openInviteAcceptPage(token: String, replaceCurrent: Boolean = true) {
     val normalized = normalizeSlockInviteTokenOrNull(token) ?: return
-    SlockSharedStoreRegistry.get(Utils.bridgeModule(pagerId)).captureInviteResume(normalized)
+    val capture =
+        SlockSharedStoreRegistry.get(Utils.bridgeModule(pagerId)).captureInviteResume(normalized)
+    if (capture is build.raft.app.data.SharedInviteResumeCaptureResult.Invalidated) return
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         INVITE_ACCEPT_PAGE,
         inviteAcceptPageData(normalized, replaceCurrent),

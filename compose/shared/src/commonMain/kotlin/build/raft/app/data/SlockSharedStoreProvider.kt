@@ -1149,7 +1149,7 @@ internal class SlockSharedStoreProvider private constructor(
             avatarCacheNativeCache = avatarCacheNativeCache
         )
 
-    internal fun captureInviteResume(token: String): SharedInviteResumeContext? =
+    internal fun captureInviteResume(token: String): SharedInviteResumeCaptureResult =
         inviteResumeStore.capture(token, apiEnvironmentStore.currentSnapshot())
 
     internal fun clearInviteResume(token: String? = null) {
@@ -1160,9 +1160,14 @@ internal class SlockSharedStoreProvider private constructor(
         token: String,
         avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache,
     ): SharedAuthDataSource {
-        val context = captureInviteResume(token)
         val source = createAuthDataSourceForCurrentEnvironment(avatarCacheNativeCache)
-        return context?.let { source.bindToInviteEnvironment(it.environment) } ?: source
+        return when (val capture = captureInviteResume(token)) {
+            SharedInviteResumeCaptureResult.NoContext -> source
+            is SharedInviteResumeCaptureResult.Bound ->
+                source.bindToInviteEnvironment(capture.context.environment)
+            is SharedInviteResumeCaptureResult.Invalidated ->
+                source.invalidatedInviteResume(capture.capturedEnvironment)
+        }
     }
 
     internal fun createAuthDataSourceForInvite(
@@ -1170,9 +1175,14 @@ internal class SlockSharedStoreProvider private constructor(
         token: String,
         avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache,
     ): SharedAuthDataSource {
-        val context = captureInviteResume(token)
         val source = createAuthDataSourceForCurrentEnvironment(scope, avatarCacheNativeCache)
-        return context?.let { source.bindToInviteEnvironment(it.environment) } ?: source
+        return when (val capture = captureInviteResume(token)) {
+            SharedInviteResumeCaptureResult.NoContext -> source
+            is SharedInviteResumeCaptureResult.Bound ->
+                source.bindToInviteEnvironment(capture.context.environment)
+            is SharedInviteResumeCaptureResult.Invalidated ->
+                source.invalidatedInviteResume(capture.capturedEnvironment)
+        }
     }
 
     fun markActiveAppShellPager(pagerId: String) {

@@ -2112,7 +2112,9 @@ internal fun Pager.openPostAuthRoute(
 ) {
     val normalizedInviteToken = normalizeSlockInviteTokenOrNull(pendingInviteToken)
     if (normalizedInviteToken != null) {
-        SlockSharedStoreRegistry.get(Utils.bridgeModule(pagerId)).captureInviteResume(normalizedInviteToken)
+        val capture =
+            SlockSharedStoreRegistry.get(Utils.bridgeModule(pagerId)).captureInviteResume(normalizedInviteToken)
+        if (capture is build.raft.app.data.SharedInviteResumeCaptureResult.Invalidated) return
         acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
             SLOCK_APP_SHELL_PAGE,
             appShellPageData(

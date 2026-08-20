@@ -30,29 +30,111 @@ internal data class SharedInviteResumeContext(
     val environment: SharedApiEnvironmentSnapshot,
 )
 
+internal sealed interface SharedInviteResumeCaptureResult {
+    data object NoContext : SharedInviteResumeCaptureResult
+
+    data class Bound(
+        val context: SharedInviteResumeContext,
+    ) : SharedInviteResumeCaptureResult
+
+    /**
+     * A pending invite is terminal once its environment witness changes. It must not be
+     * rebound when a page is recreated after the environment happens to return to the old value.
+     */
+    data class Invalidated(
+        val token: String,
+        val capturedEnvironment: SharedApiEnvironmentSnapshot,
+        val observedEnvironment: SharedApiEnvironmentSnapshot,
+    ) : SharedInviteResumeCaptureResult
+}
+
 internal class SharedInviteResumeStore {
     private val lock = SynchronizedObject()
-    private var context: SharedInviteResumeContext? = null
+    private sealed interface State {
+        data object Empty : State
+        data class Bound(val context: SharedInviteResumeContext) : State
+        data class Invalidated(val result: SharedInviteResumeCaptureResult.Invalidated) : State
+    }
+
+    private var state: State = State.Empty
 
     fun capture(
         token: String,
         environment: SharedApiEnvironmentSnapshot,
-    ): SharedInviteResumeContext? = synchronized(lock) {
-        val normalized = token.trim().takeIf { it.isNotBlank() } ?: return null
-        val current = context
-        if (current?.token == normalized && current.environment == environment) return current
-        SharedInviteResumeContext(normalized, environment).also { context = it }
+    ): SharedInviteResumeCaptureResult = synchronized(lock) {
+        val normalized = token.trim().takeIf { it.isNotBlank() }
+            ?: return@synchronized SharedInviteResumeCaptureResult.NoContext
+        when (val current = state) {
+            State.Empty ->
+                SharedInviteResumeContext(normalized, environment).let {
+                    state = State.Bound(it)
+                    SharedInviteResumeCaptureResult.Bound(it)
+                }
+
+            is State.Bound -> {
+                val bound = current.context
+                when {
+                    bound.token != normalized ->
+                        SharedInviteResumeContext(normalized, environment).let {
+                            state = State.Bound(it)
+                            SharedInviteResumeCaptureResult.Bound(it)
+                        }
+
+                    bound.environment == environment ->
+                        SharedInviteResumeCaptureResult.Bound(bound)
+
+                    else ->
+                        SharedInviteResumeCaptureResult.Invalidated(
+                            token = normalized,
+                            capturedEnvironment = bound.environment,
+                            observedEnvironment = environment,
+                        ).also { state = State.Invalidated(it) }
+                }
+            }
+
+            is State.Invalidated ->
+                if (current.result.token == normalized) {
+                    current.result
+                } else {
+                    SharedInviteResumeContext(normalized, environment).let {
+                        state = State.Bound(it)
+                        SharedInviteResumeCaptureResult.Bound(it)
+                    }
+                }
+        }
     }
 
-    fun current(token: String? = null): SharedInviteResumeContext? = synchronized(lock) {
-        val current = context ?: return null
+    fun current(token: String? = null): SharedInviteResumeCaptureResult = synchronized(lock) {
+        val current = state
         val normalized = token?.trim()?.takeIf { it.isNotBlank() }
-        if (normalized == null || normalized == current.token) current else null
+        when (current) {
+            State.Empty -> SharedInviteResumeCaptureResult.NoContext
+            is State.Bound ->
+                if (normalized == null || normalized == current.context.token) {
+                    SharedInviteResumeCaptureResult.Bound(current.context)
+                } else {
+                    SharedInviteResumeCaptureResult.NoContext
+                }
+            is State.Invalidated ->
+                if (normalized == null || normalized == current.result.token) {
+                    current.result
+                } else {
+                    SharedInviteResumeCaptureResult.NoContext
+                }
+        }
     }
 
     fun clear(token: String? = null) = synchronized(lock) {
         val normalized = token?.trim()?.takeIf { it.isNotBlank() }
-        if (normalized == null || context?.token == normalized) context = null
+        when (val current = state) {
+            State.Empty -> Unit
+            is State.Bound ->
+                if (normalized == null || current.context.token == normalized) state = State.Empty
+            // Explicit cleanup ends the invalidated flow. A later capture without this cleanup
+            // still returns Invalidated and cannot reopen it.
+            is State.Invalidated ->
+                if (normalized == null || current.result.token == normalized) state = State.Empty
+        }
     }
 }
 
@@ -76,6 +158,7 @@ class SharedAuthDataSource(
         )
     },
     private val boundInviteEnvironment: SharedApiEnvironmentSnapshot? = null,
+    private val inviteResumeInvalidated: Boolean = false,
 ) {
     private var avatarCacheRuntime: SlockAvatarCacheRuntime? = null
     private var avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
@@ -100,7 +183,9 @@ class SharedAuthDataSource(
     internal fun bindToInviteEnvironment(
         environment: SharedApiEnvironmentSnapshot,
     ): SharedAuthDataSource =
-        SharedAuthDataSource(
+        if (inviteResumeInvalidated) {
+            invalidatedInviteResume(environment)
+        } else SharedAuthDataSource(
             api = api.bindToEnvironment(environment),
             sessionStore = sessionStore,
             diagnosticsLogger = diagnosticsLogger,
@@ -110,6 +195,25 @@ class SharedAuthDataSource(
             // production→custom drift invisible to local publication guards.
             inviteEnvironmentSnapshotProvider = inviteEnvironmentSnapshotProvider,
             boundInviteEnvironment = environment,
+            inviteResumeInvalidated = false,
+        ).withAvatarCacheRuntime(
+            runtime = avatarCacheRuntime,
+            nativeCache = avatarCacheNativeCache,
+            environmentId = avatarCacheEnvironmentId,
+        )
+
+    /** Returns a typed source that cannot issue invite/auth-resume network requests. */
+    internal fun invalidatedInviteResume(
+        capturedEnvironment: SharedApiEnvironmentSnapshot,
+    ): SharedAuthDataSource =
+        SharedAuthDataSource(
+            api = api.bindToEnvironment(capturedEnvironment),
+            sessionStore = sessionStore,
+            diagnosticsLogger = diagnosticsLogger,
+            criticalDiagnosticsLogger = criticalDiagnosticsLogger,
+            inviteEnvironmentSnapshotProvider = inviteEnvironmentSnapshotProvider,
+            boundInviteEnvironment = capturedEnvironment,
+            inviteResumeInvalidated = true,
         ).withAvatarCacheRuntime(
             runtime = avatarCacheRuntime,
             nativeCache = avatarCacheNativeCache,
@@ -161,7 +265,9 @@ class SharedAuthDataSource(
      * failure so callers can stay fail-closed (provider hidden until a probe succeeds).
      */
     suspend fun probeBackendSocialProviders(platform: String): Set<String>? =
-        when (val result = api.fetchSocialAuthProviders(platform)) {
+        if (!inviteEnvironmentIsCurrent()) {
+            null
+        } else when (val result = api.fetchSocialAuthProviders(platform)) {
             is AuthApiResult.Success -> result.data
             is AuthApiResult.Failure -> {
                 diagnosticsLogger(
@@ -179,8 +285,8 @@ class SharedAuthDataSource(
         val environment = captureProductionInviteEnvironment() ?: run {
             return SharedInviteInfoResult.Failure(
                 code = 409,
-                errorCode = AuthInviteEnvironmentUnavailableCode,
-                message = AuthInviteEnvironmentUnavailableMessage,
+                errorCode = inviteEnvironmentFailureCode(),
+                message = inviteEnvironmentFailureMessage(),
             )
         }
         val normalizedToken = token.trim()
@@ -205,8 +311,8 @@ class SharedAuthDataSource(
         val environment = captureProductionInviteEnvironment() ?: run {
             return SharedInviteAcceptResult.Failure(
                 code = 409,
-                errorCode = AuthInviteEnvironmentUnavailableCode,
-                message = AuthInviteEnvironmentUnavailableMessage,
+                errorCode = inviteEnvironmentFailureCode(),
+                message = inviteEnvironmentFailureMessage(),
             )
         }
         val normalizedToken = token.trim()
@@ -289,9 +395,19 @@ class SharedAuthDataSource(
 
     /** True only while an invite-bound source still observes its captured endpoint/generation. */
     internal fun inviteEnvironmentIsCurrent(): Boolean =
-        boundInviteEnvironment?.let { expected ->
-            runCatching { inviteEnvironmentSnapshotProvider() == expected }.getOrDefault(false)
-        } ?: true
+        if (inviteResumeInvalidated) {
+            false
+        } else {
+            boundInviteEnvironment?.let { expected ->
+                runCatching { inviteEnvironmentSnapshotProvider() == expected }.getOrDefault(false)
+            } ?: true
+        }
+
+    private fun inviteEnvironmentFailureCode(): String =
+        if (inviteResumeInvalidated) AuthAuthorityChangedMessage else AuthInviteEnvironmentUnavailableCode
+
+    private fun inviteEnvironmentFailureMessage(): String =
+        if (inviteResumeInvalidated) AuthAuthorityChangedMessage else AuthInviteEnvironmentUnavailableMessage
 
     private fun inviteEnvironmentChangedAuthFailure(): SharedAuthResult.Failure =
         SharedAuthResult.Failure(
@@ -489,6 +605,7 @@ class SharedAuthDataSource(
         returnUri: String,
         codeChallenge: String
     ): SharedAuthResult<AuthMobileOAuthStartResponse> {
+        inviteEnvironmentGuard()?.let { return it }
         val normalizedProvider = provider.trim().lowercase()
         if (normalizedProvider !in BrowserMobileOAuthProviders) {
             return SharedAuthResult.Failure(
@@ -627,6 +744,7 @@ class SharedAuthDataSource(
         returnUri: String,
         codeChallenge: String
     ): SharedAuthResult<AuthMobileOAuthStartResponse> {
+        inviteEnvironmentGuard()?.let { return it }
         val normalizedProvider = provider.trim().lowercase()
         if (normalizedProvider !in BrowserMobileOAuthProviders) {
             return SharedAuthResult.Failure(
@@ -686,6 +804,7 @@ class SharedAuthDataSource(
         code: String,
         codeVerifier: String
     ): SharedAuthResult<AuthMobileOAuthLinkCompleteResponse> {
+        inviteEnvironmentGuard()?.let { return it }
         val normalizedProvider = provider.trim().lowercase()
         if (normalizedProvider !in MobileOAuthProviders) {
             return SharedAuthResult.Failure(
@@ -720,6 +839,7 @@ class SharedAuthDataSource(
         returnUri: String,
         codeChallenge: String,
     ): SharedAuthResult<AuthNativeAppleMobileOAuthStartResponse> {
+        inviteEnvironmentGuard()?.let { return it }
         if (appEnv.isBlank() || returnUri.isBlank() || codeChallenge.isBlank()) {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
@@ -756,6 +876,7 @@ class SharedAuthDataSource(
         authorizationCode: String,
         identityToken: String,
     ): SharedAuthResult<AuthNativeAppleMobileOAuthAuthorizationResponse> {
+        inviteEnvironmentGuard()?.let { return it }
         if (
             requestId.isBlank() ||
             requestToken.isBlank() ||
@@ -941,6 +1062,7 @@ class SharedAuthDataSource(
         if (email.isBlank() || !email.contains("@")) {
             return SharedAuthResult.Failure(SharedAuthErrorCode.Validation, "Enter a valid email address.")
         }
+        inviteEnvironmentGuard()?.let { return it }
         return when (val response = api.forgotPassword(email.trim())) {
             is AuthApiResult.Success -> SharedAuthResult.Success(Unit)
             is AuthApiResult.Failure -> response.toSharedAuthFailure()
@@ -1489,6 +1611,7 @@ class SharedAuthDataSource(
     }
 
     suspend fun consumeQaBootstrap(request: QaBootstrapConsumeRequest): SharedAuthResult<StoredAuthSession> {
+        inviteEnvironmentGuard()?.let { return it }
         runCatchingPreservingCancellation {
             clearSessionAndRetireAvatarOwners(
                 reason = "qa_bootstrap_replace",
@@ -1556,6 +1679,7 @@ class SharedAuthDataSource(
         signingCertSha256: String,
         deviceBootGeneration: String,
     ): SharedAuthResult<StoredAuthSession> {
+        inviteEnvironmentGuard()?.let { return it }
         runCatchingPreservingCancellation {
             clearSessionAndRetireAvatarOwners(
                 reason = "qa_login_bootstrap_replace",
@@ -1632,6 +1756,7 @@ class SharedAuthDataSource(
     }
 
     suspend fun readyQaBootstrap(): SharedAuthResult<QaBootstrapReadyResponse> {
+        inviteEnvironmentGuard()?.let { return it }
         val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         val metadata = session.qaBootstrap ?: return SharedAuthResult.Unauthenticated
         if (metadata.protocol == QA_BOOTSTRAP_LOGIN_PROTOCOL) {
@@ -1701,6 +1826,7 @@ class SharedAuthDataSource(
     }
 
     suspend fun statusQaBootstrap(): SharedAuthResult<QaBootstrapStatusResponse> {
+        inviteEnvironmentGuard()?.let { return it }
         val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         val metadata = session.qaBootstrap ?: return SharedAuthResult.Unauthenticated
         if (metadata.protocol == QA_BOOTSTRAP_LOGIN_PROTOCOL) {
@@ -1773,6 +1899,7 @@ class SharedAuthDataSource(
         }
 
     suspend fun logout(): SharedAuthResult<Unit> {
+        inviteEnvironmentGuard()?.let { return it }
         val session = sessionStore.readSession()
         val avatarRetirement = captureAvatarOwnerRetirement(session)
         if (session != null) {

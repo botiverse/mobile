@@ -9,7 +9,21 @@ class SharedApiEnvironmentStore(
 ) {
     private val mutableState = MutableStateFlow(currentEnvironment(store.getString(KEY_ENVIRONMENT)))
     private var observedEnvironment = mutableState.value
-    private var environmentGeneration = 0L
+    /**
+     * Persisted environment authority revision. This is deliberately not a process-local
+     * counter: OAuth invite callbacks may complete after a cold process restart, and an A→B→A
+     * cycle must not reuse the old A witness.
+     */
+    private var environmentGeneration =
+        store.getString(KEY_ENVIRONMENT_GENERATION)?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+
+    init {
+        // Make the persisted witness explicit even for a first-run production environment.
+        if (store.getString(KEY_ENVIRONMENT_GENERATION) == null) {
+            store.putString(KEY_ENVIRONMENT_GENERATION, environmentGeneration.toString())
+        }
+    }
+
     val state: StateFlow<SharedSettingsApiEnvironmentOption> = mutableState.asStateFlow()
 
     fun current(): SharedSettingsApiEnvironmentOption =
@@ -44,14 +58,16 @@ class SharedApiEnvironmentStore(
 
     fun select(key: String): SharedSettingsApiEnvironmentOption? {
         val environment = predefined.firstOrNull { it.key == key } ?: return null
-        store.putString(KEY_ENVIRONMENT, environment.key)
-        return observe(environment)
+        return persistEnvironment(environment) {
+            store.putString(KEY_ENVIRONMENT, environment.key)
+        }
     }
 
     fun save(request: SharedSettingsApiEnvironmentRequest): SharedSettingsApiEnvironmentOption? {
         predefined.firstOrNull { it.key == request.key }?.let { environment ->
-            store.putString(KEY_ENVIRONMENT, environment.key)
-            return observe(environment)
+            return persistEnvironment(environment) {
+                store.putString(KEY_ENVIRONMENT, environment.key)
+            }
         }
         val apiBaseUrl = request.apiBaseUrl.trim()
         val socketBaseUrl = request.socketBaseUrl.trim()
@@ -65,21 +81,43 @@ class SharedApiEnvironmentStore(
                 socketBaseUrl = socketBaseUrl,
                 webUrl = webUrl
             )
-        store.putString(KEY_ENVIRONMENT, CustomKey)
-        store.putString(KEY_CUSTOM_LABEL, custom.label)
-        store.putString(KEY_CUSTOM_API_BASE_URL, custom.apiBaseUrl)
-        store.putString(KEY_CUSTOM_SOCKET_BASE_URL, custom.socketBaseUrl)
-        store.putString(KEY_CUSTOM_WEB_URL, custom.webUrl)
-        return observe(custom)
+        return persistEnvironment(custom) {
+            store.putString(KEY_CUSTOM_LABEL, custom.label)
+            store.putString(KEY_CUSTOM_API_BASE_URL, custom.apiBaseUrl)
+            store.putString(KEY_CUSTOM_SOCKET_BASE_URL, custom.socketBaseUrl)
+            store.putString(KEY_CUSTOM_WEB_URL, custom.webUrl)
+            store.putString(KEY_ENVIRONMENT, CustomKey)
+        }
     }
 
     private fun observe(environment: SharedSettingsApiEnvironmentOption): SharedSettingsApiEnvironmentOption {
         if (environment != observedEnvironment) {
-            environmentGeneration += 1L
+            advanceEnvironmentGeneration()
             observedEnvironment = environment
         }
         mutableState.value = environment
         return environment
+    }
+
+    /** Writes the revision before the environment selector so a torn update fails closed. */
+    private fun persistEnvironment(
+        environment: SharedSettingsApiEnvironmentOption,
+        writeEnvironment: () -> Unit,
+    ): SharedSettingsApiEnvironmentOption {
+        if (environment != observedEnvironment) {
+            advanceEnvironmentGeneration()
+        }
+        writeEnvironment()
+        observedEnvironment = environment
+        mutableState.value = environment
+        return environment
+    }
+
+    private fun advanceEnvironmentGeneration() {
+        if (environmentGeneration < Long.MAX_VALUE) {
+            environmentGeneration += 1L
+        }
+        store.putString(KEY_ENVIRONMENT_GENERATION, environmentGeneration.toString())
     }
 
     fun rewriteApiUrl(url: String): String {
@@ -150,10 +188,11 @@ class SharedApiEnvironmentStore(
         private const val KEY_CUSTOM_API_BASE_URL = "custom_api_base_url"
         private const val KEY_CUSTOM_SOCKET_BASE_URL = "custom_socket_base_url"
         private const val KEY_CUSTOM_WEB_URL = "custom_web_url"
+        private const val KEY_ENVIRONMENT_GENERATION = "environment_generation"
     }
 }
 
-/** Runtime-only environment witness; never persist or log it with capability tokens. */
+/** Environment identity and persisted authority revision; never log it with capability tokens. */
 data class SharedApiEnvironmentSnapshot(
     val key: String,
     val apiBaseUrl: String,
