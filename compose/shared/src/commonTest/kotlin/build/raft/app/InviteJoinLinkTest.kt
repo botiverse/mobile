@@ -30,6 +30,23 @@ class InviteJoinLinkTest {
     }
 
     @Test
+    fun enforcesThePendingTokenNormalizationBoundary() {
+        val maxLengthToken = "b".repeat(256)
+        val overLimitToken = "b".repeat(257)
+
+        assertEquals(maxLengthToken, normalizeSlockInviteTokenOrNull(maxLengthToken))
+        assertNull(normalizeSlockInviteTokenOrNull(overLimitToken))
+        listOf(
+            null,
+            "",
+            " $maxLengthToken",
+            "$maxLengthToken ",
+            "a/b",
+            "a%2Fb",
+        ).forEach { raw -> assertNull(normalizeSlockInviteTokenOrNull(raw), raw) }
+    }
+
+    @Test
     fun rejectsNonProductionOrContentBearingUrls() {
         listOf(
             null,
