@@ -835,6 +835,13 @@ internal fun threadComposerEnterAction(
  *
  * Never raising the action in newline mode is how 1.9 behaved and is what the current contract
  * asks for: newline mode inserts a newline, suggestions are accepted by tapping them.
+ *
+ * The underlying defect is avoided here, not repaired: Kuikly still re-sends returnKeyType only
+ * for single-line fields, so on a multi-line editor an action that goes down never comes back up.
+ * Anything that changes this editor's imeAction *while it is mounted* re-enters that state and
+ * reproduces the swallowed Enter — with no exception, no failing test, and nothing visible short
+ * of reading imeOptions on a device. Returning a value that can vary during the editor's lifetime
+ * is what makes this function dangerous, which is why it now depends on the preference alone.
  */
 internal fun threadComposerUsesImeAction(
     composerSendKeyEnabled: Boolean,
