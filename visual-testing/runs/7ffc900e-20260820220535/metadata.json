@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-20T22:08:22.175Z",
+  "generatedAt": "2026-08-20T22:11:48.311Z",
   "runId": "7ffc900e-20260820220535",
   "commit": "7ffc900e-20260820220535",
   "commitSubject": "fix(android): let the return-key preference decide the composer line mode (task #1083) (#2216)",
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 79,
-        "pending": 7
+        "ready": 80,
+        "pending": 6
       }
     },
     {

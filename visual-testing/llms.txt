@@ -1,6 +1,6 @@
 # Raft Visual Testing
 
-Generated: 2026-08-20 22:08:22 UTC
+Generated: 2026-08-20 22:11:48 UTC
 Latest run: 7ffc900e-20260820220535
 Latest commit: 7ffc900e-20260820220535
 Commit subject: fix(android): let the return-key preference decide the composer line mode (task #1083) (#2216)

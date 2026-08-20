@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-20T22:08:22.175Z",
+  "generatedAt": "2026-08-20T22:11:48.311Z",
   "latestRunId": "7ffc900e-20260820220535",
   "latest": {
     "runId": "7ffc900e-20260820220535",
     "commit": "7ffc900e-20260820220535",
     "commitSubject": "fix(android): let the return-key preference decide the composer line mode (task #1083) (#2216)",
-    "generatedAt": "2026-08-20T22:08:22.175Z",
+    "generatedAt": "2026-08-20T22:11:48.311Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -129,7 +129,7 @@
       "runId": "7ffc900e-20260820220535",
       "commit": "7ffc900e-20260820220535",
       "commitSubject": "fix(android): let the return-key preference decide the composer line mode (task #1083) (#2216)",
-      "generatedAt": "2026-08-20T22:08:22.175Z",
+      "generatedAt": "2026-08-20T22:11:48.311Z",
       "baseline": "react",
       "current": "android",
       "summary": {

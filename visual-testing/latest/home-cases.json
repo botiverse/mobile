@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-20T22:08:22.175Z",
+  "generatedAt": "2026-08-20T22:11:48.311Z",
   "runId": "7ffc900e-20260820220535",
   "cases": [
     {
@@ -5424,17 +5424,26 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-20T22:08:16.367Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-20T22:10:28.076Z",
+            "severity": "low",
+            "summary": [
+              "Pixel mismatch is 0.23% with 99.77% pixel-perfect similarity — virtually identical.",
+              "Both sides show the same four status dot variants (green, orange, gray, blue) and the same pink 'Waiting pulse' indicator, with matching colors, sizes, positions, and label text."
+            ],
+            "likelyCauses": [
+              "Tiny rendering differences likely due to native font rasterization (SF Pro on iOS vs. browser font on React) rather than a real layout bug.",
+              "Minor sub-pixel antialiasing variation along the dot and label glyph edges."
+            ],
+            "suggestedOwner": "design-systems",
+            "suggestedFixes": [
+              "No action needed — pass is correct.",
+              "If desired for future fidelity, crop the iOS screenshot to the component bounds (matching the React crop) so the comparison isn't dominated by the large empty viewport."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -5508,17 +5517,26 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-20T22:08:16.367Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-20T22:10:28.076Z",
+            "severity": "low",
+            "summary": [
+              "Pixel mismatch is 0.23% with 99.77% pixel-perfect similarity — virtually identical.",
+              "Both sides show the same four status dot variants (green, orange, gray, blue) and the same pink 'Waiting pulse' indicator, with matching colors, sizes, positions, and label text."
+            ],
+            "likelyCauses": [
+              "Tiny rendering differences likely due to native font rasterization (SF Pro on iOS vs. browser font on React) rather than a real layout bug.",
+              "Minor sub-pixel antialiasing variation along the dot and label glyph edges."
+            ],
+            "suggestedOwner": "design-systems",
+            "suggestedFixes": [
+              "No action needed — pass is correct.",
+              "If desired for future fidelity, crop the iOS screenshot to the component bounds (matching the React crop) so the comparison isn't dominated by the large empty viewport."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -20939,7 +20957,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-20T22:08:12.956Z",
+        "generatedAt": "2026-08-20T22:11:40.188Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -21000,7 +21018,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:12.956Z",
+            "generatedAt": "2026-08-20T22:11:40.188Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -21022,7 +21040,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:16.031Z",
+            "generatedAt": "2026-08-20T22:11:43.154Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -21097,7 +21115,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:16.031Z",
+            "generatedAt": "2026-08-20T22:11:43.154Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25571,7 +25589,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:16.031Z",
+            "generatedAt": "2026-08-20T22:11:43.154Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25593,7 +25611,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:19.771Z",
+            "generatedAt": "2026-08-20T22:11:46.602Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25618,7 +25636,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:16.031Z",
+            "generatedAt": "2026-08-20T22:11:43.154Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25641,7 +25659,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:19.771Z",
+            "generatedAt": "2026-08-20T22:11:46.602Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25841,7 +25859,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:16.031Z",
+            "generatedAt": "2026-08-20T22:11:43.154Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25863,7 +25881,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:19.771Z",
+            "generatedAt": "2026-08-20T22:11:46.602Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25888,7 +25906,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:16.031Z",
+            "generatedAt": "2026-08-20T22:11:43.154Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25911,7 +25929,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:19.771Z",
+            "generatedAt": "2026-08-20T22:11:46.602Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26111,7 +26129,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:16.031Z",
+            "generatedAt": "2026-08-20T22:11:43.154Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26133,7 +26151,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:19.771Z",
+            "generatedAt": "2026-08-20T22:11:46.602Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26158,7 +26176,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:16.031Z",
+            "generatedAt": "2026-08-20T22:11:43.154Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26181,7 +26199,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:19.771Z",
+            "generatedAt": "2026-08-20T22:11:46.602Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26377,7 +26395,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:16.031Z",
+            "generatedAt": "2026-08-20T22:11:43.154Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26399,7 +26417,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:19.771Z",
+            "generatedAt": "2026-08-20T22:11:46.602Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26424,7 +26442,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:16.031Z",
+            "generatedAt": "2026-08-20T22:11:43.154Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26447,7 +26465,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:19.771Z",
+            "generatedAt": "2026-08-20T22:11:46.602Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26643,7 +26661,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:16.031Z",
+            "generatedAt": "2026-08-20T22:11:43.154Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26665,7 +26683,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:19.771Z",
+            "generatedAt": "2026-08-20T22:11:46.602Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26690,7 +26708,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:16.031Z",
+            "generatedAt": "2026-08-20T22:11:43.154Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26713,7 +26731,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-20T22:08:19.771Z",
+            "generatedAt": "2026-08-20T22:11:46.602Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

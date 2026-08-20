@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-20T22:08:16.025Z",
+  "generatedAt": "2026-08-20T22:11:43.149Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 79,
-    "pending": 7
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -467,15 +467,27 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-20T22:08:14.580Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-20T22:10:28.076Z",
+      "severity": "low",
+      "summary": [
+        "Pixel mismatch is 0.23% with 99.77% pixel-perfect similarity — virtually identical.",
+        "Both sides show the same four status dot variants (green, orange, gray, blue) and the same pink 'Waiting pulse' indicator, with matching colors, sizes, positions, and label text."
+      ],
+      "likelyCauses": [
+        "Tiny rendering differences likely due to native font rasterization (SF Pro on iOS vs. browser font on React) rather than a real layout bug.",
+        "Minor sub-pixel antialiasing variation along the dot and label glyph edges."
+      ],
+      "suggestedOwner": "design-systems",
+      "suggestedFixes": [
+        "No action needed — pass is correct.",
+        "If desired for future fidelity, crop the iOS screenshot to the component bounds (matching the React crop) so the comparison isn't dominated by the large empty viewport."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -1824,7 +1836,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-20T22:08:15.343Z",
+      "generatedAt": "2026-08-20T22:11:42.515Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2214,7 +2226,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-20T22:08:15.610Z",
+      "generatedAt": "2026-08-20T22:11:42.744Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2227,7 +2239,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-20T22:08:15.610Z",
+      "generatedAt": "2026-08-20T22:11:42.744Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2240,7 +2252,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-20T22:08:15.610Z",
+      "generatedAt": "2026-08-20T22:11:42.744Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2253,7 +2265,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-20T22:08:15.610Z",
+      "generatedAt": "2026-08-20T22:11:42.744Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2266,7 +2278,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-20T22:08:15.610Z",
+      "generatedAt": "2026-08-20T22:11:42.744Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
