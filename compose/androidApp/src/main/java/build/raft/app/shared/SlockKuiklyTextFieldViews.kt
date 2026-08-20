@@ -254,6 +254,12 @@ internal class SlockKuiklyTextAreaView(
                     // believed to order these props; device logcat disproved it (arrival is
                     // numberOfLines -> systemNewlineAction -> imeActionRequested, the reverse of
                     // the chain), and that assumption is what shipped the regression.
+                    //
+                    // Keep this warning. A late preference change is otherwise invisible: it
+                    // throws nothing, fails no test, and shows up only as an imeOptions value on
+                    // a device. This line is the sole grep-able trace of it, and it has already
+                    // been the thing that identified the arrival-order defect in one run instead
+                    // of a rebuild-and-guess cycle.
                     SlockAppLog.w(
                         LOG_TAG,
                         "imeActionRequested changed to $requested after structure was configured " +
