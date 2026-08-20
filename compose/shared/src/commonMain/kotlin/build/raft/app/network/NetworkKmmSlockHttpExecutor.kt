@@ -54,6 +54,7 @@ private var networkKmmInitialized = false
 internal fun ensureNetworkKmmInitialized(warningLogger: (String) -> Unit) {
     if (networkKmmInitialized) return
     try {
+        installPlatformNetworkKmmAppIdentity()
         VBTransportInitHelper.init(
             VBTransportInitConfig(
                 logImpl = createNetworkKmmLog(warningLogger)

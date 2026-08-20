@@ -15,6 +15,7 @@ import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.installAndroidAppScopeEventBus
 import build.raft.app.network.installAndroidNetworkKmmReusedHttp2RecoveryAtStartup
+import build.raft.app.network.installAndroidNetworkKmmAppIdentity
 import build.raft.app.network.installAndroidSlockNetworkTransportAtStartup
 import kotlinx.coroutines.runBlocking
 
@@ -24,6 +25,12 @@ class SlockApplication : Application() {
         ProcessAndroidAttachmentPublicDownloads.start(this)
         ProcessAndroidAttachmentMediaStoreCleanup.start(this)
         SlockAndroidLocalDiagnostics.init(this)
+        installAndroidNetworkKmmAppIdentity(
+            name = "Raft",
+            version = BuildConfig.VERSION_NAME,
+            buildNumber = BuildConfig.VERSION_CODE.toString(),
+            buildType = BuildConfig.BUILD_TYPE
+        )
         runCatching {
             installAndroidSlockNetworkTransportAtStartup(this)
         }.onSuccess { diagnostics ->
