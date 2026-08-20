@@ -358,11 +358,15 @@ private fun HomeSearchRouterContent(
             ?.value
     val agentStatusResolver =
         remember(environment.serverMembersStore, searchServerId) {
-            slockAgentStatusResolver(environment.serverMembersStore, searchServerId)
+            slockScopedAgentStatusResolver(environment.serverMembersStore, searchServerId)
         }
     val memberAvatarResolver =
         remember(environment.serverMembersStore, searchServerId) {
-            slockMemberAvatarResolver(environment.serverMembersStore, searchServerId)
+            if (searchServerId.isNullOrBlank()) {
+                EmptySlockMemberAvatarResolver
+            } else {
+                slockMemberAvatarResolver(environment.serverMembersStore, searchServerId)
+            }
         }
     LaunchedEffect(environment.serverMembersStore, searchServerId) {
         val serverId = searchServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -553,7 +557,11 @@ private fun HomeSavedRouterContent(
     }
     val memberAvatarResolver =
         remember(environment.serverMembersStore, savedServerId) {
-            slockMemberAvatarResolver(environment.serverMembersStore, savedServerId)
+            if (savedServerId.isNullOrBlank()) {
+                EmptySlockMemberAvatarResolver
+            } else {
+                slockMemberAvatarResolver(environment.serverMembersStore, savedServerId)
+            }
         }
     // t5/#419 A3: user-initiated opens resolve against the real directory + server id.
     val conversationDirectoryFlow =

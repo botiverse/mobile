@@ -69,6 +69,7 @@ import build.raft.app.data.MOBILE_ACTION_SERVER_MUTE
 import build.raft.app.data.MOBILE_ACTION_PUSH_PREVIEW_MODE
 import build.raft.app.data.MOBILE_ACTION_SETTINGS
 import build.raft.app.data.MOBILE_ACTION_TEST_NOTIFICATION
+import build.raft.app.data.normalizedAgentRuntimeStatus
 import build.raft.app.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
 import build.raft.app.data.AppLocale
 import build.raft.app.data.kmmResourceLocaleTag
@@ -247,7 +248,6 @@ import build.raft.app.data.parseSlockHome
 import build.raft.app.data.CreateChannelRequest
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
-import build.raft.app.data.AgentLifecycleActionResult
 import build.raft.app.data.MemberRepository
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
@@ -2678,6 +2678,10 @@ private fun SlockAppShellReadyContent(
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
     val readyServerId = selectedServerId
+    val createChannelAgentStatusResolver =
+        remember(appShellServerMembersStore, readyServerId) {
+            slockScopedAgentStatusResolver(appShellServerMembersStore, readyServerId)
+        }
     val adaptiveRoomLeaseRegistry =
         remember(sharedStores, storeScope) { sharedStores.realtimeRoomLeaseRegistry(storeScope) }
     fun releaseAdaptiveHandoffLease(expectedGeneration: Long? = null) {
@@ -5201,6 +5205,7 @@ private fun SlockAppShellReadyContent(
                         membersLoading = createChannelMembersLoading,
                         members = createChannelMembers,
                         errorMessage = createChannelError,
+                        agentStatusResolver = createChannelAgentStatusResolver,
                         onDismiss = {
                             if (!createChannelSubmitting) {
                                 createChannelDialogOpen = false
@@ -15804,7 +15809,7 @@ private fun SharedMembersScreen(
             val renderMembersPayload = membersPayload.copy(members = current.members)
             val agentStatusResolver =
                 remember(serverMembersStore, serverId) {
-                    slockAgentStatusResolver(serverMembersStore, serverId)
+                    slockScopedAgentStatusResolver(serverMembersStore, serverId)
                 }
             val computersSlice by computersStore
                 .computerPickerSliceFlow(serverId)
@@ -15954,8 +15959,7 @@ private fun SharedMembersScreen(
                         roleDescription = result.data.model,
                         avatarUrl = result.data.avatarUrl,
                         avatar = AvatarReference.fromWireValue(result.data.avatarUrl),
-                        presence = Presence.Offline,
-                        agentStatus = AgentStatus.Online
+                        presence = Presence.Offline
                     )
                     val nextState =
                         when (val latest = state) {
@@ -16116,59 +16120,6 @@ internal fun sharedMembersCachedContentForServer(
         !serverId.isNullOrBlank() && content.server.id.value == serverId
     }
 
-private fun SharedMembersUiState.withMembersLifecycleResult(
-    action: MembersAgentLifecycleAction,
-    agentId: MemberId
-): SharedMembersUiState {
-    val content = this as? SharedMembersUiState.Content ?: return this
-    return when (action) {
-        MembersAgentLifecycleAction.Delete ->
-            content.copy(members = content.members.filterNot { it.id == agentId })
-        MembersAgentLifecycleAction.Start,
-        MembersAgentLifecycleAction.Restart ->
-            content.copy(
-                members =
-                    content.members.map { member ->
-                        if (member.id == agentId) {
-                            member.copy(agentStatus = AgentStatus.Working, presence = Presence.Active)
-                        } else {
-                            member
-                        }
-                    }
-            )
-        MembersAgentLifecycleAction.Stop ->
-            content.copy(
-                members =
-                    content.members.map { member ->
-                        if (member.id == agentId) {
-                            member.copy(agentStatus = AgentStatus.Offline, presence = Presence.Offline)
-                        } else {
-                            member
-                        }
-                    }
-            )
-        MembersAgentLifecycleAction.UnassignMachine ->
-            content.copy(
-                members =
-                    content.members.map { member ->
-                        if (member.id == agentId) {
-                            member.copy(
-                                permissionBadges =
-                                    member.permissionBadges.filterNot {
-                                        it.startsWith("computer:") || it.startsWith("computer-id:")
-                                    }
-                            )
-                        } else {
-                            member
-                        }
-                    }
-            )
-        MembersAgentLifecycleAction.ResetSession,
-        MembersAgentLifecycleAction.ResetFull ->
-            content
-    }
-}
-
 private fun String.toSingleLineDiagnostics(): String =
     lineSequence()
         .map { it.trim() }
@@ -16233,7 +16184,11 @@ private fun JsonObject.toSharedMemberProfile(defaultKind: MemberKind? = null): M
     val avatarWireValue =
         profile.avatarWireValue()
             ?: avatarWireValue()
-    val agentStatus = AgentStatus.fromWireValue(profile.string("agentStatus", "activity", "status") ?: string("agentStatus", "activity", "status"))
+    val agentStatus =
+        normalizedAgentRuntimeStatus(
+            activity = profile.string("agentStatus", "activity") ?: string("agentStatus", "activity"),
+            lifecycleStatus = profile.string("status") ?: string("status")
+        )
     return MemberProfile(
         id = MemberId(id),
         displayName = displayName,
@@ -16514,7 +16469,7 @@ private fun SharedHomeScreen(
             }
             val agentStatusResolver =
                 remember(serverMembersStore, snapshot.server.id.value) {
-                    slockAgentStatusResolver(serverMembersStore, snapshot.server.id.value)
+                    slockScopedAgentStatusResolver(serverMembersStore, snapshot.server.id.value)
                 }
             val memberAvatarResolver =
                 remember(serverMembersStore, snapshot.server.id.value) {
@@ -16803,6 +16758,8 @@ private fun SharedCreateChannelDialog(
     initialDescription: TextFieldValue = TextFieldValue(""),
     initialVisibility: SharedCreateChannelVisibility = SharedCreateChannelVisibility.Public,
     initialSelectedMemberKeys: Set<String> = emptySet(),
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    fixtureStatusFallbackEnabled: Boolean = false,
     onDismiss: () -> Unit,
     onSubmit: (String, String?, String, List<String>, List<String>) -> Unit
 ) {
@@ -16878,6 +16835,8 @@ private fun SharedCreateChannelDialog(
             hasFilteredMembers = hasFilteredMembers,
             selectedKeys = selectedMemberKeys,
             enabled = !submitting,
+            agentStatusResolver = agentStatusResolver,
+            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
             onToggle = { key ->
                 selectedMemberKeys =
                     if (key in selectedMemberKeys) {
@@ -16995,6 +16954,8 @@ private fun SharedCreateChannelMemberPicker(
     hasFilteredMembers: Boolean,
     selectedKeys: Set<String>,
     enabled: Boolean,
+    agentStatusResolver: SlockAgentStatusResolver,
+    fixtureStatusFallbackEnabled: Boolean,
     onToggle: (String) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -17051,6 +17012,8 @@ private fun SharedCreateChannelMemberPicker(
                                             member = member,
                                             selected = member.memberSelectionKey in selectedKeys,
                                             enabled = enabled,
+                                            agentStatusResolver = agentStatusResolver,
+                                            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
                                             onClick = { onToggle(member.memberSelectionKey) }
                                         )
                                     }
@@ -17066,6 +17029,8 @@ private fun SharedCreateChannelMemberPicker(
                                             member = member,
                                             selected = member.memberSelectionKey in selectedKeys,
                                             enabled = enabled,
+                                            agentStatusResolver = agentStatusResolver,
+                                            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
                                             onClick = { onToggle(member.memberSelectionKey) }
                                         )
                                     }
@@ -17102,14 +17067,22 @@ private fun SharedCreateChannelMemberRow(
     member: MemberProfile,
     selected: Boolean,
     enabled: Boolean,
+    agentStatusResolver: SlockAgentStatusResolver,
+    fixtureStatusFallbackEnabled: Boolean,
     onClick: () -> Unit
 ) {
     val avatarWireValue = member.avatarWireValueForAvatarSlot()
-    val statusColor =
+    val statusIndicatorState =
         if (member.kind == MemberKind.Agent) {
-            // Same resolver as every other agent dot: agentStatus wins over
-            // raw presence so a Working agent is yellow here too (#198).
-            slockAgentStatusIndicatorState(status = member.agentStatus, presence = member.presence).color
+            resolveMembersAgentStatusIndicatorState(
+                canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value),
+                fixtureFallback =
+                    slockAgentStatusIndicatorState(
+                        status = member.agentStatus,
+                        presence = member.presence
+                    ),
+                fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
+            )
         } else {
             null
         }
@@ -17129,7 +17102,12 @@ private fun SharedCreateChannelMemberRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockAvatarWithStatus(statusColor = statusColor, avatarSize = 28.dp, statusSize = 7.dp) {
+        SlockAvatarWithStatus(
+            statusColor = statusIndicatorState?.color,
+            avatarSize = 28.dp,
+            statusSize = 7.dp,
+            statusPulsing = statusIndicatorState?.pulsing == true
+        ) {
             SlockAvatar(
                 avatarWireValue = avatarWireValue,
                 label = member.avatarLabel.ifBlank { member.displayName },
@@ -23020,6 +22998,7 @@ internal fun HomeCreateChannelDialogVisualContent() {
                 homeCreateChannelVisualMembers[0].memberSelectionKey,
                 homeCreateChannelVisualMembers[2].memberSelectionKey
             ),
+            fixtureStatusFallbackEnabled = true,
             onDismiss = {},
             onSubmit = { _, _, _, _, _ -> }
         )

@@ -209,6 +209,27 @@ class MemberAgentParserTest {
     }
 
     @Test
+    fun currentActivityEntryDoesNotTreatActiveLifecycleAsOnline() {
+        assertNull(
+            currentAgentActivityEntry(
+                agentId = MemberId("agent-1"),
+                activity = null,
+                status = "active",
+                activityDetail = null
+            )
+        )
+        assertEquals(
+            "working",
+            currentAgentActivityEntry(
+                agentId = MemberId("agent-1"),
+                activity = "working",
+                status = "active",
+                activityDetail = "Building"
+            )?.statusActivity
+        )
+    }
+
+    @Test
     fun agentsListFiltersDeletedAgentsLikeReactMembersTab() {
         val members = parseSharedSettingsAgentsAsMembers(
             """

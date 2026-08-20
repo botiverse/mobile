@@ -168,6 +168,107 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun profileCandidateDoesNotBecomeAStatusSource() = runBlocking {
+        val serverId = ServerId("server-1")
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        val messageAuthorCandidate =
+            MemberProfile(
+                id = MemberId("agent-1"),
+                displayName = "Agent",
+                handle = "agent",
+                kind = MemberKind.Agent,
+                presence = Presence.Active,
+                agentStatus = AgentStatus.Online,
+                serverId = serverId
+            )
+
+        store.seedProfileCandidates(serverId, listOf(messageAuthorCandidate))
+
+        assertEquals(
+            SharedServerMemberStatus(status = null, presence = Presence.Offline),
+            store.memberStatusFlow(serverId, "agent-1").first()
+        )
+    }
+
+    @Test
+    fun statusAndProfileReadsFailClosedWithoutServerScope() = runBlocking {
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("agent-1", "Agent").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Working,
+                        presence = Presence.Active
+                    )
+                )
+            )
+        )
+
+        assertNull(store.state.value.memberStatus(null, "agent-1"))
+        assertNull(store.state.value.memberProfile(null, "agent-1"))
+        assertNull(store.memberStatusFlow(null, "agent-1").first())
+        assertNull(store.memberProfileFlow(null, "agent-1").first())
+    }
+
+    @Test
+    fun lateMessageAuthorCandidateCannotReplaceCanonicalStatusAndRosterCanAdvanceIt() = runBlocking {
+        val serverId = ServerId("server-1")
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        val canonical =
+            MemberProfile(
+                id = MemberId("agent-1"),
+                displayName = "Agent",
+                handle = "agent",
+                kind = MemberKind.Agent,
+                presence = Presence.Active,
+                agentStatus = AgentStatus.Working,
+                serverId = serverId
+            )
+
+        store.seedProfiles(serverId, listOf(canonical), server = server(serverId.value))
+        store.seedThreadAuthorProfiles(
+            serverId,
+            listOf(
+                KuiklyThreadMessageItem(
+                    id = "late-message",
+                    authorId = "agent-1",
+                    authorName = "Agent",
+                    authorKind = "agent"
+                )
+            ),
+            source = "late_thread"
+        )
+
+        assertEquals(
+            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
+            store.memberStatusFlow(serverId, "agent-1").first()
+        )
+
+        store.seedProfiles(
+            serverId,
+            listOf(canonical.copy(agentStatus = null, presence = Presence.Offline))
+        )
+
+        assertEquals(
+            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
+            store.memberStatusFlow(serverId, "agent-1").first(),
+            "an authoritative profile without a runtime fact must preserve the prior status pair"
+        )
+
+        store.seedProfiles(
+            serverId,
+            listOf(canonical.copy(agentStatus = AgentStatus.Thinking, presence = Presence.Active))
+        )
+
+        assertEquals(
+            AgentStatus.Thinking,
+            store.memberStatusFlow(serverId, "agent-1").first()?.status
+        )
+    }
+
+    @Test
     fun authoritativeProfileHydrationAdvancesAnEarlierConcreteMessageCandidate() {
         val serverId = ServerId("server-1")
         val staleAvatar =

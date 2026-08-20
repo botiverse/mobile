@@ -1873,7 +1873,7 @@ private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile? {
         kind = identity.kind,
         avatar = avatarWireValue?.takeIf { it.isNotBlank() }?.let(AvatarReference::fromWireValue),
         avatarLabel = avatarLabel.ifBlank { authorName.ifBlank { authorId }.take(1).uppercase() },
-        agentStatus = AgentStatus.fromWireValue(authorAgentStatus)
+        presence = Presence.Offline
     )
 }
 
@@ -1907,7 +1907,6 @@ private fun MemberProfile.toThreadCandidateAgentDetailSnapshot(): AgentDetailSna
                 id = id.value,
                 name = name,
                 displayName = label,
-                status = agentStatus?.label,
                 runtime = roleDescription,
                 avatarUrl = avatarWireValue
             ),
@@ -1936,7 +1935,6 @@ internal data class KuiklyThreadMessageItem(
     val avatarWireValue: String? = null,
     val senderMembershipStatus: String? = null,
     val authorDeletedAt: String? = null,
-    val authorAgentStatus: String? = null,
     val timestampLabel: String = "",
     val seq: Long? = null,
     val messageType: String = "Chat",
@@ -2342,9 +2340,7 @@ internal data class KuiklyThreadMemberItem(
     val kind: String = "human",
     val sourceServerId: String? = null,
     val sourceServerLabel: String? = null,
-    val canRemove: Boolean = true,
-    val presence: Presence? = null,
-    val agentStatus: AgentStatus? = null
+    val canRemove: Boolean = true
 )
 
 @Serializable
@@ -3583,7 +3579,7 @@ private fun ThreadMembersPageScreen() {
             .map { it.toKuiklyThreadMemberItem(route.serverId) }
     }
     val agentStatusResolver = remember(serverMembersStore, route.serverId) {
-        slockAgentStatusResolver(serverMembersStore, route.serverId.value)
+        slockScopedAgentStatusResolver(serverMembersStore, route.serverId.value)
     }
     val memberAvatarResolver = remember(serverMembersStore, route.serverId) {
         slockMemberAvatarResolver(
@@ -4420,7 +4416,6 @@ private fun channelPanelVisualMembers(): List<KuiklyThreadMemberItem> =
             avatarUrl = "pixel:robot",
             avatarLabel = "CI",
             kind = "agent",
-            agentStatus = AgentStatus.Working,
             canRemove = true
         ),
         KuiklyThreadMemberItem(
@@ -4450,8 +4445,7 @@ private fun channelPanelVisualCandidates(): List<KuiklyThreadMemberItem> =
             description = "Turns product feedback, screenshots, and release notes into actionable UX specs.",
             avatarUrl = "pixel:paint",
             avatarLabel = "PU",
-            kind = "agent",
-            agentStatus = AgentStatus.Online
+            kind = "agent"
         ),
         KuiklyThreadMemberItem(
             id = "user_artin",
@@ -18677,8 +18671,10 @@ internal fun ThreadMessageCard(
     val geometryTints = LocalThreadMessageGeometryTints.current
     val agentStatus =
         if (message.showsAgentStatusIndicator()) {
-            rememberSlockAgentStatusIndicatorState(agentStatusResolver, message.authorId)
-                ?: message.threadAuthorAgentStatusIndicatorState()
+            resolveThreadAgentStatusIndicatorState(
+                message = message,
+                canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, message.authorId)
+            )
         } else {
             null
         }
@@ -21279,76 +21275,11 @@ internal fun KuiklyThreadMessageItem.canOpenThreadAuthorProfile(): Boolean =
 internal fun KuiklyThreadMessageItem.canOpenThreadAuthorProfile(shareSelectionActive: Boolean): Boolean =
     !shareSelectionActive && canOpenThreadAuthorProfile()
 
-internal data class ThreadAgentStatusLookup(
-    private val statusByMemberId: Map<String, AgentStatus>
-) {
-    fun indicatorStateForMemberId(memberId: String?): SlockAgentStatusIndicatorState? {
-        val status = memberId.threadProjectionMemberId()?.let(statusByMemberId::get) ?: return null
-        return slockAgentStatusIndicatorState(
-            status = status,
-            presence = status.presence
-        )
-    }
-
-    companion object {
-        fun from(
-            serverMembersState: SharedServerMembersState,
-            serverId: String?,
-            // task #136: presence facts come from the process registry (the
-            // SSOT) — the members state no longer carries a presence slice.
-            presenceFacts: Map<String, MemberPresenceUpdated> = emptyMap()
-        ): ThreadAgentStatusLookup {
-            val statusByMemberId = linkedMapOf<String, AgentStatus>()
-            serverMembersState.recordThreadAgentStatuses(serverId, statusByMemberId, presenceFacts)
-            return ThreadAgentStatusLookup(
-                statusByMemberId = statusByMemberId.toMap()
-            )
-        }
-    }
-}
-
-internal fun KuiklyThreadMessageItem.threadAuthorAgentStatusIndicatorState(): SlockAgentStatusIndicatorState? {
-    if (!showsAgentStatusIndicator()) return null
-    val status = AgentStatus.fromWireValue(authorAgentStatus) ?: return null
-    return slockAgentStatusIndicatorState(
-        status = status,
-        presence = status.presence
-    )
-}
-
-private fun SharedServerMembersState.recordThreadAgentStatuses(
-    serverId: String?,
-    statusByMemberId: MutableMap<String, AgentStatus>,
-    presenceFacts: Map<String, MemberPresenceUpdated>
-) {
-    presenceFacts.forEach { (memberId, event) ->
-        val status = event.agentStatus ?: return@forEach
-        memberId.threadProjectionMemberId()?.let { statusByMemberId[it] = status }
-    }
-    val cleanServerId = serverId.threadProjectionMemberId()
-    val entries =
-        if (cleanServerId != null) {
-            listOfNotNull(entriesByServerId[cleanServerId])
-        } else {
-            entriesByServerId.values.toList()
-        }
-    entries
-        .flatMap { entry -> entry.members }
-        .forEach { member ->
-            val status = presenceFacts[member.id.value.trim()]?.agentStatus ?: member.agentStatus ?: return@forEach
-            if (member.kind != MemberKind.Agent) return@forEach
-            member.id.value.threadProjectionMemberId()?.let { memberId ->
-                if (memberId !in statusByMemberId) {
-                    statusByMemberId[memberId] = status
-                }
-            }
-        }
-}
-
-private fun String?.threadProjectionMemberId(): String? =
-    this
-        ?.trim()
-        ?.takeIf { it.isNotBlank() }
+internal fun resolveThreadAgentStatusIndicatorState(
+    message: KuiklyThreadMessageItem,
+    canonicalState: SlockAgentStatusIndicatorState?
+): SlockAgentStatusIndicatorState? =
+    canonicalState.takeIf { message.showsAgentStatusIndicator() }
 
 internal fun KuiklyThreadMessageItem.threadMentionHandle(
     serverMembersState: SharedServerMembersState = SharedServerMembersState(),
@@ -25964,9 +25895,7 @@ private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId? = nu
         kind = kind.name.lowercase(),
         sourceServerId = serverId?.value,
         sourceServerLabel = remoteSourceServerLabel(localServerId),
-        canRemove = isLocalToServer(localServerId),
-        presence = presence.takeIf { kind == MemberKind.Agent && (agentStatus != null || presence != Presence.Offline) },
-        agentStatus = agentStatus.takeIf { kind == MemberKind.Agent }
+        canRemove = isLocalToServer(localServerId)
     )
 
 private fun MemberProfile.isLocalToServer(localServerId: ServerId?): Boolean {
@@ -26016,14 +25945,11 @@ internal fun filterThreadAddMemberCandidates(
     )
         .distinctBy { it.memberKey }
 
-internal fun threadMemberFallbackAgentStatusIndicatorState(
-    agentStatus: AgentStatus?,
-    presence: Presence?
-): SlockAgentStatusIndicatorState =
-    slockAgentStatusIndicatorState(
-        status = agentStatus,
-        presence = presence ?: agentStatus?.presence ?: Presence.Offline
-    )
+internal fun resolveThreadMemberAgentStatusIndicatorState(
+    memberKind: String,
+    canonicalState: SlockAgentStatusIndicatorState?
+): SlockAgentStatusIndicatorState? =
+    canonicalState.takeIf { memberKind.equals("agent", ignoreCase = true) }
 
 @Composable
 private fun KuiklyThreadMemberItem.localizedModalRoleLabel(): String =
@@ -26038,9 +25964,11 @@ private fun KuiklyThreadMemberItem.localizedModalRoleLabel(): String =
 private fun KuiklyThreadMemberItem.modalAgentStatusIndicatorState(
     agentStatusResolver: SlockAgentStatusResolver
 ): SlockAgentStatusIndicatorState? {
-    if (!kind.equals("agent", ignoreCase = true)) return null
-    return rememberSlockAgentStatusIndicatorState(agentStatusResolver, id)
-        ?: threadMemberFallbackAgentStatusIndicatorState(agentStatus = agentStatus, presence = presence)
+    val canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, id)
+    return resolveThreadMemberAgentStatusIndicatorState(
+        memberKind = kind,
+        canonicalState = canonicalState
+    )
 }
 
 private enum class ThreadSettingsDangerAction(

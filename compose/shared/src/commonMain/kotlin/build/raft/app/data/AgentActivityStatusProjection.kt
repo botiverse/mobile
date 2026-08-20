@@ -54,9 +54,11 @@ internal fun projectAgentActivityStatus(
                 detail = ""
             )
         "status", "agent_status" -> {
-            val status = AgentStatus.fromAgentActivityWireValue(activity)
-                ?: AgentStatus.fromWireValue(activity)
-                ?: return null
+            val status =
+                normalizedAgentRuntimeStatus(
+                    activity = activity,
+                    lifecycleStatus = null
+                ) ?: return null
             AgentActivityStatusProjection(
                 status = status,
                 detail = detail ?: ""
@@ -89,11 +91,36 @@ internal fun List<AgentActivityEntry>.latestAgentActivityStatusProjection(): Age
 
 internal fun AgentDetailSummary?.agentActivityStatusFallbackProjection(): AgentActivityStatusProjection? {
     if (this == null) return null
-    val status = AgentStatus.fromWireValue(activity) ?: AgentStatus.fromWireValue(status) ?: return null
+    val status = normalizedAgentRuntimeStatus(activity = activity, lifecycleStatus = status) ?: return null
     return AgentActivityStatusProjection(
         status = status,
         detail = activityDetail.projectionNonBlankOrNull()
     )
+}
+
+internal fun normalizedAgentRuntimeStatus(
+    activity: String?,
+    lifecycleStatus: String?
+): AgentStatus? {
+    // `active` describes account lifecycle, not runtime liveness. Treat it as
+    // unknown even if it arrives in the activity slot from a mixed read model,
+    // then continue to any explicit offline lifecycle fact.
+    val normalizedActivity = activity?.trim()
+    val activityStatus =
+        if (normalizedActivity.equals("active", ignoreCase = true)) {
+            null
+        } else {
+            AgentStatus.fromAgentActivityWireValue(normalizedActivity)
+                ?: AgentStatus.fromWireValue(normalizedActivity)
+        }
+    if (activityStatus != null) return activityStatus
+
+    val normalizedLifecycleStatus = lifecycleStatus?.trim()
+    return when {
+        normalizedLifecycleStatus.equals("active", ignoreCase = true) -> null
+        normalizedLifecycleStatus.equals("stopped", ignoreCase = true) -> AgentStatus.Offline
+        else -> AgentStatus.fromWireValue(normalizedLifecycleStatus)
+    }
 }
 
 internal fun AgentActivityStatusProjection.toMemberPresenceUpdated(

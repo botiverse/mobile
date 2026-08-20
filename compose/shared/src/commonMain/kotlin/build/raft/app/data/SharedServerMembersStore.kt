@@ -176,13 +176,8 @@ data class SharedServerMembersState(
         memberId: String?
     ): SharedServerMemberStatus? {
         val cleanMemberId = memberId.normalizedServerMembersId() ?: return null
-        val cleanServerId = serverId?.value.normalizedServerMembersId()
-        val entries =
-            if (cleanServerId != null) {
-                listOfNotNull(entriesByServerId[cleanServerId])
-            } else {
-                entriesByServerId.values.toList()
-            }
+        val cleanServerId = serverId?.value.normalizedServerMembersId() ?: return null
+        val entries = listOfNotNull(entriesByServerId[cleanServerId])
         val member =
             entries
                 .asSequence()
@@ -190,7 +185,7 @@ data class SharedServerMembersState(
                 .firstOrNull { it.kind == MemberKind.Agent && it.id.value.trim() == cleanMemberId }
                 ?: profileCacheByServerId
                     .asSequence()
-                    .filter { cleanServerId == null || it.key == cleanServerId }
+                    .filter { it.key == cleanServerId }
                     .mapNotNull { it.value[cleanMemberId] }
                     .firstOrNull { it.kind == MemberKind.Agent }
         // task #136: presence facts live ONLY in the process registry — the
@@ -204,20 +199,15 @@ data class SharedServerMembersState(
         memberId: String?
     ): MemberProfile? {
         val cleanMemberId = memberId.normalizedServerMembersId() ?: return null
-        val cleanServerId = serverId?.value.normalizedServerMembersId()
-        val entries =
-            if (cleanServerId != null) {
-                listOfNotNull(entriesByServerId[cleanServerId])
-            } else {
-                entriesByServerId.values.toList()
-            }
+        val cleanServerId = serverId?.value.normalizedServerMembersId() ?: return null
+        val entries = listOfNotNull(entriesByServerId[cleanServerId])
         return entries
             .asSequence()
             .flatMap { it.members.asSequence() }
             .firstOrNull { it.id.value.trim() == cleanMemberId }
             ?: profileCacheByServerId
                 .asSequence()
-                .filter { cleanServerId == null || it.key == cleanServerId }
+                .filter { it.key == cleanServerId }
                 .mapNotNull { it.value[cleanMemberId] }
                 .firstOrNull()
     }
@@ -669,11 +659,7 @@ class SharedServerMembersStore internal constructor(
     ): Flow<SharedServerMemberStatus?> {
         val cleanServerId = serverId?.value.normalizedServerMembersId()
         val cleanMemberId = memberId.normalizedServerMembersId()
-        if (cleanServerId == null || cleanMemberId == null) {
-            return state
-                .map { current -> current.memberStatus(serverId, memberId) }
-                .distinctUntilChanged()
-        }
+        if (cleanServerId == null || cleanMemberId == null) return flowOf(null)
         val scopedServerId = ServerId(cleanServerId)
         // task #136: presence comes straight from the process registry's owner
         // partition — the SSOT read edge. flatMapLatest over the owner flow so
@@ -714,11 +700,7 @@ class SharedServerMembersStore internal constructor(
     ): Flow<MemberProfile?> {
         val cleanServerId = serverId?.value.normalizedServerMembersId()
         val cleanMemberId = memberId.normalizedServerMembersId()
-        if (cleanServerId == null || cleanMemberId == null) {
-            return state
-                .map { current -> current.memberProfile(serverId, memberId) }
-                .distinctUntilChanged()
-        }
+        if (cleanServerId == null || cleanMemberId == null) return flowOf(null)
         return scopedMemberProfileFlow(ServerId(cleanServerId), cleanMemberId)
     }
 
@@ -825,7 +807,11 @@ class SharedServerMembersStore internal constructor(
                 .filter { it.id.value.trim().isNotBlank() }
                 .filterServerRosterMembers(key)
                 .filterNot { it.isDeletedAgentProfile(key) }
-        cacheProfiles(key, eligibleProfiles, authoritativeAvatar = false)
+        cacheProfiles(
+            key = key,
+            profiles = eligibleProfiles.map(MemberProfile::withoutVolatileStatus),
+            authoritativeAvatar = false
+        )
     }
 
     private fun cacheProfiles(
@@ -2547,7 +2533,6 @@ private fun List<MemberProfile>.removeServerMember(memberId: String, memberKind:
 }
 
 private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile {
-    val agentProfile = kind == MemberKind.Agent || seed.kind == MemberKind.Agent
     val currentAvatarWireValue = avatar?.wireValue ?: avatarUrl
     val seedAvatarWireValue = seed.avatar?.wireValue ?: seed.avatarUrl
     val preferSeedAvatar =
@@ -2566,11 +2551,16 @@ private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile {
         avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: seed.avatarLabel,
         serverId = serverId ?: seed.serverId,
         serverName = serverName ?: seed.serverName,
-        serverSlug = serverSlug ?: seed.serverSlug,
-        presence = if (agentProfile) seed.presence else presence,
-        agentStatus = if (agentProfile) seed.agentStatus ?: agentStatus else agentStatus
+        serverSlug = serverSlug ?: seed.serverSlug
     )
 }
+
+private fun MemberProfile.withoutVolatileStatus(): MemberProfile =
+    if (kind == MemberKind.Agent) {
+        copy(presence = Presence.Offline, agentStatus = null)
+    } else {
+        this
+    }
 
 /**
  * Authoritative directory/channel/profile hydration may advance a concrete avatar, but a sparse
@@ -2579,15 +2569,21 @@ private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile {
  */
 private fun MemberProfile.mergeAuthoritativeProfile(incoming: MemberProfile): MemberProfile {
     val merged = mergeSeedProfile(incoming)
+    val statusMerged =
+        if (incoming.kind == MemberKind.Agent && incoming.agentStatus != null) {
+            merged.copy(presence = incoming.presence, agentStatus = incoming.agentStatus)
+        } else {
+            merged
+        }
     val incomingAvatarWireValue = incoming.avatar?.wireValue ?: incoming.avatarUrl
-    val incomingAvatar = AvatarReference.fromWireValue(incomingAvatarWireValue) ?: return merged
+    val incomingAvatar = AvatarReference.fromWireValue(incomingAvatarWireValue) ?: return statusMerged
     if (
         incoming.kind == MemberKind.Agent &&
         incomingAvatar.wireValue.isAgentFallbackAvatarWireValue()
     ) {
-        return merged
+        return statusMerged
     }
-    return merged.copy(
+    return statusMerged.copy(
         avatarUrl = (incomingAvatar as? AvatarReference.Url)?.url,
         avatar = incomingAvatar
     )

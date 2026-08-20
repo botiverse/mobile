@@ -18,6 +18,7 @@ import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.Presence
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerPermissions
@@ -123,6 +124,25 @@ class SharedMembersParserTest {
         assertEquals("agent-1", agents.single().id.value)
         assertEquals("Android Agent", agents.single().displayName)
         assertEquals(MemberKind.Agent, agents.single().kind)
+    }
+
+    @Test
+    fun legacyMembersParserDoesNotTreatActiveLifecycleAsRuntimeOnline() {
+        val agent =
+            parseSharedAgents(
+                """
+                [
+                  {
+                    "id": "agent-1",
+                    "name": "Android Agent",
+                    "status": "active"
+                  }
+                ]
+                """.trimIndent()
+            ).single()
+
+        assertNull(agent.agentStatus)
+        assertEquals(Presence.Offline, agent.presence)
     }
 
     @Test
@@ -574,6 +594,49 @@ class SharedMembersParserTest {
             )
 
         assertEquals(member, assertIs<MemberDetailRouteState.Human>(route).member)
+    }
+
+    @Test
+    fun memberDetailStatusResolverServerFollowsTypedRouteIdentity() {
+        val localServer = ServerSummary(id = ServerId("server-local"), name = "Local")
+        val remoteServer = ServerSummary(id = ServerId("server-remote"), name = "Remote")
+        val remoteHuman =
+            MemberProfile(
+                id = MemberId("human-remote"),
+                displayName = "Remote Human",
+                handle = "remote-human",
+                kind = MemberKind.Human,
+                serverId = remoteServer.id
+            )
+
+        assertEquals(
+            localServer.id.value,
+            memberDetailStatusResolverServerId(
+                MemberDetailRouteState.Agent(localServer, currentUserId = "human-local")
+            )
+        )
+        assertEquals(
+            localServer.id.value,
+            memberDetailStatusResolverServerId(
+                MemberDetailRouteState.Human(
+                    server = localServer,
+                    currentUserId = "human-local",
+                    member = remoteHuman,
+                    accessMode = MemberDetailAccessMode.RemoteProfileOnly
+                )
+            )
+        )
+        assertNull(memberDetailStatusResolverServerId(MemberDetailRouteState.Loading))
+        assertNull(memberDetailStatusResolverServerId(MemberDetailRouteState.Error("failed")))
+        assertNull(
+            memberDetailStatusResolverServerId(
+                MemberDetailRouteState.Agent(
+                    server = remoteServer,
+                    currentUserId = "human-local",
+                    accessMode = MemberDetailAccessMode.RemoteProfileOnly
+                )
+            )
+        )
     }
 
     @Test
@@ -1395,6 +1458,26 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun agentStatusDisplayStateDoesNotTreatActiveLifecycleAsOnline() {
+        val member =
+            MemberProfile(
+                id = MemberId("agent-1"),
+                displayName = "Cindy",
+                handle = "@Cindy",
+                kind = MemberKind.Agent,
+                agentStatus = null,
+                presence = Presence.Offline
+            )
+
+        val displayState =
+            member.membersAgentStatusDisplayState(summaryStatus = "active")
+
+        assertEquals(null, displayState.status)
+        assertEquals(SlockColor.StatusNeutralGray, displayState.color)
+        assertEquals(false, displayState.pulsing)
+    }
+
+    @Test
     fun agentActivityErrorDisplayDetailExtractsReactErrorFields() {
         assertEquals(
             "Runtime crashed",
@@ -1460,15 +1543,77 @@ class SharedMembersParserTest {
                     agentStatus = AgentStatus.Working,
                     permissionBadges = listOf("computer:MacBook")
                 ),
-                detail = null
+                detail = null,
+                statusIndicatorState =
+                    slockAgentStatusIndicatorState(
+                        status = AgentStatus.Working,
+                        presence = Presence.Active
+                    )
             )
 
         assertTrue(diagnostics.contains("agentId=agent-1"))
+        assertTrue(diagnostics.contains("status=Working"))
         assertTrue(diagnostics.contains("machineName=MacBook"))
         assertTrue(!diagnostics.contains("OPENAI_API_KEY"))
         assertTrue(!diagnostics.contains("Authorization"))
         assertTrue(!diagnostics.contains("accessToken"))
         assertTrue(!diagnostics.contains("Bearer"))
+    }
+
+    @Test
+    fun profileProjectionCannotOverwriteDetailRuntimeStatus() {
+        val detail =
+            AgentDetailSnapshot(
+                agentId = MemberId("agent-1"),
+                summary =
+                    AgentDetailSummary(
+                        id = "agent-1",
+                        name = "Cindy",
+                        status = "working",
+                        activity = "working"
+                    ),
+                directMessages = emptyList(),
+                reminders = emptyList(),
+                activity = emptyList()
+            )
+        val staleProfile =
+            MemberProfile(
+                id = MemberId("agent-1"),
+                displayName = "Cindy Updated",
+                handle = "@Cindy",
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Online,
+                presence = Presence.Active
+            )
+
+        val projected = detail.withMemberProfileProjection(staleProfile)
+
+        assertEquals("Cindy Updated", projected.summary?.displayName)
+        assertEquals("working", projected.summary?.status)
+        assertEquals("working", projected.summary?.activity)
+    }
+
+    @Test
+    fun detailProjectionBuildsStaticMemberProfileOnly() {
+        val profile =
+            AgentDetailSnapshot(
+                agentId = MemberId("agent-1"),
+                summary =
+                    AgentDetailSummary(
+                        id = "agent-1",
+                        name = "Cindy",
+                        status = "active",
+                        activity = "working"
+                    ),
+                directMessages = emptyList(),
+                reminders = emptyList(),
+                activity = emptyList()
+            ).toStaticMembersProfile(
+                ServerSummary(id = ServerId("server-1"), name = "Server One")
+            )
+
+        assertNull(profile.agentStatus)
+        assertEquals(Presence.Offline, profile.presence)
     }
 
     @Test

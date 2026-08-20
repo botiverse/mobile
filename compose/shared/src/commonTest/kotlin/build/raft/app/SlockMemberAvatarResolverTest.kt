@@ -114,4 +114,9 @@ class SlockMemberAvatarResolverTest {
         )
         assertNull(state.currentMemberAvatarWireValue(ServerId("server-c"), sharedMemberId.value))
     }
+
+    @Test
+    fun missingServerScopeReturnsEmptyAvatarResolver() {
+        assertNull(slockMemberAvatarResolver(null, null).current("member-1"))
+    }
 }

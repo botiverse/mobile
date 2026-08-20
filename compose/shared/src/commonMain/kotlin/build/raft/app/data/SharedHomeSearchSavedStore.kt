@@ -1,7 +1,6 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
-import build.raft.app.model.Presence
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
@@ -1436,9 +1435,7 @@ data class SearchSenderFilterItem(
     val kind: MemberKind,
     val sourceServerId: ServerId,
     val isSelf: Boolean = false,
-    val avatarWireValue: String? = null,
-    val presence: Presence? = null,
-    val agentStatus: build.raft.app.model.AgentStatus? = null
+    val avatarWireValue: String? = null
 )
 
 internal fun List<MemberProfile>.toSearchSenderFilters(
@@ -1455,9 +1452,7 @@ internal fun List<MemberProfile>.toSearchSenderFilters(
             kind = member.kind,
             sourceServerId = sourceServerId,
             isSelf = memberId == currentUserId,
-            avatarWireValue = member.avatarWireValueForAvatarSlot(),
-            presence = member.presence,
-            agentStatus = member.agentStatus
+            avatarWireValue = member.avatarWireValueForAvatarSlot()
         )
     }
         .distinctBy { "${it.kind}:${it.id}" }

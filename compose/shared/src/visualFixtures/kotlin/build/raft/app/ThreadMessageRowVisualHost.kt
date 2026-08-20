@@ -390,6 +390,10 @@ internal fun ThreadMessageVisualScreenContent() {
             threadVisualFixture(fixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }, instanceId = instanceId)
                 .withNewMessageMenuTargetReplyCount(newMessageMenuTargetReplyCount)
         }
+    val agentStatusResolver =
+        remember(visualFixture) {
+            threadMessageVisualAgentStatusResolver(visualFixture)
+        }
     val highlightedMentions =
         remember(visualFixture) {
             threadVisualFixtureHighlightedMentions(visualFixture)
@@ -461,6 +465,7 @@ internal fun ThreadMessageVisualScreenContent() {
                     ThreadMessageCard(
                         message = selectedMessage,
                         messageBodyTextStyle = messageBodyTextStyle,
+                        agentStatusResolver = agentStatusResolver,
                         replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(selectedMessage),
                         highlightedMentions = highlightedMentions,
                         shareSelectionActive = true,
@@ -531,6 +536,7 @@ internal fun ThreadMessageVisualScreenContent() {
                 ThreadMessageCard(
                     message = visualMessage,
                     messageBodyTextStyle = messageBodyTextStyle,
+                    agentStatusResolver = agentStatusResolver,
                     replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(visualMessage),
                     highlightedMentions = highlightedMentions,
                     alignOwnMessageRight = false,
@@ -564,6 +570,7 @@ internal fun ThreadMessageVisualScreenContent() {
             messages = payload.toThreadTimelineSlice().messages,
             replyMetadataByParentId = payload.toThreadReplyMetadataMap(),
             messageBodyTextStyle = messageBodyTextStyle,
+            agentStatusResolver = agentStatusResolver,
             newMessageMenuEnabled = newMessageMenuEnabled,
             singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
             composerBoundaryVisible = newMessageMenuComposerBoundaryVisible
@@ -801,6 +808,7 @@ internal fun ThreadMessageVisualScreenContent() {
                 ThreadMessageCard(
                     message = message,
                     messageBodyTextStyle = messageBodyTextStyle,
+                    agentStatusResolver = agentStatusResolver,
                     replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
                     highlightedMentions = highlightedMentions,
                     inlineReplyParticipantsById = payload.members.associateBy(KuiklyThreadMemberItem::id),
@@ -905,6 +913,7 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
     messages: List<KuiklyThreadMessageItem>,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     messageBodyTextStyle: TextStyle,
+    agentStatusResolver: SlockAgentStatusResolver,
     newMessageMenuEnabled: Boolean,
     singleTapOpensThreadEnabled: Boolean,
     composerBoundaryVisible: Boolean
@@ -935,6 +944,7 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
                         message = message,
                         replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message),
                         messageBodyTextStyle = messageBodyTextStyle,
+                        agentStatusResolver = agentStatusResolver,
                         messageIndex = index,
                         compactConsecutiveMessages = true,
                         suppressRepeatedAuthor = index in 1..2 || index >= 4,
@@ -1018,6 +1028,38 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
         }
     }
 }
+
+/**
+ * Visual-only runtime status authority for the isolated message-row capture route.
+ *
+ * Production message snapshots deliberately carry no volatile agent status. Keeping fixture
+ * status here preserves deterministic status-dot coverage without reintroducing a snapshot
+ * fallback into [KuiklyThreadMessageItem].
+ */
+private fun threadMessageVisualAgentStatusResolver(
+    visualFixture: String
+): SlockAgentStatusResolver {
+    val resolvedFixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }
+    val cindyStatus =
+        when (resolvedFixture) {
+            THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT,
+            THREAD_MESSAGE_VISUAL_FIXTURE_NEW_MESSAGE_MENU_DEMO,
+            THREAD_MESSAGE_VISUAL_FIXTURE_SAVED,
+            THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD,
+            THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD -> AgentStatus.Working
+            THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT -> AgentStatus.Online
+            else -> return EmptySlockAgentStatusResolver
+        }
+    val cindyState =
+        slockAgentStatusIndicatorState(
+            status = cindyStatus,
+            presence = cindyStatus.presence
+        )
+    return { memberId ->
+        flowOf(cindyState.takeIf { memberId?.trim() == "agent-cindy" })
+    }
+}
+
 @Composable
 internal fun ThreadTaskStatusOwnerAnchorVisualProbe(message: KuiklyThreadMessageItem) {
     var result by remember(message.id) { mutableStateOf<Boolean?>(null) }
