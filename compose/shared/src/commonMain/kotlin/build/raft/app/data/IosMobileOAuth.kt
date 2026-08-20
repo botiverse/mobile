@@ -625,6 +625,30 @@ internal class IosMobileOAuthCoordinator(
     private val pendingStore: IosMobileOAuthPendingStore,
     private val runtimeProvider: () -> IosMobileOAuthRuntime?,
     private val nowMillis: () -> Long = ::defaultNowMillis,
+    private val seedInviteResumeContext: (String, SharedApiEnvironmentSnapshot) -> Boolean =
+        { token, environment ->
+            SlockSharedStoreRegistry.currentOrNull()?.let { provider ->
+                when (provider.captureInviteResume(token, environment)) {
+                    SharedInviteResumeCaptureResult.NoContext -> false
+                    is SharedInviteResumeCaptureResult.Bound,
+                    is SharedInviteResumeCaptureResult.Invalidated,
+                    -> true
+                }
+            } ?: false
+        },
+    /**
+     * Explicitly starting OAuth again is a new user-authorized invite attempt. The reset is
+     * intentionally invoked only after the provider accepted the new start, so a failed start
+     * cannot erase the old fail-closed witness. The replacement is immediately seeded from the
+     * live environment snapshot; it is not a destination-side re-capture.
+     */
+    private val resetInviteResumeContextForRetry: (String, SharedApiEnvironmentSnapshot) -> Unit =
+        { token, environment ->
+            SlockSharedStoreRegistry.currentOrNull()?.let { provider ->
+                provider.clearInviteResume(token)
+                provider.captureInviteResume(token, environment)
+            }
+        },
 ) {
     private val mutex = Mutex()
 
@@ -728,6 +752,9 @@ internal class IosMobileOAuthCoordinator(
                             code = "ios_mobile_oauth_start_contract_mismatch",
                             message = "Mobile sign-in could not be prepared.",
                         )
+                    }
+                    normalizedInviteToken?.let { token ->
+                        resetInviteResumeContextForRetry(token, environment)
                     }
                     val callbackScheme = returnUri.substringBefore("://")
                     pendingStore.save(
@@ -855,6 +882,9 @@ internal class IosMobileOAuthCoordinator(
                             message = "Mobile sign-in could not be prepared.",
                         )
                     }
+                    normalizedInviteToken?.let { token ->
+                        resetInviteResumeContextForRetry(token, environment)
+                    }
                     pendingStore.save(
                         IosMobileOAuthPendingRequest(
                             provider = "apple",
@@ -908,14 +938,18 @@ internal class IosMobileOAuthCoordinator(
             }
             val ageMillis = nowMillis() - pending.startedAtMillis
             if (ageMillis >= IOS_MOBILE_OAUTH_PENDING_TTL_MILLIS || ageMillis < -IOS_MOBILE_OAUTH_CLOCK_SKEW_MILLIS) {
-                pendingStore.clear()
-                return@withLock errorCompletion(pending, "Sign-in request expired. Try again.")
+                return@withLock finishTerminal(
+                    pending,
+                    errorCompletion(pending, "Sign-in request expired. Try again."),
+                )
             }
             if (authorizationCode.isBlank() || identityToken.isBlank()) {
-                pendingStore.clear()
-                return@withLock errorCompletion(
+                return@withLock finishTerminal(
                     pending,
-                    iosMobileOAuthActionFailedMessage(pending.provider, pending.mode),
+                    errorCompletion(
+                        pending,
+                        iosMobileOAuthActionFailedMessage(pending.provider, pending.mode),
+                    ),
                 )
             }
             val runtime = runtimeProvider()
@@ -925,10 +959,12 @@ internal class IosMobileOAuthCoordinator(
                     generation = pending.generation,
                 )
             if (!runtime.matchesPendingEnvironment(pending)) {
-                pendingStore.clear()
-                return@withLock errorCompletion(
+                return@withLock finishTerminal(
                     pending,
-                    "The API environment changed. Start sign-in again.",
+                    errorCompletion(
+                        pending,
+                        "The API environment changed. Start sign-in again.",
+                    ),
                 )
             }
             val result =
@@ -989,8 +1025,7 @@ internal class IosMobileOAuthCoordinator(
                         iosMobileOAuthActionFailedMessage(pending.provider, pending.mode),
                     )
                 }
-            pendingStore.clear()
-            result
+            finishTerminal(pending, result)
         }
 
     suspend fun complete(callback: IosMobileOAuthCallback): SlockIosMobileOAuthCompletionResult =
@@ -999,21 +1034,27 @@ internal class IosMobileOAuthCoordinator(
             when (val admission = admitIosMobileOAuthCallback(pending, callback, nowMillis())) {
                 IosMobileOAuthCallbackAdmission.Ignore -> ignoredCompletion()
                 IosMobileOAuthCallbackAdmission.Expired -> {
-                    pendingStore.clear()
-                    errorCompletion(pending, "Sign-in request expired. Try again.")
+                    finishTerminal(
+                        pending,
+                        errorCompletion(pending, "Sign-in request expired. Try again."),
+                    )
                 }
                 IosMobileOAuthCallbackAdmission.Invalid -> {
-                    pendingStore.clear()
-                    errorCompletion(pending, iosMobileOAuthActionFailedMessage(pending.provider, pending.mode))
+                    finishTerminal(
+                        pending,
+                        errorCompletion(pending, iosMobileOAuthActionFailedMessage(pending.provider, pending.mode)),
+                    )
                 }
                 is IosMobileOAuthCallbackAdmission.ProviderError -> {
-                    pendingStore.clear()
-                    errorCompletion(
+                    finishTerminal(
                         pending,
-                        iosMobileOAuthProviderErrorMessage(
-                            provider = pending.provider,
-                            mode = pending.mode,
-                            error = admission.error,
+                        errorCompletion(
+                            pending,
+                            iosMobileOAuthProviderErrorMessage(
+                                provider = pending.provider,
+                                mode = pending.mode,
+                                error = admission.error,
+                            ),
                         ),
                     )
                 }
@@ -1025,10 +1066,12 @@ internal class IosMobileOAuthCoordinator(
                             generation = pending.generation,
                         )
                     if (!runtime.matchesPendingEnvironment(pending)) {
-                        pendingStore.clear()
-                        return@withLock errorCompletion(
+                        return@withLock finishTerminal(
                             pending,
-                            "The API environment changed. Start sign-in again.",
+                            errorCompletion(
+                                pending,
+                                "The API environment changed. Start sign-in again.",
+                            ),
                         )
                     }
                     val terminal =
@@ -1044,8 +1087,7 @@ internal class IosMobileOAuthCoordinator(
                                 iosMobileOAuthActionFailedMessage(pending.provider, pending.mode),
                             )
                         }
-                    pendingStore.clear()
-                    terminal
+                    finishTerminal(pending, terminal)
                 }
             }
         }
@@ -1059,12 +1101,42 @@ internal class IosMobileOAuthCoordinator(
             if (generation.isBlank() || generation != pending.generation) {
                 return@withLock ignoredCompletion()
             }
-            pendingStore.clear()
-            errorCompletion(
+            finishTerminal(
                 pending,
-                iosMobileOAuthProviderErrorMessage(pending.provider, pending.mode, error),
+                errorCompletion(
+                    pending,
+                    iosMobileOAuthProviderErrorMessage(pending.provider, pending.mode, error),
+                ),
             )
         }
+
+    /**
+     * Clears the durable OAuth request only after transferring its validated invite witness into
+     * the provider-owned process store. If that store is unavailable, strip the token from the
+     * terminal route result: continuing with a token but no witness would let the destination
+     * capture the mutable current environment and recreate the cold-process bug.
+     */
+    private fun finishTerminal(
+        pending: IosMobileOAuthPendingRequest,
+        result: SlockIosMobileOAuthCompletionResult,
+    ): SlockIosMobileOAuthCompletionResult {
+        val inviteToken = pending.inviteToken
+        val handedOff =
+            inviteToken == null ||
+                runCatching {
+                    seedInviteResumeContext(inviteToken, pending.environmentSnapshot())
+                }.getOrDefault(false)
+        pendingStore.clear()
+        return if (handedOff) {
+            result
+        } else {
+            SlockIosMobileOAuthCompletionResult(
+                status = if (pending.mode == IOS_MOBILE_OAUTH_LINK_MODE) "settings_account" else "login_error",
+                message = "Mobile sign-in failed. Try again.",
+                provider = pending.provider,
+            )
+        }
+    }
 
     private suspend fun completeLogin(
         runtime: IosMobileOAuthRuntime,

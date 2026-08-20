@@ -1150,7 +1150,19 @@ internal class SlockSharedStoreProvider private constructor(
         )
 
     internal fun captureInviteResume(token: String): SharedInviteResumeCaptureResult =
-        inviteResumeStore.capture(token, apiEnvironmentStore.currentSnapshot())
+        captureInviteResume(token, apiEnvironmentStore.currentSnapshot())
+
+    /**
+     * Seeds the provider-owned resume witness from an already-validated auth handoff. The
+     * destination still receives only the opaque token; using the captured environment here is
+     * what keeps a cold-process OAuth completion from silently rebinding that token to the
+     * destination process's current environment.
+     */
+    internal fun captureInviteResume(
+        token: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): SharedInviteResumeCaptureResult =
+        inviteResumeStore.capture(token, environment)
 
     internal fun clearInviteResume(token: String? = null) {
         inviteResumeStore.clear(token)

@@ -447,6 +447,7 @@ class IosMobileOAuthCoordinatorTest {
     fun pendingInviteCallbackSurvivesColdRestartInTheSameEnvironment() = runBlocking {
         val environmentPersistence = InMemorySlockKeyValueStore()
         val pendingPersistence = InMemorySlockKeyValueStore()
+        val inviteResumeStore = SharedInviteResumeStore()
         val firstEnvironment = SharedApiEnvironmentStore(environmentPersistence)
         val firstRuntime = FakeRuntime(environmentKey = "production").apply {
             environmentStore = firstEnvironment
@@ -455,6 +456,9 @@ class IosMobileOAuthCoordinatorTest {
             pendingStore = IosMobileOAuthPendingStore(pendingPersistence),
             runtimeProvider = { firstRuntime },
             nowMillis = { 1_000L },
+            seedInviteResumeContext = { token, environment ->
+                inviteResumeStore.capture(token, environment) is SharedInviteResumeCaptureResult.Bound
+            },
         )
 
         assertEquals(
@@ -476,6 +480,9 @@ class IosMobileOAuthCoordinatorTest {
             pendingStore = IosMobileOAuthPendingStore(pendingPersistence),
             runtimeProvider = { restartedRuntime },
             nowMillis = { 1_000L },
+            seedInviteResumeContext = { token, environment ->
+                inviteResumeStore.capture(token, environment) is SharedInviteResumeCaptureResult.Bound
+            },
         )
         val completion = restartedCoordinator.complete(
             IosMobileOAuthCallback(
@@ -492,12 +499,19 @@ class IosMobileOAuthCoordinatorTest {
 
         assertEquals("invite_accept", completion.status)
         assertEquals(1, restartedRuntime.loginCompleteCount)
+        assertTrue(
+            inviteResumeStore.capture(
+                "invite-token",
+                restartedRuntime.environmentSnapshot,
+            ) is SharedInviteResumeCaptureResult.Bound
+        )
     }
 
     @Test
     fun pendingInviteCallbackRejectsCrossProcessAbaEvenWhenEndpointReturnsToProduction() = runBlocking {
         val environmentPersistence = InMemorySlockKeyValueStore()
         val pendingPersistence = InMemorySlockKeyValueStore()
+        val inviteResumeStore = SharedInviteResumeStore()
         val environment = SharedApiEnvironmentStore(environmentPersistence)
         val startRuntime = FakeRuntime(environmentKey = "production").apply {
             environmentStore = environment
@@ -506,6 +520,9 @@ class IosMobileOAuthCoordinatorTest {
             pendingStore = IosMobileOAuthPendingStore(pendingPersistence),
             runtimeProvider = { startRuntime },
             nowMillis = { 1_000L },
+            seedInviteResumeContext = { token, snapshot ->
+                inviteResumeStore.capture(token, snapshot) is SharedInviteResumeCaptureResult.Bound
+            },
         )
 
         assertEquals(
@@ -529,6 +546,9 @@ class IosMobileOAuthCoordinatorTest {
             pendingStore = IosMobileOAuthPendingStore(pendingPersistence),
             runtimeProvider = { restartedRuntime },
             nowMillis = { 1_000L },
+            seedInviteResumeContext = { token, snapshot ->
+                inviteResumeStore.capture(token, snapshot) is SharedInviteResumeCaptureResult.Bound
+            },
         )
         val completion = restartedCoordinator.complete(
             IosMobileOAuthCallback(
@@ -547,6 +567,354 @@ class IosMobileOAuthCoordinatorTest {
         assertTrue(completion.message.orEmpty().contains("environment", ignoreCase = true))
         assertEquals(0, restartedRuntime.loginCompleteCount)
         assertNull(IosMobileOAuthPendingStore(pendingPersistence).read())
+        assertTrue(
+            inviteResumeStore.capture(
+                "invite-token",
+                restartedRuntime.environmentSnapshot,
+            ) is SharedInviteResumeCaptureResult.Invalidated
+        )
+    }
+
+    @Test
+    fun completedInviteHandoffRejectsPostCompletionAbaBeforeDestinationCapture() = runBlocking {
+        val environmentPersistence = InMemorySlockKeyValueStore()
+        val pendingPersistence = InMemorySlockKeyValueStore()
+        val environment = SharedApiEnvironmentStore(environmentPersistence)
+        val inviteResumeStore = SharedInviteResumeStore()
+        val runtime = FakeRuntime(environmentKey = "production").apply {
+            environmentStore = environment
+            loginOutcome = IosMobileOAuthLoginOutcome.Success(null)
+        }
+        val coordinator = IosMobileOAuthCoordinator(
+            pendingStore = IosMobileOAuthPendingStore(pendingPersistence),
+            runtimeProvider = { runtime },
+            nowMillis = { 1_000L },
+            seedInviteResumeContext = { token, snapshot ->
+                inviteResumeStore.capture(token, snapshot) is SharedInviteResumeCaptureResult.Bound
+            },
+        )
+
+        assertEquals(
+            "started",
+            coordinator.startBrowser(
+                provider = "google",
+                mode = "login",
+                generation = "post-completion-aba-generation",
+                codeVerifier = Verifier,
+                codeChallenge = Challenge,
+                pendingInviteToken = "invite-token",
+            ).status,
+        )
+        assertEquals(
+            "invite_accept",
+            coordinator.complete(
+                IosMobileOAuthCallback(
+                    scheme = "raft",
+                    host = "oauth",
+                    path = "/callback",
+                    provider = null,
+                    mode = null,
+                    code = "completed-handoff",
+                    error = null,
+                    expectedGeneration = "post-completion-aba-generation",
+                )
+            ).status,
+        )
+
+        environment.select(SharedApiEnvironmentStore.Staging.key)
+        environment.select(SharedApiEnvironmentStore.Production.key)
+        val destinationCapture =
+            inviteResumeStore.capture("invite-token", environment.currentSnapshot())
+        assertTrue(destinationCapture is SharedInviteResumeCaptureResult.Invalidated)
+
+        val transport = AuthDataSourceTest.FakeAuthApi(
+            inviteInfoResponse = AuthNetworkResponse(200, "{}"),
+            acceptInviteResponse = AuthNetworkResponse(200, "{\"serverId\":\"server-1\"}"),
+        )
+        val source = SharedAuthDataSource(
+            transport = transport,
+            sessionStore = InMemorySlockAuthSessionStore(authSessionFixture()),
+            inviteEnvironmentSnapshotProvider = { environment.currentSnapshot() },
+        )
+        val invalidated = destinationCapture as SharedInviteResumeCaptureResult.Invalidated
+        val destination = source.invalidatedInviteResume(invalidated.capturedEnvironment)
+
+        assertTrue(destination.loadInviteInfo("invite-token") is SharedInviteInfoResult.Failure)
+        assertTrue(destination.restoreSession() is SharedAuthResult.Failure)
+        assertTrue(destination.acceptInvite("invite-token") is SharedInviteAcceptResult.Failure)
+        assertTrue(transport.inviteInfoTokens.isEmpty())
+        assertTrue(transport.acceptInviteAuthorizations.isEmpty())
+        assertTrue(transport.acceptInviteTokens.isEmpty())
+        assertEquals(0, transport.currentUserRequestCount)
+    }
+
+    @Test
+    fun pendingInviteProviderErrorTransfersOriginalWitnessBeforeReturningToken() = runBlocking {
+        val pendingPersistence = InMemorySlockKeyValueStore()
+        val inviteResumeStore = SharedInviteResumeStore()
+        val runtime = FakeRuntime(environmentKey = "production")
+        val coordinator = IosMobileOAuthCoordinator(
+            pendingStore = IosMobileOAuthPendingStore(pendingPersistence),
+            runtimeProvider = { runtime },
+            nowMillis = { 1_000L },
+            seedInviteResumeContext = { token, snapshot ->
+                inviteResumeStore.capture(token, snapshot) is SharedInviteResumeCaptureResult.Bound
+            },
+        )
+
+        assertEquals(
+            "started",
+            coordinator.startBrowser(
+                provider = "google",
+                mode = "login",
+                generation = "provider-error-generation",
+                codeVerifier = Verifier,
+                codeChallenge = Challenge,
+                pendingInviteToken = "invite-token",
+            ).status,
+        )
+        val completion = coordinator.complete(
+            IosMobileOAuthCallback(
+                scheme = "raft",
+                host = "oauth",
+                path = "/callback",
+                provider = null,
+                mode = null,
+                code = null,
+                error = "access_denied",
+                expectedGeneration = "provider-error-generation",
+            )
+        )
+
+        assertEquals("login_error", completion.status)
+        assertEquals("invite-token", completion.inviteToken)
+        assertNull(IosMobileOAuthPendingStore(pendingPersistence).read())
+
+        runtime.environmentGeneration = 2L
+        assertTrue(
+            inviteResumeStore.capture(
+                "invite-token",
+                runtime.environmentSnapshot,
+            ) is SharedInviteResumeCaptureResult.Invalidated
+        )
+    }
+
+    @Test
+    fun pendingInviteTerminalResultStripsTokenWhenWitnessHandoffIsUnavailable() = runBlocking {
+        val runtime = FakeRuntime(environmentKey = "production")
+        val fixture = fixture(
+            runtime = runtime,
+            seedInviteResumeContext = { _, _ -> false },
+        )
+        val start = fixture.coordinator.startBrowser(
+            provider = "google",
+            mode = "login",
+            generation = "handoff-unavailable-generation",
+            codeVerifier = Verifier,
+            codeChallenge = Challenge,
+            pendingInviteToken = "invite-token",
+        )
+        assertEquals("started", start.status)
+
+        val completion = fixture.coordinator.complete(
+            fixture.callback(
+                code = "handoff",
+                expectedGeneration = "handoff-unavailable-generation",
+            )
+        )
+
+        assertEquals("login_error", completion.status)
+        assertNull(completion.inviteToken)
+        assertNull(fixture.pendingStore.read())
+    }
+
+    @Test
+    fun explicitInviteOAuthRetryReplacesPriorInvalidatedWitnessAfterSuccessfulStart() = runBlocking {
+        val inviteResumeStore = SharedInviteResumeStore()
+        val oldEnvironment =
+            SharedApiEnvironmentSnapshot(
+                key = SharedApiEnvironmentStore.Production.key,
+                apiBaseUrl = SharedApiEnvironmentStore.Production.apiBaseUrl,
+                generation = 0L,
+            )
+        val retryEnvironment = oldEnvironment.copy(generation = 1L)
+        assertTrue(
+            inviteResumeStore.capture("invite-token", oldEnvironment) is SharedInviteResumeCaptureResult.Bound
+        )
+        assertTrue(
+            inviteResumeStore.capture("invite-token", retryEnvironment) is SharedInviteResumeCaptureResult.Invalidated
+        )
+
+        val runtime = FakeRuntime(environmentKey = "production").apply {
+            environmentGeneration = retryEnvironment.generation
+        }
+        val pendingStore = IosMobileOAuthPendingStore(InMemorySlockKeyValueStore())
+        val coordinator =
+            IosMobileOAuthCoordinator(
+                pendingStore = pendingStore,
+                runtimeProvider = { runtime },
+                nowMillis = { 1_000L },
+                seedInviteResumeContext = { token, environment ->
+                    inviteResumeStore.capture(token, environment) is SharedInviteResumeCaptureResult.Bound
+                },
+                resetInviteResumeContextForRetry = { token, environment ->
+                    inviteResumeStore.clear(token)
+                    inviteResumeStore.capture(token, environment)
+                },
+            )
+
+        assertEquals(
+            "started",
+            coordinator.startBrowser(
+                provider = "google",
+                mode = "login",
+                generation = "retry-generation",
+                codeVerifier = Verifier,
+                codeChallenge = Challenge,
+                pendingInviteToken = "invite-token",
+            ).status,
+        )
+        assertTrue(
+            inviteResumeStore.capture("invite-token", retryEnvironment) is SharedInviteResumeCaptureResult.Bound
+        )
+
+        val completion =
+            coordinator.complete(
+                IosMobileOAuthCallback(
+                    scheme = "raft",
+                    host = "oauth",
+                    path = "/callback",
+                    provider = null,
+                    mode = null,
+                    code = "retry-handoff",
+                    error = null,
+                    expectedGeneration = "retry-generation",
+                )
+            )
+        assertEquals("invite_accept", completion.status)
+        assertTrue(
+            inviteResumeStore.capture("invite-token", retryEnvironment) is SharedInviteResumeCaptureResult.Bound
+        )
+    }
+
+    @Test
+    fun successfulInviteRetryInNewGenerationCannotRebindOldTokenAfterReturningToOriginalEnvironment() = runBlocking {
+        val inviteResumeStore = SharedInviteResumeStore()
+        val originalEnvironment =
+            SharedApiEnvironmentSnapshot(
+                key = SharedApiEnvironmentStore.Production.key,
+                apiBaseUrl = SharedApiEnvironmentStore.Production.apiBaseUrl,
+                generation = 0L,
+            )
+        val retryEnvironment = originalEnvironment.copy(generation = 1L)
+        assertTrue(
+            inviteResumeStore.capture("invite-token", originalEnvironment) is SharedInviteResumeCaptureResult.Bound
+        )
+        assertTrue(
+            inviteResumeStore.capture("invite-token", retryEnvironment) is SharedInviteResumeCaptureResult.Invalidated
+        )
+
+        val runtime = FakeRuntime(environmentKey = "production").apply {
+            environmentGeneration = retryEnvironment.generation
+        }
+        val coordinator =
+            IosMobileOAuthCoordinator(
+                pendingStore = IosMobileOAuthPendingStore(InMemorySlockKeyValueStore()),
+                runtimeProvider = { runtime },
+                nowMillis = { 1_000L },
+                seedInviteResumeContext = { token, environment ->
+                    inviteResumeStore.capture(token, environment) is SharedInviteResumeCaptureResult.Bound
+                },
+                resetInviteResumeContextForRetry = { token, environment ->
+                    inviteResumeStore.clear(token)
+                    inviteResumeStore.capture(token, environment)
+                },
+            )
+
+        assertEquals(
+            "started",
+            coordinator.startBrowser(
+                provider = "google",
+                mode = "login",
+                generation = "retry-aba-generation",
+                codeVerifier = Verifier,
+                codeChallenge = Challenge,
+                pendingInviteToken = "invite-token",
+            ).status,
+        )
+
+        runtime.environmentGeneration = originalEnvironment.generation
+        val destinationCapture =
+            inviteResumeStore.capture("invite-token", runtime.environmentSnapshot)
+        assertTrue(destinationCapture is SharedInviteResumeCaptureResult.Invalidated)
+
+        val transport = AuthDataSourceTest.FakeAuthApi(
+            inviteInfoResponse = AuthNetworkResponse(200, "{}"),
+            acceptInviteResponse = AuthNetworkResponse(200, "{\"serverId\":\"server-1\"}"),
+        )
+        val source = SharedAuthDataSource(
+            transport = transport,
+            sessionStore = InMemorySlockAuthSessionStore(authSessionFixture()),
+            inviteEnvironmentSnapshotProvider = { runtime.environmentSnapshot },
+        )
+        val invalidated = destinationCapture as SharedInviteResumeCaptureResult.Invalidated
+        val destination = source.invalidatedInviteResume(invalidated.capturedEnvironment)
+
+        assertTrue(destination.loadInviteInfo("invite-token") is SharedInviteInfoResult.Failure)
+        assertTrue(destination.restoreSession() is SharedAuthResult.Failure)
+        assertTrue(destination.acceptInvite("invite-token") is SharedInviteAcceptResult.Failure)
+        assertTrue(transport.inviteInfoTokens.isEmpty())
+        assertTrue(transport.acceptInviteAuthorizations.isEmpty())
+        assertTrue(transport.acceptInviteTokens.isEmpty())
+        assertEquals(0, transport.currentUserRequestCount)
+    }
+
+    @Test
+    fun failedInviteOAuthRetryDoesNotClearPriorInvalidatedWitness() = runBlocking {
+        val inviteResumeStore = SharedInviteResumeStore()
+        val oldEnvironment =
+            SharedApiEnvironmentSnapshot(
+                key = SharedApiEnvironmentStore.Production.key,
+                apiBaseUrl = SharedApiEnvironmentStore.Production.apiBaseUrl,
+                generation = 0L,
+            )
+        val retryEnvironment = oldEnvironment.copy(generation = 1L)
+        assertTrue(
+            inviteResumeStore.capture("invite-token", oldEnvironment) is SharedInviteResumeCaptureResult.Bound
+        )
+        assertTrue(
+            inviteResumeStore.capture("invite-token", retryEnvironment) is SharedInviteResumeCaptureResult.Invalidated
+        )
+
+        val runtime = FakeRuntime(environmentKey = "production").apply {
+            browserStartOutcome = IosMobileOAuthStartOutcome.Failure("start failed")
+            environmentGeneration = retryEnvironment.generation
+        }
+        val coordinator =
+            IosMobileOAuthCoordinator(
+                pendingStore = IosMobileOAuthPendingStore(InMemorySlockKeyValueStore()),
+                runtimeProvider = { runtime },
+                nowMillis = { 1_000L },
+                resetInviteResumeContextForRetry = { token, environment ->
+                    inviteResumeStore.clear(token)
+                    inviteResumeStore.capture(token, environment)
+                },
+            )
+
+        assertEquals(
+            "error",
+            coordinator.startBrowser(
+                provider = "google",
+                mode = "login",
+                generation = "retry-failure-generation",
+                codeVerifier = Verifier,
+                codeChallenge = Challenge,
+                pendingInviteToken = "invite-token",
+            ).status,
+        )
+        assertTrue(
+            inviteResumeStore.capture("invite-token", retryEnvironment) is SharedInviteResumeCaptureResult.Invalidated
+        )
     }
 
     @Test
@@ -653,6 +1021,7 @@ class IosMobileOAuthCoordinatorTest {
     private fun fixture(
         runtime: FakeRuntime,
         nowMillis: () -> Long = { 1_000L },
+        seedInviteResumeContext: (String, SharedApiEnvironmentSnapshot) -> Boolean = { _, _ -> true },
     ): Fixture {
         val pendingStore = IosMobileOAuthPendingStore(InMemorySlockKeyValueStore())
         return Fixture(
@@ -661,6 +1030,7 @@ class IosMobileOAuthCoordinatorTest {
                 pendingStore = pendingStore,
                 runtimeProvider = { runtime },
                 nowMillis = nowMillis,
+                seedInviteResumeContext = seedInviteResumeContext,
             ),
         )
     }
@@ -759,6 +1129,7 @@ class IosMobileOAuthCoordinatorTest {
         var completedLogin: LoginComplete? = null
         var completedLink: LinkComplete? = null
         var loginCompleteCount = 0
+        var browserStartOutcome: IosMobileOAuthStartOutcome? = null
         var loginOutcome: IosMobileOAuthLoginOutcome = IosMobileOAuthLoginOutcome.Success(null)
         var linkOutcome: IosMobileOAuthLinkOutcome = IosMobileOAuthLinkOutcome.Success
         var nativeAppleAuthorizationOutcome: IosNativeAppleAuthorizationOutcome? = null
@@ -771,7 +1142,7 @@ class IosMobileOAuthCoordinatorTest {
             codeChallenge: String,
         ): IosMobileOAuthStartOutcome {
             startedLogin = LoginStart(provider, platform, appEnv, returnUri, codeChallenge)
-            return IosMobileOAuthStartOutcome.Success(startResponse(returnUri))
+            return browserStartOutcome ?: IosMobileOAuthStartOutcome.Success(startResponse(returnUri))
         }
 
         override suspend fun startBrowserLink(
