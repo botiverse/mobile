@@ -511,6 +511,35 @@ When a shipped or distributed carrier produces a material regression:
 5. A containment guard is not a root-cause fix unless the causal failure and
    the corrected contract are proven.
 
+### Freeze and resume Hands updates
+
+The release owner decides whether an incident requires freezing the public
+update pointer. The release operator may execute that decision only against a
+fresh-read exact release and revision. A freeze, rollback, share revocation,
+release deletion, and removal of an installed build are different mutations;
+authorization for one never implies another.
+
+Hands owns the resolver and rollout mechanics. Follow the authoritative
+[`Staged rollouts`](https://hands.build/docs/public-api-reference#staged-rollouts)
+contract when setting rollout to zero or resuming distribution. Do not copy or
+reinterpret those API semantics in this repository.
+
+The Mobile incident/release receipt must record:
+
+- the release-owner directive and exact affected release/source;
+- release revision and rollout before and after the authorized mutation;
+- the previous eligible release observed while frozen;
+- public latest/update readbacks, including each querying client version and
+  whether a device id was supplied;
+- the existing share readback and whether it remained reachable;
+- the incident owner, open blocker, and explicit lift condition.
+
+Resuming distribution requires a new release-owner directive naming the target
+release and rollout. Never infer that target from the frozen release or default
+to full rollout. Before and after resuming, repeat the authoritative Hands
+readbacks and preserve them in the receipt. A rollout number changing is not,
+by itself, evidence that clients resolve the intended version.
+
 Repository closeout may continue so shipped source and evidence are durable,
 but the receipt must preserve the open product blocker and its lift condition.
 
