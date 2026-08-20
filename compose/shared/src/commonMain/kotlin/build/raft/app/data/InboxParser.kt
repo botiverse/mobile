@@ -471,6 +471,12 @@ private fun WireSavedEntry.toInboxItem(diagnostics: (String) -> Unit): InboxItem
         channelName = channelName,
         channelKind = conversationKind,
         lastMessageId = MessageId(messageId),
+        // The saved message itself is this row's open anchor. Thread rows must
+        // carry it in latestActivityMessageId: resolveInboxAnchorMessageId
+        // deliberately never falls back to lastMessageId for threads (task #231
+        // — without this, a saved thread message opened unanchored at the
+        // bottom instead of focusing the saved message like Activity rows do).
+        latestActivityMessageId = MessageId(messageId),
         lastMessagePreview = content,
         lastMessageAt = createdAt,
         lastMessageSenderName = senderName,
@@ -555,6 +561,10 @@ private fun WireSearchResult.toInboxItem(diagnostics: (String) -> Unit): InboxIt
         channelName = channelName,
         channelKind = conversationKind,
         lastMessageId = MessageId(id),
+        // The matched message is this row's open anchor — same contract as the
+        // saved mapping above: thread rows anchor only via
+        // latestActivityMessageId (task #231).
+        latestActivityMessageId = MessageId(id),
         lastMessagePreview = snippet.ifBlank { content },
         lastMessageAt = createdAt,
         lastMessageSenderName = senderName,

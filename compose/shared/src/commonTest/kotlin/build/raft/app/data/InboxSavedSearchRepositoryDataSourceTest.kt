@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.resolveInboxAnchorMessageId
+import build.raft.app.toConversationOpenSourceMessageIdentity
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
@@ -350,7 +351,11 @@ class InboxSavedSearchRepositoryDataSourceTest {
         val reply = loaded.data.items.single()
         assertEquals(InboxItemKind.Thread, reply.kind)
         assertEquals("saved:reply-message-1", reply.key)
-        assertEquals(null, reply.resolveInboxAnchorMessageId())
+        // task #231: the saved reply itself is the row's open anchor. (This
+        // line previously pinned null — an incidental observation from the
+        // pre-#231 mapping, not a contract; the anchor contract lives in
+        // savedAndSearchThreadRowsAnchorOnTheirOwnMessage.)
+        assertEquals(MessageId("reply-message-1"), reply.resolveInboxAnchorMessageId())
         assertEquals(MessageId("reply-message-1"), reply.savedMessageIdOrNull())
 
         repository.unsaveMessage(ServerId("server-1"), assertNotNull(reply.savedMessageIdOrNull()))
@@ -474,6 +479,52 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertEquals(InboxItemKind.DirectMessage, search.data.items.single().kind)
         assertEquals(ConversationKind.DirectMessage, search.data.items.single().channelKind)
         assertEquals(ConversationKind.DirectMessage, search.data.items.single().parentChannelKind)
+    }
+
+    @Test
+    fun savedAndSearchThreadRowsAnchorOnTheirOwnMessage() {
+        // task #231: tapping a Saved/Search row goes through the same open
+        // resolver as Activity rows (source=ActivityRow). Thread rows anchor
+        // ONLY via latestActivityMessageId — resolveInboxAnchorMessageId
+        // deliberately never falls back to lastMessageId for threads — so the
+        // saved/matched message id must ride that field or the thread opens
+        // unanchored at the bottom (artin's report).
+        val saved =
+            assertNotNull(
+                parseSharedSavedItems(
+                    """{"saved":[{"messageId":"reply-message-1","channelId":"thread-channel-1","channelName":"thread-stream","channelType":"thread","content":"Saved reply","senderType":"user","senderId":"user-1","senderName":"Artin","createdAt":"2026-05-01T00:00:00Z","savedAt":"2026-05-02T00:00:00Z","parentChannelId":"channel-1","parentChannelName":"general","parentChannelType":"channel","parentMessageId":"parent-message-1"}],"hasMore":false}""",
+                ),
+            ).items.single()
+        assertEquals(InboxItemKind.Thread, saved.kind)
+        assertEquals(MessageId("reply-message-1"), saved.resolveInboxAnchorMessageId())
+        assertEquals(
+            "reply-message-1",
+            saved.toConversationOpenSourceMessageIdentity().messageId,
+        )
+
+        val searchHit =
+            assertNotNull(
+                parseSharedSearchItems(
+                    """{"results":[{"id":"reply-message-2","channelId":"thread-channel-2","channelName":"thread-stream","channelType":"thread","parentChannelId":"channel-1","parentChannelName":"general","parentChannelType":"channel","parentMessageId":"parent-message-2","senderId":"user-1","senderType":"user","senderName":"Artin","content":"Search reply","snippet":"Search reply","createdAt":"2026-05-01T00:00:00Z"}],"hasMore":false}""",
+                ),
+            ).items.single()
+        assertEquals(InboxItemKind.Thread, searchHit.kind)
+        assertEquals(MessageId("reply-message-2"), searchHit.resolveInboxAnchorMessageId())
+        assertEquals(
+            "reply-message-2",
+            searchHit.toConversationOpenSourceMessageIdentity().messageId,
+        )
+
+        // Channel rows already anchored via the lastMessageId fallback; the
+        // new field must agree with it, not change the picked anchor.
+        val savedChannelRow =
+            assertNotNull(
+                parseSharedSavedItems(
+                    """{"saved":[{"messageId":"message-3","channelId":"channel-9","channelName":"android-dev","channelType":"channel","content":"Saved note","senderType":"user","senderId":"user-1","senderName":"Artin","createdAt":"2026-05-01T00:00:00Z","savedAt":"2026-05-02T00:00:00Z"}],"hasMore":false}""",
+                ),
+            ).items.single()
+        assertEquals(InboxItemKind.Channel, savedChannelRow.kind)
+        assertEquals(MessageId("message-3"), savedChannelRow.resolveInboxAnchorMessageId())
     }
 
     @Test
