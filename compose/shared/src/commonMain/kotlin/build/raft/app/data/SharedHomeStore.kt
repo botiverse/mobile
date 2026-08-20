@@ -43,6 +43,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -1727,178 +1729,225 @@ internal class SharedHomeStore(
             activeServer?.let { server ->
                 readReceiptOwnerFactory?.invoke(server.value, activeSession.user.id)
             }
-        val dataResult = dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)
-        val previousContent = _state.value.content as? SharedHomeContentState.Content
-        val preparedHydrates =
-            (dataResult as? DataResult.Content)?.data?.let { snapshot ->
-                prepareReadStateV1Hydrates(snapshot)
-            }
-        val rawSnapshot = preparedHydrates?.snapshot
-        // task #831: when the unread enrichment was unavailable, atomically
-        // freeze ALL unread-bearing fields (per-row channel/DM unread, aggregate
-        // total/source, server counts) to the prior committed baseline. Fresh
-        // channel/DM identity + content still apply, but the committed snapshot
-        // (and therefore the realtime unread delta baseline) is never reset to a
-        // fake zero — otherwise the next realtime message would rebuild from 0
-        // and clobber the real count. Only a truly available response
-        // (including a real 200-empty) advances unread.
-        val freshSnapshot =
-            if (rawSnapshot != null && !rawSnapshot.unreadEnrichmentAvailable && previousContent != null) {
-                rawSnapshot.frozenUnreadFrom(previousContent.baseSnapshot)
-            } else {
-                rawSnapshot
-            }
-        val result =
-            when (dataResult) {
-                is DataResult.Content ->
-                    createHomeContent(
-                        snapshot = requireNotNull(freshSnapshot),
-                        session = activeSession,
-                        contentRefreshing = false,
-                        previousContent = previousContent
-                    )
-                is DataResult.Empty -> SharedHomeContentState.Empty(activeSession)
-                is DataResult.Error -> {
-                    diagnosticsLogger(
-                        "home_ui_error source=shared_home_load code=${dataResult.error.code} mapped=${_state.value.content.refreshFailureMapping()}"
-                    )
-                    _state.value.content.asRefreshFailed(dataResult.error.code)
+        var publicationCompleted = false
+        var publishedFreshSnapshot: HomeSnapshot? = null
+
+        // task #434: channels/DMs and sidebar-order are one visible Home
+        // bootstrap even though the server still exposes two resources. Start
+        // both requests together, then hold the sidebar mutation lock through
+        // the single publication so a concurrent Pin/Unpin cannot be overwritten
+        // by an older sidebar response from this load generation. This knowingly
+        // holds the mutex across both network awaits: when a refresh is slow,
+        // a Pin/Unpin waits rather than racing and clobbering the same snapshot.
+        sidebarOrderMutex.withLock {
+            val sidebarOrderFallback =
+                activeServer?.let { serverId ->
+                    (_state.value.content as? SharedHomeContentState.Content)
+                        ?.snapshot
+                        ?.takeIf { it.server.id == serverId }
+                        ?.sidebarOrder
+                        ?: sidebarOrderByServer[serverId]
                 }
-                is DataResult.NoPermission -> {
-                    diagnosticsLogger(
-                        "home_ui_error source=shared_home_load code=${dataResult.blocker.code} mapped=${_state.value.content.refreshFailureMapping()}"
-                    )
-                    _state.value.content.asRefreshFailed(dataResult.blocker.code)
-                }
-            }
-        val resultServerId = (result as? SharedHomeContentState.Content)?.snapshot?.server?.id
-            ?: activeServer
-        val latestSwitch = _state.value.serverSwitchState
-        if (resultServerId == null || latestSwitch.isCurrent(request.requestGeneration, resultServerId)) {
-            val liveActivityUnreadOwner =
-                activeServer?.let { server ->
-                    authStore.readSession()?.let { liveSession ->
-                        readReceiptOwnerFactory?.invoke(server.value, liveSession.user.id)
-                    }
-                }
-            val nextActivityUnread =
-                if (
-                    activityUnreadRequestOwner != null &&
-                    activityUnreadRequestOwner == liveActivityUnreadOwner
-                ) {
-                    HomeServerActivityUnreadProjection(
-                        requestOwner = activityUnreadRequestOwner,
-                        countsByServer = freshSnapshot?.serverActivityUnreadCounts.orEmpty(),
-                        serverPushMutedByServer = freshSnapshot?.serverPushMutedByServer.orEmpty(),
-                    )
-                } else {
-                    _state.value.serverActivityUnread
-                }
-            val nextContent = result
-            // #81: derive the badge projection from the fresh snapshot.
-            // - On success: source comes from the parser (SERVER_UNREAD_SUMMARY
-            //   or CHANNEL_DM_FALLBACK), isStale is false, lastUpdated advances.
-            // - On Error / NoPermission: keep last value but flip isStale = true
-            //   so a future UI layer can hint staleness. lastUpdated MUST NOT
-            //   advance.
-            //
-            // #82: derive `freshSnapshot` from the **original** data source
-            // result (before the `asRefreshFailed` content transform). When
-            // the previous state is `Content`, `asRefreshFailed` returns
-            // `Content.copy(contentRefreshing = false)` — the failure case
-            // therefore produces a transformed `result` whose snapshot is
-            // non-null, and the old `(result as? Content)?.snapshot` check
-            // would mis-classify the failure as a fresh success and skip
-            // `isStale = true`. The original `dataResult` is the source of
-            // truth for whether the network actually succeeded.
-            // task #831: only a snapshot whose unread enrichment was actually
-            // available may drive the badge to a fresh (possibly zero) value.
-            // When channels/DMs are fresh but unread was unavailable
-            // (error/timeout/hung/contract-mismatch), keep the prior badge and
-            // only flip isStale — never zero it, or a slow/hung unread endpoint
-            // would fake "all read".
-            val unreadEnrichmentAvailable = freshSnapshot?.unreadEnrichmentAvailable == true
-            val nextBadge =
-                if (freshSnapshot != null && unreadEnrichmentAvailable) {
-                    val next =
-                        snapshotToBadgeCount(
-                            snapshot = freshSnapshot,
-                            selectedServerId = activeServer,
-                            isStale = false,
-                            nowMillis = nowMillis,
-                        )
-                    // #81: don't bump lastUpdated (and therefore the state
-                    // itself) when the projection is structurally the same
-                    // as the previous one. Avoids spurious state emissions
-                    // for refresh-on-no-change paths.
-                    if (next.copy(lastUpdated = 0L) == _state.value.appBadgeCount.copy(lastUpdated = 0L)) {
-                        _state.value.appBadgeCount
-                    } else {
-                        next
-                    }
-                } else {
-                    val previous = _state.value.appBadgeCount
-                    previous.copy(isStale = true)
-                }
-            val nextState =
-                _state.value.copy(
-                    content = nextContent,
-                    serverDrawer =
-                        if (nextContent is SharedHomeContentState.Content) {
-                            _state.value.serverDrawer.withServerContent(
-                                nextContent,
-                                HomeServerDrawerLoadStatus.Loaded
+            val (dataResult, loadedSidebarOrder) =
+                coroutineScope {
+                    val homeDeferred =
+                        async {
+                            dataSource.loadHome(
+                                serverId = activeServer,
+                                priority = priority,
+                                forceNetwork = forceNetwork
                             )
-                        } else {
-                            _state.value.serverDrawer
-                        },
-                    serverSwitchState =
-                        if (resultServerId != null) {
-                            latestSwitch.complete(request.requestGeneration, resultServerId)
-                        } else {
-                            latestSwitch
-                        },
-                    // task #831: keep the prior drawer unread when unread was
-                    // unavailable, so a slow/hung unread endpoint can't blank the
-                    // multi-server switcher badges. Only a fresh, available
-                    // projection replaces them.
-                    serverUnreadCounts =
-                        if (freshSnapshot != null && unreadEnrichmentAvailable) {
-                            freshSnapshot.serverUnreadCounts
-                        } else {
-                            _state.value.serverUnreadCounts
-                        },
-                    serverActivityUnread = nextActivityUnread,
-                    appBadgeCount = nextBadge
-                )
-            val published =
-                if (preparedHydrates?.selectedAdjudication == true) {
-                    val publication = preparedHydrates.publication
-                    publication != null && readStateV1Canary?.completePreparedPublication(
-                        publication = publication,
-                        projectionFact = preparedHydrates.projectionFact,
-                        publishContent = { publishLoadedHomeState(nextState, freshSnapshot) },
-                    ) == true
-                } else {
-                    publishLoadedHomeState(nextState, freshSnapshot)
-                    true
+                        }
+                    val sidebarOrderDeferred =
+                        async {
+                            loadSidebarOrderForHomePublication(
+                                serverId = activeServer,
+                                fallback = sidebarOrderFallback
+                            )
+                        }
+                    homeDeferred.await() to sidebarOrderDeferred.await()
                 }
-            if (!published) {
-                diagnosticsLogger("read_state_v1_home_publish rejected=stale_witness")
-                return
+            val previousContent = _state.value.content as? SharedHomeContentState.Content
+            val preparedHydrates =
+                (dataResult as? DataResult.Content)?.data?.let { snapshot ->
+                    prepareReadStateV1Hydrates(snapshot)
+                }
+            val rawSnapshot =
+                preparedHydrates?.snapshot?.let { snapshot ->
+                    if (loadedSidebarOrder != null && snapshot.sidebarOrder != loadedSidebarOrder) {
+                        snapshot.copy(sidebarOrder = loadedSidebarOrder)
+                    } else {
+                        snapshot
+                    }
+                }
+            // task #831: when the unread enrichment was unavailable, atomically
+            // freeze ALL unread-bearing fields (per-row channel/DM unread, aggregate
+            // total/source, server counts) to the prior committed baseline. Fresh
+            // channel/DM identity + content still apply, but the committed snapshot
+            // (and therefore the realtime unread delta baseline) is never reset to a
+            // fake zero — otherwise the next realtime message would rebuild from 0
+            // and clobber the real count. Only a truly available response
+            // (including a real 200-empty) advances unread.
+            val freshSnapshot =
+                if (rawSnapshot != null && !rawSnapshot.unreadEnrichmentAvailable && previousContent != null) {
+                    rawSnapshot.frozenUnreadFrom(previousContent.baseSnapshot)
+                } else {
+                    rawSnapshot
+                }
+            val result =
+                when (dataResult) {
+                    is DataResult.Content ->
+                        createHomeContent(
+                            snapshot = requireNotNull(freshSnapshot),
+                            session = activeSession,
+                            contentRefreshing = false,
+                            previousContent = previousContent
+                        )
+                    is DataResult.Empty -> SharedHomeContentState.Empty(activeSession)
+                    is DataResult.Error -> {
+                        diagnosticsLogger(
+                            "home_ui_error source=shared_home_load code=${dataResult.error.code} mapped=${_state.value.content.refreshFailureMapping()}"
+                        )
+                        _state.value.content.asRefreshFailed(dataResult.error.code)
+                    }
+                    is DataResult.NoPermission -> {
+                        diagnosticsLogger(
+                            "home_ui_error source=shared_home_load code=${dataResult.blocker.code} mapped=${_state.value.content.refreshFailureMapping()}"
+                        )
+                        _state.value.content.asRefreshFailed(dataResult.blocker.code)
+                    }
+                }
+            val resultServerId = (result as? SharedHomeContentState.Content)?.snapshot?.server?.id
+                ?: activeServer
+            val latestSwitch = _state.value.serverSwitchState
+            if (resultServerId == null || latestSwitch.isCurrent(request.requestGeneration, resultServerId)) {
+                val liveActivityUnreadOwner =
+                    activeServer?.let { server ->
+                        authStore.readSession()?.let { liveSession ->
+                            readReceiptOwnerFactory?.invoke(server.value, liveSession.user.id)
+                        }
+                    }
+                val nextActivityUnread =
+                    if (
+                        activityUnreadRequestOwner != null &&
+                        activityUnreadRequestOwner == liveActivityUnreadOwner
+                    ) {
+                        HomeServerActivityUnreadProjection(
+                            requestOwner = activityUnreadRequestOwner,
+                            countsByServer = freshSnapshot?.serverActivityUnreadCounts.orEmpty(),
+                            serverPushMutedByServer = freshSnapshot?.serverPushMutedByServer.orEmpty(),
+                        )
+                    } else {
+                        _state.value.serverActivityUnread
+                    }
+                val nextContent = result
+                // #81: derive the badge projection from the fresh snapshot.
+                // - On success: source comes from the parser (SERVER_UNREAD_SUMMARY
+                //   or CHANNEL_DM_FALLBACK), isStale is false, lastUpdated advances.
+                // - On Error / NoPermission: keep last value but flip isStale = true
+                //   so a future UI layer can hint staleness. lastUpdated MUST NOT
+                //   advance.
+                //
+                // #82: derive `freshSnapshot` from the **original** data source
+                // result (before the `asRefreshFailed` content transform). When
+                // the previous state is `Content`, `asRefreshFailed` returns
+                // `Content.copy(contentRefreshing = false)` — the failure case
+                // therefore produces a transformed `result` whose snapshot is
+                // non-null, and the old `(result as? Content)?.snapshot` check
+                // would mis-classify the failure as a fresh success and skip
+                // `isStale = true`. The original `dataResult` is the source of
+                // truth for whether the network actually succeeded.
+                // task #831: only a snapshot whose unread enrichment was actually
+                // available may drive the badge to a fresh (possibly zero) value.
+                // When channels/DMs are fresh but unread was unavailable
+                // (error/timeout/hung/contract-mismatch), keep the prior badge and
+                // only flip isStale — never zero it, or a slow/hung unread endpoint
+                // would fake "all read".
+                val unreadEnrichmentAvailable = freshSnapshot?.unreadEnrichmentAvailable == true
+                val nextBadge =
+                    if (freshSnapshot != null && unreadEnrichmentAvailable) {
+                        val next =
+                            snapshotToBadgeCount(
+                                snapshot = freshSnapshot,
+                                selectedServerId = activeServer,
+                                isStale = false,
+                                nowMillis = nowMillis,
+                            )
+                        // #81: don't bump lastUpdated (and therefore the state
+                        // itself) when the projection is structurally the same
+                        // as the previous one. Avoids spurious state emissions
+                        // for refresh-on-no-change paths.
+                        if (next.copy(lastUpdated = 0L) == _state.value.appBadgeCount.copy(lastUpdated = 0L)) {
+                            _state.value.appBadgeCount
+                        } else {
+                            next
+                        }
+                    } else {
+                        val previous = _state.value.appBadgeCount
+                        previous.copy(isStale = true)
+                    }
+                val nextState =
+                    _state.value.copy(
+                        content = nextContent,
+                        serverDrawer =
+                            if (nextContent is SharedHomeContentState.Content) {
+                                _state.value.serverDrawer.withServerContent(
+                                    nextContent,
+                                    HomeServerDrawerLoadStatus.Loaded
+                                )
+                            } else {
+                                _state.value.serverDrawer
+                            },
+                        serverSwitchState =
+                            if (resultServerId != null) {
+                                latestSwitch.complete(request.requestGeneration, resultServerId)
+                            } else {
+                                latestSwitch
+                            },
+                        // task #831: keep the prior drawer unread when unread was
+                        // unavailable, so a slow/hung unread endpoint can't blank the
+                        // multi-server switcher badges. Only a fresh, available
+                        // projection replaces them.
+                        serverUnreadCounts =
+                            if (freshSnapshot != null && unreadEnrichmentAvailable) {
+                                freshSnapshot.serverUnreadCounts
+                            } else {
+                                _state.value.serverUnreadCounts
+                            },
+                        serverActivityUnread = nextActivityUnread,
+                        appBadgeCount = nextBadge
+                    )
+                val published =
+                    if (preparedHydrates?.selectedAdjudication == true) {
+                        val publication = preparedHydrates.publication
+                        publication != null && readStateV1Canary?.completePreparedPublication(
+                            publication = publication,
+                            projectionFact = preparedHydrates.projectionFact,
+                            publishContent = { publishLoadedHomeState(nextState, freshSnapshot) },
+                        ) == true
+                    } else {
+                        publishLoadedHomeState(nextState, freshSnapshot)
+                        true
+                    }
+                if (!published) {
+                    diagnosticsLogger("read_state_v1_home_publish rejected=stale_witness")
+                    return@withLock
+                }
+                publicationCompleted = true
+                publishedFreshSnapshot = freshSnapshot
             }
-            if (refreshNotificationsAfterLoad) {
-                loadNotifications()
-            } else {
-                diagnosticsLogger("home_notifications_refresh_skip reason=cached_refresh_already_loaded")
-            }
-            if (freshSnapshot != null) {
-                launchAgentDirectMessageStatusRefresh(
-                    request = request,
-                    snapshot = freshSnapshot
-                )
-                loadAndMergeSidebarOrder()
-            }
+        }
+        if (!publicationCompleted) return
+        if (refreshNotificationsAfterLoad) {
+            loadNotifications()
+        } else {
+            diagnosticsLogger("home_notifications_refresh_skip reason=cached_refresh_already_loaded")
+        }
+        publishedFreshSnapshot?.let { snapshot ->
+            launchAgentDirectMessageStatusRefresh(
+                request = request,
+                snapshot = snapshot
+            )
         }
     }
 
@@ -2194,23 +2243,34 @@ internal class SharedHomeStore(
     }
 
     /**
-     * #211: load the current server's sidebar-order snapshot and merge it
-     * into the active `HomeSnapshot`. Safe to call from any load path; if
-     * the active content is not `Content` (e.g. Loading / Empty / Error),
-     * the result is dropped because there is no snapshot to attach it to.
-     * Held under [sidebarOrderMutex] so it never races with a Pin/Unpin
-     * dispatched before the initial load resolves.
+     * task #434: load sidebar metadata for the same visible Home publication
+     * as channels/DMs. A failed settings request retains the last snapshot for
+     * this server; it never turns a successful Home content request into an
+     * error or publishes a second, pin-only state later.
+     *
+     * The caller owns [sidebarOrderMutex] from request start through Home
+     * publication, so this helper must not acquire it recursively.
      */
-    private suspend fun loadAndMergeSidebarOrder() {
-        sidebarOrderMutex.withLock {
-            val current = _state.value.content as? SharedHomeContentState.Content ?: return@withLock
-            when (val result = loadSidebarOrder(current.snapshot.server.id)) {
-                is DataResult.Content ->
-                    applySidebarOrderLocally(serverId = current.snapshot.server.id, next = result.data)
+    private suspend fun loadSidebarOrderForHomePublication(
+        serverId: ServerId?,
+        fallback: SettingsServerSidebarOrderSnapshot?
+    ): SettingsServerSidebarOrderSnapshot? {
+        if (serverId == null) return fallback
+        return try {
+            when (val result = loadSidebarOrder(serverId)) {
+                is DataResult.Content -> result.data
                 is DataResult.Empty,
                 is DataResult.Error,
-                is DataResult.NoPermission -> Unit
+                is DataResult.NoPermission -> fallback
             }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (throwable: Throwable) {
+            diagnosticsLogger(
+                "home_sidebar_order_load_failed serverId=${serverId.value} " +
+                    "errorType=${throwable.safeHomeStoreDiagnosticsType()}"
+            )
+            fallback
         }
     }
 
