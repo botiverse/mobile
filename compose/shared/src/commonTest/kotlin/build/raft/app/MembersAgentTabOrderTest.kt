@@ -190,4 +190,48 @@ class MembersAgentTabOrderTest {
             )
         )
     }
+
+    @Test
+    fun activityTabBottomAnchorSurvivesAFlickThatIsNeverSampledAsScrolling() {
+        // The reported shape: a reader browsing upward is thrown to the bottom when a new
+        // row arrives. Clearing the anchor from scroll state requires OBSERVING
+        // isScrollInProgress == true, and a flick can move both fields between two
+        // snapshots, so the sampled sequence can go straight from (idle, atBottom) to
+        // (idle, awayFromBottom) with the scrolling state never emitted once.
+        //
+        // Sampled path alone: the anchor survives at its initial `true`, which is the bug.
+        var anchor = true
+        anchor = membersAgentActivityNextBottomAnchor(
+            current = anchor,
+            isScrollInProgress = false,
+            isAtBottom = false
+        )
+        assertEquals(
+            true,
+            anchor,
+            "guard: the sampled path cannot clear the anchor when the scrolling state is " +
+                "never observed -- this is why a pointer event has to do it"
+        )
+
+        // The pointer move is what production now clears it with, and a pointer event
+        // cannot be lost to sampling.
+        anchor = false
+
+        // Idle and away from the bottom must KEEP it cleared: `else -> current` is what
+        // carries the decision across the arriving row, so it must carry `false` too.
+        anchor = membersAgentActivityNextBottomAnchor(
+            current = anchor,
+            isScrollInProgress = false,
+            isAtBottom = false
+        )
+        assertEquals(false, anchor, "an arriving row must not scroll a reader who moved away")
+
+        // Only genuinely reaching the bottom re-arms following.
+        anchor = membersAgentActivityNextBottomAnchor(
+            current = anchor,
+            isScrollInProgress = false,
+            isAtBottom = true
+        )
+        assertEquals(true, anchor)
+    }
 }
