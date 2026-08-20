@@ -721,11 +721,15 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
     }
     val agentStatusResolver =
         remember(sharedStores.serverMembersStore, payload.currentServerId) {
-            slockAgentStatusResolver(sharedStores.serverMembersStore, payload.currentServerId)
+            slockScopedAgentStatusResolver(sharedStores.serverMembersStore, payload.currentServerId)
         }
     val memberAvatarResolver =
         remember(sharedStores.serverMembersStore, payload.currentServerId) {
-            slockMemberAvatarResolver(sharedStores.serverMembersStore, payload.currentServerId)
+            if (payload.currentServerId.trim().isBlank()) {
+                EmptySlockMemberAvatarResolver
+            } else {
+                slockMemberAvatarResolver(sharedStores.serverMembersStore, payload.currentServerId)
+            }
         }
     val serverMembersState by sharedStores.serverMembersStore.state.collectAsState()
     val pinnedMemberProfileResolver: (String) -> SlockHomePinnedMemberItem? =

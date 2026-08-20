@@ -652,17 +652,14 @@ private fun SharedAgentDetailState.withoutCachedAgentActivity(agentId: MemberId)
 private fun MemberProfile.toAgentDetailSeed(activity: List<AgentActivityEntry>): AgentDetailSnapshot {
     val fallbackName = handle.ifBlank { displayName.ifBlank { id.value } }
     val display = displayName.ifBlank { fallbackName }
-    val status = agentStatus?.label
     return AgentDetailSnapshot(
         agentId = id,
         summary = AgentDetailSummary(
             id = id.value,
             name = fallbackName,
             displayName = display,
-            status = status,
             runtime = roleDescription,
             avatarUrl = avatar?.wireValue ?: avatarUrl,
-            activity = status,
             activityDetail = description,
             machineName = permissionBadges.firstNotNullOfOrNull { it.memberComputerLabelOrNull() },
             machineId = permissionBadges.firstNotNullOfOrNull { it.memberComputerIdOrNull() }

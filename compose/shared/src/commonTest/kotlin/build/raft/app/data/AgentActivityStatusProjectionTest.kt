@@ -68,4 +68,38 @@ class AgentActivityStatusProjectionTest {
             ).agentActivityStatusFallbackProjection()
         )
     }
+
+    @Test
+    fun accountLifecycleActiveDoesNotProjectAsLiveOnline() {
+        assertNull(
+            AgentDetailSummary(
+                id = "agent-1",
+                name = "Agent",
+                status = "active"
+            ).agentActivityStatusFallbackProjection()
+        )
+        assertNull(normalizedAgentRuntimeStatus(activity = "active", lifecycleStatus = null))
+    }
+
+    @Test
+    fun explicitStoppedLifecycleProjectsOfflineWithoutRuntimeActivity() {
+        assertEquals(
+            AgentStatus.Offline,
+            normalizedAgentRuntimeStatus(activity = null, lifecycleStatus = "stopped")
+        )
+        assertEquals(
+            AgentStatus.Offline,
+            normalizedAgentRuntimeStatus(activity = "active", lifecycleStatus = "inactive")
+        )
+    }
+
+    @Test
+    fun activityEntryAccountLifecycleActiveDoesNotProjectAsLiveOnline() {
+        assertNull(
+            projectAgentActivityStatus(
+                kind = "status",
+                activity = "active"
+            )
+        )
+    }
 }

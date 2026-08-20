@@ -39,6 +39,7 @@ internal fun slockAgentStatusResolver(
     serverId: String?
 ): SlockAgentStatusResolver {
     val cleanServerId = serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        ?: return EmptySlockAgentStatusResolver
     return { memberId ->
         if (serverMembersStore == null) {
             flowOf(null)
@@ -95,13 +96,4 @@ internal fun slockAgentStatusIndicatorState(
         // can never disagree with the text beside it (React
         // resolveAgentDisplayState parity, #198/#73).
         label = statusLabel?.takeIf { it.isNotBlank() } ?: status?.label ?: presence.name
-    )
-
-internal fun slockAgentStatusIndicatorState(
-    statusValue: String?,
-    fallbackPresence: Presence
-): SlockAgentStatusIndicatorState =
-    slockAgentStatusIndicatorState(
-        status = AgentStatus.fromWireValue(statusValue),
-        presence = fallbackPresence
     )

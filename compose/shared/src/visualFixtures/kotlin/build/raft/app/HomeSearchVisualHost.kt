@@ -25,7 +25,6 @@ import build.raft.app.data.SharedHomeTopAction
 import build.raft.app.data.toHomeChannelRow
 import build.raft.app.data.toHomeDirectMessageRow
 import build.raft.app.data.typedPinnedOrLegacy
-import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -202,8 +201,7 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
                 kind = MemberKind.Human,
                 sourceServerId = ServerId("server_visual"),
                 isSelf = true,
-                avatarWireValue = AvatarReference.Random("artin").wireValue,
-                presence = Presence.Active
+                avatarWireValue = AvatarReference.Random("artin").wireValue
             ),
             SearchSenderFilterItem(
                 id = "agent_android",
@@ -211,9 +209,7 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
                 handle = "Android-Developer",
                 kind = MemberKind.Agent,
                 sourceServerId = ServerId("server_visual"),
-                avatarWireValue = AvatarReference.Random("android-developer").wireValue,
-                presence = Presence.Active,
-                agentStatus = AgentStatus.Working
+                avatarWireValue = AvatarReference.Random("android-developer").wireValue
             ),
             SearchSenderFilterItem(
                 id = "human_pin_fixture",
@@ -221,8 +217,7 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
                 handle = "pin-human",
                 kind = MemberKind.Human,
                 sourceServerId = ServerId("server_visual"),
-                avatarWireValue = AvatarReference.Random("pin-human").wireValue,
-                presence = Presence.Active
+                avatarWireValue = AvatarReference.Random("pin-human").wireValue
             )
         ),
     selectedChannelId = "ch_design",

@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.markdown.ThreadMarkdownTag
-import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -327,8 +326,7 @@ private fun KuiklyThreadMessageItem.toThreadAuthorProfile(): MemberProfile? {
         handle = authorHandle.ifBlank { authorName.ifBlank { authorId } },
         kind = kind,
         avatar = avatarWireValue?.takeIf { it.isNotBlank() }?.let(AvatarReference::fromWireValue),
-        avatarLabel = avatarLabel.ifBlank { authorName.ifBlank { authorId }.take(1).uppercase() },
-        agentStatus = AgentStatus.fromWireValue(authorAgentStatus)
+        avatarLabel = avatarLabel.ifBlank { authorName.ifBlank { authorId }.take(1).uppercase() }
     )
 }
 

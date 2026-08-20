@@ -79,7 +79,6 @@ import build.raft.app.data.withExecutedChannel
 import build.raft.app.data.withExecutedChannelMembers
 import build.raft.app.data.realtime.RealtimeVisibleStreamGapPolicy
 import build.raft.app.data.realtime.RealtimeVisibleStreamGapRequest
-import build.raft.app.model.AgentStatus
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.AvatarReference
@@ -9566,9 +9565,7 @@ private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId?): Ku
         kind = kind.name.lowercase(),
         sourceServerId = serverId?.value,
         sourceServerLabel = remoteSourceServerLabel(localServerId),
-        canRemove = isLocalToServer(localServerId),
-        presence = presence.takeIf { kind == MemberKind.Agent && (agentStatus != null || presence != Presence.Offline) },
-        agentStatus = agentStatus.takeIf { kind == MemberKind.Agent }
+        canRemove = isLocalToServer(localServerId)
     )
 
 private fun MemberProfile.isLocalToServer(localServerId: ServerId?): Boolean {
@@ -11251,7 +11248,6 @@ private fun KuiklyThreadMessageItem.toMemberProfile(kind: MemberKind): MemberPro
         avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = avatarLabel.ifBlank { authorName.take(1).uppercase() },
         presence = Presence.Offline,
-        agentStatus = AgentStatus.fromWireValue(authorAgentStatus),
         membershipStatus = cleanMembershipStatus,
         agentDeletedAt = cleanAuthorDeletedAt
     )
@@ -11331,7 +11327,6 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
             senderMembershipStatus?.takeIf { it.isNotBlank() }
                 ?: author.membershipStatus?.takeIf { it.isNotBlank() },
         authorDeletedAt = author.agentDeletedAt?.takeIf { it.isNotBlank() },
-        authorAgentStatus = author.agentStatus?.name,
         seq = seq,
         timestampLabel = timestampLabel,
         createdAtEpochMillis = createdAtEpochMillis,

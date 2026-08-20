@@ -507,7 +507,7 @@ internal fun currentAgentActivityEntry(
     activityDetail: String?
 ): AgentActivityEntry? {
     val type = activity ?: status
-    val normalized = AgentStatus.fromWireValue(type) ?: return null
+    val normalized = normalizedAgentRuntimeStatus(activity = activity, lifecycleStatus = status) ?: return null
     if (normalized == AgentStatus.Offline) return null
     val detail = activityDetail?.takeIf { it.isNotBlank() } ?: normalized.label
     return AgentActivityEntry(
@@ -735,8 +735,7 @@ private fun WireChannelHuman.toMemberProfile(): MemberProfile {
 
 private fun WireAgent.toMemberProfile(): MemberProfile {
     val label = displayName?.takeIf { it.isNotBlank() } ?: name
-    val agentStatus = normalizedAgentActivityStatus(activity, status)
-    val statusValue = agentStatus?.activityWireValue
+    val agentStatus = normalizedAgentRuntimeStatus(activity = activity, lifecycleStatus = status)
     return MemberProfile(
         id = MemberId(id),
         displayName = label,
@@ -794,7 +793,7 @@ private fun MemberProfile.withSourceServer(
 
 private fun WireAgent.toAgentProfile(): AgentProfile {
     val label = displayName?.takeIf { it.isNotBlank() } ?: name
-    val agentStatus = normalizedAgentActivityStatus(activity, status)
+    val agentStatus = normalizedAgentRuntimeStatus(activity = activity, lifecycleStatus = status)
     return AgentProfile(
         id = MemberId(id),
         userId = userId ?: id,
@@ -824,30 +823,6 @@ private fun WireAgent.toAgentProfile(): AgentProfile {
 // task #135: liveness may only come from a runtime `activity` fact. The wire
 // `status` field is the ACCOUNT lifecycle ("active" = not archived/stopped) —
 // it stays "active" while the agent's machine is offline, so mapping it to a
-// live AgentStatus painted every agent green ("机器都离线了，所有 agent 还都活着").
-// Without an activity fact the liveness is unknown (null → no live indicator);
-// only an explicit non-active lifecycle ("stopped"/"inactive") is a positive
-// offline fact. Web has the same fallback (agentStore.ts normalizeActivity) —
-// flagged to the web lane in the task #135 thread.
-private fun normalizedAgentActivityStatus(activity: String?, status: String?): AgentStatus? =
-    AgentStatus.fromAgentActivityWireValue(activity)
-        ?: if (status?.trim()?.equals("active", ignoreCase = true) == true) {
-            null
-        } else {
-            AgentStatus.Offline
-        }
-
-private val AgentStatus.activityWireValue: String
-    get() = when (this) {
-        AgentStatus.Online -> "online"
-        AgentStatus.Working -> "working"
-        AgentStatus.Thinking -> "thinking"
-        AgentStatus.Error -> "error"
-        AgentStatus.Offline,
-        AgentStatus.Disconnected -> "offline"
-        AgentStatus.Idle -> "online"
-    }
-
 private val WireAgent.isDeletedAgent: Boolean
     get() = !deletedAt.isNullOrBlank()
 
