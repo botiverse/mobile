@@ -315,6 +315,15 @@ grep -Eq -- '-f "dex_packaging=\$\{DEX_PACKAGING\}"' scripts/release_android_han
   fail "canonical dispatch wrapper does not send dex_packaging"
 grep -Eq -- '-f "jni_packaging=\$\{JNI_PACKAGING\}"' scripts/release_android_hands_github.sh ||
   fail "canonical dispatch wrapper does not send jni_packaging"
+grep -Fq 'SHARE_TTL_SECONDS="${SLOCK_SHARE_TTL_SECONDS:-}"' scripts/release_android_hands_github.sh ||
+  fail "canonical dispatch wrapper does not default share TTL to omitted"
+if grep -Fq 'SLOCK_SHARE_TTL_SECONDS:-604800' scripts/release_android_hands_github.sh; then
+  fail "canonical dispatch wrapper still inherits the seven-day share TTL"
+fi
+grep -Fq 'if [ -n "${SHARE_TTL_SECONDS}" ]; then' scripts/release_android_hands_github.sh ||
+  fail "canonical dispatch wrapper does not gate the optional share TTL"
+grep -Fq 'workflow_fields+=( -f "share_ttl_seconds=${SHARE_TTL_SECONDS}" )' scripts/release_android_hands_github.sh ||
+  fail "canonical dispatch wrapper does not send an explicitly requested share TTL"
 
 for canonical_path in \
   docs/android-hands-release-practices-2026-07-02.md \
