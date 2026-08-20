@@ -15,7 +15,9 @@ JNI_PACKAGING="${SLOCK_ANDROID_JNI_PACKAGING:-current}"
 CREATE_HANDS_DRAFT="${SLOCK_CREATE_HANDS_DRAFT:-true}"
 RELEASE_MODE="${SLOCK_RELEASE_MODE:-draft}"
 CREATE_SHARE_PAGE="${SLOCK_CREATE_SHARE_PAGE:-true}"
-SHARE_TTL_SECONDS="${SLOCK_SHARE_TTL_SECONDS:-604800}"
+# Public release shares live until explicitly revoked. Set SLOCK_SHARE_TTL_SECONDS
+# (or pass --share-ttl) only for an intentionally temporary review share.
+SHARE_TTL_SECONDS="${SLOCK_SHARE_TTL_SECONDS:-}"
 PUSH_REMOTE="${SLOCK_RELEASE_REMOTE:-origin}"
 PUSH_BRANCH="${SLOCK_RELEASE_BRANCH:-main}"
 WAIT_FOR_RUN="${SLOCK_RELEASE_WAIT:-0}"
@@ -74,7 +76,7 @@ Options:
   --skip-hands-version-check
                           Offline diagnostic only; prohibited for main.
   --no-share-page         Create the Hands draft but skip share page creation.
-  --share-ttl <seconds>   Share page TTL. Default: 604800 (7 days).
+  --share-ttl <seconds>   Optional temporary share TTL. Default: no expiry.
   --wait                  Wait for the GitHub Actions run to finish.
   -h, --help              Show this help.
 
@@ -354,21 +356,26 @@ local_head="$(git rev-parse HEAD)"
 dispatch_started_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
 echo "==> Dispatching Android release"
+workflow_fields=(
+  -f "version_major=${VERSION_X}"
+  -f "version_minor=${VERSION_Y}"
+  -f "version_patch=${VERSION_Z}"
+  -f "version_build=${VERSION_BUILD}"
+  -f "version_suffix=${VERSION_SUFFIX}"
+  -f "hands_channel=${CHANNEL}"
+  -f "android_variant=${VARIANT}"
+  -f "dex_packaging=${DEX_PACKAGING}"
+  -f "jni_packaging=${JNI_PACKAGING}"
+  -f "release_mode=${RELEASE_MODE}"
+  -f "create_share_page=${create_share_page}"
+)
+if [ -n "${SHARE_TTL_SECONDS}" ]; then
+  workflow_fields+=( -f "share_ttl_seconds=${SHARE_TTL_SECONDS}" )
+fi
 gh workflow run android-release.yml \
     --repo botiverse/mobile \
     --ref "${PUSH_BRANCH}" \
-    -f "version_major=${VERSION_X}" \
-    -f "version_minor=${VERSION_Y}" \
-    -f "version_patch=${VERSION_Z}" \
-    -f "version_build=${VERSION_BUILD}" \
-    -f "version_suffix=${VERSION_SUFFIX}" \
-    -f "hands_channel=${CHANNEL}" \
-    -f "android_variant=${VARIANT}" \
-    -f "dex_packaging=${DEX_PACKAGING}" \
-    -f "jni_packaging=${JNI_PACKAGING}" \
-    -f "release_mode=${RELEASE_MODE}" \
-    -f "create_share_page=${create_share_page}" \
-    -f "share_ttl_seconds=${SHARE_TTL_SECONDS}"
+    "${workflow_fields[@]}"
 
 preflight_log="$(mktemp)"
 trap 'rm -f "${preflight_log}"' EXIT
