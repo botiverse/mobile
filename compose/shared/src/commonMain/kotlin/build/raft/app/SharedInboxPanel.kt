@@ -107,6 +107,7 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
@@ -832,20 +833,53 @@ private fun SharedActivityList(
     val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
     val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
     LaunchedEffect(presentedItems) {
-        val visibleItemKeys =
-            listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
-                itemInfo.key as? String
+        // scrollToItem is a programmatic mutation that takes scroll ownership and cancels an
+        // in-flight drag or fling. Recovering while the reader is actively scrolling would
+        // therefore produce the same yank this recovery exists to avoid, so the mutation waits
+        // for the gesture to end — and then re-derives, because by that point the reader may
+        // have scrolled somewhere the rows are visible again and recovery is no longer wanted.
+        // Deferring must never drop the recovery: a genuinely emptied viewport still has to be
+        // repaired once the scroll settles.
+        suspend fun recoverIfViewportEmptied(): Boolean {
+            val visibleItemKeys =
+                listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
+                    itemInfo.key as? String
+                }
+            if (
+                !activityListShouldRecoverVisibleContent(
+                    firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                    visibleItemKeys = visibleItemKeys,
+                    currentItemKeys = presentedItems.map(InboxItem::key)
+                )
+            ) {
+                return false
             }
-        if (
-            activityListShouldRecoverVisibleContent(
-                firstVisibleItemIndex = listState.firstVisibleItemIndex,
-                visibleItemKeys = visibleItemKeys,
-                currentItemKeys = presentedItems.map(InboxItem::key)
-            )
-        ) {
             updateTracking = updateTracking.consumePending()
             savePresentation()
             listState.scrollToItem(0)
+            return true
+        }
+
+        when (
+            activityViewportRecoveryAction(
+                shouldRecover =
+                    activityListShouldRecoverVisibleContent(
+                        firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                        visibleItemKeys =
+                            listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
+                                itemInfo.key as? String
+                            },
+                        currentItemKeys = presentedItems.map(InboxItem::key)
+                    ),
+                isScrollInProgress = listState.isScrollInProgress
+            )
+        ) {
+            ActivityViewportRecoveryAction.None -> Unit
+            ActivityViewportRecoveryAction.Recover -> recoverIfViewportEmptied()
+            ActivityViewportRecoveryAction.DeferUntilScrollSettles -> {
+                snapshotFlow { listState.isScrollInProgress }.first { !it }
+                recoverIfViewportEmptied()
+            }
         }
     }
     LaunchedEffect(presentedItems) {
@@ -2121,6 +2155,37 @@ internal fun activityLoadMoreFooterMode(
         loadMoreErrorCode != null -> ActivityLoadMoreFooterMode.Retry
         loadingMore -> ActivityLoadMoreFooterMode.Loading
         else -> ActivityLoadMoreFooterMode.Sentinel
+    }
+
+internal enum class ActivityViewportRecoveryAction {
+    /** The viewport still shows activity rows; leave the reader where they are. */
+    None,
+
+    /** The viewport was emptied and no gesture owns the scroll, so recover now. */
+    Recover,
+
+    /**
+     * The viewport was emptied but a drag or fling owns the scroll. Recovering now would cancel
+     * the reader's own gesture, so wait for it to settle and decide again.
+     */
+    DeferUntilScrollSettles
+}
+
+/**
+ * Decides whether the emptied-viewport recovery may take scroll ownership right now.
+ *
+ * Split out from the effect so the ownership rule is testable on its own: the effect can only be
+ * exercised through Compose, and a rule that is only reachable that way tends to be asserted
+ * nowhere.
+ */
+internal fun activityViewportRecoveryAction(
+    shouldRecover: Boolean,
+    isScrollInProgress: Boolean
+): ActivityViewportRecoveryAction =
+    when {
+        !shouldRecover -> ActivityViewportRecoveryAction.None
+        isScrollInProgress -> ActivityViewportRecoveryAction.DeferUntilScrollSettles
+        else -> ActivityViewportRecoveryAction.Recover
     }
 
 /**

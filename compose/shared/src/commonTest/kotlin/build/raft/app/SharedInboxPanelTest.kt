@@ -571,6 +571,37 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityViewportRecoveryWaitsForAnActiveGestureToSettle() {
+        // scrollToItem cancels an in-flight drag or fling, so recovering mid-gesture reproduces
+        // the yank this recovery exists to prevent. Defer instead of scrolling.
+        assertEquals(
+            ActivityViewportRecoveryAction.DeferUntilScrollSettles,
+            activityViewportRecoveryAction(shouldRecover = true, isScrollInProgress = true)
+        )
+    }
+
+    @Test
+    fun activityViewportRecoveryRunsWhenNoGestureOwnsTheScroll() {
+        // Deferring must not drop the recovery: an emptied viewport still has to be repaired.
+        assertEquals(
+            ActivityViewportRecoveryAction.Recover,
+            activityViewportRecoveryAction(shouldRecover = true, isScrollInProgress = false)
+        )
+    }
+
+    @Test
+    fun activityViewportRecoveryStaysIdleWhileRowsAreStillVisible() {
+        assertEquals(
+            ActivityViewportRecoveryAction.None,
+            activityViewportRecoveryAction(shouldRecover = false, isScrollInProgress = false)
+        )
+        assertEquals(
+            ActivityViewportRecoveryAction.None,
+            activityViewportRecoveryAction(shouldRecover = false, isScrollInProgress = true)
+        )
+    }
+
+    @Test
     fun activityPendingUpdateIncrementStaysHiddenNearTop() {
         val items = listOf(activityItem(key = "channel:channel-new"), activityItem(key = "channel:channel-old-top"))
 
