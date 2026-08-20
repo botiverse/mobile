@@ -4,6 +4,7 @@ import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.data.StoredQaBootstrapMetadata
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -15,6 +16,27 @@ class InviteAcceptGateTest {
                 emailVerified = false,
                 profileSetupCompletedAt = "2026-08-20T00:00:00Z",
                 selectedServerId = "server-1",
+            )
+        val bootstrapRecovery =
+            session(
+                emailVerified = true,
+                profileSetupCompletedAt = "2026-08-20T00:00:00Z",
+                selectedServerId = "server-1",
+            ).copy(
+                qaBootstrap =
+                    StoredQaBootstrapMetadata(
+                        ticketDigest = "sha256:ticket",
+                        runCaseId = "run-case",
+                        attempt = 1,
+                        ciJobRef = "gha:job",
+                        principalId = "user-1",
+                        serverId = "server-1",
+                        sessionGeneration = "generation-1",
+                        targetRoute = "compose_slock_app_shell",
+                        applicationId = "build.raft.app.alpha",
+                        signingCertSha256 = "sha256:cert",
+                        deviceBootGeneration = "sha256:boot",
+                    )
             )
         val pendingProfile =
             session(
@@ -35,6 +57,7 @@ class InviteAcceptGateTest {
                 selectedServerId = "server-1",
             )
 
+        assertTrue(inviteAcceptGateState(bootstrapRecovery) is SharedAuthGateState.BootstrapRecoveryRequired)
         assertTrue(inviteAcceptGateState(unverified) is SharedAuthGateState.EmailVerificationRequired)
         assertTrue(inviteAcceptGateState(pendingProfile) is SharedAuthGateState.ProfileSetupRequired)
         assertTrue(inviteAcceptGateState(missingServer) is SharedAuthGateState.ServerRequired)
