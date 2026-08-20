@@ -790,9 +790,14 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
-    fun visibleMemberCandidateOwnsImeActionWhenSendKeyPreferenceIsDisabled() {
+    fun visibleMemberCandidateLeavesNewlineModeAlone() {
+        // Was: a visible candidate claimed the IME action even with the preference off, so Enter
+        // accepted the suggestion. Device measurement showed the action is never withdrawn when
+        // the panel closes, after which Enter is swallowed and the composer cannot break lines
+        // until the page is re-entered. Newline mode now never claims the action; suggestions are
+        // accepted by tapping.
         assertEquals(
-            true,
+            false,
             threadComposerUsesImeAction(
                 composerSendKeyEnabled = false,
                 panelState = ThreadComposerSuggestionPanelState.MemberItems,
@@ -1026,20 +1031,13 @@ class ThreadComposerLayoutTest {
         )
     }
 
-    // NOTE (task #1083): this encodes the pre-2026-08-20 contract, where Enter accepted a
-    // suggestion even with "return key sends" off. artin has since ruled that newline mode means
-    // Enter always inserts a newline and suggestions are tapped, so this assertion no longer
-    // matches the product contract — it matches the current implementation, which still raises
-    // the IME action for a visible candidate.
-    //
-    // Left as-is deliberately: device measurement has not yet shown that the raise causes harm
-    // (the framework still supplies IME_FLAG_NO_ENTER_ACTION on that path). If it does, the fix is
-    // to stop raising the action in newline mode — 1.9's structure — and this test must be updated
-    // rather than treated as a regression it caught.
+    // Updated per the note that used to sit here: device measurement did show the raise causes
+    // harm (HuaTuo, cell 4c — the stale Send survives the panel closing and swallows Enter), so
+    // newline mode no longer claims the action and this assertion flipped as that note predicted.
     @Test
-    fun visibleChannelCandidateOwnsImeActionWhenSendKeyPreferenceIsDisabled() {
+    fun visibleChannelCandidateLeavesNewlineModeAlone() {
         assertEquals(
-            true,
+            false,
             threadComposerUsesImeAction(
                 composerSendKeyEnabled = false,
                 panelState = ThreadComposerSuggestionPanelState.ChannelItems,

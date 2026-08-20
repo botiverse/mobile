@@ -823,15 +823,25 @@ internal fun threadComposerEnterAction(
     }
 }
 
+/**
+ * Only the "return key sends" preference decides whether the editor claims an IME action.
+ *
+ * A visible suggestion panel used to raise the action too, so Enter could accept a candidate even
+ * in newline mode. Device measurement showed that leaves the editor permanently broken: the action
+ * is pushed down when the panel opens, nothing withdraws it when the panel closes (Kuikly re-sends
+ * returnKeyType only for single-line fields), and the stale Send then swallows Enter entirely —
+ * no newline, no send — until the page is re-entered. Users would experience it as "this box
+ * sometimes won't break lines" with no connection to having typed an @.
+ *
+ * Never raising the action in newline mode is how 1.9 behaved and is what the current contract
+ * asks for: newline mode inserts a newline, suggestions are accepted by tapping them.
+ */
 internal fun threadComposerUsesImeAction(
     composerSendKeyEnabled: Boolean,
-    panelState: ThreadComposerSuggestionPanelState,
-    memberCount: Int,
-    channelCount: Int
-): Boolean =
-    composerSendKeyEnabled ||
-        (panelState == ThreadComposerSuggestionPanelState.MemberItems && memberCount > 0) ||
-        (panelState == ThreadComposerSuggestionPanelState.ChannelItems && channelCount > 0)
+    @Suppress("UNUSED_PARAMETER") panelState: ThreadComposerSuggestionPanelState,
+    @Suppress("UNUSED_PARAMETER") memberCount: Int,
+    @Suppress("UNUSED_PARAMETER") channelCount: Int
+): Boolean = composerSendKeyEnabled
 
 internal fun threadComposerImeAction(composerUsesImeAction: Boolean): ImeAction =
     if (composerUsesImeAction) ImeAction.Send else ImeAction.Default
