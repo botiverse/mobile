@@ -239,6 +239,37 @@ class SlockMultilineTextFieldValueConnectedTest {
     }
 
     @Test
+    fun newlineModeKeepsBothBitsWhenASuggestionPanelRaisesTheImeAction() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            // With "return key sends" off, an open @/# panel still drives imeAction to Send in the
+            // shared layer, which pushes an explicit action down here. Android normally adds
+            // IME_FLAG_NO_ENTER_ACTION only when a multi-line field has no explicit action, so
+            // this is the path where the field could stay multi-line while the IME still claims
+            // Enter — the "key looks right, pressing it does nothing" shape.
+            //
+            // artin's contract says newline mode inserts a newline even with the panel open, so
+            // both bits must survive. Proving it here beats spending a device round on it.
+            val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+            assertTrue(editor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            assertTrue(editor.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1))
+            assertTrue(editor.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, 0))
+            assertTrue(editor.setProp("returnKeyType", "send"))
+
+            val outAttrs = EditorInfo()
+            editor.onCreateInputConnection(outAttrs)
+            assertTrue(
+                "newline mode must stay multi-line even while a suggestion panel raises the action",
+                outAttrs.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
+            )
+            assertTrue(
+                "newline mode must keep IME_FLAG_NO_ENTER_ACTION so Enter is not claimed as an action",
+                outAttrs.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0
+            )
+        }
+    }
+
+    @Test
     fun returnKeyModeStopsFollowingThePreferenceOnceTheEditorIsConnected() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
