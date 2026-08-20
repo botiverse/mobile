@@ -1069,7 +1069,7 @@ private fun SharedActivityList(
                 )
             }
             if (showLoadMoreFooter) {
-                item(key = "activity_load_more") {
+                item(key = ACTIVITY_LOAD_MORE_ROW_KEY) {
                     val shouldRequest = activityShouldRequestLoadMore(
                         hasMore = snapshot.hasMore,
                         refreshing = refreshing,
@@ -2123,14 +2123,35 @@ internal fun activityLoadMoreFooterMode(
         else -> ActivityLoadMoreFooterMode.Sentinel
     }
 
+/**
+ * Key of the structural load-more row. It shares the lazy list with the activity rows but is
+ * never an item key, so [activityListShouldRecoverVisibleContent] must not read it as surviving
+ * content. Declared once so the row and the predicate cannot drift apart.
+ */
+internal const val ACTIVITY_LOAD_MORE_ROW_KEY = "activity_load_more"
+
 internal fun activityListShouldRecoverVisibleContent(
     firstVisibleItemIndex: Int,
     visibleItemKeys: List<String>,
     currentItemKeys: List<String>
 ): Boolean {
     if (firstVisibleItemIndex <= 0 || currentItemKeys.isEmpty()) return false
+    // Recovery must be evidenced by activity rows that are actually on screen and no longer in
+    // the list. Two sources of visible keys can never supply that evidence:
+    //
+    //  - the load-more sentinel, which is a structural row and is never an item key, so it is
+    //    trivially "not in the list" even while every real row survived;
+    //  - an empty visible set, which the layout reports transiently while the list is being
+    //    re-laid out — and this effect runs on every data change, so an arriving activity can
+    //    observe that window while the reader is mid-scroll.
+    //
+    // `none` is vacuously true for both, which turned "I cannot see any row right now" into
+    // "my rows are gone" and scrolled a reader who had merely scrolled away from the top.
+    // Require at least one visible activity row before concluding anything.
+    val visibleActivityRowKeys = visibleItemKeys.filterNot { it == ACTIVITY_LOAD_MORE_ROW_KEY }
+    if (visibleActivityRowKeys.isEmpty()) return false
     val currentKeys = currentItemKeys.toSet()
-    return visibleItemKeys.none(currentKeys::contains)
+    return visibleActivityRowKeys.none(currentKeys::contains)
 }
 
 internal fun activityItemsPreservingPresentedOrder(

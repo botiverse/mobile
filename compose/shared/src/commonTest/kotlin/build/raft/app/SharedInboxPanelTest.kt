@@ -540,6 +540,37 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityListDoesNotRecoverWhileLayoutReportsNoVisibleRows() {
+        // The effect runs on every data change, so an arriving activity can observe the window
+        // where the list is being re-laid out and reports no visible items. That is "I cannot
+        // see any row right now", not "my rows are gone": recovering here scrolls a reader who
+        // had merely scrolled away from the top.
+        assertEquals(
+            false,
+            activityListShouldRecoverVisibleContent(
+                firstVisibleItemIndex = 4,
+                visibleItemKeys = emptyList(),
+                currentItemKeys = listOf("channel:remaining-1", "channel:remaining-2")
+            )
+        )
+    }
+
+    @Test
+    fun activityListDoesNotRecoverWhenOnlyTheLoadMoreSentinelIsVisible() {
+        // The sentinel is structural and never an item key, so it is trivially absent from the
+        // list even when every activity row survived. Without excluding it the viewport is
+        // recovered purely because the reader scrolled far enough to reach the footer.
+        assertEquals(
+            false,
+            activityListShouldRecoverVisibleContent(
+                firstVisibleItemIndex = 4,
+                visibleItemKeys = listOf(ACTIVITY_LOAD_MORE_ROW_KEY),
+                currentItemKeys = listOf("channel:remaining-1", "channel:remaining-2")
+            )
+        )
+    }
+
+    @Test
     fun activityPendingUpdateIncrementStaysHiddenNearTop() {
         val items = listOf(activityItem(key = "channel:channel-new"), activityItem(key = "channel:channel-old-top"))
 
