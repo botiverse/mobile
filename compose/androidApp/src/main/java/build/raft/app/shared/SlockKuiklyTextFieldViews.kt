@@ -7,6 +7,8 @@ import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.localizedThreadComposerInsertNewlineTitle
 import com.tencent.kuikly.core.render.android.css.ktx.toDpF
@@ -19,6 +21,7 @@ private const val PROP_FONT_FAMILY = "fontFamily"
 private const val PROP_KEYBOARD_TYPE = "keyboardType"
 private const val PROP_RETURN_KEY_TYPE = "returnKeyType"
 private const val PROP_SYSTEM_NEWLINE_ACTION = "slockSystemNewlineAction"
+private const val PROP_IME_ACTION_REQUESTED = "slockImeActionRequested"
 private const val KEYBOARD_TYPE_EMAIL = "email"
 private const val MENU_ITEM_INSERT_NEWLINE = 0x534C0A
 private const val LOG_TAG = "SlockComposerNewline"
@@ -210,8 +213,25 @@ internal class SlockKuiklyTextAreaView(
 ) : SlockKuiklyTextFieldView(context, softInputMode) {
     private var returnKeyStructureConfigured = false
 
+    // A multi-line EditText suppresses the IME action key, so claiming the single-line
+    // declaration is the only way to show one. Default to true so any caller that has not
+    // migrated to PROP_IME_ACTION_REQUESTED keeps the previous behaviour; the composer sends
+    // false whenever its "return key sends" preference is off, which is what lets Enter insert
+    // a newline instead of rendering Done.
+    private var imeActionRequested = true
+
+    // The structural pass may only flip isSingleLine before the editor is wired to the IME;
+    // afterwards the reset publishes a transient same-text 0..0 selection to the composer. This
+    // tracks that boundary so the pass can be corrected during setup without reopening that hole.
+    private var editingConnected = false
+
     init {
         gravity = Gravity.LEFT or Gravity.TOP
+    }
+
+    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
+        editingConnected = true
+        return super.onCreateInputConnection(outAttrs)
     }
 
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? =
@@ -222,6 +242,48 @@ internal class SlockKuiklyTextAreaView(
 
     override fun setProp(propKey: String, propValue: Any): Boolean =
         when (propKey) {
+            PROP_IME_ACTION_REQUESTED -> {
+                val requested = propValue.toSlockBoolean()
+                if (requested != imeActionRequested && returnKeyStructureConfigured && editingConnected) {
+                    // The structural pass already ran and the editor is connected, so re-running it
+                    // would flip isSingleLine while the controlled editing callbacks are live —
+                    // exactly the transient 0..0 selection the guard exists to prevent. Before the
+                    // connection exists the pass is simply redone, so only this late case warns.
+                    //
+                    // Do not reintroduce an ordering assumption here. Chain position was once
+                    // believed to order these props; device logcat disproved it (arrival is
+                    // numberOfLines -> systemNewlineAction -> imeActionRequested, the reverse of
+                    // the chain), and that assumption is what shipped the regression.
+                    //
+                    // Keep this warning. A late preference change is otherwise invisible: it
+                    // throws nothing, fails no test, and shows up only as an imeOptions value on
+                    // a device. This line is the sole grep-able trace of it, and it has already
+                    // been the thing that identified the arrival-order defect in one run instead
+                    // of a rebuild-and-guess cycle.
+                    SlockAppLog.w(
+                        LOG_TAG,
+                        "imeActionRequested changed to $requested after structure was configured " +
+                            "with $imeActionRequested; return key mode is stale"
+                    )
+                }
+                val changed = requested != imeActionRequested
+                imeActionRequested = requested
+                SlockAppLog.d(
+                    LOG_TAG,
+                    "setProp imeActionRequested raw=${propValue.describeSlockPropValue()} " +
+                        "configured=$returnKeyStructureConfigured connected=$editingConnected"
+                )
+                // The host cannot order this ahead of numberOfLines: measured prop arrival is
+                // numberOfLines -> systemNewlineAction -> imeActionRequested, the reverse of the
+                // modifier chain, and numberOfLines is what triggers the structural pass. So the
+                // first pass necessarily runs on the default. Re-run it while the editor is still
+                // unconnected, which is the window the pass actually has to land in.
+                if (changed && !editingConnected) {
+                    returnKeyStructureConfigured = false
+                    configureReturnKeyStructure()
+                }
+                true
+            }
             PROP_RETURN_KEY_TYPE -> {
                 // Keep the one-time structural setup separate from the renderer's return-key
                 // contract. KRTextFieldView preserves the non-action IME flags and restarts an
@@ -260,13 +322,28 @@ internal class SlockKuiklyTextAreaView(
         )
     }
 
+    /**
+     * Invariant: the line mode is a function of the current preference, re-derived on every
+     * relevant prop until the input connection is created, and frozen afterwards.
+     *
+     * That makes the outcome independent of prop arrival order rather than dependent on a
+     * favourable one. Measured arrival is numberOfLines -> systemNewlineAction ->
+     * imeActionRequested, the reverse of the modifier chain, and all three land within ~34ms and
+     * well before the connection exists, so every order converges on the same result.
+     */
     private fun configureReturnKeyStructure() {
         if (returnKeyStructureConfigured) return
         val method = transformationMethod
         // Android resets the editor's structure when isSingleLine changes. Do this once, before
         // controlled editing callbacks are connected, so a later IME-action-only update cannot
         // publish a transient same-text selection 0..0 to the composer.
-        isSingleLine = true
+        //
+        // The single-line declaration is also what makes the IME offer an action key: a
+        // multi-line field suppresses it. Claiming it unconditionally is what made Enter render
+        // as Done with no way to insert a newline, because the composer declares numberOfLines=4
+        // and that very declaration routes here. Take the mode from the host instead, still
+        // exactly once, so "return key sends" off leaves the field multi-line.
+        isSingleLine = imeActionRequested
         transformationMethod = method
         maxLines = Integer.MAX_VALUE
         setHorizontallyScrolling(false)

@@ -1,6 +1,7 @@
 package build.raft.app.shared
 
 import android.content.Intent
+import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.BaseInputConnection
@@ -162,6 +163,179 @@ class SlockMultilineTextFieldValueConnectedTest {
                 assertTrue(editor.requireInputConnection().commitText("再", 1))
             }
             scenario.waitForEditorSnapshot(retyped, 2, 2, -1, -1)
+        }
+    }
+
+    @Test
+    fun returnKeySendPreferenceDecidesLineModeInEveryPropArrivalOrder() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            // The line mode must be a function of the preference, not of prop arrival order.
+            // Measured device order is numberOfLines -> systemNewlineAction -> imeActionRequested,
+            // the reverse of the modifier chain, and numberOfLines is what triggers the structural
+            // pass — so the preference always lands after the first pass has run on the default.
+            //
+            // An earlier version of this test fed one assumed order and therefore proved the
+            // assumption rather than the behaviour: it stayed green while the device rendered Done.
+            // Permuting every order is the direct correction — a single order can only show that
+            // one path works, whereas agreement across all of them shows order does not matter.
+            listOf(false, true).forEach { sendsOnReturn ->
+                val expectedMultiLine = !sendsOnReturn
+                permutationsOfThree().forEach { order ->
+                    val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+                    order.forEach { prop ->
+                        val applied = when (prop) {
+                            PropUnderTest.NUMBER_OF_LINES ->
+                                editor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4)
+                            PropUnderTest.SYSTEM_NEWLINE_ACTION ->
+                                editor.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1)
+                            PropUnderTest.IME_ACTION_REQUESTED ->
+                                editor.setProp(
+                                    SLOCK_IME_ACTION_REQUESTED_PROP,
+                                    if (sendsOnReturn) 1 else 0
+                                )
+                        }
+                        assertTrue("setProp $prop should be handled", applied)
+                    }
+                    // Assert on what the IME is actually handed, not on the view field. HuaTuo
+                    // measures EditorInfo via dumpsys, so reading the same struct keeps CI and
+                    // device on one criterion instead of two that can drift apart.
+                    val outAttrs = EditorInfo()
+                    editor.onCreateInputConnection(outAttrs)
+
+                    val multiLine = outAttrs.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
+                    assertEquals(
+                        "sendsOnReturn=$sendsOnReturn order=$order must converge on the same line mode",
+                        expectedMultiLine,
+                        multiLine
+                    )
+
+                    // 1.9 carried IME_FLAG_NO_ENTER_ACTION alongside the multi-line bit, and both
+                    // were needed: the first lets the field hold a newline, the second stops the
+                    // IME claiming Enter as an action key. Restoring only the first can leave a
+                    // keyboard that shows Enter but does not insert one.
+                    val noEnterAction =
+                        outAttrs.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0
+                    assertEquals(
+                        "sendsOnReturn=$sendsOnReturn order=$order must match on IME_FLAG_NO_ENTER_ACTION",
+                        expectedMultiLine,
+                        noEnterAction
+                    )
+                }
+            }
+
+            // Callers that never send the preference keep the previous behaviour, so migrating one
+            // screen cannot silently change every other text area.
+            val legacyEditor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+            assertTrue(legacyEditor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            val legacyAttrs = EditorInfo()
+            legacyEditor.onCreateInputConnection(legacyAttrs)
+            assertEquals(
+                "an unmigrated caller must keep the single-line action-key behaviour",
+                0,
+                legacyAttrs.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            )
+        }
+    }
+
+    @Test
+    fun newlineModeKeepsBothBitsWhenASuggestionPanelRaisesTheImeAction() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            // With "return key sends" off, an open @/# panel still drives imeAction to Send in the
+            // shared layer, which pushes an explicit action down here. Android normally adds
+            // IME_FLAG_NO_ENTER_ACTION only when a multi-line field has no explicit action, so
+            // this is the path where the field could stay multi-line while the IME still claims
+            // Enter — the "key looks right, pressing it does nothing" shape.
+            //
+            // artin's contract says newline mode inserts a newline even with the panel open, so
+            // both bits must survive. Proving it here beats spending a device round on it.
+            val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+            assertTrue(editor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            assertTrue(editor.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1))
+            assertTrue(editor.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, 0))
+            assertTrue(editor.setProp("returnKeyType", "send"))
+
+            val outAttrs = EditorInfo()
+            editor.onCreateInputConnection(outAttrs)
+            assertTrue(
+                "newline mode must stay multi-line even while a suggestion panel raises the action",
+                outAttrs.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
+            )
+            // This flag is supplied by the framework, not by us — nothing in this module writes
+            // imeOptions flags. So the assertion records that the platform currently adds it on
+            // this path; it is not a guarantee we control. If an upstream or OEM change stops
+            // adding it, newline mode breaks silently and this test is what would catch it. The
+            // structurally safe alternative is 1.9's: never raise Send in newline mode, so the
+            // flag is never needed. Worth revisiting if this ever goes red.
+            assertTrue(
+                "newline mode must keep IME_FLAG_NO_ENTER_ACTION so Enter is not claimed as an action",
+                outAttrs.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0
+            )
+
+            // Records which of two accounts of this behaviour is true, because they differ in
+            // residual risk even though they agree on the outcome. If the Send action is gone,
+            // dismissing the panel withdrew it. If it is still here, nothing withdrew it and the
+            // newline only survives because the framework suppresses it — which is a dependency
+            // on platform behaviour, not a property we hold.
+            //
+            // Kuikly re-sends returnKeyType only for a single-line field, so on a multi-line
+            // editor no "none" ever arrives to undo the Send. Asserting the stale action documents
+            // that, and turns red if that ever changes.
+            //
+            // This assertion pins current behaviour, not a requirement. If newline mode is ever
+            // changed to stop raising Send at all — 1.9's structure, the fix for the framework
+            // dependency described above — there will be no Send action here and this goes red.
+            // That red is the expected consequence of that change, not a regression it caught:
+            // update this assertion rather than reverting the change.
+            assertEquals(
+                "the Send action is not withdrawn when the panel closes; the newline survives only " +
+                    "because NO_ENTER_ACTION suppresses it",
+                EditorInfo.IME_ACTION_SEND,
+                outAttrs.imeOptions and EditorInfo.IME_MASK_ACTION
+            )
+        }
+    }
+
+    @Test
+    fun returnKeyModeStopsFollowingThePreferenceOnceTheEditorIsConnected() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+            assertTrue(editor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            assertTrue(editor.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1))
+            assertTrue(editor.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, 1))
+            assertEquals(
+                "send mode should hold before the editor is connected",
+                0,
+                editor.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            )
+
+            // Connecting to the IME closes the window: flipping isSingleLine from here on resets
+            // the editor structure and publishes a transient same-text 0..0 selection, which is
+            // the cursor-jump this guard exists to prevent. A late preference must be ignored
+            // rather than applied, so the reconfiguration stays bounded to setup.
+            assertNotNull(editor.onCreateInputConnection(EditorInfo()))
+            assertTrue(editor.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, 0))
+            assertEquals(
+                "a preference arriving after the editor is connected must not flip the line mode",
+                0,
+                editor.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            )
+        }
+    }
+}
+
+private const val SLOCK_IME_ACTION_REQUESTED_PROP = "slockImeActionRequested"
+private const val SLOCK_SYSTEM_NEWLINE_ACTION_PROP = "slockSystemNewlineAction"
+
+private enum class PropUnderTest { NUMBER_OF_LINES, SYSTEM_NEWLINE_ACTION, IME_ACTION_REQUESTED }
+
+private fun permutationsOfThree(): List<List<PropUnderTest>> {
+    val all = PropUnderTest.entries
+    return all.flatMap { first ->
+        all.filter { it != first }.flatMap { second ->
+            all.filter { it != first && it != second }.map { third -> listOf(first, second, third) }
         }
     }
 }
