@@ -3,7 +3,7 @@ type: fixed
 area: ios
 platforms:
   - ios
-pull_request: 2211
+pull_request: 2212
 rollout: full
 ---
 
