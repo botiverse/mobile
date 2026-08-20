@@ -197,11 +197,29 @@ class SlockMultilineTextFieldValueConnectedTest {
                         }
                         assertTrue("setProp $prop should be handled", applied)
                     }
-                    val multiLine = editor.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
+                    // Assert on what the IME is actually handed, not on the view field. HuaTuo
+                    // measures EditorInfo via dumpsys, so reading the same struct keeps CI and
+                    // device on one criterion instead of two that can drift apart.
+                    val outAttrs = EditorInfo()
+                    editor.onCreateInputConnection(outAttrs)
+
+                    val multiLine = outAttrs.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
                     assertEquals(
                         "sendsOnReturn=$sendsOnReturn order=$order must converge on the same line mode",
                         expectedMultiLine,
                         multiLine
+                    )
+
+                    // 1.9 carried IME_FLAG_NO_ENTER_ACTION alongside the multi-line bit, and both
+                    // were needed: the first lets the field hold a newline, the second stops the
+                    // IME claiming Enter as an action key. Restoring only the first can leave a
+                    // keyboard that shows Enter but does not insert one.
+                    val noEnterAction =
+                        outAttrs.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0
+                    assertEquals(
+                        "sendsOnReturn=$sendsOnReturn order=$order must match on IME_FLAG_NO_ENTER_ACTION",
+                        expectedMultiLine,
+                        noEnterAction
                     )
                 }
             }
@@ -210,10 +228,12 @@ class SlockMultilineTextFieldValueConnectedTest {
             // screen cannot silently change every other text area.
             val legacyEditor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
             assertTrue(legacyEditor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            val legacyAttrs = EditorInfo()
+            legacyEditor.onCreateInputConnection(legacyAttrs)
             assertEquals(
                 "an unmigrated caller must keep the single-line action-key behaviour",
                 0,
-                legacyEditor.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                legacyAttrs.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE
             )
         }
     }
