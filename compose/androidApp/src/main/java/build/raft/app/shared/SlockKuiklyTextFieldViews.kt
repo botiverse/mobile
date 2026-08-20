@@ -7,6 +7,8 @@ import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.localizedThreadComposerInsertNewlineTitle
 import com.tencent.kuikly.core.render.android.css.ktx.toDpF
@@ -218,8 +220,18 @@ internal class SlockKuiklyTextAreaView(
     // a newline instead of rendering Done.
     private var imeActionRequested = true
 
+    // The structural pass may only flip isSingleLine before the editor is wired to the IME;
+    // afterwards the reset publishes a transient same-text 0..0 selection to the composer. This
+    // tracks that boundary so the pass can be corrected during setup without reopening that hole.
+    private var editingConnected = false
+
     init {
         gravity = Gravity.LEFT or Gravity.TOP
+    }
+
+    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
+        editingConnected = true
+        return super.onCreateInputConnection(outAttrs)
     }
 
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? =
@@ -232,7 +244,7 @@ internal class SlockKuiklyTextAreaView(
         when (propKey) {
             PROP_IME_ACTION_REQUESTED -> {
                 val requested = propValue.toSlockBoolean()
-                if (requested != imeActionRequested && returnKeyStructureConfigured) {
+                if (requested != imeActionRequested && returnKeyStructureConfigured && editingConnected) {
                     // The structural pass already ran with the previous value, and re-running it
                     // would flip isSingleLine after the controlled editing callbacks are live —
                     // exactly the transient 0..0 selection the one-time guard exists to prevent.
@@ -249,12 +261,22 @@ internal class SlockKuiklyTextAreaView(
                             "with $imeActionRequested; return key mode is stale"
                     )
                 }
+                val changed = requested != imeActionRequested
                 imeActionRequested = requested
                 SlockAppLog.d(
                     LOG_TAG,
                     "setProp imeActionRequested raw=${propValue.describeSlockPropValue()} " +
-                        "configured=$returnKeyStructureConfigured"
+                        "configured=$returnKeyStructureConfigured connected=$editingConnected"
                 )
+                // The host cannot order this ahead of numberOfLines: measured prop arrival is
+                // numberOfLines -> systemNewlineAction -> imeActionRequested, the reverse of the
+                // modifier chain, and numberOfLines is what triggers the structural pass. So the
+                // first pass necessarily runs on the default. Re-run it while the editor is still
+                // unconnected, which is the window the pass actually has to land in.
+                if (changed && !editingConnected) {
+                    returnKeyStructureConfigured = false
+                    configureReturnKeyStructure()
+                }
                 true
             }
             PROP_RETURN_KEY_TYPE -> {

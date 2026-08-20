@@ -171,12 +171,18 @@ class SlockMultilineTextFieldValueConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
             // "return key sends" OFF: the editor must keep the multi-line input-type bit so the
-            // IME offers Enter instead of an action key. The composer declares numberOfLines=4,
-            // and that declaration is what drives the one-time structural pass, so the preference
-            // has to be applied before it.
+            // IME offers Enter instead of an action key.
+            //
+            // Feed the props in the order a device actually delivers them, measured from logcat:
+            // numberOfLines -> systemNewlineAction -> imeActionRequested. That is the reverse of
+            // the modifier chain, and numberOfLines is what triggers the structural pass, so the
+            // preference always arrives after the first pass has already run on the default. An
+            // earlier version of this test fed the preference first, which only proved the
+            // assumption it was built on and passed CI while the device stayed broken.
             val newlineEditor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
-            assertTrue(newlineEditor.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, 0))
             assertTrue(newlineEditor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            assertTrue(newlineEditor.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1))
+            assertTrue(newlineEditor.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, 0))
             assertTrue(
                 "return key sends OFF must leave the multi-line input type so Enter can insert a newline",
                 newlineEditor.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
@@ -185,8 +191,9 @@ class SlockMultilineTextFieldValueConnectedTest {
             // "return key sends" ON: the field must claim single line, because Android suppresses
             // the IME action key on a multi-line field.
             val sendEditor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
-            assertTrue(sendEditor.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, 1))
             assertTrue(sendEditor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            assertTrue(sendEditor.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1))
+            assertTrue(sendEditor.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, 1))
             assertEquals(
                 "return key sends ON must drop the multi-line input type so the IME shows Send",
                 0,
@@ -204,9 +211,38 @@ class SlockMultilineTextFieldValueConnectedTest {
             )
         }
     }
+
+    @Test
+    fun returnKeyModeStopsFollowingThePreferenceOnceTheEditorIsConnected() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+            assertTrue(editor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            assertTrue(editor.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1))
+            assertTrue(editor.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, 1))
+            assertEquals(
+                "send mode should hold before the editor is connected",
+                0,
+                editor.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            )
+
+            // Connecting to the IME closes the window: flipping isSingleLine from here on resets
+            // the editor structure and publishes a transient same-text 0..0 selection, which is
+            // the cursor-jump this guard exists to prevent. A late preference must be ignored
+            // rather than applied, so the reconfiguration stays bounded to setup.
+            assertNotNull(editor.onCreateInputConnection(EditorInfo()))
+            assertTrue(editor.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, 0))
+            assertEquals(
+                "a preference arriving after the editor is connected must not flip the line mode",
+                0,
+                editor.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            )
+        }
+    }
 }
 
 private const val SLOCK_IME_ACTION_REQUESTED_PROP = "slockImeActionRequested"
+private const val SLOCK_SYSTEM_NEWLINE_ACTION_PROP = "slockSystemNewlineAction"
 
 private fun assertNoEditingCallbacks(
     transition: String,
