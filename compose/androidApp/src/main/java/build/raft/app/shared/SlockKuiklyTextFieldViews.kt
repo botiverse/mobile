@@ -245,16 +245,15 @@ internal class SlockKuiklyTextAreaView(
             PROP_IME_ACTION_REQUESTED -> {
                 val requested = propValue.toSlockBoolean()
                 if (requested != imeActionRequested && returnKeyStructureConfigured && editingConnected) {
-                    // The structural pass already ran with the previous value, and re-running it
-                    // would flip isSingleLine after the controlled editing callbacks are live —
-                    // exactly the transient 0..0 selection the one-time guard exists to prevent.
+                    // The structural pass already ran and the editor is connected, so re-running it
+                    // would flip isSingleLine while the controlled editing callbacks are live —
+                    // exactly the transient 0..0 selection the guard exists to prevent. Before the
+                    // connection exists the pass is simply redone, so only this late case warns.
                     //
-                    // Ordering ahead of numberOfLines is guaranteed: both are setProp nodes on the
-                    // same modifier chain, applied in chain order. Ordering ahead of returnKeyType
-                    // is NOT — Kuikly emits that one from keyboardOptions.imeAction through a
-                    // different path, and its branch also runs the structural pass. If it lands
-                    // first the mode is fixed at the default, so this warning is the detector for
-                    // that case rather than proof it cannot happen.
+                    // Do not reintroduce an ordering assumption here. Chain position was once
+                    // believed to order these props; device logcat disproved it (arrival is
+                    // numberOfLines -> systemNewlineAction -> imeActionRequested, the reverse of
+                    // the chain), and that assumption is what shipped the regression.
                     SlockAppLog.w(
                         LOG_TAG,
                         "imeActionRequested changed to $requested after structure was configured " +
