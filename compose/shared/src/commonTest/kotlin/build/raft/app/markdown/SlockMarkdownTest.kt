@@ -466,6 +466,12 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun markdownTaskListCheckboxPinsToFirstBodyLine() {
+        assertEquals(14.dp, SlockMarkdownTaskCheckboxSize)
+        assertEquals(4.dp, SlockMarkdownTaskCheckboxFirstLineOffset)
+    }
+
+    @Test
     fun bareCheckboxTextDoesNotBecomeTaskListState() {
         val body = "[x] bare text\n\n- [X] completed"
         val parserContent = MarkdownParserContent.from(body).parserContent

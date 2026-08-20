@@ -364,6 +364,7 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP = "wide_mark
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS = "permalink_chips"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW = "permalink_chips_narrow"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_TASK524_MARKDOWN_VISIBLE = "task524_markdown_visible"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_GFM_TASK_LIST_SHORT = "gfm_task_list_short"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_ACTION_CARD_CATALOG = "action_card_catalog"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD = "approve_login_action_card"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD_EXECUTED = "approve_login_action_card_executed"
@@ -2018,6 +2019,52 @@ internal fun threadVisualFixture(
                         instanceId = resolvedInstanceId,
                         enabled = false
                 )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_GFM_TASK_LIST_SHORT ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown-task-list",
+                subtitle = "GFM task-list visual fixture",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                streamChannelId = "thread-gfm-task-list-short",
+                sourceThreadId = "thread-gfm-task-list-short",
+                parentChannelId = "channel-markdown",
+                parentMessageId = "parent-gfm-task-list-short",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                knownMarkdownChannelNames = listOf("markdown-task-list"),
+                messages = listOf(KuiklyThreadMessageItem(
+                    id = "msg_gfm_task_list_short",
+                    authorId = "agent-gfm",
+                    authorName = "GFM Bot",
+                    authorKind = "agent",
+                    avatarLabel = "GF",
+                    timestampLabel = "08/20 13:30",
+                    messageType = "Chat",
+                    body =
+                        "Task-list parity: task #210\n\n" +
+                            "- [x] Completed item wraps across the message column while its checkbox stays aligned with the first text line.\n" +
+                            "- [ ] Pending item\n" +
+                            "  - [X] Nested completed item",
+                    threadChannelId = "thread-msg-gfm-task-list-short",
+                    taskId = "task_210",
+                    taskNumber = 210,
+                    taskStatus = "in_review",
+                    taskAssigneeId = "agent-gfm",
+                    taskAssigneeName = "GFM Bot"
+                )),
+                members = listOf(KuiklyThreadMemberItem(
+                    id = "agent-gfm", displayName = "GFM Bot", handle = "GFM Bot", kind = "agent", avatarLabel = "GF"
+                )),
+                showComposer = false,
+                joined = true,
+                composer = KuiklyThreadComposerPayload(instanceId = resolvedInstanceId, enabled = false)
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS,
         THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW ->
