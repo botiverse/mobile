@@ -2740,6 +2740,12 @@ internal fun ThreadComposerContentLeaf(
                                 }
                             },
                             maxLines = 4,
+                            // Only the preference decides the line mode. A multi-line field
+                            // suppresses the IME action key, so with "return key sends" off the
+                            // editor stays multi-line and Enter inserts a newline; the suggestion
+                            // panel raising imeAction to Send has no effect in that mode, which is
+                            // the agreed contract (accept a suggestion by tapping it instead).
+                            imeActionRequested = composerSendKeyEnabled,
                             keyboardOptions = composerKeyboardOptions,
                             keyboardActions = composerKeyboardActions,
                             textStyle = SlockType.Input.copy(

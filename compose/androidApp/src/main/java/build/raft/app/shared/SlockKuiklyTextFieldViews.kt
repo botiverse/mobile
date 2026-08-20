@@ -19,6 +19,7 @@ private const val PROP_FONT_FAMILY = "fontFamily"
 private const val PROP_KEYBOARD_TYPE = "keyboardType"
 private const val PROP_RETURN_KEY_TYPE = "returnKeyType"
 private const val PROP_SYSTEM_NEWLINE_ACTION = "slockSystemNewlineAction"
+private const val PROP_IME_ACTION_REQUESTED = "slockImeActionRequested"
 private const val KEYBOARD_TYPE_EMAIL = "email"
 private const val MENU_ITEM_INSERT_NEWLINE = 0x534C0A
 private const val LOG_TAG = "SlockComposerNewline"
@@ -210,6 +211,13 @@ internal class SlockKuiklyTextAreaView(
 ) : SlockKuiklyTextFieldView(context, softInputMode) {
     private var returnKeyStructureConfigured = false
 
+    // A multi-line EditText suppresses the IME action key, so claiming the single-line
+    // declaration is the only way to show one. Default to true so any caller that has not
+    // migrated to PROP_IME_ACTION_REQUESTED keeps the previous behaviour; the composer sends
+    // false whenever its "return key sends" preference is off, which is what lets Enter insert
+    // a newline instead of rendering Done.
+    private var imeActionRequested = true
+
     init {
         gravity = Gravity.LEFT or Gravity.TOP
     }
@@ -222,6 +230,28 @@ internal class SlockKuiklyTextAreaView(
 
     override fun setProp(propKey: String, propValue: Any): Boolean =
         when (propKey) {
+            PROP_IME_ACTION_REQUESTED -> {
+                val requested = propValue.toSlockBoolean()
+                if (requested != imeActionRequested && returnKeyStructureConfigured) {
+                    // The structural pass already ran with the previous value, and re-running it
+                    // would flip isSingleLine after the controlled editing callbacks are live —
+                    // exactly the transient 0..0 selection the one-time guard exists to prevent.
+                    // The host orders this prop ahead of numberOfLines/returnKeyType so this
+                    // should be unreachable; log rather than silently serving a stale mode.
+                    SlockAppLog.w(
+                        LOG_TAG,
+                        "imeActionRequested changed to $requested after structure was configured " +
+                            "with $imeActionRequested; return key mode is stale"
+                    )
+                }
+                imeActionRequested = requested
+                SlockAppLog.d(
+                    LOG_TAG,
+                    "setProp imeActionRequested raw=${propValue.describeSlockPropValue()} " +
+                        "configured=$returnKeyStructureConfigured"
+                )
+                true
+            }
             PROP_RETURN_KEY_TYPE -> {
                 // Keep the one-time structural setup separate from the renderer's return-key
                 // contract. KRTextFieldView preserves the non-action IME flags and restarts an
@@ -266,7 +296,13 @@ internal class SlockKuiklyTextAreaView(
         // Android resets the editor's structure when isSingleLine changes. Do this once, before
         // controlled editing callbacks are connected, so a later IME-action-only update cannot
         // publish a transient same-text selection 0..0 to the composer.
-        isSingleLine = true
+        //
+        // The single-line declaration is also what makes the IME offer an action key: a
+        // multi-line field suppresses it. Claiming it unconditionally is what made Enter render
+        // as Done with no way to insert a newline, because the composer declares numberOfLines=4
+        // and that very declaration routes here. Take the mode from the host instead, still
+        // exactly once, so "return key sends" off leaves the field multi-line.
+        isSingleLine = imeActionRequested
         transformationMethod = method
         maxLines = Integer.MAX_VALUE
         setHorizontallyScrolling(false)

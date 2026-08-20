@@ -1,6 +1,7 @@
 package build.raft.app.shared
 
 import android.content.Intent
+import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.BaseInputConnection
@@ -164,7 +165,48 @@ class SlockMultilineTextFieldValueConnectedTest {
             scenario.waitForEditorSnapshot(retyped, 2, 2, -1, -1)
         }
     }
+
+    @Test
+    fun returnKeySendPreferenceDecidesWhetherEnterInsertsNewline() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            // "return key sends" OFF: the editor must keep the multi-line input-type bit so the
+            // IME offers Enter instead of an action key. The composer declares numberOfLines=4,
+            // and that declaration is what drives the one-time structural pass, so the preference
+            // has to be applied before it.
+            val newlineEditor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+            assertTrue(newlineEditor.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, 0))
+            assertTrue(newlineEditor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            assertTrue(
+                "return key sends OFF must leave the multi-line input type so Enter can insert a newline",
+                newlineEditor.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
+            )
+
+            // "return key sends" ON: the field must claim single line, because Android suppresses
+            // the IME action key on a multi-line field.
+            val sendEditor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+            assertTrue(sendEditor.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, 1))
+            assertTrue(sendEditor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            assertEquals(
+                "return key sends ON must drop the multi-line input type so the IME shows Send",
+                0,
+                sendEditor.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            )
+
+            // Callers that never send the preference keep the previous behaviour, so migrating one
+            // screen cannot silently change every other text area.
+            val legacyEditor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+            assertTrue(legacyEditor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            assertEquals(
+                "an unmigrated caller must keep the single-line action-key behaviour",
+                0,
+                legacyEditor.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            )
+        }
+    }
 }
+
+private const val SLOCK_IME_ACTION_REQUESTED_PROP = "slockImeActionRequested"
 
 private fun assertNoEditingCallbacks(
     transition: String,
