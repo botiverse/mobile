@@ -840,47 +840,28 @@ private fun SharedActivityList(
         // have scrolled somewhere the rows are visible again and recovery is no longer wanted.
         // Deferring must never drop the recovery: a genuinely emptied viewport still has to be
         // repaired once the scroll settles.
-        suspend fun recoverIfViewportEmptied(): Boolean {
-            val visibleItemKeys =
-                listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
-                    itemInfo.key as? String
-                }
-            if (
-                !activityListShouldRecoverVisibleContent(
-                    firstVisibleItemIndex = listState.firstVisibleItemIndex,
-                    visibleItemKeys = visibleItemKeys,
-                    currentItemKeys = presentedItems.map(InboxItem::key)
+        awaitActivityViewportRecoveryAdmission(
+            sampleRecoveryState = {
+                ActivityViewportRecoveryState(
+                    shouldRecover =
+                        activityListShouldRecoverVisibleContent(
+                            firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                            visibleItemKeys =
+                                listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
+                                    itemInfo.key as? String
+                                },
+                            currentItemKeys = presentedItems.map(InboxItem::key)
+                        ),
+                    isScrollInProgress = listState.isScrollInProgress
                 )
-            ) {
-                return false
+            },
+            awaitScrollSettles = { snapshotFlow { listState.isScrollInProgress }.first { !it } },
+            recover = {
+                updateTracking = updateTracking.consumePending()
+                savePresentation()
+                listState.scrollToItem(0)
             }
-            updateTracking = updateTracking.consumePending()
-            savePresentation()
-            listState.scrollToItem(0)
-            return true
-        }
-
-        when (
-            activityViewportRecoveryAction(
-                shouldRecover =
-                    activityListShouldRecoverVisibleContent(
-                        firstVisibleItemIndex = listState.firstVisibleItemIndex,
-                        visibleItemKeys =
-                            listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
-                                itemInfo.key as? String
-                            },
-                        currentItemKeys = presentedItems.map(InboxItem::key)
-                    ),
-                isScrollInProgress = listState.isScrollInProgress
-            )
-        ) {
-            ActivityViewportRecoveryAction.None -> Unit
-            ActivityViewportRecoveryAction.Recover -> recoverIfViewportEmptied()
-            ActivityViewportRecoveryAction.DeferUntilScrollSettles -> {
-                snapshotFlow { listState.isScrollInProgress }.first { !it }
-                recoverIfViewportEmptied()
-            }
-        }
+        )
     }
     LaunchedEffect(presentedItems) {
         val selected = selectedItemKey
@@ -2156,6 +2137,46 @@ internal fun activityLoadMoreFooterMode(
         loadingMore -> ActivityLoadMoreFooterMode.Loading
         else -> ActivityLoadMoreFooterMode.Sentinel
     }
+
+/** One sample of everything the recovery admission depends on, read at the same instant. */
+internal data class ActivityViewportRecoveryState(
+    val shouldRecover: Boolean,
+    val isScrollInProgress: Boolean
+)
+
+/**
+ * Runs the emptied-viewport recovery, admitting the scroll mutation only while no gesture owns
+ * the scroll.
+ *
+ * Waiting for a gesture to settle is not by itself enough: the reader can start a second drag
+ * between the wait returning and the mutation applying, and a recovery that trusted the earlier
+ * "idle" reading would then cancel that new gesture. So every attempt re-samples *both* the
+ * viewport and the live scroll state, and a sample taken before the wait is never carried across
+ * it. Tracking is consumed only once an attempt is actually admitted, so a deferred recovery
+ * cannot retire pending updates it never performed.
+ */
+internal suspend fun awaitActivityViewportRecoveryAdmission(
+    sampleRecoveryState: () -> ActivityViewportRecoveryState,
+    awaitScrollSettles: suspend () -> Unit,
+    recover: suspend () -> Unit
+) {
+    while (true) {
+        val state = sampleRecoveryState()
+        when (
+            activityViewportRecoveryAction(
+                shouldRecover = state.shouldRecover,
+                isScrollInProgress = state.isScrollInProgress
+            )
+        ) {
+            ActivityViewportRecoveryAction.None -> return
+            ActivityViewportRecoveryAction.Recover -> {
+                recover()
+                return
+            }
+            ActivityViewportRecoveryAction.DeferUntilScrollSettles -> awaitScrollSettles()
+        }
+    }
+}
 
 internal enum class ActivityViewportRecoveryAction {
     /** The viewport still shows activity rows; leave the reader where they are. */

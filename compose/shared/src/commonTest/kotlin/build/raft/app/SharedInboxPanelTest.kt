@@ -602,6 +602,68 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityViewportRecoveryReSamplesScrollStateAfterEveryWait() = runPortableCoroutineTest {
+        // A second drag can begin between the settle-wait returning and the mutation applying.
+        // Carrying the earlier "idle" reading across the wait would cancel that new gesture, so
+        // each attempt must re-sample the live scroll state and defer again.
+        val samples =
+            mutableListOf(
+                ActivityViewportRecoveryState(shouldRecover = true, isScrollInProgress = true),
+                ActivityViewportRecoveryState(shouldRecover = true, isScrollInProgress = true),
+                ActivityViewportRecoveryState(shouldRecover = true, isScrollInProgress = false)
+            )
+        var settles = 0
+        var scrolls = 0
+
+        awaitActivityViewportRecoveryAdmission(
+            sampleRecoveryState = { samples.removeFirst() },
+            awaitScrollSettles = { settles += 1 },
+            recover = { scrolls += 1 }
+        )
+
+        assertEquals(2, settles)
+        assertEquals(1, scrolls)
+        assertEquals(0, samples.size)
+    }
+
+    @Test
+    fun activityViewportRecoveryDropsTheAttemptWhenRowsReappearWhileWaiting() = runPortableCoroutineTest {
+        // Settling may leave the reader somewhere the rows are visible again; recovering then
+        // would yank them the moment they lift their finger.
+        val samples =
+            mutableListOf(
+                ActivityViewportRecoveryState(shouldRecover = true, isScrollInProgress = true),
+                ActivityViewportRecoveryState(shouldRecover = false, isScrollInProgress = false)
+            )
+        var scrolls = 0
+
+        awaitActivityViewportRecoveryAdmission(
+            sampleRecoveryState = { samples.removeFirst() },
+            awaitScrollSettles = {},
+            recover = { scrolls += 1 }
+        )
+
+        assertEquals(0, scrolls)
+    }
+
+    @Test
+    fun activityViewportRecoveryNeverWaitsWhenTheViewportStillHasRows() = runPortableCoroutineTest {
+        var settles = 0
+        var scrolls = 0
+
+        awaitActivityViewportRecoveryAdmission(
+            sampleRecoveryState = {
+                ActivityViewportRecoveryState(shouldRecover = false, isScrollInProgress = true)
+            },
+            awaitScrollSettles = { settles += 1 },
+            recover = { scrolls += 1 }
+        )
+
+        assertEquals(0, settles)
+        assertEquals(0, scrolls)
+    }
+
+    @Test
     fun activityPendingUpdateIncrementStaysHiddenNearTop() {
         val items = listOf(activityItem(key = "channel:channel-new"), activityItem(key = "channel:channel-old-top"))
 
