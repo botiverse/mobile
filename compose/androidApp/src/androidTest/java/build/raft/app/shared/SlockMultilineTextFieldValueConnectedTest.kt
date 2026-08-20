@@ -282,6 +282,12 @@ class SlockMultilineTextFieldValueConnectedTest {
             // Kuikly re-sends returnKeyType only for a single-line field, so on a multi-line
             // editor no "none" ever arrives to undo the Send. Asserting the stale action documents
             // that, and turns red if that ever changes.
+            //
+            // This assertion pins current behaviour, not a requirement. If newline mode is ever
+            // changed to stop raising Send at all — 1.9's structure, the fix for the framework
+            // dependency described above — there will be no Send action here and this goes red.
+            // That red is the expected consequence of that change, not a regression it caught:
+            // update this assertion rather than reverting the change.
             assertEquals(
                 "the Send action is not withdrawn when the panel closes; the newline survives only " +
                     "because NO_ENTER_ACTION suppresses it",
