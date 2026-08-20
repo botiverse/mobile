@@ -1623,8 +1623,17 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
     ];
     for (NSDictionary *row in rows) {
         NSString *key = row[@"key"];
-        NSString *value = SlockBridgeString(about[key]);
-        [text appendFormat:@"%@: %@\n", row[@"label"], value.length > 0 ? value : @"--"];
+        id rawValue = about[key];
+        NSString *value = SlockBridgeString(rawValue);
+        // A missing/unsupported field is not evidence that the value is "--";
+        // omit it so diagnostics consumers can distinguish not-applicable from
+        // an actual value. Providers may explicitly report a read failure and
+        // that marker remains visible for triage.
+        BOOL missing = rawValue == nil || rawValue == NSNull.null || value.length == 0 || [value isEqualToString:@"--"];
+        if (missing) {
+            continue;
+        }
+        [text appendFormat:@"%@ : %@\n", row[@"label"], value];
     }
     [text appendString:@"\niOS diagnostics\n"];
     [text appendString:SlockDiagnosticsExportRecentText(SlockDiagnosticsRecentMaxChars)];
