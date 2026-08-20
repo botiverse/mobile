@@ -2052,6 +2052,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowGfmTaskListShort() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.gfm-task-list-short",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-gfm-task-list-short")
+                    .put("visualFixture", "gfm_task_list_short"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowMdLinkRef() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.md-link-ref",
