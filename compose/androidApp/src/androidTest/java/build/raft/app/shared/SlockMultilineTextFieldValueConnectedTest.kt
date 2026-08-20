@@ -167,38 +167,44 @@ class SlockMultilineTextFieldValueConnectedTest {
     }
 
     @Test
-    fun returnKeySendPreferenceDecidesWhetherEnterInsertsNewline() {
+    fun returnKeySendPreferenceDecidesLineModeInEveryPropArrivalOrder() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            // "return key sends" OFF: the editor must keep the multi-line input-type bit so the
-            // IME offers Enter instead of an action key.
+            // The line mode must be a function of the preference, not of prop arrival order.
+            // Measured device order is numberOfLines -> systemNewlineAction -> imeActionRequested,
+            // the reverse of the modifier chain, and numberOfLines is what triggers the structural
+            // pass — so the preference always lands after the first pass has run on the default.
             //
-            // Feed the props in the order a device actually delivers them, measured from logcat:
-            // numberOfLines -> systemNewlineAction -> imeActionRequested. That is the reverse of
-            // the modifier chain, and numberOfLines is what triggers the structural pass, so the
-            // preference always arrives after the first pass has already run on the default. An
-            // earlier version of this test fed the preference first, which only proved the
-            // assumption it was built on and passed CI while the device stayed broken.
-            val newlineEditor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
-            assertTrue(newlineEditor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
-            assertTrue(newlineEditor.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1))
-            assertTrue(newlineEditor.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, 0))
-            assertTrue(
-                "return key sends OFF must leave the multi-line input type so Enter can insert a newline",
-                newlineEditor.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
-            )
-
-            // "return key sends" ON: the field must claim single line, because Android suppresses
-            // the IME action key on a multi-line field.
-            val sendEditor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
-            assertTrue(sendEditor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
-            assertTrue(sendEditor.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1))
-            assertTrue(sendEditor.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, 1))
-            assertEquals(
-                "return key sends ON must drop the multi-line input type so the IME shows Send",
-                0,
-                sendEditor.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            )
+            // An earlier version of this test fed one assumed order and therefore proved the
+            // assumption rather than the behaviour: it stayed green while the device rendered Done.
+            // Permuting every order is the direct correction — a single order can only show that
+            // one path works, whereas agreement across all of them shows order does not matter.
+            listOf(false, true).forEach { sendsOnReturn ->
+                val expectedMultiLine = !sendsOnReturn
+                permutationsOfThree().forEach { order ->
+                    val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+                    order.forEach { prop ->
+                        val applied = when (prop) {
+                            PropUnderTest.NUMBER_OF_LINES ->
+                                editor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4)
+                            PropUnderTest.SYSTEM_NEWLINE_ACTION ->
+                                editor.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1)
+                            PropUnderTest.IME_ACTION_REQUESTED ->
+                                editor.setProp(
+                                    SLOCK_IME_ACTION_REQUESTED_PROP,
+                                    if (sendsOnReturn) 1 else 0
+                                )
+                        }
+                        assertTrue("setProp $prop should be handled", applied)
+                    }
+                    val multiLine = editor.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
+                    assertEquals(
+                        "sendsOnReturn=$sendsOnReturn order=$order must converge on the same line mode",
+                        expectedMultiLine,
+                        multiLine
+                    )
+                }
+            }
 
             // Callers that never send the preference keep the previous behaviour, so migrating one
             // screen cannot silently change every other text area.
@@ -243,6 +249,17 @@ class SlockMultilineTextFieldValueConnectedTest {
 
 private const val SLOCK_IME_ACTION_REQUESTED_PROP = "slockImeActionRequested"
 private const val SLOCK_SYSTEM_NEWLINE_ACTION_PROP = "slockSystemNewlineAction"
+
+private enum class PropUnderTest { NUMBER_OF_LINES, SYSTEM_NEWLINE_ACTION, IME_ACTION_REQUESTED }
+
+private fun permutationsOfThree(): List<List<PropUnderTest>> {
+    val all = PropUnderTest.entries
+    return all.flatMap { first ->
+        all.filter { it != first }.flatMap { second ->
+            all.filter { it != first && it != second }.map { third -> listOf(first, second, third) }
+        }
+    }
+}
 
 private fun assertNoEditingCallbacks(
     transition: String,

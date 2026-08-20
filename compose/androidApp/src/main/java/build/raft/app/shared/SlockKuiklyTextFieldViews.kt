@@ -317,6 +317,15 @@ internal class SlockKuiklyTextAreaView(
         )
     }
 
+    /**
+     * Invariant: the line mode is a function of the current preference, re-derived on every
+     * relevant prop until the input connection is created, and frozen afterwards.
+     *
+     * That makes the outcome independent of prop arrival order rather than dependent on a
+     * favourable one. Measured arrival is numberOfLines -> systemNewlineAction ->
+     * imeActionRequested, the reverse of the modifier chain, and all three land within ~34ms and
+     * well before the connection exists, so every order converges on the same result.
+     */
     private fun configureReturnKeyStructure() {
         if (returnKeyStructureConfigured) return
         val method = transformationMethod
