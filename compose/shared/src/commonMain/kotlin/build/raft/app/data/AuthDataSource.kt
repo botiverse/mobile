@@ -21,6 +21,19 @@ internal const val AuthInviteEnvironmentUnavailableMessage =
     "Invite links are available only in the production environment."
 
 /**
+ * Environment-integrity failures preserve the provider-owned invite witness. Clearing either
+ * one would let page recreation treat a previously bound token as a first capture under the
+ * mutable current environment.
+ */
+internal fun isInviteEnvironmentIntegrityFailure(errorCode: String): Boolean =
+    when (errorCode.trim().lowercase().replace('-', '_')) {
+        AuthAuthorityChangedMessage,
+        AuthInviteEnvironmentUnavailableCode,
+        -> true
+        else -> false
+    }
+
+/**
  * Provider-owned identity/intent for the one pending invite auth-resume flow. The opaque token
  * is the only product identity carried by routes; the endpoint witness stays in the shared
  * provider and is never written to diagnostics or page data.

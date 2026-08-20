@@ -14,6 +14,7 @@ import build.raft.app.data.AuthInviteInfo
 import build.raft.app.data.AuthAuthorityChangedMessage
 import build.raft.app.data.AuthInviteEnvironmentUnavailableCode
 import build.raft.app.data.BridgeSlockAvatarNativeCache
+import build.raft.app.data.isInviteEnvironmentIntegrityFailure
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.SharedInviteAcceptResult
@@ -106,7 +107,12 @@ private fun InviteAcceptScreen() {
         }
         when (val infoResult = authDataSource.loadInviteInfo(normalizedToken)) {
             is SharedInviteInfoResult.Failure -> {
-                sharedStores.clearInviteResume(normalizedToken)
+                // A failed preview is not a completed invite flow. In particular, an
+                // auth_authority_changed result is the terminal Invalidated witness and must
+                // survive page destruction/recreation and a later duplicate delivery.
+                if (!isInviteEnvironmentIntegrityFailure(infoResult.errorCode)) {
+                    sharedStores.clearInviteResume(normalizedToken)
+                }
                 state = InviteScreenState.Error(infoResult.errorCode)
             }
             is SharedInviteInfoResult.Success -> {
@@ -148,7 +154,9 @@ private fun InviteAcceptScreen() {
                 )
                 if (!completed) {
                     accepting = false
-                    sharedStores.clearInviteResume(normalizedToken)
+                    // Accept may already have committed server-side. Keep the provider-owned
+                    // witness so a page recreation cannot re-capture this token under a new
+                    // environment and replay the invite/finalization flow.
                     state = InviteScreenState.Error(AuthAuthorityChangedMessage)
                 } else {
                     sharedStores.clearInviteResume(normalizedToken)
@@ -164,7 +172,11 @@ private fun InviteAcceptScreen() {
             }
             is SharedInviteAcceptResult.Failure -> {
                 accepting = false
-                sharedStores.clearInviteResume(normalizedToken)
+                // Typed authority invalidation is terminal and must survive page recreation;
+                // ordinary retryable/expired failures retain the previous cleanup behavior.
+                if (!isInviteEnvironmentIntegrityFailure(accepted.errorCode)) {
+                    sharedStores.clearInviteResume(normalizedToken)
+                }
                 state = InviteScreenState.Error(accepted.errorCode)
             }
             SharedInviteAcceptResult.Unauthenticated -> {
