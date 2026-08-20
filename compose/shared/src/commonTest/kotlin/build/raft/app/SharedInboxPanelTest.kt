@@ -618,13 +618,63 @@ class SharedInboxPanelTest {
         awaitActivityViewportRecoveryAdmission(
             sampleRecoveryState = { samples.removeFirst() },
             awaitScrollSettles = { settles += 1 },
-            recover = { scrolls += 1 }
+            recover = { scrolls += 1; true }
         )
 
         assertEquals(2, settles)
         assertEquals(1, scrolls)
         assertEquals(0, samples.size)
     }
+
+    @Test
+    fun activityViewportRecoveryRetriesWhenAGestureStartsBetweenTheSampleAndTheApply() =
+        runPortableCoroutineTest {
+            // active -> idle -> active AGAIN, in the gap between the admitting sample and the
+            // mutation. That gap is not covered by a lock this side owns: the pinned Kuikly
+            // build writes `isScrollingState` from `kuiklyOnScroll()` while `scrollToItem()`
+            // takes `scrollMutex`, so a gesture starting there is not arbitrated away
+            // (@Codex-Kuikly). The apply step must therefore be allowed to DECLINE.
+            //
+            // The two counts are kept apart on purpose. A declined attempt must perform zero
+            // scrolls AND retire zero tracking — the earlier order consumed before scrolling,
+            // so an attempt that never moved the list still burned the pending update and
+            // nothing could retry it.
+            val samples =
+                mutableListOf(
+                    ActivityViewportRecoveryState(shouldRecover = true, isScrollInProgress = false),
+                    ActivityViewportRecoveryState(shouldRecover = true, isScrollInProgress = true),
+                    ActivityViewportRecoveryState(shouldRecover = true, isScrollInProgress = false)
+                )
+            var settles = 0
+            var attempts = 0
+            var scrolls = 0
+            var consumes = 0
+            // The first apply loses the race; the second wins it.
+            val gestureStealsTheApply = mutableListOf(true, false)
+
+            awaitActivityViewportRecoveryAdmission(
+                sampleRecoveryState = { samples.removeFirst() },
+                awaitScrollSettles = { settles += 1 },
+                recover = {
+                    attempts += 1
+                    if (gestureStealsTheApply.removeFirst()) {
+                        false
+                    } else {
+                        scrolls += 1
+                        consumes += 1
+                        true
+                    }
+                }
+            )
+
+            assertEquals(2, attempts)
+            // The stolen attempt moved nothing and retired nothing.
+            assertEquals(1, scrolls)
+            assertEquals(1, consumes)
+            // Declining re-enters the loop, so the new gesture is waited out like any other.
+            assertEquals(1, settles)
+            assertEquals(0, samples.size)
+        }
 
     @Test
     fun activityViewportRecoveryDropsTheAttemptWhenRowsReappearWhileWaiting() = runPortableCoroutineTest {
@@ -640,7 +690,7 @@ class SharedInboxPanelTest {
         awaitActivityViewportRecoveryAdmission(
             sampleRecoveryState = { samples.removeFirst() },
             awaitScrollSettles = {},
-            recover = { scrolls += 1 }
+            recover = { scrolls += 1; true }
         )
 
         assertEquals(0, scrolls)
@@ -656,7 +706,7 @@ class SharedInboxPanelTest {
                 ActivityViewportRecoveryState(shouldRecover = false, isScrollInProgress = true)
             },
             awaitScrollSettles = { settles += 1 },
-            recover = { scrolls += 1 }
+            recover = { scrolls += 1; true }
         )
 
         assertEquals(0, settles)

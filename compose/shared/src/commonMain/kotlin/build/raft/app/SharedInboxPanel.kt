@@ -857,9 +857,25 @@ private fun SharedActivityList(
             },
             awaitScrollSettles = { snapshotFlow { listState.isScrollInProgress }.first { !it } },
             recover = {
-                updateTracking = updateTracking.consumePending()
-                savePresentation()
-                listState.scrollToItem(0)
+                // Last check against the live state, immediately before the mutation. This does
+                // not close the gap — nothing available on this side can, given the two scroll
+                // fences above — but it collapses it to the smallest window the framework lets
+                // us observe, and a gesture that wins the race is now handled rather than
+                // ignored.
+                if (listState.isScrollInProgress) {
+                    false
+                } else {
+                    // ⚠️ SCROLL FIRST, retire the tracking only once it has actually completed.
+                    // The previous order consumed and saved before scrolling, so a scroll that
+                    // was cancelled — by a gesture, or by this effect being torn down — left the
+                    // tracking already retired and the viewport never repaired, with nothing to
+                    // retry from. Cancellation here propagates out before the consume, so the
+                    // next `presentedItems` change re-evaluates and recovers instead.
+                    listState.scrollToItem(0)
+                    updateTracking = updateTracking.consumePending()
+                    savePresentation()
+                    true
+                }
             }
         )
     }
@@ -2158,7 +2174,7 @@ internal data class ActivityViewportRecoveryState(
 internal suspend fun awaitActivityViewportRecoveryAdmission(
     sampleRecoveryState: () -> ActivityViewportRecoveryState,
     awaitScrollSettles: suspend () -> Unit,
-    recover: suspend () -> Unit
+    recover: suspend () -> Boolean
 ) {
     while (true) {
         val state = sampleRecoveryState()
@@ -2170,8 +2186,15 @@ internal suspend fun awaitActivityViewportRecoveryAdmission(
         ) {
             ActivityViewportRecoveryAction.None -> return
             ActivityViewportRecoveryAction.Recover -> {
-                recover()
-                return
+                // `recover` may DECLINE. Sampling the scroll state and mutating it are two
+                // separate operations, and the gap between them is not covered by any lock we
+                // own: @Codex-Kuikly checked the pinned Kuikly build and found
+                // `KuiklyScrollableState.kuiklyOnScroll()` writes `isScrollingState` directly
+                // while `LazyListState.scrollToItem()` takes `scrollMutex` — two different
+                // fences, so a native gesture starting inside that gap is NOT arbitrated away
+                // by mutation priority. Declining returns to the loop, which re-samples and
+                // waits for the new gesture like any other.
+                if (recover()) return
             }
             ActivityViewportRecoveryAction.DeferUntilScrollSettles -> awaitScrollSettles()
         }
