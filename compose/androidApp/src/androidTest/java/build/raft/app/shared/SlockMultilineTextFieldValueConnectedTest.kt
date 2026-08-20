@@ -262,6 +262,12 @@ class SlockMultilineTextFieldValueConnectedTest {
                 "newline mode must stay multi-line even while a suggestion panel raises the action",
                 outAttrs.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
             )
+            // This flag is supplied by the framework, not by us — nothing in this module writes
+            // imeOptions flags. So the assertion records that the platform currently adds it on
+            // this path; it is not a guarantee we control. If an upstream or OEM change stops
+            // adding it, newline mode breaks silently and this test is what would catch it. The
+            // structurally safe alternative is 1.9's: never raise Send in newline mode, so the
+            // flag is never needed. Worth revisiting if this ever goes red.
             assertTrue(
                 "newline mode must keep IME_FLAG_NO_ENTER_ACTION so Enter is not claimed as an action",
                 outAttrs.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0

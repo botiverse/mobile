@@ -1026,6 +1026,16 @@ class ThreadComposerLayoutTest {
         )
     }
 
+    // NOTE (task #1083): this encodes the pre-2026-08-20 contract, where Enter accepted a
+    // suggestion even with "return key sends" off. artin has since ruled that newline mode means
+    // Enter always inserts a newline and suggestions are tapped, so this assertion no longer
+    // matches the product contract — it matches the current implementation, which still raises
+    // the IME action for a visible candidate.
+    //
+    // Left as-is deliberately: device measurement has not yet shown that the raise causes harm
+    // (the framework still supplies IME_FLAG_NO_ENTER_ACTION on that path). If it does, the fix is
+    // to stop raising the action in newline mode — 1.9's structure — and this test must be updated
+    // rather than treated as a regression it caught.
     @Test
     fun visibleChannelCandidateOwnsImeActionWhenSendKeyPreferenceIsDisabled() {
         assertEquals(
