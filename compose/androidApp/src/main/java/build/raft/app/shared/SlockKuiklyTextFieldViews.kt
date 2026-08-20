@@ -236,8 +236,13 @@ internal class SlockKuiklyTextAreaView(
                     // The structural pass already ran with the previous value, and re-running it
                     // would flip isSingleLine after the controlled editing callbacks are live —
                     // exactly the transient 0..0 selection the one-time guard exists to prevent.
-                    // The host orders this prop ahead of numberOfLines/returnKeyType so this
-                    // should be unreachable; log rather than silently serving a stale mode.
+                    //
+                    // Ordering ahead of numberOfLines is guaranteed: both are setProp nodes on the
+                    // same modifier chain, applied in chain order. Ordering ahead of returnKeyType
+                    // is NOT — Kuikly emits that one from keyboardOptions.imeAction through a
+                    // different path, and its branch also runs the structural pass. If it lands
+                    // first the mode is fixed at the default, so this warning is the detector for
+                    // that case rather than proof it cannot happen.
                     SlockAppLog.w(
                         LOG_TAG,
                         "imeActionRequested changed to $requested after structure was configured " +

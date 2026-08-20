@@ -2745,6 +2745,11 @@ internal fun ThreadComposerContentLeaf(
                             // editor stays multi-line and Enter inserts a newline; the suggestion
                             // panel raising imeAction to Send has no effect in that mode, which is
                             // the agreed contract (accept a suggestion by tapping it instead).
+                            //
+                            // Known limitation: the native editor fixes its line mode once, so
+                            // toggling the preference while this composer is alive does not take
+                            // effect until the subtree is recreated. Changing it emits a warning
+                            // from the native side rather than silently serving the old mode.
                             imeActionRequested = composerSendKeyEnabled,
                             keyboardOptions = composerKeyboardOptions,
                             keyboardActions = composerKeyboardActions,
