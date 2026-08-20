@@ -272,6 +272,22 @@ class SlockMultilineTextFieldValueConnectedTest {
                 "newline mode must keep IME_FLAG_NO_ENTER_ACTION so Enter is not claimed as an action",
                 outAttrs.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0
             )
+
+            // Records which of two accounts of this behaviour is true, because they differ in
+            // residual risk even though they agree on the outcome. If the Send action is gone,
+            // dismissing the panel withdrew it. If it is still here, nothing withdrew it and the
+            // newline only survives because the framework suppresses it — which is a dependency
+            // on platform behaviour, not a property we hold.
+            //
+            // Kuikly re-sends returnKeyType only for a single-line field, so on a multi-line
+            // editor no "none" ever arrives to undo the Send. Asserting the stale action documents
+            // that, and turns red if that ever changes.
+            assertEquals(
+                "the Send action is not withdrawn when the panel closes; the newline survives only " +
+                    "because NO_ENTER_ACTION suppresses it",
+                EditorInfo.IME_ACTION_SEND,
+                outAttrs.imeOptions and EditorInfo.IME_MASK_ACTION
+            )
         }
     }
 
