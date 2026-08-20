@@ -8,10 +8,26 @@ class SharedApiEnvironmentStore(
     private val store: SlockKeyValueStore
 ) {
     private val mutableState = MutableStateFlow(currentEnvironment(store.getString(KEY_ENVIRONMENT)))
+    private var observedEnvironment = mutableState.value
+    private var environmentGeneration = 0L
     val state: StateFlow<SharedSettingsApiEnvironmentOption> = mutableState.asStateFlow()
 
     fun current(): SharedSettingsApiEnvironmentOption =
-        currentEnvironment(store.getString(KEY_ENVIRONMENT)).also { mutableState.value = it }
+        observe(currentEnvironment(store.getString(KEY_ENVIRONMENT)))
+
+    /**
+     * Captures the environment identity and its in-process generation as one witness.
+     * Invite requests must carry this witness through queueing and executor dispatch; reading
+     * the mutable base URL separately at dispatch time would reopen a production→custom race.
+     */
+    internal fun currentSnapshot(): SharedApiEnvironmentSnapshot {
+        val environment = current()
+        return SharedApiEnvironmentSnapshot(
+            key = environment.key,
+            apiBaseUrl = environment.apiBaseUrl,
+            generation = environmentGeneration,
+        )
+    }
 
     fun developerSnapshot(feedback: String? = null): SharedSettingsDeveloperSnapshot {
         val current = current()
@@ -29,15 +45,13 @@ class SharedApiEnvironmentStore(
     fun select(key: String): SharedSettingsApiEnvironmentOption? {
         val environment = predefined.firstOrNull { it.key == key } ?: return null
         store.putString(KEY_ENVIRONMENT, environment.key)
-        mutableState.value = environment
-        return environment
+        return observe(environment)
     }
 
     fun save(request: SharedSettingsApiEnvironmentRequest): SharedSettingsApiEnvironmentOption? {
         predefined.firstOrNull { it.key == request.key }?.let { environment ->
             store.putString(KEY_ENVIRONMENT, environment.key)
-            mutableState.value = environment
-            return environment
+            return observe(environment)
         }
         val apiBaseUrl = request.apiBaseUrl.trim()
         val socketBaseUrl = request.socketBaseUrl.trim()
@@ -56,8 +70,16 @@ class SharedApiEnvironmentStore(
         store.putString(KEY_CUSTOM_API_BASE_URL, custom.apiBaseUrl)
         store.putString(KEY_CUSTOM_SOCKET_BASE_URL, custom.socketBaseUrl)
         store.putString(KEY_CUSTOM_WEB_URL, custom.webUrl)
-        mutableState.value = custom
-        return custom
+        return observe(custom)
+    }
+
+    private fun observe(environment: SharedSettingsApiEnvironmentOption): SharedSettingsApiEnvironmentOption {
+        if (environment != observedEnvironment) {
+            environmentGeneration += 1L
+            observedEnvironment = environment
+        }
+        mutableState.value = environment
+        return environment
     }
 
     fun rewriteApiUrl(url: String): String {
@@ -130,3 +152,10 @@ class SharedApiEnvironmentStore(
         private const val KEY_CUSTOM_WEB_URL = "custom_web_url"
     }
 }
+
+/** Runtime-only environment witness; never persist or log it with capability tokens. */
+data class SharedApiEnvironmentSnapshot(
+    val key: String,
+    val apiBaseUrl: String,
+    val generation: Long,
+)

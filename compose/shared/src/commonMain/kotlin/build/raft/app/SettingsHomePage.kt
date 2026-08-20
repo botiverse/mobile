@@ -1807,6 +1807,10 @@ private fun SlockAppShellReadyContent(
     val suppressRestoreLanding = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optBoolean(APP_SHELL_SUPPRESS_RESTORE_LANDING, false)
     }
+    val pendingInviteToken = remember(pager.pageData.params.toString()) {
+        normalizeSlockInviteTokenOrNull(pager.pageData.params.optString(AUTH_PENDING_INVITE_TOKEN_KEY))
+    }
+    var routedPendingInviteToken by remember(pager.pagerId) { mutableStateOf<String?>(null) }
     val adaptiveHomeWorkspaceEnabled = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optBoolean(SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED, false)
     }
@@ -1970,8 +1974,12 @@ private fun SlockAppShellReadyContent(
                 bridgeCallContext = appShellCoroutineScope.kuiklyBridgeCallContext()
             )
         }
-    val authDataSource = remember(sharedStores, storeScope, avatarNativeCache) {
-        sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope, avatarNativeCache)
+    val authDataSource = remember(sharedStores, storeScope, avatarNativeCache, pendingInviteToken) {
+        if (pendingInviteToken != null) {
+            sharedStores.createAuthDataSourceForInvite(storeScope, pendingInviteToken, avatarNativeCache)
+        } else {
+            sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope, avatarNativeCache)
+        }
     }
     val eventBus = sharedStores.eventBus
     val authSessionEvents =
@@ -2249,6 +2257,16 @@ private fun SlockAppShellReadyContent(
             AppShellRestoreSplashContent()
         }
         return
+    }
+    LaunchedEffect(authGateState, pendingInviteToken) {
+        if (
+            pendingInviteToken != null &&
+            authGateState is SharedAuthGateState.Ready &&
+            routedPendingInviteToken != pendingInviteToken
+        ) {
+            routedPendingInviteToken = pendingInviteToken
+            pager.openInviteAcceptPage(pendingInviteToken)
+        }
     }
     val appShellNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
@@ -3323,8 +3341,8 @@ private fun SlockAppShellReadyContent(
         }
         SharedAuthGateState.AuthRequired -> {
             val localizedAuthGateMessage = authGateMessage.localizedMessage()
-            LaunchedEffect(localizedAuthGateMessage) {
-                pager.openLoginReplacingCurrentPage(localizedAuthGateMessage)
+            LaunchedEffect(localizedAuthGateMessage, pendingInviteToken) {
+                pager.openLoginReplacingCurrentPage(localizedAuthGateMessage, pendingInviteToken)
             }
             AppShellRestoreSplashContent()
             return
@@ -3369,8 +3387,8 @@ private fun SlockAppShellReadyContent(
             return
         }
         is SharedAuthGateState.ProfileSetupRequired -> {
-            LaunchedEffect(gate.session.user.id) {
-                pager.openAuthProfileSetupReplacingCurrentPage()
+            LaunchedEffect(gate.session.user.id, pendingInviteToken) {
+                pager.openAuthProfileSetupReplacingCurrentPage(pendingInviteToken)
             }
             AppShellRestoreSplashContent()
             return
@@ -15005,13 +15023,17 @@ internal fun Pager.openAppShellReplacingCurrentPage(pageData: JSONObject) {
         .openPage(SLOCK_APP_SHELL_PAGE, pageData)
 }
 
-internal fun Pager.openLoginReplacingCurrentPage(message: String? = null) {
+internal fun Pager.openLoginReplacingCurrentPage(
+    message: String? = null,
+    pendingInviteToken: String? = null,
+) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(
             LOGIN_PAGE,
             loginPageData(
                 replaceCurrent = true,
-                message = message
+                message = message,
+                pendingInviteToken = pendingInviteToken,
             )
         )
 }
@@ -15077,12 +15099,16 @@ internal fun isMultiShellCrossServerSelection(
 
 internal fun appShellPageData(
     replaceCurrent: Boolean = false,
-    suppressRestoreLanding: Boolean = false
+    suppressRestoreLanding: Boolean = false,
+    pendingInviteToken: String? = null,
 ): JSONObject =
     slockAuthRoutePageData(SLOCK_APP_SHELL_PAGE, replaceCurrent)
         .apply {
             if (suppressRestoreLanding) {
                 put(APP_SHELL_SUPPRESS_RESTORE_LANDING, true)
+            }
+            normalizeSlockInviteTokenOrNull(pendingInviteToken)?.let {
+                put(AUTH_PENDING_INVITE_TOKEN_KEY, it)
             }
         }
 

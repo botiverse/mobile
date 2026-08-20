@@ -12,11 +12,49 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 internal const val AuthAuthorityChangedMessage = "auth_authority_changed"
 internal const val AuthInviteEnvironmentUnavailableCode = "invite_environment_unavailable"
 internal const val AuthInviteEnvironmentUnavailableMessage =
     "Invite links are available only in the production environment."
+
+/**
+ * Provider-owned identity/intent for the one pending invite auth-resume flow. The opaque token
+ * is the only product identity carried by routes; the endpoint witness stays in the shared
+ * provider and is never written to diagnostics or page data.
+ */
+internal data class SharedInviteResumeContext(
+    val token: String,
+    val environment: SharedApiEnvironmentSnapshot,
+)
+
+internal class SharedInviteResumeStore {
+    private val lock = SynchronizedObject()
+    private var context: SharedInviteResumeContext? = null
+
+    fun capture(
+        token: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): SharedInviteResumeContext? = synchronized(lock) {
+        val normalized = token.trim().takeIf { it.isNotBlank() } ?: return null
+        val current = context
+        if (current?.token == normalized && current.environment == environment) return current
+        SharedInviteResumeContext(normalized, environment).also { context = it }
+    }
+
+    fun current(token: String? = null): SharedInviteResumeContext? = synchronized(lock) {
+        val current = context ?: return null
+        val normalized = token?.trim()?.takeIf { it.isNotBlank() }
+        if (normalized == null || normalized == current.token) current else null
+    }
+
+    fun clear(token: String? = null) = synchronized(lock) {
+        val normalized = token?.trim()?.takeIf { it.isNotBlank() }
+        if (normalized == null || context?.token == normalized) context = null
+    }
+}
 
 private val authJson = Json {
     ignoreUnknownKeys = true
@@ -30,7 +68,14 @@ class SharedAuthDataSource(
     private val sessionStore: SlockAuthSessionStore,
     private val diagnosticsLogger: (String) -> Unit = {},
     private val criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger,
-    private val inviteEnvironmentKey: () -> String = { SharedApiEnvironmentStore.Production.key },
+    private val inviteEnvironmentSnapshotProvider: () -> SharedApiEnvironmentSnapshot = {
+        SharedApiEnvironmentSnapshot(
+            key = SharedApiEnvironmentStore.Production.key,
+            apiBaseUrl = SharedApiEnvironmentStore.Production.apiBaseUrl,
+            generation = 0L,
+        )
+    },
+    private val boundInviteEnvironment: SharedApiEnvironmentSnapshot? = null,
 ) {
     private var avatarCacheRuntime: SlockAvatarCacheRuntime? = null
     private var avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
@@ -46,32 +91,69 @@ class SharedAuthDataSource(
         avatarCacheEnvironmentId = environmentId
     }
 
+    /**
+     * Creates a complete auth-data-source view for a pending invite. The view keeps the same
+     * session/diagnostic/avatar authorities, but every auth request is dispatched through the
+     * captured endpoint and generation. The transport rejects a live environment drift before
+     * scheduler/executor admission.
+     */
+    internal fun bindToInviteEnvironment(
+        environment: SharedApiEnvironmentSnapshot,
+    ): SharedAuthDataSource =
+        SharedAuthDataSource(
+            api = api.bindToEnvironment(environment),
+            sessionStore = sessionStore,
+            diagnosticsLogger = diagnosticsLogger,
+            criticalDiagnosticsLogger = criticalDiagnosticsLogger,
+            // Keep reading the live provider witness. The captured environment is held
+            // separately below; replacing this provider with a constant would make a later
+            // production→custom drift invisible to local publication guards.
+            inviteEnvironmentSnapshotProvider = inviteEnvironmentSnapshotProvider,
+            boundInviteEnvironment = environment,
+        ).withAvatarCacheRuntime(
+            runtime = avatarCacheRuntime,
+            nativeCache = avatarCacheNativeCache,
+            environmentId = avatarCacheEnvironmentId,
+        )
+
     private val serverSelectionMemory = sessionStore as? SlockAuthServerSelectionMemory
-    private val authMiddleware =
+    private fun createAuthMiddleware(authApi: SlockAuthApi): SlockNetworkAuthMiddleware =
         SlockNetworkAuthMiddleware(
             sessionStore = sessionStore,
-            authApi = api,
+            authApi = authApi,
             logger = diagnosticsLogger,
             warningLogger = diagnosticsLogger,
             criticalLogger = criticalDiagnosticsLogger
         )
+
+    private val authMiddleware = createAuthMiddleware(api)
 
     constructor(
         transport: SlockAuthTransport,
         sessionStore: SlockAuthSessionStore,
         diagnosticsLogger: (String) -> Unit = {},
         criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger,
-        inviteEnvironmentKey: () -> String = { SharedApiEnvironmentStore.Production.key },
+        inviteEnvironmentSnapshotProvider: () -> SharedApiEnvironmentSnapshot = {
+            SharedApiEnvironmentSnapshot(
+                key = SharedApiEnvironmentStore.Production.key,
+                apiBaseUrl = SharedApiEnvironmentStore.Production.apiBaseUrl,
+                generation = 0L,
+            )
+        },
     ) : this(
         api = SlockAuthApiClient(transport, diagnosticsLogger),
         sessionStore = sessionStore,
         diagnosticsLogger = diagnosticsLogger,
         criticalDiagnosticsLogger = criticalDiagnosticsLogger,
-        inviteEnvironmentKey = inviteEnvironmentKey,
+        inviteEnvironmentSnapshotProvider = inviteEnvironmentSnapshotProvider,
     )
 
     fun logDiagnostics(message: String) {
         diagnosticsLogger(message)
+    }
+
+    fun logCriticalDiagnostics(message: String) {
+        criticalDiagnosticsLogger(message)
     }
 
     /**
@@ -94,7 +176,7 @@ class SharedAuthDataSource(
      * identity, agreement and seat state comes from this canonical response.
      */
     suspend fun loadInviteInfo(token: String): SharedInviteInfoResult {
-        if (!inviteEnvironmentIsProduction()) {
+        val environment = captureProductionInviteEnvironment() ?: run {
             return SharedInviteInfoResult.Failure(
                 code = 409,
                 errorCode = AuthInviteEnvironmentUnavailableCode,
@@ -109,7 +191,7 @@ class SharedAuthDataSource(
                 message = "This invite link is invalid or has expired.",
             )
         }
-        return when (val response = api.inviteInfo(normalizedToken)) {
+        return when (val response = api.inviteInfoForEnvironment(normalizedToken, environment)) {
             is AuthApiResult.Success -> SharedInviteInfoResult.Success(response.data)
             is AuthApiResult.Failure -> response.toInviteInfoFailure()
         }
@@ -120,7 +202,7 @@ class SharedAuthDataSource(
         token: String,
         agreementId: String? = null,
     ): SharedInviteAcceptResult {
-        if (!inviteEnvironmentIsProduction()) {
+        val environment = captureProductionInviteEnvironment() ?: run {
             return SharedInviteAcceptResult.Failure(
                 code = 409,
                 errorCode = AuthInviteEnvironmentUnavailableCode,
@@ -135,11 +217,14 @@ class SharedAuthDataSource(
                 message = "This invite link is invalid or has expired.",
             )
         }
+        val inviteApi = InviteEnvironmentBoundAuthApi(api, environment)
+        val inviteAuthMiddleware = createAuthMiddleware(inviteApi)
         var session = sessionStore.readSession() ?: return SharedInviteAcceptResult.Unauthenticated
-        var response = api.acceptInvite(
+        var response = inviteApi.acceptInviteForEnvironment(
             authorization = session.bearer(),
             token = normalizedToken,
             agreementId = agreementId?.trim()?.takeIf { it.isNotBlank() },
+            environment = environment,
         )
         if (response is AuthApiResult.Failure && response.code == 401) {
             when (
@@ -149,17 +234,22 @@ class SharedAuthDataSource(
                         clearOnUnauthorized = true,
                         reason = "accept_invite_http_401",
                         caller = "auth_data_source_accept_invite",
+                        middleware = inviteAuthMiddleware,
                     )
             ) {
                 is SharedAuthResult.Success -> {
+                    if (!inviteEnvironmentIsCurrent()) {
+                        return inviteAuthorityChangedFailure()
+                    }
                     if (refreshed.data.user.id != session.user.id) {
                         return inviteAuthorityChangedFailure()
                     }
                     session = refreshed.data
-                    response = api.acceptInvite(
+                    response = inviteApi.acceptInviteForEnvironment(
                         authorization = refreshed.data.bearer(),
                         token = normalizedToken,
                         agreementId = agreementId?.trim()?.takeIf { it.isNotBlank() },
+                        environment = environment,
                     )
                 }
                 SharedAuthResult.Unauthenticated ->
@@ -186,9 +276,31 @@ class SharedAuthDataSource(
         return fenceInviteCompletion(session, result)
     }
 
-    private fun inviteEnvironmentIsProduction(): Boolean =
-        runCatching { inviteEnvironmentKey().trim() == SharedApiEnvironmentStore.Production.key }
-            .getOrDefault(false)
+    private fun captureProductionInviteEnvironment(): SharedApiEnvironmentSnapshot? =
+        runCatching {
+            if (!inviteEnvironmentIsCurrent()) null else boundInviteEnvironment ?: inviteEnvironmentSnapshotProvider()
+        }
+            .getOrNull()
+            ?.takeIf {
+                it.key == SharedApiEnvironmentStore.Production.key &&
+                    it.apiBaseUrl.normalizedEnvironmentId() ==
+                        SharedApiEnvironmentStore.Production.apiBaseUrl.normalizedEnvironmentId()
+            }
+
+    /** True only while an invite-bound source still observes its captured endpoint/generation. */
+    internal fun inviteEnvironmentIsCurrent(): Boolean =
+        boundInviteEnvironment?.let { expected ->
+            runCatching { inviteEnvironmentSnapshotProvider() == expected }.getOrDefault(false)
+        } ?: true
+
+    private fun inviteEnvironmentChangedAuthFailure(): SharedAuthResult.Failure =
+        SharedAuthResult.Failure(
+            SharedAuthErrorCode.Unknown,
+            AuthAuthorityChangedMessage,
+        )
+
+    private fun inviteEnvironmentGuard(): SharedAuthResult.Failure? =
+        if (inviteEnvironmentIsCurrent()) null else inviteEnvironmentChangedAuthFailure()
 
     private fun inviteAuthorityChangedFailure(): SharedInviteAcceptResult.Failure =
         SharedInviteAcceptResult.Failure(
@@ -207,6 +319,15 @@ class SharedAuthDataSource(
         capturedSession: StoredAuthSession,
         result: SharedInviteAcceptResult,
     ): SharedInviteAcceptResult {
+        if (!inviteEnvironmentIsCurrent()) {
+            if (result is SharedInviteAcceptResult.Success) {
+                criticalDiagnosticsLogger(
+                    "auth_invite_accept_owner_fence_rejected serverId=${result.data.serverId} " +
+                        "ownerChanged=false environmentChanged=true writeMayHaveCommitted=true"
+                )
+            }
+            return inviteAuthorityChangedFailure()
+        }
         val currentOwnerId = sessionStore.readSession()?.user?.id
         if (currentOwnerId == capturedSession.user.id) return result
 
@@ -226,6 +347,7 @@ class SharedAuthDataSource(
                 "Email and password are required."
             )
         }
+        inviteEnvironmentGuard()?.let { return it }
 
         diagnosticsLogger("auth_login_clear_cached_session_start provider=password")
         runCatchingPreservingCancellation {
@@ -299,6 +421,7 @@ class SharedAuthDataSource(
                 refreshToken = login.refreshToken,
                 servers = orderedServers
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
+        inviteEnvironmentGuard()?.let { return it }
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_selected_server_persist_start serverIdPresent=$selectedServerPresent")
         diagnosticsLogger("auth_session_persist_start userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
@@ -433,6 +556,7 @@ class SharedAuthDataSource(
                 "Mobile sign-in did not return the required credentials."
             )
         }
+        inviteEnvironmentGuard()?.let { return it }
         diagnosticsLogger("auth_login_start provider=mobile_oauth")
         val login =
             when (
@@ -481,6 +605,7 @@ class SharedAuthDataSource(
                 refreshToken = login.refreshToken,
                 servers = orderedServers
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
+        inviteEnvironmentGuard()?.let { return it }
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_session_persist_start provider=mobile_oauth userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
         runCatchingPreservingCancellation {
@@ -672,6 +797,7 @@ class SharedAuthDataSource(
         provider: String,
         body: String
     ): SharedAuthResult<StoredAuthSession> {
+        inviteEnvironmentGuard()?.let { return it }
         diagnosticsLogger("auth_login_start provider=$provider")
         val tokens =
             when (val response = api.completeSocialLogin(provider, body)) {
@@ -717,6 +843,7 @@ class SharedAuthDataSource(
                 refreshToken = tokens.refreshToken,
                 servers = orderedServers
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
+        inviteEnvironmentGuard()?.let { return it }
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_session_persist_start provider=$provider userPresent=${user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
         runCatchingPreservingCancellation {
@@ -749,6 +876,7 @@ class SharedAuthDataSource(
                 "Password must be at least 8 characters."
             )
         }
+        inviteEnvironmentGuard()?.let { return it }
 
         val register =
             when (val response = api.register(email = email.trim(), password = password)) {
@@ -771,6 +899,7 @@ class SharedAuthDataSource(
                 refreshToken = register.refreshToken,
                 servers = orderedServers
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
+        inviteEnvironmentGuard()?.let { return it }
         replaceAuthenticatedSessionAndRetireChangedAccount(session, "register")
         return SharedAuthResult.Success(session)
     }
@@ -784,6 +913,7 @@ class SharedAuthDataSource(
                 "Username and display name are required."
             )
         }
+        inviteEnvironmentGuard()?.let { return it }
         val current = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         val updatedUser =
             when (
@@ -796,6 +926,7 @@ class SharedAuthDataSource(
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> return response.toSharedAuthFailure()
             }
+        inviteEnvironmentGuard()?.let { return it }
         sessionStore.updateMetadata(expectedAccountId = current.user.id) { latest ->
             latest.copy(user = updatedUser)
         }
@@ -817,6 +948,7 @@ class SharedAuthDataSource(
     }
 
     suspend fun resendVerification(): SharedAuthResult<Unit> {
+        inviteEnvironmentGuard()?.let { return it }
         val bearer =
             sessionStore.readSession()?.bearer()
                 ?: return SharedAuthResult.Unauthenticated
@@ -837,6 +969,9 @@ class SharedAuthDataSource(
                 SharedAuthErrorCode.Validation,
                 "Email verification token is required."
             )
+        }
+        inviteEnvironmentGuard()?.let {
+            return SharedEmailVerificationResult.Failure(it.code, it.message)
         }
         when (val response = api.verifyEmail(token)) {
             is AuthApiResult.Success -> Unit
@@ -880,6 +1015,7 @@ class SharedAuthDataSource(
     private suspend fun restoreSession(
         allowRecoverableCachedSession: Boolean
     ): SharedAuthResult<StoredAuthSession> {
+        inviteEnvironmentGuard()?.let { return it }
         diagnosticsLogger("auth_restore_start")
         val session =
             runCatchingPreservingCancellation { sessionStore.readSession() }
@@ -906,6 +1042,7 @@ class SharedAuthDataSource(
                 }
         return when (current) {
             is SharedAuthResult.Success -> {
+                inviteEnvironmentGuard()?.let { return it }
                 diagnosticsLogger("auth_restore_result result=success source=current_user selectedServer=${!current.data.selectedServerId.isNullOrBlank()}")
                 current
             }
@@ -1010,8 +1147,10 @@ class SharedAuthDataSource(
         failedSession: StoredAuthSession,
         clearOnUnauthorized: Boolean,
         reason: String,
-        caller: String
+        caller: String,
+        middleware: SlockNetworkAuthMiddleware = authMiddleware,
     ): SharedAuthResult<StoredAuthSession> {
+        inviteEnvironmentGuard()?.let { return it }
         if (failedSession.refreshToken.isBlank()) {
             if (clearOnUnauthorized) {
                 val cleared =
@@ -1030,27 +1169,27 @@ class SharedAuthDataSource(
             }
             return SharedAuthResult.Unauthenticated
         }
-        return when (
-            val result =
-                authMiddleware.refreshAfterUnauthorized(
-                    failedSession = failedSession,
-                    clearOnUnauthorized = clearOnUnauthorized,
-                    reason = reason,
-                    caller = caller
-                )
-        ) {
-            is SharedAuthRefreshResult.Success -> SharedAuthResult.Success(result.session)
+        val refreshResult = middleware.refreshAfterUnauthorized(
+            failedSession = failedSession,
+            clearOnUnauthorized = clearOnUnauthorized,
+            reason = reason,
+            caller = caller
+        )
+        if (!inviteEnvironmentIsCurrent()) return inviteEnvironmentChangedAuthFailure()
+        return when (refreshResult) {
+            is SharedAuthRefreshResult.Success -> SharedAuthResult.Success(refreshResult.session)
             is SharedAuthRefreshResult.Failure ->
-                if (result.response.code == 401 || result.response.code == 403) {
+                if (refreshResult.response.code == 401 || refreshResult.response.code == 403) {
                     SharedAuthResult.Unauthenticated
                 } else {
-                    result.response.toSharedAuthFailure()
+                    refreshResult.response.toSharedAuthFailure()
                 }
             SharedAuthRefreshResult.Unavailable -> SharedAuthResult.Unauthenticated
         }
     }
 
     suspend fun refreshRealtimeAuth(reason: String): SharedAuthResult<StoredAuthSession> {
+        inviteEnvironmentGuard()?.let { return it }
         val current = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         if (current.refreshToken.isBlank()) {
             diagnosticsLogger("auth_realtime_refresh_result result=unauthenticated reason=$reason missing_refresh_token=true")
@@ -1067,6 +1206,7 @@ class SharedAuthDataSource(
                 )
         ) {
             is SharedAuthRefreshResult.Success -> {
+                inviteEnvironmentGuard()?.let { return it }
                 diagnosticsLogger("auth_realtime_refresh_result result=success reason=$reason")
                 SharedAuthResult.Success(result.session)
             }
@@ -1084,6 +1224,7 @@ class SharedAuthDataSource(
     }
 
     suspend fun loadServers(): SharedAuthResult<StoredAuthSession> {
+        inviteEnvironmentGuard()?.let { return it }
         val session =
             sessionStore.readSession()
                 ?: run {
@@ -1199,6 +1340,7 @@ class SharedAuthDataSource(
         servers: List<StoredAuthServer>,
         source: String
     ): SharedAuthResult<StoredAuthSession> {
+        inviteEnvironmentGuard()?.let { return it }
         val orderedServers = servers.orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = source))
         // Validate selection in the suspend body (withValidatedServerSelection is suspend), then apply
         // only the resulting server/selection FIELDS onto the store's LATEST session under the lock
@@ -1227,13 +1369,16 @@ class SharedAuthDataSource(
     }
 
     suspend fun selectServer(serverId: String): SharedAuthResult<StoredAuthSession> {
+        inviteEnvironmentGuard()?.let { return it }
         val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
-        return selectStoredAuthServer(
+        val result = selectStoredAuthServer(
             sessionStore = sessionStore,
             expectedSession = session,
             serverId = serverId,
             serverSelectionMemory = serverSelectionMemory,
         )
+        inviteEnvironmentGuard()?.let { return it }
+        return result
     }
 
     /** Selects the server returned by an invite only for the owner that performed that invite write. */
@@ -1241,6 +1386,7 @@ class SharedAuthDataSource(
         serverId: String,
         expectedAccountId: String,
     ): SharedAuthResult<StoredAuthSession> {
+        inviteEnvironmentGuard()?.let { return it }
         val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         if (session.user.id != expectedAccountId) return SharedAuthResult.Failure(
             SharedAuthErrorCode.Unknown,
@@ -1259,6 +1405,7 @@ class SharedAuthDataSource(
         slug: String? = null,
         region: String? = null
     ): SharedAuthResult<StoredAuthSession> {
+        inviteEnvironmentGuard()?.let { return it }
         var session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         val normalizedName = name.trim()
         if (normalizedName.isBlank()) {
@@ -1311,6 +1458,7 @@ class SharedAuthDataSource(
                     return response.toSharedAuthFailure()
                 }
             }
+        inviteEnvironmentGuard()?.let { return it }
         val latestServers =
             when (val response = api.servers(session.bearer())) {
                 is AuthApiResult.Success -> response.data
@@ -1319,6 +1467,7 @@ class SharedAuthDataSource(
                 .upsert(created)
                 .ifEmpty { listOf(created) }
                 .orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = "create_server"))
+        inviteEnvironmentGuard()?.let { return it }
         val selected = latestServers.firstOrNull { it.id == created.id } ?: created
         // #466: update the server list on the LATEST session under the lock (keep latest tokens),
         // then use the explicit selected-server primitive so shell and process selection authorities
@@ -1330,6 +1479,7 @@ class SharedAuthDataSource(
             ).also { persisted = it }
         }
         val updated = persisted ?: return SharedAuthResult.Unauthenticated
+        inviteEnvironmentGuard()?.let { return it }
         return selectStoredAuthServer(
             sessionStore = sessionStore,
             expectedSession = updated,
@@ -1698,6 +1848,7 @@ class SharedAuthDataSource(
         session: StoredAuthSession,
         clearOnUnauthorized: Boolean
     ): SharedAuthResult<StoredAuthSession> {
+        inviteEnvironmentGuard()?.let { return it }
         val user =
             when (val response = api.currentUser(session.bearer())) {
                 is AuthApiResult.Success -> response.data
@@ -1723,12 +1874,14 @@ class SharedAuthDataSource(
                     return response.toSharedAuthFailure()
                 }
             }
+        inviteEnvironmentGuard()?.let { return it }
         val servers =
             when (val response = api.servers(session.bearer())) {
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> session.servers
             }
         val orderedServers = servers.orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = "current_user"))
+        inviteEnvironmentGuard()?.let { return it }
         // Compute the fetched metadata (user + servers + validated selection). This is token-free;
         // its tokens are the captured `session`'s and are deliberately NOT persisted below.
         val metadata = session.copy(user = user).withValidatedServerSelection(orderedServers, serverSelectionMemory)
@@ -1877,6 +2030,40 @@ private fun String.authBodyDiagnostics(): String {
 }
 
 /**
+ * Keeps refreshes triggered by an invite 401 on the same environment witness as the invite
+ * write. The middleware calls the ordinary [refreshWithAttempt] method, so this decorator is the
+ * narrow bridge that routes that call through the bound transport method.
+ */
+private class InviteEnvironmentBoundAuthApi(
+    private val delegate: SlockAuthApi,
+    private val environment: SharedApiEnvironmentSnapshot,
+) : SlockAuthApi by delegate {
+    override suspend fun inviteInfoForEnvironment(
+        token: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): AuthApiResult<AuthInviteInfo> =
+        delegate.inviteInfoForEnvironment(token, environment)
+
+    override suspend fun acceptInviteForEnvironment(
+        authorization: String,
+        token: String,
+        agreementId: String?,
+        environment: SharedApiEnvironmentSnapshot,
+    ): AuthApiResult<AuthInviteAcceptResponse> =
+        delegate.acceptInviteForEnvironment(authorization, token, agreementId, environment)
+
+    override suspend fun refreshWithAttempt(
+        refreshToken: String,
+        attempt: AuthRefreshAttemptContext,
+    ): AuthApiResult<AuthRefreshResponse> =
+        delegate.refreshWithAttemptForEnvironment(
+            refreshToken = refreshToken,
+            attempt = attempt,
+            environment = environment,
+        )
+}
+
+/**
  * Typed auth/server boundary.
  *
  * Keep backend field-shape notes here rather than in separate API docs:
@@ -1885,6 +2072,9 @@ private fun String.authBodyDiagnostics(): String {
  * root JSON array. Legacy token aliases are intentionally rejected by tests.
  */
 interface SlockAuthApi {
+    /** Creates an API view bound to one endpoint/environment generation for auth-resume. */
+    fun bindToEnvironment(environment: SharedApiEnvironmentSnapshot): SlockAuthApi = this
+
     suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse>
     suspend fun completeSocialLogin(provider: String, bodyText: String): AuthApiResult<AuthSocialCompleteResponse>
     suspend fun fetchSocialAuthProviders(platform: String): AuthApiResult<Set<String>>
@@ -1946,16 +2136,31 @@ interface SlockAuthApi {
         refreshToken: String,
         attempt: AuthRefreshAttemptContext,
     ): AuthApiResult<AuthRefreshResponse> = refresh(refreshToken)
+    suspend fun refreshWithAttemptForEnvironment(
+        refreshToken: String,
+        attempt: AuthRefreshAttemptContext,
+        environment: SharedApiEnvironmentSnapshot,
+    ): AuthApiResult<AuthRefreshResponse> = refreshWithAttempt(refreshToken, attempt)
     suspend fun logout(refreshToken: String): AuthApiResult<Unit>
     suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>>
     suspend fun serverOrder(authorization: String): AuthApiResult<ServerSwitcherOrderPreference>
     suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer>
     suspend fun inviteInfo(token: String): AuthApiResult<AuthInviteInfo> = AuthApiResult.Failure(code = 501)
+    suspend fun inviteInfoForEnvironment(
+        token: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): AuthApiResult<AuthInviteInfo> = inviteInfo(token)
     suspend fun acceptInvite(
         authorization: String,
         token: String,
         agreementId: String? = null,
     ): AuthApiResult<AuthInviteAcceptResponse> = AuthApiResult.Failure(code = 501)
+    suspend fun acceptInviteForEnvironment(
+        authorization: String,
+        token: String,
+        agreementId: String? = null,
+        environment: SharedApiEnvironmentSnapshot,
+    ): AuthApiResult<AuthInviteAcceptResponse> = acceptInvite(authorization, token, agreementId)
     suspend fun consumeQaBootstrap(request: QaBootstrapConsumeRequest): AuthApiResult<QaBootstrapConsumeResponse> =
         AuthApiResult.Failure(501)
     suspend fun readyQaBootstrap(ticketDigest: String, authorization: String, sessionGeneration: String): AuthApiResult<QaBootstrapReadyResponse> =
@@ -1968,6 +2173,12 @@ class SlockAuthApiClient(
     private val transport: SlockAuthTransport,
     private val diagnosticsLogger: (String) -> Unit = {}
 ) : SlockAuthApi {
+    override fun bindToEnvironment(environment: SharedApiEnvironmentSnapshot): SlockAuthApi =
+        SlockAuthApiClient(
+            transport = transport.bindToEnvironment(environment),
+            diagnosticsLogger = diagnosticsLogger,
+        )
+
     override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
         transport.login(authJson.encodeToString(AuthLoginRequestBody(email = email, password = password)))
             .mapAuthBody("auth_login_contract_mismatch", AuthLoginResponseDto.serializer(), diagnosticsLogger) { it.toDomain() }
@@ -2229,6 +2440,20 @@ class SlockAuthApiClient(
             it.toDomain()
         }
 
+    override suspend fun refreshWithAttemptForEnvironment(
+        refreshToken: String,
+        attempt: AuthRefreshAttemptContext,
+        environment: SharedApiEnvironmentSnapshot,
+    ): AuthApiResult<AuthRefreshResponse> =
+        transport.refreshWithAttemptForEnvironment(
+            bodyText = authJson.encodeToString(AuthRefreshRequestBody(refreshToken = refreshToken)),
+            attemptId = attempt.attemptId,
+            installationId = attempt.installationId,
+            environment = environment,
+        ).mapAuthBody("auth_refresh_contract_mismatch", AuthRefreshResponseDto.serializer(), diagnosticsLogger) {
+            it.toDomain()
+        }
+
     override suspend fun logout(refreshToken: String): AuthApiResult<Unit> {
         val response = transport.logout(authJson.encodeToString(AuthLogoutRequestBody(refreshToken = refreshToken)))
         if (!response.isSuccessful) return response.toAuthApiFailure()
@@ -2255,6 +2480,15 @@ class SlockAuthApiClient(
                 it.toDomain()
             }
 
+    override suspend fun inviteInfoForEnvironment(
+        token: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): AuthApiResult<AuthInviteInfo> =
+        transport.inviteInfoForEnvironment(token, environment)
+            .mapAuthBody("auth_invite_info_contract_mismatch", AuthInviteInfoDto.serializer(), diagnosticsLogger) {
+                it.toDomain()
+            }
+
     override suspend fun acceptInvite(
         authorization: String,
         token: String,
@@ -2269,6 +2503,28 @@ class SlockAuthApiClient(
                         agreementId = agreementId,
                     )
                 ),
+        ).mapAuthBody(
+            "auth_accept_invite_contract_mismatch",
+            AuthInviteAcceptResponseDto.serializer(),
+            diagnosticsLogger,
+        ) { it.toDomain() }
+
+    override suspend fun acceptInviteForEnvironment(
+        authorization: String,
+        token: String,
+        agreementId: String?,
+        environment: SharedApiEnvironmentSnapshot,
+    ): AuthApiResult<AuthInviteAcceptResponse> =
+        transport.acceptInviteForEnvironment(
+            authorization = authorization,
+            bodyText =
+                authJson.encodeToString(
+                    AuthAcceptInviteRequestBody(
+                        token = token,
+                        agreementId = agreementId,
+                    )
+                ),
+            environment = environment,
         ).mapAuthBody(
             "auth_accept_invite_contract_mismatch",
             AuthInviteAcceptResponseDto.serializer(),
@@ -2764,50 +3020,96 @@ private fun AuthApiResult.Failure.inviteErrorBody(): AuthInviteErrorDto? =
         runCatching { authJson.decodeFromString(AuthInviteErrorDto.serializer(), body) }.getOrNull()
     }
 
+private fun String?.normalizedInviteWireCode(): String? =
+    this
+        ?.trim()
+        ?.lowercase()
+        ?.replace(Regex("[^a-z0-9]+"), "_")
+        ?.trim('_')
+        ?.takeIf { it.isNotBlank() }
+
+private fun String?.typedInviteErrorCode(): String? =
+    when (normalizedInviteWireCode()) {
+        "agreement_required" -> "agreement_required"
+        "agreement_changed" -> "agreement_changed"
+        "already_member" -> "already_member"
+        "seat_limit", "limit_reached", "usage_limit" -> "seat_limit"
+        "invalid_token", "invite_invalid", "invite_expired", "expired_token", "revoked_token" -> "invalid_token"
+        "auth_required" -> "auth_required"
+        "auth_authority_changed" -> AuthAuthorityChangedMessage
+        "rate_limited" -> "rate_limited"
+        "network", "network_error" -> "network"
+        else -> null
+    }
+
+private fun String?.legacyInviteErrorCode(): String? =
+    when (normalizedInviteWireCode()) {
+        "invalid_or_expired_invite",
+        "invalid_or_expired_token",
+        "invite_is_invalid_or_expired",
+        "invite_link_is_invalid_or_expired" -> "invalid_token"
+        "already_a_member",
+        "you_are_already_a_member" -> "already_member"
+        "human_seat_limit_reached",
+        "server_human_seat_limit_reached",
+        "server_has_no_available_human_seats" -> "seat_limit"
+        "agreement_required",
+        "agreement_changed" -> normalizedInviteWireCode()
+        else -> null
+    }
+
+private fun AuthApiResult.Failure.inviteStatusErrorCode(): String? =
+    when (code) {
+        0 -> "network"
+        401 -> "auth_required"
+        404 -> "invalid_token"
+        429 -> "rate_limited"
+        else -> null
+    }
+
 private fun AuthApiResult.Failure.toInviteInfoFailure(): SharedInviteInfoResult.Failure {
     val error = inviteErrorBody()
-    val errorCode = error?.error?.trim()?.lowercase().orEmpty().ifBlank {
-        when (code) {
-            404 -> "invalid_token"
-            429 -> "rate_limited"
-            else -> "invite_info_failed"
-        }
-    }
+    val errorCode =
+        inviteStatusErrorCode()
+            ?: error?.code.typedInviteErrorCode()
+            ?: error?.code.legacyInviteErrorCode()
+            ?: error?.error.typedInviteErrorCode()
+            ?: error?.error.legacyInviteErrorCode()
+            ?: "invite_info_failed"
     val message =
-        when {
-            code == 404 -> "This invite link is invalid or has expired."
-            code == 429 -> "Too many attempts. Please wait a minute and try again."
-            code == 0 -> "Could not reach Raft. Check your connection and try again."
-            code >= 500 -> "Failed to load invite link. Please try again."
-            else -> error?.message ?: error?.error ?: "Failed to load invite link. Please try again."
+        when (errorCode) {
+            "network" -> "Could not reach Raft. Check your connection and try again."
+            "auth_required" -> "Sign in again to continue."
+            "invalid_token" -> "This invite link is invalid or has expired."
+            "rate_limited" -> "Too many attempts. Please wait a minute and try again."
+            else -> if (code >= 500) {
+                "Failed to load invite link. Please try again."
+            } else {
+                "Failed to load invite link. Please try again."
+            }
         }
     return SharedInviteInfoResult.Failure(code = code, errorCode = errorCode, message = message)
 }
 
 private fun AuthApiResult.Failure.toInviteAcceptFailure(): SharedInviteAcceptResult {
     val error = inviteErrorBody()
-    val rawCode = error?.error?.trim()?.lowercase().orEmpty()
-    val normalizedCode = rawCode.replace('-', '_').replace(' ', '_')
     val errorCode =
-        when {
-            normalizedCode == "agreement_required" || normalizedCode == "agreement_changed" -> normalizedCode
-            normalizedCode.contains("seat_limit") || normalizedCode.contains("limit_reached") || normalizedCode.contains("usage_limit") -> "seat_limit"
-            normalizedCode.contains("already") -> "already_member"
-            normalizedCode.contains("invalid") || normalizedCode.contains("expired") || normalizedCode.contains("revoked") -> "invalid_token"
-            normalizedCode.isNotBlank() -> normalizedCode
-            code == 401 -> "auth_required"
-            code == 0 -> "network"
-            else -> "accept_failed"
-        }
+        inviteStatusErrorCode()
+            ?: error?.code.typedInviteErrorCode()
+            ?: error?.code.legacyInviteErrorCode()
+            ?: error?.error.typedInviteErrorCode()
+            ?: error?.error.legacyInviteErrorCode()
+            ?: "accept_failed"
     val message =
         when (errorCode) {
             "agreement_required", "agreement_changed" -> "Review the server agreement before joining."
-            "seat_limit" -> error?.error ?: "This server has no available human seats right now."
+            "seat_limit" -> "This server has no available human seats right now."
             "already_member" -> "You are already a member of this server."
             "invalid_token" -> "This invite link is invalid or has expired."
             "auth_required" -> "Sign in again to continue."
             "network" -> "Could not reach Raft. Check your connection and try again."
-            else -> error?.error ?: error?.message ?: "Failed to join server. Please try again."
+            "rate_limited" -> "Too many attempts. Please wait a minute and try again."
+            else -> "Failed to join server. Please try again."
         }
     val agreement = error?.agreement?.toDomain()
     if (
@@ -2931,6 +3233,7 @@ private fun AuthInviteAcceptResponseDto.toDomain(): AuthInviteAcceptResponse =
 
 @Serializable
 private data class AuthInviteErrorDto(
+    val code: String? = null,
     val error: String? = null,
     val message: String? = null,
     val agreement: AuthInviteAgreementDto? = null,

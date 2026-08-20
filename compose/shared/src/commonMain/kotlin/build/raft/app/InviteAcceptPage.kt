@@ -15,10 +15,13 @@ import build.raft.app.data.AuthAuthorityChangedMessage
 import build.raft.app.data.AuthInviteEnvironmentUnavailableCode
 import build.raft.app.data.BridgeSlockAvatarNativeCache
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.SharedInviteAcceptResult
 import build.raft.app.data.SharedInviteInfoResult
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.asGateState
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.resources.MR
@@ -81,8 +84,8 @@ private fun InviteAcceptScreen() {
             )
         }
     val authDataSource =
-        remember(sharedStores, avatarNativeCache) {
-            sharedStores.createAuthDataSourceForCurrentEnvironment(avatarNativeCache)
+        remember(sharedStores, avatarNativeCache, token) {
+            sharedStores.createAuthDataSourceForInvite(token, avatarNativeCache)
         }
     var state by remember(token) { mutableStateOf<InviteScreenState>(InviteScreenState.Loading) }
     var accepting by remember(token) { mutableStateOf(false) }
@@ -95,8 +98,17 @@ private fun InviteAcceptScreen() {
             state = InviteScreenState.Error("invalid_token")
             return@LaunchedEffect
         }
+        val existingSession =
+            (authDataSource.currentSession() as? SharedAuthResult.Success)?.data
+        if (existingSession != null && inviteAcceptGateState(existingSession) !is SharedAuthGateState.Ready) {
+            pager.openPostAuthRoute(existingSession, normalizedToken)
+            return@LaunchedEffect
+        }
         when (val infoResult = authDataSource.loadInviteInfo(normalizedToken)) {
-            is SharedInviteInfoResult.Failure -> state = InviteScreenState.Error(infoResult.errorCode)
+            is SharedInviteInfoResult.Failure -> {
+                sharedStores.clearInviteResume(normalizedToken)
+                state = InviteScreenState.Error(infoResult.errorCode)
+            }
             is SharedInviteInfoResult.Success -> {
                 val info = infoResult.data.copy(agreement = agreementOverride ?: infoResult.data.agreement)
                 val session = authDataSource.currentSession()
@@ -136,7 +148,10 @@ private fun InviteAcceptScreen() {
                 )
                 if (!completed) {
                     accepting = false
+                    sharedStores.clearInviteResume(normalizedToken)
                     state = InviteScreenState.Error(AuthAuthorityChangedMessage)
+                } else {
+                    sharedStores.clearInviteResume(normalizedToken)
                 }
             }
             is SharedInviteAcceptResult.AgreementRequired -> {
@@ -149,6 +164,7 @@ private fun InviteAcceptScreen() {
             }
             is SharedInviteAcceptResult.Failure -> {
                 accepting = false
+                sharedStores.clearInviteResume(normalizedToken)
                 state = InviteScreenState.Error(accepted.errorCode)
             }
             SharedInviteAcceptResult.Unauthenticated -> {
@@ -290,6 +306,9 @@ private fun InviteAcceptedContent(serverName: String) {
     )
 }
 
+/** Pending invite acceptance is admitted only after the canonical auth prerequisite ladder. */
+internal fun inviteAcceptGateState(session: StoredAuthSession): SharedAuthGateState = session.asGateState()
+
 @Composable
 private fun InviteCountText(count: Int, human: Boolean) {
     val text =
@@ -326,9 +345,25 @@ private suspend fun finishInvite(
     ownerAccountId: String,
     onAccepted: () -> Unit,
 ): Boolean {
+    authDataSource.logDiagnostics(
+        "auth_invite_accept_write_observed serverId=$serverId ownerAccountId=$ownerAccountId"
+    )
     val restored = runCatchingPreservingCancellation { authDataSource.restoreSession() }.getOrNull()
-    val restoredSession = (restored as? SharedAuthResult.Success)?.data ?: return false
-    if (ownerAccountId.isBlank() || restoredSession.user.id != ownerAccountId) return false
+    val restoredSession = (restored as? SharedAuthResult.Success)?.data
+    if (restoredSession == null) {
+        authDataSource.logDiagnostics(
+            "auth_invite_accept_completion_reconcile_result serverId=$serverId " +
+                "ownerAccountId=$ownerAccountId result=restore_unavailable"
+        )
+        return false
+    }
+    if (ownerAccountId.isBlank() || restoredSession.user.id != ownerAccountId) {
+        authDataSource.logCriticalDiagnostics(
+            "auth_invite_accept_completion_reconcile_result serverId=$serverId " +
+                "ownerAccountId=$ownerAccountId result=owner_changed"
+        )
+        return false
+    }
 
     // Selection is a CAS against the current account/token generation. Whether it succeeds or
     // fails because the server is not in the cached list, read the latest session before routing;
@@ -340,7 +375,20 @@ private suspend fun finishInvite(
         (runCatchingPreservingCancellation { authDataSource.currentSession() }.getOrNull()
             as? SharedAuthResult.Success)?.data
             ?: return false
-    if (currentSession.user.id != ownerAccountId) return false
+    if (currentSession.user.id != ownerAccountId) {
+        authDataSource.logCriticalDiagnostics(
+            "auth_invite_accept_completion_reconcile_result serverId=$serverId " +
+                "ownerAccountId=$ownerAccountId result=owner_changed_after_select"
+        )
+        return false
+    }
+    if (!authDataSource.inviteEnvironmentIsCurrent()) {
+        authDataSource.logCriticalDiagnostics(
+            "auth_invite_accept_completion_reconcile_result serverId=$serverId " +
+                "ownerAccountId=$ownerAccountId result=environment_changed"
+        )
+        return false
+    }
 
     onAccepted()
     pager.openPostAuthRoute(currentSession)
@@ -348,19 +396,21 @@ private suspend fun finishInvite(
 }
 
 internal fun Pager.openInviteAuthPage(pageName: String, token: String) {
+    val normalizedToken = normalizeSlockInviteTokenOrNull(token) ?: return
+    SlockSharedStoreRegistry.get(Utils.bridgeModule(pagerId)).captureInviteResume(normalizedToken)
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         pageName,
         authPageData(
             pageName = pageName,
             replaceCurrent = true,
-            pendingInviteToken = token,
+            pendingInviteToken = normalizedToken,
         ),
     )
 }
 
 internal fun Pager.openInviteAcceptPage(token: String, replaceCurrent: Boolean = true) {
-    val normalized = token.trim()
-    if (normalized.isBlank()) return
+    val normalized = normalizeSlockInviteTokenOrNull(token) ?: return
+    SlockSharedStoreRegistry.get(Utils.bridgeModule(pagerId)).captureInviteResume(normalized)
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         INVITE_ACCEPT_PAGE,
         inviteAcceptPageData(normalized, replaceCurrent),

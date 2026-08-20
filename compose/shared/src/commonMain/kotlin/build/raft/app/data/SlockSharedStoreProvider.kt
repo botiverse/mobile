@@ -415,6 +415,8 @@ internal class SlockSharedStoreProvider private constructor(
         SlockShellScopedStoreCache<SharedRealtimeRoomLeaseRegistry>()
     private val shellAdaptiveWorkspaceStores =
         SlockShellScopedStoreCache<SharedAdaptiveWorkspaceStore>()
+    /** Process-owned pending invite context; routes carry only the opaque token. */
+    internal val inviteResumeStore = SharedInviteResumeStore()
     private val processReadReceiptLock = SynchronizedObject()
     private var processReadReceiptCoordinator: ReadReceiptCoordinator? = null
     private val processReadReceiptRepositories = mutableMapOf<ReadReceiptOwner, RealReadReceiptRepository>()
@@ -1146,6 +1148,32 @@ internal class SlockSharedStoreProvider private constructor(
             avatarCacheRuntime = avatarCacheRuntime,
             avatarCacheNativeCache = avatarCacheNativeCache
         )
+
+    internal fun captureInviteResume(token: String): SharedInviteResumeContext? =
+        inviteResumeStore.capture(token, apiEnvironmentStore.currentSnapshot())
+
+    internal fun clearInviteResume(token: String? = null) {
+        inviteResumeStore.clear(token)
+    }
+
+    internal fun createAuthDataSourceForInvite(
+        token: String,
+        avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache,
+    ): SharedAuthDataSource {
+        val context = captureInviteResume(token)
+        val source = createAuthDataSourceForCurrentEnvironment(avatarCacheNativeCache)
+        return context?.let { source.bindToInviteEnvironment(it.environment) } ?: source
+    }
+
+    internal fun createAuthDataSourceForInvite(
+        scope: SlockShellStoreScope,
+        token: String,
+        avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache,
+    ): SharedAuthDataSource {
+        val context = captureInviteResume(token)
+        val source = createAuthDataSourceForCurrentEnvironment(scope, avatarCacheNativeCache)
+        return context?.let { source.bindToInviteEnvironment(it.environment) } ?: source
+    }
 
     fun markActiveAppShellPager(pagerId: String) {
         activeAppShellPagerOwner.markActive(pagerId)
@@ -2258,10 +2286,12 @@ internal fun createSharedAuthDataSourceForCurrentEnvironment(
     authStore: SlockAuthSessionStore,
     avatarCacheRuntime: SlockAvatarCacheRuntime? = null,
     avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache,
-    transportFactory: (() -> String) -> SlockAuthTransport = { baseUrlProvider ->
+    transportFactory: ((() -> String, () -> SharedApiEnvironmentSnapshot) -> SlockAuthTransport) =
+        { baseUrlProvider, environmentSnapshotProvider ->
         SharedSlockAuthTransport(
             baseUrlProvider = baseUrlProvider,
-            warningLogger = { message ->
+            inviteEnvironmentSnapshotProvider = environmentSnapshotProvider,
+            warningLogger = { message: String ->
                 slockLogWarn(SHARED_AUTH_LOG_TAG, "shared_auth_network $message")
             }
         )
@@ -2275,11 +2305,14 @@ internal fun createSharedAuthDataSourceForCurrentEnvironment(
         )
 ): SharedAuthDataSource =
     SharedAuthDataSource(
-        transport = transportFactory { apiEnvironmentStore.current().apiBaseUrl },
+        transport = transportFactory(
+            { apiEnvironmentStore.current().apiBaseUrl },
+            { apiEnvironmentStore.currentSnapshot() },
+        ),
         sessionStore = authStore,
         diagnosticsLogger = diagnosticsLogger,
         criticalDiagnosticsLogger = criticalDiagnosticsLogger,
-        inviteEnvironmentKey = { apiEnvironmentStore.current().key },
+        inviteEnvironmentSnapshotProvider = { apiEnvironmentStore.currentSnapshot() },
     ).withAvatarCacheRuntime(
         runtime = avatarCacheRuntime,
         nativeCache = avatarCacheNativeCache,

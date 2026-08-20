@@ -413,6 +413,37 @@ class IosMobileOAuthCoordinatorTest {
     }
 
     @Test
+    fun pendingInviteOAuthCallbackGenerationDriftFailsBeforeCredentialCompletion() = runBlocking {
+        val runtime = FakeRuntime(environmentKey = "production")
+        val fixture = fixture(runtime)
+        val start =
+            fixture.coordinator.startBrowser(
+                provider = "google",
+                mode = "login",
+                generation = "invite-generation",
+                codeVerifier = Verifier,
+                codeChallenge = Challenge,
+                pendingInviteToken = "invite-token",
+            )
+        assertEquals("started", start.status)
+        assertEquals(0L, fixture.pendingStore.read()?.environmentGeneration)
+
+        runtime.environmentGeneration = 1L
+        val result =
+            fixture.coordinator.complete(
+                fixture.callback(
+                    code = "invite-handoff",
+                    expectedGeneration = "invite-generation",
+                )
+            )
+
+        assertEquals("login_error", result.status)
+        assertTrue(result.message.orEmpty().contains("environment", ignoreCase = true))
+        assertEquals(0, runtime.loginCompleteCount)
+        assertNull(fixture.pendingStore.read())
+    }
+
+    @Test
     fun runtimeNotReadyRetryPreservesAndReturnsExactGenerationForFencedCleanup() = runBlocking {
         val runtime = FakeRuntime(environmentKey = "production")
         var availableRuntime: IosMobileOAuthRuntime? = runtime
@@ -565,6 +596,21 @@ class IosMobileOAuthCoordinatorTest {
     private class FakeRuntime(
         override var environmentKey: String,
     ) : IosMobileOAuthRuntime {
+        var environmentGeneration: Long = 0L
+
+        override val environmentSnapshot: SharedApiEnvironmentSnapshot
+            get() =
+                SharedApiEnvironmentSnapshot(
+                    key = environmentKey,
+                    apiBaseUrl =
+                        if (environmentKey == SharedApiEnvironmentStore.Production.key) {
+                            SharedApiEnvironmentStore.Production.apiBaseUrl
+                        } else {
+                            environmentKey
+                        },
+                    generation = environmentGeneration,
+                )
+
         data class LoginStart(
             val provider: String,
             val platform: String,

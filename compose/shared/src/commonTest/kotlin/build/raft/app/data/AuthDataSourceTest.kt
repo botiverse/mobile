@@ -2095,6 +2095,129 @@ class AuthDataSourceTest {
         assertEquals("user-1", store.readSession()?.user?.id)
     }
 
+    @Test
+    fun inviteInfoMapsStatusBeforeHumanReadableErrorText() = runBlocking {
+        val cases = listOf(
+            404 to "invalid_token",
+            429 to "rate_limited",
+            0 to "network",
+        )
+
+        cases.forEach { (status, expectedCode) ->
+            val source =
+                SharedAuthDataSource(
+                    transport =
+                        FakeAuthApi(
+                            inviteInfoResponse =
+                                AuthNetworkResponse(
+                                    status,
+                                    null,
+                                    """{"error":"Invalid or expired invite","message":"server wording changed"}""",
+                                )
+                        ),
+                    sessionStore = InMemorySlockAuthSessionStore(),
+                )
+
+            val result = source.loadInviteInfo("invite-token")
+
+            assertTrue(result is SharedInviteInfoResult.Failure)
+            assertEquals(expectedCode, result.errorCode, "status=$status")
+        }
+    }
+
+    @Test
+    fun acceptInviteUsesTypedServerCodeBeforeLegacyMessage() = runBlocking {
+        val source =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        acceptInviteResponse =
+                            AuthNetworkResponse(
+                                401,
+                                null,
+                                """{"error":"Invalid or expired token","code":"auth_required"}""",
+                            )
+                    ),
+                sessionStore = InMemorySlockAuthSessionStore(storedSession()),
+            )
+
+        val result = source.acceptInvite("invite-token")
+
+        assertTrue(result is SharedInviteAcceptResult.Failure)
+        assertEquals("auth_required", result.errorCode)
+    }
+
+    @Test
+    fun acceptInviteMapsTypedRateLimitAndAgreementCodes() = runBlocking {
+        val rateLimited =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        acceptInviteResponse =
+                            AuthNetworkResponse(
+                                409,
+                                null,
+                                """{"error":"unexpected server wording","code":"rate_limited"}""",
+                            )
+                    ),
+                sessionStore = InMemorySlockAuthSessionStore(storedSession()),
+            ).acceptInvite("invite-token")
+        assertTrue(rateLimited is SharedInviteAcceptResult.Failure)
+        assertEquals("rate_limited", rateLimited.errorCode)
+
+        val agreement =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        acceptInviteResponse =
+                            AuthNetworkResponse(
+                                409,
+                                null,
+                                """{"error":"changed server wording","code":"agreement_required","agreement":{"id":"agreement-1","title":"Rules","bodyMarkdown":"Be kind.","version":2}}""",
+                            )
+                    ),
+                sessionStore = InMemorySlockAuthSessionStore(storedSession()),
+            ).acceptInvite("invite-token")
+        assertTrue(agreement is SharedInviteAcceptResult.AgreementRequired)
+        assertEquals("agreement-1", agreement.agreement.id)
+    }
+
+    @Test
+    fun inviteLegalOAuthCompletionDriftFailsBeforeCredentialEgress() = runBlocking {
+        var liveEnvironment =
+            SharedApiEnvironmentSnapshot(
+                key = SharedApiEnvironmentStore.Production.key,
+                apiBaseUrl = SharedApiEnvironmentStore.Production.apiBaseUrl,
+                generation = 0L,
+            )
+        val api = FakeAuthApi()
+        val source =
+            SharedAuthDataSource(
+                transport = api,
+                sessionStore = InMemorySlockAuthSessionStore(),
+                inviteEnvironmentSnapshotProvider = { liveEnvironment },
+            )
+        val bound = source.bindToInviteEnvironment(liveEnvironment)
+        liveEnvironment =
+            SharedApiEnvironmentSnapshot(
+                key = SharedApiEnvironmentStore.Staging.key,
+                apiBaseUrl = SharedApiEnvironmentStore.Staging.apiBaseUrl,
+                generation = 1L,
+            )
+
+        val result =
+            bound.completeMobileOAuthLogin(
+                code = "oauth-code",
+                codeVerifier = "oauth-verifier",
+                platform = "ios",
+                acceptLegalTerms = true,
+            )
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals(AuthAuthorityChangedMessage, result.message)
+        assertNull(api.mobileOAuthCompleteBody)
+    }
+
     private fun storedSession(accessToken: String = "access-token"): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),

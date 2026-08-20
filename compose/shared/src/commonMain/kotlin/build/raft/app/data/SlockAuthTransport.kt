@@ -1,6 +1,13 @@
 package build.raft.app.data
 
 interface SlockAuthTransport {
+    /**
+     * Returns a request view whose endpoint and environment generation are captured for the
+     * lifetime of the view. Auth-resume flows use this rather than re-reading the mutable
+     * developer environment at dispatch time.
+     */
+    fun bindToEnvironment(environment: SharedApiEnvironmentSnapshot): SlockAuthTransport = this
+
     suspend fun login(bodyText: String): AuthNetworkResponse
     suspend fun completeSocialLogin(provider: String, bodyText: String): AuthNetworkResponse
     suspend fun socialAuthProviders(platform: String): AuthNetworkResponse
@@ -25,13 +32,28 @@ interface SlockAuthTransport {
         attemptId: String,
         installationId: String,
     ): AuthNetworkResponse = refresh(bodyText)
+    suspend fun refreshWithAttemptForEnvironment(
+        bodyText: String,
+        attemptId: String,
+        installationId: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): AuthNetworkResponse = refreshWithAttempt(bodyText, attemptId, installationId)
     suspend fun logout(bodyText: String): AuthNetworkResponse
     suspend fun servers(authorization: String): AuthNetworkResponse
     suspend fun serverOrder(authorization: String): AuthNetworkResponse
     suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse
     suspend fun inviteInfo(token: String): AuthNetworkResponse = AuthNetworkResponse(501, null)
+    suspend fun inviteInfoForEnvironment(
+        token: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): AuthNetworkResponse = inviteInfo(token)
     suspend fun acceptInvite(authorization: String, bodyText: String): AuthNetworkResponse =
         AuthNetworkResponse(501, null)
+    suspend fun acceptInviteForEnvironment(
+        authorization: String,
+        bodyText: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): AuthNetworkResponse = acceptInvite(authorization, bodyText)
     suspend fun consumeQaBootstrap(bodyText: String): AuthNetworkResponse = AuthNetworkResponse(501, null)
     suspend fun readyQaBootstrap(ticketDigest: String, authorization: String, bodyText: String): AuthNetworkResponse =
         AuthNetworkResponse(501, null)

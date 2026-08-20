@@ -554,15 +554,20 @@ class SharedSlockAuthTransport internal constructor(
     private val baseUrlProvider: () -> String,
     private val executor: SlockHttpExecutor,
     private val warningLogger: (String) -> Unit = {},
-    private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler()
+    private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler(),
+    private val inviteEnvironmentSnapshotProvider: (() -> SharedApiEnvironmentSnapshot)? = null,
+    private val boundEnvironment: SharedApiEnvironmentSnapshot? = null,
+    private val boundEnvironmentMustBeProduction: Boolean = false,
 ) : SlockAuthTransport {
     internal constructor(
         baseUrlProvider: () -> String,
-        warningLogger: (String) -> Unit = {}
+        warningLogger: (String) -> Unit = {},
+        inviteEnvironmentSnapshotProvider: (() -> SharedApiEnvironmentSnapshot)? = null,
     ) : this(
         baseUrlProvider = baseUrlProvider,
         executor = createPlatformSlockHttpExecutor(warningLogger),
-        warningLogger = warningLogger
+        warningLogger = warningLogger,
+        inviteEnvironmentSnapshotProvider = inviteEnvironmentSnapshotProvider,
     )
 
     internal constructor(
@@ -585,6 +590,17 @@ class SharedSlockAuthTransport internal constructor(
         executor = createPlatformSlockHttpExecutor(warningLogger),
         warningLogger = warningLogger
     )
+
+    override fun bindToEnvironment(environment: SharedApiEnvironmentSnapshot): SlockAuthTransport =
+        SharedSlockAuthTransport(
+            baseUrlProvider = baseUrlProvider,
+            executor = executor,
+            warningLogger = warningLogger,
+            requestScheduler = requestScheduler,
+            inviteEnvironmentSnapshotProvider = inviteEnvironmentSnapshotProvider,
+            boundEnvironment = environment,
+            boundEnvironmentMustBeProduction = true,
+        )
 
     override suspend fun login(bodyText: String): AuthNetworkResponse =
         request(path = "auth/login", method = "POST", bodyText = bodyText)
@@ -680,6 +696,24 @@ class SharedSlockAuthTransport internal constructor(
                 ),
         )
 
+    override suspend fun refreshWithAttemptForEnvironment(
+        bodyText: String,
+        attemptId: String,
+        installationId: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): AuthNetworkResponse =
+        request(
+            path = "auth/refresh",
+            method = "POST",
+            bodyText = bodyText,
+            extraHeaders =
+                mapOf(
+                    SLOCK_AUTH_REFRESH_ATTEMPT_HEADER to attemptId,
+                    SLOCK_AUTH_INSTALLATION_HEADER to installationId,
+                ),
+            expectedInviteEnvironment = environment,
+        )
+
     override suspend fun logout(bodyText: String): AuthNetworkResponse =
         request(path = "auth/logout", method = "POST", bodyText = bodyText)
 
@@ -698,12 +732,35 @@ class SharedSlockAuthTransport internal constructor(
             method = "GET",
         )
 
+    override suspend fun inviteInfoForEnvironment(
+        token: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): AuthNetworkResponse =
+        request(
+            path = "auth/invite-info?token=${token.percentEncode()}",
+            method = "GET",
+            expectedInviteEnvironment = environment,
+        )
+
     override suspend fun acceptInvite(authorization: String, bodyText: String): AuthNetworkResponse =
         request(
             path = "auth/accept-invite",
             method = "POST",
             authorization = authorization,
             bodyText = bodyText,
+        )
+
+    override suspend fun acceptInviteForEnvironment(
+        authorization: String,
+        bodyText: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): AuthNetworkResponse =
+        request(
+            path = "auth/accept-invite",
+            method = "POST",
+            authorization = authorization,
+            bodyText = bodyText,
+            expectedInviteEnvironment = environment,
         )
 
     override suspend fun consumeQaBootstrap(bodyText: String): AuthNetworkResponse =
@@ -734,25 +791,49 @@ class SharedSlockAuthTransport internal constructor(
         authorization: String? = null,
         bodyText: String? = null,
         extraHeaders: Map<String, String> = emptyMap(),
+        expectedInviteEnvironment: SharedApiEnvironmentSnapshot? = null,
     ): AuthNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val normalizedMethod = method.uppercase()
         val diagnosticPath = path.authTransportDiagnosticsPath()
         val requestBytes = (bodyText?.encodeToByteArray()?.size ?: 0).toLong()
+        val expectedEnvironment = boundEnvironment ?: expectedInviteEnvironment
         warningLogger(
             "slock_auth_transport_start path=$diagnosticPath method=$normalizedMethod " +
                 "authorizationPresent=${authorization != null} requestBytes=$requestBytes"
         )
         val response =
             try {
+                if (boundEnvironmentMustBeProduction && !boundEnvironment.isProductionEnvironment()) {
+                    return inviteEnvironmentChangedAuthResponse()
+                }
+                if (boundEnvironment != null && expectedInviteEnvironment != null &&
+                    boundEnvironment != expectedInviteEnvironment
+                ) {
+                    return inviteEnvironmentChangedAuthResponse()
+                }
+                if (expectedEnvironment != null &&
+                    !inviteEnvironmentMatches(expectedEnvironment)
+                ) {
+                    return inviteEnvironmentChangedAuthResponse()
+                }
                 requestScheduler.run(
                     priority = SlockRequestPriority.Foreground,
                     key = diagnosticPath,
                     reason = normalizedMethod
                 ) {
-                    executor.execute(
+                    if (boundEnvironmentMustBeProduction && !boundEnvironment.isProductionEnvironment()) {
+                        return@run inviteEnvironmentChangedExecutorResponse()
+                    }
+                    if (expectedEnvironment != null &&
+                        !inviteEnvironmentMatches(expectedEnvironment)
+                    ) {
+                        return@run inviteEnvironmentChangedExecutorResponse()
+                    }
+                    val requestBaseUrl = expectedEnvironment?.apiBaseUrl ?: baseUrlProvider()
+                    val response = executor.execute(
                         priority = SlockRequestPriority.Foreground,
-                        url = "${baseUrlProvider().trimEnd('/')}/${path.trimStart('/')}",
+                        url = "${requestBaseUrl.trimEnd('/')}/${path.trimStart('/')}",
                         method = normalizedMethod,
                         headers =
                             buildMap {
@@ -762,6 +843,11 @@ class SharedSlockAuthTransport internal constructor(
                         bodyText = bodyText,
                         jsonBody = bodyText != null
                     )
+                    if (expectedEnvironment != null && !inviteEnvironmentMatches(expectedEnvironment)) {
+                        inviteEnvironmentChangedExecutorResponse()
+                    } else {
+                        response
+                    }
                 }
             } catch (timeout: SlockRequestTimeoutException) {
                 return timeout.toTimeoutAuthNetworkResponse(
@@ -794,7 +880,34 @@ class SharedSlockAuthTransport internal constructor(
         }
         return response.toAuthNetworkResponse()
     }
+
+    private fun inviteEnvironmentMatches(expected: SharedApiEnvironmentSnapshot): Boolean =
+        runCatching {
+            inviteEnvironmentSnapshotProvider?.invoke()?.let { current ->
+                current == expected
+            } ?: (baseUrlProvider().normalizedEnvironmentId() == expected.apiBaseUrl.normalizedEnvironmentId())
+        }.getOrDefault(false)
 }
+
+private fun SharedApiEnvironmentSnapshot?.isProductionEnvironment(): Boolean =
+    this != null &&
+        key == SharedApiEnvironmentStore.Production.key &&
+        apiBaseUrl.normalizedEnvironmentId() ==
+            SharedApiEnvironmentStore.Production.apiBaseUrl.normalizedEnvironmentId()
+
+private fun inviteEnvironmentChangedAuthResponse(): AuthNetworkResponse =
+    AuthNetworkResponse(
+        code = 409,
+        bodyText = null,
+        errorBodyText = """{"error":"auth_authority_changed"}""",
+    )
+
+private fun inviteEnvironmentChangedExecutorResponse(): SlockHttpExecutorResponse =
+    SlockHttpExecutorResponse(
+        code = 409,
+        bodyText = null,
+        errorBodyText = """{"error":"auth_authority_changed"}""",
+    )
 
 internal const val SLOCK_AUTH_REFRESH_ATTEMPT_HEADER = "X-Slock-Auth-Refresh-Attempt-Id"
 internal const val SLOCK_AUTH_INSTALLATION_HEADER = "X-Slock-Auth-Installation-Id"

@@ -132,6 +132,7 @@ private fun Set<AuthProvider>.visibleMobileSocialAuthProviders(): Set<AuthProvid
 
 @Composable
 private fun rememberCurrentEnvironmentAuthDataSource(bridge: BridgeModule): SharedAuthDataSource {
+    val pager = LocalActivity.current.getPager() as Pager
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val bridgeCallScope = rememberCoroutineScope()
     val avatarNativeCache =
@@ -141,8 +142,16 @@ private fun rememberCurrentEnvironmentAuthDataSource(bridge: BridgeModule): Shar
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
             )
         }
-    return remember(sharedStores, avatarNativeCache) {
-        sharedStores.createAuthDataSourceForCurrentEnvironment(avatarNativeCache)
+    val pageDataSignature = pager.pageData.params.toString()
+    val pendingInviteToken = remember(pageDataSignature) {
+        normalizeSlockInviteTokenOrNull(pager.pageData.params.optString(AUTH_PENDING_INVITE_TOKEN_KEY))
+    }
+    return remember(sharedStores, avatarNativeCache, pendingInviteToken) {
+        if (pendingInviteToken != null) {
+            sharedStores.createAuthDataSourceForInvite(pendingInviteToken, avatarNativeCache)
+        } else {
+            sharedStores.createAuthDataSourceForCurrentEnvironment(avatarNativeCache)
+        }
     }
 }
 
@@ -2103,18 +2112,15 @@ internal fun Pager.openPostAuthRoute(
 ) {
     val normalizedInviteToken = normalizeSlockInviteTokenOrNull(pendingInviteToken)
     if (normalizedInviteToken != null) {
-        if (session.user.requiresProfileSetup) {
-            acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
-                AUTH_PROFILE_SETUP_PAGE,
-                authPageData(
-                    pageName = AUTH_PROFILE_SETUP_PAGE,
-                    replaceCurrent = true,
-                    pendingInviteToken = normalizedInviteToken,
-                ),
-            )
-        } else {
-            openInviteAcceptPage(normalizedInviteToken)
-        }
+        SlockSharedStoreRegistry.get(Utils.bridgeModule(pagerId)).captureInviteResume(normalizedInviteToken)
+        acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+            SLOCK_APP_SHELL_PAGE,
+            appShellPageData(
+                replaceCurrent = true,
+                suppressRestoreLanding = true,
+                pendingInviteToken = normalizedInviteToken,
+            ),
+        )
         return
     }
     val destination = postAuthRouteDestination(session)
@@ -2125,10 +2131,14 @@ internal fun Pager.openPostAuthRoute(
         )
 }
 
-internal fun Pager.openAuthProfileSetupReplacingCurrentPage() {
+internal fun Pager.openAuthProfileSetupReplacingCurrentPage(pendingInviteToken: String? = null) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         AUTH_PROFILE_SETUP_PAGE,
-        authPageData(pageName = AUTH_PROFILE_SETUP_PAGE, replaceCurrent = true)
+        authPageData(
+            pageName = AUTH_PROFILE_SETUP_PAGE,
+            replaceCurrent = true,
+            pendingInviteToken = pendingInviteToken,
+        )
     )
 }
 

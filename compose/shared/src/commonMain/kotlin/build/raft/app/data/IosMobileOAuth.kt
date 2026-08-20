@@ -64,6 +64,8 @@ internal data class IosMobileOAuthPendingRequest(
     val callbackScheme: String,
     val environmentKey: String,
     val startedAtMillis: Long,
+    val environmentApiBaseUrl: String = "",
+    val environmentGeneration: Long = 0L,
     val inviteToken: String? = null,
 )
 
@@ -82,6 +84,8 @@ internal class IosMobileOAuthPendingStore(
         store.putString(KEY_GENERATION, request.generation)
         store.putString(KEY_CALLBACK_SCHEME, request.callbackScheme)
         store.putString(KEY_ENVIRONMENT_KEY, request.environmentKey)
+        store.putString(KEY_ENVIRONMENT_API_BASE_URL, request.environmentApiBaseUrl)
+        store.putString(KEY_ENVIRONMENT_GENERATION, request.environmentGeneration.toString())
         store.putString(KEY_STARTED_AT_MILLIS, request.startedAtMillis.toString())
         store.putString(KEY_INVITE_TOKEN, request.inviteToken)
         store.putString(KEY_COMMITTED_GENERATION, request.generation)
@@ -98,6 +102,9 @@ internal class IosMobileOAuthPendingStore(
         val mode = store.getString(KEY_MODE).orEmpty()
         val callbackScheme = store.getString(KEY_CALLBACK_SCHEME).orEmpty()
         val environmentKey = store.getString(KEY_ENVIRONMENT_KEY).orEmpty()
+        val environmentApiBaseUrl = store.getString(KEY_ENVIRONMENT_API_BASE_URL).orEmpty()
+        val environmentGeneration = store.getString(KEY_ENVIRONMENT_GENERATION)?.toLongOrNull()
+            ?: return null
         val startedAtMillis = store.getString(KEY_STARTED_AT_MILLIS)?.toLongOrNull() ?: return null
         val inviteToken =
             store.getString(KEY_INVITE_TOKEN)?.let(::normalizeSlockInviteTokenOrNull)
@@ -109,7 +116,8 @@ internal class IosMobileOAuthPendingStore(
             (provider == "apple") != (requestToken != null) ||
             mode !in IosMobileOAuthModes ||
             callbackScheme !in setOf("raft", "raft-alpha", "raft-beta", "raft-debug") ||
-            environmentKey.isBlank()
+            environmentKey.isBlank() ||
+            environmentApiBaseUrl.isBlank()
         ) {
             return null
         }
@@ -122,6 +130,8 @@ internal class IosMobileOAuthPendingStore(
             generation = generation,
             callbackScheme = callbackScheme,
             environmentKey = environmentKey,
+            environmentApiBaseUrl = environmentApiBaseUrl,
+            environmentGeneration = environmentGeneration,
             startedAtMillis = startedAtMillis,
             inviteToken = inviteToken,
         )
@@ -137,6 +147,8 @@ internal class IosMobileOAuthPendingStore(
         store.putString(KEY_GENERATION, null)
         store.putString(KEY_CALLBACK_SCHEME, null)
         store.putString(KEY_ENVIRONMENT_KEY, null)
+        store.putString(KEY_ENVIRONMENT_API_BASE_URL, null)
+        store.putString(KEY_ENVIRONMENT_GENERATION, null)
         store.putString(KEY_STARTED_AT_MILLIS, null)
         store.putString(KEY_INVITE_TOKEN, null)
     }
@@ -151,6 +163,8 @@ internal class IosMobileOAuthPendingStore(
         const val KEY_GENERATION = "generation"
         const val KEY_CALLBACK_SCHEME = "callbackScheme"
         const val KEY_ENVIRONMENT_KEY = "environmentKey"
+        const val KEY_ENVIRONMENT_API_BASE_URL = "environmentApiBaseUrl"
+        const val KEY_ENVIRONMENT_GENERATION = "environmentGeneration"
         const val KEY_STARTED_AT_MILLIS = "startedAtMillis"
         const val KEY_INVITE_TOKEN = "inviteToken"
     }
@@ -192,6 +206,20 @@ internal sealed interface IosMobileOAuthLinkOutcome {
 internal interface IosMobileOAuthRuntime {
     val environmentKey: String
 
+    /** Reads the live environment witness; unlike the legacy key, this is not construction-time state. */
+    val environmentSnapshot: SharedApiEnvironmentSnapshot
+        get() =
+            SharedApiEnvironmentSnapshot(
+                key = environmentKey.trim().ifBlank { SharedApiEnvironmentStore.Production.key },
+                apiBaseUrl =
+                    if (environmentKey.trim().equals(SharedApiEnvironmentStore.Production.key, ignoreCase = true)) {
+                        SharedApiEnvironmentStore.Production.apiBaseUrl
+                    } else {
+                        environmentKey.trim()
+                    },
+                generation = 0L,
+            )
+
     suspend fun startBrowserLogin(
         provider: String,
         platform: String,
@@ -199,6 +227,16 @@ internal interface IosMobileOAuthRuntime {
         returnUri: String,
         codeChallenge: String,
     ): IosMobileOAuthStartOutcome
+
+    suspend fun startBrowserLoginForEnvironment(
+        provider: String,
+        platform: String,
+        appEnv: String,
+        returnUri: String,
+        codeChallenge: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): IosMobileOAuthStartOutcome =
+        startBrowserLogin(provider, platform, appEnv, returnUri, codeChallenge)
 
     suspend fun startBrowserLink(
         provider: String,
@@ -213,6 +251,15 @@ internal interface IosMobileOAuthRuntime {
         codeChallenge: String,
     ): IosNativeAppleStartOutcome
 
+    suspend fun startNativeAppleForEnvironment(
+        mode: String,
+        appEnv: String,
+        returnUri: String,
+        codeChallenge: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): IosNativeAppleStartOutcome =
+        startNativeApple(mode, appEnv, returnUri, codeChallenge)
+
     suspend fun authorizeNativeApple(
         mode: String,
         requestId: String,
@@ -221,11 +268,29 @@ internal interface IosMobileOAuthRuntime {
         identityToken: String,
     ): IosNativeAppleAuthorizationOutcome
 
+    suspend fun authorizeNativeAppleForEnvironment(
+        mode: String,
+        requestId: String,
+        requestToken: String,
+        authorizationCode: String,
+        identityToken: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): IosNativeAppleAuthorizationOutcome =
+        authorizeNativeApple(mode, requestId, requestToken, authorizationCode, identityToken)
+
     suspend fun completeLogin(
         code: String,
         codeVerifier: String,
         platform: String,
     ): IosMobileOAuthLoginOutcome
+
+    suspend fun completeLoginForEnvironment(
+        code: String,
+        codeVerifier: String,
+        platform: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): IosMobileOAuthLoginOutcome =
+        completeLogin(code, codeVerifier, platform)
 
     suspend fun completeLink(
         provider: String,
@@ -235,11 +300,18 @@ internal interface IosMobileOAuthRuntime {
 }
 
 private class SharedIosMobileOAuthRuntime(
-    provider: SlockSharedStoreProvider,
+    private val provider: SlockSharedStoreProvider,
 ) : IosMobileOAuthRuntime {
     private val authDataSource = provider.createAuthDataSourceForCurrentEnvironment()
 
-    override val environmentKey: String = provider.apiEnvironmentStore.current().key
+    override val environmentKey: String
+        get() = provider.apiEnvironmentStore.current().key
+
+    override val environmentSnapshot: SharedApiEnvironmentSnapshot
+        get() = provider.apiEnvironmentStore.currentSnapshot()
+
+    private fun authDataSourceFor(environment: SharedApiEnvironmentSnapshot? = null): SharedAuthDataSource =
+        environment?.let { authDataSource.bindToInviteEnvironment(it) } ?: authDataSource
 
     override suspend fun startBrowserLogin(
         provider: String,
@@ -249,6 +321,22 @@ private class SharedIosMobileOAuthRuntime(
         codeChallenge: String,
     ): IosMobileOAuthStartOutcome =
         authDataSource.startMobileOAuthLogin(
+            provider = provider,
+            platform = platform,
+            appEnv = appEnv,
+            returnUri = returnUri,
+            codeChallenge = codeChallenge,
+        ).toIosStartOutcome()
+
+    override suspend fun startBrowserLoginForEnvironment(
+        provider: String,
+        platform: String,
+        appEnv: String,
+        returnUri: String,
+        codeChallenge: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): IosMobileOAuthStartOutcome =
+        authDataSourceFor(environment).startMobileOAuthLogin(
             provider = provider,
             platform = platform,
             appEnv = appEnv,
@@ -287,6 +375,27 @@ private class SharedIosMobileOAuthRuntime(
             )
         }).toIosNativeAppleStartOutcome()
 
+    override suspend fun startNativeAppleForEnvironment(
+        mode: String,
+        appEnv: String,
+        returnUri: String,
+        codeChallenge: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): IosNativeAppleStartOutcome =
+        (if (mode == IOS_MOBILE_OAUTH_LOGIN_MODE) {
+            authDataSourceFor(environment).startNativeAppleMobileOAuthLogin(
+                appEnv = appEnv,
+                returnUri = returnUri,
+                codeChallenge = codeChallenge,
+            )
+        } else {
+            authDataSourceFor(environment).startNativeAppleMobileOAuthLink(
+                appEnv = appEnv,
+                returnUri = returnUri,
+                codeChallenge = codeChallenge,
+            )
+        }).toIosNativeAppleStartOutcome()
+
     override suspend fun authorizeNativeApple(
         mode: String,
         requestId: String,
@@ -310,6 +419,30 @@ private class SharedIosMobileOAuthRuntime(
             )
         }).toIosNativeAppleAuthorizationOutcome()
 
+    override suspend fun authorizeNativeAppleForEnvironment(
+        mode: String,
+        requestId: String,
+        requestToken: String,
+        authorizationCode: String,
+        identityToken: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): IosNativeAppleAuthorizationOutcome =
+        (if (mode == IOS_MOBILE_OAUTH_LOGIN_MODE) {
+            authDataSourceFor(environment).authorizeNativeAppleMobileOAuthLogin(
+                requestId = requestId,
+                requestToken = requestToken,
+                authorizationCode = authorizationCode,
+                identityToken = identityToken,
+            )
+        } else {
+            authDataSourceFor(environment).authorizeNativeAppleMobileOAuthLink(
+                requestId = requestId,
+                requestToken = requestToken,
+                authorizationCode = authorizationCode,
+                identityToken = identityToken,
+            )
+        }).toIosNativeAppleAuthorizationOutcome()
+
     override suspend fun completeLogin(
         code: String,
         codeVerifier: String,
@@ -318,6 +451,31 @@ private class SharedIosMobileOAuthRuntime(
         when (
             val result =
                 authDataSource.completeMobileOAuthLogin(
+                    code = code,
+                    codeVerifier = codeVerifier,
+                    platform = platform,
+                )
+        ) {
+            is SharedAuthResult.Success ->
+                IosMobileOAuthLoginOutcome.Success(result.data.selectedServerId)
+            is SharedAuthResult.Failure ->
+                if (result.code == SharedAuthErrorCode.LegalAcceptanceRequired) {
+                    IosMobileOAuthLoginOutcome.LegalAcceptanceRequired(result.message)
+                } else {
+                    IosMobileOAuthLoginOutcome.Failure(result.message)
+                }
+            SharedAuthResult.Unauthenticated -> IosMobileOAuthLoginOutcome.Unauthenticated
+        }
+
+    override suspend fun completeLoginForEnvironment(
+        code: String,
+        codeVerifier: String,
+        platform: String,
+        environment: SharedApiEnvironmentSnapshot,
+    ): IosMobileOAuthLoginOutcome =
+        when (
+            val result =
+                authDataSourceFor(environment).completeMobileOAuthLogin(
                     code = code,
                     codeVerifier = codeVerifier,
                     platform = platform,
@@ -373,6 +531,29 @@ private fun SharedAuthResult<AuthNativeAppleMobileOAuthAuthorizationResponse>.to
         is SharedAuthResult.Failure -> IosNativeAppleAuthorizationOutcome.Failure(message)
         SharedAuthResult.Unauthenticated -> IosNativeAppleAuthorizationOutcome.Unauthenticated
     }
+
+private fun SharedApiEnvironmentSnapshot.isProduction(): Boolean =
+    key == SharedApiEnvironmentStore.Production.key &&
+        apiBaseUrl.normalizedEnvironmentId() ==
+            SharedApiEnvironmentStore.Production.apiBaseUrl.normalizedEnvironmentId()
+
+private fun IosMobileOAuthPendingRequest.environmentSnapshot(): SharedApiEnvironmentSnapshot =
+    SharedApiEnvironmentSnapshot(
+        key = environmentKey,
+        apiBaseUrl = environmentApiBaseUrl,
+        generation = environmentGeneration,
+    )
+
+private fun IosMobileOAuthRuntime.matchesPendingEnvironment(
+    pending: IosMobileOAuthPendingRequest,
+): Boolean {
+    val current = environmentSnapshot
+    return if (pending.inviteToken != null) {
+        current == pending.environmentSnapshot()
+    } else {
+        current.key.trim() == pending.environmentKey.trim()
+    }
+}
 
 internal data class IosMobileOAuthCallback(
     val scheme: String?,
@@ -485,7 +666,14 @@ internal class IosMobileOAuthCoordinator(
                     code = "ios_mobile_oauth_runtime_not_ready",
                     message = "Raft is still starting. Try again.",
                 )
-            val environmentKey = runtime.environmentKey.trim().ifBlank { "production" }
+            val environment = runtime.environmentSnapshot
+            if (normalizedInviteToken != null && !environment.isProduction()) {
+                return@withLock startError(
+                    code = AuthInviteEnvironmentUnavailableCode,
+                    message = AuthInviteEnvironmentUnavailableMessage,
+                )
+            }
+            val environmentKey = environment.key.trim().ifBlank { "production" }
             val returnUri = when {
                 returnUriOverride == null -> iosMobileOAuthReturnUri(environmentKey)
                 isApprovedMobileOAuthReturnUri(returnUriOverride) -> returnUriOverride
@@ -497,13 +685,24 @@ internal class IosMobileOAuthCoordinator(
             val outcome =
                 runCatchingPreservingCancellation {
                     if (normalizedMode == IOS_MOBILE_OAUTH_LOGIN_MODE) {
-                        runtime.startBrowserLogin(
-                            provider = normalizedProvider,
-                            platform = "ios",
-                            appEnv = environmentKey,
-                            returnUri = returnUri,
-                            codeChallenge = codeChallenge,
-                        )
+                        if (normalizedInviteToken != null) {
+                            runtime.startBrowserLoginForEnvironment(
+                                provider = normalizedProvider,
+                                platform = "ios",
+                                appEnv = environmentKey,
+                                returnUri = returnUri,
+                                codeChallenge = codeChallenge,
+                                environment = environment,
+                            )
+                        } else {
+                            runtime.startBrowserLogin(
+                                provider = normalizedProvider,
+                                platform = "ios",
+                                appEnv = environmentKey,
+                                returnUri = returnUri,
+                                codeChallenge = codeChallenge,
+                            )
+                        }
                     } else {
                         runtime.startBrowserLink(
                             provider = normalizedProvider,
@@ -541,6 +740,8 @@ internal class IosMobileOAuthCoordinator(
                             generation = generation,
                             callbackScheme = callbackScheme,
                             environmentKey = environmentKey,
+                            environmentApiBaseUrl = environment.apiBaseUrl,
+                            environmentGeneration = environment.generation,
                             startedAtMillis = nowMillis(),
                             inviteToken = normalizedInviteToken,
                         )
@@ -601,7 +802,14 @@ internal class IosMobileOAuthCoordinator(
                     code = "ios_mobile_oauth_runtime_not_ready",
                     message = "Raft is still starting. Try again.",
                 )
-            val environmentKey = runtime.environmentKey.trim().ifBlank { "production" }
+            val environment = runtime.environmentSnapshot
+            if (normalizedInviteToken != null && !environment.isProduction()) {
+                return@withLock startError(
+                    code = AuthInviteEnvironmentUnavailableCode,
+                    message = AuthInviteEnvironmentUnavailableMessage,
+                )
+            }
+            val environmentKey = environment.key.trim().ifBlank { "production" }
             val returnUri = when {
                 returnUriOverride == null -> iosMobileOAuthReturnUri(environmentKey)
                 isApprovedMobileOAuthReturnUri(returnUriOverride) -> returnUriOverride
@@ -612,12 +820,22 @@ internal class IosMobileOAuthCoordinator(
             }
             val outcome =
                 runCatchingPreservingCancellation {
-                    runtime.startNativeApple(
-                        mode = normalizedMode,
-                        appEnv = environmentKey,
-                        returnUri = returnUri,
-                        codeChallenge = codeChallenge,
-                    )
+                    if (normalizedInviteToken != null) {
+                        runtime.startNativeAppleForEnvironment(
+                            mode = normalizedMode,
+                            appEnv = environmentKey,
+                            returnUri = returnUri,
+                            codeChallenge = codeChallenge,
+                            environment = environment,
+                        )
+                    } else {
+                        runtime.startNativeApple(
+                            mode = normalizedMode,
+                            appEnv = environmentKey,
+                            returnUri = returnUri,
+                            codeChallenge = codeChallenge,
+                        )
+                    }
                 }.getOrElse {
                     return@withLock startError(
                         code = "ios_native_apple_start_failed",
@@ -647,6 +865,8 @@ internal class IosMobileOAuthCoordinator(
                             generation = generation,
                             callbackScheme = returnUri.substringBefore("://"),
                             environmentKey = environmentKey,
+                            environmentApiBaseUrl = environment.apiBaseUrl,
+                            environmentGeneration = environment.generation,
                             startedAtMillis = nowMillis(),
                             inviteToken = normalizedInviteToken,
                         )
@@ -704,7 +924,7 @@ internal class IosMobileOAuthCoordinator(
                     provider = pending.provider,
                     generation = pending.generation,
                 )
-            if (runtime.environmentKey.trim() != pending.environmentKey) {
+            if (!runtime.matchesPendingEnvironment(pending)) {
                 pendingStore.clear()
                 return@withLock errorCompletion(
                     pending,
@@ -715,13 +935,24 @@ internal class IosMobileOAuthCoordinator(
                 runCatchingPreservingCancellation {
                     when (
                         val outcome =
-                            runtime.authorizeNativeApple(
-                                mode = pending.mode,
-                                requestId = pending.requestId,
-                                requestToken = requestToken,
-                                authorizationCode = authorizationCode,
-                                identityToken = identityToken,
-                            )
+                            if (pending.inviteToken != null) {
+                                runtime.authorizeNativeAppleForEnvironment(
+                                    mode = pending.mode,
+                                    requestId = pending.requestId,
+                                    requestToken = requestToken,
+                                    authorizationCode = authorizationCode,
+                                    identityToken = identityToken,
+                                    environment = pending.environmentSnapshot(),
+                                )
+                            } else {
+                                runtime.authorizeNativeApple(
+                                    mode = pending.mode,
+                                    requestId = pending.requestId,
+                                    requestToken = requestToken,
+                                    authorizationCode = authorizationCode,
+                                    identityToken = identityToken,
+                                )
+                            }
                     ) {
                         is IosNativeAppleAuthorizationOutcome.Success -> {
                             val response = outcome.response
@@ -793,7 +1024,7 @@ internal class IosMobileOAuthCoordinator(
                             provider = pending.provider,
                             generation = pending.generation,
                         )
-                    if (runtime.environmentKey.trim() != pending.environmentKey) {
+                    if (!runtime.matchesPendingEnvironment(pending)) {
                         pendingStore.clear()
                         return@withLock errorCompletion(
                             pending,
@@ -842,11 +1073,20 @@ internal class IosMobileOAuthCoordinator(
     ): SlockIosMobileOAuthCompletionResult =
         when (
             val outcome =
-                runtime.completeLogin(
-                    code = code,
-                    codeVerifier = pending.codeVerifier,
-                    platform = "ios",
-                )
+                if (pending.inviteToken != null) {
+                    runtime.completeLoginForEnvironment(
+                        code = code,
+                        codeVerifier = pending.codeVerifier,
+                        platform = "ios",
+                        environment = pending.environmentSnapshot(),
+                    )
+                } else {
+                    runtime.completeLogin(
+                        code = code,
+                        codeVerifier = pending.codeVerifier,
+                        platform = "ios",
+                    )
+                }
         ) {
             is IosMobileOAuthLoginOutcome.Success ->
                 SlockIosMobileOAuthCompletionResult(

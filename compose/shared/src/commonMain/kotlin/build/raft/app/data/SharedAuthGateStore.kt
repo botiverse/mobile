@@ -238,7 +238,13 @@ sealed interface SharedAuthGateState {
     data class Error(val message: String) : SharedAuthGateState
 }
 
-private fun StoredAuthSession.asGateState(): SharedAuthGateState =
+/**
+ * The one canonical prerequisite ordering used by every authenticated destination.
+ *
+ * Pending invite resume must call this instead of copying a subset of the checks; otherwise a
+ * newly added prerequisite can be bypassed by the invite shortcut.
+ */
+internal fun StoredAuthSession.asGateState(): SharedAuthGateState =
     if (qaBootstrap != null && !qaBootstrapLaunchAuthorized) {
         SharedAuthGateState.BootstrapRecoveryRequired(this)
     } else if (user.emailVerified == false) {

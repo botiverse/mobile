@@ -249,7 +249,7 @@ class SharedApiEnvironmentNetworkClientTest {
         val dataSource = createSharedAuthDataSourceForCurrentEnvironment(
             apiEnvironmentStore = environmentStore,
             authStore = sessionStore,
-            transportFactory = { baseUrlProvider ->
+            transportFactory = { baseUrlProvider, _ ->
                 SharedSlockAuthTransport(
                     baseUrlProvider = baseUrlProvider,
                     executor = executor
@@ -281,8 +281,12 @@ class SharedApiEnvironmentNetworkClientTest {
             createSharedAuthDataSourceForCurrentEnvironment(
                 apiEnvironmentStore = environmentStore,
                 authStore = InMemorySlockAuthSessionStore(),
-                transportFactory = { baseUrlProvider ->
-                    SharedSlockAuthTransport(baseUrlProvider = baseUrlProvider, executor = executor)
+                transportFactory = { baseUrlProvider, environmentSnapshotProvider ->
+                    SharedSlockAuthTransport(
+                        baseUrlProvider = baseUrlProvider,
+                        inviteEnvironmentSnapshotProvider = environmentSnapshotProvider,
+                        executor = executor,
+                    )
                 },
             )
         val token = "production-invite-token"
@@ -328,8 +332,12 @@ class SharedApiEnvironmentNetworkClientTest {
             createSharedAuthDataSourceForCurrentEnvironment(
                 apiEnvironmentStore = environmentStore,
                 authStore = sessionStore,
-                transportFactory = { baseUrlProvider ->
-                    SharedSlockAuthTransport(baseUrlProvider = baseUrlProvider, executor = executor)
+                transportFactory = { baseUrlProvider, environmentSnapshotProvider ->
+                    SharedSlockAuthTransport(
+                        baseUrlProvider = baseUrlProvider,
+                        inviteEnvironmentSnapshotProvider = environmentSnapshotProvider,
+                        executor = executor,
+                    )
                 },
             )
         val token = "production-invite-token"
@@ -362,6 +370,202 @@ class SharedApiEnvironmentNetworkClientTest {
         assertTrue(custom is SharedInviteAcceptResult.Failure)
         assertEquals(AuthInviteEnvironmentUnavailableCode, custom.errorCode)
         assertEquals(1, executor.urls.size)
+    }
+
+    @Test
+    fun productionInviteInfoRejectsEnvironmentDriftBeforeExecutor() = runBlocking {
+        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val executor = RecordingHttpExecutor()
+        var requestStarts = 0
+        val dataSource =
+            createSharedAuthDataSourceForCurrentEnvironment(
+                apiEnvironmentStore = environmentStore,
+                authStore = InMemorySlockAuthSessionStore(),
+                transportFactory = { baseUrlProvider, environmentSnapshotProvider ->
+                    SharedSlockAuthTransport(
+                        baseUrlProvider = baseUrlProvider,
+                        inviteEnvironmentSnapshotProvider = environmentSnapshotProvider,
+                        requestScheduler =
+                            SlockRequestScheduler(
+                                logger = { message ->
+                                    if (message.startsWith("request_start")) {
+                                        requestStarts += 1
+                                        if (requestStarts == 1) environmentStore.select("staging")
+                                    }
+                                }
+                            ),
+                        executor = executor,
+                    )
+                },
+            )
+
+        val result = dataSource.loadInviteInfo("queued-invite-token")
+
+        assertTrue(result is SharedInviteInfoResult.Failure)
+        assertEquals(0, executor.urls.size)
+        assertEquals(SharedApiEnvironmentStore.Staging.key, environmentStore.current().key)
+    }
+
+    @Test
+    fun productionInviteAcceptRejectsEnvironmentDriftBefore401RefreshExecutor() = runBlocking {
+        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val executor =
+            RecordingHttpExecutor(
+                responseCode = 401,
+                responseErrorBodyText = """{"error":"expired_token"}""",
+            )
+        var requestStarts = 0
+        val dataSource =
+            createSharedAuthDataSourceForCurrentEnvironment(
+                apiEnvironmentStore = environmentStore,
+                authStore = authenticatedSessionStore(),
+                transportFactory = { baseUrlProvider, environmentSnapshotProvider ->
+                    SharedSlockAuthTransport(
+                        baseUrlProvider = baseUrlProvider,
+                        inviteEnvironmentSnapshotProvider = environmentSnapshotProvider,
+                        requestScheduler =
+                            SlockRequestScheduler(
+                                logger = { message ->
+                                    if (message.startsWith("request_start")) {
+                                        requestStarts += 1
+                                        if (requestStarts == 2) environmentStore.select("staging")
+                                    }
+                                }
+                            ),
+                        executor = executor,
+                    )
+                },
+            )
+
+        val result = dataSource.acceptInvite("queued-accept-token")
+
+        assertTrue(result is SharedInviteAcceptResult.Failure)
+        assertEquals(1, executor.urls.size)
+        assertTrue(executor.urls.single().endsWith("/auth/accept-invite"))
+        assertEquals(SharedApiEnvironmentStore.Staging.key, environmentStore.current().key)
+    }
+
+    @Test
+    fun productionInviteAcceptRejectsEnvironmentDriftBeforeRetryExecutor() = runBlocking {
+        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val sessionStore = authenticatedSessionStore()
+        val executor =
+            RecordingHttpExecutor(
+                responseCodes = ArrayDeque(listOf(401, 200)),
+                responseBodyText = """{"accessToken":"access-token-2","refreshToken":"refresh-token-2"}""",
+                responseErrorBodyText = """{"error":"expired_token"}""",
+                onExecute = { url ->
+                    if (url.endsWith("/auth/refresh")) environmentStore.select("staging")
+                },
+            )
+        val dataSource =
+            createSharedAuthDataSourceForCurrentEnvironment(
+                apiEnvironmentStore = environmentStore,
+                authStore = sessionStore,
+                transportFactory = { baseUrlProvider, environmentSnapshotProvider ->
+                    SharedSlockAuthTransport(
+                        baseUrlProvider = baseUrlProvider,
+                        inviteEnvironmentSnapshotProvider = environmentSnapshotProvider,
+                        executor = executor,
+                    )
+                },
+            )
+
+        val result = dataSource.acceptInvite("retry-accept-token")
+
+        assertTrue(result is SharedInviteAcceptResult.Failure)
+        assertEquals(2, executor.urls.size)
+        assertTrue(executor.urls[0].endsWith("/auth/accept-invite"))
+        assertTrue(executor.urls[1].endsWith("/auth/refresh"))
+        assertEquals("access-token", sessionStore.readSession()?.accessToken)
+        assertEquals("refresh-token", sessionStore.readSession()?.refreshToken)
+        assertEquals(SharedApiEnvironmentStore.Staging.key, environmentStore.current().key)
+    }
+
+    @Test
+    fun inviteBoundAcceptThenRestoreDriftMakesZeroRestoreRequests() = runBlocking {
+        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val sessionStore = authenticatedSessionStore()
+        val executor =
+            RecordingHttpExecutor(
+                responseBodyTexts =
+                    ArrayDeque(
+                        listOf(
+                            """{"serverId":"server-1","serverName":"Raft"}""",
+                        )
+                    )
+            )
+        val unbound =
+            createSharedAuthDataSourceForCurrentEnvironment(
+                apiEnvironmentStore = environmentStore,
+                authStore = sessionStore,
+                transportFactory = { baseUrlProvider, environmentSnapshotProvider ->
+                    SharedSlockAuthTransport(
+                        baseUrlProvider = baseUrlProvider,
+                        inviteEnvironmentSnapshotProvider = environmentSnapshotProvider,
+                        executor = executor,
+                    )
+                },
+            )
+        val bound = unbound.bindToInviteEnvironment(environmentStore.currentSnapshot())
+
+        val accepted = bound.acceptInvite("invite-token")
+        assertTrue(accepted is SharedInviteAcceptResult.Success)
+
+        environmentStore.select("staging")
+        val restored = bound.restoreSession()
+
+        assertTrue(restored is SharedAuthResult.Failure)
+        assertEquals(AuthAuthorityChangedMessage, restored.message)
+        assertEquals(1, executor.urls.size)
+        assertTrue(executor.urls.single().endsWith("/auth/accept-invite"))
+        assertEquals("access-token", sessionStore.readSession()?.accessToken)
+    }
+
+    @Test
+    fun inviteBoundRestoreDriftAfterServersDoesNotPublishMetadata() = runBlocking {
+        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val sessionStore = authenticatedSessionStore()
+        val executor =
+            RecordingHttpExecutor(
+                responseBodyTexts =
+                    ArrayDeque(
+                        listOf(
+                            """{"id":"user-1","email":"user@raft.build","emailVerified":true}""",
+                            """[{"id":"server-1","name":"Raft","slug":"raft"}]""",
+                        )
+                    ),
+                onExecute = { url ->
+                    if (url.endsWith("/servers")) environmentStore.select("staging")
+                },
+            )
+        val unbound =
+            createSharedAuthDataSourceForCurrentEnvironment(
+                apiEnvironmentStore = environmentStore,
+                authStore = sessionStore,
+                transportFactory = { baseUrlProvider, environmentSnapshotProvider ->
+                    SharedSlockAuthTransport(
+                        baseUrlProvider = baseUrlProvider,
+                        inviteEnvironmentSnapshotProvider = environmentSnapshotProvider,
+                        executor = executor,
+                    )
+                },
+            )
+        val bound = unbound.bindToInviteEnvironment(environmentStore.currentSnapshot())
+
+        val restored = bound.restoreSession()
+
+        assertTrue(restored is SharedAuthResult.Failure)
+        assertEquals(AuthAuthorityChangedMessage, restored.message)
+        assertEquals(
+            listOf(
+                "${SharedApiEnvironmentStore.Production.apiBaseUrl.trimEnd('/')}/auth/me",
+                "${SharedApiEnvironmentStore.Production.apiBaseUrl.trimEnd('/')}/servers",
+            ),
+            executor.urls,
+        )
+        assertEquals("access-token", sessionStore.readSession()?.accessToken)
+        assertEquals("server-1", sessionStore.readSession()?.selectedServerId)
     }
 
     @Test
@@ -453,7 +657,9 @@ class SharedApiEnvironmentNetworkClientTest {
 
     private class RecordingHttpExecutor(
         private val responseCode: Int = 200,
+        private val responseCodes: ArrayDeque<Int>? = null,
         private val responseBodyText: String? = "{}",
+        private val responseBodyTexts: ArrayDeque<String?>? = null,
         private val responseErrorBodyText: String? = null,
         private val executeException: Throwable? = null,
         private val onExecute: (String) -> Unit = {},
@@ -474,9 +680,17 @@ class SharedApiEnvironmentNetworkClientTest {
             this.headers += headers
             onExecute(url)
             executeException?.let { throw it }
+            val responseCodeForRequest =
+                responseCodes?.let { codes ->
+                    if (codes.size > 1) codes.removeFirst() else codes.first()
+                } ?: responseCode
+            val responseBodyForRequest =
+                responseBodyTexts?.let { bodies ->
+                    if (bodies.size > 1) bodies.removeFirst() else bodies.first()
+                } ?: responseBodyText
             return SlockHttpExecutorResponse(
-                code = responseCode,
-                bodyText = responseBodyText,
+                code = responseCodeForRequest,
+                bodyText = responseBodyForRequest,
                 errorBodyText = responseErrorBodyText,
             )
         }
@@ -493,7 +707,7 @@ class SharedApiEnvironmentNetworkClientTest {
             urls += url
             return SlockHttpExecutorResponse(
                 code = responseCode,
-                bodyText = responseBodyText,
+                bodyText = responseBodyTexts?.firstOrNull() ?: responseBodyText,
                 errorBodyText = responseErrorBodyText,
             )
         }
