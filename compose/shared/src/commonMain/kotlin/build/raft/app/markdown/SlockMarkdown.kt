@@ -1739,6 +1739,9 @@ private const val SlockMarkdownDefaultPreparseLimit = 20
 
 private val SlockMarkdownBodyFontSize = 14.sp
 private val SlockMarkdownBodyLineHeight = 22.sp
+internal val SlockMarkdownTaskCheckboxSize = 14.dp
+internal val SlockMarkdownTaskCheckboxFirstLineOffset =
+    ((22.dp - SlockMarkdownTaskCheckboxSize) / 2).coerceAtLeast(0.dp)
 internal const val SlockMarkdownPendingActionIndicator = " …"
 private const val SlockMarkdownBodyClickTag = "slock-markdown-body-click"
 private val LocalSlockMarkdownBodyClick = compositionLocalOf<(() -> Unit)?> { null }
@@ -1760,12 +1763,15 @@ private fun SlockMarkdownTaskCheckbox(model: MarkdownComponentModel) {
                         checkboxLabel = checkboxLabel,
                         stateLabel = stateLabel
                     )
-                    .padding(end = 4.dp)
+                    // 14dp marker inside the 22dp first text line: pin the marker
+                    // to that line instead of centering it in the whole list item,
+                    // which may contain wrapped text or nested lists (task #210).
+                    .padding(top = SlockMarkdownTaskCheckboxFirstLineOffset, end = 4.dp)
         ) {
             SlockCheckMarker(
                 checked = checked,
                 tone = SlockCheckMarkerTone.BlackFill,
-                size = 14.dp
+                size = SlockMarkdownTaskCheckboxSize
             )
         }
     }

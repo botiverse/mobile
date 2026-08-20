@@ -80,13 +80,7 @@ fun MarkdownListItems(
                     }
 
                     Row(modifier = Modifier.fillMaxWidth().padding(bottom = listItemBottom)) {
-                        // Checkbox markers are smaller than the body line height. Center
-                        // only that marker in the row's text line box; ordinary bullets
-                        // retain their existing baseline/layout behavior (task #210).
-                        val resolvedMarkerModifier =
-                            if (checkboxNode != null) markerModifier().align(Alignment.CenterVertically)
-                            else markerModifier()
-                        Box(modifier = resolvedMarkerModifier) {
+                        Box(modifier = markerModifier()) {
                             if (checkboxNode != null) {
                                 val model = MarkdownComponentModel(
                                     content = content,

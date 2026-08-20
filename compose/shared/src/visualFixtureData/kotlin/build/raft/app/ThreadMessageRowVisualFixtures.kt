@@ -2047,10 +2047,14 @@ internal fun threadVisualFixture(
                     avatarLabel = "GF",
                     timestampLabel = "08/20 13:30",
                     messageType = "Chat",
-                    body = "Task-list parity: task #209\n\n- [x] Completed item\n- [ ] Pending item",
+                    body =
+                        "Task-list parity: task #210\n\n" +
+                            "- [x] Completed item wraps across the message column while its checkbox stays aligned with the first text line.\n" +
+                            "- [ ] Pending item\n" +
+                            "  - [X] Nested completed item",
                     threadChannelId = "thread-msg-gfm-task-list-short",
-                    taskId = "task_209",
-                    taskNumber = 209,
+                    taskId = "task_210",
+                    taskNumber = 210,
                     taskStatus = "in_review",
                     taskAssigneeId = "agent-gfm",
                     taskAssigneeName = "GFM Bot"
