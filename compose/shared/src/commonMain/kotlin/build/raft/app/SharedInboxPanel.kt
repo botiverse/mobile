@@ -856,26 +856,18 @@ private fun SharedActivityList(
                 )
             },
             awaitScrollSettles = { snapshotFlow { listState.isScrollInProgress }.first { !it } },
+            // The body lives in applyActivityViewportRecovery rather than inline here. Inline, it
+            // was unreachable from commonTest — it closes over a LazyListState and runs inside a
+            // LaunchedEffect — so forcing its live check to fail changed no test result
+            // (@Codex-Kuikly measured exactly that). What remains untested here is only this
+            // wiring: that these four lambdas name the right things.
             recover = {
-                // Last check against the live state, immediately before the mutation. This does
-                // not close the gap — nothing available on this side can, given the two scroll
-                // fences above — but it collapses it to the smallest window the framework lets
-                // us observe, and a gesture that wins the race is now handled rather than
-                // ignored.
-                if (listState.isScrollInProgress) {
-                    false
-                } else {
-                    // ⚠️ SCROLL FIRST, retire the tracking only once it has actually completed.
-                    // The previous order consumed and saved before scrolling, so a scroll that
-                    // was cancelled — by a gesture, or by this effect being torn down — left the
-                    // tracking already retired and the viewport never repaired, with nothing to
-                    // retry from. Cancellation here propagates out before the consume, so the
-                    // next `presentedItems` change re-evaluates and recovers instead.
-                    listState.scrollToItem(0)
-                    updateTracking = updateTracking.consumePending()
-                    savePresentation()
-                    true
-                }
+                applyActivityViewportRecovery(
+                    isScrollInProgress = { listState.isScrollInProgress },
+                    scrollToTop = { listState.scrollToItem(0) },
+                    retireTracking = { updateTracking = updateTracking.consumePending() },
+                    savePresentation = { savePresentation() }
+                )
             }
         )
     }
@@ -2171,6 +2163,40 @@ internal data class ActivityViewportRecoveryState(
  * it. Tracking is consumed only once an attempt is actually admitted, so a deferred recovery
  * cannot retire pending updates it never performed.
  */
+/**
+ * The apply step of the emptied-viewport recovery: the part that actually takes scroll ownership.
+ *
+ * Extracted from the composable on purpose. While it was an inline lambda closing over
+ * `LazyListState`, nothing in commonTest could execute it, so both properties below were asserted
+ * only against an injected stand-in — forcing the live check to fail left the whole suite green
+ * (@Codex-Kuikly). A guard no test executes is indistinguishable from one that does not work.
+ *
+ * Two properties, and they fail differently:
+ *
+ *  - it may DECLINE. Sampling the scroll state and mutating it are separate operations, and the
+ *    gap between them is covered by no lock this side owns: the pinned Kuikly build writes
+ *    `isScrollingState` from `kuiklyOnScroll()` while `scrollToItem()` takes `scrollMutex`, so a
+ *    gesture starting in that gap is not arbitrated away by mutation priority. Declining does not
+ *    close the gap — nothing here can — it narrows it to the smallest observable window and makes
+ *    a lost race handled rather than ignored.
+ *  - it SCROLLS BEFORE retiring anything. Retiring first meant a cancelled scroll burned the
+ *    pending update without repairing the viewport, leaving nothing to retry from. Cancellation
+ *    propagates out of [scrollToTop] before [retireTracking] runs, so the next data change
+ *    re-evaluates and recovers.
+ */
+internal suspend fun applyActivityViewportRecovery(
+    isScrollInProgress: () -> Boolean,
+    scrollToTop: suspend () -> Unit,
+    retireTracking: () -> Unit,
+    savePresentation: () -> Unit
+): Boolean {
+    if (isScrollInProgress()) return false
+    scrollToTop()
+    retireTracking()
+    savePresentation()
+    return true
+}
+
 internal suspend fun awaitActivityViewportRecoveryAdmission(
     sampleRecoveryState: () -> ActivityViewportRecoveryState,
     awaitScrollSettles: suspend () -> Unit,

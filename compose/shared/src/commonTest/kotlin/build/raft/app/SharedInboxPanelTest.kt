@@ -40,8 +40,10 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.slockEpochDayForDate
 import build.raft.app.model.threadIdentity
 import com.tencent.kuikly.compose.ui.unit.dp
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
@@ -675,6 +677,65 @@ class SharedInboxPanelTest {
             assertEquals(1, settles)
             assertEquals(0, samples.size)
         }
+
+    @Test
+    fun activityRecoveryApplyDeclinesWhenAGestureAlreadyOwnsTheScroll() = runPortableCoroutineTest {
+        // Drives the PRODUCTION apply body, not an injected stand-in. While this was an inline
+        // lambda over LazyListState nothing here could reach it, so forcing its live check to
+        // fail left every test green.
+        val steps = mutableListOf<String>()
+
+        val applied =
+            applyActivityViewportRecovery(
+                isScrollInProgress = { true },
+                scrollToTop = { steps += "scroll" },
+                retireTracking = { steps += "retire" },
+                savePresentation = { steps += "save" }
+            )
+
+        assertFalse(applied)
+        // Declining must be inert: no scroll, and nothing retired.
+        assertEquals(emptyList(), steps)
+    }
+
+    @Test
+    fun activityRecoveryApplyScrollsBeforeRetiringTheTracking() = runPortableCoroutineTest {
+        val steps = mutableListOf<String>()
+
+        val applied =
+            applyActivityViewportRecovery(
+                isScrollInProgress = { false },
+                scrollToTop = { steps += "scroll" },
+                retireTracking = { steps += "retire" },
+                savePresentation = { steps += "save" }
+            )
+
+        assertTrue(applied)
+        // Order is the property, not merely that all three ran.
+        assertEquals(listOf("scroll", "retire", "save"), steps)
+    }
+
+    @Test
+    fun activityRecoveryApplyRetiresNothingWhenTheScrollIsCancelled() = runPortableCoroutineTest {
+        // The regression that made the old order harmful: a scroll cancelled by a gesture or by
+        // the effect being torn down used to leave the pending update already consumed and the
+        // viewport unrepaired, with nothing left to retry from.
+        val steps = mutableListOf<String>()
+
+        assertFailsWith<CancellationException> {
+            applyActivityViewportRecovery(
+                isScrollInProgress = { false },
+                scrollToTop = {
+                    steps += "scroll"
+                    throw CancellationException("gesture took the scroll")
+                },
+                retireTracking = { steps += "retire" },
+                savePresentation = { steps += "save" }
+            )
+        }
+
+        assertEquals(listOf("scroll"), steps)
+    }
 
     @Test
     fun activityViewportRecoveryDropsTheAttemptWhenRowsReappearWhileWaiting() = runPortableCoroutineTest {
