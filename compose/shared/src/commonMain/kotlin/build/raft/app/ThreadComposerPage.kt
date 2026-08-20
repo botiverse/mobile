@@ -833,6 +833,9 @@ internal fun threadComposerUsesImeAction(
         (panelState == ThreadComposerSuggestionPanelState.MemberItems && memberCount > 0) ||
         (panelState == ThreadComposerSuggestionPanelState.ChannelItems && channelCount > 0)
 
+internal fun threadComposerImeAction(composerUsesImeAction: Boolean): ImeAction =
+    if (composerUsesImeAction) ImeAction.Send else ImeAction.Default
+
 internal fun threadComposerSuggestionRefreshRequest(
     focused: Boolean,
     trigger: KuiklyComposerSuggestionTrigger
@@ -2001,7 +2004,10 @@ internal fun ThreadComposerContentLeaf(
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
     var handledEditorSessionId by remember(state.instanceId) { mutableStateOf(editorSessionId) }
     var keyboardInsetDp by remember(state.instanceId) { mutableStateOf(0f) }
-    val composerFocusRequester = remember(state.instanceId, editorSessionId) { FocusRequester() }
+    // Keep the native editor identity stable while a send clears the controlled value. The
+    // logical session still fences stale callbacks below, but recreating the FocusRequester makes
+    // the host text field lose first-responder status before the restore effect can run.
+    val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
     val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
     val focusManager = LocalFocusManager.current
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
@@ -2279,12 +2285,10 @@ internal fun ThreadComposerContentLeaf(
             memberCount = filteredMemberSuggestions.size,
             channelCount = filteredChannelSuggestions.size
         )
-    val composerKeyboardOptions =
-        if (composerUsesImeAction) {
-            KeyboardOptions(imeAction = ImeAction.Send)
-        } else {
-            KeyboardOptions(imeAction = ImeAction.None)
-        }
+    // None is serialized by the Kuikly iOS bridge as a terminal "done" key. Default keeps the
+    // multiline editor's native return/newline affordance when neither send nor a visible
+    // suggestion owns Enter.
+    val composerKeyboardOptions = KeyboardOptions(imeAction = threadComposerImeAction(composerUsesImeAction))
 
     fun emitChange(nextText: String = text, nextAsTask: Boolean = asTask) {
         onEvent("change", nextText, nextAsTask, null)
@@ -2669,7 +2673,10 @@ internal fun ThreadComposerContentLeaf(
                         .padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    key(editorSessionId) {
+                    // Clear retires the logical callback session, not the native editor view. A
+                    // session-keyed subtree destroys the first responder and produces a visible
+                    // IME dismiss→reopen cycle on iOS.
+                    key(state.instanceId) {
                         val sourceSessionId = editorSessionId
                         TextField(
                             value = fieldValue,
