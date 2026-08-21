@@ -219,4 +219,39 @@ class SlockPlatformLogTest {
             }
         )
     }
+
+    @Test
+    fun sharedActivityDiagnosticsLoggerStampsOneMonotonicSequenceAcrossInstances() = runBlocking {
+        val entries = mutableListOf<SlockPlatformLogRecord>()
+        installSlockPlatformLogRecordSink(entries::add)
+        try {
+            // Two instances on purpose: both call sites build their own logger, and
+            // independent counters would make the runs uncomparable — which is what
+            // makes a contiguous run usable as proof that nothing was dropped.
+            val first = sharedActivityStoreDiagnosticsLogger()
+            val second = sharedActivityStoreDiagnosticsLogger()
+            first("store_load domain=activity phase=probe channel=live")
+            second("store_load domain=activity phase=start")
+            first("store_load domain=activity result=ok")
+            flushSlockPlatformLogsForTest()
+        } finally {
+            installSlockPlatformLogRecordSink(null)
+        }
+
+        val sequences =
+            entries
+                .filter { it.message.contains("domain=activity") }
+                .mapNotNull { record -> Regex("""seq=(\d+)""").find(record.message)?.groupValues?.get(1)?.toLong() }
+        assertEquals(3, sequences.size, "every activity diagnostic line must carry a sequence; actual=$entries")
+        assertEquals(
+            sequences.sorted(),
+            sequences,
+            "sequence must be monotonic across both logger instances; actual=$sequences"
+        )
+        assertEquals(
+            (sequences.first()..sequences.last()).toList(),
+            sequences,
+            "a run with no drops must be contiguous, otherwise absence carries no information; actual=$sequences"
+        )
+    }
 }

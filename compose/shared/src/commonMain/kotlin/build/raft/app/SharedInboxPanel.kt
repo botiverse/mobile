@@ -108,6 +108,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.launch
 
 private val ActivitySelectedRowShadowOffset = 2.dp
@@ -408,8 +409,31 @@ internal data class ActivityRefreshPresentation(
  * The tag/prefix are the ones `SettingsHomePage` already shipped, so wiring the
  * previously-unlogged call site does not change what existing consumers grep.
  */
-internal fun sharedActivityStoreDiagnosticsLogger(): (String) -> Unit =
-    slockLogger("SlockHomeActivity", "shared_home_activity")
+internal fun sharedActivityStoreDiagnosticsLogger(): (String) -> Unit {
+    val delegate = slockLogger("SlockHomeActivity", "shared_home_activity")
+    return { message -> delegate("seq=${sharedActivityDiagnosticsSequence.incrementAndGet()} $message") }
+}
+
+/**
+ * Monotonic sequence stamped on every line this logger emits (task #436).
+ *
+ * Without it these diagnostics can only *falsify* a stuck load, never confirm
+ * one: delivery crosses two bounded queues, so a missing terminal line has two
+ * explanations — never emitted, or emitted and dropped — and the reader cannot
+ * separate them. That leaves the instrument unable to answer the question it
+ * was built for.
+ *
+ * A contiguous run of sequence numbers is proof that nothing was dropped in
+ * that window, which is exactly the control that makes a *missing* line
+ * informative:
+ *
+ *   gap in the run          -> drops happened; absence is unattributable
+ *   contiguous, ends at N   -> no drops; a missing terminal really was never emitted
+ *
+ * Deliberately module-scoped rather than per-logger: both call sites build a
+ * logger, and two independent counters would make the runs uncomparable.
+ */
+private val sharedActivityDiagnosticsSequence = atomic(0L)
 
 @Suppress("UNUSED_PARAMETER")
 internal fun activityRefreshPresentation(
