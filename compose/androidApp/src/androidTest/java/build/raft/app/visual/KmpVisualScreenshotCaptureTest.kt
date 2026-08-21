@@ -39,7 +39,6 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Assert.assertFalse
 import org.junit.Assume.assumeTrue
 import org.junit.BeforeClass
@@ -1214,7 +1213,6 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    @Ignore("Quarantined by task #228: the compact menu on the last row is bistable after #2146 (417078cecd) - either no menu renders or it paints over the Composer. Un-quarantine only when the #2146 author lands a fix.")
     @Test
     fun captureThreadNewMessageMenuDemo() {
         captureThreadNewMessageMenuCompactTarget(
@@ -1231,7 +1229,6 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    @Ignore("Quarantined by task #228: the compact menu on the last row is bistable after #2146 (417078cecd) - either no menu renders or it paints over the Composer. Un-quarantine only when the #2146 author lands a fix.")
     @Test
     fun captureThreadNewMessageMenuCompactLast() {
         captureThreadNewMessageMenuCompactTarget(
