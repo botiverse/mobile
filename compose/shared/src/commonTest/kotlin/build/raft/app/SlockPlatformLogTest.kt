@@ -254,4 +254,46 @@ class SlockPlatformLogTest {
             "a run with no drops must be contiguous, otherwise absence carries no information; actual=$sequences"
         )
     }
+
+    @Test
+    fun sharedActivityDiagnosticsSequenceIsUniquePerLineUnderConcurrentEmission() = runBlocking {
+        val entries = mutableListOf<SlockPlatformLogRecord>()
+        val marker = "concurrent-seq-probe"
+        installSlockPlatformLogRecordSink(entries::add)
+        try {
+            val logger = sharedActivityStoreDiagnosticsLogger()
+            (1..24).map { index ->
+                launch(Dispatchers.Default) { logger("$marker index=$index") }
+            }.forEach { it.join() }
+            flushSlockPlatformLogsForTest()
+        } finally {
+            installSlockPlatformLogRecordSink(null)
+        }
+
+        val observed =
+            entries.toList()
+                .filter { it.message.contains(marker) }
+                .mapNotNull { record -> Regex("""seq=(\d+)""").find(record.message)?.groupValues?.get(1)?.toLong() }
+
+        // Deliberately NOT asserting contiguity here. enqueue drops when its
+        // admission latch is contended, so under 24-way concurrency gaps are the
+        // expected, correct behaviour — that is the very loss the sequence exists
+        // to reveal. Asserting a full run would be both flaky and false.
+        //
+        // What must hold, and what concurrency could actually break, is that a
+        // number is never handed to two lines: a duplicate would let a dropped
+        // value be masked by a surviving one, and then a gap-free set would no
+        // longer prove nothing was lost.
+        assertTrue(observed.isNotEmpty(), "expected at least one observed emission; actual=$entries")
+        assertEquals(
+            observed.size,
+            observed.distinct().size,
+            "each line must carry its own sequence value; duplicates would mask a drop; actual=$observed"
+        )
+        assertEquals(
+            observed.size,
+            observed.filter { it > 0L }.size,
+            "every observed line must carry a positive sequence; actual=$observed"
+        )
+    }
 }

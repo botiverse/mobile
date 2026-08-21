@@ -415,7 +415,7 @@ internal fun sharedActivityStoreDiagnosticsLogger(): (String) -> Unit {
 }
 
 /**
- * Monotonic sequence stamped on every line this logger emits (task #436).
+ * Allocation-order sequence stamped on every line this logger emits (task #436).
  *
  * Without it these diagnostics can only *falsify* a stuck load, never confirm
  * one: delivery crosses two bounded queues, so a missing terminal line has two
@@ -423,15 +423,31 @@ internal fun sharedActivityStoreDiagnosticsLogger(): (String) -> Unit {
  * separate them. That leaves the instrument unable to answer the question it
  * was built for.
  *
- * A contiguous run of sequence numbers is proof that nothing was dropped in
- * that window, which is exactly the control that makes a *missing* line
- * informative:
+ * READ THE SET, NOT THE ARRIVAL ORDER. The number is allocated here, *before*
+ * the queues, which is what makes a drop visible at all — a dropped line still
+ * consumed its number, so its value is absent from the set. But allocation and
+ * enqueue are not one atomic step, and these lines are emitted from several
+ * coroutines, so a thread can take a number and be suspended while a later
+ * number is enqueued ahead of it. Logcat may therefore show 2 before 1.
  *
- *   gap in the run          -> drops happened; absence is unattributable
- *   contiguous, ends at N   -> no drops; a missing terminal really was never emitted
+ * Interpretation, over the sorted set of observed values:
+ *
+ *   gap in the set   -> something was dropped; absence is unattributable
+ *   set contiguous   -> nothing dropped in that window, so a missing line
+ *                       really was never emitted
+ *
+ * Reordering cannot hide a drop: numbers are unique, so a missing value is
+ * missing whatever order the survivors arrive in. It can only cause a *false*
+ * gap — a number still in flight when observation stopped — which fails safe
+ * (the round is discarded, never wrongly confirmed). Hence a quiescence period
+ * before judging a gap.
+ *
+ * This still does not close the tail: a line emitted after the last observed
+ * one and then dropped leaves a contiguous set. Only a subsequent record
+ * closes that, which is an operator-side seal, not a property of this counter.
  *
  * Deliberately module-scoped rather than per-logger: both call sites build a
- * logger, and two independent counters would make the runs uncomparable.
+ * logger, and two independent counters would make the sets uncomparable.
  */
 private val sharedActivityDiagnosticsSequence = atomic(0L)
 
