@@ -56,10 +56,29 @@ const SLOCK_FONT_LOG_TAG = 'SlockFont';
 const SLOCK_KNOI_LOG_TAG = 'SlockKnoi';
 const SLOCK_SHARED_LOG_SINK_SERVICE = 'slockOhosSharedLogSink';
 const SLOCK_IMAGE_TRANSPORT_POLICY_SERVICE = 'slockOhosImageTransportPolicy';
+const SLOCK_NETWORK_APP_IDENTITY_SERVICE = 'slockOhosNetworkAppIdentity';
 
 class SlockOhosImageTransportPolicySink {
   setHttp3Enabled(enabled: boolean): boolean {
     return Napi.setImageHttp3Enabled(enabled);
+  }
+}
+
+class SlockOhosNetworkAppIdentityService {
+  appName(): string {
+    return 'Raft';
+  }
+
+  versionName(): string {
+    return bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT).versionName;
+  }
+
+  versionCode(): string {
+    return `${bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT).versionCode}`;
+  }
+
+  buildType(): string {
+    return BuildProfile.DEBUG ? 'debug' : 'release';
   }
 }
 
@@ -245,6 +264,10 @@ export default class EntryAbility extends UIAbility {
     registerSingleServiceProvider(
       SLOCK_IMAGE_TRANSPORT_POLICY_SERVICE,
       new SlockOhosImageTransportPolicySink()
+    );
+    registerSingleServiceProvider(
+      SLOCK_NETWORK_APP_IDENTITY_SERVICE,
+      new SlockOhosNetworkAppIdentityService()
     );
     // KmmResource contract: must complete after KNOI setup()/init() and
     // before any Kuikly/shared page exists — the first shared

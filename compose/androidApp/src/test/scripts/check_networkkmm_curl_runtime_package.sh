@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# network-android-curl-runtime:0.1.0-raft.32, published from
+# network-android-curl-runtime:0.1.0-raft.35, published from
 # bytemain/KuiklyBase-components@f417f5c9040f742b29e928fd542f705c729b4d02.
 readonly EXPECTED_ARM64_SHA256='794d52adfd55cdfb35ccefa3624cea3e00ef9acf84a28c6fc4def520769fb54b'
 readonly EXPECTED_X86_64_SHA256='e7374e3603e0ce6cf4666536c96821069020852fd814716dfd3ac20a0195854e'
