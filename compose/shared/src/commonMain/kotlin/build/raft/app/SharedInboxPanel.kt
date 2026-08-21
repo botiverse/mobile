@@ -7,6 +7,8 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalBadge
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalTone
+import build.raft.app.components.TabPager
+import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.ActivityUnreadSummaryProjection
@@ -556,28 +558,58 @@ private fun SharedActivityPanelContent(
             onTitleClick = onTitleClick
         )
         SlockAppShellBodyTopBanner()
-        SharedActivityFilterBar(
-            selectedFilter = state.selectedFilter,
-            totalUnreadCount = state.totalUnreadCount,
-            onFilterSelected = { onIntent(SharedActivityIntent.SetFilter(it)) },
-            onMarkAllRead = { onIntent(SharedActivityIntent.MarkAllRead) }
-        )
-        SharedActivityBodyContent(
-            state = state,
-            onOpenItem = onOpenItem,
-            onIntent = onIntent,
-            bottomContentPadding = bottomContentPadding,
-            timeContext = timeContext,
-            listState = listState,
-            activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
-            draftProjection = draftProjection,
-            presentationAccountId = state.ownerUserId.orEmpty(),
-            stableOrderEnabled = stableOrderEnabled,
-            stableOrderDecisionRevision = stableOrderDecisionRevision,
-            presentationStore = presentationStore,
+        // task #232: filter tabs are a TabPager — the filter bar stays the tap
+        // surface (its SetFilter flows back in as selectedIndex and animates
+        // the pager); a horizontal swipe settling on a page dispatches the
+        // same SetFilter. The store keeps ONE snapshot (the selected
+        // filter's), so only the settled page renders real content; a
+        // neighbor glimpsed mid-drag shows that filter's loading skeleton
+        // until the settle re-targets the store.
+        val filters = InboxFilter.entries
+        val pageListStates = remember { filters.map { LazyListState() } }
+        TabPager(
+            selectedIndex = filters.indexOf(state.selectedFilter).coerceAtLeast(0),
+            onSelectedIndexChange = { index -> onIntent(SharedActivityIntent.SetFilter(filters[index])) },
+            pageCount = filters.size,
+            gesturePolicy = TabPagerGesturePolicy(
+                startEdgeInset = slockPlatformTabPagerStartEdgeInsetDp().dp,
+            ),
+            tabBar = {
+                SharedActivityFilterBar(
+                    selectedFilter = state.selectedFilter,
+                    totalUnreadCount = state.totalUnreadCount,
+                    onFilterSelected = { onIntent(SharedActivityIntent.SetFilter(it)) },
+                    onMarkAllRead = { onIntent(SharedActivityIntent.MarkAllRead) }
+                )
+            },
             modifier = Modifier.weight(1f).fillMaxWidth()
-        )
+        ) { page, settled ->
+            if (settled && filters[page] == state.selectedFilter) {
+                SharedActivityBodyContent(
+                    state = state,
+                    onOpenItem = onOpenItem,
+                    onIntent = onIntent,
+                    bottomContentPadding = bottomContentPadding,
+                    timeContext = timeContext,
+                    listState = pageListStates[page],
+                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                    activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
+                    draftProjection = draftProjection,
+                    presentationAccountId = state.ownerUserId.orEmpty(),
+                    stableOrderEnabled = stableOrderEnabled,
+                    stableOrderDecisionRevision = stableOrderDecisionRevision,
+                    presentationStore = presentationStore,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                SharedActivityStateBody(
+                    title = stringResource(MR.strings.common_loading),
+                    detail = "",
+                    loading = true,
+                    bottomContentPadding = bottomContentPadding
+                )
+            }
+        }
     }
 }
 
