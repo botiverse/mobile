@@ -202,6 +202,10 @@ internal fun SharedHomeActivityScreen(
                 diagnosticsLogger = { message -> bridge.log("shared_activity_thread_prewarm $message") }
             )
         }
+    // task #436: this call site left the store's diagnostics logger at its no-op
+    // default, so the activity feed's load lifecycle was unobservable in shipped
+    // builds. SettingsHomePage already wires the same store.
+    val activityDiagnosticsLogger = remember { slockLogger("SlockActivity", "shared_activity") }
     val activityStore =
         remember(
             storeScope,
@@ -219,11 +223,15 @@ internal fun SharedHomeActivityScreen(
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
                 prewarmReplyThread = replyThreadPrewarmDataSource::prewarmReplyThread,
-                // task #436: this call site left the store's diagnostics logger at its
-                // no-op default, so the activity feed's load lifecycle was unobservable
-                // in shipped builds. SettingsHomePage already wires the same store.
-                diagnosticsLogger = slockLogger("SlockActivity", "shared_activity")
-            )
+                diagnosticsLogger = activityDiagnosticsLogger
+            ).also {
+                // Positive control for the diagnostics channel itself. Emitted through
+                // the exact logger the store uses, on a path that always runs, so a
+                // reader can tell "this build cannot log" from "the load never began".
+                // Without it, a missing start line has two explanations and settles
+                // neither.
+                activityDiagnosticsLogger("store_load domain=activity phase=probe channel=live")
+            }
         }
     val state by activityStore.state.collectAsState()
     val activitySummaryServerId =
