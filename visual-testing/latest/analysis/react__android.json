@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-20T22:11:40.182Z",
+  "generatedAt": "2026-08-21T22:06:22.068Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 85,
-    "pending": 1
+    "ready": 83,
+    "pending": 3
   },
   "cases": [
     {
@@ -460,7 +460,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe0ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe9ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-10T22:11:45.609Z",
       "severity": "low",
       "summary": [
@@ -552,7 +552,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41497942386831277
+      "metricMismatch": 0.41496209659952354
     },
     {
       "id": "components.ui.spinner.states",
@@ -1572,7 +1572,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2693418263323477
+      "metricMismatch": 0.2693151591255857
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1606,7 +1606,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26918182309177574
+      "metricMismatch": 0.2691527929679588
     },
     {
       "id": "components.home.saved.results",
@@ -1643,7 +1643,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1903938460248591
+      "metricMismatch": 0.190240311052422
     },
     {
       "id": "components.home.activity.results",
@@ -1679,7 +1679,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18529679934603538
+      "metricMismatch": 0.18524177828082755
     },
     {
       "id": "components.tasks.panel.states",
@@ -1787,83 +1787,39 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2292745169522421
+      "metricMismatch": 0.2292741793926628
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000007ffc3ffc7df83ff83f5c3f7c01fc00fc7ffc3ffc7ffc2ffc3ffc203c7ffc3ffc1ffc3ffc3ffc3ffc7ffc27fc07fc2ffc3ffc3ffc3ffc3ffc7ff42ffc7ffc3ffc7ffc2ffc07fc27fc7ffc3ffc7ffc2ffc07fc2ffc67fc7ffc3ffc3ffc0ffc3ffc3ffc3d007ffc3ffc7f7c0000380000000000ffffffff",
-      "generatedAt": "2026-08-14T22:11:02.622Z",
-      "severity": "high",
-      "summary": [
-        "Android dialog starts about 16 px farther right and 24 px lower, with a slightly wider body; the 24 px dark shadow makes its visible right and bottom bounds appear even farther out.",
-        "Android has materially smaller typography and tighter component heights than React, including the title, warning, labels, field values, required asterisks, counters, and buttons.",
-        "Android omits React-only content: the \"MORE\" disclosure and the model-loading error message with \"Retry model check\" link.",
-        "Android's runtime and model values differ: \"Codex CLI\" and \"GPT-5.6 Sol\" replace React's placeholder \"Select...\" and selected \"opus\"; Android also adds a refresh icon beside MODEL.",
-        "The primary action is disabled in Android: its pink React fill becomes light gray, its dark text becomes light gray, and the surrounding shadow is gray rather than dark."
-      ],
-      "likelyCauses": [
-        "Android dialog container does not share the React modal's intended inset or width.",
-        "Separate Android text styles and spacing tokens are mapped to smaller values or converted with incompatible density/inset handling.",
-        "Android renders a different runtime state, model state, model-load status, and agent-limit/disabled state.",
-        "Android field and button components use platform-specific padding, border thickness, or minimum-height defaults."
-      ],
-      "suggestedOwner": "Android parity team",
-      "suggestedFixes": [
-        "Align the Android dialog bounds to the React contract, using 16 px left and top insets and matching the React width and shadow offset.",
-        "Adopt React-equivalent dialog type scale, weights, line heights, and spacing tokens for all text, labels, fields, and buttons.",
-        "Restore the \"MORE\" row and loading-error block only when the corresponding model state is present; use React values and states as the reference.",
-        "Match the model refresh icon exactly, or hide it if it is not part of the React design contract.",
-        "Style the Create Agent button with the React pink disabled-state fill, text color, border, padding, and shadow."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.29330349306652626
+      "status": "pending",
+      "imageHash": "p1:ffffffff0000000000007ffc3ffc7df83ff83e5c202c00fc01fc7ffc3ffc3ffc07fc3ffc203c3ffc3ffc1ffc3ffc3ffc25fc7ffc27fc03fc3ffc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc2ffc07fc2ffc3ffc3ffc3ffc3ffc07fc2ffc27fc3ffc3ffc7ffc0ffc3ffc3ffc3f047ffc3ffc7f7c0000380000000000ffffffff",
+      "generatedAt": "2026-08-21T22:06:21.312Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.25957183942965933
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000007ffc3ffc7df83ff83f5c3f7c01fc00fc7ffc3ffc7ffc2ffc3ffc203c7ffc3ffc1ffc3ffc3ffc3ffc7ffc27fc07fc2ffc3ffc3ffc3ffc3ffc7ff42ffc7ffc3ffc7ffc2ffc03fc27fc6ffc3ffc3ffc2ffc1ffc2ffc7ffc7ffc7ffc3ffc7ffc3ffc3ffc3d007ffc3ffc7f7c0000380000000000ffffffff",
-      "generatedAt": "2026-08-19T22:10:36.605Z",
-      "severity": "high",
-      "summary": [
-        "Android dialog is substantially taller and positioned closer to the top and right viewport edges, exposing fields beyond the baseline scroll/crop area.",
-        "Android content uses a smaller overall type scale; the title, alert text, labels, input text, and button text are all visibly reduced.",
-        "Android replaces the React runtime placeholder with \"Claude Code\" and inserts a provider section with explanatory helper text and a model refresh icon.",
-        "Android’s model selector is clipped by the bottom action bar; its selected value is only partially visible.",
-        "The React model-load error state, retry link, and \"More\" disclosure are missing on Android."
-      ],
-      "likelyCauses": [
-        "The Android dialog was laid out using compact native spacing and typography tokens rather than the React design values.",
-        "The Android form renders all sections at once without the equivalent scrolling or progressive/collapsed content behavior.",
-        "Runtime and provider data loaded on Android but remained unavailable or uninitialized in the React capture.",
-        "The model section was measured below the visible dialog viewport, and the fixed action bar overlays it.",
-        "Agent-limit state is applied on Android, disabling submission, but the disabled treatment is too faint against the viewport background."
-      ],
-      "suggestedOwner": "Android UI implementation owner with design-system and dialog-layout support",
-      "suggestedFixes": [
-        "Apply the React dialog’s outer dimensions, viewport margins, content padding, and action-bar dimensions to Android.",
-        "Use the shared React typography scale for the title, alert, labels, inputs, counters, helper text, and actions.",
-        "Make the runtime field render \"Select...\" until selected, and hide or collapse the provider section when using the default behavior.",
-        "Match the React model-load error presentation or keep that section hidden while models are unavailable.",
-        "Ensure the content container scrolls and leaves clear space above the action bar so the entire model selector and its value are visible."
-      ],
-      "intentional": [
-        "Both implementations display the agent-limit warning and prevent creation after the 2/2 Free-plan limit is reached.",
-        "Both select a computer and show Product-QA-Bot as the agent name."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2934739606540554
+      "status": "pending",
+      "imageHash": "p1:ffffffff0000000000007ffc3ffc7df83ff83e5c202c00fc01fc7ffc3ffc3ffc07fc3ffc203c3ffc3ffc1ffc3ffc3ffc25fc7ffc27fc03fc3ffc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc2ffc03fc2ffc6ffc3ffc3ffc3ffc1ffc2ffc7ffc3ffc7ffc7ffc7ffc3ffc3ffc3f047ffc3ffc7f7c0000380000000000ffffffff",
+      "generatedAt": "2026-08-21T22:06:21.326Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.26293798355409725
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-20T22:11:39.448Z",
+      "generatedAt": "2026-08-21T22:06:21.185Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2149,7 +2105,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1986176935229068
+      "metricMismatch": 0.1986028409014191
     },
     {
       "id": "components.settings.notifications.page",
@@ -2321,7 +2277,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06129136792643897
+      "metricMismatch": 0.061296431320127964
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2594,7 +2550,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.15699187156533123
+      "metricMismatch": 0.15699355936322756
     },
     {
       "id": "components.thread.message-row.rich-content",

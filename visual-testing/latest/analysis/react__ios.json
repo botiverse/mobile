@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-20T22:11:43.149Z",
+  "generatedAt": "2026-08-21T22:06:25.698Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 78,
+    "pending": 8
   },
   "cases": [
     {
@@ -547,7 +547,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062095097284670775
+      "metricMismatch": 0.062097122642146285
     },
     {
       "id": "components.ui.spinner.states",
@@ -1550,7 +1550,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26933811317697576
+      "metricMismatch": 0.2693202225192747
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1583,7 +1583,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2694785379619503
+      "metricMismatch": 0.2694619975425663
     },
     {
       "id": "components.home.saved.results",
@@ -1619,7 +1619,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11140242502801745
+      "metricMismatch": 0.11131060882245714
     },
     {
       "id": "components.home.activity.results",
@@ -1654,7 +1654,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10675085402573559
+      "metricMismatch": 0.10672486193813213
     },
     {
       "id": "components.tasks.panel.states",
@@ -1764,79 +1764,35 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000007ffc3ffc7df83ff83ffc3f7c01fc00fc7ffc3ffc7ffc2ffc3ffc203c7ffc3ffc1ffc3ffc39fc3ffc47fc27fc07fc2ffc3ffc3ffc7ffc3ffc7f7c2ffc787c3ffc00002ffc800127fcfff73ffcffff2ffcffff2ffcffff7ffebff87ffc3ff83ffc8ff03d000ff03ffc8181000080010000fffdffffffff",
-      "generatedAt": "2026-08-14T22:11:30.529Z",
-      "severity": "high",
-      "summary": [
-        "iOS view shows an on-screen keyboard occupying the bottom half, which is not present in the React baseline; this hides Runtime, Model, Model-error message, More section, and the Cancel/Create-Agent footer actions.",
-        "Cancel and Create Agent buttons on iOS are repositioned just above the keyboard and appear visually smaller/closer together, while the React baseline places them at the bottom of the modal with full spacing.",
-        "Character counter '72/3000' visible under the Description textarea in React is missing/clipped on iOS (likely behind the keyboard).",
-        "Form fields and the title 'CREATE AGENT' render at a larger relative scale on iOS, increasing field heights and reducing vertical gaps between labels and inputs versus the React baseline.",
-        "iOS modal does not appear to be vertically scrollable in the visible region, so the lower form sections (Runtime, Model, Retry model check, More) are completely inaccessible behind the keyboard."
-      ],
-      "likelyCauses": [
-        "iOS native keyboard is presented because a text field has focus, reducing visible viewport without the React web baseline showing a keyboard.",
-        "Modal sheet on iOS is not auto-scrolling or resizing the form to keep lower fields/buttons above the keyboard.",
-        "Different default font sizes, input padding, and line-height between React (web) and iOS native components cause the same content to take more vertical space.",
-        "Button row isn't pinned to the safe-area bottom or wrapped in a keyboard-avoiding container on iOS."
-      ],
-      "suggestedOwner": "iOS",
-      "suggestedFixes": [
-        "Wrap the dialog in a ScrollView (or UIScrollView equivalent) with keyboard-avoiding insets so all fields and the Cancel/Create Agent buttons can scroll above the keyboard.",
-        "Dismiss the keyboard or use a 'done' accessory; ensure tapping outside inputs or pressing Return dismisses focus during screenshot capture.",
-        "Pin the action button row to the keyboard's top inset (or use a safe-area bottom constraint) so primary actions remain visible while typing.",
-        "Standardize form typography and input heights between React and iOS (label size, input padding, gap between fields) so the layout fits without overlapping the keyboard.",
-        "Consider collapsing the Description textarea or moving Model/Runtime into a more compact layout when the keyboard is open."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.5133271897489907
+      "status": "pending",
+      "imageHash": "p1:ffffffff0000000000007dfc3ffc6df83ff83ffc242c00cc21fc7ffc3ffc3ffc07fc3dfc203c7ffc3ffc1ffc3ffc31fc2dfc07fc27fc07fc3ffc3ffc3ffc7ffc3ffc7f7c3ffc787c3ffc00002ffc80012ffcfff33ffcffff3ffcffff3ffcffff3ffcbff87ffc3ff83ffc0ff03f840ff03ffc8101000080010000a001ffffffff",
+      "generatedAt": "2026-08-21T22:06:25.030Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4860999716449953
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000007ffc3ffc7df83ff83ffc3f7c01fc00fc7ffc3ffc7ffc2ffc3ffc203c7ffc3ffc1ffc3ffc39fc3ffc47fc27fc07fc2ffc3ffc3ffc7ffc3ffc7f7c2ffc787c3ffc00002ffc800127fcfff73ffcffff2ffcffff2ffcffff7ffebff87ffc3ff83ffc8ff03d000ff03ffc8181000080010000fffdffffffff",
-      "generatedAt": "2026-08-14T22:11:30.582Z",
-      "severity": "high",
-      "summary": [
-        "iOS modal is substantially taller and positioned higher, showing only the upper form fields while React displays Runtime, Model, retry guidance, and More.",
-        "The iOS viewport includes the on-screen keyboard and enlarged input text/caret; the Name field appears focused.",
-        "The Cancel and Create Agent actions are at the top of the keyboard area in iOS rather than below the full form in React.",
-        "Typography is visibly larger and bolder on iOS across the title, labels, field values, notice, and buttons.",
-        "The iOS modal and its fields have wider outer padding and larger control bounds; the lower fields are absent from the visible modal."
-      ],
-      "likelyCauses": [
-        "The iOS screenshot was captured with the software keyboard open, reducing available modal space and triggering view scrolling/resize.",
-        "No equivalent viewport/crop normalization was applied to the 1170×2532 current image.",
-        "Platform text scaling or missing maximum font-size constraints increased iOS typography.",
-        "The iOS form action bar was laid out outside the scrollable form, while React places actions after the complete form."
-      ],
-      "suggestedOwner": "iOS client team",
-      "suggestedFixes": [
-        "Dismiss the keyboard or capture the modal in a state where its complete scrollable content and actions are visible.",
-        "Keep the Cancel and Create Agent actions attached to the bottom of the modal content, or render a non-scrolling action footer above the keyboard.",
-        "Constrain form typography to the same design tokens or maximum scale as React.",
-        "Match React field heights, widths, vertical gaps, and modal insets using iOS-safe layout constraints.",
-        "Preserve the complete form viewport during keyboard presentation by using appropriate keyboard avoidance and allowing the modal body to scroll."
-      ],
-      "intentional": [
-        "iOS displays a native caret in the focused Name field.",
-        "The iOS screenshot includes the system keyboard, which is a platform state difference.",
-        "The disabled Create Agent button uses gray text in both views, although its background/shadow treatment differs."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.5133373165363686
+      "status": "pending",
+      "imageHash": "p1:ffffffff0000000000007dfc3ffc6df83ff83ffc242c00cc21fc7ffc3ffc3ffc07fc3dfc203c7ffc3ffc1ffc3ffc31fc2dfc07fc27fc07fc3ffc3ffc3ffc7ffc3ffc7f7c3ffc787c3ffc00002ffc80012ffcfff33ffcffff3ffcffff3ffcffff3ffcbff87ffc3ff83ffc0ff03f840ff03ffc8101000080010000a001ffffffff",
+      "generatedAt": "2026-08-21T22:06:25.045Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4860999716449953
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-20T22:11:42.515Z",
+      "generatedAt": "2026-08-21T22:06:24.927Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2120,7 +2076,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19633646588622888
+      "metricMismatch": 0.19633005225422284
     },
     {
       "id": "components.settings.notifications.page",
@@ -2226,7 +2182,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-20T22:11:42.744Z",
+      "generatedAt": "2026-08-21T22:06:25.204Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2239,7 +2195,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-20T22:11:42.744Z",
+      "generatedAt": "2026-08-21T22:06:25.204Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2252,7 +2208,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-20T22:11:42.744Z",
+      "generatedAt": "2026-08-21T22:06:25.204Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2265,7 +2221,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-20T22:11:42.744Z",
+      "generatedAt": "2026-08-21T22:06:25.204Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2278,7 +2234,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-20T22:11:42.744Z",
+      "generatedAt": "2026-08-21T22:06:25.204Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2451,7 +2407,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19329100336209337
+      "metricMismatch": 0.1932926911599897
     },
     {
       "id": "components.thread.message-row.rich-content",

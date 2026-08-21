@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-20 22:11:48 UTC
-Latest run: 7ffc900e-20260820220535
-Latest commit: 7ffc900e-20260820220535
-Commit subject: fix(android): let the return-key preference decide the composer line mode (task #1083) (#2216)
+Generated: 2026-08-21 22:06:31 UTC
+Latest run: 5edd855a-20260821220357
+Latest commit: 5edd855a-20260821220357
+Commit subject: Merge release-1.10.0 backports into main
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 86, same 0, pass 0, basic-pass 0, different 85, missing 1
-AI analysis: ready 85 / total 86, pending 1
+AI analysis: ready 83 / total 86, pending 3
 Visual coverage matrix: active 95 / total 114, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 5edd855a-20260821220357: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/5edd855a-20260821220357/component-matrix.json, page runs/5edd855a-20260821220357/
 - 7ffc900e-20260820220535: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/7ffc900e-20260820220535/component-matrix.json, page runs/7ffc900e-20260820220535/
 - ff2da678-20260819220528: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/ff2da678-20260819220528/component-matrix.json, page runs/ff2da678-20260819220528/
 - aece8704-20260818220517: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/aece8704-20260818220517/component-matrix.json, page runs/aece8704-20260818220517/
