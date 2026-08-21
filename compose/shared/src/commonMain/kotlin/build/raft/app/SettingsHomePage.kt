@@ -2497,7 +2497,8 @@ private fun SlockAppShellReadyContent(
                 memberRepository = memberRepository,
                 prewarmReplyThread = homeActivityReplyThreadPrewarmDataSource::prewarmReplyThread,
                 onUnreadCountsChanged = { homeStore.dispatch(SharedHomeIntent.ForegroundRefresh) },
-                diagnosticsLogger = slockLogger("SlockHomeActivity", "shared_home_activity")
+                // task #436: shared store — both call sites must use one identity.
+                diagnosticsLogger = sharedActivityStoreDiagnosticsLogger()
             )
         }
     val appShellComputersStore =

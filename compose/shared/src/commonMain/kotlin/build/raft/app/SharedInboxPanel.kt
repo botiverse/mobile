@@ -204,8 +204,15 @@ internal fun SharedHomeActivityScreen(
         }
     // task #436: this call site left the store's diagnostics logger at its no-op
     // default, so the activity feed's load lifecycle was unobservable in shipped
-    // builds. SettingsHomePage already wires the same store.
-    val activityDiagnosticsLogger = remember { slockLogger("SlockActivity", "shared_activity") }
+    // builds.
+    //
+    // The store is shared: SettingsHomePage resolves the same instance for the
+    // same shellInstanceId, and updateRuntimeIntegrations overwrites on non-null
+    // (last write wins). Injecting a second identity here would silently replace
+    // the one already established there and would not be restored when this page
+    // closes. Both call sites therefore go through one factory, and it keeps the
+    // identity SettingsHomePage already ships so existing consumers see no change.
+    val activityDiagnosticsLogger = remember { sharedActivityStoreDiagnosticsLogger() }
     val activityStore =
         remember(
             storeScope,
@@ -225,11 +232,16 @@ internal fun SharedHomeActivityScreen(
                 prewarmReplyThread = replyThreadPrewarmDataSource::prewarmReplyThread,
                 diagnosticsLogger = activityDiagnosticsLogger
             ).also {
-                // Positive control for the diagnostics channel itself. Emitted through
-                // the exact logger the store uses, on a path that always runs, so a
-                // reader can tell "this build cannot log" from "the load never began".
-                // Without it, a missing start line has two explanations and settles
-                // neither.
+                // Positive control for the diagnostics channel, emitted through the
+                // exact logger the store uses on a path that always runs.
+                //
+                // READ IT ONLY AS POSITIVE EVIDENCE. Seeing this line proves the
+                // channel delivered at this level in this build. A MISSING line —
+                // this one or any other — proves only "not observed": delivery
+                // crosses two bounded queues (the shared log queue and the sink's),
+                // either of which drops silently under contention or overflow. So
+                // "probe present, start absent" does NOT establish that the load
+                // never began, and per-line loss is not attributable from logcat.
                 activityDiagnosticsLogger("store_load domain=activity phase=probe channel=live")
             }
         }
@@ -384,6 +396,20 @@ internal data class ActivityRefreshPresentation(
     val headerRefreshing: Boolean,
     val pullRefreshing: Boolean
 )
+
+/**
+ * Single diagnostics identity for the shared activity store (task #436).
+ *
+ * `SharedInboxPanel` and `SettingsHomePage` resolve the same store instance for
+ * the same shellInstanceId, and `updateRuntimeIntegrations` overwrites the
+ * logger on non-null. Two identities would mean whichever composed last wins,
+ * with no restore on close. Every call site must use this factory.
+ *
+ * The tag/prefix are the ones `SettingsHomePage` already shipped, so wiring the
+ * previously-unlogged call site does not change what existing consumers grep.
+ */
+internal fun sharedActivityStoreDiagnosticsLogger(): (String) -> Unit =
+    slockLogger("SlockHomeActivity", "shared_home_activity")
 
 @Suppress("UNUSED_PARAMETER")
 internal fun activityRefreshPresentation(

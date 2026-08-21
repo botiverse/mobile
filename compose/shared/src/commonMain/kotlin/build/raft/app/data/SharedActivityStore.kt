@@ -1003,6 +1003,21 @@ class SharedActivityStore internal constructor(
                             synchronized(realtimeOwnerLock) {
                                 if (!backgroundRefresh) setLoadError("server_missing", append = !refresh)
                             }
+                            // task #436: this exit previously logged nothing. After a start
+                            // line, silence is read as "never terminated" — the stuck
+                            // signature — so an unlogged exit makes the diagnostic
+                            // manufacture the very false positive it exists to rule out.
+                            logActivityLoad(
+                                result = "error",
+                                code = "server_missing",
+                                refresh = refresh,
+                                append = !refresh,
+                                filter = filter,
+                                backgroundRefresh = backgroundRefresh,
+                                durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+                                generation = generation,
+                                pullRefresh = pullRefresh
+                            )
                             return@launch
                         }
                         synchronized(realtimeOwnerLock) {
@@ -1093,8 +1108,16 @@ class SharedActivityStore internal constructor(
                                     )
                                 }
                             }
-                            diagnosticsLogger(
-                                "store_load domain=activity result=stale_session serverId=${serverId.value}"
+                            logActivityLoad(
+                                result = "stale_session",
+                                code = null,
+                                refresh = refresh,
+                                append = !refresh,
+                                filter = filter,
+                                backgroundRefresh = backgroundRefresh,
+                                durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+                                generation = generation,
+                                pullRefresh = pullRefresh
                             )
                             return@launch
                         }
@@ -1269,8 +1292,15 @@ class SharedActivityStore internal constructor(
     /**
      * task #436: a load that never reaches a terminal branch previously left no
      * trace at all, so "no line" could not be told apart from "never started".
-     * Start and abandon are recorded so the terminal line's absence is readable
-     * as evidence rather than silence.
+     *
+     * Every post-start exit must emit exactly one terminal or abandoned line.
+     * An unlogged exit is worse than no instrumentation: after a start line,
+     * silence is the stuck signature, so a silent return makes this diagnostic
+     * manufacture the false positive it exists to rule out.
+     *
+     * These lines are positive evidence only. A missing line means "not
+     * observed" — delivery crosses two bounded queues that drop silently — and
+     * never proves the load failed to terminate.
      */
     private fun logActivityLoadStart(
         refresh: Boolean,
