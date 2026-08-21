@@ -3655,6 +3655,38 @@ class SharedActivityStoreTest {
         scope.cancel()
     }
 
+    @Test
+    fun pullRefreshRecordsStartAndTerminalDiagnosticsCarryingPullRefreshInput() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val lines = mutableListOf<String>()
+        val store = activityStore(scope = scope, diagnosticsLogger = { message -> lines.add(message) })
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        lines.clear()
+        store.dispatch(SharedActivityIntent.PullRefresh)
+
+        // task #436: without a start line, "no terminal line" cannot be told apart
+        // from "the load never began", so absence is unreadable as evidence.
+        val startLines = lines.filter { it.contains("phase=start") }
+        assertEquals(1, startLines.size, "pull refresh must record exactly one start line; actual=$lines")
+        assertTrue(
+            startLines[0].contains("pullRefresh=true"),
+            "start line must carry the pull-refresh input; actual=${startLines[0]}"
+        )
+
+        val terminalLines = lines.filter { it.contains("result=") }
+        assertEquals(1, terminalLines.size, "pull refresh must record exactly one terminal line; actual=$lines")
+        assertTrue(
+            terminalLines[0].contains("pullRefresh=true"),
+            "terminal line must carry the pull-refresh input; actual=${terminalLines[0]}"
+        )
+        assertTrue(
+            terminalLines[0].contains("pullRefreshingAfter=false"),
+            "a terminated pull refresh must publish pullRefreshing=false; actual=${terminalLines[0]}"
+        )
+        scope.cancel()
+    }
+
     private fun activityStore(
         scope: CoroutineScope,
         inboxRepository: InboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList()))),
@@ -3680,7 +3712,8 @@ class SharedActivityStoreTest {
         realtimeBackgroundReconcileDelayMillis: Long = 60_000L,
         beforeRealtimeHighWaterFold: () -> Unit = {},
         onRealtimePatchOwnerEntered: () -> Unit = {},
-        onReadReceiptPredictionOwnerEntered: () -> Unit = {}
+        onReadReceiptPredictionOwnerEntered: () -> Unit = {},
+        diagnosticsLogger: (String) -> Unit = {}
     ): SharedActivityStore =
         SharedActivityStore(
             authStore = authStore,
@@ -3704,7 +3737,8 @@ class SharedActivityStoreTest {
             realtimeBackgroundReconcileDelayMillis = realtimeBackgroundReconcileDelayMillis,
             beforeRealtimeHighWaterFold = beforeRealtimeHighWaterFold,
             onRealtimePatchOwnerEntered = onRealtimePatchOwnerEntered,
-            onReadReceiptPredictionOwnerEntered = onReadReceiptPredictionOwnerEntered
+            onReadReceiptPredictionOwnerEntered = onReadReceiptPredictionOwnerEntered,
+            diagnosticsLogger = diagnosticsLogger
         )
 
     private fun readStateEvent(

@@ -218,7 +218,11 @@ internal fun SharedHomeActivityScreen(
                 readReceiptRepository = readReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
-                prewarmReplyThread = replyThreadPrewarmDataSource::prewarmReplyThread
+                prewarmReplyThread = replyThreadPrewarmDataSource::prewarmReplyThread,
+                // task #436: this call site left the store's diagnostics logger at its
+                // no-op default, so the activity feed's load lifecycle was unobservable
+                // in shipped builds. SettingsHomePage already wires the same store.
+                diagnosticsLogger = slockLogger("SlockActivity", "shared_activity")
             )
         }
     val state by activityStore.state.collectAsState()
