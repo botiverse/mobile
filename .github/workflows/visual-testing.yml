@@ -116,7 +116,13 @@ jobs:
         with:
           name: visual-results-react
           path: slock-source/visual-testing-results/react
-          if-no-files-found: error
+          # A targeted case_filter may name Android-only cases (e.g. the compact
+          # message menu), which React legitimately has no counterpart for. In
+          # that situation React produces zero files and `error` would kill the
+          # run, defeating the `continue-on-error` above whose stated intent is
+          # that broken/absent cases surface as "missing" in the diff report.
+          # Unfiltered runs must still produce React output, so keep `error`.
+          if-no-files-found: ${{ inputs.case_filter == '' && 'error' || 'warn' }}
 
   android-build:
     if: ${{ !inputs.site_only }}
