@@ -2,6 +2,7 @@ package build.raft.app
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -256,44 +257,30 @@ class SlockPlatformLogTest {
     }
 
     @Test
-    fun sharedActivityDiagnosticsSequenceIsUniquePerLineUnderConcurrentEmission() = runBlocking {
-        val entries = mutableListOf<SlockPlatformLogRecord>()
-        val marker = "concurrent-seq-probe"
-        installSlockPlatformLogRecordSink(entries::add)
-        try {
-            val logger = sharedActivityStoreDiagnosticsLogger()
-            (1..24).map { index ->
-                launch(Dispatchers.Default) { logger("$marker index=$index") }
-            }.forEach { it.join() }
-            flushSlockPlatformLogsForTest()
-        } finally {
-            installSlockPlatformLogRecordSink(null)
-        }
-
-        val observed =
-            entries.toList()
-                .filter { it.message.contains(marker) }
-                .mapNotNull { record -> Regex("""seq=(\d+)""").find(record.message)?.groupValues?.get(1)?.toLong() }
-
-        // Deliberately NOT asserting contiguity here. enqueue drops when its
-        // admission latch is contended, so under 24-way concurrency gaps are the
-        // expected, correct behaviour — that is the very loss the sequence exists
-        // to reveal. Asserting a full run would be both flaky and false.
+    fun sharedActivityDiagnosticsSequenceNeverRepeatsAValueUnderConcurrency() = runBlocking {
+        // Tested on the stamping function directly, NOT through the logger. Delivery
+        // drops under admission contention, so a duplicated number could be hidden by
+        // one of the pair being dropped — the assertion would then pass on a broken
+        // counter. Off the lossy path every allocation is observable, so this locks
+        // the contract deterministically.
         //
-        // What must hold, and what concurrency could actually break, is that a
-        // number is never handed to two lines: a duplicate would let a dropped
-        // value be masked by a surviving one, and then a gap-free set would no
-        // longer prove nothing was lost.
-        assertTrue(observed.isNotEmpty(), "expected at least one observed emission; actual=$entries")
+        // Uniqueness is the property the whole protocol rests on: if one value were
+        // handed to two lines, a dropped value could be masked by a surviving one and
+        // a gap-free set would stop proving that nothing was lost.
+        val emitters = 64
+        val perEmitter = 16
+        val stamped =
+            (1..emitters)
+                .map { async(Dispatchers.Default) { List(perEmitter) { stampSharedActivityDiagnosticsSequence("line") } } }
+                .flatMap { it.await() }
+
+        val values =
+            stamped.mapNotNull { line -> Regex("""^seq=(\d+) """).find(line)?.groupValues?.get(1)?.toLong() }
+        assertEquals(emitters * perEmitter, values.size, "every stamp must carry a parseable sequence")
         assertEquals(
-            observed.size,
-            observed.distinct().size,
-            "each line must carry its own sequence value; duplicates would mask a drop; actual=$observed"
-        )
-        assertEquals(
-            observed.size,
-            observed.filter { it > 0L }.size,
-            "every observed line must carry a positive sequence; actual=$observed"
+            values.size,
+            values.distinct().size,
+            "a sequence value must never be handed out twice under concurrency"
         )
     }
 }

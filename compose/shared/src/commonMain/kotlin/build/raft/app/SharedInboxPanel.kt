@@ -411,8 +411,17 @@ internal data class ActivityRefreshPresentation(
  */
 internal fun sharedActivityStoreDiagnosticsLogger(): (String) -> Unit {
     val delegate = slockLogger("SlockHomeActivity", "shared_home_activity")
-    return { message -> delegate("seq=${sharedActivityDiagnosticsSequence.incrementAndGet()} $message") }
+    return { message -> delegate(stampSharedActivityDiagnosticsSequence(message)) }
 }
+
+/**
+ * Stamping is separated from delivery so the uniqueness contract can be tested
+ * deterministically. Exercised through the logger it cannot be: the queue drops
+ * under admission contention, so a duplicated number could be hidden by one of
+ * the pair being dropped and the test would pass on a broken counter.
+ */
+internal fun stampSharedActivityDiagnosticsSequence(message: String): String =
+    "seq=${sharedActivityDiagnosticsSequence.incrementAndGet()} $message"
 
 /**
  * Allocation-order sequence stamped on every line this logger emits (task #436).
