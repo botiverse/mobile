@@ -127,6 +127,10 @@ class SharedActivityStorePullRefreshHarnessTest {
         cStarted.awaitBarrier("pull generation C")
         assertTrue(store.state.value.pullRefreshing)
 
+        // B and C are PullRefresh intents, so they deliberately write pullRefreshing=true. This
+        // does not mask the assertion below: C positively owns a true flag before each stale A/B
+        // continuation is delivered, and the test asks only whether that stale continuation can
+        // clear the newest generation's flag.
         // A and B are cancelled, but their underlying deferred responses remain completable. Their
         // late continuations must be abandoned by generation check and leave C's flag untouched.
         inbox.completeNextSnapshot(inboxSnapshot(listOf(activityItem("a-late"))))
@@ -144,7 +148,7 @@ class SharedActivityStorePullRefreshHarnessTest {
     }
 
     @Test
-    fun clearCancelsCurrentLoadAndLeavesFlagForBackgroundFailureMechanismCandidate() = runBlocking {
+    fun clearCancellationCurrentlyLeavesFlagThroughBackgroundFailureCharacterization() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = PullRefreshInboxHarness()
         val diagnostics = mutableListOf<String>()
@@ -160,7 +164,10 @@ class SharedActivityStorePullRefreshHarnessTest {
         foregroundStarted.awaitBarrier("foreground pull refresh")
         assertTrue(store.state.value.pullRefreshing)
 
-        // clear() is intentionally called directly. The test proves the lifecycle mechanism
+        // Characterization only: this records clear()'s current non-resetting behavior, not a
+        // desired contract. If clear() starts resetting pullRefreshing, this test should fail as a
+        // signal that the fix worked; update the characterization instead of reverting that fix.
+        // clear() is intentionally called directly, so this proves the lifecycle mechanism
         // (loadJob is cancelled/removed while state retains the flag), not a user-reachable path.
         store.clear()
         assertTrue(store.state.value.pullRefreshing)
@@ -187,7 +194,10 @@ class SharedActivityStorePullRefreshHarnessTest {
 
         inbox.complete(backgroundRequest, DataResult.Error(ScreenError("background_failed")))
         realtime.joinBarrier("realtime background reconcile after clear")
-        assertTrue(store.state.value.pullRefreshing, "background failure must preserve the candidate flag")
+        assertTrue(
+            store.state.value.pullRefreshing,
+            "current background-failure behavior retains the characterization flag"
+        )
 
         // Release the cancelled foreground barrier so this mechanism harness leaves no suspended
         // request behind. Its generation is stale and must not change the assertion above.
