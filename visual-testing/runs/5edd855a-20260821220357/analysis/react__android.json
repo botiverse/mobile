@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-21T22:06:22.068Z",
+  "generatedAt": "2026-08-21T22:10:27.503Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 83,
-    "pending": 3
+    "ready": 85,
+    "pending": 1
   },
   "cases": [
     {
@@ -1791,35 +1791,86 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff0000000000007ffc3ffc7df83ff83e5c202c00fc01fc7ffc3ffc3ffc07fc3ffc203c3ffc3ffc1ffc3ffc3ffc25fc7ffc27fc03fc3ffc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc2ffc07fc2ffc3ffc3ffc3ffc3ffc07fc2ffc27fc3ffc3ffc7ffc0ffc3ffc3ffc3f047ffc3ffc7f7c0000380000000000ffffffff",
-      "generatedAt": "2026-08-21T22:06:21.312Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-21T22:08:40.676Z",
+      "severity": "high",
+      "summary": [
+        "Android renders additional fields (REASONING, MODE) absent from React baseline; React has a '> MORE' disclosure where Android expands them inline",
+        "Android Runtime field shows 'Codex CLI' pre-selected vs React's placeholder 'Select...'; Model shows 'GPT-5.6 Sol' vs React's 'opus'",
+        "Android is missing the 'Models could not be loaded from this Computer. / Retry model check' error/empty-state block present in React",
+        "Android's 'Create Agent' button is disabled (grayed) and right-aligned while React's is pink/highlighted and also right-aligned — disabled state diverges",
+        "Vertical spacing/padding between form fields is tighter on Android; dialog overall appears vertically denser and content extends further down the viewport"
+      ],
+      "likelyCauses": [
+        "Android implementation expanded an advanced section that React keeps collapsed behind '> MORE'",
+        "Runtime/Model fields are pre-populated from cached state on Android while React is in initial empty state",
+        "Android omits the empty-model error message component or hides it when models load successfully",
+        "Disabled-button styling and color tokens differ between platforms (gray vs pink)",
+        "Form field vertical rhythm/spacing tokens not shared across web and Android token sets"
+      ],
+      "suggestedOwner": "android-platform",
+      "suggestedFixes": [
+        "Sync the field set: keep REASONING and MODE hidden behind a '> MORE' disclosure on Android to match React",
+        "Reset Runtime/Model to empty/placeholder values or load models consistently before render to match baseline initial state",
+        "Render the 'Models could not be loaded' empty state with retry link on Android when model list is unavailable",
+        "Align 'Create Agent' disabled-state color/spacing with the React token (or keep intentional, but flag the divergence)",
+        "Unify form vertical spacing scale (dp) with the web spacing scale used in the React baseline"
+      ],
+      "intentional": [
+        "Additional REASONING/MODE fields on Android may be an intentional advanced-options expansion",
+        "Pre-selected Runtime/Model values may reflect persisted user defaults unique to Android"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.25957183942965933
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff0000000000007ffc3ffc7df83ff83e5c202c00fc01fc7ffc3ffc3ffc07fc3ffc203c3ffc3ffc1ffc3ffc3ffc25fc7ffc27fc03fc3ffc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc2ffc03fc2ffc6ffc3ffc3ffc3ffc1ffc2ffc7ffc3ffc7ffc7ffc7ffc3ffc3ffc3f047ffc3ffc7f7c0000380000000000ffffffff",
-      "generatedAt": "2026-08-21T22:06:21.326Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-21T22:08:40.804Z",
+      "severity": "high",
+      "summary": [
+        "Android renders an additional PROVIDER field (with helper text) between RUNTIME and MODEL that is absent on React",
+        "Android Model dropdown is clipped at the bottom of the viewport (overflow into the footer area), while React places Model fully visible with a 'MORE' disclosure below",
+        "Android shows only the RUNTIME field prefilled ('Claude Code'); React shows a 'Select…' placeholder, and field ordering of MODEL/RUNTIME is swapped between the two",
+        "Android Create Agent button is rendered disabled/grey, React shows it pink/highlighted (enabled state)",
+        "Android typography appears slightly heavier/larger for body labels (COMPUTER, NAME, RUNTIME, PROVIDER, MODEL) and tighter vertical spacing between sections"
+      ],
+      "likelyCauses": [
+        "Android dialog renders an extra PROVIDER dropdown (plus helper text) that the React baseline does not include",
+        "Different form-field ordering or RUNTIME/Model data prefilled differently across platforms",
+        "Android modal uses a fixed height that does not scroll, causing the Model field to clip against the action footer",
+        "Disabled vs enabled state of the primary CTA differs (Android disabled, React enabled)",
+        "Platform-specific type scale/spacing tokens applied to form labels and inputs"
+      ],
+      "suggestedOwner": "android-engineering",
+      "suggestedFixes": [
+        "Remove (or hide behind 'MORE') the PROVIDER field and its helper text on Android to match the React baseline field set",
+        "Ensure the dialog body scrolls so MODEL and any remaining fields are not clipped behind the Cancel/Create Agent footer",
+        "Unify the order and placeholders of RUNTIME/Model fields across platforms (both should show Select… when unset, or both should be prefilled consistently)",
+        "Apply consistent enabled/disabled styling to the Create Agent CTA so both render with the same color and opacity when ready to submit",
+        "Align typography weight/size and vertical rhythm of form labels and inputs to a shared design token set used by React"
+      ],
+      "intentional": [
+        "Header title 'CREATE AGENT' and close (×) button placement are consistent",
+        "Warning banner copy and peach background color for the 'Agent limit reached' notice match",
+        "Required-asterisk color and position on COMPUTER/NAME labels match",
+        "Cancel button styling and placement are consistent",
+        "Character counter '72/3000' position relative to Description is consistent"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.26293798355409725
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-21T22:06:21.185Z",
+      "generatedAt": "2026-08-21T22:10:26.741Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-21T22:06:31.902Z",
+  "generatedAt": "2026-08-21T22:10:37.022Z",
   "latestRunId": "5edd855a-20260821220357",
   "latest": {
     "runId": "5edd855a-20260821220357",
     "commit": "5edd855a-20260821220357",
     "commitSubject": "Merge release-1.10.0 backports into main",
-    "generatedAt": "2026-08-21T22:06:31.902Z",
+    "generatedAt": "2026-08-21T22:10:37.022Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 86,
-      "ready": 83,
-      "pending": 3
+      "ready": 85,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "5edd855a-20260821220357",
       "commit": "5edd855a-20260821220357",
       "commitSubject": "Merge release-1.10.0 backports into main",
-      "generatedAt": "2026-08-21T22:06:31.902Z",
+      "generatedAt": "2026-08-21T22:10:37.022Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 83,
-        "pending": 3
+        "ready": 85,
+        "pending": 1
       },
       "comparisons": [
         "react__android",

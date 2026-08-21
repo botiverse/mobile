@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>5edd855a-20260821220357</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-21T22:06:31.902Z" data-timestamp="2026-08-21T22:06:31.902Z" title="2026-08-21T22:06:31.902Z">2026-08-21 22:06:31 UTC</time></p>
+    <p class="runMeta"><code>5edd855a-20260821220357</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-21T22:10:37.022Z" data-timestamp="2026-08-21T22:10:37.022Z" title="2026-08-21T22:10:37.022Z">2026-08-21 22:10:37 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 85</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 83/86 ready</span>
+      <span class="pill">AI 85/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -4118,7 +4118,12 @@
       <p><code>RGB 84.1%</code><br/><code>Pixel 74.04%</code><br/><code>Mismatch 25.96%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-platform</summary>
+    <ul><li>Android renders additional fields (REASONING, MODE) absent from React baseline; React has a '&gt; MORE' disclosure where Android expands them inline</li><li>Android Runtime field shows 'Codex CLI' pre-selected vs React's placeholder 'Select...'; Model shows 'GPT-5.6 Sol' vs React's 'opus'</li><li>Android is missing the 'Models could not be loaded from this Computer. / Retry model check' error/empty-state block present in React</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Sync the field set: keep REASONING and MODE hidden behind a '&gt; MORE' disclosure on Android to match React</li><li>Reset Runtime/Model to empty/placeholder values or load models consistently before render to match baseline initial state</li><li>Render the 'Models could not be loaded' empty state with retry link on Android when model list is unavailable</li><li>Align 'Create Agent' disabled-state color/spacing with the React token (or keep intentional, but flag the divergence)</li><li>Unify form vertical spacing scale (dp) with the web spacing scale used in the React baseline</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.dialog.png" data-current-src="android/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4177,7 +4182,12 @@
       <p><code>RGB 84.1%</code><br/><code>Pixel 73.71%</code><br/><code>Mismatch 26.29%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-engineering</summary>
+    <ul><li>Android renders an additional PROVIDER field (with helper text) between RUNTIME and MODEL that is absent on React</li><li>Android Model dropdown is clipped at the bottom of the viewport (overflow into the footer area), while React places Model fully visible with a 'MORE' disclosure below</li><li>Android shows only the RUNTIME field prefilled ('Claude Code'); React shows a 'Select…' placeholder, and field ordering of MODEL/RUNTIME is swapped between the two</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Remove (or hide behind 'MORE') the PROVIDER field and its helper text on Android to match the React baseline field set</li><li>Ensure the dialog body scrolls so MODEL and any remaining fields are not clipped behind the Cancel/Create Agent footer</li><li>Unify the order and placeholders of RUNTIME/Model fields across platforms (both should show Select… when unset, or both should be prefilled consistently)</li><li>Apply consistent enabled/disabled styling to the Create Agent CTA so both render with the same color and opacity when ready to submit</li><li>Align typography weight/size and vertical rhythm of form labels and inputs to a shared design token set used by React</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.claude-dialog.png" data-current-src="android/components.members.create-agent.claude-dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
