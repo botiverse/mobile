@@ -231,19 +231,7 @@ internal fun SharedHomeActivityScreen(
                 memberRepository = memberRepository,
                 prewarmReplyThread = replyThreadPrewarmDataSource::prewarmReplyThread,
                 diagnosticsLogger = activityDiagnosticsLogger
-            ).also {
-                // Positive control for the diagnostics channel, emitted through the
-                // exact logger the store uses on a path that always runs.
-                //
-                // READ IT ONLY AS POSITIVE EVIDENCE. Seeing this line proves the
-                // channel delivered at this level in this build. A MISSING line —
-                // this one or any other — proves only "not observed": delivery
-                // crosses two bounded queues (the shared log queue and the sink's),
-                // either of which drops silently under contention or overflow. So
-                // "probe present, start absent" does NOT establish that the load
-                // never began, and per-line loss is not attributable from logcat.
-                activityDiagnosticsLogger("store_load domain=activity phase=probe channel=live")
-            }
+            )
         }
     val state by activityStore.state.collectAsState()
     val activitySummaryServerId =
@@ -310,6 +298,18 @@ internal fun SharedHomeActivityScreen(
         }
     val conversationNotReadyMessage = stringResource(MR.strings.inbox_error_conversation_not_ready)
     LaunchedEffect(activityStore) {
+        // task #436: the probe must run from a COMMITTED effect, not from a
+        // remember calculation. Composition can be abandoned or retried, so a
+        // composition-time side effect can emit for a page that never mounts and
+        // never dispatches a load — which would make the control claim "mounted"
+        // for a path that did not run. Emitted immediately before the initial
+        // dispatch so probe-then-start is a fixed order.
+        //
+        // Positive evidence only: seeing it proves the channel delivered at this
+        // level in this build. A missing line — this one or any other — means
+        // "not observed": delivery crosses two bounded queues that drop silently,
+        // so it never establishes that the load failed to start or to terminate.
+        activityDiagnosticsLogger("store_load domain=activity phase=probe channel=live")
         activityStore.dispatch(SharedActivityIntent.LoadInitial)
     }
     LaunchedEffect(sharedStores.activityUnreadSummaryStore, activitySummaryServerId) {
