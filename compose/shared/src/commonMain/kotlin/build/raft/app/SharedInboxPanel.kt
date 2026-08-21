@@ -566,7 +566,15 @@ private fun SharedActivityPanelContent(
         // neighbor glimpsed mid-drag shows that filter's loading skeleton
         // until the settle re-targets the store.
         val filters = InboxFilter.entries
-        val pageListStates = remember { filters.map { LazyListState() } }
+        // One retained scroll state per filter page. Explicit calls (not a
+        // loop over the experimental LazyListState constructor): the filter
+        // set is a closed enum of three, and this list is index-aligned with
+        // `filters` (All/Unread/Mentions entry order).
+        val pageListStates = listOf(
+            rememberLazyListState(),
+            rememberLazyListState(),
+            rememberLazyListState(),
+        )
         TabPager(
             selectedIndex = filters.indexOf(state.selectedFilter).coerceAtLeast(0),
             onSelectedIndexChange = { index -> onIntent(SharedActivityIntent.SetFilter(filters[index])) },
