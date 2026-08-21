@@ -1,10 +1,10 @@
 package build.raft.app.components
 
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.CancellationException
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
@@ -12,6 +12,7 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.pager.HorizontalPager
 import com.tencent.kuikly.compose.foundation.pager.rememberPagerState
+import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
@@ -65,20 +66,35 @@ fun TabPager(
         pageCount = { pageCount },
     )
 
-    // Tab tap (or any external selection change) -> animate the pager over.
+    // Tab tap (or any external selection change) -> move the pager over.
+    // animateScrollToPage with a scrollToPage fallback, each swallowing its
+    // own failure: task #233 round-1 showed one throwing sync call kills the
+    // effect scope and freezes ALL subsequent selection updates (page moved,
+    // highlight never followed). scrollToPage is the fork-proven path
+    // (SlockPagerScrollProbePage); a cancellation mid-animation must not be
+    // treated as failure, so CancellationException rethrows.
     LaunchedEffect(pagerState, selectedIndex) {
         if (selectedIndex in 0 until pageCount && selectedIndex != pagerState.currentPage) {
-            pagerState.animateScrollToPage(selectedIndex)
+            try {
+                pagerState.animateScrollToPage(selectedIndex)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                runCatching { pagerState.scrollToPage(selectedIndex) }
+            }
         }
     }
 
-    // Swipe settling on a new page -> report exactly once per settle. settledPage
-    // (not currentPage) so a half-drag that springs back reports nothing.
-    LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.settledPage }.collect { settled ->
-            if (settled != selectedIndex && settled in 0 until pageCount) {
-                onSelectedIndexChange(settled)
-            }
+    // Swipe settling on a new page -> report exactly once per settle.
+    // Value-keyed effect (NOT snapshotFlow): relaunches on every settledPage
+    // change even if snapshotFlow observation is inert in the Kuikly port —
+    // the other task #233 round-1 suspect for pager->tab sync never firing.
+    // settledPage (not currentPage) so a half-drag that springs back reports
+    // nothing.
+    val settledPage = pagerState.settledPage
+    LaunchedEffect(settledPage) {
+        if (settledPage != selectedIndex && settledPage in 0 until pageCount) {
+            onSelectedIndexChange(settledPage)
         }
     }
 
@@ -109,20 +125,20 @@ fun TabPager(
 }
 
 @Composable
-private fun EdgeGuard(inset: Dp, alignment: Alignment) {
+private fun BoxScope.EdgeGuard(inset: Dp, alignment: Alignment) {
     if (inset <= 0.dp) return
-    Box(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .align(alignment)
-                .width(inset)
-                .fillMaxHeight()
-                // An empty pointerInput block still participates in hit testing,
-                // which is exactly the point: touches born here belong to the
-                // platform (edge-back), never to the pager underneath.
-                .pointerInput(Unit) {},
-        )
-    }
+    // Direct strip in the parent stacking Box — no full-size wrapper layer
+    // that could shadow hit testing over the whole pager (task #233 hygiene).
+    Box(
+        modifier = Modifier
+            .align(alignment)
+            .width(inset)
+            .fillMaxHeight()
+            // An empty pointerInput block still participates in hit testing,
+            // which is exactly the point: touches born here belong to the
+            // platform (edge-back), never to the pager underneath.
+            .pointerInput(Unit) {},
+    )
 }
 
 /** Stable per-page identity helper for callers keying retained page state. */

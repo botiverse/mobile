@@ -87,6 +87,12 @@ private fun SlockTabPagerProbeScreen() {
                 startEdgeInset = slockPlatformTabPagerStartEdgeInsetDp().dp,
             ),
             tabBar = {
+                // Textual sync readout so acceptance screenshots prove the
+                // selected state, not just the page pixels (task #233 round 2).
+                Text(
+                    text = "selected=$selectedTab (${TabPagerProbeLabels[selectedTab]})",
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                )
                 Row(modifier = Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 16.dp)) {
                     SegmentedControl(
                         selectedValue = TabPagerProbeLabels[selectedTab],
