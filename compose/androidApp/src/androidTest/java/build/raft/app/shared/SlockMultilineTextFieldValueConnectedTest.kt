@@ -410,3 +410,64 @@ private fun View.findOnlyEditText(): EditText? {
     }
     return null
 }
+
+class SlockComposerFinishComposingOnStateReadConnectedTest {
+    /**
+     * Send reads the editor through the renderer's `getTextInputState` method. While an IME still
+     * holds an unfinished composition that read returned text the user had not committed, which is
+     * how voice input could be sent mid-dictation.
+     *
+     * Asserting on the composing span rather than on the returned JSON keeps this bound to the
+     * behaviour rather than to the renderer's payload shape.
+     */
+    @Test
+    fun stateReadFinishesInFlightCompositionBeforeReturningText() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+            assertTrue(editor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            val connection = editor.requireInputConnection()
+
+            assertTrue(connection.setComposingText("ni", 1))
+            // Positive control: without it a passing assertion below could simply mean the
+            // composition never started, which is exactly the false green this test exists to
+            // avoid.
+            assertTrue(
+                "composition should be in flight before the state read",
+                BaseInputConnection.getComposingSpanStart(editor.text) >= 0
+            )
+
+            var responded = false
+            editor.call(GET_TEXT_INPUT_STATE_METHOD, null) { responded = true }
+
+            assertTrue("renderer should still answer the state read", responded)
+            assertEquals(
+                "state read must leave no composing region",
+                -1,
+                BaseInputConnection.getComposingSpanStart(editor.text)
+            )
+            assertEquals("committed text must survive", "ni", editor.text.toString())
+        }
+    }
+
+    /** An unrelated method must not finish composition — the interception has to be targeted. */
+    @Test
+    fun unrelatedRendererMethodLeavesCompositionInFlight() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+            assertTrue(editor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            val connection = editor.requireInputConnection()
+            assertTrue(connection.setComposingText("ni", 1))
+
+            editor.call("getInnerContentHeight", null) {}
+
+            assertTrue(
+                "only the state read should end composition",
+                BaseInputConnection.getComposingSpanStart(editor.text) >= 0
+            )
+        }
+    }
+}
+
+private const val GET_TEXT_INPUT_STATE_METHOD = "getTextInputState"

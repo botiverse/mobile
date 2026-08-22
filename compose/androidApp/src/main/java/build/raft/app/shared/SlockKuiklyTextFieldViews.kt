@@ -22,6 +22,14 @@ private const val PROP_KEYBOARD_TYPE = "keyboardType"
 private const val PROP_RETURN_KEY_TYPE = "returnKeyType"
 private const val PROP_SYSTEM_NEWLINE_ACTION = "slockSystemNewlineAction"
 private const val PROP_IME_ACTION_REQUESTED = "slockImeActionRequested"
+
+// KRTextFieldView dispatches this through call(method, params, callback) but keeps its own
+// constant private, so the literal is duplicated here. Verified against the pinned artifact
+// core-render-android-2.24.0-raft.1-2.1.21: KRTextFieldView.METHOD_GET_TEXT_INPUT_STATE
+// = "getTextInputState", handled in the call(String, String, Function1) overload this class
+// overrides. If a Kuikly bump renames it, this interception silently stops running — the
+// connected test asserts the composition is finished, which is what would catch that.
+private const val METHOD_GET_TEXT_INPUT_STATE = "getTextInputState"
 private const val KEYBOARD_TYPE_EMAIL = "email"
 private const val MENU_ITEM_INSERT_NEWLINE = 0x534C0A
 private const val LOG_TAG = "SlockComposerNewline"
@@ -225,20 +233,60 @@ internal class SlockKuiklyTextAreaView(
     // tracks that boundary so the pass can be corrected during setup without reopening that hole.
     private var editingConnected = false
 
+    // Retained so a state read can finish composition on the live connection. The base class does
+    // not expose one, and creating a throwaway BaseInputConnection would not reach the IME that
+    // actually owns the composition.
+    private var activeInputConnection: InputConnection? = null
+
     init {
         gravity = Gravity.LEFT or Gravity.TOP
     }
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
         editingConnected = true
-        return super.onCreateInputConnection(outAttrs)
+        return super.onCreateInputConnection(outAttrs).also { activeInputConnection = it }
     }
 
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? =
         when (method) {
             KRTextAreaView.METHOD_GET_INNER_CONTENT_HEIGHT -> getContentHeight(callback)
+            METHOD_GET_TEXT_INPUT_STATE -> {
+                // Send reads the editor through this method (ThreadComposerPage's
+                // sendComposerMessage -> readCurrentValue), and that reader documents itself as
+                // "an explicit barrier at an action boundary". It was not one: an IME that still
+                // holds an unfinished composition keeps that text in the Editable, so the value
+                // handed to Send included characters the user never committed — the reported
+                // voice-input defect.
+                //
+                // Finishing composition here makes the barrier real for every caller of this
+                // method at once, instead of asking each call site to remember. The renderer
+                // cannot do it for us: the shipped core-render-android artifact contains no
+                // occurrence of "composing" at all, so it reads the raw Editable.
+                finishComposingBeforeStateRead()
+                super.call(method, params, callback)
+            }
             else -> super.call(method, params, callback)
         }
+
+    /**
+     * Ends any in-flight IME composition so the next state read returns committed text only.
+     *
+     * [InputConnection.finishComposingText] is used rather than clearing composing spans directly
+     * because it also tells the IME the composition is over; removing the spans alone leaves the
+     * IME free to re-apply them over text Send has already taken.
+     */
+    private fun finishComposingBeforeStateRead() {
+        val connection = activeInputConnection ?: return
+        if (!connection.finishComposingText()) {
+            // A stale connection returns false rather than throwing. Drop it so a later read does
+            // not keep calling a dead object and silently believe composition was finished.
+            activeInputConnection = null
+            SlockAppLog.w(
+                LOG_TAG,
+                "finishComposingText returned false before state read; connection dropped"
+            )
+        }
+    }
 
     override fun setProp(propKey: String, propValue: Any): Boolean =
         when (propKey) {
