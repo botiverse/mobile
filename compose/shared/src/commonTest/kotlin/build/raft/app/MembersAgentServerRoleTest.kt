@@ -184,22 +184,47 @@ class MembersAgentServerRoleTest {
         assertEquals(
             MembersAgentServerRoleSaveOutcome.Success,
             DataResult.Content(agentProfile(serverRole = "admin", serverId = "server-1"))
-                .membersAgentServerRoleSaveOutcome(ServerId("server-1"), MembersAgentServerRole.Admin)
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
         )
         assertEquals(
             MembersAgentServerRoleSaveOutcome.MismatchedContent,
             DataResult.Content(agentProfile(serverRole = "member", serverId = "server-1"))
-                .membersAgentServerRoleSaveOutcome(ServerId("server-1"), MembersAgentServerRole.Admin)
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
         )
         assertEquals(
             MembersAgentServerRoleSaveOutcome.MismatchedContent,
             DataResult.Content(agentProfile(serverRole = "admin", serverId = "server-2"))
-                .membersAgentServerRoleSaveOutcome(ServerId("server-1"), MembersAgentServerRole.Admin)
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
         )
         assertEquals(
             MembersAgentServerRoleSaveOutcome.MismatchedContent,
             DataResult.Content(agentProfile(serverRole = "admin", serverId = null))
-                .membersAgentServerRoleSaveOutcome(ServerId("server-1"), MembersAgentServerRole.Admin)
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
+        )
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.MismatchedContent,
+            DataResult.Content(agentProfile(serverRole = "admin", serverId = "server-1", id = "agent-2"))
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
         )
     }
 
@@ -208,6 +233,7 @@ class MembersAgentServerRoleTest {
         assertEquals(
             MembersAgentServerRoleSaveOutcome.Empty,
             DataResult.Empty(EmptyReason.NoMembers).membersAgentServerRoleSaveOutcome(
+                MemberId("agent-1"),
                 ServerId("server-1"),
                 MembersAgentServerRole.Admin
             )
@@ -215,15 +241,16 @@ class MembersAgentServerRoleTest {
         assertEquals(
             MembersAgentServerRoleSaveOutcome.NoPermission,
             DataResult.NoPermission(PermissionBlocker("forbidden")).membersAgentServerRoleSaveOutcome(
+                MemberId("agent-1"),
                 ServerId("server-1"),
                 MembersAgentServerRole.Admin
             )
         )
     }
 
-    private fun agentProfile(serverRole: String?, serverId: String?): MemberProfile =
+    private fun agentProfile(serverRole: String?, serverId: String?, id: String = "agent-1"): MemberProfile =
         MemberProfile(
-            id = MemberId("agent-1"),
+            id = MemberId(id),
             displayName = "Agent One",
             handle = "agent-1",
             kind = MemberKind.Agent,

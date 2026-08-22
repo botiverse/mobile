@@ -431,12 +431,14 @@ internal enum class MembersAgentServerRoleSaveOutcome {
 }
 
 internal fun DataResult<MemberProfile>.membersAgentServerRoleSaveOutcome(
+    expectedMemberId: MemberId,
     expectedServerId: ServerId,
     expectedRole: MembersAgentServerRole
 ): MembersAgentServerRoleSaveOutcome =
     when (this) {
         is DataResult.Content ->
             if (
+                data.id == expectedMemberId &&
                 data.serverId == expectedServerId &&
                     data.serverRole.toMembersAgentServerRoleOrNull() == expectedRole
             ) {
@@ -7801,7 +7803,7 @@ private fun MembersAgentProfileTab(
             if (serverRoleEditorAuthority != currentProfileEditAuthority) return@launch
             when (result) {
                 is DataResult.Content -> {
-                    when (result.membersAgentServerRoleSaveOutcome(expectedServerId, next)) {
+                    when (result.membersAgentServerRoleSaveOutcome(member.id, expectedServerId, next)) {
                         MembersAgentServerRoleSaveOutcome.Success -> {
                             onApplyAgentProfileResult(result.data)
                             editingServerRole = false
