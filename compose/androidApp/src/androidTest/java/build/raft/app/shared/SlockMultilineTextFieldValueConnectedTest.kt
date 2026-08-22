@@ -419,6 +419,12 @@ class SlockComposerFinishComposingOnStateReadConnectedTest {
      *
      * Asserting on the composing span rather than on the returned JSON keeps this bound to the
      * behaviour rather than to the renderer's payload shape.
+     *
+     * DO NOT DELETE AS REDUNDANT. The production code matches the renderer method by string
+     * literal, because `KRTextFieldView.METHOD_GET_TEXT_INPUT_STATE` is private upstream. If a
+     * Kuikly bump renames that method, the interception stops running and **nothing else fails**:
+     * no compile error, no crash, Send simply goes back to reading uncommitted text. This test is
+     * the only thing standing between that rename and a silently reintroduced defect.
      */
     @Test
     fun stateReadFinishesInFlightCompositionBeforeReturningText() {
