@@ -282,7 +282,7 @@ The resulting coverage is intentionally explicit:
 | --- | --- | --- | --- |
 | Guarded wrapper | Yes | Yes | Yes |
 | Repository-owned automation bypass | Policy scan rejects it | None | Yes (static source only) |
-| Interactive merge command | No | No | No; ruleset/settings required |
+| Interactive merge command | No | No | Detection only (CI on push); prevention requires ruleset |
 
 Do not use `gh pr merge --merge` or the GitHub Merge button. Ordinary merge
 commits remain disabled unless a future repository-owned path can construct and
