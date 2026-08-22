@@ -422,6 +422,33 @@ internal fun membersAgentServerRoleOptions(
         )
     }
 
+internal enum class MembersAgentServerRoleSaveOutcome {
+    Success,
+    Empty,
+    MismatchedContent,
+    NoPermission,
+    Error
+}
+
+internal fun DataResult<MemberProfile>.membersAgentServerRoleSaveOutcome(
+    expectedServerId: ServerId,
+    expectedRole: MembersAgentServerRole
+): MembersAgentServerRoleSaveOutcome =
+    when (this) {
+        is DataResult.Content ->
+            if (
+                data.serverId == expectedServerId &&
+                    data.serverRole.toMembersAgentServerRoleOrNull() == expectedRole
+            ) {
+                MembersAgentServerRoleSaveOutcome.Success
+            } else {
+                MembersAgentServerRoleSaveOutcome.MismatchedContent
+            }
+        is DataResult.Empty -> MembersAgentServerRoleSaveOutcome.Empty
+        is DataResult.NoPermission -> MembersAgentServerRoleSaveOutcome.NoPermission
+        is DataResult.Error -> MembersAgentServerRoleSaveOutcome.Error
+    }
+
 private fun String?.normalizedMembersServerRole(): String =
     this?.trim()?.lowercase().orEmpty()
 
@@ -7475,6 +7502,8 @@ private fun MembersAgentProfileTab(
     val displayNameRequired = stringResource(MR.strings.member_error_display_name_required)
     val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
     val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
+    val emptyResponseMessage = stringResource(MR.strings.member_error_empty_response)
+    val roleUpdateUnconfirmedMessage = stringResource(MR.strings.member_error_role_update_unconfirmed)
     val descriptionTooLongTemplate = membersStringTemplate(MR.strings.member_error_description_too_long)
 
     // Display Name: independent edit state machine, mirrors React `editingDisplayName`
@@ -7738,6 +7767,11 @@ private fun MembersAgentProfileTab(
             serverRoleError = null
             return
         }
+        val expectedServerId = serverRoleEditorAuthority?.serverId
+            ?: run {
+                onUnavailableAction(roleEditingUnavailable)
+                return
+            }
         scope.launch {
             if (serverRoleEditorAuthority != currentProfileEditAuthority) {
                 onUnavailableAction(roleEditingUnavailable)
@@ -7767,17 +7801,25 @@ private fun MembersAgentProfileTab(
             if (serverRoleEditorAuthority != currentProfileEditAuthority) return@launch
             when (result) {
                 is DataResult.Content -> {
-                    onApplyAgentProfileResult(result.data)
-                    editingServerRole = false
-                    serverRoleMenuExpanded = false
+                    when (result.membersAgentServerRoleSaveOutcome(expectedServerId, next)) {
+                        MembersAgentServerRoleSaveOutcome.Success -> {
+                            onApplyAgentProfileResult(result.data)
+                            editingServerRole = false
+                            serverRoleMenuExpanded = false
+                        }
+                        MembersAgentServerRoleSaveOutcome.MismatchedContent ->
+                            serverRoleError = roleUpdateUnconfirmedMessage
+                        else -> serverRoleError = roleUpdateUnconfirmedMessage
+                    }
                 }
-                is DataResult.Empty -> {
-                    editingServerRole = false
-                    serverRoleMenuExpanded = false
-                }
+                is DataResult.Empty -> serverRoleError = emptyResponseMessage
                 is DataResult.NoPermission ->
                     serverRoleError =
-                        membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
+                        membersFormattedPermissionError(
+                            permissionErrorTemplate,
+                            result.blocker,
+                            errorStrings
+                        )
                 is DataResult.Error ->
                     serverRoleError = membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
             }

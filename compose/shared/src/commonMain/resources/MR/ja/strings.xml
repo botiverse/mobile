@@ -955,6 +955,7 @@
     <string name="member_error_avatar_save">アバターの保存に失敗しました: %1$s</string>
     <string name="member_error_profile_edit_unavailable">エージェントのプロフィール編集は利用できません。</string>
     <string name="member_error_role_edit_unavailable">エージェントの役割編集は利用できません。</string>
+    <string name="member_error_role_update_unconfirmed">役割の更新を確認できませんでした。現在の役割を確認して、もう一度お試しください。</string>
     <string name="member_error_runtime_edit_unavailable">ランタイム設定の編集は利用できません。</string>
     <string name="member_error_display_name_required">表示名は必須です</string>
     <string name="member_error_save">保存に失敗しました: %1$s</string>
