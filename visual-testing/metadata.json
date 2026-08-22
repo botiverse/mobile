@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-22T22:00:47.908Z",
+  "generatedAt": "2026-08-22T22:04:09.235Z",
   "runId": "5edd855a-20260822215839",
   "commit": "5edd855a-20260822215839",
   "commitSubject": "Merge release-1.10.0 backports into main",
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 80,
-        "pending": 6
+        "ready": 81,
+        "pending": 5
       }
     }
   ],

@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>5edd855a-20260822215839</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-22T22:00:47.908Z" data-timestamp="2026-08-22T22:00:47.908Z" title="2026-08-22T22:00:47.908Z">2026-08-22 22:00:47 UTC</time></p>
+    <p class="runMeta"><code>5edd855a-20260822215839</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-22T22:04:09.235Z" data-timestamp="2026-08-22T22:04:09.235Z" title="2026-08-22T22:04:09.235Z">2026-08-22 22:04:09 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <a href="react__ios.html">React vs iOS</a> · <strong>Android vs iOS</strong></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 20</span>
       <span class="pill">Different 45</span>
       <span class="pill">Missing 5</span>
-      <span class="pill">AI 80/86 ready</span>
+      <span class="pill">AI 81/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1028,7 +1028,12 @@
       <p><code>RGB 98.0%</code><br/><code>Pixel 99.70%</code><br/><code>Mismatch 0.30%</code><br/><code>Raw 1026×276 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.70% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×92 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · visual-testing</summary>
+    <ul><li>Header label badge differs: left shows 'ANDROID' tag, right shows 'IOS' tag (expected platform markers, not a real UI element)</li><li>Subtitle text reflects viewport dimensions differently: '1026×276' on left vs '1170×2532' on right — iOS shows the full device canvas while Android appears cropped</li><li>Status dot row (green, orange, gray, blue) and the pink 'Waiting pulse' row are visually consistent in color, size, order, and vertical spacing across both sides</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize both baseline and current captures to the same viewport/aspect ratio (e.g., crop to component bounds only) before computing similarity</li><li>Strip or hide the platform annotation badges ('ANDROID'/'IOS') from the screenshot frames so they don't contribute to pixel mismatch</li><li>Re-run the comparison after normalization; current 0.30% mismatch is dominated by the annotation label and viewport area differences rather than real component divergence</li><li>Consider also matching DPR so pixel-level diff is meaningful across the two canvases</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.ui.status-dot.states.png" data-current-src="ios/components.ui.status-dot.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">

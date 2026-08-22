@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-22T22:00:47.908Z",
+  "generatedAt": "2026-08-22T22:04:09.235Z",
   "runId": "5edd855a-20260822215839",
   "cases": [
     {
@@ -5466,17 +5466,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-22T22:00:46.531Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-22T22:02:50.588Z",
+            "severity": "low",
+            "summary": [
+              "Header label badge differs: left shows 'ANDROID' tag, right shows 'IOS' tag (expected platform markers, not a real UI element)",
+              "Subtitle text reflects viewport dimensions differently: '1026×276' on left vs '1170×2532' on right — iOS shows the full device canvas while Android appears cropped",
+              "Status dot row (green, orange, gray, blue) and the pink 'Waiting pulse' row are visually consistent in color, size, order, and vertical spacing across both sides",
+              "Typography for 'Raft UI Status Dot' title and 'Waiting pulse' label appears identical in weight, size, and alignment on both ends",
+              "No missing, clipped, or misaligned component elements detected between the two renders"
+            ],
+            "likelyCauses": [
+              "Image is not normalized to a common viewport before comparison, causing the iOS canvas to render the full 1170×2532 frame while Android shows a cropped 1026×276 region",
+              "Platform badge label is part of the test fixture annotation, not the component under test"
+            ],
+            "suggestedOwner": "visual-testing",
+            "suggestedFixes": [
+              "Normalize both baseline and current captures to the same viewport/aspect ratio (e.g., crop to component bounds only) before computing similarity",
+              "Strip or hide the platform annotation badges ('ANDROID'/'IOS') from the screenshot frames so they don't contribute to pixel mismatch",
+              "Re-run the comparison after normalization; current 0.30% mismatch is dominated by the annotation label and viewport area differences rather than real component divergence",
+              "Consider also matching DPR so pixel-level diff is meaningful across the two canvases"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -5545,17 +5559,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-22T22:00:46.531Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-22T22:02:50.588Z",
+            "severity": "low",
+            "summary": [
+              "Header label badge differs: left shows 'ANDROID' tag, right shows 'IOS' tag (expected platform markers, not a real UI element)",
+              "Subtitle text reflects viewport dimensions differently: '1026×276' on left vs '1170×2532' on right — iOS shows the full device canvas while Android appears cropped",
+              "Status dot row (green, orange, gray, blue) and the pink 'Waiting pulse' row are visually consistent in color, size, order, and vertical spacing across both sides",
+              "Typography for 'Raft UI Status Dot' title and 'Waiting pulse' label appears identical in weight, size, and alignment on both ends",
+              "No missing, clipped, or misaligned component elements detected between the two renders"
+            ],
+            "likelyCauses": [
+              "Image is not normalized to a common viewport before comparison, causing the iOS canvas to render the full 1170×2532 frame while Android shows a cropped 1026×276 region",
+              "Platform badge label is part of the test fixture annotation, not the component under test"
+            ],
+            "suggestedOwner": "visual-testing",
+            "suggestedFixes": [
+              "Normalize both baseline and current captures to the same viewport/aspect ratio (e.g., crop to component bounds only) before computing similarity",
+              "Strip or hide the platform annotation badges ('ANDROID'/'IOS') from the screenshot frames so they don't contribute to pixel mismatch",
+              "Re-run the comparison after normalization; current 0.30% mismatch is dominated by the annotation label and viewport area differences rather than real component divergence",
+              "Consider also matching DPR so pixel-level diff is meaningful across the two canvases"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20939,7 +20967,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-22T22:00:40.019Z",
+        "generatedAt": "2026-08-22T22:04:01.429Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -21000,7 +21028,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:40.019Z",
+            "generatedAt": "2026-08-22T22:04:01.429Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -21022,7 +21050,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:42.878Z",
+            "generatedAt": "2026-08-22T22:04:04.268Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -21097,7 +21125,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:42.878Z",
+            "generatedAt": "2026-08-22T22:04:04.268Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25571,7 +25599,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:42.878Z",
+            "generatedAt": "2026-08-22T22:04:04.268Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25593,7 +25621,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:46.201Z",
+            "generatedAt": "2026-08-22T22:04:07.548Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25618,7 +25646,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:42.878Z",
+            "generatedAt": "2026-08-22T22:04:04.268Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25641,7 +25669,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:46.201Z",
+            "generatedAt": "2026-08-22T22:04:07.548Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25841,7 +25869,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:42.878Z",
+            "generatedAt": "2026-08-22T22:04:04.268Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25863,7 +25891,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:46.201Z",
+            "generatedAt": "2026-08-22T22:04:07.548Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25888,7 +25916,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:42.878Z",
+            "generatedAt": "2026-08-22T22:04:04.268Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25911,7 +25939,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:46.201Z",
+            "generatedAt": "2026-08-22T22:04:07.548Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26111,7 +26139,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:42.878Z",
+            "generatedAt": "2026-08-22T22:04:04.268Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26133,7 +26161,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:46.201Z",
+            "generatedAt": "2026-08-22T22:04:07.548Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26158,7 +26186,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:42.878Z",
+            "generatedAt": "2026-08-22T22:04:04.268Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26181,7 +26209,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:46.201Z",
+            "generatedAt": "2026-08-22T22:04:07.548Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26377,7 +26405,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:42.878Z",
+            "generatedAt": "2026-08-22T22:04:04.268Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26399,7 +26427,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:46.201Z",
+            "generatedAt": "2026-08-22T22:04:07.548Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26424,7 +26452,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:42.878Z",
+            "generatedAt": "2026-08-22T22:04:04.268Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26447,7 +26475,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:46.201Z",
+            "generatedAt": "2026-08-22T22:04:07.548Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26643,7 +26671,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:42.878Z",
+            "generatedAt": "2026-08-22T22:04:04.268Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26665,7 +26693,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:46.201Z",
+            "generatedAt": "2026-08-22T22:04:07.548Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26690,7 +26718,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:42.878Z",
+            "generatedAt": "2026-08-22T22:04:04.268Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26713,7 +26741,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-22T22:00:46.201Z",
+            "generatedAt": "2026-08-22T22:04:07.548Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

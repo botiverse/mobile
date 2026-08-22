@@ -1,6 +1,6 @@
 # Raft Visual Testing
 
-Generated: 2026-08-22 22:00:47 UTC
+Generated: 2026-08-22 22:04:09 UTC
 Latest run: 5edd855a-20260822215839
 Latest commit: 5edd855a-20260822215839
 Commit subject: Merge release-1.10.0 backports into main
