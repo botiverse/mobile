@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-23T22:01:36.379Z",
+  "generatedAt": "2026-08-23T22:04:59.662Z",
   "latestRunId": "6176b42c-20260823215922",
   "latest": {
     "runId": "6176b42c-20260823215922",
     "commit": "6176b42c-20260823215922",
     "commitSubject": "docs(ios): preserve TestFlight notification receipt",
-    "generatedAt": "2026-08-23T22:01:36.379Z",
+    "generatedAt": "2026-08-23T22:04:59.662Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -129,7 +129,7 @@
       "runId": "6176b42c-20260823215922",
       "commit": "6176b42c-20260823215922",
       "commitSubject": "docs(ios): preserve TestFlight notification receipt",
-      "generatedAt": "2026-08-23T22:01:36.379Z",
+      "generatedAt": "2026-08-23T22:04:59.662Z",
       "baseline": "react",
       "current": "android",
       "summary": {

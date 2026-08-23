@@ -1,6 +1,6 @@
 # Raft Visual Testing
 
-Generated: 2026-08-23 22:01:36 UTC
+Generated: 2026-08-23 22:04:59 UTC
 Latest run: 6176b42c-20260823215922
 Latest commit: 6176b42c-20260823215922
 Commit subject: docs(ios): preserve TestFlight notification receipt

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-23T22:01:31.139Z",
+  "generatedAt": "2026-08-23T22:04:54.376Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 79,
-    "pending": 7
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -467,15 +467,32 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-23T22:01:29.766Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-23T22:03:34.653Z",
+      "severity": "low",
+      "summary": [
+        "Status dot rows and 'Waiting pulse' label render with nearly identical layout, colors, and typography between React and iOS.",
+        "The iOS canvas is much larger (1170×2532 vs 342×92), so the actual component occupies a proportionally smaller region of the rendered image.",
+        "Pixel mismatch is only 0.23% and pixel-perfect similarity is 99.77%, indicating no substantive visual regression."
+      ],
+      "likelyCauses": [
+        "Platform-level differences in default font metrics or antialiasing within tolerance.",
+        "Canvas/viewport scaling differences between web (React) and iOS native render paths."
+      ],
+      "suggestedOwner": "design-systems",
+      "suggestedFixes": [
+        "No action needed; differences fall within the configured 0.02 pixel-ratio and 1dp layout tolerances.",
+        "If higher fidelity is desired, normalize the iOS capture crop to the component bounds before diffing.",
+        "Verify the 'Waiting pulse' pulse animation is sampled at a consistent phase across platforms to avoid animation-related false positives."
+      ],
+      "intentional": [
+        "iOS render is shown on a full device-resolution canvas while React is cropped to component bounds; this is a test-harness difference, not a UI bug.",
+        "Status dot color states (green, orange, gray, blue, pink) and the 'Waiting pulse' label appearance are consistent across platforms."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -1823,7 +1840,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:01:30.507Z",
+      "generatedAt": "2026-08-23T22:04:53.739Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2213,7 +2230,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:01:30.739Z",
+      "generatedAt": "2026-08-23T22:04:53.976Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2226,7 +2243,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:01:30.739Z",
+      "generatedAt": "2026-08-23T22:04:53.976Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2239,7 +2256,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:01:30.739Z",
+      "generatedAt": "2026-08-23T22:04:53.976Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2252,7 +2269,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:01:30.739Z",
+      "generatedAt": "2026-08-23T22:04:53.976Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2265,7 +2282,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:01:30.739Z",
+      "generatedAt": "2026-08-23T22:04:53.976Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

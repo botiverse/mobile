@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-23T22:01:36.379Z",
+  "generatedAt": "2026-08-23T22:04:59.662Z",
   "runId": "6176b42c-20260823215922",
   "cases": [
     {
@@ -5424,17 +5424,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-23T22:01:31.474Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-23T22:03:34.653Z",
+            "severity": "low",
+            "summary": [
+              "Status dot rows and 'Waiting pulse' label render with nearly identical layout, colors, and typography between React and iOS.",
+              "The iOS canvas is much larger (1170×2532 vs 342×92), so the actual component occupies a proportionally smaller region of the rendered image.",
+              "Pixel mismatch is only 0.23% and pixel-perfect similarity is 99.77%, indicating no substantive visual regression."
+            ],
+            "likelyCauses": [
+              "Platform-level differences in default font metrics or antialiasing within tolerance.",
+              "Canvas/viewport scaling differences between web (React) and iOS native render paths."
+            ],
+            "suggestedOwner": "design-systems",
+            "suggestedFixes": [
+              "No action needed; differences fall within the configured 0.02 pixel-ratio and 1dp layout tolerances.",
+              "If higher fidelity is desired, normalize the iOS capture crop to the component bounds before diffing.",
+              "Verify the 'Waiting pulse' pulse animation is sampled at a consistent phase across platforms to avoid animation-related false positives."
+            ],
+            "intentional": [
+              "iOS render is shown on a full device-resolution canvas while React is cropped to component bounds; this is a test-harness difference, not a UI bug.",
+              "Status dot color states (green, orange, gray, blue, pink) and the 'Waiting pulse' label appearance are consistent across platforms."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -5457,17 +5471,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-23T22:01:34.927Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-23T22:03:39.582Z",
+            "severity": "low",
+            "summary": [
+              "Both Android and iOS renders display the same 'Raft UI Status Dot' component with four colored dots (green, orange, gray, blue) and a 'Waiting pulse' label with pink dot",
+              "iOS render uses a much taller canvas (1170×2532) than the Android component bounds (342×92), creating a large empty area below the component on the iOS side",
+              "Header metadata labels, dot colors, layout order, and typography appear visually consistent between both platforms"
+            ],
+            "likelyCauses": [
+              "iOS screenshot captures the full device viewport (1170×2532) while Android is cropped to component bounds (342×92), causing the visible canvas size mismatch",
+              "The Kuikly iOS render may not be applying the same manual-rect crop contract as Android, leaving empty space below the component"
+            ],
+            "suggestedOwner": "ui-platform",
+            "suggestedFixes": [
+              "Apply matching component-bounds crop on iOS capture to align with Android's 342×92 region",
+              "Verify the crop configuration in the iOS test harness uses the same manual-rect contract",
+              "Confirm no rendering or layout difference exists in the actual component by cropping both to identical bounds before diffing"
+            ],
+            "intentional": [
+              "Platform-specific viewport sizes in test capture are expected; the underlying component appears isomorphic",
+              "Color, spacing, and typography of dots and 'Waiting pulse' label are consistent across renders"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -5493,17 +5521,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-23T22:01:31.474Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-23T22:03:34.653Z",
+            "severity": "low",
+            "summary": [
+              "Status dot rows and 'Waiting pulse' label render with nearly identical layout, colors, and typography between React and iOS.",
+              "The iOS canvas is much larger (1170×2532 vs 342×92), so the actual component occupies a proportionally smaller region of the rendered image.",
+              "Pixel mismatch is only 0.23% and pixel-perfect similarity is 99.77%, indicating no substantive visual regression."
+            ],
+            "likelyCauses": [
+              "Platform-level differences in default font metrics or antialiasing within tolerance.",
+              "Canvas/viewport scaling differences between web (React) and iOS native render paths."
+            ],
+            "suggestedOwner": "design-systems",
+            "suggestedFixes": [
+              "No action needed; differences fall within the configured 0.02 pixel-ratio and 1dp layout tolerances.",
+              "If higher fidelity is desired, normalize the iOS capture crop to the component bounds before diffing.",
+              "Verify the 'Waiting pulse' pulse animation is sampled at a consistent phase across platforms to avoid animation-related false positives."
+            ],
+            "intentional": [
+              "iOS render is shown on a full device-resolution canvas while React is cropped to component bounds; this is a test-harness difference, not a UI bug.",
+              "Status dot color states (green, orange, gray, blue, pink) and the 'Waiting pulse' label appearance are consistent across platforms."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -5527,17 +5569,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-23T22:01:34.927Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-23T22:03:39.582Z",
+            "severity": "low",
+            "summary": [
+              "Both Android and iOS renders display the same 'Raft UI Status Dot' component with four colored dots (green, orange, gray, blue) and a 'Waiting pulse' label with pink dot",
+              "iOS render uses a much taller canvas (1170×2532) than the Android component bounds (342×92), creating a large empty area below the component on the iOS side",
+              "Header metadata labels, dot colors, layout order, and typography appear visually consistent between both platforms"
+            ],
+            "likelyCauses": [
+              "iOS screenshot captures the full device viewport (1170×2532) while Android is cropped to component bounds (342×92), causing the visible canvas size mismatch",
+              "The Kuikly iOS render may not be applying the same manual-rect crop contract as Android, leaving empty space below the component"
+            ],
+            "suggestedOwner": "ui-platform",
+            "suggestedFixes": [
+              "Apply matching component-bounds crop on iOS capture to align with Android's 342×92 region",
+              "Verify the crop configuration in the iOS test harness uses the same manual-rect contract",
+              "Confirm no rendering or layout difference exists in the actual component by cropping both to identical bounds before diffing"
+            ],
+            "intentional": [
+              "Platform-specific viewport sizes in test capture are expected; the underlying component appears isomorphic",
+              "Color, spacing, and typography of dots and 'Waiting pulse' label are consistent across renders"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20921,7 +20977,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-23T22:01:28.190Z",
+        "generatedAt": "2026-08-23T22:04:51.465Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20982,7 +21038,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:28.190Z",
+            "generatedAt": "2026-08-23T22:04:51.465Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -21004,7 +21060,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:31.143Z",
+            "generatedAt": "2026-08-23T22:04:54.382Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -21079,7 +21135,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:31.143Z",
+            "generatedAt": "2026-08-23T22:04:54.382Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25553,7 +25609,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:31.143Z",
+            "generatedAt": "2026-08-23T22:04:54.382Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25575,7 +25631,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:34.582Z",
+            "generatedAt": "2026-08-23T22:04:57.883Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25600,7 +25656,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:31.143Z",
+            "generatedAt": "2026-08-23T22:04:54.382Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25623,7 +25679,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:34.582Z",
+            "generatedAt": "2026-08-23T22:04:57.883Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25823,7 +25879,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:31.143Z",
+            "generatedAt": "2026-08-23T22:04:54.382Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25845,7 +25901,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:34.582Z",
+            "generatedAt": "2026-08-23T22:04:57.883Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25870,7 +25926,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:31.143Z",
+            "generatedAt": "2026-08-23T22:04:54.382Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25893,7 +25949,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:34.582Z",
+            "generatedAt": "2026-08-23T22:04:57.883Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26093,7 +26149,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:31.143Z",
+            "generatedAt": "2026-08-23T22:04:54.382Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26115,7 +26171,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:34.582Z",
+            "generatedAt": "2026-08-23T22:04:57.883Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26140,7 +26196,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:31.143Z",
+            "generatedAt": "2026-08-23T22:04:54.382Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26163,7 +26219,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:34.582Z",
+            "generatedAt": "2026-08-23T22:04:57.883Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26359,7 +26415,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:31.143Z",
+            "generatedAt": "2026-08-23T22:04:54.382Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26381,7 +26437,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:34.582Z",
+            "generatedAt": "2026-08-23T22:04:57.883Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26406,7 +26462,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:31.143Z",
+            "generatedAt": "2026-08-23T22:04:54.382Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26429,7 +26485,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:34.582Z",
+            "generatedAt": "2026-08-23T22:04:57.883Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26625,7 +26681,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:31.143Z",
+            "generatedAt": "2026-08-23T22:04:54.382Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26647,7 +26703,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:34.582Z",
+            "generatedAt": "2026-08-23T22:04:57.883Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26672,7 +26728,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:31.143Z",
+            "generatedAt": "2026-08-23T22:04:54.382Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26695,7 +26751,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-23T22:01:34.582Z",
+            "generatedAt": "2026-08-23T22:04:57.883Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
