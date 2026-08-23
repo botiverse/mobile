@@ -366,14 +366,15 @@ The canonical flow is:
 3. Run focused validation and `scripts/check-commit-signoff.sh` for the PR
    range.
 4. Push the topic branch and open a GitHub PR to `main`.
-5. After required checks pass and at least one independent reviewer gives a
-   clear GO bound to the exact PR head, the PR creator performs the merge with
+5. After required checks pass and at least one reviewer who is not the PR author
+   gives a clear GO bound to the exact PR head, the PR creator performs the
+   merge with
    `scripts/guarded-squash-merge.sh <owner/repo> <pr> <reviewed-full-sha>`.
    The GO may be recorded in Raft or a PR comment; a formal GitHub approving
-   review is not required. Routine PRs do not require separate owner approval.
-   Require owner/product acceptance only when the current task explicitly names
-   it as a gate or a current live hold assigns that decision to the owner. Any
-   head change voids the review and requires a fresh GO on the new exact head.
+   review is not required. Require owner/product acceptance only when the current
+   task explicitly names it as a gate or a current live hold assigns that
+   decision to the owner. Any head change voids the review and requires a fresh
+   GO on the new exact head.
    Do not use the GitHub Merge button or `gh pr merge --merge`; ordinary merge
    commits do not preserve source sign-off trailers and make main-push DCO red.
 6. After the PR is merged, sync local checkouts by fetching and resetting or
