@@ -166,7 +166,10 @@ publication. After processing:
 
 The `notification` values are exhaustive: `not_requested` and `scheduled` are
 not completion; `sent` and `already_sent` satisfy the operation-receipt half of
-the completion contract.
+the completion contract. When the first response is `scheduled`, wait for the
+exact build to reach `IN_BETA_TESTING`, then replay the same publish without
+`--wait` to preserve the expected `already_sent` receipt, and fresh-read the
+exact status again.
 
 Example for an already-approved external build:
 

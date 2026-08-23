@@ -283,7 +283,10 @@ Treat the complete `notification` enum explicitly: `not_requested` means no
 notification was requested, `scheduled` means notification is pending, `sent`
 means the notification operation succeeded, and `already_sent` is the
 idempotent-success result. Only the last two can satisfy the operation-receipt
-half of the completion contract.
+half of the completion contract. If the first receipt is `scheduled`, wait for
+the exact build to reach `IN_BETA_TESTING`, then replay the same external
+publish without `--wait`, preserve its `already_sent` receipt, and fresh-read
+the exact status once more before reporting completion.
 
 Internal groups and external groups are separate audiences. The release plan
 must name which audience the owner's publish instruction covers. If it says

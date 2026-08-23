@@ -75,6 +75,12 @@ if "`notification=sent` (or `already_sent`" not in ios_practices:
     raise SystemExit("iOS practices must accept sent and already_sent notification receipts")
 if "without `--wait`" not in paired_sop or "Do not combine this receipt-producing call with `--wait`" not in ios_practices:
     raise SystemExit("TestFlight notification receipt contract must preserve POST response without --wait")
+for path, text in (
+    ("docs/mobile-paired-release-sop.md", paired_sop),
+    ("docs/ios-hands-release-practices-2026-07-09.md", ios_practices),
+):
+    if "first" not in text or "`scheduled`" not in text or "replay" not in text or "`already_sent`" not in text:
+        raise SystemExit(f"{path} must preserve the scheduled-to-already_sent replay contract")
 
 example = ios_practices.split(
     "Example for an already-approved external build:", 1
