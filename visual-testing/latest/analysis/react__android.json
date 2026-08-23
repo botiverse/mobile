@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-22T22:04:01.424Z",
+  "generatedAt": "2026-08-23T22:01:28.183Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -552,7 +552,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41496209659952354
+      "metricMismatch": 0.4149707602339181
     },
     {
       "id": "components.ui.spinner.states",
@@ -1572,7 +1572,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2693296741874941
+      "metricMismatch": 0.2693350751407624
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1606,7 +1606,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2691625821957575
+      "metricMismatch": 0.26916663291070875
     },
     {
       "id": "components.home.saved.results",
@@ -1643,7 +1643,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19031838856400263
+      "metricMismatch": 0.19033148881762352
     },
     {
       "id": "components.home.activity.results",
@@ -1679,7 +1679,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18522553396633756
+      "metricMismatch": 0.18528946320400763
     },
     {
       "id": "components.tasks.panel.states",
@@ -1870,7 +1870,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-22T22:04:00.742Z",
+      "generatedAt": "2026-08-23T22:01:27.462Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2263,7 +2263,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e2817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
       "generatedAt": "2026-08-14T22:11:11.250Z",
       "severity": "high",
       "summary": [
@@ -2328,7 +2328,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06131533465656691
+      "metricMismatch": 0.06130250739255483
     },
     {
       "id": "screens.members.agent-detail.workspace",

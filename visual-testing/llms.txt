@@ -1,9 +1,9 @@
 # Raft Visual Testing
 
-Generated: 2026-08-22 22:04:09 UTC
-Latest run: 5edd855a-20260822215839
-Latest commit: 5edd855a-20260822215839
-Commit subject: Merge release-1.10.0 backports into main
+Generated: 2026-08-23 22:01:36 UTC
+Latest run: 6176b42c-20260823215922
+Latest commit: 6176b42c-20260823215922
+Commit subject: docs(ios): preserve TestFlight notification receipt
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 86, same 0, pass 0, basic-pass 0, different 85, missing 1
 AI analysis: ready 85 / total 86, pending 1
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 6176b42c-20260823215922: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/6176b42c-20260823215922/component-matrix.json, page runs/6176b42c-20260823215922/
 - 5edd855a-20260822215839: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/5edd855a-20260822215839/component-matrix.json, page runs/5edd855a-20260822215839/
 - 5edd855a-20260821220357: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/5edd855a-20260821220357/component-matrix.json, page runs/5edd855a-20260821220357/
 - 7ffc900e-20260820220535: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/7ffc900e-20260820220535/component-matrix.json, page runs/7ffc900e-20260820220535/
