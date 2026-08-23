@@ -153,14 +153,23 @@ publication. After processing:
    narrower boundary, include `--notify-testers`. This is part of publication,
    not an optional follow-up. Only `upload only`, `submit for review`,
    `internal only`, or an explicit `do not notify` stops earlier.
-4. Use `--wait` when the expected Apple transition fits the bounded wait. If
-   review is asynchronous, return the current state, schedule a recheck, and
-   after approval invoke the same idempotent external publish with
-   `--notify-testers` again.
-5. Preserve the publish response. For an already-approved build it must report
-   `notification=sent` (or `already_sent` on an idempotent replay). Fresh-read
-   status and require `external_build_state=IN_BETA_TESTING` before reporting
-   `published`, `sent`, or `available in TestFlight`.
+4. Preserve the mutating publish response. For an already-approved build it
+   must report `notification=sent` (or `already_sent` on an idempotent replay).
+   Do not combine this receipt-producing call with `--wait`: the current CLI's
+   `--wait --json` output replaces the POST response with a later GET status,
+   which does not preserve `notification` or `operation_id`.
+5. Use the separate read-only `testflight-status` command for a bounded
+   recheck. Require `external_build_state=IN_BETA_TESTING` before reporting
+   `published`, `sent`, or `available in TestFlight`. If review is
+   asynchronous, schedule the recheck and, after approval, invoke the same
+   idempotent external publish with `--notify-testers` again.
+
+The `notification` values are exhaustive: `not_requested` and `scheduled` are
+not completion; `sent` and `already_sent` satisfy the operation-receipt half of
+the completion contract. When the first response is `scheduled`, wait for the
+exact build to reach `IN_BETA_TESTING`, then replay the same publish without
+`--wait` to preserve the expected `already_sent` receipt, and fresh-read the
+exact status again.
 
 Example for an already-approved external build:
 
@@ -171,9 +180,10 @@ hands builds testflight-publish raft-ios <hands-build-id> \
   --what-to-test-file en-US=./testflight.en.txt \
   --what-to-test-file zh-Hans=./testflight.zh.txt \
   --notify-testers \
-  --wait \
   --json
 
+# Repeat this read-only command with a bounded interval/timeout until the
+# exact build reaches IN_BETA_TESTING, or report notification unverified.
 hands builds testflight-status raft-ios <hands-build-id> \
   --distribution external \
   --json
