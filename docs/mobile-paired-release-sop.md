@@ -51,6 +51,14 @@ must remain separate for the exact being reviewed.
    fallback to a gitlink, `mavenLocal`, local pod, HAR, or source build blocks
    the candidate. A source checkout may remain as a provenance anchor, but it
    is not a production dependency fallback.
+8. When the release owner says **publish iOS** or **publish to TestFlight**
+   without narrowing the boundary, the delivery contract ends only after the
+   selected testers have actually been notified. Upload completion, an ASC
+   `VALID` build, beta-group assignment, localized What to Test, Beta App
+   Review approval, or a build that is merely eligible for notification are
+   intermediate states. A narrower instruction such as `upload only`,
+   `internal only`, `submit for review`, or `do not notify` overrides this
+   default and must be repeated in the receipt.
 
 ## 1. Open The Release Plan
 
@@ -244,6 +252,36 @@ The release plan names each platform's intended boundary. Examples:
 Immediately before every mutation, fresh-read the authoritative state and the
 latest owner directive. Use exact revision, scope, build, group, and source
 preconditions. Read back terminal state afterward.
+
+### TestFlight completion states
+
+Use the following vocabulary in plans, updates, and receipts:
+
+| Observed state | Allowed wording | Publish complete? |
+| --- | --- | --- |
+| Build Upload `COMPLETE`, ASC build `VALID` | uploaded and processed | No |
+| Named groups assigned | assigned to groups | No |
+| External state `BETA_APPROVED` | approved, awaiting tester notification | No |
+| `auto_notify_enabled=true` before approval | notification scheduled after approval | No, until the build reaches testing |
+| Publish response `notification=sent` or `already_sent`, followed by external state `IN_BETA_TESTING` | testers notified / available in TestFlight | Yes |
+
+`auto_notify_enabled=false` is not proof that no notification has ever been
+sent: after approval Hands can use Apple's manual build-beta-notification
+endpoint. Conversely, `BETA_APPROVED`, assigned groups, or a public-link-enabled
+group is not proof that testers were notified. For an already-approved build,
+the release operator must execute the exact external publish with
+`notify_testers=true` (CLI: `--notify-testers`) and preserve the returned
+`notification=sent|already_sent` operation receipt. Then fresh-read the exact
+build and require `external_build_state=IN_BETA_TESTING`. If either receipt is
+missing, report `notification unverified`; do not say `published`, `sent`, or
+`available`.
+
+Internal groups and external groups are separate audiences. The release plan
+must name which audience the owner's publish instruction covers. If it says
+only `publish iOS/TestFlight`, the Raft Mobile default is the currently selected
+external tester audience plus notification; do not silently substitute an
+internal all-builds group. App Store production remains a separate mutation
+and is never implied by TestFlight publication.
 
 Android and iOS do not need the same delivery mechanism. A valid paired train
 may end with Android Hands active and iOS Hands draft while the same IPA is in
