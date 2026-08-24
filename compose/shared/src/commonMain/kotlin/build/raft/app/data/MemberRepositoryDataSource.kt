@@ -940,9 +940,9 @@ fun buildSharedAgentProfileUpdateBody(request: AgentProfileUpdateRequest): Strin
             if (request.includeServerRole) {
                 val role = request.serverRole?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
                 if (role == null) {
-                    put("role", JsonNull)
+                    put("serverRole", JsonNull)
                 } else {
-                    put("role", role)
+                    put("serverRole", role)
                 }
             }
             if (request.includeRuntimeConfig) {
