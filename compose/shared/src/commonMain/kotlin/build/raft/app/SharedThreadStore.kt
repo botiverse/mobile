@@ -6861,7 +6861,7 @@ internal class SharedThreadStore(
                         }
                         else -> "type=${event::class.simpleName.orEmpty()}"
                     }
-                diagnosticsLogger(
+                diagnosticsLogger?.invoke(
                     "thread_realtime_identity threadId=${currentPayload.sourceThreadId.orEmpty()} " +
                         "cacheThreadId=${currentPayload.cacheThreadId().orEmpty()} " +
                         "originParentMessageId=${currentPayload.originParentMessageId.orEmpty()} " +
@@ -6986,7 +6986,7 @@ internal class SharedThreadStore(
                         previous = currentPayload,
                         activeReplyParentMessageId = activeReplyParentMessageId,
                     )
-                diagnosticsLogger(
+                diagnosticsLogger?.invoke(
                     "thread_realtime_fold threadId=${currentPayload.sourceThreadId.orEmpty()} " +
                         "messagesBefore=${currentPayload.messages.size} messagesAfter=${merged.messages.size} " +
                         "samePayload=${merged === currentPayload} replyCountGap=${replyCountGap != null}"
