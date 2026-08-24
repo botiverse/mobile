@@ -38,7 +38,9 @@ internal data class ThreadTimelineSlice(
     val showTaskOpenActions: Boolean,
     val showTaskStatusActions: Boolean,
     val canConvertMessagesToTasks: Boolean,
-    val beginningReplyCountLabel: String?
+    val beginningReplyCountLabel: String?,
+    /** Task #232 arrival provenance projected from the payload; see [KuiklyThreadScreenPayload.gapRefillMessageIds]. */
+    val gapRefillMessageIds: Set<String> = emptySet()
 )
 
 internal data class ThreadInlineSearchMatch(
@@ -71,6 +73,7 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSl
                 emptyDetail
             },
         sourceThreadId = sourceThreadId,
+        gapRefillMessageIds = gapRefillMessageIds,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
         showReplyActions = showReplyActions,

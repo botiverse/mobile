@@ -1275,6 +1275,14 @@ internal data class KuiklyThreadScreenPayload(
     @Transient
     val replySummariesAuthority: build.raft.app.data.ThreadReplySummariesAuthority =
         build.raft.app.data.ThreadReplySummariesAuthority.Unavailable,
+    /**
+     * In-process arrival provenance: IDs merged by foreground gap recovery or
+     * tail pagination. Excluded from the ↓ x new unread count per the frozen
+     * task #232 contract; resume-refresh arrivals stay counted. Never
+     * route/pageData state and never persisted.
+     */
+    @Transient
+    val gapRefillMessageIds: Set<String> = emptySet(),
 )
 
 internal data class ThreadMembersPageRoute(
@@ -13768,13 +13776,14 @@ private fun ThreadMessagesList(
             advanceThreadReadAnchorFrontier(frozenReadAnchor, latestVisibleReadAnchor)
         }
     val unreadJumpProjection =
-        remember(sessionReadAnchor, renderPayload.messages) {
+        remember(sessionReadAnchor, renderPayload.messages, renderPayload.gapRefillMessageIds) {
             projectThreadUnreadJump(
                 anchor = sessionReadAnchor,
                 messages =
                     renderPayload.messages.map { message ->
                         ThreadUnreadAnchorMessage(id = message.id, seq = message.seq)
                     },
+                excludedMessageIds = renderPayload.gapRefillMessageIds,
             )
         }
     var viewportControllerState by remember(threadInstanceKey) {

@@ -618,7 +618,7 @@
     <string name="thread_video_playback_failed">视频播放失败</string>
     <string name="thread_video_attachment_fallback_name">视频附件</string>
     <string name="thread_action_back_to_bottom">回到底部</string>
-    <string name="thread_action_unread_count">↑ %1$d 条未读</string>
+    <string name="thread_action_unread_count">↓ %1$d 条新消息</string>
     <string name="thread_label_saved">已收藏</string>
     <string name="thread_state_refreshing_original">正在刷新原消息…</string>
     <string name="thread_error_refresh_original">刷新失败：%1$s</string>

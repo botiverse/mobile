@@ -7373,6 +7373,7 @@ internal class SharedThreadStore(
                 initialRequest = recoveryRequest,
                 staleToken = eventStaleToken,
                 recoveryId = recoveryId,
+                tagAsGapRefill = true,
             )
             return
         }
@@ -7700,6 +7701,7 @@ internal class SharedThreadStore(
                                         pageSize = result.data.requestedPageSize
                                     )
                                     .preserveStableTimelineFrom(currentPayload)
+                                    .withGapRefillTagFrom(currentPayload)
                             dataSource
                                 .cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId)
                                 .withRouteContext(initial)
@@ -7796,7 +7798,7 @@ internal class SharedThreadStore(
             }
         }
         successorRecovery?.let { (successorInitial, request) ->
-            recoverRealtimeGap(successorInitial, request, staleToken)
+            recoverRealtimeGap(successorInitial, request, staleToken, tagAsGapRefill = true)
         }
         return outcome
     }
@@ -7872,7 +7874,7 @@ internal class SharedThreadStore(
                 serverSeq = serverSeq,
                 loading = false,
             ) ?: return
-        recoverRealtimeGap(initial, nextRequest, staleToken)
+        recoverRealtimeGap(initial, nextRequest, staleToken, tagAsGapRefill = true)
     }
 
     private suspend fun recoverRealtimeGapFromVisibleTail(replyCountGap: ReplyCountRealtimeGap) {
@@ -7896,7 +7898,8 @@ internal class SharedThreadStore(
                     sinceSeq = sinceSeq,
                     serverSeq = sinceSeq + replyCountGap.replyCount.toLong().coerceAtLeast(1L)
             ),
-            staleToken = staleToken
+            staleToken = staleToken,
+            tagAsGapRefill = true,
         )
     }
 
@@ -7921,14 +7924,19 @@ internal class SharedThreadStore(
                     sinceSeq = sinceSeq,
                     serverSeq = sinceSeq + 1L
                 ),
-            staleToken = staleToken
+            staleToken = staleToken,
+            // Resume/visible refresh arrivals are genuinely new to the user and
+            // keep counting toward ↓ x new (frozen task #232 contract); only
+            // foreground gap recovery is tagged as refill.
+            tagAsGapRefill = false,
         )
     }
 
     private suspend fun recoverRealtimeGap(
         initial: KuiklyThreadScreenPayload,
         initialRequest: RealtimeVisibleStreamGapRequest,
-        staleToken: MviStaleToken
+        staleToken: MviStaleToken,
+        tagAsGapRefill: Boolean,
     ) {
         val routeIdentity = initial.realtimeGapRouteIdentity()
         val recoveryId =
@@ -7983,7 +7991,7 @@ internal class SharedThreadStore(
                     id
                 }
             } ?: return
-        runRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId)
+        runRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId, tagAsGapRefill)
     }
 
     private suspend fun runRealtimeGapRecovery(
@@ -7991,6 +7999,7 @@ internal class SharedThreadStore(
         initialRequest: RealtimeVisibleStreamGapRequest,
         staleToken: MviStaleToken,
         recoveryId: Long,
+        tagAsGapRefill: Boolean,
     ) {
         var nextRequest = initialRequest
         try {
@@ -8074,6 +8083,13 @@ internal class SharedThreadStore(
                                         canLoadMoreAfter = false,
                                         newerMessagesStatus = if (shouldContinue) "loading" else "idle",
                                     )
+                                    .let { mergedPayload ->
+                                        if (tagAsGapRefill) {
+                                            mergedPayload.withGapRefillTagFrom(currentPayload)
+                                        } else {
+                                            mergedPayload
+                                        }
+                                    }
                             val selected =
                                 dataSource
                                     .cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId)
@@ -10290,7 +10306,23 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessages(
         .asLoadedEmptyReplyThreadPayload()
 }
 
-private fun KuiklyThreadScreenPayload.mergePagedMessages(
+/**
+ * Task #232 arrival provenance: records IDs first merged by this payload
+ * (relative to [base]) as gap-refill arrivals, which the ↓ x new projection
+ * excludes. Live realtime events and resume refreshes never call this.
+ */
+internal fun KuiklyThreadScreenPayload.withGapRefillTagFrom(
+    base: KuiklyThreadScreenPayload
+): KuiklyThreadScreenPayload {
+    val baseIds = base.messages.mapTo(mutableSetOf()) { it.id }
+    val added =
+        messages.mapTo(mutableSetOf()) { it.id } - baseIds
+    val newlyExcluded = added.filter { it.isNotBlank() }
+    if (newlyExcluded.isEmpty()) return this
+    return copy(gapRefillMessageIds = gapRefillMessageIds + newlyExcluded)
+}
+
+internal fun KuiklyThreadScreenPayload.mergePagedMessages(
     pageMessages: List<KuiklyThreadMessageItem>,
     before: Boolean,
     pageSize: Int
@@ -10641,6 +10673,7 @@ internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadS
         status = patch.status,
         backgroundRefreshing = patch.backgroundRefreshing,
         messages = patch.messages,
+        gapRefillMessageIds = patch.gapRefillMessageIds,
         originMessage = patch.originMessage,
         originPreview = patch.originPreview,
         originParentMessageId = patch.originParentMessageId,
