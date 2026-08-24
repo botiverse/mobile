@@ -5060,13 +5060,8 @@ internal fun SharedThreadRouteContent(
         sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "thread_route_attach")
     }
     val latestCurrentSession by rememberUpdatedState(currentSession)
-    // The listener can mount after Activity.onResume. Seed from the authoritative host
-    // visibility so the first external-browser return is treated as a subsequent resume
-    // and rotates stale pointer registrations instead of merely marking lifecycle as seen.
     val threadVisibleResumeGate = remember(threadInstanceKey, storeScope.shellInstanceId) {
-        ThreadVisibleResumeGate(
-            lifecycleSeen = isSlockHostVisible(storeScope.shellInstanceId)
-        )
+        ThreadVisibleResumeGate()
     }
     var threadHostForeground by remember(threadInstanceKey, storeScope.shellInstanceId) {
         mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
@@ -17801,11 +17796,8 @@ internal data class ThreadVisibleResumePlan(
     val rejoinVisibleRooms: Boolean
 )
 
-internal fun threadVisibleResumePlan(
-    lifecycleSeen: Boolean,
-    routeActive: Boolean
-): ThreadVisibleResumePlan? =
-    if (lifecycleSeen && routeActive) {
+internal fun threadVisibleResumePlan(routeActive: Boolean): ThreadVisibleResumePlan? =
+    if (routeActive) {
         ThreadVisibleResumePlan(
             refreshVisibleConversation = true,
             rejoinVisibleRooms = true
@@ -17814,21 +17806,16 @@ internal fun threadVisibleResumePlan(
         null
     }
 
-internal class ThreadVisibleResumeGate(
-    lifecycleSeen: Boolean
-) {
-    private var lifecycleSeen = lifecycleSeen
+internal class ThreadVisibleResumeGate {
     private var pendingVisibleResume = false
 
     fun onLifecycleVisibleResume(routeActive: Boolean): ThreadVisibleResumePlan? {
-        val wasLifecycleSeen = lifecycleSeen
-        lifecycleSeen = true
         if (!routeActive) {
             pendingVisibleResume = true
             return null
         }
         pendingVisibleResume = false
-        return threadVisibleResumePlan(wasLifecycleSeen, routeActive = true)
+        return threadVisibleResumePlan(routeActive = true)
     }
 
     fun onRouteBecameVisible(): ThreadVisibleResumePlan? {
