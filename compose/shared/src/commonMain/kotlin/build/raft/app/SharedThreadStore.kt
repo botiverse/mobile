@@ -3130,7 +3130,7 @@ internal class SharedThreadDataSource(
         if (reusePrewarm && threadId != null) {
             val serverId = session.currentServerId.orEmpty()
             if (payloadCache.promoteQueuedPrewarm(serverId, threadId, payloadOwnerScopeId)) {
-                diagnosticsLogger(
+                diagnosticsLogger?.invoke(
                     "thread_prewarm_promote threadId=$threadId from=background_queue to=foreground"
                 )
                 failedPrewarm = true
@@ -4633,7 +4633,7 @@ internal class SharedThreadDataSource(
                 expectedProvenance = replyResolutionScope.provenance
             ) { repository ->
                 val pageSize = threadPageSize(session.currentServerId)
-                diagnosticsLogger(
+                diagnosticsLogger?.invoke(
                     "thread_page_size source=initial_repository server=${session.currentServerId.orEmpty()} " +
                         "pageSize=$pageSize"
                 )
