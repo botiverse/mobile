@@ -18317,7 +18317,7 @@ private fun ThreadBackToBottomButton(
         modifier = modifier.slockNativeDispatchCapture(),
         backgroundColor = SlockColor.SurfaceWhite,
         minWidth = 0.dp,
-        minHeight = 30.dp,
+        minHeight = ThreadFloatingPillButtonMinHeight,
         shadowOffset = 4.dp,
         textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
         trailingContent = {
@@ -18342,7 +18342,7 @@ private fun ThreadUnreadJumpButton(
         modifier = modifier.slockNativeDispatchCapture(),
         backgroundColor = SlockColor.BrandYellow,
         minWidth = 0.dp,
-        minHeight = 30.dp,
+        minHeight = ThreadFloatingPillButtonMinHeight,
         shadowOffset = 4.dp,
         textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
     )
@@ -18365,6 +18365,13 @@ internal fun shouldShowThreadUnreadJumpButton(
 
 private const val ThreadBackToBottomReleaseGuardMillis = 64L
 private const val ThreadUnreadJumpButtonZIndex = 5f
+
+/**
+ * Task #232 a11y contract: floating thread pill buttons must meet the project
+ * action-button touch-target norm (40-44dp, see MembersPage/SettingsAccountPage);
+ * the previous 30dp was below standard.
+ */
+internal val ThreadFloatingPillButtonMinHeight = 42.dp
 private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
