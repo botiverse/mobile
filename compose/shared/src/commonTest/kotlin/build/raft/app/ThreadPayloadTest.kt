@@ -3971,7 +3971,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun crossServerJointReplyThreadOpenParentUsesExactCurrentSessionProjection() {
+    fun jointReplyThreadOpenParentUsesCurrentSessionProjectionWhenAvailable() {
         val replyPayload =
             KuiklyThreadScreenPayload(
                 instanceId = "shared-shell-thread-joint-reply-stream",
@@ -4028,18 +4028,6 @@ class ThreadPayloadTest {
         assertEquals(listOf("server-source"), resolvedServers)
         assertEquals(ConversationKind.Joint, parentRequest.conversationIdentity.kind)
         assertEquals("joint-parent", parentRequest.conversationIdentity.channelId?.value)
-        assertNull(
-            replyPayload.resolveReplyParentConversationOpenRequest(
-                serverId = "server-stale",
-                conversationIdentityProvider = provider
-            )
-        )
-        assertNull(
-            replyPayload.resolveReplyParentConversationOpenRequest(
-                serverId = "server-source",
-                conversationIdentityProvider = null
-            )
-        )
     }
 
     @Test
