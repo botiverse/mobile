@@ -37,7 +37,7 @@ if [ "${1:-}" = "api" ]; then
       jq -cn --arg sha "${FAKE_BASE_AT_REVIEW:?}" '{merge_base_commit: {sha: $sha}}'
       ;;
     "api repos/botiverse/mobile/git/commits/${FAKE_HEAD_SHA:?}")
-      reviewed_message="$(jq -r 'if (.[0] | type) == "array" then .[0][-1].commit.message else .[-1].commit.message end' <<< "${FAKE_COMMITS_JSON:?}")"
+      reviewed_message="$(jq -r '.[-1].commit.message' <<< "${FAKE_COMMITS_JSON:?}")"
       jq -cn \
         --arg sha "${FAKE_HEAD_SHA:?}" \
         --arg tree "${FAKE_REVIEWED_TREE:?}" \
@@ -124,7 +124,7 @@ EOF
 commits_json="$(jq -cn \
   --arg sha "$head_sha" \
   --arg message "$(cat "$message_file")" \
-  '[[{sha: $sha, commit: {message: $message}}]]')"
+  '[{sha: $sha, commit: {message: $message}}]')"
 
 GH_BIN="$fake_gh" GH_RECORD="$record" GH_BODY_RECORD="$body_record" FAKE_HEAD_SHA="$head_sha" \
   GUARDED_MERGE_RECEIPT_FILE="$receipt_file" FAKE_MERGE_SHA="$merge_sha" \

@@ -63,7 +63,7 @@ commits_json="${tmp_dir}/commits.json"
 # per page; jq -s collects those arrays and adds them into the same flat array
 # that --slurp would have produced.
 $gh_bin api --paginate "repos/${repo}/pulls/${pr_number}/commits?per_page=100" \
-  | jq -s 'add | add // []' > "$commits_json"
+  | jq -s 'add // []' > "$commits_json"
 commit_count="$(jq 'length' "$commits_json")"
 [ "$commit_count" -gt 0 ] || {
   echo "refusing merge: PR #${pr_number} has no source commits" >&2

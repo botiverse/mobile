@@ -40,7 +40,7 @@ Signed-off-by: Merge Safety <merge-safety@mail.build>
 EOF
 )"
 commits_json="$(jq -cn --arg sha "$head_sha" --arg message "$message" \
-  '[[{sha: $sha, commit: {message: $message}}]]')"
+  '[{sha: $sha, commit: {message: $message}}]')"
 
 GH_BIN="$fake_gh" GH_RECORD="$record" FAKE_HEAD_SHA="$head_sha" \
   FAKE_COMMITS_JSON="$commits_json" \

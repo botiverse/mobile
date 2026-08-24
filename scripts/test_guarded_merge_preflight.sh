@@ -35,7 +35,7 @@ message_json() {
   local sha="$1"
   local message="$2"
   jq -cn --arg sha "$sha" --arg message "$message" \
-    '[[{sha: $sha, commit: {message: $message}}]]'
+    '[{sha: $sha, commit: {message: $message}}]'
 }
 
 expect_pass() {
