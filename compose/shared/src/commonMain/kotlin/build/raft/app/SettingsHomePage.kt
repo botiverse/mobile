@@ -19899,14 +19899,16 @@ internal data class SearchEntityResult(
         get() = memberIdentity?.memberId?.value
 }
 
+internal fun ThreadLaunchConversationIdentity.homeSearchChannelLeadingIconName(): SlockLucideIconName =
+    when {
+        kind == ConversationKind.Joint -> SlockLucideIconName.GitBranch
+        channelType.equals("private", ignoreCase = true) -> SlockLucideIconName.Lock
+        else -> SlockLucideIconName.Hash
+    }
+
 internal fun SearchEntityResult.homeSearchEntityLeadingIconName(): SlockLucideIconName? =
     when (type) {
-        SearchEntityType.Channel ->
-            if (conversationIdentity?.kind == ConversationKind.Joint) {
-                SlockLucideIconName.GitBranch
-            } else {
-                SlockLucideIconName.Hash
-            }
+        SearchEntityType.Channel -> conversationIdentity?.homeSearchChannelLeadingIconName() ?: SlockLucideIconName.Hash
         SearchEntityType.Computer -> SlockLucideIconName.Monitor
         SearchEntityType.DirectMessage,
         SearchEntityType.Human,
