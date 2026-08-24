@@ -84,6 +84,40 @@ class SettingsHomeSearchEntityRankingTest {
     }
 
     @Test
+    fun queryAndFrequentChannelRowsUseJointAwareLeadingIcons() {
+        val joint = resultsFor("joint-bridge").single()
+        val public = resultsFor("general").first { it.key == "conversation:channel-prefix" }
+        val private = resultsFor("private-room").single()
+
+        assertEquals(SlockLucideIconName.GitBranch, joint.homeSearchEntityLeadingIconName())
+        assertEquals(SlockLucideIconName.Hash, public.homeSearchEntityLeadingIconName())
+        assertEquals(SlockLucideIconName.Hash, private.homeSearchEntityLeadingIconName())
+
+        val frequent =
+            homeSearchFrequentEntityResults(
+                homeState = entityHomeState,
+                senderFilters = entitySenders,
+                ranks =
+                    mapOf(
+                        SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-joint") to
+                            SearchFrequentEntityRank(score = 2.0, lastOpenedAtMillis = 2L),
+                        SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-private") to
+                            SearchFrequentEntityRank(score = 1.0, lastOpenedAtMillis = 1L),
+                    ),
+                channelLabel = "Channel",
+                dmLabel = "DM",
+                agentLabel = "Agent",
+                personLabel = "Person",
+                membersLabel = "Members",
+            )
+
+        assertEquals(
+            listOf(SlockLucideIconName.GitBranch, SlockLucideIconName.Hash),
+            frequent.map { it.homeSearchEntityLeadingIconName() },
+        )
+    }
+
+    @Test
     fun blankQueryReturnsBeforeHomeContentIsAvailable() {
         val results =
             homeSearchEntityResults(
@@ -352,6 +386,18 @@ class SettingsHomeSearchEntityRankingTest {
                                             threadId = ThreadId("channel-prefix"),
                                             channelId = ChannelId("channel-prefix"),
                                             name = "general"
+                                        ),
+                                        HomeChannelRow(
+                                            threadId = ThreadId("channel-joint"),
+                                            channelId = ChannelId("channel-joint"),
+                                            kind = ConversationKind.Joint,
+                                            name = "joint-bridge"
+                                        ),
+                                        HomeChannelRow(
+                                            threadId = ThreadId("channel-private"),
+                                            channelId = ChannelId("channel-private"),
+                                            channelType = "private",
+                                            name = "private-room"
                                         ),
                                         HomeChannelRow(
                                             threadId = ThreadId("channel-archived"),
