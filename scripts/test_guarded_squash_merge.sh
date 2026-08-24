@@ -30,14 +30,14 @@ if [ "${1:-}" = "api" ]; then
         --arg head "${FAKE_HEAD_SHA:?}" \
         '{base: {sha: $base, ref: $ref}, head: {sha: $head}}'
       ;;
-    "api --paginate --slurp repos/botiverse/mobile/pulls/1459/commits?per_page=100")
+    "api --paginate repos/botiverse/mobile/pulls/1459/commits?per_page=100")
       printf '%s\n' "${FAKE_COMMITS_JSON:?}"
       ;;
     "api repos/botiverse/mobile/compare/"*)
       jq -cn --arg sha "${FAKE_BASE_AT_REVIEW:?}" '{merge_base_commit: {sha: $sha}}'
       ;;
     "api repos/botiverse/mobile/git/commits/${FAKE_HEAD_SHA:?}")
-      reviewed_message="$(jq -r '[.[][]][-1].commit.message' <<< "${FAKE_COMMITS_JSON:?}")"
+      reviewed_message="$(jq -r '.[-1].commit.message' <<< "${FAKE_COMMITS_JSON:?}")"
       jq -cn \
         --arg sha "${FAKE_HEAD_SHA:?}" \
         --arg tree "${FAKE_REVIEWED_TREE:?}" \
@@ -124,7 +124,7 @@ EOF
 commits_json="$(jq -cn \
   --arg sha "$head_sha" \
   --arg message "$(cat "$message_file")" \
-  '[[{sha: $sha, commit: {message: $message}}]]')"
+  '[{sha: $sha, commit: {message: $message}}]')"
 
 GH_BIN="$fake_gh" GH_RECORD="$record" GH_BODY_RECORD="$body_record" FAKE_HEAD_SHA="$head_sha" \
   GUARDED_MERGE_RECEIPT_FILE="$receipt_file" FAKE_MERGE_SHA="$merge_sha" \
