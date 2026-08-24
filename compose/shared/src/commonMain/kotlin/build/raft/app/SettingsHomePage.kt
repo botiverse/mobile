@@ -789,7 +789,11 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                         .border(SlockStroke.Thin, SlockColor.BorderBlack),
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon(SlockLucideIconName.Hash, color = "#FF000000", modifier = Modifier.size(15.dp))
+                SlockLucideIcon(
+                    result.homeSearchEntityLeadingIconName() ?: SlockLucideIconName.Hash,
+                    color = "#FF000000",
+                    modifier = Modifier.size(15.dp)
+                )
             }
 
         SearchEntityType.Computer ->
@@ -19894,6 +19898,20 @@ internal data class SearchEntityResult(
     val memberId: String?
         get() = memberIdentity?.memberId?.value
 }
+
+internal fun SearchEntityResult.homeSearchEntityLeadingIconName(): SlockLucideIconName? =
+    when (type) {
+        SearchEntityType.Channel ->
+            if (conversationIdentity?.kind == ConversationKind.Joint) {
+                SlockLucideIconName.GitBranch
+            } else {
+                SlockLucideIconName.Hash
+            }
+        SearchEntityType.Computer -> SlockLucideIconName.Monitor
+        SearchEntityType.DirectMessage,
+        SearchEntityType.Human,
+        SearchEntityType.Agent -> null
+    }
 
 internal sealed interface HomeSearchEntityDestination {
     data class Conversation(val identity: ThreadLaunchConversationIdentity) : HomeSearchEntityDestination
