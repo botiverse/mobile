@@ -84,14 +84,14 @@ class SettingsHomeSearchEntityRankingTest {
     }
 
     @Test
-    fun queryAndFrequentChannelRowsUseJointAwareLeadingIcons() {
+    fun queryAndFrequentChannelRowsDistinguishPublicPrivateAndJointLeadingIcons() {
         val joint = resultsFor("joint-bridge").single()
         val public = resultsFor("general").first { it.key == "conversation:channel-prefix" }
         val private = resultsFor("private-room").single()
 
         assertEquals(SlockLucideIconName.GitBranch, joint.homeSearchEntityLeadingIconName())
         assertEquals(SlockLucideIconName.Hash, public.homeSearchEntityLeadingIconName())
-        assertEquals(SlockLucideIconName.Hash, private.homeSearchEntityLeadingIconName())
+        assertEquals(SlockLucideIconName.Lock, private.homeSearchEntityLeadingIconName())
 
         val frequent =
             homeSearchFrequentEntityResults(
@@ -112,7 +112,7 @@ class SettingsHomeSearchEntityRankingTest {
             )
 
         assertEquals(
-            listOf(SlockLucideIconName.GitBranch, SlockLucideIconName.Hash),
+            listOf(SlockLucideIconName.GitBranch, SlockLucideIconName.Lock),
             frequent.map { it.homeSearchEntityLeadingIconName() },
         )
     }
