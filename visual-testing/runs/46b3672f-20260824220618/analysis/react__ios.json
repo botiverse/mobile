@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-24T22:08:45.490Z",
+  "generatedAt": "2026-08-24T22:12:49.997Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 79,
-    "pending": 7
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -467,15 +467,30 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-24T22:08:43.830Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-24T22:11:12.274Z",
+      "severity": "low",
+      "summary": [
+        "Four status dots in same order and colors (green, orange, gray, blue) on both platforms with no visible differences",
+        "Pink 'Waiting pulse' dot and label appear identical in shape, color, size, and position",
+        "Pink pulse dot appears slightly darker/less saturated on iOS compared to React",
+        "RGB similarity 97.95% and pixel-perfect 99.77% indicate near-identical render"
+      ],
+      "likelyCauses": [
+        "Minor color/antialiasing variance in the pink fill of the pulse dot due to platform rendering differences",
+        "Subpixel rendering differences between web and native iOS rendering pipelines"
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Verify pink pulse dot token (#colorStatusWaiting or equivalent) matches across platforms",
+        "Account for native iOS color rendering when defining pulse animation colors",
+        "Accept the minor difference if within design tolerance since metrics exceed thresholds"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -1823,7 +1838,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:08:44.691Z",
+      "generatedAt": "2026-08-24T22:12:49.163Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2213,7 +2228,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:08:45.017Z",
+      "generatedAt": "2026-08-24T22:12:49.483Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2226,7 +2241,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:08:45.017Z",
+      "generatedAt": "2026-08-24T22:12:49.483Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2239,7 +2254,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:08:45.017Z",
+      "generatedAt": "2026-08-24T22:12:49.483Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2252,7 +2267,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:08:45.017Z",
+      "generatedAt": "2026-08-24T22:12:49.483Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2265,7 +2280,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:08:45.017Z",
+      "generatedAt": "2026-08-24T22:12:49.483Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

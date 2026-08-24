@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-24T22:08:52.239Z",
+  "generatedAt": "2026-08-24T22:12:55.884Z",
   "runId": "46b3672f-20260824220618",
   "cases": [
     {
@@ -5424,17 +5424,29 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-24T22:08:45.947Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-24T22:11:12.274Z",
+            "severity": "low",
+            "summary": [
+              "Four status dots in same order and colors (green, orange, gray, blue) on both platforms with no visible differences",
+              "Pink 'Waiting pulse' dot and label appear identical in shape, color, size, and position",
+              "Pink pulse dot appears slightly darker/less saturated on iOS compared to React",
+              "RGB similarity 97.95% and pixel-perfect 99.77% indicate near-identical render"
+            ],
+            "likelyCauses": [
+              "Minor color/antialiasing variance in the pink fill of the pulse dot due to platform rendering differences",
+              "Subpixel rendering differences between web and native iOS rendering pipelines"
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "Verify pink pulse dot token (#colorStatusWaiting or equivalent) matches across platforms",
+              "Account for native iOS color rendering when defining pulse animation colors",
+              "Accept the minor difference if within design tolerance since metrics exceed thresholds"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -5457,17 +5469,27 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-24T22:08:50.529Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-24T22:11:15.801Z",
+            "severity": "low",
+            "summary": [
+              "The status-dot colors, circular shapes, spacing, and the pink waiting-pulse state appear visually equivalent on Android and iOS.",
+              "The Android header badge reads “ANDROID,” while the iOS header badge reads “IOS,” but these are platform labels rather than component-state differences."
+            ],
+            "likelyCauses": [
+              "Platform-specific font fallback or rasterization may account for the small residual text-edge differences reflected in the pixel-mismatch ratio."
+            ],
+            "suggestedOwner": "UI component owner",
+            "suggestedFixes": [
+              "No component-level visual fix is indicated; preserve the shared status-dot implementation and styles.",
+              "If exact cross-platform typography is required, compare font family, weight, and scaling on both renderers."
+            ],
+            "intentional": [
+              "Different platform identifiers in the screenshot headers (“ANDROID” versus “IOS”)."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -5493,17 +5515,29 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-24T22:08:45.947Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-24T22:11:12.274Z",
+            "severity": "low",
+            "summary": [
+              "Four status dots in same order and colors (green, orange, gray, blue) on both platforms with no visible differences",
+              "Pink 'Waiting pulse' dot and label appear identical in shape, color, size, and position",
+              "Pink pulse dot appears slightly darker/less saturated on iOS compared to React",
+              "RGB similarity 97.95% and pixel-perfect 99.77% indicate near-identical render"
+            ],
+            "likelyCauses": [
+              "Minor color/antialiasing variance in the pink fill of the pulse dot due to platform rendering differences",
+              "Subpixel rendering differences between web and native iOS rendering pipelines"
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "Verify pink pulse dot token (#colorStatusWaiting or equivalent) matches across platforms",
+              "Account for native iOS color rendering when defining pulse animation colors",
+              "Accept the minor difference if within design tolerance since metrics exceed thresholds"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -5527,17 +5561,27 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-24T22:08:50.529Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-24T22:11:15.801Z",
+            "severity": "low",
+            "summary": [
+              "The status-dot colors, circular shapes, spacing, and the pink waiting-pulse state appear visually equivalent on Android and iOS.",
+              "The Android header badge reads “ANDROID,” while the iOS header badge reads “IOS,” but these are platform labels rather than component-state differences."
+            ],
+            "likelyCauses": [
+              "Platform-specific font fallback or rasterization may account for the small residual text-edge differences reflected in the pixel-mismatch ratio."
+            ],
+            "suggestedOwner": "UI component owner",
+            "suggestedFixes": [
+              "No component-level visual fix is indicated; preserve the shared status-dot implementation and styles.",
+              "If exact cross-platform typography is required, compare font family, weight, and scaling on both renderers."
+            ],
+            "intentional": [
+              "Different platform identifiers in the screenshot headers (“ANDROID” versus “IOS”)."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20921,7 +20965,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-24T22:08:42.191Z",
+        "generatedAt": "2026-08-24T22:12:46.229Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20982,7 +21026,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:42.191Z",
+            "generatedAt": "2026-08-24T22:12:46.229Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -21004,7 +21048,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:45.497Z",
+            "generatedAt": "2026-08-24T22:12:50.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -21079,7 +21123,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:45.497Z",
+            "generatedAt": "2026-08-24T22:12:50.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25553,7 +25597,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:45.497Z",
+            "generatedAt": "2026-08-24T22:12:50.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25575,7 +25619,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:50.049Z",
+            "generatedAt": "2026-08-24T22:12:53.920Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25600,7 +25644,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:45.497Z",
+            "generatedAt": "2026-08-24T22:12:50.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25623,7 +25667,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:50.049Z",
+            "generatedAt": "2026-08-24T22:12:53.920Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25823,7 +25867,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:45.497Z",
+            "generatedAt": "2026-08-24T22:12:50.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25845,7 +25889,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:50.049Z",
+            "generatedAt": "2026-08-24T22:12:53.920Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25870,7 +25914,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:45.497Z",
+            "generatedAt": "2026-08-24T22:12:50.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25893,7 +25937,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:50.049Z",
+            "generatedAt": "2026-08-24T22:12:53.920Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26093,7 +26137,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:45.497Z",
+            "generatedAt": "2026-08-24T22:12:50.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26115,7 +26159,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:50.049Z",
+            "generatedAt": "2026-08-24T22:12:53.920Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26140,7 +26184,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:45.497Z",
+            "generatedAt": "2026-08-24T22:12:50.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26163,7 +26207,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:50.049Z",
+            "generatedAt": "2026-08-24T22:12:53.920Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26359,7 +26403,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:45.497Z",
+            "generatedAt": "2026-08-24T22:12:50.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26381,7 +26425,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:50.049Z",
+            "generatedAt": "2026-08-24T22:12:53.920Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26406,7 +26450,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:45.497Z",
+            "generatedAt": "2026-08-24T22:12:50.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26429,7 +26473,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:50.049Z",
+            "generatedAt": "2026-08-24T22:12:53.920Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26625,7 +26669,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:45.497Z",
+            "generatedAt": "2026-08-24T22:12:50.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26647,7 +26691,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:50.049Z",
+            "generatedAt": "2026-08-24T22:12:53.920Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26672,7 +26716,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:45.497Z",
+            "generatedAt": "2026-08-24T22:12:50.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26695,7 +26739,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-24T22:08:50.049Z",
+            "generatedAt": "2026-08-24T22:12:53.920Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

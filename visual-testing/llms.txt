@@ -1,6 +1,6 @@
 # Raft Visual Testing
 
-Generated: 2026-08-24 22:08:52 UTC
+Generated: 2026-08-24 22:12:55 UTC
 Latest run: 46b3672f-20260824220618
 Latest commit: 46b3672f-20260824220618
 Commit subject: fix(thread): refresh active route on first visible resume (#2243)

@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-24T22:08:52.239Z",
+  "generatedAt": "2026-08-24T22:12:55.884Z",
   "latestRunId": "46b3672f-20260824220618",
   "latest": {
     "runId": "46b3672f-20260824220618",
     "commit": "46b3672f-20260824220618",
     "commitSubject": "fix(thread): refresh active route on first visible resume (#2243)",
-    "generatedAt": "2026-08-24T22:08:52.239Z",
+    "generatedAt": "2026-08-24T22:12:55.884Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -129,7 +129,7 @@
       "runId": "46b3672f-20260824220618",
       "commit": "46b3672f-20260824220618",
       "commitSubject": "fix(thread): refresh active route on first visible resume (#2243)",
-      "generatedAt": "2026-08-24T22:08:52.239Z",
+      "generatedAt": "2026-08-24T22:12:55.884Z",
       "baseline": "react",
       "current": "android",
       "summary": {
