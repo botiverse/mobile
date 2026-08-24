@@ -6845,6 +6845,28 @@ internal class SharedThreadStore(
                 }
                 val storeEvent =
                     if (event is ThreadUpdated) event.copy(latestReply = null) else event
+                val eventIdentity =
+                    when (event) {
+                        is MessageNew -> {
+                            val message = event.message
+                            "type=MessageNew messageId=${message.id.value} " +
+                                "threadId=${message.threadId.value} channelId=${message.channelId?.value.orEmpty()} " +
+                                "threadChannelId=${message.threadChannelId?.value.orEmpty()} " +
+                                "matches=${message.matchesSharedThread(currentPayload, activeReplyParentMessageId)}"
+                        }
+                        is ThreadUpdated -> {
+                            val parentId = event.parentMessageId.value
+                            "type=ThreadUpdated parentMessageId=$parentId " +
+                                "threadMatch=${currentPayload.messages.any { it.id == parentId } || currentPayload.originMessage?.id == parentId}"
+                        }
+                        else -> "type=${event::class.simpleName.orEmpty()}"
+                    }
+                diagnosticsLogger(
+                    "thread_realtime_identity threadId=${currentPayload.sourceThreadId.orEmpty()} " +
+                        "cacheThreadId=${currentPayload.cacheThreadId().orEmpty()} " +
+                        "originParentMessageId=${currentPayload.originParentMessageId.orEmpty()} " +
+                        "messagesBefore=${currentPayload.messages.size} $eventIdentity"
+                )
                 val realtimeGapServerSeq =
                     currentPayload.realtimeNewerGapServerSeq(
                         event = event,
@@ -6964,6 +6986,11 @@ internal class SharedThreadStore(
                         previous = currentPayload,
                         activeReplyParentMessageId = activeReplyParentMessageId,
                     )
+                diagnosticsLogger(
+                    "thread_realtime_fold threadId=${currentPayload.sourceThreadId.orEmpty()} " +
+                        "messagesBefore=${currentPayload.messages.size} messagesAfter=${merged.messages.size} " +
+                        "samePayload=${merged === currentPayload} replyCountGap=${replyCountGap != null}"
+                )
                 if (merged === currentPayload) {
                     return@withLock RealtimeEventDecision(
                         source = "none",
