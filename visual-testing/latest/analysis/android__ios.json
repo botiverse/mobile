@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-23T22:04:57.878Z",
+  "generatedAt": "2026-08-24T22:08:50.040Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 81,
-    "pending": 5
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -457,32 +457,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-23T22:03:39.582Z",
-      "severity": "low",
-      "summary": [
-        "Both Android and iOS renders display the same 'Raft UI Status Dot' component with four colored dots (green, orange, gray, blue) and a 'Waiting pulse' label with pink dot",
-        "iOS render uses a much taller canvas (1170×2532) than the Android component bounds (342×92), creating a large empty area below the component on the iOS side",
-        "Header metadata labels, dot colors, layout order, and typography appear visually consistent between both platforms"
-      ],
-      "likelyCauses": [
-        "iOS screenshot captures the full device viewport (1170×2532) while Android is cropped to component bounds (342×92), causing the visible canvas size mismatch",
-        "The Kuikly iOS render may not be applying the same manual-rect crop contract as Android, leaving empty space below the component"
-      ],
-      "suggestedOwner": "ui-platform",
-      "suggestedFixes": [
-        "Apply matching component-bounds crop on iOS capture to align with Android's 342×92 region",
-        "Verify the crop configuration in the iOS test harness uses the same manual-rect contract",
-        "Confirm no rendering or layout difference exists in the actual component by cropping both to identical bounds before diffing"
-      ],
-      "intentional": [
-        "Platform-specific viewport sizes in test capture are expected; the underlying component appears isomorphic",
-        "Color, spacing, and typography of dots and 'Waiting pulse' label are consistent across renders"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffebffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-08-24T22:08:48.241Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.002999216861776066
     },
     {
@@ -1140,7 +1123,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05947698518788569
+      "metricMismatch": 0.0594840739390502
     },
     {
       "id": "components.thread.header.states",
@@ -1273,7 +1256,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3693445268089818
+      "metricMismatch": 0.3693441892494025
     },
     {
       "id": "components.thread.message-menu.task",
@@ -2127,7 +2110,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:04:57.491Z",
+      "generatedAt": "2026-08-24T22:08:49.491Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2140,7 +2123,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:04:57.491Z",
+      "generatedAt": "2026-08-24T22:08:49.491Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2153,7 +2136,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:04:57.491Z",
+      "generatedAt": "2026-08-24T22:08:49.491Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2166,7 +2149,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:04:57.491Z",
+      "generatedAt": "2026-08-24T22:08:49.491Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2179,7 +2162,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:04:57.491Z",
+      "generatedAt": "2026-08-24T22:08:49.491Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

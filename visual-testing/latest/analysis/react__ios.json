@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-23T22:04:54.376Z",
+  "generatedAt": "2026-08-24T22:08:45.490Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 79,
+    "pending": 7
   },
   "cases": [
     {
@@ -467,32 +467,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-23T22:03:34.653Z",
-      "severity": "low",
-      "summary": [
-        "Status dot rows and 'Waiting pulse' label render with nearly identical layout, colors, and typography between React and iOS.",
-        "The iOS canvas is much larger (1170×2532 vs 342×92), so the actual component occupies a proportionally smaller region of the rendered image.",
-        "Pixel mismatch is only 0.23% and pixel-perfect similarity is 99.77%, indicating no substantive visual regression."
-      ],
-      "likelyCauses": [
-        "Platform-level differences in default font metrics or antialiasing within tolerance.",
-        "Canvas/viewport scaling differences between web (React) and iOS native render paths."
-      ],
-      "suggestedOwner": "design-systems",
-      "suggestedFixes": [
-        "No action needed; differences fall within the configured 0.02 pixel-ratio and 1dp layout tolerances.",
-        "If higher fidelity is desired, normalize the iOS capture crop to the component bounds before diffing.",
-        "Verify the 'Waiting pulse' pulse animation is sampled at a consistent phase across platforms to avoid animation-related false positives."
-      ],
-      "intentional": [
-        "iOS render is shown on a full device-resolution canvas while React is cropped to component bounds; this is a test-harness difference, not a UI bug.",
-        "Status dot color states (green, orange, gray, blue, pink) and the 'Waiting pulse' label appearance are consistent across platforms."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-08-24T22:08:43.830Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -552,7 +535,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06209779776130486
+      "metricMismatch": 0.062095097284670775
     },
     {
       "id": "components.ui.spinner.states",
@@ -1555,7 +1538,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26933777561739647
+      "metricMismatch": 0.26933541270034156
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1588,7 +1571,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2694741496874198
+      "metricMismatch": 0.269461659982987
     },
     {
       "id": "components.home.saved.results",
@@ -1624,7 +1607,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11135854228271291
+      "metricMismatch": 0.11133693846963988
     },
     {
       "id": "components.home.activity.results",
@@ -1659,7 +1642,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1067555798598453
+      "metricMismatch": 0.10675321694279039
     },
     {
       "id": "components.tasks.panel.states",
@@ -1840,7 +1823,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:04:53.739Z",
+      "generatedAt": "2026-08-24T22:08:44.691Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2095,7 +2078,7 @@
     {
       "id": "components.settings.appearance.page",
       "status": "ready",
-      "imageHash": "p1:0ffe0ffe8fff1ffe81fe01fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c07fc81fc3d0cbffc007c9ffc007c807400008004007cb3fc0004800020008000000081f0ffffbfdcffffa3fcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffff7fff",
+      "imageHash": "p1:0ffe0ffe8fff1ffe81fe01fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c07fc81fc3d0cbffc007c9ffc007c807400008004007cb3fc0004800020008000000081f0ffffbfdcffffa3fcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffffffff",
       "generatedAt": "2026-08-14T22:11:36.163Z",
       "severity": "high",
       "summary": [
@@ -2124,7 +2107,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19635165606729588
+      "metricMismatch": 0.19633410296917408
     },
     {
       "id": "components.settings.notifications.page",
@@ -2230,7 +2213,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:04:53.976Z",
+      "generatedAt": "2026-08-24T22:08:45.017Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2243,7 +2226,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:04:53.976Z",
+      "generatedAt": "2026-08-24T22:08:45.017Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2256,7 +2239,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:04:53.976Z",
+      "generatedAt": "2026-08-24T22:08:45.017Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2269,7 +2252,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:04:53.976Z",
+      "generatedAt": "2026-08-24T22:08:45.017Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2282,7 +2265,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-23T22:04:53.976Z",
+      "generatedAt": "2026-08-24T22:08:45.017Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2389,7 +2372,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.24257807753068417
+      "metricMismatch": 0.24257773997110488
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2455,7 +2438,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19329201604083124
+      "metricMismatch": 0.19329100336209337
     },
     {
       "id": "components.thread.message-row.rich-content",
