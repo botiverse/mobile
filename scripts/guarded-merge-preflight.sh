@@ -59,23 +59,27 @@ IFS=$'\t' read -r state draft live_head base_ref <<< "$pr_state"
 }
 
 commits_json="${tmp_dir}/commits.json"
-$gh_bin api --paginate --slurp "repos/${repo}/pulls/${pr_number}/commits?per_page=100" > "$commits_json"
-commit_count="$(jq '[.[][]] | length' "$commits_json")"
+# Older gh releases do not support --slurp.  --paginate emits one JSON array
+# per page; jq -s collects those arrays and adds them into the same flat array
+# that --slurp would have produced.
+$gh_bin api --paginate "repos/${repo}/pulls/${pr_number}/commits?per_page=100" \
+  | jq -s 'add | add // []' > "$commits_json"
+commit_count="$(jq 'length' "$commits_json")"
 [ "$commit_count" -gt 0 ] || {
   echo "refusing merge: PR #${pr_number} has no source commits" >&2
   exit 1
 }
 
-last_commit="$(jq -r '[.[][]][-1].sha' "$commits_json")"
+last_commit="$(jq -r '.[-1].sha' "$commits_json")"
 [ "$last_commit" = "$reviewed_head" ] || {
   echo "refusing merge: PR #${pr_number} final source commit=${last_commit}, reviewed=${reviewed_head}" >&2
   exit 1
 }
 
 for ((index = 0; index < commit_count; index++)); do
-  commit_sha="$(jq -r --argjson index "$index" '[.[][]][$index].sha' "$commits_json")"
+  commit_sha="$(jq -r --argjson index "$index" '.[$index].sha' "$commits_json")"
   message_file="${tmp_dir}/commit-${index}.txt"
-  jq -j --argjson index "$index" '[.[][]][$index].commit.message' "$commits_json" > "$message_file"
+  jq -j --argjson index "$index" '.[$index].commit.message' "$commits_json" > "$message_file"
   if ! error="$($validator "$message_file" 2>&1)"; then
     echo "refusing merge: source commit ${commit_sha} failed DCO message validation: ${error}" >&2
     exit 1

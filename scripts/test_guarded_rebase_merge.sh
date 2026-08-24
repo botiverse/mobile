@@ -19,7 +19,7 @@ case "$*" in
   "api repos/botiverse/mobile/pulls/1459 --jq "*)
     printf 'open\tfalse\t%s\tmain\n' "${FAKE_HEAD_SHA:?}"
     ;;
-  "api --paginate --slurp repos/botiverse/mobile/pulls/1459/commits?per_page=100")
+  "api --paginate repos/botiverse/mobile/pulls/1459/commits?per_page=100")
     printf '%s\n' "${FAKE_COMMITS_JSON:?}"
     ;;
   "pr merge 1459 --repo botiverse/mobile --rebase --match-head-commit "*)
