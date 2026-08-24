@@ -4992,6 +4992,9 @@ private const val SharedThreadFirstFrameDelayMillis = 16L
 private const val ThreadVisibleReadCoalesceWindowMillis = 2_000L
 private const val ThreadInitialAccessLookupTimeoutMillis = 1_000L
 
+/** Bounded automatic re-resolutions of a read-only reply fallback per thread entry. */
+private const val ReplyAccessRecoveryMaxAttempts = 2
+
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
     val timelineSlice: ThreadTimelineSlice = payload.toThreadTimelineSlice(),
@@ -5542,6 +5545,7 @@ internal class SharedThreadStore(
                 "messages=${visiblePayload.messages.size} " + visiblePayload.originDiagnostics()
         )
         initialAccessStateMutex.withLock {
+            replyAccessRecoveryAttemptsForKey = null
             val admitted =
                 producerContext?.let { context ->
                     dataSource.withCurrentReplyCacheProvenance(context.provenance) {
@@ -6064,6 +6068,11 @@ internal class SharedThreadStore(
         if (!resolvingInitialAccessAtStart && !retryingReadOnlyParentAccess) {
             launchBackgroundHomeContextHydration(basePayload)
         }
+        if (result is DataResult.Content && retryingReadOnlyParentAccess) {
+            // The start-of-refresh retry resolved against pre-refresh conversation lists and
+            // missed; this second bounded pass runs once the refreshed lists are warm.
+            recoverReplyComposerAccessIfReadonlyFallback(basePayload, cause = "refresh")
+        }
         queueAuxiliaryHydration(
             routePayload = basePayload,
             staleToken = staleToken,
@@ -6294,83 +6303,10 @@ internal class SharedThreadStore(
                     )
                     return@launch
                 }
-                val candidate = homeResolution?.accessCandidate
+                applyResolvedAccessContext(routePayload, staleToken, homeResolution)
                 val launchBackgroundHomeContext =
                     homeResolution?.requiresBackgroundHomeContextHydration
                         ?: (routePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread)
-                initialAccessStateMutex.withLock {
-                    val currentState = _state.value
-                    val currentPayload = currentState.payload
-                    if (
-                        !staleTokenStillCurrent(
-                            staleToken,
-                            "thread_access_resolution",
-                            "apply",
-                            routePayload,
-                            currentPayload
-                        ) ||
-                        !routeStillCurrent(routePayload, "thread_access_resolution", "apply", currentPayload)
-                    ) {
-                        return@withLock
-                    }
-                    val projectedPayload =
-                        currentPayload
-                            .let { payload ->
-                                homeResolution?.payload?.let { homePayload ->
-                                    payload.withHomeContextProjectionFrom(homePayload)
-                                } ?: payload
-                            }
-                            .withInitialHomeConversationAccessFallbackUnlessCanonical(
-                                canonicalAccessResolved = currentState.canonicalAccessResolved,
-                                candidate = candidate,
-                            )
-                            .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
-                                homeLookupComplete = true,
-                                homeAccessCandidate = candidate
-                            )
-                    val nextResolution =
-                        when {
-                            currentState.accessResolution == ThreadAccessResolution.NoPermission ->
-                                ThreadAccessResolution.NoPermission
-                            currentState.accessResolution == ThreadAccessResolution.Error ->
-                                ThreadAccessResolution.Error
-                            currentState.accessResolution == ThreadAccessResolution.Resolved &&
-                                currentState.canonicalAccessResolved ->
-                                ThreadAccessResolution.Resolved
-                            projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
-                                currentState.canonicalAccessResolved &&
-                                (candidate != null || projectedPayload.hasReadableCanonicalReplyContent()) ->
-                                ThreadAccessResolution.Resolved
-                            projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
-                                currentState.canonicalAccessResolved ->
-                                ThreadAccessResolution.Error
-                            currentState.canonicalAccessResolved ->
-                                ThreadAccessResolution.Resolved
-                            candidate != null && currentPayload.status == "empty" ->
-                                ThreadAccessResolution.Resolved
-                            currentPayload.status == "error" ->
-                                ThreadAccessResolution.Error
-                            currentPayload.status == "empty" ->
-                                ThreadAccessResolution.Error
-                            else -> ThreadAccessResolution.Loading
-                        }
-                    val authorityProjectedPayload =
-                        projectedPayload.withTerminalAccessWriteAuthorityClosed(nextResolution)
-                    reduceState(
-                        currentState.copy(
-                            payload = authorityProjectedPayload,
-                            accessResolution = nextResolution,
-                            initialHomeAccessLookupComplete = true,
-                            initialHomeAccessCandidate = candidate,
-                            writeActionsEnabled =
-                                authorityProjectedPayload.hasWriteAuthorityForAccess(
-                                    accessResolution = nextResolution,
-                                    homeLookupComplete = true,
-                                    homeAccessCandidate = candidate
-                                )
-                        )
-                    )
-                }
                 if (
                     launchBackgroundHomeContext &&
                     staleTokenStillCurrent(
@@ -6389,6 +6325,140 @@ internal class SharedThreadStore(
                 }
             }
     }
+
+    /**
+     * Applies an access resolution result to the current state. Extracted from the initial
+     * resolution launch so bounded recovery passes can re-run exactly the same fenced
+     * projection when a read-only reply fallback needs a second chance.
+     */
+    private suspend fun applyResolvedAccessContext(
+        routePayload: KuiklyThreadScreenPayload,
+        staleToken: MviStaleToken,
+        homeResolution: ThreadHomeContextResolution?
+    ) {
+        val candidate = homeResolution?.accessCandidate
+        initialAccessStateMutex.withLock {
+            val currentState = _state.value
+            val currentPayload = currentState.payload
+            if (
+                !staleTokenStillCurrent(
+                    staleToken,
+                    "thread_access_resolution",
+                    "apply",
+                    routePayload,
+                    currentPayload
+                ) ||
+                !routeStillCurrent(routePayload, "thread_access_resolution", "apply", currentPayload)
+            ) {
+                return@withLock
+            }
+            val projectedPayload =
+                currentPayload
+                    .let { payload ->
+                        homeResolution?.payload?.let { homePayload ->
+                            payload.withHomeContextProjectionFrom(homePayload)
+                        } ?: payload
+                    }
+                    .withInitialHomeConversationAccessFallbackUnlessCanonical(
+                        canonicalAccessResolved = currentState.canonicalAccessResolved,
+                        candidate = candidate,
+                    )
+                    .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
+                        homeLookupComplete = true,
+                        homeAccessCandidate = candidate
+                    )
+            val nextResolution =
+                when {
+                    currentState.accessResolution == ThreadAccessResolution.NoPermission ->
+                        ThreadAccessResolution.NoPermission
+                    currentState.accessResolution == ThreadAccessResolution.Error ->
+                        ThreadAccessResolution.Error
+                    currentState.accessResolution == ThreadAccessResolution.Resolved &&
+                        currentState.canonicalAccessResolved ->
+                        ThreadAccessResolution.Resolved
+                    projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                        currentState.canonicalAccessResolved &&
+                        (candidate != null || projectedPayload.hasReadableCanonicalReplyContent()) ->
+                        ThreadAccessResolution.Resolved
+                    projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                        currentState.canonicalAccessResolved ->
+                        ThreadAccessResolution.Error
+                    currentState.canonicalAccessResolved ->
+                        ThreadAccessResolution.Resolved
+                    candidate != null && currentPayload.status == "empty" ->
+                        ThreadAccessResolution.Resolved
+                    currentPayload.status == "error" ->
+                        ThreadAccessResolution.Error
+                    currentPayload.status == "empty" ->
+                        ThreadAccessResolution.Error
+                    else -> ThreadAccessResolution.Loading
+                }
+            val authorityProjectedPayload =
+                projectedPayload.withTerminalAccessWriteAuthorityClosed(nextResolution)
+            reduceState(
+                currentState.copy(
+                    payload = authorityProjectedPayload,
+                    accessResolution = nextResolution,
+                    initialHomeAccessLookupComplete = true,
+                    initialHomeAccessCandidate = candidate,
+                    writeActionsEnabled =
+                        authorityProjectedPayload.hasWriteAuthorityForAccess(
+                            accessResolution = nextResolution,
+                            homeLookupComplete = true,
+                            homeAccessCandidate = candidate
+                        )
+                )
+            )
+        }
+    }
+
+    /**
+     * A read-only reply fallback that lands while canonical content is readable hides the
+     * composer without any visible explanation. The fallback exists so unknown parent authority
+     * stays safe, but the conversation list that produced the miss is only a snapshot: the parent
+     * Channel/DM row can appear right after (slow cache fill, auth-owner cache rebuild, joint
+     * channel list catch-up). Nothing re-evaluated access when that happened - refreshes only
+     * retry opportunistically at their start and background hydration explicitly never mutates
+     * access (`accessMutation=false`) - so the composer stayed missing until a full re-entry
+     * happened to hit a warm list.
+     *
+     * Recovery re-runs the exact initial resolution under its usual stale/route fences, bounded
+     * per thread entry. It can only widen authority: the apply path still runs the terminal
+     * NoPermission/Error closure, and a candidate that fails the acceptance check keeps the
+     * fallback untouched.
+     */
+    private fun recoverReplyComposerAccessIfReadonlyFallback(
+        routePayload: KuiklyThreadScreenPayload,
+        cause: String
+    ) {
+        val state = _state.value
+        val payload = state.payload
+        val recoverable =
+            payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                state.accessResolution == ThreadAccessResolution.Resolved &&
+                state.canonicalAccessResolved &&
+                state.initialHomeAccessLookupComplete &&
+                state.initialHomeAccessCandidate == null &&
+                !payload.joined &&
+                !payload.composer.enabled &&
+                payload.hasReadableCanonicalReplyContent()
+        if (!recoverable) return
+        val instanceKey = payload.resolveThreadRouteIdentity().instanceKey
+        val attempts =
+            replyAccessRecoveryAttemptsForKey
+                ?.takeIf { it.first == instanceKey }
+                ?.second
+                ?: 0
+        if (attempts >= ReplyAccessRecoveryMaxAttempts) return
+        replyAccessRecoveryAttemptsForKey = instanceKey to attempts + 1
+        diagnosticsLogger?.invoke(
+            "thread_reply_access_recovery_start threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                "cause=$cause attempt=${attempts + 1}"
+        )
+        launchInitialAccessResolution(routePayload, routeStaleToken)
+    }
+
+    private var replyAccessRecoveryAttemptsForKey: Pair<String, Int>? = null
 
     private suspend fun retryAccessResolution() {
         val routePayload = lastRoutePayload ?: _state.value.payload
@@ -6458,6 +6528,10 @@ internal class SharedThreadStore(
                             "accessMutation=false"
                     )
                 }
+                // The hydration itself never mutates access (see accessMutation=false above),
+                // but its completion proves the home side ran again: give a read-only reply
+                // fallback one bounded re-resolution against the now-warmer conversation data.
+                recoverReplyComposerAccessIfReadonlyFallback(routePayload, cause = "home_context")
             }
     }
 

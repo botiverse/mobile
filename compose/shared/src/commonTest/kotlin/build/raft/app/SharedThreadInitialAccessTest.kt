@@ -17,6 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -358,6 +360,130 @@ class SharedThreadInitialAccessTest {
         assertEquals(beforeStaleAccess.writeActionsEnabled, frame.writeActionsEnabled)
         assertEquals(1, channelRepository.channelsCalls)
         assertEquals(0, channelRepository.homeCalls)
+        scope.cancel()
+    }
+
+    @Test
+    fun readOnlyReplyFallbackRecoversComposerWhenConversationListWarmsOnRefresh() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val route = replyThreadInitialAccessPayload()
+        val home = replyThreadAccessHomeSnapshot()
+        var includeParentChannelRow = false
+        val channelRepository =
+            FakeChannelRepository(
+                channelsResult = { serverId ->
+                    DataResult.Content(
+                        ChannelSnapshot(
+                            server = ServerSummary(id = serverId, name = "One"),
+                            channels = if (includeParentChannelRow) home.channels else emptyList(),
+                        )
+                    )
+                },
+            )
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = ReplyThreadAccessNetworkApi,
+                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        conversationRepository =
+                            ReplyThreadAccessConversationRepositoryRecorder(
+                                replyResult = DataResult.Content(replyThreadAccessSnapshot())
+                            ),
+                        channelRepository = channelRepository,
+                    ),
+                scope = scope,
+            )
+
+        store.accept(SharedThreadIntent.Start(route))
+        store.state.filter { state ->
+            state.initialHomeAccessLookupComplete &&
+                state.accessResolution == ThreadAccessResolution.Resolved &&
+                !state.payload.composer.enabled
+        }.first()
+        val fallbackState = store.state.value
+        assertFalse(fallbackState.payload.joined)
+        assertFalse(fallbackState.writeActionsEnabled)
+
+        includeParentChannelRow = true
+        store.accept(SharedThreadIntent.Refresh)
+        store.state.filter { state -> state.payload.composer.enabled }.first()
+        val recovered = store.state.value
+        assertEquals(ThreadAccessResolution.Resolved, recovered.accessResolution)
+        assertTrue(recovered.payload.joined)
+        assertTrue(recovered.payload.canSend)
+        assertTrue(recovered.payload.composer.enabled)
+        assertTrue(recovered.writeActionsEnabled)
+        assertNotNull(recovered.initialHomeAccessCandidate)
+        scope.cancel()
+    }
+
+    @Test
+    fun readOnlyReplyFallbackRecoversComposerWhenBackgroundHomeContextHydrates() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val route = replyThreadInitialAccessPayload()
+        val home = replyThreadAccessHomeSnapshot()
+        var includeParentChannelRow = false
+        val backgroundHomeStarted = CompletableDeferred<Unit>()
+        val releaseBackgroundHome = CompletableDeferred<Unit>()
+        val diagnostics = mutableListOf<String>()
+        val channelRepository =
+            FakeChannelRepository(
+                channelsResult = { serverId ->
+                    DataResult.Content(
+                        ChannelSnapshot(
+                            server = ServerSummary(id = serverId, name = "One"),
+                            channels = if (includeParentChannelRow) home.channels else emptyList(),
+                        )
+                    )
+                },
+                homeResult = { serverId ->
+                    backgroundHomeStarted.complete(Unit)
+                    releaseBackgroundHome.await()
+                    DataResult.Content(replyThreadAccessHomeSnapshot())
+                },
+            )
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = ReplyThreadAccessNetworkApi,
+                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        conversationRepository =
+                            ReplyThreadAccessConversationRepositoryRecorder(
+                                replyResult = DataResult.Content(replyThreadAccessSnapshot())
+                            ),
+                        channelRepository = channelRepository,
+                    ),
+                scope = scope,
+                diagnosticsLogger = diagnostics::add,
+            )
+
+        store.accept(SharedThreadIntent.Start(route))
+        store.state.filter { state ->
+            state.initialHomeAccessLookupComplete &&
+                state.accessResolution == ThreadAccessResolution.Resolved &&
+                !state.payload.composer.enabled
+        }.first()
+        assertFalse(store.state.value.payload.joined)
+
+        backgroundHomeStarted.await()
+        includeParentChannelRow = true
+        releaseBackgroundHome.complete(Unit)
+
+        store.state.filter { state -> state.payload.composer.enabled }.first()
+        val recovered = store.state.value
+        assertEquals(ThreadAccessResolution.Resolved, recovered.accessResolution)
+        assertTrue(recovered.payload.joined)
+        assertTrue(recovered.payload.canSend)
+        assertTrue(recovered.payload.composer.enabled)
+        assertTrue(recovered.writeActionsEnabled)
+        assertTrue(
+            diagnostics.any { message ->
+                message.contains("thread_reply_access_recovery_start") &&
+                    message.contains("cause=home_context")
+            },
+        )
         scope.cancel()
     }
 }

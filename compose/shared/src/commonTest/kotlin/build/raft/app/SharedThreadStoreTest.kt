@@ -3886,11 +3886,15 @@ class SharedThreadStoreTest {
             val retryHomeFinished = CompletableDeferred<Unit>()
             val releaseRetryHome = CompletableDeferred<Unit>()
             val retryHomeMarker = "retry-home-${if (homeCompletesFirst) "first" else "last"}"
-            var homeAttempt = 0
+            // Access recovery passes re-resolve against the conversation directory too,
+            // so the marker snapshot is keyed to "first read after Refresh was dispatched"
+            // instead of an absolute call index.
+            var refreshDispatched = false
+            var markerDelivered = false
             val channelRepository =
                 FakeChannelRepository {
-                    homeAttempt += 1
-                    if (homeAttempt == 2) {
+                    val deliverMarker = refreshDispatched && !markerDelivered
+                    if (deliverMarker) {
                         retryHomeStarted.complete(Unit)
                         if (!homeCompletesFirst) {
                             releaseRetryHome.await()
@@ -3899,7 +3903,7 @@ class SharedThreadStoreTest {
                     }
                     val home = replyChildOnlyHomeSnapshot(joined = true, canSend = true)
                     DataResult.Content(
-                        if (homeAttempt == 2) {
+                        if (deliverMarker) {
                             home.copy(
                                 channels =
                                     home.channels +
@@ -3954,6 +3958,7 @@ class SharedThreadStoreTest {
                 repository.getReplyThreadStarted = CompletableDeferred()
                 repository.releaseGetReplyThread = CompletableDeferred()
             }
+            refreshDispatched = true
             store.dispatch(SharedThreadIntent.Refresh)
             retryHomeStarted.await()
             if (homeCompletesFirst) {
@@ -4062,7 +4067,6 @@ class SharedThreadStoreTest {
         val resolvedFrame = store.state.value
         assertTrue(resolvedFrame.canonicalAccessResolved)
         assertTrue(resolvedFrame.initialHomeAccessLookupComplete)
-        assertEquals(null, resolvedFrame.initialHomeAccessCandidate)
         assertEquals("loaded", resolvedFrame.payload.originStatus)
         assertEquals("m1", resolvedFrame.payload.originMessage?.id)
         assertEquals("parent body", resolvedFrame.payload.originMessage?.body)
@@ -4070,24 +4074,35 @@ class SharedThreadStoreTest {
         assertEquals("network reply", resolvedFrame.payload.messages.single().body)
         assertEquals(ThreadAccessResolution.Resolved, resolvedFrame.accessResolution)
         assertFalse(resolvedFrame.accessResolution.shouldRenderThreadAccessRetry())
-        assertFalse(resolvedFrame.payload.joined)
-        assertFalse(resolvedFrame.payload.canSend)
-        assertFalse(resolvedFrame.payload.composer.enabled)
-        assertFalse(resolvedFrame.writeActionsEnabled)
         assertEquals(1, repository.getReplyThreadRequests.size)
-        assertEquals(1, channelRepository.channelsCalls)
 
-        store.dispatch(SharedThreadIntent.Refresh)
-        withTimeout(1_000) {
+        // The timed-out lookup lands in a silent read-only fallback; bounded access
+        // recovery re-resolves once the background home context hydrates against the
+        // healthy directory and restores the composer without a manual refresh.
+        withTimeout(2_000) {
             while (!store.state.value.writeActionsEnabled) {
                 delay(10)
             }
         }
-        assertEquals(ThreadAccessResolution.Resolved, store.state.value.accessResolution)
+        val recoveredFrame = store.state.value
+        assertEquals(ThreadAccessResolution.Resolved, recoveredFrame.accessResolution)
+        assertNotNull(recoveredFrame.initialHomeAccessCandidate)
+        assertTrue(recoveredFrame.payload.joined)
+        assertTrue(recoveredFrame.payload.canSend)
+        assertTrue(recoveredFrame.payload.composer.enabled)
+
+        store.dispatch(SharedThreadIntent.Refresh)
+        withTimeout(1_000) {
+            while (
+                store.state.value.payload.status != "content" ||
+                !store.state.value.writeActionsEnabled
+            ) {
+                delay(10)
+            }
+        }
         assertTrue(store.state.value.payload.joined)
         assertTrue(store.state.value.payload.canSend)
         assertTrue(store.state.value.payload.composer.enabled)
-        assertEquals(2, channelRepository.channelsCalls)
         scope.cancel()
     }
 
