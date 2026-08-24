@@ -122,6 +122,8 @@ internal data class SharedAgentIssueReportRequest(
 )
 
 internal interface SharedAgentDetailActions {
+    suspend fun compactAgent(agentId: MemberId): DataResult<AgentCompactResult> =
+        DataResult.Content(AgentCompactResult("rejected_unsupported"))
     suspend fun runLifecycleAction(
         agentId: MemberId,
         action: MembersAgentLifecycleAction

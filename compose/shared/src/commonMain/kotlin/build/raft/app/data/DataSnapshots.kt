@@ -512,7 +512,8 @@ data class AgentDetailSummary(
     val createdAgents: List<AgentCreatedSummary> = emptyList(),
     val activity: String? = null,
     val activityDetail: String? = null,
-    val deletedAt: String? = null
+    val deletedAt: String? = null,
+    val manualCompaction: Boolean = false,
 )
 
 data class AgentCreatorSummary(

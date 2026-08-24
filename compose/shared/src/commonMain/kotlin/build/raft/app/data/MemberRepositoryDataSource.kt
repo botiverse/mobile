@@ -728,6 +728,15 @@ class RealMemberRepository(
         }
     }
 
+    override suspend fun compactAgent(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentCompactResult> {
+        currentContext() ?: return authRequired()
+        if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        return agentsApiClient.compactAgent(agentId)
+    }
+
     override suspend fun deleteAgent(
         priority: DataRequestPriority,
         agentId: MemberId

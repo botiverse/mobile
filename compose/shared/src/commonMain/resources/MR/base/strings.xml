@@ -870,6 +870,10 @@
     <string name="member_action_delete_agent">Delete Agent</string>
     <string name="member_action_deleting">Deleting...</string>
     <string name="member_action_restart_agent">Restart Agent</string>
+    <string name="member_action_compact_context">Compact context</string>
+    <string name="member_action_compacting_context">Compacting context…</string>
+    <string name="member_action_compact_success">Context compacted. Please resend your message.</string>
+    <string name="member_action_compact_unavailable">Context compaction is unavailable right now.</string>
     <string name="member_action_restart_session">Reset Session &amp; Restart</string>
     <string name="member_action_full_reset_restart">Full Reset &amp; Restart</string>
     <string name="member_action_restarting">Restarting...</string>

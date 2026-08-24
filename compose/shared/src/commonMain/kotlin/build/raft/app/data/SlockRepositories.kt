@@ -334,6 +334,11 @@ interface MemberRepository {
         priority: DataRequestPriority,
         request: AgentResetRequest
     ): DataResult<AgentLifecycleActionResult>
+    suspend fun compactAgent(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentCompactResult> =
+        DataResult.Content(AgentCompactResult("rejected_unsupported"))
     suspend fun deleteAgent(
         priority: DataRequestPriority,
         agentId: MemberId

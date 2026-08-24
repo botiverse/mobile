@@ -2496,6 +2496,9 @@ private class MemberDetailRouteProvider(
         return result
     }
 
+    suspend fun compactAgent(agentId: MemberId): DataResult<build.raft.app.data.AgentCompactResult> =
+        memberRepository.compactAgent(DataRequestPriority.Foreground, agentId)
+
     suspend fun updateAgentProfile(
         serverId: ServerId,
         request: AgentProfileUpdateRequest
@@ -3234,6 +3237,10 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 val agentDetailActions =
                     remember(provider, current.server.id) {
                         object : SharedAgentDetailActions {
+                            override suspend fun compactAgent(
+                                agentId: MemberId
+                            ): DataResult<build.raft.app.data.AgentCompactResult> =
+                                provider.compactAgent(agentId)
                             override suspend fun runLifecycleAction(
                                 agentId: MemberId,
                                 action: MembersAgentLifecycleAction
@@ -4475,6 +4482,8 @@ private fun MembersDetailContent(
     val avatarSaveErrorTemplate = membersStringTemplate(MR.strings.member_error_avatar_save)
     val diagnosticsCopied = stringResource(MR.strings.member_action_diagnostics_copied)
     val issueReported = stringResource(MR.strings.member_action_issue_reported)
+    val compactSuccess = stringResource(MR.strings.member_action_compact_success)
+    val compactUnavailable = stringResource(MR.strings.member_action_compact_unavailable)
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
     val agentStatusIndicatorState =
         if (member.kind == MemberKind.Agent) {
@@ -4504,6 +4513,8 @@ private fun MembersDetailContent(
     var actionState by remember(member.id.value, initialVisualMode) {
         mutableStateOf<MembersAgentActionState?>(null)
     }
+    var compactInFlight by remember(member.id.value) { mutableStateOf(false) }
+    var compactMessage by remember(member.id.value) { mutableStateOf<String?>(null) }
     var diagnosticActionState by remember(member.id.value) { mutableStateOf<MembersAgentDiagnosticActionState?>(null) }
     var pendingConfirmation by remember(member.id.value) {
         mutableStateOf<MembersAgentLifecycleAction?>(null)
@@ -4738,6 +4749,28 @@ private fun MembersDetailContent(
                     error = error,
                     successLabel = action.successLabel.takeIf { error == null }
                 )
+        }
+    }
+    fun compactContext() {
+        val actions = agentDetailActions ?: return onUnavailableAction(managementUnavailable)
+        if (compactInFlight || detail?.summary?.manualCompaction != true) return
+        scope.launch {
+            compactInFlight = true
+            compactMessage = null
+            val result = try {
+                actions.compactAgent(member.id)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                DataResult.Error(ScreenError("agent_compact_failed"))
+            }
+            compactInFlight = false
+            compactMessage =
+                if (result is DataResult.Content && result.data.outcome == "compacted") {
+                    compactSuccess
+                } else {
+                    compactUnavailable
+                }
         }
     }
     fun copyDiagnostics() {
@@ -5002,6 +5035,9 @@ private fun MembersDetailContent(
                                         lifecycleInFlight = lifecycleInFlight,
                                         diagnosticActionState = effectiveDiagnosticActionState,
                                         onRunLifecycleAction = { runLifecycleAction(it) },
+                                        compactInFlight = compactInFlight,
+                                        compactMessage = compactMessage,
+                                        onCompactContext = { compactContext() },
                                         onOpenRestartReset = { openRestartResetDialog() },
                                         onCopyDiagnostics = { copyDiagnostics() },
                                         onReportIssue = {
@@ -7431,6 +7467,9 @@ private fun MembersAgentProfileTab(
     lifecycleInFlight: String? = null,
     diagnosticActionState: MembersAgentDiagnosticActionState? = null,
     onRunLifecycleAction: (MembersAgentLifecycleAction) -> Unit = {},
+    compactInFlight: Boolean = false,
+    compactMessage: String? = null,
+    onCompactContext: () -> Unit = {},
     onOpenRestartReset: () -> Unit = {},
     onCopyDiagnostics: () -> Unit = {},
     onReportIssue: () -> Unit = {},
@@ -8420,6 +8459,9 @@ private fun MembersAgentProfileTab(
             lifecycleInFlight = lifecycleInFlight,
             diagnosticActionState = diagnosticActionState,
             onRunLifecycleAction = onRunLifecycleAction,
+            compactInFlight = compactInFlight,
+            compactMessage = compactMessage,
+            onCompactContext = onCompactContext,
             onOpenRestartReset = onOpenRestartReset,
             onCopyDiagnostics = onCopyDiagnostics,
             onReportIssue = onReportIssue
@@ -8436,6 +8478,9 @@ private fun MembersAgentProfileActionsSection(
     lifecycleInFlight: String?,
     diagnosticActionState: MembersAgentDiagnosticActionState?,
     onRunLifecycleAction: (MembersAgentLifecycleAction) -> Unit,
+    compactInFlight: Boolean,
+    compactMessage: String?,
+    onCompactContext: () -> Unit,
     onOpenRestartReset: () -> Unit,
     onCopyDiagnostics: () -> Unit,
     onReportIssue: () -> Unit
@@ -8480,6 +8525,19 @@ private fun MembersAgentProfileActionsSection(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { onRunLifecycleAction(primaryAction) }
             )
+        }
+        if (summary?.manualCompaction == true) {
+            SlockBrutalActionButton(
+                label = if (compactInFlight) stringResource(MR.strings.member_action_compacting_context) else stringResource(MR.strings.member_action_compact_context),
+                leadingIcon = SlockLucideIconName.Minimize2,
+                enabled = lifecycleInFlight == null && !compactInFlight && resolvedStatus?.status == AgentStatus.Idle,
+                minHeight = 42.dp,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onCompactContext
+            )
+            compactMessage?.let {
+                Text(text = it, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+            }
         }
         SlockBrutalActionButton(
             label = stringResource(MR.strings.member_label_restart_reset),

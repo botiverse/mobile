@@ -212,6 +212,7 @@ class AgentsApiTest {
         assertEquals("pixel:user", detail.creator?.avatarUrl)
         assertEquals(listOf("ANTHROPIC_API_KEY", "OPENAI_API_KEY"), detail.envVarNames)
         assertEquals("Helper", detail.createdAgents.single().displayName)
+        assertEquals(false, detail.manualCompaction)
         val created = assertIs<DataResult.Content<AgentSummary>>(client.createAgent("""{"name":"Noel"}""")).data
         assertEquals("agent-2", created.id)
         assertEquals("pixel:tree", created.avatarUrl)
@@ -219,6 +220,7 @@ class AgentsApiTest {
         assertEquals(true, assertIs<DataResult.Content<AgentCommandResult>>(client.startAgent(agentId)).data.ok)
         assertEquals(true, assertIs<DataResult.Content<AgentCommandResult>>(client.stopAgent(agentId)).data.ok)
         assertEquals(true, assertIs<DataResult.Content<AgentCommandResult>>(client.resetAgent(agentId, """{"mode":"session"}""")).data.ok)
+        assertEquals("compacted", assertIs<DataResult.Content<AgentCompactResult>>(client.compactAgent(agentId)).data.outcome)
         assertEquals(true, assertIs<DataResult.Content<AgentCommandResult>>(client.deleteAgent(agentId)).data.ok)
         assertEquals(true, assertIs<DataResult.Content<AgentCommandResult>>(client.assignMachine(agentId, """{"machineId":"machine-1"}""")).data.ok)
         assertEquals(1, assertIs<DataResult.Content<AgentDmPage>>(client.agentDirectMessages(agentId)).data.itemCount)
@@ -240,6 +242,7 @@ class AgentsApiTest {
                 "POST agents/agent-1/start",
                 "POST agents/agent-1/stop",
                 """POST agents/agent-1/reset body={"mode":"session"}""",
+                "POST agents/agent-1/compact",
                 "DELETE agents/agent-1",
                 """POST agents/agent-1/assign-machine body={"machineId":"machine-1"}""",
                 "GET agents/agent-1/agent-dms",
@@ -472,6 +475,7 @@ class AgentsApiTest {
         // when set, the create response carries the body ONLY in errorBodyText.
         private val createAgentErrorBody: String? = null,
         private val commandBody: String = """{"ok":true}""",
+        private val compactBody: String = """{"ok":true,"outcome":"compacted"}""",
         private val agentDmsBody: String = """[{"id":"dm-1","name":"Agent chat"}]""",
         private val activityBody: String = """[{"id":"a1","type":"tool_start","timestamp":"2026-05-22T00:00:00.000Z"}]""",
         private val workspaceFilesBody: String = """{"files":[{"path":"/repo/README.md","name":"README.md"}]}""",
@@ -519,6 +523,11 @@ class AgentsApiTest {
         override suspend fun resetAgent(agentId: MemberId, body: String): HomeNetworkResponse {
             calls += "POST agents/${agentId.value}/reset body=$body"
             return ok(commandBody)
+        }
+
+        override suspend fun compactAgent(agentId: MemberId): HomeNetworkResponse {
+            calls += "POST agents/${agentId.value}/compact"
+            return ok(compactBody)
         }
 
         override suspend fun deleteAgent(agentId: MemberId): HomeNetworkResponse {

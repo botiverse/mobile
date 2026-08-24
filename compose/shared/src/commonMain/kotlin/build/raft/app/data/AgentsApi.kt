@@ -38,6 +38,7 @@ internal interface SlockAgentsApi {
     suspend fun startAgent(agentId: MemberId): HomeNetworkResponse
     suspend fun stopAgent(agentId: MemberId): HomeNetworkResponse
     suspend fun resetAgent(agentId: MemberId, body: String): HomeNetworkResponse
+    suspend fun compactAgent(agentId: MemberId): HomeNetworkResponse = error("compact agent unsupported")
     suspend fun deleteAgent(agentId: MemberId): HomeNetworkResponse
     suspend fun assignMachine(agentId: MemberId, body: String): HomeNetworkResponse
     suspend fun agentDirectMessages(agentId: MemberId): HomeNetworkResponse
@@ -107,6 +108,13 @@ internal class SlockAgentsNetworkApi(
             path = "agents/${agentId.value}/reset",
             method = "POST",
             bodyText = body
+        )
+
+    override suspend fun compactAgent(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/compact",
+            method = "POST"
         )
 
     override suspend fun deleteAgent(agentId: MemberId): HomeNetworkResponse =
@@ -242,6 +250,17 @@ internal class SlockAgentsApiClient(
     suspend fun resetAgent(agentId: MemberId, body: String): DataResult<AgentCommandResult> =
         transport.resetAgent(agentId, body).mapAgentsCommand("agent_reset_contract_mismatch", diagnosticsLogger)
 
+    suspend fun compactAgent(agentId: MemberId): DataResult<AgentCompactResult> =
+        transport.compactAgent(agentId).mapAgentsBody(
+            "agent_compact_contract_mismatch",
+            AgentCompactResponseDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
+        ) { wire ->
+            wire.outcome.takeIf { it in AGENT_COMPACT_OUTCOMES }?.let {
+                AgentCompactResult(it, wire.detail)
+            }
+        }
+
     suspend fun deleteAgent(agentId: MemberId): DataResult<AgentCommandResult> =
         transport.deleteAgent(agentId).mapAgentsCommand("agent_delete_contract_mismatch", diagnosticsLogger)
 
@@ -363,7 +382,8 @@ internal data class AgentSummary(
     val createdAgents: List<AgentCreatedSummary>,
     val activity: String?,
     val activityDetail: String?,
-    val deletedAt: String?
+    val deletedAt: String?,
+    val manualCompaction: Boolean = false,
 )
 
 internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
@@ -393,9 +413,18 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         createdAgents = createdAgents,
         activity = activity,
         activityDetail = activityDetail,
-        deletedAt = deletedAt
+        deletedAt = deletedAt,
+        manualCompaction = manualCompaction,
     )
 internal data class AgentCommandResult(val ok: Boolean)
+internal data class AgentCompactResult(val outcome: String, val detail: String? = null)
+internal val AGENT_COMPACT_OUTCOMES = setOf(
+    "compacted",
+    "rejected_busy",
+    "rejected_no_session",
+    "rejected_unsupported",
+    "failed",
+)
 internal data class AgentDmPage(val itemCount: Int)
 internal data class AgentActivityPage(val entryCount: Int)
 internal data class AgentWorkspaceFilePage(val fileCount: Int)
@@ -576,6 +605,19 @@ private data class AgentWireDto(
     val activityDetail: String? = null,
     val deletedAt: String? = null,
     val runtimeProfile: AgentRuntimeProfileDto? = null,
+    val runtimeCapabilities: AgentRuntimeCapabilitiesWireDto? = null,
+)
+
+@Serializable
+private data class AgentRuntimeCapabilitiesWireDto(
+    val manualCompaction: Boolean? = null,
+)
+
+@Serializable
+private data class AgentCompactResponseDto(
+    val ok: Boolean = false,
+    val outcome: String = "failed",
+    val detail: String? = null,
 )
 
 @Serializable
@@ -617,7 +659,8 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         createdAgents = createdAgents.mapNotNull { it.toDomain() },
         activity = activity,
         activityDetail = activityDetail,
-        deletedAt = deletedAt
+        deletedAt = deletedAt,
+        manualCompaction = runtimeCapabilities?.manualCompaction == true,
     )
 }
 
