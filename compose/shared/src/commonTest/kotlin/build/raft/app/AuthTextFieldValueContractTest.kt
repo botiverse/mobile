@@ -1,5 +1,6 @@
 package build.raft.app
 
+import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import kotlin.test.Test
@@ -7,6 +8,48 @@ import kotlin.test.assertEquals
 import kotlin.test.assertSame
 
 class AuthTextFieldValueContractTest {
+    @Test
+    fun authKeyboardViewportConvertsNativeDpHeightToRootPixels() {
+        assertEquals(
+            Rect(10f, 100f, 310f, 700f),
+            slockAuthKeyboardReducedViewport(
+                viewport = Rect(10f, 100f, 310f, 1000f),
+                keyboardHeightDp = 300f,
+                density = 1f
+            )
+        )
+        assertEquals(
+            Rect(10f, 100f, 310f, 400f),
+            slockAuthKeyboardReducedViewport(
+                viewport = Rect(10f, 100f, 310f, 1000f),
+                keyboardHeightDp = 300f,
+                density = 2f
+            )
+        )
+    }
+
+    @Test
+    fun authKeyboardViewportNeverExtendsAboveItsTopOrOnClosedKeyboard() {
+        val viewport = Rect(10f, 100f, 310f, 200f)
+
+        assertEquals(
+            viewport,
+            slockAuthKeyboardReducedViewport(
+                viewport = viewport,
+                keyboardHeightDp = 0f,
+                density = 2f
+            )
+        )
+        assertEquals(
+            Rect(10f, 100f, 310f, 100f),
+            slockAuthKeyboardReducedViewport(
+                viewport = viewport,
+                keyboardHeightDp = 300f,
+                density = 2f
+            )
+        )
+    }
+
     @Test
     fun authWrapperForwardsEveryNativeSnapshotWithoutReconstruction() {
         val nativeValues =
