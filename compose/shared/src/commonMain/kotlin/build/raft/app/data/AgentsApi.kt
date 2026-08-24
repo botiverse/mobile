@@ -417,7 +417,7 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         manualCompaction = manualCompaction,
     )
 internal data class AgentCommandResult(val ok: Boolean)
-internal data class AgentCompactResult(val outcome: String, val detail: String? = null)
+data class AgentCompactResult(val outcome: String, val detail: String? = null)
 internal val AGENT_COMPACT_OUTCOMES = setOf(
     "compacted",
     "rejected_busy",

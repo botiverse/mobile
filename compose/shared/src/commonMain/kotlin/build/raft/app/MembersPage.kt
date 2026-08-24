@@ -8529,7 +8529,7 @@ private fun MembersAgentProfileActionsSection(
         if (summary?.manualCompaction == true) {
             SlockBrutalActionButton(
                 label = if (compactInFlight) stringResource(MR.strings.member_action_compacting_context) else stringResource(MR.strings.member_action_compact_context),
-                leadingIcon = SlockLucideIconName.Minimize2,
+                leadingIcon = SlockLucideIconName.RefreshCw,
                 enabled = lifecycleInFlight == null && !compactInFlight && resolvedStatus?.status == AgentStatus.Idle,
                 minHeight = 42.dp,
                 modifier = Modifier.fillMaxWidth(),
