@@ -1366,6 +1366,44 @@ private enum class MembersAgentDetailVisualMode {
     ReportIssueSuccess
 }
 
+internal enum class MembersAgentCompactFixtureScenario(
+    val wireId: String,
+    val capabilityEnabled: Boolean,
+    val requestInFlight: Boolean,
+    val success: Boolean
+) {
+    SupportedIdle("compact_supported_idle", true, false, false),
+    SupportedInFlight("compact_supported_in_flight", true, true, false),
+    Unsupported("compact_unsupported", false, false, false),
+    MissingCapability("compact_missing_capability", false, false, false),
+    NullCapability("compact_null_capability", false, false, false),
+    FalseCapability("compact_false_capability", false, false, false),
+    CompactedSuccess("compact_success_manual_resend", true, false, true)
+}
+
+internal fun membersAgentCompactFixtureScenarioOrNull(raw: String?): MembersAgentCompactFixtureScenario? =
+    raw?.trim()?.takeIf { it.isNotEmpty() }?.let { value ->
+        MembersAgentCompactFixtureScenario.entries.firstOrNull { it.wireId == value }
+    }
+
+internal class MembersAgentCompactFixtureActions : SharedAgentDetailActions {
+    var controlDispatchCount: Int = 0
+        private set
+
+    override suspend fun compactAgent(agentId: MemberId): DataResult<build.raft.app.data.AgentCompactResult> {
+        controlDispatchCount += 1
+        error("compact fixture must not dispatch control operations")
+    }
+
+    override suspend fun runLifecycleAction(agentId: MemberId, action: MembersAgentLifecycleAction): DataResult<AgentLifecycleActionResult> =
+        error("compact fixture must not dispatch control operations")
+    override fun copyDiagnostics(diagnostics: String) = Unit
+    override suspend fun reportIssue(request: SharedAgentIssueReportRequest): DataResult<AgentIssueReportResult> =
+        error("compact fixture must not dispatch control operations")
+    override suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile> =
+        error("compact fixture must not dispatch control operations")
+}
+
 private fun String.toMembersAgentDetailVisualMode(): MembersAgentDetailVisualMode =
     when (trim().lowercase()) {
         "lifecycle_actions" -> MembersAgentDetailVisualMode.LifecycleActions
@@ -3671,15 +3709,33 @@ private fun MemberDetailRoutePageShell(
 internal fun MembersAgentDetailVisualContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val visualMode = pager.pageData.params.optString("visualMode").toMembersAgentDetailVisualMode()
+    val compactFixtureRequested = pager.pageData.params.optString("compactFixture") == "true"
+    val scenarioId = pager.pageData.params.optString("compactScenario").takeIf { it.isNotBlank() }
+    val scenario = membersAgentCompactFixtureScenarioOrNull(scenarioId)
+    if ((compactFixtureRequested || scenarioId != null) && scenario == null) {
+        MemberDetailErrorPageShell("Fixture unavailable", "Unknown compact scenario", {}, {})
+        return
+    }
+    val compactActions = remember(scenario) { scenario?.let { MembersAgentCompactFixtureActions() } }
+    val snapshot = if (scenario == null) membersAgentDetailVisualSnapshot else {
+        membersAgentDetailVisualSnapshot.copy(
+            summary = membersAgentDetailVisualSnapshot.summary?.copy(
+                status = "idle",
+                manualCompaction = scenario.capabilityEnabled
+            )
+        )
+    }
+    val compactSuccess = stringResource(MR.strings.member_action_compact_success)
     MembersDetailContent(
         member = membersAgentDetailVisualMember,
-        agentDetailState = MembersAgentDetailLoadState.Content(membersAgentDetailVisualSnapshot),
+        agentDetailState = MembersAgentDetailLoadState.Content(snapshot),
         canViewPrivateAgentSurfaces = { _, _ -> true },
         canManageAgent = { _, _ -> true },
         onBack = {},
         onOpenDirectMessage = {},
         onCopyMemberId = {},
         onOpenUrl = {},
+        agentDetailActions = compactActions,
         onUpdateAgentProfile = { DataResult.Content(membersAgentDetailVisualMember) },
         onAgentLifecycleAction = { _, action ->
             DataResult.Content(
@@ -3703,7 +3759,9 @@ internal fun MembersAgentDetailVisualContent() {
             timeFormat = SlockTimeFormat24Hour
         ),
         initialVisualMode = visualMode,
-        stableVisualCapture = true
+        stableVisualCapture = true,
+        initialCompactInFlight = scenario?.requestInFlight == true,
+        initialCompactMessage = compactSuccess.takeIf { scenario?.success == true }
     )
 }
 
@@ -4470,7 +4528,9 @@ private fun MembersDetailContent(
     // the Permissions tab renders an "Agent API not available" error banner.
     agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
     initialAgentScopeSet: AgentScopeSet? = null,
-    stableVisualCapture: Boolean = false
+    stableVisualCapture: Boolean = false,
+    initialCompactInFlight: Boolean = false,
+    initialCompactMessage: String? = null
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
@@ -4513,8 +4573,12 @@ private fun MembersDetailContent(
     var actionState by remember(member.id.value, initialVisualMode) {
         mutableStateOf<MembersAgentActionState?>(null)
     }
-    var compactInFlight by remember(member.id.value) { mutableStateOf(false) }
-    var compactMessage by remember(member.id.value) { mutableStateOf<String?>(null) }
+    var compactInFlight by remember(member.id.value, initialCompactInFlight) {
+        mutableStateOf(initialCompactInFlight)
+    }
+    var compactMessage by remember(member.id.value, initialCompactMessage) {
+        mutableStateOf(initialCompactMessage)
+    }
     var diagnosticActionState by remember(member.id.value) { mutableStateOf<MembersAgentDiagnosticActionState?>(null) }
     var pendingConfirmation by remember(member.id.value) {
         mutableStateOf<MembersAgentLifecycleAction?>(null)
