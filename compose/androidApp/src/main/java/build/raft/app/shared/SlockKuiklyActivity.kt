@@ -1104,6 +1104,14 @@ open class SlockKuiklyActivity :
         executeMode: KuiklyRenderCoreExecuteModeBase
     ) {
         super.onUnhandledException(throwable, errorReason, executeMode)
+        // Keep the full local stack for the visual-fixture crash investigation. The previous
+        // diagnostics path retained only a sanitized summary, which made the deterministic
+        // wrapped+nested CALL_KOTLIN failure impossible to localize from logcat.
+        android.util.Log.e(
+            "SlockKuiklyCrash",
+            "unhandled page=${pageSpec?.pageName ?: pageName} reason=${errorReason.name} mode=${executeMode.mode}",
+            throwable
+        )
         SlockAndroidLocalDiagnostics.reportCaughtException(
             name = "KuiklyUnhandledException",
             throwable = throwable,
