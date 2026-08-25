@@ -136,6 +136,7 @@ stickyHeaderWithMarginTop(key, listState, hoverMarginTop = 56.dp) { _ -> content
 | 差异点 | 说明 |
 |--------|------|
 | 无 `OutlinedTextField` | 用 `TextField` + 自定义 `shape` / `colors` 模拟 |
+| Material3 `TextField` 仅接受 `String` | 无 `TextFieldValue` 重载；需要 `TextFieldValue` 请用 `BasicTextField`（`foundation/text/BasicTextField.kt`） |
 | `onValueChange` 有默认空实现 | **务必显式传入**，否则输入不会更新 state |
 | `VisualTransformation` 不生效 | 密码输入改用 `KeyboardOptions(keyboardType = KeyboardType.Password)` |
 | `TextFieldValue.selection` 始终返回 `TextRange.Zero` | 不要依赖 selection 控制光标，暂无替代方案 |
