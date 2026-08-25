@@ -115,14 +115,23 @@ private val LocalSlockAuthFocusChanged =
  * The Android host keeps the page edge-to-edge and uses adjustNothing, so the keyboard does not
  * resize the Auth LazyColumn. Reduce its root-coordinate viewport explicitly before calculating
  * the focused editor scroll delta. [keyboardHeightDp] is the native Kuikly value in dp; layout
- * bounds are pixels.
+ * bounds are pixels. On Android the host explicitly reports that the native keyboard inset does
+ * not include the bottom navigation safe area, so that area is added only for that contract.
  */
 internal fun slockAuthKeyboardReducedViewport(
     viewport: Rect,
     keyboardHeightDp: Float,
-    density: Float
+    density: Float,
+    bottomSafeArea: Dp = 0.dp,
+    keyboardInsetExcludesBottomSafeArea: Boolean = false
 ): Rect {
-    val keyboardHeightPx = keyboardHeightDp.coerceAtLeast(0f) * density.coerceAtLeast(0f)
+    val keyboardInsetDp =
+        slockEffectiveKeyboardInsetDp(
+            keyboardHeightDp = keyboardHeightDp,
+            bottomSafeArea = bottomSafeArea,
+            keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea
+        )
+    val keyboardHeightPx = keyboardInsetDp.value * density.coerceAtLeast(0f)
     return Rect(
         left = viewport.left,
         top = viewport.top,
@@ -146,6 +155,8 @@ internal fun AuthScaffold(
     val authListState = rememberLazyListState()
     val authScrollScope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val authBottomSafeArea = slockBottomSafeAreaPadding()
+    val authKeyboardInsetExcludesBottomSafeArea = slockKeyboardInsetExcludesBottomSafeArea()
     var authKeyboardHeightDp by remember { mutableStateOf(0f) }
     var authViewportBounds by remember { mutableStateOf<Rect?>(null) }
     val authKeyboardScrollCoordinator = remember { SlockFocusedEditorScrollRequestCoordinator() }
@@ -178,7 +189,10 @@ internal fun AuthScaffold(
                                 slockAuthKeyboardReducedViewport(
                                     viewport = it,
                                     keyboardHeightDp = keyboardHeightDp,
-                                    density = density.density
+                                    density = density.density,
+                                    bottomSafeArea = authBottomSafeArea,
+                                    keyboardInsetExcludesBottomSafeArea =
+                                        authKeyboardInsetExcludesBottomSafeArea
                                 )
                             }
                         },
@@ -236,7 +250,14 @@ internal fun AuthScaffold(
                                     // adjustNothing leaves the list's measured viewport at full
                                     // height; reserve the IME region as extra scrollable content
                                     // so the focused field can move fully above the keyboard.
-                                    bottom = 40.dp + authKeyboardHeightDp.dp
+                                    bottom =
+                                        40.dp +
+                                            slockEffectiveKeyboardInsetDp(
+                                                keyboardHeightDp = authKeyboardHeightDp,
+                                                bottomSafeArea = authBottomSafeArea,
+                                                keyboardInsetExcludesBottomSafeArea =
+                                                    authKeyboardInsetExcludesBottomSafeArea
+                                            )
                                 ),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
