@@ -38,9 +38,15 @@ typed local data source backed by SQLDelight once the smoke DB is in place.
 
 ## Checkout
 
-Only the SQLDelight fork is checked out from source, and only the OHOS build
-needs it (`compose/settings.ohos.gradle.kts` calls `ensureSubmodule` on it;
-Android takes `app.cash.sqldelight` from Maven):
+Only the SQLDelight fork is ever checked out from source, and only for OHOS.
+Even there it is a fallback rather than a routine step:
+`compose/settings.ohos.gradle.kts` calls `ensureSubmodule` on it only when
+`needsSqlDelight` — that is, when one of the required
+`app.cash.sqldelight` OHOS artifacts is missing from the local Maven
+repositories. With those artifacts present, no submodule is needed at all.
+Android never needs it and resolves `app.cash.sqldelight` from Maven.
+
+So run this when the OHOS artifacts are unavailable locally:
 
 ```bash
 git submodule update --init --recursive third_party/sqldelight
