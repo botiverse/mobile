@@ -6897,15 +6897,22 @@ internal fun SharedThreadRouteContent(
                 "firstReply=${if (renderSignature.firstReplyId8 == null) "none" else "${renderSignature.firstReplyId8}:${renderSignature.firstReplyCount}/${renderSignature.firstReplyUnreadCount}"}"
         )
     }
+    // task #232: rendered visible tail reported by the messages list; the read
+    // marker must track what the user sees, not the loaded payload tail.
+    var visibleReadTailIndex by remember(threadInstanceKey) { mutableStateOf<Int?>(null) }
     val visibleReadMarkerKey =
         remember(
             renderedThread.sourceThreadId,
             renderedTimelineSlice.status,
             renderedTimelineSlice.messages.size,
             renderedTimelineSlice.messages.lastOrNull()?.id,
-            renderedTimelineSlice.messages.lastOrNull()?.seq
+            renderedTimelineSlice.messages.lastOrNull()?.seq,
+            visibleReadTailIndex
         ) {
-            renderedTimelineSlice.visibleReadMarkerKey(renderedThread.sourceThreadId)
+            renderedTimelineSlice.visibleReadMarkerKey(
+                sourceThreadId = renderedThread.sourceThreadId,
+                visibleTailIndex = visibleReadTailIndex
+            )
     }
     LaunchedEffect(visibleReadMarkerKey, active, threadHostForeground, renderSlice.writeActionsEnabled) {
         if (
@@ -6917,7 +6924,7 @@ internal fun SharedThreadRouteContent(
                 markerKey = visibleReadMarkerKey
             )
         ) {
-            threadViewModel.dispatch(SharedThreadIntent.MarkVisibleRead)
+            threadViewModel.dispatch(SharedThreadIntent.MarkVisibleRead(visibleReadTailIndex))
         }
     }
     fun sendPendingLocalMessage(
@@ -8040,6 +8047,8 @@ internal fun SharedThreadRouteContent(
             onFirstContentReady = {
                 threadViewModel.dispatch(SharedThreadIntent.FirstContentReady)
             },
+            onVisibleReadTailChange = { index -> visibleReadTailIndex = index },
+            visibleReadTailIndex = visibleReadTailIndex,
             onLoadNewer = {
                 threadViewModel.loadNewerPage()
             },
@@ -11047,6 +11056,8 @@ private fun ThreadPageContent(
     onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
     onSaveShareImage: suspend (String) -> JSONObject?,
     onFirstContentReady: () -> Unit = {},
+    visibleReadTailIndex: Int? = null,
+    onVisibleReadTailChange: (Int?) -> Unit = {},
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onJumpToLatest: suspend () -> Boolean,
     onBack: () -> Unit,
@@ -11813,7 +11824,9 @@ private fun ThreadPageContent(
                             }
                         },
                         translationStore = translationStore,
-                        onThreadContentReady = onFirstContentReady
+                        onThreadContentReady = onFirstContentReady,
+                        onVisibleReadTailChange = onVisibleReadTailChange,
+                        visibleReadTailIndex = visibleReadTailIndex
                     )
                 KuiklyThreadTab.Tasks ->
                     ThreadTasksTab(
@@ -13064,7 +13077,9 @@ private fun ThreadChatTab(
     onToggleShareSelection: (String) -> Unit = {},
     onOpenForwardBundle: (String) -> Unit = {},
     translationStore: SharedMessageTranslationStore? = null,
-    onThreadContentReady: () -> Unit = {}
+    onThreadContentReady: () -> Unit = {},
+    visibleReadTailIndex: Int? = null,
+    onVisibleReadTailChange: (Int?) -> Unit = {}
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
@@ -13307,7 +13322,9 @@ private fun ThreadChatTab(
                 onToggleShareSelection = onToggleShareSelection,
                 onOpenForwardBundle = onOpenForwardBundle,
                 translationStore = translationStore,
-                onThreadContentReady = onThreadContentReady
+                onThreadContentReady = onThreadContentReady,
+                onVisibleReadTailChange = onVisibleReadTailChange,
+                visibleReadTailIndex = visibleReadTailIndex
             )
     }
 }
@@ -13620,7 +13637,9 @@ private fun ThreadMessagesList(
     onToggleShareSelection: (String) -> Unit = {},
     onOpenForwardBundle: (String) -> Unit = {},
     translationStore: SharedMessageTranslationStore? = null,
-    onThreadContentReady: () -> Unit = {}
+    onThreadContentReady: () -> Unit = {},
+    visibleReadTailIndex: Int? = null,
+    onVisibleReadTailChange: (Int?) -> Unit = {}
 ) {
     if (timelineSlice.messages.isEmpty() && timelineSlice.originStatus == "none") {
         LaunchedEffect(threadInstanceKey, timelineSlice.status) {
@@ -13731,22 +13750,29 @@ private fun ThreadMessagesList(
     LaunchedEffect(threadInstanceKey, readAnchorOwner, readAnchorSessionGeneration) {
         frozenReadAnchor = readAnchorOwner?.let(readAnchorStore::read)
     }
+    // task #232: the session read frontier must track the rendered visible tail
+    // reported by the messages list. Reading layoutInfo here observed a
+    // polluted visible set on live appends and advanced the frontier to the
+    // payload tail, zeroing the unread projection and hiding the pill.
     LaunchedEffect(
         threadInstanceKey,
         readAnchorOwner,
         renderPayload.messages,
-        renderPayload.originMessage,
+        visibleReadTailIndex,
     ) {
-        snapshotFlow {
-            renderPayload.visibleThreadReadAnchor(
-                listState.layoutInfo.visibleItemsInfo.map { item -> item.index }
-            )
-        }.collect { anchor ->
-            if (anchor != null) {
-                val advanced = advanceThreadReadAnchorFrontier(latestVisibleReadAnchor, anchor)
-                if (advanced != latestVisibleReadAnchor) {
-                    latestVisibleReadAnchor = advanced
+        val anchor =
+            visibleReadTailIndex
+                ?.takeIf { it in renderPayload.messages.indices }
+                ?.let { message -> renderPayload.messages[message] }
+                ?.let { message ->
+                    message.seq?.takeIf { seq -> seq > 0L }?.let { seq ->
+                        ThreadReadAnchor(seq = seq, messageId = message.id)
+                    }
                 }
+        if (anchor != null) {
+            val advanced = advanceThreadReadAnchorFrontier(latestVisibleReadAnchor, anchor)
+            if (advanced != latestVisibleReadAnchor) {
+                latestVisibleReadAnchor = advanced
             }
         }
     }
@@ -13787,11 +13813,19 @@ private fun ThreadMessagesList(
             )
         }
     var viewportControllerState by remember(threadInstanceKey) {
+        diagnosticsLogger("thread_viewport_state_init key=$threadInstanceKey")
         mutableStateOf(LazyViewportControllerState())
     }
     var viewportLayoutGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
     val dispatchViewportEvent: (LazyViewportEvent) -> Unit = { event ->
+        val previousIntent = viewportControllerState.intent
         viewportControllerState = reduceLazyViewport(viewportControllerState, event)
+        if (viewportControllerState.intent != previousIntent) {
+            diagnosticsLogger(
+                "thread_viewport_intent key=$threadInstanceKey event=${event::class.simpleName} " +
+                    "from=${previousIntent.logTag()} to=${viewportControllerState.intent.logTag()}"
+            )
+        }
     }
     suspend fun awaitViewportCommandSettlement(commandId: LazyViewportCommandId) {
         snapshotFlow {
@@ -14176,6 +14210,11 @@ private fun ThreadMessagesList(
                 else -> LazyViewportMutation.HeightChange
             }
         viewportLayoutGeneration += 1L
+        diagnosticsLogger(
+            "thread_content_mutation key=$threadInstanceKey mutation=$mutation " +
+                "intent=${viewportControllerState.intent.logTag()} " +
+                "allowBottomAutoAnchor=$allowBottomAutoAnchor"
+        )
         if (
             mutation == LazyViewportMutation.Append &&
             focusedAnchorPlacementState.placement == LazyViewportAnchorPlacement.RenderedBottom
@@ -14562,6 +14601,21 @@ private fun ThreadMessagesList(
                 settleNewerPageCycle(cycleId, outcome)
             }
         }
+    }
+    // task #232: report the rendered visible tail so the read marker tracks
+    // actual visibility instead of the loaded payload tail.
+    LaunchedEffect(threadInstanceKey) {
+        snapshotFlow {
+            val visibleItems = listState.layoutInfo.visibleItemsInfo
+            val firstMessageItemIndex = renderPayload.firstMessageListItemIndex()
+            visibleItems
+                .lastOrNull()
+                ?.index
+                ?.minus(firstMessageItemIndex)
+                ?.takeIf { it in renderPayload.messages.indices }
+        }
+            .distinctUntilChanged()
+            .collect { index -> onVisibleReadTailChange(index) }
     }
     LaunchedEffect(
         threadInstanceKey,
@@ -15939,13 +15993,14 @@ private fun ThreadMessagesList(
                                         ?.let { cycle ->
                                             newerPageCycle = cycle.copy(anchor = anchor)
                                         }
+                                    val settledAtBottom =
+                                        listState.isLatestItemAtRenderedBottom(
+                                            currentLatestItemIndexState.value
+                                        )
                                     dispatchViewportEvent(
                                         LazyViewportEvent.PointerSettled(
                                             epoch = settlingEpoch,
-                                            atRenderedBottom =
-                                                listState.isLatestItemAtRenderedBottom(
-                                                    currentLatestItemIndexState.value
-                                                ),
+                                            atRenderedBottom = settledAtBottom,
                                             anchorMessageId = anchor?.messageId,
                                             anchorOffset = anchor?.offset ?: 0,
                                             layoutGeneration = viewportLayoutGeneration

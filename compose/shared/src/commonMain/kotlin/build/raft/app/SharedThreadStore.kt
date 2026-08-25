@@ -5375,7 +5375,7 @@ internal sealed interface SharedThreadIntent {
     ) : SharedThreadIntent
     data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
         SharedThreadIntent
-    data object MarkVisibleRead : SharedThreadIntent
+    data class MarkVisibleRead(val visibleTailIndex: Int? = null) : SharedThreadIntent
     data object FirstContentReady : SharedThreadIntent
     data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
@@ -5539,8 +5539,8 @@ internal class SharedThreadStore(
                     )
                 }
             }
-            SharedThreadIntent.MarkVisibleRead -> {
-                scope.launch { markVisibleRead() }
+            is SharedThreadIntent.MarkVisibleRead -> {
+                scope.launch { markVisibleRead(intent.visibleTailIndex) }
             }
             SharedThreadIntent.FirstContentReady -> {
                 scope.launch { markFirstContentReady() }
@@ -5620,7 +5620,7 @@ internal class SharedThreadStore(
                     event = intent.event,
                     activeReplyParentMessageId = intent.activeReplyParentMessageId
                 )
-            SharedThreadIntent.MarkVisibleRead -> markVisibleRead()
+            is SharedThreadIntent.MarkVisibleRead -> markVisibleRead(intent.visibleTailIndex)
             SharedThreadIntent.FirstContentReady -> markFirstContentReady()
             SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
@@ -7461,7 +7461,7 @@ internal class SharedThreadStore(
             .maxOrNull()
     }
 
-    private suspend fun markVisibleRead() {
+    private suspend fun markVisibleRead(visibleTailIndex: Int? = null) {
         val authorityState = _state.value
         if (
             authorityState.accessResolution != ThreadAccessResolution.Resolved ||
@@ -7481,7 +7481,7 @@ internal class SharedThreadStore(
                 dataSource.isCurrentReplyCacheProvenance(expectedProvenance)
         }
         if (!authorityStillCurrent()) return
-        val marker = authorityState.payload.visibleReadMarker() ?: return
+        val marker = authorityState.payload.visibleReadMarker(visibleTailIndex) ?: return
         if (marker.wasRecentlyMarkedRead()) {
             diagnosticsLogger?.invoke(
                 "thread_read_skip channelId=${marker.channelId} reason=recently_marked latest=${marker.latestMessageId}"
@@ -10210,10 +10210,18 @@ private fun KuiklyThreadScreenPayload.toThreadRouteId(serverId: ServerId? = null
     }
 }
 
-private fun KuiklyThreadScreenPayload.visibleReadMarker(): ThreadVisibleReadMarker? {
+private fun KuiklyThreadScreenPayload.visibleReadMarker(
+    visibleTailIndex: Int? = null
+): ThreadVisibleReadMarker? {
     val channelId = cacheThreadId() ?: return null
+    // task #232: bound the read marker to the rendered visible tail when known,
+    // so live appends while off-bottom never advance the shared read frontier.
+    val markerCandidates =
+        visibleTailIndex?.takeIf { it in messages.indices }?.let { tail ->
+            messages.subList(0, tail + 1)
+        } ?: messages
     val latest =
-        messages
+        markerCandidates
             .asSequence()
             .filter { message -> message.seq != null }
             .maxWithOrNull(

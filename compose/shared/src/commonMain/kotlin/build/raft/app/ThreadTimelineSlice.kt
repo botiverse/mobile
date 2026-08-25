@@ -247,6 +247,29 @@ internal fun ThreadTimelineSlice.hasSendingLocalSendAnchor(anchorKey: String?): 
     }
 }
 
+// task #232: viewport-aware variant. When the rendered visible tail is known,
+// the read marker must not advance past what the user actually sees; otherwise
+// live appends while off-bottom would zero the unread projection and the
+// "↓ x new" pill could never appear.
+internal fun ThreadTimelineSlice.visibleReadMarkerKey(
+    sourceThreadId: String?,
+    visibleTailIndex: Int?
+): String? {
+    val threadId = sourceThreadId?.takeIf { it.isNotBlank() } ?: return null
+    if (status != "content") return null
+    val latest =
+        visibleTailIndex?.takeIf { it in messages.indices }?.let { messages[it] }
+            ?: messages.lastOrNull()
+            ?: return null
+    return buildString {
+        append(threadId)
+        append(':')
+        append(latest.seq?.toString() ?: "no-seq")
+        append(':')
+        append(latest.id)
+    }
+}
+
 internal fun ThreadTimelineSlice.visibleReadMarkerKey(sourceThreadId: String?): String? {
     val threadId = sourceThreadId?.takeIf { it.isNotBlank() } ?: return null
     if (status != "content") return null
