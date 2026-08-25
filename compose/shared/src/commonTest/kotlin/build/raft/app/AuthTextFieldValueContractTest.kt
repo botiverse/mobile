@@ -92,10 +92,11 @@ class AuthTextFieldValueContractTest {
     }
 
     @Test
-    fun authKeyboardInsetClampsNegativeInputsAndSafeArea() {
-        assertEquals(0.dp, slockAuthKeyboardInset(-1f, (-24).dp, true))
-        assertEquals(324.dp, slockAuthKeyboardInset(300f, 24.dp, true))
-        assertEquals(300.dp, slockAuthKeyboardInset(300f, 24.dp, false))
+    fun effectiveKeyboardInsetClampsNegativeInputsAndSafeArea() {
+        assertEquals(0.dp, slockEffectiveKeyboardInsetDp(-1f, (-24).dp, true))
+        assertEquals(300.dp, slockEffectiveKeyboardInsetDp(300f, (-24).dp, true))
+        assertEquals(324.dp, slockEffectiveKeyboardInsetDp(300f, 24.dp, true))
+        assertEquals(300.dp, slockEffectiveKeyboardInsetDp(300f, 24.dp, false))
     }
 
     @Test

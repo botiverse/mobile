@@ -126,7 +126,7 @@ internal fun slockAuthKeyboardReducedViewport(
     keyboardInsetExcludesBottomSafeArea: Boolean = false
 ): Rect {
     val keyboardInsetDp =
-        slockAuthKeyboardInset(
+        slockEffectiveKeyboardInsetDp(
             keyboardHeightDp = keyboardHeightDp,
             bottomSafeArea = bottomSafeArea,
             keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea
@@ -138,27 +138,6 @@ internal fun slockAuthKeyboardReducedViewport(
         right = viewport.right,
         bottom = (viewport.bottom - keyboardHeightPx).coerceAtLeast(viewport.top)
     )
-}
-
-/**
- * Returns the effective bottom obstruction for an Auth editor. A positive keyboard inset is the
- * only time the safe area is appended: when the keyboard is closed, the normal Auth content
- * padding remains unchanged; when the native inset already includes the safe area, appending it
- * would double-count the navigation region.
- */
-internal fun slockAuthKeyboardInset(
-    keyboardHeightDp: Float,
-    bottomSafeArea: Dp,
-    keyboardInsetExcludesBottomSafeArea: Boolean
-): Dp {
-    val keyboardInset = keyboardHeightDp.coerceAtLeast(0f).dp
-    val safeAreaInset =
-        if (keyboardHeightDp > 0f && keyboardInsetExcludesBottomSafeArea) {
-            bottomSafeArea.value.coerceAtLeast(0f).dp
-        } else {
-            0.dp
-        }
-    return keyboardInset + safeAreaInset
 }
 
 @Composable
@@ -273,7 +252,7 @@ internal fun AuthScaffold(
                                     // so the focused field can move fully above the keyboard.
                                     bottom =
                                         40.dp +
-                                            slockAuthKeyboardInset(
+                                            slockEffectiveKeyboardInsetDp(
                                                 keyboardHeightDp = authKeyboardHeightDp,
                                                 bottomSafeArea = authBottomSafeArea,
                                                 keyboardInsetExcludesBottomSafeArea =
