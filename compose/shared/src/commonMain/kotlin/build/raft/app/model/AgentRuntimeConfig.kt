@@ -17,7 +17,8 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Mirrors `slock-ai/shared` `RuntimeConfig` (TypeScript) for the KMP side.
- * Source of truth lives in `third_party/slock-source/packages/shared/src/index.ts`.
+ * Source of truth lives in the external
+ * `<slock-source>/packages/shared/src/index.ts` checkout.
  *
  * Kept intentionally narrow for the create-agent flow: we only need the
  * fields the agent can set on creation. Fields like `agentCredentialKey`
