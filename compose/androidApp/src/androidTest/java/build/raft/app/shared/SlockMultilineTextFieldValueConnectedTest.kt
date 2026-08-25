@@ -410,3 +410,115 @@ private fun View.findOnlyEditText(): EditText? {
     }
     return null
 }
+
+class SlockComposerFinishComposingOnStateReadConnectedTest {
+    /**
+     * Send reads the editor through the renderer's `getTextInputState` method. While an IME still
+     * holds an unfinished composition that read returned text the user had not committed, which is
+     * how voice input could be sent mid-dictation.
+     *
+     * Asserting on the composing span rather than on the returned JSON keeps this bound to the
+     * behaviour rather than to the renderer's payload shape.
+     *
+     * DO NOT DELETE AS REDUNDANT. The production code matches the renderer method by string
+     * literal, because `KRTextFieldView.METHOD_GET_TEXT_INPUT_STATE` is private upstream. If a
+     * Kuikly bump renames that method, the interception stops running and **nothing else fails**:
+     * no compile error, no crash, Send simply goes back to reading uncommitted text. This test is
+     * the only thing standing between that rename and a silently reintroduced defect.
+     */
+    @Test
+    fun stateReadFinishesInFlightCompositionBeforeReturningText() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+            assertTrue(editor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            val connection = editor.requireInputConnection()
+
+            assertTrue(connection.setComposingText("ni", 1))
+            // Positive control: without it a passing assertion below could simply mean the
+            // composition never started, which is exactly the false green this test exists to
+            // avoid.
+            assertTrue(
+                "composition should be in flight before the state read",
+                BaseInputConnection.getComposingSpanStart(editor.text) >= 0
+            )
+
+            var responded = false
+            editor.call(GET_TEXT_INPUT_STATE_METHOD, null) { responded = true }
+
+            assertTrue("renderer should still answer the state read", responded)
+            assertEquals(
+                "state read must leave no composing region",
+                -1,
+                BaseInputConnection.getComposingSpanStart(editor.text)
+            )
+            assertEquals("committed text must survive", "ni", editor.text.toString())
+        }
+    }
+
+    /**
+     * The barrier must not trust the connection it was handed.
+     *
+     * A connection whose IME is gone returns `false` from `finishComposingText()` — the same
+     * answer it gives when there was simply nothing to finish — and a view that has been destroyed
+     * has no connection at all. Both used to let the read proceed with the composition still
+     * marked, which is a silent regression to the original defect: the caller sees a normal reply
+     * and cannot tell the barrier did nothing.
+     *
+     * Kuikly pins and reuses editor views across mounts, so a dropped connection outliving its IME
+     * is the ordinary case rather than a corner one.
+     */
+    @Test
+    fun stateReadEndsCompositionEvenAfterTheInputConnectionIsDropped() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+            assertTrue(editor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            val connection = editor.requireInputConnection()
+            assertTrue(connection.setComposingText("ni", 1))
+
+            // Drops the retained connection the way leaving the window does.
+            editor.onDestroy()
+
+            // Positive control, and the reason this scenario matters: the editor keeps the
+            // composing region after the connection is gone, so there is still something for the
+            // barrier to end.
+            assertTrue(
+                "composition should survive the connection being dropped",
+                BaseInputConnection.getComposingSpanStart(editor.text) >= 0
+            )
+
+            var responded = false
+            editor.call(GET_TEXT_INPUT_STATE_METHOD, null) { responded = true }
+
+            assertTrue("renderer should still answer the state read", responded)
+            assertEquals(
+                "state read must leave no composing region even without a connection",
+                -1,
+                BaseInputConnection.getComposingSpanStart(editor.text)
+            )
+            assertEquals("committed text must survive", "ni", editor.text.toString())
+        }
+    }
+
+    /** An unrelated method must not finish composition — the interception has to be targeted. */
+    @Test
+    fun unrelatedRendererMethodLeavesCompositionInFlight() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val editor = SlockKuiklyTextAreaView(instrumentation.targetContext, null)
+            assertTrue(editor.setProp(KRTextProps.PROP_KEY_NUMBER_OF_LINES, 4))
+            val connection = editor.requireInputConnection()
+            assertTrue(connection.setComposingText("ni", 1))
+
+            editor.call("getInnerContentHeight", null) {}
+
+            assertTrue(
+                "only the state read should end composition",
+                BaseInputConnection.getComposingSpanStart(editor.text) >= 0
+            )
+        }
+    }
+}
+
+private const val GET_TEXT_INPUT_STATE_METHOD = "getTextInputState"
