@@ -375,9 +375,17 @@ The canonical flow is:
    or `-` to read it from stdin. That message must carry the `Signed-off-by:`
    trailer, since the squash body is what main-push DCO validates.
    The GO may be recorded in Raft or a PR comment; a formal GitHub approving
-   review is not required. Require owner/product acceptance only when the current
-   task explicitly names it as a gate or a current live hold assigns that
-   decision to the owner.
+   review is not required.
+
+   Owner/product acceptance is **not** a merge gate by default, and neither is
+   any further authorisation from the person who requested the work. Require it
+   only when the current task explicitly names it as a gate, or a current live
+   hold assigns that decision to the owner. If neither applies, the two
+   conditions above are the whole gate set and the creator may merge.
+
+   A creator who prefers to wait anyway may do so, but should say plainly that
+   it is their own choice and name what they are waiting for — otherwise a
+   finished PR stalls with everyone assuming someone else will move it.
    Do not use the GitHub Merge button or `gh pr merge --merge`; ordinary merge
    commits do not preserve source sign-off trailers and make main-push DCO red.
 
