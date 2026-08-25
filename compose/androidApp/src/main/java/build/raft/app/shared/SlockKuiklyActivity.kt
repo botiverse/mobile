@@ -1112,6 +1112,13 @@ open class SlockKuiklyActivity :
             "unhandled page=${pageSpec?.pageName ?: pageName} reason=${errorReason.name} mode=${executeMode.mode}",
             throwable
         )
+        // Visual capture intentionally collects only a narrow tag allow-list. Mirror the
+        // throwable there so the wrapped CALL_KOTLIN cause survives the capture receipt.
+        android.util.Log.e(
+            "VisualCapture",
+            "kuikly_unhandled page=${pageSpec?.pageName ?: pageName} reason=${errorReason.name} mode=${executeMode.mode}",
+            throwable
+        )
         SlockAndroidLocalDiagnostics.reportCaughtException(
             name = "KuiklyUnhandledException",
             throwable = throwable,
