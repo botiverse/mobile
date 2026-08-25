@@ -23,6 +23,7 @@
                   "dominantRatio": 0.86453307
                 },
                 "readyTokenObserved": false,
+                "readyTokenRequired": false,
                 "stableFrameCount": 1
               },
               "diagnostics": {
@@ -36,16 +37,16 @@
     "laidOutViews": 97,
     "visibleContentLeafViews": 12,
     "targetPackage": "build.raft.app.connectedtest",
-    "processId": 4771,
+    "processId": 4492,
     "processUid": 10192
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "e3ea1378afdabc0e1ec71ded45c7e6c2",
-                "bootId": "b562815c-eaf2-4e71-8be0-6077f8c6c033",
-                "capturedAtEpochMs": 1787608126626,
-                "capturedAtMonotonicNs": 69979027527
+                "generation": "d47a1e55613da2e181a66cd932ea2df3",
+                "bootId": "197fecaa-57fb-4b2a-bb94-5b2d0948e085",
+                "capturedAtEpochMs": 1787694504124,
+                "capturedAtMonotonicNs": 78826534632
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1787608126626"
+              "capturedAt": "1787694504124"
             }

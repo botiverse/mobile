@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-24T22:12:46.218Z",
+  "generatedAt": "2026-08-25T22:09:53.299Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 85,
-    "pending": 1
+    "ready": 84,
+    "pending": 2
   },
   "cases": [
     {
@@ -460,7 +460,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe0ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe9ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-10T22:11:45.609Z",
       "severity": "low",
       "summary": [
@@ -552,7 +552,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41497942386831277
+      "metricMismatch": 0.4149707602339181
     },
     {
       "id": "components.ui.spinner.states",
@@ -1254,7 +1254,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.34832255011993574
+      "metricMismatch": 0.3482922911027486
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1503,7 +1503,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6793244757699735
+      "metricMismatch": 0.6792674282010775
     },
     {
       "id": "components.home.notification-center.states",
@@ -1572,7 +1572,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2693337249024452
+      "metricMismatch": 0.26934081365360985
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1606,12 +1606,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2691598817191234
+      "metricMismatch": 0.26917102118523917
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fcfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa7fff",
+      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fcfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa3fff",
       "generatedAt": "2026-07-30T04:34:27.469Z",
       "severity": "medium",
       "summary": [
@@ -1643,7 +1643,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19028589993502276
+      "metricMismatch": 0.1904106143494938
     },
     {
       "id": "components.home.activity.results",
@@ -1679,7 +1679,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18529103523444213
+      "metricMismatch": 0.18519723741851646
     },
     {
       "id": "components.tasks.panel.states",
@@ -1787,7 +1787,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.22927384183308352
+      "metricMismatch": 0.2292745169522421
     },
     {
       "id": "components.members.create-agent.dialog",
@@ -1870,7 +1870,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:12:45.219Z",
+      "generatedAt": "2026-08-25T22:09:52.466Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2328,7 +2328,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06129946935634134
+      "metricMismatch": 0.061287317211487835
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2572,36 +2572,16 @@
     },
     {
       "id": "screens.home.loading",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfff8ffe9ffefffe9ffec3fe9ffebffe9ffebffed7ffbffec3ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffe93fefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
-      "generatedAt": "2026-07-13T22:11:37.533Z",
-      "severity": "medium",
-      "summary": [
-        "PINNED section is missing on Android; React shows a PINNED header with placeholder text 'Drag channels or DMs here to pin'",
-        "Android renders CHANNELS and DIRECT MESSAGES above JOINT CHANNELS (and omits PINNED), while React shows JOINT CHANNELS above CHANNELS with PINNED at the top",
-        "Bottom navigation labels differ in case: React uses 'Home / Tasks / Members / Settings', Android uses 'HOME / TASKS / MEMBERS / SETTINGS'",
-        "Bottom tab text on Android is uppercase and appears bolder, while React uses mixed case at regular weight",
-        "Android version is missing a top safe-area status bar height that React includes"
-      ],
-      "likelyCauses": [
-        "Android implementation does not yet render the PINNED section header or its empty-state copy",
-        "Section ordering hard-coded differently between web and Android list adapter",
-        "Bottom tab label style not normalized — Android applies TextStyle with textAllCaps + extra font weight, React uses title-case default token",
-        "Android omits status bar insets when the viewport contract is 'viewport-bounds' instead of 'viewport-with-portal'"
-      ],
-      "suggestedOwner": "android-platform",
-      "suggestedFixes": [
-        "Add the PINNED section header and empty-state placeholder ('Drag channels or DMs here to pin') to the Android home list, placed above JOINT CHANNELS",
-        "Unify section order across platforms: PINNED → JOINT CHANNELS → CHANNELS → DIRECT MESSAGES",
-        "Normalize bottom tab labels: render Title Case ('Home', 'Tasks', 'Members', 'Settings') and ensure font weight matches React tokens (no extra bold, no uppercase)",
-        "Use 'viewport-with-portal' contract on Android or explicitly inset the top status bar so the yellow header alignment matches React",
-        "Verify skeleton item counts per section match the React spec (e.g., CHANNELS=4, DIRECT MESSAGES=3)"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.15699187156533123
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfffcffe9ffefffe9ffed3fe9ffe83fe9ffebffed7ffbffec3ffcffe9ffe8ffe9ffebffe9ffebffefffebffefffebffefffec1fefffe83fefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
+      "generatedAt": "2026-08-25T22:09:53.069Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16914941737216616
     },
     {
       "id": "components.thread.message-row.rich-content",

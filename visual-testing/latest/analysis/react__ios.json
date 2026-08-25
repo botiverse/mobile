@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-24T22:12:49.997Z",
+  "generatedAt": "2026-08-25T22:09:56.593Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 78,
+    "pending": 8
   },
   "cases": [
     {
@@ -467,30 +467,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-24T22:11:12.274Z",
-      "severity": "low",
-      "summary": [
-        "Four status dots in same order and colors (green, orange, gray, blue) on both platforms with no visible differences",
-        "Pink 'Waiting pulse' dot and label appear identical in shape, color, size, and position",
-        "Pink pulse dot appears slightly darker/less saturated on iOS compared to React",
-        "RGB similarity 97.95% and pixel-perfect 99.77% indicate near-identical render"
-      ],
-      "likelyCauses": [
-        "Minor color/antialiasing variance in the pink fill of the pulse dot due to platform rendering differences",
-        "Subpixel rendering differences between web and native iOS rendering pipelines"
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "Verify pink pulse dot token (#colorStatusWaiting or equivalent) matches across platforms",
-        "Account for native iOS color rendering when defining pulse animation colors",
-        "Accept the minor difference if within design tolerance since metrics exceed thresholds"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
+      "generatedAt": "2026-08-25T22:09:55.081Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -550,7 +535,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062095097284670775
+      "metricMismatch": 0.06209779776130486
     },
     {
       "id": "components.ui.spinner.states",
@@ -1485,7 +1470,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2562056953052214
+      "metricMismatch": 0.2561635003578131
     },
     {
       "id": "components.home.notification-center.states",
@@ -1553,7 +1538,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26933541270034156
+      "metricMismatch": 0.26933845073655505
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1586,7 +1571,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.269461659982987
+      "metricMismatch": 0.269471786770365
     },
     {
       "id": "components.home.saved.results",
@@ -1622,7 +1607,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11133693846963988
+      "metricMismatch": 0.11140208746843816
     },
     {
       "id": "components.home.activity.results",
@@ -1657,7 +1642,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10675321694279039
+      "metricMismatch": 0.1066931313376811
     },
     {
       "id": "components.tasks.panel.states",
@@ -1838,7 +1823,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:12:49.163Z",
+      "generatedAt": "2026-08-25T22:09:55.907Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2228,7 +2213,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:12:49.483Z",
+      "generatedAt": "2026-08-25T22:09:56.197Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2241,7 +2226,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:12:49.483Z",
+      "generatedAt": "2026-08-25T22:09:56.197Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2254,7 +2239,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:12:49.483Z",
+      "generatedAt": "2026-08-25T22:09:56.197Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2267,7 +2252,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:12:49.483Z",
+      "generatedAt": "2026-08-25T22:09:56.197Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2280,7 +2265,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:12:49.483Z",
+      "generatedAt": "2026-08-25T22:09:56.197Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2424,36 +2409,16 @@
     },
     {
       "id": "screens.home.loading",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffc000000000000000000000000dffecffecffe4ffecffecffe8ffe4ffedffe8ffe8ffe9ffefffe9ffec3fe9ffebffe9ffebffebffebffe83ffc7fe9ffebffe9ffebffe9ffebffefffebffe7ffebffe7ffec1fe7ffe93fe7ffebffe7ffebffe7ffebffe7ffefffe7ffefffe7ffe0000dfba0100199a00002000fffe3fff",
-      "generatedAt": "2026-08-02T22:44:51.106Z",
-      "severity": "high",
-      "summary": [
-        "iOS version is missing the notification bell icon in the yellow header (present on React).",
-        "iOS omits the PINNED section with 'Drag channels or DMs here to pin' placeholder (present on React).",
-        "iOS omits the JOINT CHANNELS section entirely; React shows 2 skeleton rows.",
-        "iOS omits the standalone CHANNELS section (4 skeleton rows on React).",
-        "iOS bottom tab bar overlaps tab labels (Home/Tasks/Members/Settings text is overlapped by icons), whereas React renders a clean, well-spaced tab bar with a yellow active background."
-      ],
-      "likelyCauses": [
-        "iOS implementation did not include header notification icon component.",
-        "PINNED, JOINT CHANNELS, and CHANNELS sections were skipped or conditionally hidden on iOS (likely auth/permission gate or data not yet loaded).",
-        "iOS tab bar uses overlapping icon+label layout with insufficient vertical bounds, causing label occlusion.",
-        "Different default section ordering between platforms (iOS renders Channels first, React renders Joint Channels first)."
-      ],
-      "suggestedOwner": "mobile-engineering",
-      "suggestedFixes": [
-        "Render the notification bell icon in the iOS header to match the React baseline.",
-        "Ensure PINNED, JOINT CHANNELS, and CHANNELS sections render on iOS (even empty) with the 'Drag channels or DMs here to pin' placeholder where appropriate.",
-        "Fix iOS bottom tab bar layout: increase tab height or stack icon above label with adequate vertical spacing so labels are not overlapped.",
-        "Align section ordering across platforms (recommend: Pinned → Joint Channels → Channels → Direct Messages).",
-        "Verify skeleton/placeholder counts per section match the React baseline (Joint: 2, Channels: 4, DM: 3)."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.19329100336209337
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffc000000000000000000000000dffecffecffe4ffecffecffe8ffe4ffedffe8ffe8ffe9ffefffe9ffed3fe9ffe83fe9ffebffebffebffe83ffcffe9ffe8ffe9ffebffe9ffebffefffebffe7ffebffe7ffe81fe7ffe81fe7ffebffe7ffebffe7ffebffe7ffefffe7ffefffe7ffe0000dfba0100199a00002000fffe3fff",
+      "generatedAt": "2026-08-25T22:09:56.421Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19331058181769079
     },
     {
       "id": "components.thread.message-row.rich-content",

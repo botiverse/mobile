@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-24T22:12:53.914Z",
+  "generatedAt": "2026-08-25T22:10:00.519Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 81,
-    "pending": 5
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -457,29 +457,16 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffebffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-24T22:11:15.801Z",
-      "severity": "low",
-      "summary": [
-        "The status-dot colors, circular shapes, spacing, and the pink waiting-pulse state appear visually equivalent on Android and iOS.",
-        "The Android header badge reads “ANDROID,” while the iOS header badge reads “IOS,” but these are platform labels rather than component-state differences."
-      ],
-      "likelyCauses": [
-        "Platform-specific font fallback or rasterization may account for the small residual text-edge differences reflected in the pixel-mismatch ratio."
-      ],
-      "suggestedOwner": "UI component owner",
-      "suggestedFixes": [
-        "No component-level visual fix is indicated; preserve the shared status-dot implementation and styles.",
-        "If exact cross-platform typography is required, compare font family, weight, and scaling on both renderers."
-      ],
-      "intentional": [
-        "Different platform identifiers in the screenshot headers (“ANDROID” versus “IOS”)."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.002999216861776066
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03f407fe43fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
+      "generatedAt": "2026-08-25T22:09:58.898Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.0029985417426175998
     },
     {
       "id": "components.ui.progress-bar.states",
@@ -1136,7 +1123,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0594840739390502
+      "metricMismatch": 0.059477660307044156
     },
     {
       "id": "components.thread.header.states",
@@ -1202,7 +1189,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.03949345809535387
+      "metricMismatch": 0.03947826791428688
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1269,7 +1256,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3693441892494025
+      "metricMismatch": 0.3693445268089818
     },
     {
       "id": "components.thread.message-menu.task",
@@ -2123,7 +2110,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:12:53.399Z",
+      "generatedAt": "2026-08-25T22:10:00.062Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2136,7 +2123,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:12:53.399Z",
+      "generatedAt": "2026-08-25T22:10:00.062Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2149,7 +2136,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:12:53.399Z",
+      "generatedAt": "2026-08-25T22:10:00.062Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2162,7 +2149,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:12:53.399Z",
+      "generatedAt": "2026-08-25T22:10:00.062Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2175,7 +2162,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-24T22:12:53.399Z",
+      "generatedAt": "2026-08-25T22:10:00.062Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
