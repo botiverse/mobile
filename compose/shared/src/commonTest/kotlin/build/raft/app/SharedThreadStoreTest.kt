@@ -14370,6 +14370,8 @@ class SharedThreadStoreTest {
         val syncLimits: MutableList<Int> = mutableListOf()
         val channelIds: MutableList<String> = mutableListOf()
         var sendMessageCalls: Int = 0
+        /** Optional canonical POST /messages body for tests that exercise the send parser. */
+        var sendResponseBody: String? = null
         var lastAttachmentIds: List<String> = emptyList()
         var lastRandomId: String? = null
         val savedMessageIds: MutableList<String> = mutableListOf()
@@ -14447,7 +14449,7 @@ class SharedThreadStoreTest {
             sendMessageCalls += 1
             lastAttachmentIds = attachmentIds
             lastRandomId = randomId
-            return HomeNetworkResponse(code = 200, bodyText = messagesResponse(body))
+            return HomeNetworkResponse(code = 200, bodyText = sendResponseBody ?: messagesResponse(body))
         }
 
         override suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): HomeNetworkResponse {

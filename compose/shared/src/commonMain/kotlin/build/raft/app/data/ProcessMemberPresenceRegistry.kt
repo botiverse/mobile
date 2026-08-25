@@ -186,17 +186,25 @@ internal fun processMemberPresenceRealtimeSink(
  *    writeGeneration, then the new immutable quadruple publishes.
  *
  * The body is intentionally non-suspending (StateFlow set + registry CAS +
- * one key-value read): no IO, no locks, no re-entry into authority APIs.
+ * one key-value read).  [onBindingRetired] may perform a synchronous,
+ * fail-closed durable cleanup, but it must not suspend or re-enter authority
+ * APIs; [onBindingBound] may synchronously retire stale durable rows while
+ * preserving the exact current generation.  Both callbacks must not suspend
+ * or re-enter authority APIs; the registry transition itself remains lock/CAS
+ * based.
  */
 internal fun processPresenceBindingTransition(
     presenceAuthContext: MutableStateFlow<ProcessPresenceAuthContext?>,
     registry: ProcessMemberPresenceRegistry,
-    currentEnvironmentId: () -> String
+    onBindingRetired: (ProcessPresenceAuthContext) -> Unit = {},
+    onBindingBound: (ProcessPresenceAuthContext) -> Unit = {},
+    currentEnvironmentId: () -> String,
 ): (RealtimeAuthRevision) -> Unit = { revision ->
     val principal = revision.session?.principalId?.trim()?.takeIf { it.isNotBlank() }
     val environmentId = currentEnvironmentId()
     val previous = presenceAuthContext.value
     if (principal == null || environmentId.isBlank()) {
+        previous?.let(onBindingRetired)
         presenceAuthContext.value = null
         registry.clearAll(reason = "authority_session_cleared")
     } else if (
@@ -204,16 +212,29 @@ internal fun processPresenceBindingTransition(
         previous.accountId == principal &&
         previous.environmentId == environmentId
     ) {
-        presenceAuthContext.value = previous.copy(authorityGeneration = revision.generation)
+        // A token/auth-generation rotation keeps the presence facts and the
+        // registry write generation alive, but the old generation's durable
+        // client-owned projections are no longer reachable under the new
+        // authority. Retire that exact generation before publishing its
+        // successor so pending sends cannot accumulate as orphaned rows.
+        if (previous.authorityGeneration != revision.generation) {
+            onBindingRetired(previous)
+        }
+        val bound = previous.copy(authorityGeneration = revision.generation)
+        presenceAuthContext.value = bound
+        onBindingBound(bound)
     } else {
+        previous?.let(onBindingRetired)
         val writeGeneration = registry.clearAll(reason = "authority_binding_changed")
-        presenceAuthContext.value =
+        val bound =
             ProcessPresenceAuthContext(
                 environmentId = environmentId,
                 accountId = principal,
                 authorityGeneration = revision.generation,
                 writeGeneration = writeGeneration
             )
+        presenceAuthContext.value = bound
+        onBindingBound(bound)
     }
 }
 
