@@ -4706,6 +4706,40 @@ internal fun SharedThreadRouteContent(
     val timelineSlice = renderSlice.timelineSlice
     val replyMetadataByParentId = renderSlice.replyMetadataByParentId
     val highlightedMentions = renderSlice.highlightedMentions
+    // Task #228 successor (direction A): the shared Home directory is the same
+    // authority source the initial parent lookup consults. Forward the exact
+    // parent row whenever it appears/changes so the store re-evaluates
+    // event-driven; the store fences every hint by route, account state and
+    // current authority status, so redundant dispatches are cheap no-ops.
+    LaunchedEffect(
+        payload.surfaceKind,
+        payload.parentChannelId,
+        payload.parentMessageId,
+        payload.originParentMessageId,
+        sharedHomeState,
+    ) {
+        if (payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return@LaunchedEffect
+        val parentChannelId =
+            payload.parentChannelId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val parentMessageId =
+            payload.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: payload.originParentMessageId?.takeIf { it.isNotBlank() }
+                ?: return@LaunchedEffect
+        val snapshot =
+            (sharedHomeState.content as? SharedHomeContentState.Content)?.baseSnapshot
+        val parentRow =
+            snapshot?.channels?.firstOrNull { it.channelId?.value == parentChannelId }
+                ?: snapshot?.directMessages?.firstOrNull { it.channelId?.value == parentChannelId }
+        threadViewModel.dispatch(
+            SharedThreadIntent.ApplyParentDirectoryHint(
+                parentChannelId = parentChannelId,
+                parentMessageId = parentMessageId,
+                present = parentRow != null,
+                joined = parentRow?.joined == true && parentRow.archived == false,
+                canSend = parentRow?.permissions?.canSend == true,
+            )
+        )
+    }
     val initialThreadInstanceKey = initialRouteIdentity.instanceKey
     val canonicalFinalThreadSurfaceRouteKey =
         remember(initialPayload.instanceId, initialThreadInstanceKey) {
@@ -7833,6 +7867,7 @@ internal fun SharedThreadRouteContent(
             timelineSlice = renderedTimelineSlice,
             accessResolution = renderSlice.accessResolution,
             canonicalAccessResolved = renderSlice.canonicalAccessResolved,
+            replyParentAuthority = renderSlice.replyParentAuthority,
             writeActionsEnabled = renderSlice.writeActionsEnabled,
             channelProfileUpdateStatus = renderSlice.channelProfileUpdateStatus,
             channelProfileUpdateErrorCode = renderSlice.channelProfileUpdateErrorCode,
@@ -10924,6 +10959,7 @@ private fun ThreadPageContent(
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution,
     canonicalAccessResolved: Boolean,
+    replyParentAuthority: ReplyParentAuthorityStatus = ReplyParentAuthorityStatus.Resolving,
     writeActionsEnabled: Boolean,
     channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     channelProfileUpdateErrorCode: String? = null,
@@ -11851,6 +11887,31 @@ private fun ThreadPageContent(
                 // composer mount only with the same resolved render-slice emission
                 // that removes the loading UI, avoiding a second LazyColumn resize.
                 Unit
+            } else if (
+                !writeActionsEnabled &&
+                payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                replyParentAuthority == ReplyParentAuthorityStatus.Unknown
+            ) {
+                // Task #228 successor direction B: "authority undetermined" is
+                // never rendered as a silently vanished composer - the user
+                // gets an explicit explanation and the state upgrades itself
+                // event-driven when the parent directory row arrives.
+                Column(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .background(SlockColor.SurfaceWhite)
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = stringResource(MR.strings.thread_parent_authority_resolving),
+                        style = SlockType.Body.copy(
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            color = SlockColor.TextBlack.copy(alpha = 0.7f)
+                        )
+                    )
+                }
             } else if (!writeActionsEnabled) {
                 Unit
             } else if (!payload.joined) {
