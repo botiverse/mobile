@@ -5,9 +5,10 @@ Author: HanXin
 Status: Proposed (mirror of upstream RFCs; adopted per-slice)
 Upstream sources of truth:
 
-- `slock-source/rfcs/037-frontend-data-flow-standard.md` (frontend data-flow
+- External `botiverse/slock` checkout:
+  `<slock-source>/rfcs/037-frontend-data-flow-standard.md` (frontend data-flow
   standard, L1–L4)
-- `slock-source/rfcs/038-unified-sync-contract.md` (sequence watermarks, gap
+- `<slock-source>/rfcs/038-unified-sync-contract.md` (sequence watermarks, gap
   repair, canonical resolution)
 - Coordination channel: #raft-mobile-reconcile (contract DRI: 赵梓淇, task #70)
 

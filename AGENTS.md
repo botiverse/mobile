@@ -8,24 +8,62 @@
   changes, enable visible touches/pointer overlay and follow
   `docs/android-review-recording.md` before attaching evidence to a task thread.
 
-## Upstream Slock Source
+## Slock server/source contract
 
-- The upstream TypeScript Slock source is checked out as a git submodule at
-  `third_party/slock-source/` (`github.com/botiverse/slock`).
+- The TypeScript server and React source are maintained in the separate private
+  repository `botiverse/slock` (default branch `staging`); Mobile does **not**
+  vendor it as `third_party/slock-source` and `.gitmodules` has no entry for
+  that path. Do not create that path or restore a source submodule.
 - For any wire-contract / API question (HTTP routes, Socket.IO events, payload
-  shapes, field names), read the source directly under
-  `third_party/slock-source/packages/server/` (HTTP + Socket handlers) and
-  `third_party/slock-source/packages/shared/` (shared TypeScript types) rather
-  than guessing field aliases or inferring shapes from Android call sites.
-- Do not re-introduce bundled web JS artifacts. There used to be a
-  `artifacts/web-current/` directory with a minified bundle; it has been
-  removed in favor of reading the source.
-- To fetch the submodule for the first time:
+  shapes, field names), use an external checkout of `botiverse/slock` and read
+  `<slock-source>/packages/server/` (HTTP + Socket handlers) and
+  `<slock-source>/packages/shared/` (shared TypeScript types). Never infer
+  aliases or field names from Android call sites.
+- Point tools and local checks at that checkout with `SLOCK_SOURCE_REPO`; the
+  existing compatibility alias `SLOCK_REACT_REPO_DIR` is also accepted. In CI,
+  the relevant workflow jobs check out `botiverse/slock` into a temporary
+  `slock-source` directory; jobs that invoke the Mobile wrapper set the same
+  variable. For example:
 
 ```bash
-cd /Users/artin/AndroidStudioProjects/Slock
-git submodule update --init --recursive third_party/slock-source
+export SLOCK_SOURCE_REPO=/path/to/your/botiverse/slock
+test -d "$SLOCK_SOURCE_REPO/packages/server"
+test -d "$SLOCK_SOURCE_REPO/packages/shared"
 ```
+
+- For review, migration, or fixture evidence, pin the external checkout to an
+  exact `botiverse/slock` commit and record that SHA; do not treat a moving
+  `staging` checkout as an exact contract snapshot.
+  A repeatable evidence preflight is:
+
+  ```bash
+  git -C "$SLOCK_SOURCE_REPO" rev-parse --is-inside-work-tree >/dev/null
+  UPSTREAM_SHA="$(git -C "$SLOCK_SOURCE_REPO" rev-parse HEAD)"
+  printf 'botiverse/slock upstream SHA: %s\n' "$UPSTREAM_SHA"
+  ```
+
+  Keep that SHA beside the review, migration, or fixture result.
+- `docs/` files whose names contain a date (for example,
+  `*-2026-06-23.md`) are dated audit/spec snapshots. A
+  `third_party/slock-source` path in one of those files records the checkout
+  that existed when the snapshot was written; it is historical provenance,
+  not a current checkout instruction. Current instructions belong in this
+  section and must use the external checkout contract above.
+- Before sending a docs/code change to review, run the explicit source-path
+  checker. New files are governed by default; only the currently audited
+  historical snapshots are allowlisted, so a date in a filename is not an
+  exemption:
+
+  ```bash
+  scripts/check_slock_source_path_contract.sh
+  ```
+
+  The command must exit successfully. To preserve an additional dated
+  snapshot, add it to the script's explicit historical list in the same
+  change; do not broaden the checker with a filename pattern.
+- Do not re-introduce bundled web JS artifacts. There used to be an
+  `artifacts/web-current/` directory with a minified bundle; it has been
+  removed in favor of reading the external source checkout.
 
 ## Shared DTO API Contract Rule
 
@@ -34,11 +72,10 @@ git submodule update --init --recursive third_party/slock-source
   Do not add new app-side Gson/JsonObject response mappers for API payloads in
   `compose/androidApp/src/main/java/.../network/`.
 - For any new or changed API endpoint, first verify the canonical field names
-  in `third_party/slock-source/packages/server/` and
-  `third_party/slock-source/packages/shared/`, then model that exact camelCase
-  shape as a `@Serializable` DTO in shared. No snake_case aliases, no
-  `firstObject(...)` envelope sniffing, and no `string("a", "b", "c")` field
-  guessing.
+  in `<slock-source>/packages/server/` and `<slock-source>/packages/shared/`,
+  then model that exact camelCase shape as a `@Serializable` DTO in shared. No
+  snake_case aliases, no `firstObject(...)` envelope sniffing, and no
+  `string("a", "b", "c")` field guessing.
 - App repositories should wire responses by calling public shared parser
   functions such as `parseSharedXxx(...)` and should keep only UI composition,
   fallback context, and repository orchestration locally.
@@ -331,8 +368,9 @@ without expanding it.
 ### DTO mocks must be verified against upstream fixtures, not invented
 
 When writing test fixtures for typed API DTOs, **do not invent a "looks
-reasonable" payload**. The Iron Rule says verify field names against
-`third_party/slock-source/`; that rule also applies to test mocks.
+reasonable" payload**. The Iron Rule says verify field names against the
+external `botiverse/slock` checkout (`<slock-source>/`); that rule also applies
+to test mocks.
 
 A mock whose only purpose is to make a happy-path test pass is a contract drift
 waiting to happen: the real server returns a different shape, and the field
@@ -346,8 +384,8 @@ When adding DTOs:
 
 - If the field shape is verified, write a regression test that uses the
   canonical upstream payload (either copy-pasted from
-  `third_party/slock-source/packages/server/...` or loaded from a JSON fixture
-  that was round-trip-verified).
+  `<slock-source>/packages/server/...` or loaded from a JSON fixture that was
+  round-trip-verified).
 - If a real upstream fixture is not available, mark the DTO as "pending
   contract verification" in the test name and the source comment, and follow
   up before the task goes to In Review.
