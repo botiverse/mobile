@@ -307,6 +307,7 @@
     <string name="thread_inline_draft">草稿</string>
     <string name="thread_state_no_messages">暂无消息</string>
     <string name="thread_state_no_messages_detail">当前对话还没有消息。</string>
+    <string name="thread_parent_authority_resolving">正在确认权限，暂时无法发送</string>
     <string name="thread_action_join_channel">加入频道</string>
     <string name="thread_timestamp_now">此刻</string>
     <string name="relative_time_unknown">未知时间</string>

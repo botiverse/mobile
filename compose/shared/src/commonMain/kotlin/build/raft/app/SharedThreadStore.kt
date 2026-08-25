@@ -85,6 +85,7 @@ import build.raft.app.model.AttachmentId
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -5151,6 +5152,7 @@ internal data class SharedThreadState(
     val canonicalAccessResolved: Boolean = false,
     val initialHomeAccessLookupComplete: Boolean = false,
     val initialHomeAccessCandidate: ConversationAccessCandidate? = null,
+    val replyParentAuthority: ReplyParentAuthorityStatus = ReplyParentAuthorityStatus.Resolving,
     val writeActionsEnabled: Boolean = false,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val channelProfileUpdateErrorCode: String? = null,
@@ -5168,6 +5170,37 @@ internal enum class ThreadAccessResolution {
     Resolved,
     Error,
     NoPermission
+}
+
+/**
+ * Task #228 successor authority model for reply-thread parent write access.
+ *
+ * "The parent conversation cannot currently be proven writable" is a distinct
+ * state from "the parent conversation is provably not writable". Collapsing
+ * both into `joined=false` hid the composer permanently whenever the parent
+ * directory lookup timed out. The composer stays disabled in every non-
+ * [Writable] state; the difference is what the UI explains and whether
+ * event-driven re-evaluation may still upgrade the state.
+ */
+internal enum class ReplyParentAuthorityStatus {
+    /** Initial lookup still in flight. */
+    Resolving,
+
+    /** Parent directory/server attests joined + canSend. */
+    Writable,
+
+    /** Provably not writable: terminal NoPermission/Error or an accepted
+     *  candidate that denies join/send. Only realtime membership changes to
+     *  the parent row may reopen this; it never times out into Writable. */
+    Denied,
+
+    /** Lookup completed without denial and without a candidate: canonical
+     *  content is readable but parent write authority is undetermined
+     *  (legacy server without parentAccess, or a conversation-list miss).
+     *  Event-driven re-evaluation upgrades this as soon as the parent row
+     *  or a server-provided parentAccess fact arrives. */
+    Unknown,
+
 }
 
 internal enum class ChannelProfileUpdateStatus {
@@ -5197,6 +5230,7 @@ internal data class SharedThreadRenderSlice(
     val highlightedMentions: Set<String>,
     val accessResolution: ThreadAccessResolution,
     val canonicalAccessResolved: Boolean,
+    val replyParentAuthority: ReplyParentAuthorityStatus,
     val writeActionsEnabled: Boolean,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
     val channelProfileUpdateErrorCode: String?
@@ -5210,6 +5244,7 @@ private fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
         highlightedMentions = highlightedMentions,
         accessResolution = accessResolution,
         canonicalAccessResolved = canonicalAccessResolved,
+        replyParentAuthority = replyParentAuthority,
         writeActionsEnabled = writeActionsEnabled,
         channelProfileUpdateStatus = channelProfileUpdateStatus,
         channelProfileUpdateErrorCode = channelProfileUpdateErrorCode
@@ -5252,6 +5287,21 @@ internal sealed interface SharedThreadIntent {
     data class Start(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
     data class ApplyRouteIntent(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
     data object Refresh : SharedThreadIntent
+
+    /**
+     * Task #228 successor: the foreground Thread page observes the shared Home
+     * directory (the same source the initial parent-authority lookup consults)
+     * and forwards the row state for this reply thread's exact parent whenever
+     * it appears or changes. Pure event-driven re-evaluation - no network, no
+     * retry counter.
+     */
+    data class ApplyParentDirectoryHint(
+        val parentChannelId: String,
+        val parentMessageId: String,
+        val present: Boolean,
+        val joined: Boolean,
+        val canSend: Boolean,
+    ) : SharedThreadIntent
     data object RetryAccessResolution : SharedThreadIntent
     data class AppendSentPage(val page: ThreadMessagesPage) : SharedThreadIntent
     data class ApplyLocalSendFailure(
@@ -5454,7 +5504,8 @@ internal class SharedThreadStore(
                         accept(intent)
                     }
             }
-            SharedThreadIntent.RetryAccessResolution -> {
+            SharedThreadIntent.RetryAccessResolution,
+            is SharedThreadIntent.ApplyParentDirectoryHint -> {
                 scope.launch { accept(intent) }
             }
             is SharedThreadIntent.AppendSentPage,
@@ -5553,6 +5604,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyActionCard -> applyActionCard(intent.messageId, intent.card)
             is SharedThreadIntent.ApplyMessageSaved -> applyMessageSaved(intent.messageId, intent.saved)
             is SharedThreadIntent.ApplyChannelJoined -> applyChannelJoined(intent.channelId)
+            is SharedThreadIntent.ApplyParentDirectoryHint -> applyParentDirectoryHint(intent)
             is SharedThreadIntent.UpdateChannelProfile -> updateChannelProfile(intent)
             SharedThreadIntent.ClearChannelProfileUpdateStatus -> clearChannelProfileUpdateStatus()
             is SharedThreadIntent.SelectTab -> selectTab(intent.tab)
@@ -6520,6 +6572,12 @@ internal class SharedThreadStore(
                             accessResolution = nextResolution,
                             initialHomeAccessLookupComplete = true,
                             initialHomeAccessCandidate = candidate,
+                            replyParentAuthority =
+                                resolveReplyParentAuthorityStatus(
+                                    accessResolution = nextResolution,
+                                    payload = authorityProjectedPayload,
+                                    candidate = candidate,
+                                ),
                             writeActionsEnabled =
                                 authorityProjectedPayload.hasWriteAuthorityForAccess(
                                     accessResolution = nextResolution,
@@ -6546,6 +6604,139 @@ internal class SharedThreadStore(
                     launchBackgroundHomeContextHydration(routePayload)
                 }
             }
+    }
+
+    /**
+     * Classifies the reply-thread parent write authority after an access
+     * resolution pass. Non-reply surfaces never carry parent authority.
+     */
+    private fun resolveReplyParentAuthorityStatus(
+        accessResolution: ThreadAccessResolution,
+        payload: KuiklyThreadScreenPayload,
+        candidate: ConversationAccessCandidate?,
+    ): ReplyParentAuthorityStatus {
+        if (payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) {
+            return ReplyParentAuthorityStatus.Writable
+        }
+        return when {
+            accessResolution == ThreadAccessResolution.NoPermission ||
+                accessResolution == ThreadAccessResolution.Error ->
+                ReplyParentAuthorityStatus.Denied
+            candidate != null && payload.acceptsInitialConversationAccessCandidate(candidate) ->
+                if (payload.joined && payload.canSend) {
+                    ReplyParentAuthorityStatus.Writable
+                } else {
+                    ReplyParentAuthorityStatus.Denied
+                }
+            else ->
+                // This classification only runs from the apply pass, which by
+                // definition completes the initial home access lookup.
+                if (payload.hasReadableCanonicalReplyContent()) {
+                    ReplyParentAuthorityStatus.Unknown
+                } else {
+                    ReplyParentAuthorityStatus.Resolving
+                }
+        }
+    }
+
+    /**
+     * Event-driven re-evaluation of reply-thread parent authority (task #228
+     * successor direction A). The Home directory is the same authority source
+     * the initial lookup consults; when its row for the exact parent appears
+     * or changes while the thread is open, this applies it in place - no
+     * retry loop, no network. Only upgrades [ReplyParentAuthorityStatus.Unknown]
+     * or recomputes a candidate-derived [ReplyParentAuthorityStatus.Denied];
+     * terminal NoPermission/Error and non-reply surfaces are untouched.
+     */
+    private suspend fun applyParentDirectoryHint(hint: SharedThreadIntent.ApplyParentDirectoryHint) {
+        val state = _state.value
+        val payload = state.payload
+        if (payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return
+        if (state.accessResolution == ThreadAccessResolution.NoPermission ||
+            state.accessResolution == ThreadAccessResolution.Error
+        ) {
+            return
+        }
+        if (!state.canonicalAccessResolved || !state.initialHomeAccessLookupComplete) return
+        val parentChannelId = payload.parentChannelId?.takeIf { it.isNotBlank() } ?: return
+        if (parentChannelId != hint.parentChannelId) return
+        val parentMessageId =
+            payload.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: payload.originParentMessageId?.takeIf { it.isNotBlank() }
+                ?: return
+        if (parentMessageId != hint.parentMessageId) return
+        val routeIdentity = payload.resolveThreadRouteIdentity()
+        if (routeIdentity.parentKey != "$parentChannelId:$parentMessageId") return
+        if (!hint.present) {
+            // Row absent: nothing new to learn - the state stays Unknown/Resolving.
+            return
+        }
+        if (state.replyParentAuthority == ReplyParentAuthorityStatus.Writable &&
+            payload.joined == hint.joined && payload.canSend == hint.canSend
+        ) {
+            return
+        }
+        val conversationKind =
+            routeIdentity.parentConversationKind ?: ConversationKind.Channel
+        val candidate =
+            ConversationAccessCandidate(
+                ids = setOf(parentChannelId),
+                conversationKind = conversationKind,
+                surfaceKind = "channel",
+                joined = hint.joined,
+                archived = false,
+                permissions =
+                    ConversationPermissions(
+                        canRead = true,
+                        canSend = hint.canSend,
+                        canAttach = hint.canSend,
+                        canCreateTask = hint.canSend,
+                    ),
+            )
+        if (!payload.acceptsInitialConversationAccessCandidate(candidate)) return
+        initialAccessStateMutex.withLock {
+            val current = _state.value
+            // Re-check under the lock: a route/account switch may have landed
+            // while the hint was queued on the dispatcher.
+            if (current.payload.parentChannelId != parentChannelId ||
+                current.payload.sourceThreadId != payload.sourceThreadId ||
+                current.accessResolution == ThreadAccessResolution.NoPermission ||
+                current.accessResolution == ThreadAccessResolution.Error
+            ) {
+                return
+            }
+            val projected =
+                current.payload
+                    .withInitialHomeConversationAccessFallbackUnlessCanonical(
+                        canonicalAccessResolved = current.canonicalAccessResolved,
+                        candidate = candidate,
+                    )
+                    .withTerminalAccessWriteAuthorityClosed(current.accessResolution)
+            val nextAuthority =
+                if (hint.joined && hint.canSend) {
+                    ReplyParentAuthorityStatus.Writable
+                } else {
+                    ReplyParentAuthorityStatus.Denied
+                }
+            val nextWriteActions =
+                projected.hasWriteAuthorityForAccess(
+                    accessResolution = current.accessResolution,
+                    homeLookupComplete = true,
+                    homeAccessCandidate = candidate
+                )
+            diagnosticsLogger?.invoke(
+                "thread_parent_authority_hint_applied threadId=${current.payload.sourceThreadId.orEmpty()} " +
+                    "authority=$nextAuthority joined=${hint.joined} canSend=${hint.canSend}"
+            )
+            reduceState(
+                current.copy(
+                    payload = projected,
+                    initialHomeAccessCandidate = candidate,
+                    replyParentAuthority = nextAuthority,
+                    writeActionsEnabled = nextWriteActions,
+                )
+            )
+        }
     }
 
     private suspend fun retryAccessResolution() {
