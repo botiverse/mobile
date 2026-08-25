@@ -1,12 +1,14 @@
 package build.raft.app.shared
 
 import android.content.Context
+import android.text.Editable
 import android.text.InputType
 import android.view.ActionMode
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
+import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import build.raft.app.core.data.diagnostics.SlockAppLog
@@ -247,6 +249,21 @@ internal class SlockKuiklyTextAreaView(
         return super.onCreateInputConnection(outAttrs).also { activeInputConnection = it }
     }
 
+    // The IME is gone once the view leaves the window, but the field survives: Kuikly pins and
+    // reuses editor views across mounts, so without this the next read would call
+    // finishComposingText() on a connection whose IME no longer exists. That call returns false
+    // rather than throwing, which is precisely the silent "barrier ran" reading this class exists
+    // to prevent.
+    override fun onDetachedFromWindow() {
+        activeInputConnection = null
+        super.onDetachedFromWindow()
+    }
+
+    override fun onDestroy() {
+        activeInputConnection = null
+        super.onDestroy()
+    }
+
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? =
         when (method) {
             KRTextAreaView.METHOD_GET_INNER_CONTENT_HEIGHT -> getContentHeight(callback)
@@ -260,8 +277,21 @@ internal class SlockKuiklyTextAreaView(
                 //
                 // Finishing composition here makes the barrier real for every caller of this
                 // method at once, instead of asking each call site to remember. The renderer
-                // cannot do it for us: the shipped core-render-android artifact contains no
-                // occurrence of "composing" at all, so it reads the raw Editable.
+                // cannot do it for us: in the pinned core-render-android artifact,
+                // KRTextFieldView.createTextInputStateParamMap() builds the reply from
+                // getText()/getSelectionStart()/getSelectionEnd() and writes compositionStart and
+                // compositionEnd as the literal -1 (TextInputState.NO_COMPOSITION). The composition
+                // fields exist in the payload but are never populated, so a shared-side gate on
+                // TextFieldValue.composition would be dead code on Android — it can only ever be
+                // null. The editor is the only layer that can see the composing spans.
+                //
+                // The result is deliberately not used to refuse the read. The reply channel cannot
+                // express failure: TextInputState.decode(null) returns TextInputState(text = "")
+                // rather than null, so a "fail closed" that skips super.call() would hand the
+                // composer an empty value and wipe the user's draft, and one that never invokes the
+                // callback would leave sendSnapshotGate open and disable sending. Refusal is more
+                // destructive than the defect, so the barrier is made to always succeed instead and
+                // a survived composition is reported as the invariant violation it would be.
                 finishComposingBeforeStateRead()
                 super.call(method, params, callback)
             }
@@ -269,23 +299,54 @@ internal class SlockKuiklyTextAreaView(
         }
 
     /**
-     * Ends any in-flight IME composition so the next state read returns committed text only.
+     * Ends any in-flight IME composition so the next state read sees no composing region.
      *
-     * [InputConnection.finishComposingText] is used rather than clearing composing spans directly
-     * because it also tells the IME the composition is over; removing the spans alone leaves the
-     * IME free to re-apply them over text Send has already taken.
+     * The authority is the editor's own composing spans, not the return value of
+     * [InputConnection.finishComposingText] and not the presence of a connection: a dropped or
+     * refused connection reports failure the same way it reports "nothing to do", so trusting
+     * either would let an unfinished composition through as if the barrier had run.
+     *
+     * [InputConnection.finishComposingText] is attempted first because it also tells the IME the
+     * composition is over. [BaseInputConnection.removeComposingSpans] is the fallback rather than
+     * the primary: it ends the composition in the editor but cannot notify an IME, so a live IME
+     * would be free to re-apply spans over text Send has already taken. It is safe exactly where
+     * it is used — after the connection is absent or has refused, i.e. when no live IME owns the
+     * composition. Neither call removes characters; both make the composing text ordinary text.
+     *
+     * @return true when the editor holds no composing region on return.
      */
-    private fun finishComposingBeforeStateRead() {
-        val connection = activeInputConnection ?: return
-        if (!connection.finishComposingText()) {
-            // A stale connection returns false rather than throwing. Drop it so a later read does
-            // not keep calling a dead object and silently believe composition was finished.
-            activeInputConnection = null
-            SlockAppLog.w(
+    private fun finishComposingBeforeStateRead(): Boolean {
+        val editable = editableText ?: return true
+        if (!hasComposingRegion(editable)) return true
+
+        activeInputConnection?.let { connection ->
+            if (!connection.finishComposingText()) {
+                // A stale connection returns false rather than throwing. Drop it so a later read
+                // does not keep calling a dead object and silently believe composition was ended.
+                activeInputConnection = null
+                SlockAppLog.w(
+                    LOG_TAG,
+                    "finishComposingText returned false before state read; connection dropped"
+                )
+            }
+        }
+        if (!hasComposingRegion(editable)) return true
+
+        BaseInputConnection.removeComposingSpans(editable)
+        val ended = !hasComposingRegion(editable)
+        if (!ended) {
+            SlockAppLog.e(
                 LOG_TAG,
-                "finishComposingText returned false before state read; connection dropped"
+                "composing region survived both finishComposingText and removeComposingSpans"
             )
         }
+        return ended
+    }
+
+    private fun hasComposingRegion(editable: Editable): Boolean {
+        val start = BaseInputConnection.getComposingSpanStart(editable)
+        val end = BaseInputConnection.getComposingSpanEnd(editable)
+        return start >= 0 && end > start
     }
 
     override fun setProp(propKey: String, propValue: Any): Boolean =
