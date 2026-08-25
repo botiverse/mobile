@@ -16462,7 +16462,8 @@ private fun ThreadMessagesList(
         ) {
             ThreadUnreadJumpButton(
                 unreadCount = unreadJumpProjection.unreadCount,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = SlockSpacing.Md)
+                // Bottom placement per artin ruling; stacks above back-to-bottom.
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp)
                     .zIndex(ThreadUnreadJumpButtonZIndex),
                 onClick = onClick@{
                     if (unreadJumpInteractionGuardActive) return@onClick
@@ -18395,7 +18396,8 @@ private fun ThreadUnreadJumpButton(
         label = stringResource(MR.strings.thread_action_unread_count, unreadCount),
         onClick = onClick,
         modifier = modifier.slockNativeDispatchCapture(),
-        backgroundColor = SlockColor.BrandYellow,
+        // artin visual ruling (task #232): neutral white pill, bottom placement.
+        backgroundColor = SlockColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = ThreadFloatingPillButtonMinHeight,
         shadowOffset = 4.dp,
