@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-25T22:10:02.437Z",
+  "generatedAt": "2026-08-25T22:14:10.494Z",
   "latestRunId": "7ae5b181-20260825220736",
   "latest": {
     "runId": "7ae5b181-20260825220736",
     "commit": "7ae5b181-20260825220736",
     "commitSubject": "fix(android): make the IME composition barrier verify itself (#2228)",
-    "generatedAt": "2026-08-25T22:10:02.437Z",
+    "generatedAt": "2026-08-25T22:14:10.494Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 86,
-      "ready": 84,
-      "pending": 2
+      "ready": 85,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "7ae5b181-20260825220736",
       "commit": "7ae5b181-20260825220736",
       "commitSubject": "fix(android): make the IME composition barrier verify itself (#2228)",
-      "generatedAt": "2026-08-25T22:10:02.437Z",
+      "generatedAt": "2026-08-25T22:14:10.494Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 86,
-        "ready": 84,
-        "pending": 2
+        "ready": 85,
+        "pending": 1
       },
       "comparisons": [
         "react__android",

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-25T22:10:00.519Z",
+  "generatedAt": "2026-08-25T22:14:08.342Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 80,
-    "pending": 6
+    "ready": 81,
+    "pending": 5
   },
   "cases": [
     {
@@ -457,15 +457,30 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03f407fe43fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-25T22:09:58.898Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-25T22:12:50.529Z",
+      "severity": "low",
+      "summary": [
+        "Status dots (green, orange, gray, blue, pink) appear visually isomorphic between Android and iOS renders — colors, sizes, and stroke treatment match.",
+        "'Waiting pulse' label typography matches across platforms with no observable weight/size differences.",
+        "Horizontal spacing between the four small status dots and between the pink dot and label appear consistent within visual tolerance.",
+        "No clipping, missing elements, or component bounds issues observed in the rendered region."
+      ],
+      "likelyCauses": [
+        "Minor pixel mismatch (~0.30%) likely attributable to anti-aliasing rounding across different rasterizers (Skia on Android vs CoreGraphics on iOS)."
+      ],
+      "suggestedOwner": "ui-engineering",
+      "suggestedFixes": [
+        "No action required; differences fall within the 2% pixel ratio and 1dp layout tolerance thresholds.",
+        "If a stricter match is desired, enable the ignoreAntialiasing tolerance (already on) and verify both renders use identical font fallback stacks."
+      ],
+      "intentional": [
+        "Platform-specific font hinting may produce sub-pixel differences in glyph edges without affecting perceived layout."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0029985417426175998
     },
     {
@@ -2110,7 +2125,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:10:00.062Z",
+      "generatedAt": "2026-08-25T22:14:07.885Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2123,7 +2138,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:10:00.062Z",
+      "generatedAt": "2026-08-25T22:14:07.885Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2136,7 +2151,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:10:00.062Z",
+      "generatedAt": "2026-08-25T22:14:07.885Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2149,7 +2164,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:10:00.062Z",
+      "generatedAt": "2026-08-25T22:14:07.885Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2162,7 +2177,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:10:00.062Z",
+      "generatedAt": "2026-08-25T22:14:07.885Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

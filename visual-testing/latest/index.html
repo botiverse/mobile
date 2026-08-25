@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>7ae5b181-20260825220736</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-25T22:10:02.437Z" data-timestamp="2026-08-25T22:10:02.437Z" title="2026-08-25T22:10:02.437Z">2026-08-25 22:10:02 UTC</time></p>
+    <p class="runMeta"><code>7ae5b181-20260825220736</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-25T22:14:10.494Z" data-timestamp="2026-08-25T22:14:10.494Z" title="2026-08-25T22:14:10.494Z">2026-08-25 22:14:10 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 86</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 85</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 84/86 ready</span>
+      <span class="pill">AI 85/86 ready</span>
       <span class="pill">Matrix 95/114 active</span>
       <span class="pill">Components Parity 84/88 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -5543,7 +5543,12 @@
       <p><code>RGB 95.5%</code><br/><code>Pixel 83.09%</code><br/><code>Mismatch 16.91%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-with-portal 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-ui</summary>
+    <ul><li>Android renders bottom navigation labels in ALL CAPS ('HOME','TASKS','MEMBERS','SETTINGS') while React uses Title Case ('Home','Tasks','Members','Settings').</li><li>Android shows CHANNELS section expanded with 4 skeleton rows placed BEFORE the Direct Messages section, whereas React renders CHANNELS below Joint Channels and after Pinned/Drag-here placeholder.</li><li>React shows an empty-state 'Drag channels or DMs here to pin' placeholder under PINNED; Android omits PINNED section and the empty-state hint entirely.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Change bottom navigation Text composables to use Title Case strings or apply TextStyle with no uppercase transformation to match React baseline.</li><li>Restructure Android Composable Sections list to match React order: Pinned (with 'Drag channels or DMs here to pin' placeholder when empty) → Joint Channels → Channels → Direct Messages.</li><li>Add empty-state Composable under PINNED header when list is empty, matching React copy and styling.</li><li>Verify nav bar TextStyle: fontSize, fontWeight and letter-spacing to align with React's nav label metrics.</li><li>Re-run Slock snapshot after changes; consider baseline update only if differences are intentional.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/screens.home.loading.png" data-current-src="android/screens.home.loading.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

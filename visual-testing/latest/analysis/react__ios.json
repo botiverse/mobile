@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-25T22:09:56.593Z",
+  "generatedAt": "2026-08-25T22:14:04.053Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 78,
-    "pending": 8
+    "ready": 80,
+    "pending": 6
   },
   "cases": [
     {
@@ -467,15 +467,32 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-25T22:09:55.081Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-25T22:12:23.412Z",
+      "severity": "low",
+      "summary": [
+        "Status dot row, labels, and 'Waiting pulse' label match between React and iOS within tolerance (pixel mismatch 0.23%).",
+        "iOS dots appear marginally larger in absolute pixels but proportional to the larger 1170×2532 canvas; no clipping detected.",
+        "No missing or extra elements; colors (green, orange, gray, blue, pink) and order are consistent."
+      ],
+      "likelyCauses": [
+        "Minor DPI/render-scale differences between web and iOS rendering pipelines.",
+        "Antialiasing variance around small circular dot edges (tolerated by ignoreAntialiasing=true)."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "No action required; similarity is above 99.7% and within configured pixelRatio tolerance.",
+        "If tighter parity is desired, align iOS dot diameter to the React spec in points and verify SF/SF Pro text metrics match the web font.",
+        "Re-run with a tighter layoutDp tolerance only if pixel mismatch rises above 1%."
+      ],
+      "intentional": [
+        "Size difference is an artifact of comparing 342×92 baseline to 1170×2532 full-screen iOS capture; the iOS canvas is intentionally larger.",
+        "Dot colors and arrangement intentionally mirror the React component spec."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -1823,7 +1840,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:09:55.907Z",
+      "generatedAt": "2026-08-25T22:14:03.122Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2213,7 +2230,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:09:56.197Z",
+      "generatedAt": "2026-08-25T22:14:03.401Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2226,7 +2243,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:09:56.197Z",
+      "generatedAt": "2026-08-25T22:14:03.401Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2239,7 +2256,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:09:56.197Z",
+      "generatedAt": "2026-08-25T22:14:03.401Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2252,7 +2269,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:09:56.197Z",
+      "generatedAt": "2026-08-25T22:14:03.401Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2265,7 +2282,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:09:56.197Z",
+      "generatedAt": "2026-08-25T22:14:03.401Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2409,15 +2426,36 @@
     },
     {
       "id": "screens.home.loading",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe3ffc000000000000000000000000dffecffecffe4ffecffecffe8ffe4ffedffe8ffe8ffe9ffefffe9ffed3fe9ffe83fe9ffebffebffebffe83ffcffe9ffe8ffe9ffebffe9ffebffefffebffe7ffebffe7ffe81fe7ffe81fe7ffebffe7ffebffe7ffebffe7ffefffe7ffefffe7ffe0000dfba0100199a00002000fffe3fff",
-      "generatedAt": "2026-08-25T22:09:56.421Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-25T22:12:24.833Z",
+      "severity": "high",
+      "summary": [
+        "Major structural difference: iOS renders Channels section at the top of the list while React shows Pinned and Joint Channels sections first",
+        "iOS is missing the entire PINNED section and its 'Drag channels or DMs here to pin' placeholder text",
+        "iOS is missing the JOINT CHANNELS section entirely",
+        "DIRECT MESSAGES section is missing from the React baseline visible area but present on iOS; order of sections differs between platforms",
+        "Bottom tab bar in iOS has icons and labels overlapping/clipped — text labels appear to be rendered on top of the icons (Home, Tasks, Members, Settings) instead of below them"
+      ],
+      "likelyCauses": [
+        "iOS implementation did not include the Pinned and Joint Channels sections in the sidebar list",
+        "Bottom tab bar component on iOS is using a different layout system — icons and labels are being placed in the same stack instead of vertical stack",
+        "Active tab indicator state (yellow background) was not ported to the iOS tab bar component",
+        "Different content rendering order between React and iOS — likely a data-source or sort-order divergence",
+        "Typography token for section headers differs between web (heavier weight) and iOS (lighter weight) implementations"
+      ],
+      "suggestedOwner": "iOS engineer",
+      "suggestedFixes": [
+        "Add the PINNED section and 'Drag channels or DMs here to pin' empty-state to the iOS sidebar, including the drag-handle affordance",
+        "Add the JOINT CHANNELS section above CHANNELS in the iOS sidebar ordering to match React",
+        "Restructure iOS bottom tab bar so labels render below icons (vertical stack) instead of overlapping them",
+        "Apply the yellow active-state background fill to the selected tab on iOS to match React",
+        "Align section header font weight between iOS and React to ensure visual parity"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.19331058181769079
     },
     {

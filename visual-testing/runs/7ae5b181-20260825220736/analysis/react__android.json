@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-25T22:09:53.299Z",
+  "generatedAt": "2026-08-25T22:14:00.326Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 86,
-    "ready": 84,
-    "pending": 2
+    "ready": 85,
+    "pending": 1
   },
   "cases": [
     {
@@ -1870,7 +1870,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:09:52.466Z",
+      "generatedAt": "2026-08-25T22:13:59.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2572,15 +2572,35 @@
     },
     {
       "id": "screens.home.loading",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfffcffe9ffefffe9ffed3fe9ffe83fe9ffebffed7ffbffec3ffcffe9ffe8ffe9ffebffe9ffebffefffebffefffebffefffec1fefffe83fefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
-      "generatedAt": "2026-08-25T22:09:53.069Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-25T22:12:16.808Z",
+      "severity": "high",
+      "summary": [
+        "Android renders bottom navigation labels in ALL CAPS ('HOME','TASKS','MEMBERS','SETTINGS') while React uses Title Case ('Home','Tasks','Members','Settings').",
+        "Android shows CHANNELS section expanded with 4 skeleton rows placed BEFORE the Direct Messages section, whereas React renders CHANNELS below Joint Channels and after Pinned/Drag-here placeholder.",
+        "React shows an empty-state 'Drag channels or DMs here to pin' placeholder under PINNED; Android omits PINNED section and the empty-state hint entirely.",
+        "Section order differs: React order is Search → Activity → Saved → Pinned (with hint) → Joint Channels → Channels → Direct Messages; Android order is Search → Activity → Saved → Channels → Direct Messages.",
+        "Spacing between nav items and icons differs: Android tabs appear slightly more compact/tighter with smaller label gap to icon compared to React."
+      ],
+      "likelyCauses": [
+        "Platform-specific text transform (Android Compose uses Text(text=string.uppercase()) vs React uses CSS text-transform: none/capitalize).",
+        "Navigation graph / LazyColumn ordering differs between React (web) list order and Android Compose Sections list.",
+        "Empty-state placeholder for PINNED not implemented on Android.",
+        "Different default typography styling (label case, letter-spacing, font weight) in Android Material theme vs React CSS."
+      ],
+      "suggestedOwner": "android-ui",
+      "suggestedFixes": [
+        "Change bottom navigation Text composables to use Title Case strings or apply TextStyle with no uppercase transformation to match React baseline.",
+        "Restructure Android Composable Sections list to match React order: Pinned (with 'Drag channels or DMs here to pin' placeholder when empty) → Joint Channels → Channels → Direct Messages.",
+        "Add empty-state Composable under PINNED header when list is empty, matching React copy and styling.",
+        "Verify nav bar TextStyle: fontSize, fontWeight and letter-spacing to align with React's nav label metrics.",
+        "Re-run Slock snapshot after changes; consider baseline update only if differences are intentional."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.16914941737216616
     },
     {

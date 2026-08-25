@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-25 22:10:02 UTC
+Generated: 2026-08-25 22:14:10 UTC
 Latest run: 7ae5b181-20260825220736
 Latest commit: 7ae5b181-20260825220736
 Commit subject: fix(android): make the IME composition barrier verify itself (#2228)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 86, same 0, pass 0, basic-pass 0, different 85, missing 1
-AI analysis: ready 84 / total 86, pending 2
+AI analysis: ready 85 / total 86, pending 1
 Visual coverage matrix: active 95 / total 114, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
