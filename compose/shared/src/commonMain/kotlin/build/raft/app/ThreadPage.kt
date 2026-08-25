@@ -378,6 +378,21 @@ internal fun threadMessageHeaderTimestampLayoutSpec(): ThreadSystemMessageTimest
         maxWidthDp = ThreadRelativeTimestampSlotWidthDp
     )
 
+internal data class ThreadSystemMessageRowLayoutPolicy(
+    val bodyTextAlign: TextAlign,
+    val centerShortMessageGroup: Boolean,
+    val bodyWeightFillsRemainingWidth: Boolean
+)
+
+internal fun threadSystemMessageRowLayoutPolicy(): ThreadSystemMessageRowLayoutPolicy =
+    ThreadSystemMessageRowLayoutPolicy(
+        bodyTextAlign = TextAlign.Center,
+        centerShortMessageGroup = true,
+        // A long collapsed message may use the remaining width, but a short message must not
+        // expand to the whole row or the timestamp/body group would look left-biased.
+        bodyWeightFillsRemainingWidth = false
+    )
+
 private val ThreadNewMessageMenuWidth = 328.dp
 private val ThreadNewMessageMenuReactionRowHeight = 44.dp
 private val ThreadNewMessageMenuReactionButtonSize = 34.dp
@@ -18298,6 +18313,7 @@ private fun ThreadSystemMessageRow(
 ) {
     var expanded by remember(message.id) { mutableStateOf(false) }
     val timestampLayout = remember { threadSystemMessageTimestampLayoutSpec() }
+    val rowLayout = remember { threadSystemMessageRowLayoutPolicy() }
     val systemBody =
         remember(message.body, message.metadata, message.systemEventType, expanded) {
             if (expanded) {
@@ -18312,6 +18328,12 @@ private fun ThreadSystemMessageRow(
                 .background(SlockColor.SurfaceWhite)
                 .clickable { expanded = !expanded }
                 .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
+        horizontalArrangement =
+            if (rowLayout.centerShortMessageGroup) {
+                Arrangement.spacedBy(SlockSpacing.Sm, Alignment.CenterHorizontally)
+            } else {
+                Arrangement.spacedBy(SlockSpacing.Sm)
+            },
         verticalAlignment = Alignment.Top
     ) {
         SlockRelativeTimestampText(
@@ -18329,15 +18351,16 @@ private fun ThreadSystemMessageRow(
                     Modifier.widthIn(max = timestampLayout.maxWidthDp.dp).wrapContentWidth()
                 }
         )
-        Spacer(modifier = Modifier.width(SlockSpacing.Sm))
         Text(
             text = systemBody,
             style = SlockType.Caption.copy(color = ThreadSystemMessageBodyColor),
             color = ThreadSystemMessageBodyColor,
-            textAlign = TextAlign.Start,
+            textAlign = rowLayout.bodyTextAlign,
             maxLines = if (expanded) Int.MAX_VALUE else 1,
             overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
+            // Keep the timestamp/body group centered when the body is short, while allowing a
+            // long system message to consume only the remaining width and ellipsize safely.
+            modifier = Modifier.weight(1f, fill = rowLayout.bodyWeightFillsRemainingWidth)
         )
     }
 }

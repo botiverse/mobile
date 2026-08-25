@@ -8795,6 +8795,18 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
 private fun membersMaskedEnvValue(value: String?): String =
     "•".repeat(value?.length?.coerceIn(1, 8) ?: 3)
 
+internal const val MembersAgentRuntimeConfigDialogMaxHeightDp = 520f
+
+/**
+ * Caps the Profile → Edit Runtime Config surface without overriding a smaller, keyboard-reduced
+ * dialog viewport. The generic dialog surface remains responsible for calculating that viewport.
+ */
+internal fun membersAgentRuntimeConfigDialogHeightCap(availableHeight: Dp): Dp =
+    availableHeight.value
+        .coerceAtLeast(0f)
+        .coerceAtMost(MembersAgentRuntimeConfigDialogMaxHeightDp)
+        .dp
+
 @Composable
 private fun MembersAgentRuntimeConfigDialog(
     initialConfig: RuntimeConfig,
@@ -9137,11 +9149,15 @@ private fun MembersAgentRuntimeConfigDialog(
         // children first, so a capped LazyColumn can swallow the whole keyboard-reduced
         // viewport and leave the trailing Save/Cancel row at zero height. Pin the body to
         // `fillMaxHeight()` and give the scroll area `weight(1f)` so the action row is
-        // measured first and keeps a deterministic height. Mirrors SharedCreateAgentDialog.
-        Column(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-        ) {
+        // measured first and keeps a deterministic height. The route-local cap is applied inside
+        // the available (keyboard-reduced) constraints; the generic dialog remains unchanged.
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .heightIn(max = membersAgentRuntimeConfigDialogHeightCap(maxHeight))
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+            ) {
             LazyColumn(
                 state = runtimeConfigListState,
                 modifier = Modifier.fillMaxWidth().weight(1f)
@@ -9439,6 +9455,7 @@ private fun MembersAgentRuntimeConfigDialog(
             }
         }
         }
+        }
     }
 
     pendingRuntimeSwitchConfig?.let { pendingConfig ->
@@ -9607,7 +9624,6 @@ internal sealed interface MembersAgentRuntimeConfigResolution {
 }
 
 private const val MembersRetainedBuiltInSecretPlaceholder = "retained-by-server"
-
 private fun RuntimeProviderConfig?.membersBuiltInProviderId(): String =
     when (this) {
         is RuntimeProviderConfig.Preset -> providerId

@@ -9,6 +9,7 @@ import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.resource.desc.desc
+import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -16,6 +17,14 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MembersRuntimeConfigTest {
+    @Test
+    fun runtimeConfigDialogHeightCapHonorsNormalAndKeyboardReducedViewports() {
+        assertEquals(520.dp, membersAgentRuntimeConfigDialogHeightCap(844.dp))
+        assertEquals(420.dp, membersAgentRuntimeConfigDialogHeightCap(420.dp))
+        assertEquals(240.dp, membersAgentRuntimeConfigDialogHeightCap(240.dp))
+        assertEquals(0.dp, membersAgentRuntimeConfigDialogHeightCap((-1).dp))
+    }
+
     @Test
     fun runtimeResolutionKeepsNonSecretBuiltInProviderIdentityForEditHydration() {
         val provider = RuntimeProviderConfig.Gateway(
