@@ -69,6 +69,7 @@ class ThreadPendingSendJournalTest {
                     provenance(environmentId = ""),
                     provenance(principalId = ""),
                     provenance(serverId = ""),
+                    provenance(authGeneration = -1L),
                 ).forEach { invalid ->
                     assertFalse(journal.persistSending(invalid, route, pending))
                     assertTrue(journal.restore(invalid, route).isEmpty())

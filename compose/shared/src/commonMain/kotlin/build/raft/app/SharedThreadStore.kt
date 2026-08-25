@@ -211,7 +211,8 @@ internal val ReplyCacheProvenance.threadPendingSendOwnerScopeId: String?
         takeIf { provenance ->
             provenance.environmentId.isNotBlank() &&
                 provenance.principalId.isNotBlank() &&
-                provenance.serverId.isNotBlank()
+                provenance.serverId.isNotBlank() &&
+                provenance.authGeneration >= 0L
         }
             ?.let { provenance ->
                 listOf(

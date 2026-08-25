@@ -13,6 +13,8 @@ import build.raft.app.isTransientLocalSendingMessage
 import build.raft.app.threadPendingSendOwnerScopeId
 import build.raft.app.model.ConversationKind
 import build.raft.app.shared.data.local.ThreadPendingSendEntity
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -41,7 +43,7 @@ internal class ThreadPendingSendJournal(
         Failed,
     }
 
-    private val lock = kotlinx.atomicfu.locks.SynchronizedObject()
+    private val lock = SynchronizedObject()
 
     fun persistSending(
         provenance: ReplyCacheProvenance,
