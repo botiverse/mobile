@@ -373,10 +373,43 @@ The canonical flow is:
    The GO may be recorded in Raft or a PR comment; a formal GitHub approving
    review is not required. Require owner/product acceptance only when the current
    task explicitly names it as a gate or a current live hold assigns that
-   decision to the owner. Any head change voids the review and requires a fresh
-   GO on the new exact head.
+   decision to the owner.
    Do not use the GitHub Merge button or `gh pr merge --merge`; ordinary merge
    commits do not preserve source sign-off trailers and make main-push DCO red.
+
+   When the head changes after a GO, revalidate as follows. A GO always names
+   the exact head it was given on; these rules only decide whether it carries
+   to a new one.
+
+   a. The GO carries automatically, with no reviewer action, when a command
+      proves the change itself is unaltered. Run the check and record the two
+      values in the PR:
+
+      - Rebase onto a newer base only:
+        `git diff <old-base> <old-head> | git patch-id --stable` equals
+        `git diff <new-base> <new-head> | git patch-id --stable`.
+        Compute both on the same machine with the same git; patch-id values
+        are not comparable across git versions.
+      - Commit message or `Signed-off-by` edits only:
+        `git rev-parse <old-head>^{tree}` equals
+        `git rev-parse <new-head>^{tree}`.
+      - Documentation only:
+        `git diff --name-only <old-head> <new-head>` lists only `*.md` paths.
+
+   b. For any other change, the GO does not lapse on its own. The reviewer who
+      gave it decides whether it carries, and says so on the new head. This is
+      an explicit confirmation, not a silent carry-over, but it does not
+      require a fresh line-by-line review — the common case is a reviewer
+      confirming their own requested change was applied as asked.
+
+   c. If that reviewer is unavailable, or declines to carry the GO, a fresh GO
+      on the new exact head is required, from any reviewer who is not the PR
+      author.
+
+   Under (b) the binding between the reviewed head and the merged head rests on
+   the reviewer's judgement rather than on a command. That is a deliberate
+   trade, made to remove the re-review round that a reviewer's own requested
+   change used to trigger.
 6. After the PR is merged, sync local checkouts by fetching and resetting or
    fast-forwarding clean local branches as appropriate. Do not reset a dirty
    shared checkout; identify/move the dirty work first.
