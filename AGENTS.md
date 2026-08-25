@@ -380,8 +380,14 @@ The canonical flow is:
    Owner/product acceptance is **not** a merge gate by default, and neither is
    any further authorisation from the person who requested the work. Require it
    only when the current task explicitly names it as a gate, or a current live
-   hold assigns that decision to the owner. If neither applies, the two
-   conditions above are the whole gate set and the creator may merge.
+   hold assigns that decision to the owner or another accountable seat.
+
+   For an ordinary PR carrying no other task-declared gate and no other current
+   in-scope live hold, the two conditions above are the whole gate set and the
+   creator may merge. That default waives nothing else: any other current
+   in-scope live hold — runtime, release, security, or one assigned to a
+   different accountable seat — still applies on its own terms and is not
+   displaced by this paragraph.
 
    A creator who prefers to wait anyway may do so, but should say plainly that
    it is their own choice and name what they are waiting for — otherwise a
