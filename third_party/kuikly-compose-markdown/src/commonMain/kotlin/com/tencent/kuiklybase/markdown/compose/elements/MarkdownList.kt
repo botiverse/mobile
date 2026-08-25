@@ -84,7 +84,12 @@ fun MarkdownListItems(
                         else -> null
                     }
 
-                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = listItemBottom)) {
+                    Row(
+                        modifier =
+                            Modifier
+                                .then(if (depth == 0) Modifier.fillMaxWidth() else Modifier)
+                                .padding(bottom = listItemBottom)
+                    ) {
                         Box(modifier = markerModifier()) {
                             if (checkboxNode != null) {
                                 val model = MarkdownComponentModel(
@@ -127,7 +132,7 @@ fun MarkdownListItems(
                                         MarkdownParagraph(
                                             content = content,
                                             node = nestedChild,
-                                            modifier = Modifier.fillMaxWidth(),
+                                            modifier = if (depth == 0) Modifier.fillMaxWidth() else Modifier,
                                         )
                                     }
 
