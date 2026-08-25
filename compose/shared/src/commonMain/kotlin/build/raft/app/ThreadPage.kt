@@ -803,9 +803,11 @@ internal fun SharedThreadDataSource.captureThreadLocalSendAuthority(
     val provenance = mountedOwnerProvenance ?: return null
     if (provenance.threadPayloadOwnerScopeId == null) return null
     if (!isCurrentReplyCacheProvenance(provenance)) return null
+    val route = state.payload.resolveThreadRouteIdentity()
+    if (!route.hasCompleteReplyIdentity) return null
     return ThreadLocalSendAuthority(
         provenance = provenance,
-        route = state.payload.resolveThreadRouteIdentity()
+        route = route
     )
 }
 
@@ -3182,12 +3184,14 @@ private fun ThreadPageScreen(
             channelRepository,
             sharedHomeStore,
             sharedStores.threadMessageStore,
+            sharedStores.threadPendingSendJournal,
             sharedStores.apiEnvironmentStore,
             createAgentCoordinator
         ) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
+                pendingSendJournal = sharedStores.threadPendingSendJournal,
                 selectedServerStore = selectedServerStore,
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore,
@@ -4706,6 +4710,40 @@ internal fun SharedThreadRouteContent(
     val timelineSlice = renderSlice.timelineSlice
     val replyMetadataByParentId = renderSlice.replyMetadataByParentId
     val highlightedMentions = renderSlice.highlightedMentions
+    // Task #228 successor (direction A): the shared Home directory is the same
+    // authority source the initial parent lookup consults. Forward the exact
+    // parent row whenever it appears/changes so the store re-evaluates
+    // event-driven; the store fences every hint by route, account state and
+    // current authority status, so redundant dispatches are cheap no-ops.
+    LaunchedEffect(
+        payload.surfaceKind,
+        payload.parentChannelId,
+        payload.parentMessageId,
+        payload.originParentMessageId,
+        sharedHomeState,
+    ) {
+        if (payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return@LaunchedEffect
+        val parentChannelId =
+            payload.parentChannelId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val parentMessageId =
+            payload.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: payload.originParentMessageId?.takeIf { it.isNotBlank() }
+                ?: return@LaunchedEffect
+        val snapshot =
+            (sharedHomeState.content as? SharedHomeContentState.Content)?.baseSnapshot
+        val parentRow =
+            snapshot?.channels?.firstOrNull { it.channelId?.value == parentChannelId }
+                ?: snapshot?.directMessages?.firstOrNull { it.channelId?.value == parentChannelId }
+        threadViewModel.dispatch(
+            SharedThreadIntent.ApplyParentDirectoryHint(
+                parentChannelId = parentChannelId,
+                parentMessageId = parentMessageId,
+                present = parentRow != null,
+                joined = parentRow?.joined == true && parentRow.archived == false,
+                canSend = parentRow?.permissions?.canSend == true,
+            )
+        )
+    }
     val initialThreadInstanceKey = initialRouteIdentity.instanceKey
     val canonicalFinalThreadSurfaceRouteKey =
         remember(initialPayload.instanceId, initialThreadInstanceKey) {
@@ -5060,13 +5098,8 @@ internal fun SharedThreadRouteContent(
         sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "thread_route_attach")
     }
     val latestCurrentSession by rememberUpdatedState(currentSession)
-    // The listener can mount after Activity.onResume. Seed from the authoritative host
-    // visibility so the first external-browser return is treated as a subsequent resume
-    // and rotates stale pointer registrations instead of merely marking lifecycle as seen.
     val threadVisibleResumeGate = remember(threadInstanceKey, storeScope.shellInstanceId) {
-        ThreadVisibleResumeGate(
-            lifecycleSeen = isSlockHostVisible(storeScope.shellInstanceId)
-        )
+        ThreadVisibleResumeGate()
     }
     var threadHostForeground by remember(threadInstanceKey, storeScope.shellInstanceId) {
         mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
@@ -6913,7 +6946,9 @@ internal fun SharedThreadRouteContent(
         threadSendScope.launch {
             fun sendAuthorityStillCurrent(): Boolean =
                 dataSource.isCurrentReplyCacheProvenance(sendProvenance) &&
-                    threadViewModel.state.value.payload.resolveThreadRouteIdentity() == sendRoute
+                    threadViewModel.state.value.payload
+                        .resolveThreadRouteIdentity()
+                        .isPendingSendEquivalentTo(sendRoute)
 
             if (!sendAuthorityStillCurrent()) {
                 bridge.logWarn(
@@ -6936,6 +6971,17 @@ internal fun SharedThreadRouteContent(
                 if (startedFromComposer && sendAuthorityStillCurrent()) {
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
                 }
+            }
+
+            fun keepSendingUnconfirmed(result: String, errorCode: String?, httpCode: Int? = null) {
+                bridge.logWarn(
+                    "thread_send_unconfirmed localMessageId=$localMessageId " +
+                        "channelId=${context.channelId} result=$result code=${errorCode.orEmpty()} " +
+                        "httpCode=${httpCode?.toString().orEmpty()} action=keep_sending"
+                )
+                // The request may already have committed server-side. The durable journal remains
+                // the authority until a canonical randomId echo consumes it or the user retries
+                // explicitly with that same idempotency key. Never auto-resend after recreation.
             }
 
             val sendAttemptState =
@@ -6994,7 +7040,11 @@ internal fun SharedThreadRouteContent(
                                 "attempt" to attempt.toString()
                             )
                     )
-                    markFailed(errorCode, threadSendExceptionErrorMessage(sendException))
+                    if (threadSendShouldSilentlyRetry(errorCode)) {
+                        keepSendingUnconfirmed("exception", errorCode)
+                    } else {
+                        markFailed(errorCode, threadSendExceptionErrorMessage(sendException))
+                    }
                     return@launch
                 }
                 val sendResponse = sendResult.getOrThrow()
@@ -7036,7 +7086,11 @@ internal fun SharedThreadRouteContent(
                                         "attempt" to attempt.toString()
                                     )
                             )
-                            markFailed(errorCode, errorMessage)
+                            if (threadSendShouldSilentlyRetry(errorCode, sendResponse.code)) {
+                                keepSendingUnconfirmed("failure", errorCode, sendResponse.code)
+                            } else {
+                                markFailed(errorCode, errorMessage)
+                            }
                             return@launch
                         }
                     }
@@ -7057,7 +7111,7 @@ internal fun SharedThreadRouteContent(
                         durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
                         metadata = mapOf("result" to "empty", "attempt" to attempt.toString())
                     )
-                    markFailed("empty_response")
+                    keepSendingUnconfirmed("empty_response", "empty_response")
                     return@launch
                 }
                 threadViewModel.accept(
@@ -7833,6 +7887,7 @@ internal fun SharedThreadRouteContent(
             timelineSlice = renderedTimelineSlice,
             accessResolution = renderSlice.accessResolution,
             canonicalAccessResolved = renderSlice.canonicalAccessResolved,
+            replyParentAuthority = renderSlice.replyParentAuthority,
             writeActionsEnabled = renderSlice.writeActionsEnabled,
             channelProfileUpdateStatus = renderSlice.channelProfileUpdateStatus,
             channelProfileUpdateErrorCode = renderSlice.channelProfileUpdateErrorCode,
@@ -10924,6 +10979,7 @@ private fun ThreadPageContent(
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution,
     canonicalAccessResolved: Boolean,
+    replyParentAuthority: ReplyParentAuthorityStatus = ReplyParentAuthorityStatus.Resolving,
     writeActionsEnabled: Boolean,
     channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     channelProfileUpdateErrorCode: String? = null,
@@ -11851,6 +11907,31 @@ private fun ThreadPageContent(
                 // composer mount only with the same resolved render-slice emission
                 // that removes the loading UI, avoiding a second LazyColumn resize.
                 Unit
+            } else if (
+                !writeActionsEnabled &&
+                payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                replyParentAuthority == ReplyParentAuthorityStatus.Unknown
+            ) {
+                // Task #228 successor direction B: "authority undetermined" is
+                // never rendered as a silently vanished composer - the user
+                // gets an explicit explanation and the state upgrades itself
+                // event-driven when the parent directory row arrives.
+                Column(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .background(SlockColor.SurfaceWhite)
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = stringResource(MR.strings.thread_parent_authority_resolving),
+                        style = SlockType.Body.copy(
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            color = SlockColor.TextBlack.copy(alpha = 0.7f)
+                        )
+                    )
+                }
             } else if (!writeActionsEnabled) {
                 Unit
             } else if (!payload.joined) {
@@ -17801,11 +17882,8 @@ internal data class ThreadVisibleResumePlan(
     val rejoinVisibleRooms: Boolean
 )
 
-internal fun threadVisibleResumePlan(
-    lifecycleSeen: Boolean,
-    routeActive: Boolean
-): ThreadVisibleResumePlan? =
-    if (lifecycleSeen && routeActive) {
+internal fun threadVisibleResumePlan(routeActive: Boolean): ThreadVisibleResumePlan? =
+    if (routeActive) {
         ThreadVisibleResumePlan(
             refreshVisibleConversation = true,
             rejoinVisibleRooms = true
@@ -17814,21 +17892,16 @@ internal fun threadVisibleResumePlan(
         null
     }
 
-internal class ThreadVisibleResumeGate(
-    lifecycleSeen: Boolean
-) {
-    private var lifecycleSeen = lifecycleSeen
+internal class ThreadVisibleResumeGate {
     private var pendingVisibleResume = false
 
     fun onLifecycleVisibleResume(routeActive: Boolean): ThreadVisibleResumePlan? {
-        val wasLifecycleSeen = lifecycleSeen
-        lifecycleSeen = true
         if (!routeActive) {
             pendingVisibleResume = true
             return null
         }
         pendingVisibleResume = false
-        return threadVisibleResumePlan(wasLifecycleSeen, routeActive = true)
+        return threadVisibleResumePlan(routeActive = true)
     }
 
     fun onRouteBecameVisible(): ThreadVisibleResumePlan? {

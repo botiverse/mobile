@@ -307,6 +307,7 @@
     <string name="thread_inline_draft">Draft</string>
     <string name="thread_state_no_messages">No messages yet</string>
     <string name="thread_state_no_messages_detail">This conversation has no messages yet.</string>
+    <string name="thread_parent_authority_resolving">Checking permissions - sending is temporarily unavailable</string>
     <string name="thread_action_join_channel">Join channel</string>
     <string name="thread_timestamp_now">this minute</string>
     <string name="relative_time_unknown">unknown time</string>
@@ -955,6 +956,7 @@
     <string name="member_error_avatar_save">Avatar save failed: %1$s</string>
     <string name="member_error_profile_edit_unavailable">Agent profile editing is not available.</string>
     <string name="member_error_role_edit_unavailable">Agent role editing is not available.</string>
+    <string name="member_error_role_update_unconfirmed">The role update was not confirmed. Check the current role and try again.</string>
     <string name="member_error_runtime_edit_unavailable">Runtime config editing is not available.</string>
     <string name="member_error_display_name_required">Display name is required</string>
     <string name="member_error_save">Save failed: %1$s</string>

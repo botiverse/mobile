@@ -20,7 +20,7 @@ case "$*" in
   "api repos/botiverse/mobile/pulls/1459 --jq "*)
     printf '%b\n' "${FAKE_PR_STATE:-open\\tfalse\\t${FAKE_HEAD_SHA:?}\\tmain}"
     ;;
-  "api --paginate --slurp repos/botiverse/mobile/pulls/1459/commits?per_page=100")
+  "api --paginate repos/botiverse/mobile/pulls/1459/commits?per_page=100")
     printf '%s\n' "${FAKE_COMMITS_JSON:?}"
     ;;
   *)
@@ -35,7 +35,7 @@ message_json() {
   local sha="$1"
   local message="$2"
   jq -cn --arg sha "$sha" --arg message "$message" \
-    '[[{sha: $sha, commit: {message: $message}}]]'
+    '[{sha: $sha, commit: {message: $message}}]'
 }
 
 expect_pass() {
@@ -84,6 +84,11 @@ base_env=(
 
 expect_pass "safe settings and exact signed source" env "${base_env[@]}" \
   "$preflight" botiverse/mobile 1459 "$head_sha"
+if grep -Fq -- '--slurp' "$record"; then
+  echo "FAIL: preflight still requires gh --slurp" >&2
+  exit 1
+fi
+echo "PASS: gh versions without --slurp"
 
 expect_fail "rebase disabled" "must enable rebase merge" env "${base_env[@]}" \
   FAKE_MERGE_POLICY='false\ttrue\tfalse' \

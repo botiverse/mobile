@@ -390,6 +390,7 @@ internal class SlockSharedStoreProvider private constructor(
     val messageBodyFontSizeStore: SharedMessageBodyFontSizeStore,
     val threadMessageStore: SharedThreadMessageStore,
     val threadPayloadStore: SharedThreadPayloadStore,
+    internal val threadPendingSendJournal: ThreadPendingSendJournal,
     val channelSettingsSnapshotCache: ChannelSettingsSnapshotCache,
     val foregroundReconciler: SharedForegroundReconciler,
     private val homeStoreScope: CoroutineScope,
@@ -397,6 +398,8 @@ internal class SlockSharedStoreProvider private constructor(
     val threadSendScope: CoroutineScope
 ) {
     private val selectedServerStores = SlockShellScopedStoreCache<SelectedServerStore>()
+    private val selectedServerSelectionEpochStore =
+        KeyValueSelectedServerSelectionEpochStore(sharedPreferenceStore)
     private val shellAuthStores = SlockShellScopedStoreCache<SlockShellAuthSessionStore>()
     private val shellNetworkClients = SlockShellScopedStoreCache<SlockNetworkClient>()
     private val shellServerMembersStores = SlockShellScopedStoreCache<SharedServerMembersStore>()
@@ -606,6 +609,12 @@ internal class SlockSharedStoreProvider private constructor(
                 processAuthTerminalSource.runIfAuthSessionTerminalRevision(expectedGeneration) {
                     ProcessAttachmentAuthScopes.retireAccount()
                     homeSavedStateCache.clear()
+                    // Pending-send rows are retired by the identity-bound
+                    // processPresenceBindingTransition hook.  This terminal
+                    // route deliberately has no captured environment/principal
+                    // authority, so it must not perform a database-wide sweep:
+                    // a late terminal event could otherwise erase another
+                    // account, environment, or successor generation.
                 }
             if (committed) {
                 shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.clear() }
@@ -766,6 +775,10 @@ internal class SlockSharedStoreProvider private constructor(
         selectedServerStores.getOrPut(scope) {
             SelectedServerStore(
                 scope = scope,
+                selectionEpochStore = selectedServerSelectionEpochStore,
+                environmentIdProvider = {
+                    apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+                },
                 onSelectionChanged = { serverId ->
                     runCatching {
                         SlockNetworkKmmRecoveryRemoteFlagBridge.updateActiveSelection(
@@ -1553,6 +1566,7 @@ internal class SlockSharedStoreProvider private constructor(
         ): SlockSharedStoreProvider {
             val eventBusRelay = SlockEventBusRelay(eventBus)
             val database = createSlockSqlDatabase(bridge)
+            val threadPendingSendJournal = ThreadPendingSendJournal(database)
             val relationalStore = SqlDelightRelationalStore(database)
             val localDataStore =
                 RelationalComposeLocalDataStore(
@@ -1978,6 +1992,42 @@ internal class SlockSharedStoreProvider private constructor(
                             currentEnvironmentId = {
                                 apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
                             },
+                            // Retire only the exact environment/principal/auth revision that
+                            // previously owned sends.  A late terminal event can never erase a
+                            // successor login's rows because its authGeneration is different.
+                            onBindingRetired = { retired ->
+                                val cleared = threadPendingSendJournal.clearForAuthRevision(
+                                    environmentId = retired.environmentId,
+                                    principalId = retired.accountId,
+                                    authGeneration = retired.authorityGeneration,
+                                )
+                                if (!cleared) {
+                                    realtimeAuthorityDiagnosticsLogger(
+                                        "thread_pending_send_auth_revision_cleanup_failed " +
+                                            "environmentId=${retired.environmentId} " +
+                                            "principalId=${retired.accountId} " +
+                                            "authGeneration=${retired.authorityGeneration}"
+                                    )
+                                }
+                            },
+                            // A cold process has no in-memory predecessor to retire.  Remove
+                            // only rows from older generations and preserve the exact current
+                            // generation, so a successor login cannot be erased by restoration.
+                            onBindingBound = { bound ->
+                                val cleared = threadPendingSendJournal.clearForPrincipalBeforeAuthRevision(
+                                    environmentId = bound.environmentId,
+                                    principalId = bound.accountId,
+                                    authGeneration = bound.authorityGeneration,
+                                )
+                                if (!cleared) {
+                                    realtimeAuthorityDiagnosticsLogger(
+                                        "thread_pending_send_stale_generation_cleanup_failed " +
+                                            "environmentId=${bound.environmentId} " +
+                                            "principalId=${bound.accountId} " +
+                                            "authGeneration=${bound.authorityGeneration}"
+                                    )
+                                }
+                            },
                         ),
                 )
             // Pixel-avatar runtime table (task #352): apply the MMKV-cached document
@@ -2140,6 +2190,7 @@ internal class SlockSharedStoreProvider private constructor(
                 messageBodyFontSizeStore = messageBodyFontSizeStore,
                 threadMessageStore = SharedThreadMessageStore(),
                 threadPayloadStore = SharedThreadPayloadStore(CoroutineScope(SupervisorJob())),
+                threadPendingSendJournal = threadPendingSendJournal,
                 channelSettingsSnapshotCache = ChannelSettingsSnapshotCache(),
                 foregroundReconciler = foregroundReconciler,
                 homeStoreScope = CoroutineScope(SupervisorJob()),
@@ -2210,6 +2261,7 @@ internal suspend fun awaitThreadReplyCacheIdentityTransition(
             selectedServerStore.convergeReplyCacheAuthorityTransition(
                 expectedPreviousOwner = anchor.principalId,
                 session = session,
+                authGeneration = observedContext.authorityGeneration,
             ) ?: return false
         if (selection.serverId.isNullOrBlank() || selectedServerStore.disposed.value) return false
 

@@ -415,7 +415,7 @@ class MemberRepositoryDataSourceTest {
             )
         )
         assertEquals(
-            """{"name":"Noel Bot","displayName":"Noel Bot","description":null,"role":"admin"}""",
+            """{"name":"Noel Bot","displayName":"Noel Bot","description":null,"serverRole":"admin"}""",
             buildSharedAgentProfileUpdateBody(
                 AgentProfileUpdateRequest(
                     agentId = MemberId("agent-1"),
@@ -427,7 +427,7 @@ class MemberRepositoryDataSourceTest {
             )
         )
         assertEquals(
-            """{"name":"Noel Bot","displayName":"Noel Bot","description":null,"role":null}""",
+            """{"name":"Noel Bot","displayName":"Noel Bot","description":null,"serverRole":null}""",
             buildSharedAgentProfileUpdateBody(
                 AgentProfileUpdateRequest(
                     agentId = MemberId("agent-1"),

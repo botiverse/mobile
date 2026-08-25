@@ -36,6 +36,45 @@ import kotlin.test.assertNull
  */
 class ProcessPresenceBindingReadinessTest {
 
+    @Test
+    fun samePrincipalAuthRotationRetiresOnlyThePreviousBindingGeneration() {
+        val context = MutableStateFlow<ProcessPresenceAuthContext?>(null)
+        val registry = ProcessMemberPresenceRegistry()
+        val retired = mutableListOf<ProcessPresenceAuthContext>()
+        val bound = mutableListOf<ProcessPresenceAuthContext>()
+        val transition =
+            processPresenceBindingTransition(
+                presenceAuthContext = context,
+                registry = registry,
+                onBindingRetired = { retired += it },
+                onBindingBound = {
+                    // The callback runs after the current immutable binding is
+                    // published, so a durable stale-row cleanup can preserve
+                    // exactly this generation.
+                    assertEquals(it, context.value)
+                    bound += it
+                },
+                currentEnvironmentId = { "env-1" },
+            )
+
+        transition(
+            RealtimeAuthRevision(
+                generation = 1L,
+                session = RealtimeAuthoritySession(principalId = "user-1", serverIds = listOf("server-1")),
+            )
+        )
+        transition(
+            RealtimeAuthRevision(
+                generation = 2L,
+                session = RealtimeAuthoritySession(principalId = "user-1", serverIds = listOf("server-1")),
+            )
+        )
+
+        assertEquals(listOf(1L), retired.map { it.authorityGeneration })
+        assertEquals(listOf(1L, 2L), bound.map { it.authorityGeneration })
+        assertEquals(2L, context.value?.authorityGeneration)
+    }
+
     private class ReadinessHarness(
         throwingDiagnosticsLogger: Boolean = false,
         invalidationOverride: ((Set<RealtimeGrantRecord>) -> Unit)? = null,

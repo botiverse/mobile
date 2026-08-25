@@ -789,7 +789,11 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                         .border(SlockStroke.Thin, SlockColor.BorderBlack),
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon(SlockLucideIconName.Hash, color = "#FF000000", modifier = Modifier.size(15.dp))
+                SlockLucideIcon(
+                    result.homeSearchEntityLeadingIconName() ?: SlockLucideIconName.Hash,
+                    color = "#FF000000",
+                    modifier = Modifier.size(15.dp)
+                )
             }
 
         SearchEntityType.Computer ->
@@ -2451,11 +2455,13 @@ private fun SlockAppShellReadyContent(
             conversationRepository,
             sharedStores.threadMessageStore,
             sharedStores.threadPayloadStore,
+            sharedStores.threadPendingSendJournal,
             sharedStores.apiEnvironmentStore
         ) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(appShellNetworkClient),
                 sessionStore = shellAuthStore,
+                pendingSendJournal = sharedStores.threadPendingSendJournal,
                 selectedServerStore = selectedServerStore,
                 conversationRepository = conversationRepository,
                 messageStore = sharedStores.threadMessageStore,
@@ -19894,6 +19900,22 @@ internal data class SearchEntityResult(
     val memberId: String?
         get() = memberIdentity?.memberId?.value
 }
+
+internal fun ThreadLaunchConversationIdentity.homeSearchChannelLeadingIconName(): SlockLucideIconName =
+    when {
+        kind == ConversationKind.Joint -> SlockLucideIconName.GitBranch
+        channelType.equals("private", ignoreCase = true) -> SlockLucideIconName.Lock
+        else -> SlockLucideIconName.Hash
+    }
+
+internal fun SearchEntityResult.homeSearchEntityLeadingIconName(): SlockLucideIconName? =
+    when (type) {
+        SearchEntityType.Channel -> conversationIdentity?.homeSearchChannelLeadingIconName() ?: SlockLucideIconName.Hash
+        SearchEntityType.Computer -> SlockLucideIconName.Monitor
+        SearchEntityType.DirectMessage,
+        SearchEntityType.Human,
+        SearchEntityType.Agent -> null
+    }
 
 internal sealed interface HomeSearchEntityDestination {
     data class Conversation(val identity: ThreadLaunchConversationIdentity) : HomeSearchEntityDestination

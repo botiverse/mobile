@@ -26,6 +26,8 @@ jobs:
         shell: bash
         run: |
           scripts/test_validate_commit_message.sh
+          scripts/test_validate_landed_commit_message.sh
+          scripts/test_commit_signoff_workflow.sh
           scripts/test_check_commit_signoff.sh
           scripts/test_guarded_merge_preflight.sh
           scripts/test_guarded_rebase_merge.sh
@@ -57,6 +59,18 @@ jobs:
           echo "head=$head" >> "$GITHUB_OUTPUT"
           echo "Checking commit sign-off range: $base..$head"
 
-      - name: Check sign-off
+      - name: Check PR/source sign-off
+        if: github.event_name != 'push'
         shell: bash
         run: scripts/check-commit-signoff.sh "${{ steps.range.outputs.base }}" "${{ steps.range.outputs.head }}"
+
+      # A landed squash may include several source commit messages and their
+      # historical sign-offs in its body. The PR/source validator intentionally
+      # rejects that shape, so push validation checks only the final Git trailer
+      # footer while still requiring exactly one @mail.build signer there.
+      # Observed valid examples: 7ffc900e whole=14/parsed=1 and ed60e3e6
+      # whole=4/parsed=1.
+      - name: Check landed sign-off
+        if: github.event_name == 'push'
+        shell: bash
+        run: scripts/check-landed-commit-signoff.sh "${{ steps.range.outputs.base }}" "${{ steps.range.outputs.head }}"
