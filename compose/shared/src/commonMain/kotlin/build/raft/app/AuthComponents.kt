@@ -9,10 +9,15 @@ import build.raft.app.components.SlockDisabledActionShadow
 import build.raft.app.components.slockDisabledActionBackgroundFor
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -32,6 +37,7 @@ import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
@@ -39,10 +45,14 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.focus.focusProperties
+import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.lerp
 import com.tencent.kuikly.compose.ui.layout.ContentScale
+import com.tencent.kuikly.compose.ui.layout.boundsInRoot
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -54,7 +64,9 @@ import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.kuikly.core.views.KeyboardParams
 import com.tencent.kuikly.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 
 internal enum class AuthProvider {
     Google,
@@ -93,6 +105,32 @@ private const val SlockIconAssetSource = "assets://lucide/slock-icon.svg"
 private fun Modifier.authStaticTextFocus(): Modifier =
     focusProperties { canFocus = false }
 
+private val LocalSlockAuthKeyboardHeightChange =
+    compositionLocalOf<(KeyboardParams) -> Unit> { {} }
+
+private val LocalSlockAuthFocusChanged =
+    compositionLocalOf<(Boolean) -> Unit> { {} }
+
+/**
+ * The Android host keeps the page edge-to-edge and uses adjustNothing, so the keyboard does not
+ * resize the Auth LazyColumn. Reduce its root-coordinate viewport explicitly before calculating
+ * the focused editor scroll delta. [keyboardHeightDp] is the native Kuikly value in dp; layout
+ * bounds are pixels.
+ */
+internal fun slockAuthKeyboardReducedViewport(
+    viewport: Rect,
+    keyboardHeightDp: Float,
+    density: Float
+): Rect {
+    val keyboardHeightPx = keyboardHeightDp.coerceAtLeast(0f) * density.coerceAtLeast(0f)
+    return Rect(
+        left = viewport.left,
+        top = viewport.top,
+        right = viewport.right,
+        bottom = (viewport.bottom - keyboardHeightPx).coerceAtLeast(viewport.top)
+    )
+}
+
 @Composable
 internal fun AuthScaffold(
     modifier: Modifier = Modifier,
@@ -105,6 +143,15 @@ internal fun AuthScaffold(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val statusBarHeight = LocalActivity.current.pageData.statusBarHeight
+    val authListState = rememberLazyListState()
+    val authScrollScope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    var authKeyboardHeightDp by remember { mutableStateOf(0f) }
+    var authViewportBounds by remember { mutableStateOf<Rect?>(null) }
+    val authKeyboardScrollCoordinator = remember { SlockFocusedEditorScrollRequestCoordinator() }
+    DisposableEffect(authKeyboardScrollCoordinator) {
+        onDispose { authKeyboardScrollCoordinator.invalidate() }
+    }
     var diagnosticsTapCount by remember { mutableStateOf(0) }
     val onBrandClick =
         onDiagnosticsShortcut?.let { callback ->
@@ -117,45 +164,103 @@ internal fun AuthScaffold(
             }
         }
     SlockInputFocusDismissHost { focusDismissModifier ->
-        Column(
-            modifier = modifier
-                .then(focusDismissModifier)
-                .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
-        ) {
-            AuthTopBar(statusBarHeight, onBrandClick, topBarHorizontalPadding, topBarBrandImagePadding, topLeadingContent)
-            Box(
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 36.dp),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                if (contentScrollable) {
-                    LazyColumn(
-                        modifier = Modifier
-                            .widthIn(max = 314.dp)
-                            .fillMaxSize(),
-                        contentPadding = PaddingValues(top = contentTopPadding, bottom = 40.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        item {
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                content = content
+        val focusedEditorBounds = rememberSlockFocusedInputBoundsResolver()
+        fun keepFocusedAuthEditorVisible(keyboardHeightDp: Float) {
+            if (!contentScrollable) return
+            val requestGeneration = authKeyboardScrollCoordinator.begin()
+            val job = authScrollScope.launch {
+                slockUnifiedDialogKeepFocusedEditorVisible(
+                        keyboardHeight = keyboardHeightDp,
+                        awaitRelayoutFrame = { withFrameNanos { } },
+                        focusedBounds = focusedEditorBounds,
+                        viewportBounds = {
+                            authViewportBounds?.let {
+                                slockAuthKeyboardReducedViewport(
+                                    viewport = it,
+                                    keyboardHeightDp = keyboardHeightDp,
+                                    density = density.density
+                                )
+                            }
+                        },
+                        currentScrollPosition = {
+                            SlockUnifiedDialogListScrollPosition(
+                                index = authListState.firstVisibleItemIndex,
+                                scrollOffset = authListState.firstVisibleItemScrollOffset
                             )
+                        },
+                        scrollToItem = { index, scrollOffset ->
+                            authListState.scrollToItem(index, scrollOffset)
+                        },
+                        isScrollInProgress = { authListState.isScrollInProgress },
+                        isRequestCurrent = {
+                            authKeyboardScrollCoordinator.isCurrent(requestGeneration)
                         }
+                )
+            }
+            authKeyboardScrollCoordinator.attach(job)
+        }
+        val onAuthKeyboardHeightChange: (KeyboardParams) -> Unit = { params ->
+            authKeyboardHeightDp = params.height.coerceAtLeast(0f)
+            keepFocusedAuthEditorVisible(authKeyboardHeightDp)
+        }
+        val onAuthFocusChanged: (Boolean) -> Unit = { focused ->
+            if (focused) {
+                keepFocusedAuthEditorVisible(authKeyboardHeightDp)
+            }
+        }
+        CompositionLocalProvider(
+            LocalSlockAuthKeyboardHeightChange provides onAuthKeyboardHeightChange,
+            LocalSlockAuthFocusChanged provides onAuthFocusChanged
+        ) {
+            Column(
+                modifier = modifier
+                    .then(focusDismissModifier)
+                    .fillMaxSize()
+                    .background(SlockColor.SurfaceWhite)
+            ) {
+                AuthTopBar(statusBarHeight, onBrandClick, topBarHorizontalPadding, topBarBrandImagePadding, topLeadingContent)
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 36.dp),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    if (contentScrollable) {
+                        LazyColumn(
+                            state = authListState,
+                            modifier = Modifier
+                                .widthIn(max = 314.dp)
+                                .fillMaxSize()
+                                .onGloballyPositioned { authViewportBounds = it.boundsInRoot() },
+                            contentPadding =
+                                PaddingValues(
+                                    top = contentTopPadding,
+                                    // adjustNothing leaves the list's measured viewport at full
+                                    // height; reserve the IME region as extra scrollable content
+                                    // so the focused field can move fully above the keyboard.
+                                    bottom = 40.dp + authKeyboardHeightDp.dp
+                                ),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            item {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    content = content
+                                )
+                            }
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = 314.dp)
+                                .padding(top = contentTopPadding),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            content = content
+                        )
                     }
-                } else {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .widthIn(max = 314.dp)
-                            .padding(top = contentTopPadding),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        content = content
-                    )
                 }
             }
         }
@@ -297,11 +402,14 @@ internal fun AuthTextField(
     errorText: String? = null,
     forceFocused: Boolean = false,
     focusRequester: FocusRequester? = null,
+    keyboardHeightChange: ((KeyboardParams) -> Unit)? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     password: Boolean = false
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
+    val resolvedKeyboardHeightChange = keyboardHeightChange ?: LocalSlockAuthKeyboardHeightChange.current
+    val authFocusChanged = LocalSlockAuthFocusChanged.current
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
@@ -329,6 +437,8 @@ internal fun AuthTextField(
             visualTransformation = if (password && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = keyboardOptions,
             keyboardActions = keyboardActions,
+            keyboardHeightChange = resolvedKeyboardHeightChange,
+            onFocusChanged = authFocusChanged,
             focusRequester = focusRequester ?: remember { FocusRequester() },
             trailingContent =
                 if (password) {

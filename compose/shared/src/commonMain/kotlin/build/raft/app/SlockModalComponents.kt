@@ -55,6 +55,7 @@ import com.tencent.kuikly.compose.ui.zIndex
 import com.tencent.kuikly.core.views.KeyboardParams
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlinx.coroutines.Job
 
 private val SlockUnifiedDialogShadowOffset = 4.dp
 
@@ -189,6 +190,34 @@ internal data class SlockUnifiedDialogListScrollPosition(
 }
 
 /**
+ * Owns one focused-editor scroll intent. Cancellation avoids redundant work; the generation
+ * check keeps a late completion from mutating a superseded or disposed list.
+ */
+internal class SlockFocusedEditorScrollRequestCoordinator {
+    private var generation = 0L
+    private var job: Job? = null
+
+    fun begin(): Long {
+        generation += 1L
+        job?.cancel()
+        job = null
+        return generation
+    }
+
+    fun attach(job: Job) {
+        this.job = job
+    }
+
+    fun isCurrent(requestGeneration: Long): Boolean = generation == requestGeneration
+
+    fun invalidate() {
+        generation += 1L
+        job?.cancel()
+        job = null
+    }
+}
+
+/**
  * Waits for the keyboard-driven relayout, then samples the current focused editor and viewport.
  * Geometry is deliberately read after both frames so focus changes and dialog disposal cannot
  * replay the bounds captured by an earlier keyboard callback.
@@ -199,11 +228,15 @@ internal suspend fun slockUnifiedDialogKeepFocusedEditorVisible(
     focusedBounds: () -> Rect?,
     viewportBounds: () -> Rect?,
     currentScrollPosition: () -> SlockUnifiedDialogListScrollPosition,
-    scrollToItem: suspend (index: Int, scrollOffset: Int) -> Unit
+    scrollToItem: suspend (index: Int, scrollOffset: Int) -> Unit,
+    isScrollInProgress: () -> Boolean,
+    isRequestCurrent: () -> Boolean
 ) {
-    if (keyboardHeight <= 0f) return
+    if (keyboardHeight <= 0f || !isRequestCurrent() || isScrollInProgress()) return
     awaitRelayoutFrame()
+    if (!isRequestCurrent() || isScrollInProgress()) return
     awaitRelayoutFrame()
+    if (!isRequestCurrent() || isScrollInProgress()) return
 
     val focused = focusedBounds() ?: return
     val viewport = viewportBounds() ?: return
@@ -214,7 +247,7 @@ internal suspend fun slockUnifiedDialogKeepFocusedEditorVisible(
             viewportTop = viewport.top,
             viewportBottom = viewport.bottom
         )
-    if (delta == 0f) return
+    if (delta == 0f || !isRequestCurrent() || isScrollInProgress()) return
 
     // Root bounds and LazyList offsets are pixels. Round away from zero so a fractional edge
     // overlap cannot leave the editor one sub-pixel outside the reduced viewport.
@@ -227,6 +260,7 @@ internal suspend fun slockUnifiedDialogKeepFocusedEditorVisible(
     val current = currentScrollPosition()
     val targetOffset = (current.scrollOffset + pixelDelta).coerceAtLeast(0)
     if (targetOffset == current.scrollOffset) return
+    if (!isRequestCurrent() || isScrollInProgress()) return
     scrollToItem(current.index, targetOffset)
 }
 

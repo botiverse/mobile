@@ -9098,6 +9098,12 @@ private fun MembersAgentRuntimeConfigDialog(
     val runtimeConfigListState = rememberLazyListState()
     val runtimeConfigScrollScope = rememberCoroutineScope()
     var runtimeConfigViewport by remember { mutableStateOf<Rect?>(null) }
+    val runtimeConfigScrollCoordinator = remember {
+        SlockFocusedEditorScrollRequestCoordinator()
+    }
+    DisposableEffect(runtimeConfigScrollCoordinator) {
+        onDispose { runtimeConfigScrollCoordinator.invalidate() }
+    }
 
     SlockUnifiedDialog(
         title = stringResource(MR.strings.member_dialog_edit_runtime_config).uppercase(),
@@ -9110,8 +9116,9 @@ private fun MembersAgentRuntimeConfigDialog(
 
         fun keepFocusedRuntimeEditorVisible(params: KeyboardParams) {
             dialogKeyboardHeightChange(params)
+            val requestGeneration = runtimeConfigScrollCoordinator.begin()
             if (params.height <= 0f) return
-            runtimeConfigScrollScope.launch {
+            val job = runtimeConfigScrollScope.launch {
                 slockUnifiedDialogKeepFocusedEditorVisible(
                     keyboardHeight = params.height,
                     awaitRelayoutFrame = { withFrameNanos { } },
@@ -9125,9 +9132,14 @@ private fun MembersAgentRuntimeConfigDialog(
                     },
                     scrollToItem = { index, scrollOffset ->
                         runtimeConfigListState.scrollToItem(index, scrollOffset)
+                    },
+                    isScrollInProgress = { runtimeConfigListState.isScrollInProgress },
+                    isRequestCurrent = {
+                        runtimeConfigScrollCoordinator.isCurrent(requestGeneration)
                     }
                 )
             }
+            runtimeConfigScrollCoordinator.attach(job)
         }
 
         CompositionLocalProvider(
