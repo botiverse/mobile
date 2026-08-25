@@ -38,9 +38,19 @@ typed local data source backed by SQLDelight once the smoke DB is in place.
 
 ## Checkout
 
+Only the SQLDelight fork is checked out from source, and only the OHOS build
+needs it (`compose/settings.ohos.gradle.kts` calls `ensureSubmodule` on it;
+Android takes `app.cash.sqldelight` from Maven):
+
 ```bash
-git submodule update --init --recursive third_party/stately third_party/sqliter third_party/sqldelight
+git submodule update --init --recursive third_party/sqldelight
 ```
+
+Do **not** init or build `third_party/stately` or `third_party/sqliter`. Those
+moved to published Touchlab artifacts, and
+`scripts/ci/test_remote_touchlab_ci_contract.py` fails the build if a workflow
+initialises or publishes them locally — `git submodule update --init
+third_party/stately` is in its forbidden list.
 
 ## Local Verification
 
