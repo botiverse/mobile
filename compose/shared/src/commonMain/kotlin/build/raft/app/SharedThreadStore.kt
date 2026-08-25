@@ -63,6 +63,7 @@ import build.raft.app.data.ThreadRouteId
 import build.raft.app.data.ThreadReplySummariesSnapshot
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.ThreadApiResult
+import build.raft.app.data.ThreadPendingSendJournal
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.data.ThreadAttachmentOpenTarget
 import build.raft.app.data.ThreadMessagesPage
@@ -186,10 +187,35 @@ internal fun ReplyCacheProvenance?.currentRevisionForReplyCacheOwner(
 
 internal val ReplyCacheProvenance.threadPayloadOwnerScopeId: String?
     get() =
+        // The payload cache predates the durable journal and still has legacy/test
+        // callers that do not provide an environment. Keep that compatibility key
+        // here; the journal uses the strict identity-bound key below instead.
         takeIf { provenance -> provenance.principalId.isNotBlank() && provenance.serverId.isNotBlank() }
             ?.let { provenance ->
                 listOf(
                     provenance.environmentId.ifBlank { "legacy_environment" },
+                    provenance.principalId,
+                    provenance.serverId,
+                    provenance.authGeneration.toString(),
+                    provenance.selectionGeneration.toString()
+                ).joinToString("\u001f")
+            }
+
+/**
+ * Owner key for the durable pending-send journal. Unlike the historical payload
+ * cache key, this key has no legacy namespace: an absent environment cannot prove
+ * which server realm owns a local send and therefore fails closed.
+ */
+internal val ReplyCacheProvenance.threadPendingSendOwnerScopeId: String?
+    get() =
+        takeIf { provenance ->
+            provenance.environmentId.isNotBlank() &&
+                provenance.principalId.isNotBlank() &&
+                provenance.serverId.isNotBlank()
+        }
+            ?.let { provenance ->
+                listOf(
+                    provenance.environmentId,
                     provenance.principalId,
                     provenance.serverId,
                     provenance.authGeneration.toString(),
@@ -1295,6 +1321,7 @@ internal data class SharedThreadPageFetchResult(
 internal class SharedThreadDataSource(
     private val api: SlockThreadApi,
     private val sessionStore: SlockAuthSessionStore,
+    private val pendingSendJournal: ThreadPendingSendJournal? = null,
     private val selectedServerStore: SelectedServerStore? = null,
     private val memberRepository: MemberRepository? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
@@ -1390,6 +1417,7 @@ internal class SharedThreadDataSource(
     constructor(
         networkApi: SharedThreadNetworkApi,
         sessionStore: SlockAuthSessionStore,
+        pendingSendJournal: ThreadPendingSendJournal? = null,
         selectedServerStore: SelectedServerStore? = null,
         memberRepository: MemberRepository? = null,
         serverMembersStore: SharedServerMembersStore? = null,
@@ -1417,6 +1445,7 @@ internal class SharedThreadDataSource(
     ) : this(
         api = SlockThreadApiClient(networkApi, diagnosticsLogger),
         sessionStore = sessionStore,
+        pendingSendJournal = pendingSendJournal,
         selectedServerStore = selectedServerStore,
         memberRepository = memberRepository,
         serverMembersStore = serverMembersStore,
@@ -1470,6 +1499,91 @@ internal class SharedThreadDataSource(
         readReplyResolutionScope()?.let { scope ->
             ReplyCacheProducerContext(scope.session, scope.provenance)
         }
+
+    /** Durable admission gate for a local send. Must complete before the caller starts HTTP. */
+    internal fun persistPendingLocalSend(
+        provenance: ReplyCacheProvenance,
+        route: ThreadRouteIdentity,
+        message: KuiklyThreadMessageItem,
+    ): Boolean = pendingSendJournal?.persistSending(provenance, route, message) ?: true
+
+    internal fun clearPendingLocalSend(
+        provenance: ReplyCacheProvenance,
+        route: ThreadRouteIdentity,
+        localId: String,
+    ): ThreadPendingSendJournal.ConsumeResult =
+        pendingSendJournal?.consume(provenance, route, localId)
+            ?: ThreadPendingSendJournal.ConsumeResult.NotFound
+
+    /** True when terminal local-send cleanup has a durable row to fence. */
+    internal val hasDurablePendingSendJournal: Boolean
+        get() = pendingSendJournal != null
+
+    internal fun markPendingLocalSendFailed(
+        provenance: ReplyCacheProvenance,
+        route: ThreadRouteIdentity,
+        localId: String,
+        errorCode: String?,
+        errorMessage: String?,
+    ): Boolean =
+        pendingSendJournal?.markFailed(
+            provenance = provenance,
+            route = route,
+            localId = localId,
+            errorCode = errorCode,
+            errorMessage = errorMessage,
+        ) ?: true
+
+    internal fun restorePendingLocalSends(
+        provenance: ReplyCacheProvenance,
+        route: ThreadRouteIdentity,
+        canonicalPayload: KuiklyThreadScreenPayload,
+    ): KuiklyThreadScreenPayload {
+        val journal = pendingSendJournal ?: return canonicalPayload
+        // A cached/launch payload is only a canonical candidate. Pending rows
+        // are owned by the scoped journal, so discard any compatibility shadow
+        // before merging the journal projection back in.
+        val canonicalProjection = canonicalPayload.withoutLocalPendingSendMessages()
+        val canonicalRandomIds =
+            canonicalProjection.messages
+                .asSequence()
+                .filter { it.pendingSendContext == null }
+                .mapNotNull { it.randomId?.trim()?.takeIf(String::isNotBlank) }
+                .toSet()
+        val restored = journal.restore(provenance, route)
+        val surviving = restored.filterNot { item ->
+            val randomId = item.pendingSendContext?.randomId?.trim()?.takeIf(String::isNotBlank)
+            if (randomId == null || randomId !in canonicalRandomIds) return@filterNot false
+            when (journal.consumeCanonicalRandomId(provenance, route, randomId)) {
+                // A canonical row is authoritative even if the local row was already consumed by
+                // another merge path.  Keeping that stale shadow would render a duplicate bubble
+                // until the next refresh, so both terminal success and an idempotent miss remove
+                // it from this projection.
+                ThreadPendingSendJournal.ConsumeResult.Deleted,
+                ThreadPendingSendJournal.ConsumeResult.NotFound -> true
+                // Do not drop the recovered projection merely because the durable delete failed.
+                // The row remains recoverable on the next launch and the diagnostic preserves the
+                // distinction between a storage failure and an idempotent miss.
+                ThreadPendingSendJournal.ConsumeResult.Failed -> {
+                    diagnosticsLogger(
+                        "thread_pending_send_canonical_cleanup_failed randomId=$randomId " +
+                            "serverId=${provenance.serverId} route=${route.instanceKey}"
+                    )
+                    false
+                }
+            }
+        }
+        val existingIds = canonicalProjection.messages.mapTo(mutableSetOf()) { it.id }
+        val additions = surviving.filter { it.id !in existingIds }
+        return if (additions.isEmpty()) {
+            canonicalProjection
+        } else {
+            canonicalProjection.copy(
+                status = "content",
+                messages = (canonicalProjection.messages + additions).sortedByThreadTimeline()
+            ).withOriginReplyCountAtLeastLoadedReplies()
+        }
+    }
 
     private suspend fun readReplyResolutionScope(): ReplyResolutionScope? {
         val captureSequence = replyCacheCaptureSequence.incrementAndGet()
@@ -1650,12 +1764,21 @@ internal class SharedThreadDataSource(
             if (replyCacheProvenance.value?.threadPayloadOwnerScopeId != ownerScopeId) {
                 return@synchronized false
             }
+            val canonicalRoute = payload.resolveThreadRouteIdentity()
+            val canonicalProvenance = expectedProvenance ?: replyCacheProvenance.value
             val threadId =
-                payload.resolveThreadRouteIdentity().timelineChannelId
+                canonicalRoute.timelineChannelId
                     ?: return@synchronized false
             val cacheablePayload =
-                payload
-                    .withoutTransientLocalSendingMessages()
+                (if (pendingSendJournal == null) {
+                    // Fixture/legacy data sources without a journal retain their historical
+                    // failed-send cache projection.
+                    payload.withoutTransientLocalSendingMessages()
+                } else {
+                    // Production's durable journal is the sole pending-state authority. Do not
+                    // turn the canonical payload cache into a second pending database.
+                    payload.withoutLocalPendingSendMessages()
+                })
                     .withOriginReplyCountAtLeastLoadedReplies()
                     .asLoadedEmptyReplyThreadPayload()
             if (cacheablePayload.hasRenderableThreadContent()) {
@@ -1684,6 +1807,32 @@ internal class SharedThreadDataSource(
                 ) {
                     return@synchronized false
                 }
+            }
+            // The cache write is the commit point for this canonical observation.  Only after it
+            // succeeds do we attempt to retire local pending rows; if the delete itself fails,
+            // the canonical cache remains valid and a later pull can retry the idempotent cleanup.
+            if (canonicalProvenance != null) {
+                cacheablePayload.messages
+                    .asSequence()
+                    .filter { it.pendingSendContext == null }
+                    .mapNotNull { it.randomId?.trim()?.takeIf(String::isNotBlank) }
+                    .distinct()
+                    .forEach { randomId ->
+                        when (
+                            pendingSendJournal?.consumeCanonicalRandomId(
+                                provenance = canonicalProvenance,
+                                route = canonicalRoute,
+                                randomId = randomId,
+                            )
+                        ) {
+                            ThreadPendingSendJournal.ConsumeResult.Failed ->
+                                diagnosticsLogger(
+                                    "thread_pending_send_canonical_cleanup_failed randomId=$randomId " +
+                                        "serverId=${canonicalProvenance.serverId} route=${canonicalRoute.instanceKey}"
+                                )
+                            else -> Unit
+                        }
+                    }
             }
             true
         }
@@ -5536,6 +5685,14 @@ internal class SharedThreadStore(
                         .asRefreshFailed(failure.code)
                         .withTerminalAccessWriteAuthorityClosed(ThreadAccessResolution.Error)
                 } ?: candidate
+            }.let { candidate ->
+                producerContext?.let { context ->
+                    dataSource.restorePendingLocalSends(
+                        provenance = context.provenance,
+                        route = routeIdentity,
+                        canonicalPayload = candidate,
+                    )
+                } ?: candidate
             }
         diagnosticsLogger?.invoke(
             "thread_visible_payload threadId=${threadId.orEmpty()} status=${visiblePayload.status} " +
@@ -7845,7 +8002,7 @@ internal class SharedThreadStore(
             if (
                 !current.writeActionsEnabled ||
                 expectedProvenance.threadPayloadOwnerScopeId == null ||
-                current.payload.resolveThreadRouteIdentity() != expectedRoute
+                !current.payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)
             ) {
                 false
             } else {
@@ -7863,7 +8020,32 @@ internal class SharedThreadStore(
                             sentAttachmentIds = seed.sentAttachmentIds
                         )
                     } ?: withLocalSend
-                reduceState(current.copy(payload = nextPayload))
+                val durableMessage = nextPayload.messages.firstOrNull { it.id == message.id } ?: return@withCurrentReplyCacheProvenance false
+                if (!dataSource.persistPendingLocalSend(expectedProvenance, expectedRoute, durableMessage)) {
+                    diagnosticsLogger?.invoke(
+                        "thread_send_admission_rejected reason=pending_journal_write_failed localId=${message.id}"
+                    )
+                    return@withCurrentReplyCacheProvenance false
+                }
+                val emitted = reduceState(current.copy(payload = nextPayload))
+                if (!emitted) {
+                    when (
+                        dataSource.clearPendingLocalSend(
+                            expectedProvenance,
+                            expectedRoute,
+                            durableMessage.id
+                        )
+                    ) {
+                        ThreadPendingSendJournal.ConsumeResult.Failed ->
+                            diagnosticsLogger?.invoke(
+                                "thread_send_admission_rollback_failed localId=${durableMessage.id} " +
+                                    "serverId=${expectedProvenance.serverId} route=${expectedRoute.instanceKey}"
+                            )
+                        ThreadPendingSendJournal.ConsumeResult.Deleted,
+                        ThreadPendingSendJournal.ConsumeResult.NotFound -> Unit
+                    }
+                }
+                emitted
             }
         } ?: false
 
@@ -7874,10 +8056,26 @@ internal class SharedThreadStore(
         expectedProvenance: ReplyCacheProvenance,
         expectedRoute: ThreadRouteIdentity
     ) {
+        if (!dataSource.isCurrentReplyCacheProvenance(expectedProvenance)) return
+        if (!_state.value.payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)) return
+        val durableFailure =
+            dataSource.markPendingLocalSendFailed(
+                provenance = expectedProvenance,
+                route = expectedRoute,
+                localId = messageId,
+                errorCode = errorCode,
+                errorMessage = errorMessage,
+            )
+        if (!durableFailure) {
+            diagnosticsLogger?.invoke(
+                "thread_send_failure_projection_blocked reason=pending_journal_write_failed localId=$messageId"
+            )
+            return
+        }
         val emitted =
             dataSource.withCurrentReplyCacheProvenance(expectedProvenance) {
                 val payload = _state.value.payload
-                if (payload.resolveThreadRouteIdentity() != expectedRoute) {
+                if (!payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)) {
                     false
                 } else {
                     reducePayloadPatch { current ->
@@ -7895,12 +8093,36 @@ internal class SharedThreadStore(
     }
 
     private suspend fun dismissLocalFailedSend(messageId: String) {
+        val provenance = dataSource.currentReplyCacheProvenance() ?: return
+        val route = _state.value.payload.resolveThreadRouteIdentity()
+        val cleanup = dataSource.clearPendingLocalSend(provenance, route, messageId)
+        if (dataSource.hasDurablePendingSendJournal &&
+            cleanup == ThreadPendingSendJournal.ConsumeResult.Failed
+        ) {
+            diagnosticsLogger?.invoke(
+                "thread_send_dismiss_blocked reason=pending_journal_cleanup_${cleanup.name.lowercase()} " +
+                    "localId=$messageId"
+            )
+            return
+        }
         reducePayloadPatchAndCache(cachePayload = true) { payload ->
             payload.withoutLocalFailedSendMessage(messageId)
         }
     }
 
     private suspend fun cancelLocalSend(messageId: String) {
+        val provenance = dataSource.currentReplyCacheProvenance() ?: return
+        val route = _state.value.payload.resolveThreadRouteIdentity()
+        val cleanup = dataSource.clearPendingLocalSend(provenance, route, messageId)
+        if (dataSource.hasDurablePendingSendJournal &&
+            cleanup == ThreadPendingSendJournal.ConsumeResult.Failed
+        ) {
+            diagnosticsLogger?.invoke(
+                "thread_send_cancel_blocked reason=pending_journal_cleanup_${cleanup.name.lowercase()} " +
+                    "localId=$messageId"
+            )
+            return
+        }
         reducePayloadPatchAndCache(cachePayload = true) { payload ->
             payload.withoutLocalSendMessage(messageId)
         }
@@ -7925,7 +8147,7 @@ internal class SharedThreadStore(
                 if (!routeStillCurrent(routePayload, "thread_send", "replace_apply", payload)) {
                     return@reducePayloadPatch payload
                 }
-                if (payload.resolveThreadRouteIdentity() != expectedRoute) {
+                if (!payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)) {
                     return@reducePayloadPatch payload
                 }
                 val appended =
@@ -7953,11 +8175,26 @@ internal class SharedThreadStore(
                 applyToCurrentPayload()
             } ?: false
         if (emitted) {
-            dataSource.cachePayload(
+            val cached = dataSource.cachePayload(
                 payload = _state.value.payload,
                 ownerScopeId = expectedProvenance.threadPayloadOwnerScopeId.orEmpty(),
                 expectedProvenance = expectedProvenance
             )
+            if (cached) {
+                // Realtime may have consumed the row first.  That is a successful terminal path,
+                // not a reason to suppress the canonical projection above.
+                when (
+                    dataSource.clearPendingLocalSend(expectedProvenance, expectedRoute, messageId)
+                ) {
+                    ThreadPendingSendJournal.ConsumeResult.Failed ->
+                        diagnosticsLogger?.invoke(
+                            "thread_pending_send_success_cleanup_failed localId=$messageId " +
+                                "serverId=${expectedProvenance.serverId} route=${expectedRoute.instanceKey}"
+                        )
+                    ThreadPendingSendJournal.ConsumeResult.Deleted,
+                    ThreadPendingSendJournal.ConsumeResult.NotFound -> Unit
+                }
+            }
         }
     }
 
@@ -9937,6 +10174,11 @@ private fun KuiklyThreadScreenPayload.withoutLocalFailedSendMessage(messageId: S
 
 private fun KuiklyThreadScreenPayload.withoutTransientLocalSendingMessages(): KuiklyThreadScreenPayload {
     val retainedMessages = messages.filterNot { it.isTransientLocalSendingMessage() }
+    return if (retainedMessages.size == messages.size) this else copy(messages = retainedMessages)
+}
+
+private fun KuiklyThreadScreenPayload.withoutLocalPendingSendMessages(): KuiklyThreadScreenPayload {
+    val retainedMessages = messages.filterNot { it.pendingSendContext != null }
     return if (retainedMessages.size == messages.size) this else copy(messages = retainedMessages)
 }
 

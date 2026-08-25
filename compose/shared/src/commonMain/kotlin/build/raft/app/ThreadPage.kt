@@ -803,9 +803,11 @@ internal fun SharedThreadDataSource.captureThreadLocalSendAuthority(
     val provenance = mountedOwnerProvenance ?: return null
     if (provenance.threadPayloadOwnerScopeId == null) return null
     if (!isCurrentReplyCacheProvenance(provenance)) return null
+    val route = state.payload.resolveThreadRouteIdentity()
+    if (!route.hasCompleteReplyIdentity) return null
     return ThreadLocalSendAuthority(
         provenance = provenance,
-        route = state.payload.resolveThreadRouteIdentity()
+        route = route
     )
 }
 
@@ -3182,12 +3184,14 @@ private fun ThreadPageScreen(
             channelRepository,
             sharedHomeStore,
             sharedStores.threadMessageStore,
+            sharedStores.threadPendingSendJournal,
             sharedStores.apiEnvironmentStore,
             createAgentCoordinator
         ) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
+                pendingSendJournal = sharedStores.threadPendingSendJournal,
                 selectedServerStore = selectedServerStore,
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore,
@@ -6908,7 +6912,9 @@ internal fun SharedThreadRouteContent(
         threadSendScope.launch {
             fun sendAuthorityStillCurrent(): Boolean =
                 dataSource.isCurrentReplyCacheProvenance(sendProvenance) &&
-                    threadViewModel.state.value.payload.resolveThreadRouteIdentity() == sendRoute
+                    threadViewModel.state.value.payload
+                        .resolveThreadRouteIdentity()
+                        .isPendingSendEquivalentTo(sendRoute)
 
             if (!sendAuthorityStillCurrent()) {
                 bridge.logWarn(
@@ -6931,6 +6937,17 @@ internal fun SharedThreadRouteContent(
                 if (startedFromComposer && sendAuthorityStillCurrent()) {
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
                 }
+            }
+
+            fun keepSendingUnconfirmed(result: String, errorCode: String?, httpCode: Int? = null) {
+                bridge.logWarn(
+                    "thread_send_unconfirmed localMessageId=$localMessageId " +
+                        "channelId=${context.channelId} result=$result code=${errorCode.orEmpty()} " +
+                        "httpCode=${httpCode?.toString().orEmpty()} action=keep_sending"
+                )
+                // The request may already have committed server-side. The durable journal remains
+                // the authority until a canonical randomId echo consumes it or the user retries
+                // explicitly with that same idempotency key. Never auto-resend after recreation.
             }
 
             val sendAttemptState =
@@ -6989,7 +7006,11 @@ internal fun SharedThreadRouteContent(
                                 "attempt" to attempt.toString()
                             )
                     )
-                    markFailed(errorCode, threadSendExceptionErrorMessage(sendException))
+                    if (threadSendShouldSilentlyRetry(errorCode)) {
+                        keepSendingUnconfirmed("exception", errorCode)
+                    } else {
+                        markFailed(errorCode, threadSendExceptionErrorMessage(sendException))
+                    }
                     return@launch
                 }
                 val sendResponse = sendResult.getOrThrow()
@@ -7031,7 +7052,11 @@ internal fun SharedThreadRouteContent(
                                         "attempt" to attempt.toString()
                                     )
                             )
-                            markFailed(errorCode, errorMessage)
+                            if (threadSendShouldSilentlyRetry(errorCode, sendResponse.code)) {
+                                keepSendingUnconfirmed("failure", errorCode, sendResponse.code)
+                            } else {
+                                markFailed(errorCode, errorMessage)
+                            }
                             return@launch
                         }
                     }
@@ -7052,7 +7077,7 @@ internal fun SharedThreadRouteContent(
                         durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
                         metadata = mapOf("result" to "empty", "attempt" to attempt.toString())
                     )
-                    markFailed("empty_response")
+                    keepSendingUnconfirmed("empty_response", "empty_response")
                     return@launch
                 }
                 threadViewModel.accept(

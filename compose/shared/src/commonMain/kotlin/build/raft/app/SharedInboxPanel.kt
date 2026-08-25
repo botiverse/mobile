@@ -179,11 +179,13 @@ internal fun SharedHomeActivityScreen(
             conversationRepository,
             sharedStores.threadMessageStore,
             sharedStores.threadPayloadStore,
+            sharedStores.threadPendingSendJournal,
             sharedStores.apiEnvironmentStore
         ) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
+                pendingSendJournal = sharedStores.threadPendingSendJournal,
                 selectedServerStore = selectedServerStore,
                 conversationRepository = conversationRepository,
                 messageStore = sharedStores.threadMessageStore,
