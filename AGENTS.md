@@ -363,13 +363,17 @@ The canonical flow is:
 
 1. Create a topic branch or worktree from current `origin/main`.
 2. Commit with `Signed-off-by:` and the correct `@mail.build` identity.
-3. Run focused validation and `scripts/check-commit-signoff.sh` for the PR
-   range.
+3. Run focused validation and
+   `scripts/check-commit-signoff.sh <base-sha> <head-sha>` for the PR range.
+   It takes two separate SHAs, not a `base..head` range expression.
 4. Push the topic branch and open a GitHub PR to `main`.
 5. After required checks pass and at least one reviewer who is not the PR author
    gives a clear GO bound to the exact PR head, the PR creator performs the
    merge with
-   `scripts/guarded-squash-merge.sh <owner/repo> <pr> <reviewed-full-sha>`.
+   `scripts/guarded-squash-merge.sh <owner/repo> <pr> <reviewed-full-sha> <message-file|->`.
+   The fourth argument is required: a file holding the squash commit message,
+   or `-` to read it from stdin. That message must carry the `Signed-off-by:`
+   trailer, since the squash body is what main-push DCO validates.
    The GO may be recorded in Raft or a PR comment; a formal GitHub approving
    review is not required. Require owner/product acceptance only when the current
    task explicitly names it as a gate or a current live hold assigns that
@@ -469,8 +473,9 @@ or helper scripts as a workaround for branch protection.
 - Workspace-level Kuikly guidance lives under `.agents/`:
   - `.agents/skills/kuikly-*` contains the vendored skills from
     `Tencent-TDS/KuiklyUI-AI`.
-  - `.agents/skills/slock-dto-migration/SKILL.md` contains Slock-specific DTO
-    migration workflow guidance.
+  - `.agents/skills/slock-*` contains Slock-specific workflow guidance
+    (currently `slock-android-adb-audit`, `slock-android-packaging`,
+    `slock-launch-contract`).
   - `.agents/rules/kuiklyComposeDSL.mdc` and `.agents/rules/kuiklyDSL.mdc` contain
     the Kuikly Compose / Kuikly DSL rules.
   - `.agents/kuikly-ui-ai-source.txt` records the upstream source and commit.
