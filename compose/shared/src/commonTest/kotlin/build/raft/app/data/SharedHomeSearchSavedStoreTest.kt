@@ -88,6 +88,61 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
+    fun searchPersonalizationPrewarmsSynchronouslyAtStoreConstruction() = runBlocking {
+        val repository = PersistentSearchPersonalizationRepository(InMemorySlockKeyValueStore())
+        val now = 1_800_000_000_000L
+        val writerStore =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = FakeSearchRepository(),
+                scope = this,
+                personalizationRepository = repository,
+                nowMillis = { now },
+            )
+        writerStore.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
+        yield()
+        writerStore.dispatch(
+            SharedHomeSearchSavedIntent.RecordSuccessfulSearchOpen(
+                query = "release",
+                entityKind = SearchPersonalizationEntityKind.Channel,
+                entityId = "channel-1",
+            )
+        )
+        yield()
+        writerStore.clear()
+
+        // A brand-new store instance (fresh Search surface) must already expose the
+        // persisted history/frequent rows in its initial state, before any intent
+        // runs and without yielding to the async refresh.
+        val readerStore =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = FakeSearchRepository(),
+                scope = this,
+                personalizationRepository = repository,
+                nowMillis = { now },
+            )
+        assertEquals(true, readerStore.state.value.search.personalizationLoaded)
+        assertEquals(listOf("release"), readerStore.state.value.search.history)
+        assertEquals(
+            setOf(SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-1")),
+            readerStore.state.value.search.frequentEntityRanks.keys,
+        )
+
+        // OpenSearch must reconcile without clearing the prewarmed rows.
+        readerStore.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
+        assertEquals(true, readerStore.state.value.search.personalizationLoaded)
+        assertEquals(listOf("release"), readerStore.state.value.search.history)
+        assertEquals(1, readerStore.state.value.search.frequentEntityRanks.size)
+        yield()
+        assertEquals(listOf("release"), readerStore.state.value.search.history)
+        assertEquals(1, readerStore.state.value.search.frequentEntityRanks.size)
+        readerStore.clear()
+    }
+
+    @Test
     fun latePersonalizationReadCannotCrossAccountBoundary() = runBlocking {
         val auth = InMemorySlockAuthSessionStore(sampleSession("user-a"))
         val repository = DeferredSearchPersonalizationRepository()

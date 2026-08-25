@@ -34,6 +34,7 @@ import build.raft.app.data.AgentCreatorSummary
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentScopeSet
 import build.raft.app.data.AgentDetailSummary
+import build.raft.app.data.normalizedAgentRuntimeStatus
 import build.raft.app.data.AgentChannelSummary
 import build.raft.app.data.AgentDmSummary
 import build.raft.app.data.AgentLifecycleActionResult
@@ -419,6 +420,35 @@ internal fun membersAgentServerRoleOptions(
             label = role.label,
             selected = role == selectedRole
         )
+    }
+
+internal enum class MembersAgentServerRoleSaveOutcome {
+    Success,
+    Empty,
+    MismatchedContent,
+    NoPermission,
+    Error
+}
+
+internal fun DataResult<MemberProfile>.membersAgentServerRoleSaveOutcome(
+    expectedMemberId: MemberId,
+    expectedServerId: ServerId,
+    expectedRole: MembersAgentServerRole
+): MembersAgentServerRoleSaveOutcome =
+    when (this) {
+        is DataResult.Content ->
+            if (
+                data.id == expectedMemberId &&
+                data.serverId == expectedServerId &&
+                    data.serverRole.toMembersAgentServerRoleOrNull() == expectedRole
+            ) {
+                MembersAgentServerRoleSaveOutcome.Success
+            } else {
+                MembersAgentServerRoleSaveOutcome.MismatchedContent
+            }
+        is DataResult.Empty -> MembersAgentServerRoleSaveOutcome.Empty
+        is DataResult.NoPermission -> MembersAgentServerRoleSaveOutcome.NoPermission
+        is DataResult.Error -> MembersAgentServerRoleSaveOutcome.Error
     }
 
 private fun String?.normalizedMembersServerRole(): String =
@@ -910,6 +940,8 @@ private data class MembersAgentDiagnosticActionState(
     val successLabel: String? = null
 )
 
+private const val MembersUnknownAgentStatusLabel = "—"
+
 internal fun membersPrimaryLifecycleAction(status: AgentStatus?, deleted: Boolean): MembersAgentLifecycleAction? =
     if (deleted) {
         null
@@ -944,6 +976,29 @@ internal fun membersResolvedPrimaryLifecycleAction(
                 deleted = false
             )
     }
+
+private fun unknownMembersAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
+    slockAgentStatusIndicatorState(
+        status = null,
+        presence = Presence.Offline,
+        statusLabel = MembersUnknownAgentStatusLabel
+    )
+
+internal fun resolveMembersAgentStatusIndicatorState(
+    canonicalState: SlockAgentStatusIndicatorState?,
+    fixtureFallback: SlockAgentStatusIndicatorState?,
+    fixtureStatusFallbackEnabled: Boolean
+): SlockAgentStatusIndicatorState =
+    canonicalState
+        ?: fixtureFallback.takeIf { fixtureStatusFallbackEnabled }
+        ?: unknownMembersAgentStatusIndicatorState()
+
+private fun SlockAgentStatusIndicatorState.toMembersAgentStatusDisplayState(): MembersAgentStatusDisplayState =
+    MembersAgentStatusDisplayState(
+        status = status,
+        color = color,
+        pulsing = pulsing
+    )
 
 @Page(MEMBERS_SMOKE_PAGE, supportInLocal = true)
 internal class ComposeMembersSmokePage : build.raft.app.base.BasePager() {
@@ -1537,7 +1592,7 @@ internal fun MembersPageContent() {
     }
     val agentStatusResolver =
         remember(serverMembersStore, serverId) {
-            slockAgentStatusResolver(serverMembersStore, serverId)
+            slockScopedAgentStatusResolver(serverMembersStore, serverId)
         }
     val memberAvatarResolver =
         remember(serverMembersStore, serverId) {
@@ -1605,7 +1660,6 @@ internal fun MembersPageContent() {
                         avatarUrl = result.data.avatarUrl,
                         avatar = build.raft.app.model.AvatarReference.fromWireValue(result.data.avatarUrl),
                         presence = build.raft.app.model.Presence.Offline,
-                        agentStatus = build.raft.app.model.AgentStatus.Online,
                         permissionBadges = listOfNotNull(
                             machineName?.let { "computer:$it" },
                             machineId?.let { "computer-id:$it" }
@@ -1864,6 +1918,19 @@ internal sealed interface MemberDetailRouteState {
         val accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull
     ) : MemberDetailRouteState
 }
+
+internal fun memberDetailStatusResolverServerId(
+    routeState: MemberDetailRouteState
+): String? =
+    when (routeState) {
+        is MemberDetailRouteState.Agent ->
+            routeState.server.id.value.takeIf { routeState.accessMode.allowsPrivateAgentSurfaces }
+        is MemberDetailRouteState.Human -> routeState.server.id.value
+        MemberDetailRouteState.Loading,
+        is MemberDetailRouteState.Error -> null
+    }
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
 
 internal data class MemberDetailLoadPlan(
     val priority: DataRequestPriority,
@@ -2422,21 +2489,6 @@ private class MemberDetailRouteProvider(
         )
     }
 
-    fun updateCachedLifecycleResult(action: MembersAgentLifecycleAction, agentId: MemberId) {
-        val state = agentDetailStore.state.value
-        val detail = state.detail ?: return
-        if (state.agentId != agentId || detail.agentId != agentId) return
-        agentDetailStore.dispatch(
-            SharedAgentDetailIntent.SetDetail(
-                agentId,
-                detail.withMemberDetailLifecycleResult(action),
-                preserveSequencedActivity = false,
-                owner = state.detailOwner,
-                profileGeneration = state.detailProfileGeneration
-            )
-        )
-    }
-
     suspend fun runLifecycleAction(
         serverId: ServerId,
         agentId: MemberId,
@@ -2822,6 +2874,10 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 current.server.id.value.takeIf { current.accessMode.allowsPrivateAgentSurfaces }
             else -> null
         }
+    // Human details can render created-agent rows, but they must not opt into the
+    // agent-only computers/runtime surface. Bind only the status/avatar read edge
+    // to the route's canonical server; remote profile-only agents remain unbound.
+    val statusResolverServerId = memberDetailStatusResolverServerId(routeState)
     val agentPanelTabOrderServerId =
         when (val current = routeState) {
             is MemberDetailRouteState.Agent ->
@@ -2872,12 +2928,16 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
         )
     }
     val agentStatusResolver =
-        remember(provider.serverMembersStore, statusLookupServerId) {
-            slockAgentStatusResolver(provider.serverMembersStore, statusLookupServerId)
+        remember(provider.serverMembersStore, statusResolverServerId) {
+            slockScopedAgentStatusResolver(provider.serverMembersStore, statusResolverServerId)
         }
     val memberAvatarResolver =
-        remember(provider.serverMembersStore, statusLookupServerId) {
-            slockMemberAvatarResolver(provider.serverMembersStore, statusLookupServerId)
+        remember(provider.serverMembersStore, statusResolverServerId) {
+            if (statusResolverServerId == null) {
+                EmptySlockMemberAvatarResolver
+            } else {
+                slockMemberAvatarResolver(provider.serverMembersStore, statusResolverServerId)
+            }
         }
 
     suspend fun refreshVisibleAgentActivity(
@@ -2977,8 +3037,8 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
         // The canonical detail request already includes the freshly merged durable/current
         // activity snapshot. Do not immediately repeat the same visible activity request.
     }
-    LaunchedEffect(provider.serverMembersStore, statusLookupServerId) {
-        val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+    LaunchedEffect(provider.serverMembersStore, statusResolverServerId) {
+        val serverId = statusResolverServerId ?: return@LaunchedEffect
         provider.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
     }
     LaunchedEffect(
@@ -3041,7 +3101,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 onRetry = { localAgentDetailRefreshKey += 1 }
             )
         is MemberDetailRouteState.Agent -> {
-            val member = selectedAgentDetail?.toMemberProfile(current.server)
+            val member = selectedAgentDetail?.toStaticMembersProfile(current.server)
             if (member == null) {
                 Box(
                     modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
@@ -3209,7 +3269,6 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                             ): DataResult<AgentLifecycleActionResult> {
                                 val result = provider.runLifecycleAction(current.server.id, agentId, action)
                                 if (result is DataResult.Content && result.data.success) {
-                                    provider.updateCachedLifecycleResult(action, agentId)
                                     localAgentDetailRefreshKey += 1
                                     if (action == MembersAgentLifecycleAction.Delete) {
                                         provider.bridge.closePage()
@@ -3884,47 +3943,6 @@ internal fun JSONObject.toKuiklyMemberDetailPayload(): KuiklyMemberDetailPayload
     )
 }
 
-private fun JSONObject?.toMemberProfile(): MemberProfile {
-    if (this == null) return KuiklyMembersPayload().members.firstOrNull() ?: MemberProfile(
-        id = MemberId("unknown"),
-        displayName = "Unknown",
-        handle = "@unknown",
-        kind = MemberKind.Human
-    )
-    val avatarJson = optJSONObject("avatar")
-    val avatarWireValue =
-        avatarJson?.optString("wireValue")
-            ?: optString("avatarWireValue").takeIf { it.isNotBlank() }
-            ?: optString("avatarUrl").takeIf { it.isNotBlank() }
-    return MemberProfile(
-        id = MemberId(optString("id").ifBlank { "unknown" }),
-        displayName = optString("displayName").ifBlank { "Unknown" },
-        handle = optString("handle").ifBlank { "@unknown" },
-        kind = optString("kind").toMemberKind(),
-        description = optNullableString("description"),
-        roleDescription = optNullableString("roleDescription"),
-        email = optNullableString("email"),
-        avatarUrl = optNullableString("avatarUrl"),
-        avatar = AvatarReference.fromWireValue(avatarWireValue),
-        avatarLabel = optString("avatarLabel").ifBlank { optString("displayName").take(1).uppercase() },
-        presence = optString("presence").toPresence(),
-        agentStatus = AgentStatus.fromWireValue(optNullableString("agentStatus")),
-        permissionBadges =
-            buildList {
-                val badges = this@toMemberProfile.optJSONArray("permissionBadges") ?: return@buildList
-                for (index in 0 until badges.length()) {
-                    badges.optString(index)?.takeIf { it.isNotBlank() }?.let(::add)
-                }
-            }
-    )
-}
-
-private fun String.toMemberKind(): MemberKind =
-    MemberKind.entries.firstOrNull { it.name.equals(this, ignoreCase = true) } ?: MemberKind.Human
-
-private fun String.toPresence(): Presence =
-    Presence.entries.firstOrNull { it.name.equals(this, ignoreCase = true) } ?: Presence.Offline
-
 private fun JSONObject.optNullableString(key: String): String? =
     optString(key).takeIf { it.isNotBlank() && it != "null" }
 
@@ -4489,11 +4507,20 @@ private fun MembersDetailContent(
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
     val agentStatusIndicatorState =
         if (member.kind == MemberKind.Agent) {
-            rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value)
-                ?: member.toSlockAgentStatusIndicatorState(
-                    summaryStatus = detail?.summary?.status,
-                    summaryActivity = detail?.summary?.activity
-                )
+            val canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value)
+            resolveMembersAgentStatusIndicatorState(
+                canonicalState = canonicalState,
+                fixtureFallback =
+                    if (stableVisualCapture) {
+                        member.toFixtureSlockAgentStatusIndicatorState(
+                            summaryStatus = detail?.summary?.status,
+                            summaryActivity = detail?.summary?.activity
+                        )
+                    } else {
+                        null
+                    },
+                fixtureStatusFallbackEnabled = stableVisualCapture
+            )
         } else {
             null
         }
@@ -4743,7 +4770,7 @@ private fun MembersDetailContent(
         }
     }
     fun copyDiagnostics() {
-        val diagnostics = buildMembersAgentDiagnostics(member, detail)
+        val diagnostics = buildMembersAgentDiagnostics(member, detail, agentStatusIndicatorState)
         if (sharedAgentDetailStore != null && agentDetailActions != null) {
             sharedAgentDetailStore.copyDiagnostics(diagnostics, agentDetailActions)
         } else {
@@ -4775,7 +4802,7 @@ private fun MembersDetailContent(
             val request =
                 SharedAgentIssueReportRequest(
                     description = description.trim(),
-                    diagnostics = buildMembersAgentDiagnostics(member, detail),
+                    diagnostics = buildMembersAgentDiagnostics(member, detail, agentStatusIndicatorState),
                     includeRecentMessages = includeRecentMessages,
                     includeLiveActivity = includeLiveActivity,
                     includeActivityHistory = includeActivityHistory,
@@ -5013,6 +5040,7 @@ private fun MembersDetailContent(
                                         },
                                         onOpenComputer = onOpenComputer,
                                         timeContext = timeContext,
+                                        fixtureStatusFallbackEnabled = stableVisualCapture,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
                                 MembersAgentDetailTab.Chat ->
@@ -5059,6 +5087,8 @@ private fun MembersDetailContent(
                                 member = member,
                                 timeContext = timeContext,
                                 memberAvatarResolver = memberAvatarResolver,
+                                agentStatusResolver = agentStatusResolver,
+                                fixtureStatusFallbackEnabled = stableVisualCapture,
                                 actorRole = humanActorRole,
                                 accessMode = humanAccessMode,
                                 currentUserId = currentUserId,
@@ -5078,9 +5108,13 @@ private fun MembersDetailContent(
         }
         val dropdownAnchor = managementMenuAnchor
         if (managementMenuOpen && member.kind == MemberKind.Agent && dropdownAnchor != null) {
-            val menuSummary = detail?.summary
-            val menuStatus = member.membersAgentStatusDisplayState(menuSummary?.status, menuSummary?.activity).status
-            val menuPrimary = membersPrimaryLifecycleAction(menuStatus, deleted)
+            val menuPrimary =
+                membersResolvedPrimaryLifecycleAction(
+                    resolvedStatus = agentStatusIndicatorState?.status,
+                    detailFallbackStatus = null,
+                    deleted = deleted,
+                    hasResolvedPresence = true
+                )
             val menuItems =
                 buildMembersManagementMenuItems(
                     primaryAction = menuPrimary,
@@ -5322,7 +5356,13 @@ private fun MembersDetailHeader(
         remember(threeDotButtonAnchor) { threeDotButtonAnchor.resolver(SlockPopoverLocalPoint.BottomEnd) }
     val currentOnManagementMenuAnchorResolverReady by
         rememberUpdatedState(onManagementMenuAnchorResolverReady)
-    val agentStatusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
+    val agentStatusDisplayState =
+        if (member.kind == MemberKind.Agent) {
+            agentStatusIndicatorState?.toMembersAgentStatusDisplayState()
+                ?: unknownMembersAgentStatusIndicatorState().toMembersAgentStatusDisplayState()
+        } else {
+            member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
+        }
     val headerMetaLabel =
         when {
             deleted -> stringResource(MR.strings.member_status_deleted)
@@ -5454,7 +5494,7 @@ private fun MembersDetailSummary(
                 summaryStatus = summary?.status,
                 summaryActivity = summary?.activity,
                 summaryActivityDetail = summary?.activityDetail,
-                fallback = member.detailStatusLabel
+                fallback = MembersUnknownAgentStatusLabel
             )
         }
     Row(
@@ -5470,7 +5510,9 @@ private fun MembersDetailSummary(
             member = member,
             avatarSize = 58.dp,
             statusSize = 12.dp,
-            statusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity),
+            statusDisplayState =
+                agentStatusIndicatorState?.toMembersAgentStatusDisplayState()
+                    ?: unknownMembersAgentStatusIndicatorState().toMembersAgentStatusDisplayState(),
             statusIndicatorState = agentStatusIndicatorState,
             memberAvatarResolver = memberAvatarResolver
         )
@@ -6425,6 +6467,8 @@ private fun MembersHumanDetailSections(
     member: MemberProfile,
     timeContext: SlockTimeContext,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    fixtureStatusFallbackEnabled: Boolean = false,
     actorRole: String? = null,
     accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
     currentUserId: String? = null,
@@ -6450,7 +6494,12 @@ private fun MembersHumanDetailSections(
             ownerCount = ownerCount,
             onUpdateRole = onUpdateRole
         )
-        MembersHumanCreatedAgentsSection(member, memberAvatarResolver)
+        MembersHumanCreatedAgentsSection(
+            member = member,
+            agentStatusResolver = agentStatusResolver,
+            memberAvatarResolver = memberAvatarResolver,
+            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
+        )
         if (onRemoveMember != null) {
             MembersHumanActionsSection(onRemoveMember)
         }
@@ -6909,7 +6958,9 @@ private fun MembersAgentRoleHelpRow(
 @Composable
 private fun MembersHumanCreatedAgentsSection(
     member: MemberProfile,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    fixtureStatusFallbackEnabled: Boolean = false
 ) {
     val createdAgents = member.createdAgents
     Column(
@@ -6945,7 +6996,12 @@ private fun MembersHumanCreatedAgentsSection(
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 createdAgents.forEach { agent ->
-                    MembersHumanCreatedAgentRow(agent, memberAvatarResolver)
+                    MembersHumanCreatedAgentRow(
+                        agent = agent,
+                        agentStatusResolver = agentStatusResolver,
+                        memberAvatarResolver = memberAvatarResolver,
+                        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
+                    )
                 }
             }
         }
@@ -6977,13 +7033,23 @@ private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
 @Composable
 private fun MembersHumanCreatedAgentRow(
     agent: AgentProfile,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    fixtureStatusFallbackEnabled: Boolean = false
 ) {
-    val profile = remember(agent) { agent.toMemberProfile() }
-    val statusDisplayState = profile.toSlockAgentStatusIndicatorState(
-        summaryStatus = agent.statusLabel,
-        summaryActivity = agent.statusLabel
-    )
+    val profile = remember(agent) { agent.toStaticMembersProfile() }
+    val statusIndicatorState =
+        resolveMembersAgentStatusIndicatorState(
+            canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, profile.id.value),
+            fixtureFallback =
+                if (fixtureStatusFallbackEnabled) {
+                    agent.toFixtureSlockAgentStatusIndicatorState()
+                } else {
+                    null
+                },
+            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
+        )
+    val statusDisplayState = statusIndicatorState.toMembersAgentStatusDisplayState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -7069,7 +7135,11 @@ private fun MembersAgentAvatarPicker(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
             ) {
-                MembersAvatar(member = member, avatarSize = 80.dp)
+                MembersAvatar(
+                    member = member,
+                    avatarSize = 80.dp,
+                    showStatusOverlay = false
+                )
                 Text(
                     text = member.avatar?.wireValue ?: member.avatarUrl ?: stringResource(MR.strings.member_label_default),
                     style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
@@ -7237,7 +7307,7 @@ private fun MembersAgentProfileHeader(
         summaryStatus = summary?.status,
         summaryActivity = summary?.activity,
         summaryActivityDetail = null,
-        fallback = member.detailStatusLabel
+        fallback = MembersUnknownAgentStatusLabel
     )
     val scope = rememberCoroutineScope()
     val errorStrings = localizedErrorPresentationStrings()
@@ -7395,6 +7465,7 @@ private fun MembersAgentProfileTab(
     onReportIssue: () -> Unit = {},
     onOpenComputer: (() -> Unit)? = null,
     timeContext: SlockTimeContext,
+    fixtureStatusFallbackEnabled: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val errorStrings = localizedErrorPresentationStrings()
@@ -7404,8 +7475,15 @@ private fun MembersAgentProfileTab(
         (runtimeConfigResolution as? MembersAgentRuntimeConfigResolution.Content)?.config
     val canonicalRuntimeId = canonicalRuntimeConfig?.runtime
     val canonicalRuntimeModel = canonicalRuntimeConfig?.model
+    // Runtime mutations need an explicit canonical status. A null status is
+    // deliberately neutral in the renderer; treating it as "inactive" here
+    // would allow a reset-sensitive edit while presence is still unknown.
+    val canonicalRuntimeStatus = agentStatusIndicatorState?.status
+    val runtimeStatusResolved = membersAgentRuntimeStatusResolved(canonicalRuntimeStatus)
+    val activeAgent = membersAgentRuntimeActive(canonicalRuntimeStatus)
     val runtimeEditorReady =
-        canonicalRuntimeConfig != null &&
+        runtimeStatusResolved &&
+            canonicalRuntimeConfig != null &&
             membersAgentRuntimeConfigSaveAttemptEnabled(
                 runtime = canonicalRuntimeConfig.runtime,
                 model = canonicalRuntimeConfig.toMembersRuntimeModelValue(),
@@ -7426,6 +7504,8 @@ private fun MembersAgentProfileTab(
     val displayNameRequired = stringResource(MR.strings.member_error_display_name_required)
     val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
     val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
+    val emptyResponseMessage = stringResource(MR.strings.member_error_empty_response)
+    val roleUpdateUnconfirmedMessage = stringResource(MR.strings.member_error_role_update_unconfirmed)
     val descriptionTooLongTemplate = membersStringTemplate(MR.strings.member_error_description_too_long)
 
     // Display Name: independent edit state machine, mirrors React `editingDisplayName`
@@ -7689,6 +7769,11 @@ private fun MembersAgentProfileTab(
             serverRoleError = null
             return
         }
+        val expectedServerId = serverRoleEditorAuthority?.serverId
+            ?: run {
+                onUnavailableAction(roleEditingUnavailable)
+                return
+            }
         scope.launch {
             if (serverRoleEditorAuthority != currentProfileEditAuthority) {
                 onUnavailableAction(roleEditingUnavailable)
@@ -7718,17 +7803,25 @@ private fun MembersAgentProfileTab(
             if (serverRoleEditorAuthority != currentProfileEditAuthority) return@launch
             when (result) {
                 is DataResult.Content -> {
-                    onApplyAgentProfileResult(result.data)
-                    editingServerRole = false
-                    serverRoleMenuExpanded = false
+                    when (result.membersAgentServerRoleSaveOutcome(member.id, expectedServerId, next)) {
+                        MembersAgentServerRoleSaveOutcome.Success -> {
+                            onApplyAgentProfileResult(result.data)
+                            editingServerRole = false
+                            serverRoleMenuExpanded = false
+                        }
+                        MembersAgentServerRoleSaveOutcome.MismatchedContent ->
+                            serverRoleError = roleUpdateUnconfirmedMessage
+                        else -> serverRoleError = roleUpdateUnconfirmedMessage
+                    }
                 }
-                is DataResult.Empty -> {
-                    editingServerRole = false
-                    serverRoleMenuExpanded = false
-                }
+                is DataResult.Empty -> serverRoleError = emptyResponseMessage
                 is DataResult.NoPermission ->
                     serverRoleError =
-                        membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
+                        membersFormattedPermissionError(
+                            permissionErrorTemplate,
+                            result.blocker,
+                            errorStrings
+                        )
                 is DataResult.Error ->
                     serverRoleError = membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
             }
@@ -7742,7 +7835,12 @@ private fun MembersAgentProfileTab(
         retainBuiltInProviderSecret: Boolean
     ) {
         val callback = onUpdateAgentProfile
-        if (!canEdit || (agentDetailActions == null && callback == null) || savingRuntimeConfig) {
+        if (
+            !canEdit ||
+                !runtimeStatusResolved ||
+                (agentDetailActions == null && callback == null) ||
+                savingRuntimeConfig
+        ) {
             onUnavailableAction(runtimeEditingUnavailable)
             return
         }
@@ -7763,8 +7861,6 @@ private fun MembersAgentProfileTab(
             onUnavailableAction(runtimeEditingUnavailable)
             return
         }
-        val currentStatus = AgentStatus.fromWireValue(summary?.status)
-        val activeAgent = currentStatus != null && currentStatus.presence != Presence.Offline
         val restartMode = membersRuntimeConfigResetMode(currentConfig, nextConfig, activeAgent)
         scope.launch {
             savingRuntimeConfig = true
@@ -8317,11 +8413,11 @@ private fun MembersAgentProfileTab(
             MembersAgentRuntimeEnvVars(summary)
         }
 
-        if (editingRuntimeConfig && canonicalRuntimeConfig != null) {
+        if (editingRuntimeConfig && canonicalRuntimeConfig != null && runtimeStatusResolved) {
             MembersAgentRuntimeConfigDialog(
                 initialConfig = canonicalRuntimeConfig,
                 memberId = member.id,
-                summary = summary,
+                activeAgent = activeAgent,
                 machineRuntimeIds = agentMachineRuntimes,
                 runtimeModelsByRuntime = agentRuntimeModelsByRuntime,
                 runtimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
@@ -8356,7 +8452,8 @@ private fun MembersAgentProfileTab(
         MembersAgentCreatedAgentsSection(
             detail = detail,
             agentStatusResolver = agentStatusResolver,
-            memberAvatarResolver = memberAvatarResolver
+            memberAvatarResolver = memberAvatarResolver,
+            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
         )
         MembersAgentSkillsSection(detail)
         MembersAgentProfileActionsSection(
@@ -8392,15 +8489,13 @@ private fun MembersAgentProfileActionsSection(
     if (!canManage || deleted) return
 
     // The action reads the same process presence SSOT as the header/avatar.
-    // Detail summary remains only the pre-resolution fallback, so the screen
-    // cannot say Stopped while simultaneously offering Stop Agent.
+    // Detail/profile snapshots never decide a production lifecycle action.
     val primaryAction =
         membersResolvedPrimaryLifecycleAction(
             resolvedStatus = resolvedStatus?.status,
-            detailFallbackStatus =
-                member.membersAgentStatusDisplayState(summary?.status, summary?.activity).status,
+            detailFallbackStatus = null,
             deleted = false,
-            hasResolvedPresence = resolvedStatus != null
+            hasResolvedPresence = true
         )
     val primaryLabel =
         when (primaryAction) {
@@ -8422,7 +8517,7 @@ private fun MembersAgentProfileActionsSection(
         MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions).uppercase())
         if (primaryAction != null) {
             SlockBrutalActionButton(
-            label = if (primaryBusy) primaryAction.localizedBusyLabel() else primaryLabel,
+                label = if (primaryBusy) primaryAction.localizedBusyLabel() else primaryLabel,
                 leadingIcon = primaryAction.iconName,
                 enabled = lifecycleInFlight == null,
                 minHeight = 42.dp,
@@ -8704,7 +8799,7 @@ private fun membersMaskedEnvValue(value: String?): String =
 private fun MembersAgentRuntimeConfigDialog(
     initialConfig: RuntimeConfig,
     memberId: MemberId,
-    summary: AgentDetailSummary?,
+    activeAgent: Boolean,
     createAgentFormStore: SharedCreateAgentFormStore?,
     currentServerId: String?,
     machineId: String?,
@@ -8804,8 +8899,6 @@ private fun MembersAgentRuntimeConfigDialog(
     } == true
     var builtInFormError by remember(stableInitialConfig) { mutableStateOf<String?>(null) }
     var builtInFormReloadGeneration by remember(stableInitialConfig) { mutableStateOf(0) }
-    val currentStatus = AgentStatus.fromWireValue(summary?.status)
-    val activeAgent = currentStatus != null && currentStatus.presence != Presence.Offline
     val customModelMissing = customModelMode && customModelName.trim().isBlank()
     val providerUrlInvalid =
         runtime == "claude" &&
@@ -9005,6 +9098,12 @@ private fun MembersAgentRuntimeConfigDialog(
     val runtimeConfigListState = rememberLazyListState()
     val runtimeConfigScrollScope = rememberCoroutineScope()
     var runtimeConfigViewport by remember { mutableStateOf<Rect?>(null) }
+    val runtimeConfigScrollCoordinator = remember {
+        SlockFocusedEditorScrollRequestCoordinator()
+    }
+    DisposableEffect(runtimeConfigScrollCoordinator) {
+        onDispose { runtimeConfigScrollCoordinator.invalidate() }
+    }
 
     SlockUnifiedDialog(
         title = stringResource(MR.strings.member_dialog_edit_runtime_config).uppercase(),
@@ -9017,8 +9116,9 @@ private fun MembersAgentRuntimeConfigDialog(
 
         fun keepFocusedRuntimeEditorVisible(params: KeyboardParams) {
             dialogKeyboardHeightChange(params)
+            val requestGeneration = runtimeConfigScrollCoordinator.begin()
             if (params.height <= 0f) return
-            runtimeConfigScrollScope.launch {
+            val job = runtimeConfigScrollScope.launch {
                 slockUnifiedDialogKeepFocusedEditorVisible(
                     keyboardHeight = params.height,
                     awaitRelayoutFrame = { withFrameNanos { } },
@@ -9032,9 +9132,14 @@ private fun MembersAgentRuntimeConfigDialog(
                     },
                     scrollToItem = { index, scrollOffset ->
                         runtimeConfigListState.scrollToItem(index, scrollOffset)
+                    },
+                    isScrollInProgress = { runtimeConfigListState.isScrollInProgress },
+                    isRequestCurrent = {
+                        runtimeConfigScrollCoordinator.isCurrent(requestGeneration)
                     }
                 )
             }
+            runtimeConfigScrollCoordinator.attach(job)
         }
 
         CompositionLocalProvider(
@@ -9389,6 +9494,11 @@ internal data class MembersRuntimeConfigSwitchConfirmation(
     val message: String,
     val confirmLabel: StringDesc
 )
+
+internal fun membersAgentRuntimeActive(status: AgentStatus?): Boolean =
+    status != null && status.presence != Presence.Offline
+
+internal fun membersAgentRuntimeStatusResolved(status: AgentStatus?): Boolean = status != null
 
 internal fun membersRuntimeConfigResetMode(
     currentConfig: RuntimeConfig,
@@ -9810,7 +9920,8 @@ private fun MembersAgentSkillCard(skill: AgentSkillSummary) {
 private fun MembersAgentCreatedAgentsSection(
     detail: AgentDetailSnapshot?,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    fixtureStatusFallbackEnabled: Boolean = false
 ) {
     val createdAgents = detail?.summary?.createdAgents.orEmpty()
     Column(
@@ -9849,7 +9960,12 @@ private fun MembersAgentCreatedAgentsSection(
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 createdAgents.forEach { agent ->
-                    MembersAgentCreatedAgentRow(agent, agentStatusResolver, memberAvatarResolver)
+                    MembersAgentCreatedAgentRow(
+                        agent = agent,
+                        agentStatusResolver = agentStatusResolver,
+                        memberAvatarResolver = memberAvatarResolver,
+                        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
+                    )
                 }
             }
         }
@@ -9860,11 +9976,22 @@ private fun MembersAgentCreatedAgentsSection(
 private fun MembersAgentCreatedAgentRow(
     agent: AgentCreatedSummary,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    fixtureStatusFallbackEnabled: Boolean = false
 ) {
-    val profile = remember(agent) { agent.toMemberProfile() }
-    val statusDisplayState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, profile.id.value)
-        ?: profile.toSlockAgentStatusIndicatorState()
+    val profile = remember(agent) { agent.toStaticMembersProfile() }
+    val statusIndicatorState =
+        resolveMembersAgentStatusIndicatorState(
+            canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, profile.id.value),
+            fixtureFallback =
+                if (fixtureStatusFallbackEnabled) {
+                    agent.toFixtureSlockAgentStatusIndicatorState()
+                } else {
+                    null
+                },
+            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
+        )
+    val statusDisplayState = statusIndicatorState.toMembersAgentStatusDisplayState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -11687,7 +11814,7 @@ private fun MembersAvatar(
     member: MemberProfile,
     avatarSize: Dp = MembersListAvatarSize,
     statusSize: Dp = MemberStatusDotSize,
-    statusDisplayState: MembersAgentStatusDisplayState = member.membersAgentStatusDisplayState(),
+    statusDisplayState: MembersAgentStatusDisplayState = MembersUnknownAgentStatusDisplayState,
     statusIndicatorState: SlockAgentStatusIndicatorState? = null,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     showStatusOverlay: Boolean = true,
@@ -11739,6 +11866,13 @@ internal data class MembersAgentStatusDisplayState(
     val pulsing: Boolean
 )
 
+private val MembersUnknownAgentStatusDisplayState =
+    MembersAgentStatusDisplayState(
+        status = null,
+        color = SlockColor.StatusNeutralGray,
+        pulsing = false
+    )
+
 internal fun MemberProfile.membersAgentStatusDisplayState(
     summaryStatus: String? = null,
     summaryActivity: String? = null
@@ -11751,7 +11885,7 @@ internal fun MemberProfile.membersAgentStatusDisplayState(
     )
 }
 
-private fun MemberProfile.toSlockAgentStatusIndicatorState(
+private fun MemberProfile.toFixtureSlockAgentStatusIndicatorState(
     summaryStatus: String? = null,
     summaryActivity: String? = null
 ): SlockAgentStatusIndicatorState {
@@ -11766,6 +11900,19 @@ private fun MemberProfile.toSlockAgentStatusIndicatorState(
         label = display.status?.label ?: presence.name
     )
 }
+
+private fun AgentCreatedSummary.toFixtureSlockAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
+    slockAgentStatusIndicatorState(
+        status = normalizedAgentRuntimeStatus(activity = null, lifecycleStatus = status),
+        presence = Presence.Offline
+    )
+
+private fun AgentProfile.toFixtureSlockAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
+    slockAgentStatusIndicatorState(
+        status = agentStatus,
+        presence = presence,
+        statusLabel = statusLabel
+    )
 
 private val MemberProfile.detailHandle: String
     get() = handle.takeIf { it.isNotBlank() }?.let { if (it.startsWith("@")) it else "@$it" } ?: id.value
@@ -11787,20 +11934,14 @@ private fun MemberProfile.membersHumanRoleChipColor(): Color =
         else -> if (membershipStatus == "removed") SlockColor.EmptyStateGray else SlockColor.AccentLavender
     }
 
-private val MemberProfile.detailStatusLabel: String
-    get() =
-        when (kind) {
-            MemberKind.Agent -> agentStatus?.label ?: presence.name
-            MemberKind.Human -> "Human"
-            MemberKind.System -> "System"
-        }
-
 private fun MemberProfile.membersResolvedAgentStatus(
     summaryStatus: String?,
     summaryActivity: String?
 ): AgentStatus? =
-    AgentStatus.fromWireValue(summaryActivity)
-        ?: AgentStatus.fromWireValue(summaryStatus)
+    normalizedAgentRuntimeStatus(
+        activity = summaryActivity,
+        lifecycleStatus = summaryStatus
+    )
         ?: agentStatus
 
 internal fun membersAgentStatusLabel(
@@ -11829,6 +11970,9 @@ internal fun membersLiveAgentStatusLabel(
     fallback: String
 ): String {
     val liveStatus = indicatorState?.status
+    if (indicatorState != null && liveStatus == null) {
+        return indicatorState.label
+    }
     if (liveStatus == null) {
         return summaryActivityDetail?.takeIf { it.isNotBlank() }
             ?: summaryActivity?.takeIf { it.isNotBlank() }?.toMembersDisplayLabel()
@@ -11836,7 +11980,7 @@ internal fun membersLiveAgentStatusLabel(
             ?: fallback
     }
     val summaryResolved =
-        AgentStatus.fromWireValue(summaryActivity) ?: AgentStatus.fromWireValue(summaryStatus)
+        normalizedAgentRuntimeStatus(activity = summaryActivity, lifecycleStatus = summaryStatus)
     if (summaryResolved == liveStatus) {
         return summaryActivityDetail?.takeIf { it.isNotBlank() }
             ?: summaryActivity?.takeIf { it.isNotBlank() }?.toMembersDisplayLabel()
@@ -11851,7 +11995,7 @@ private fun MemberProfile.membersAgentRuntimeErrorText(
 ): String? {
     if (kind != MemberKind.Agent) return null
     val summary = detail?.summary
-    val status = statusIndicatorState?.status ?: membersResolvedAgentStatus(summary?.status, summary?.activity)
+    val status = statusIndicatorState?.status
     return if (status == AgentStatus.Error) {
         membersAgentActivityErrorText(summary?.activityDetail)
     } else {
@@ -11906,7 +12050,8 @@ private fun JsonElement?.membersAgentActivityStringOrNull(): String? =
 
 internal fun buildMembersAgentDiagnostics(
     member: MemberProfile,
-    detail: AgentDetailSnapshot?
+    detail: AgentDetailSnapshot?,
+    statusIndicatorState: SlockAgentStatusIndicatorState?
 ): String {
     val summary = detail?.summary
     return listOf(
@@ -11914,7 +12059,7 @@ internal fun buildMembersAgentDiagnostics(
         "agentId=${member.id.value}",
         "displayName=${member.displayName}",
         "handle=${member.detailHandle}",
-        "status=${member.membersResolvedAgentStatus(summary?.status, summary?.activity)?.label ?: member.detailStatusLabel}",
+        "status=${statusIndicatorState?.label ?: MembersUnknownAgentStatusLabel}",
         "activity=${summary?.activity.orDash()}",
         "activityDetail=${summary?.activityDetail.orDash()}",
         "runtime=${summary?.runtime.orDash()}",
@@ -11948,9 +12093,14 @@ internal fun AgentCreatorSummary.toStrictMemberProfile(
     )
 }
 
-private fun AgentCreatedSummary.toMemberProfile(): MemberProfile {
+private fun AgentProfile.toStaticMembersProfile(): MemberProfile =
+    toMemberProfile().copy(
+        presence = Presence.Offline,
+        agentStatus = null
+    )
+
+private fun AgentCreatedSummary.toStaticMembersProfile(): MemberProfile {
     val display = displayName?.takeIf { it.isNotBlank() } ?: name.ifBlank { id }
-    val status = AgentStatus.fromWireValue(status)
     val avatarWireValue = avatarUrl?.takeIf { it.isNotBlank() }
     return MemberProfile(
         id = MemberId(id),
@@ -11960,8 +12110,6 @@ private fun AgentCreatedSummary.toMemberProfile(): MemberProfile {
         avatarUrl = avatarWireValue,
         avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = display.take(1).uppercase(),
-        presence = status?.presence ?: Presence.Offline,
-        agentStatus = status,
         roleDescription = runtime
     )
 }
@@ -12081,11 +12229,10 @@ private fun KuiklyMemberDetailPayload.toSlockTimeContext(): SlockTimeContext =
         timeFormat = timeFormat
     )
 
-private fun AgentDetailSnapshot.toMemberProfile(server: ServerSummary): MemberProfile {
+internal fun AgentDetailSnapshot.toStaticMembersProfile(server: ServerSummary): MemberProfile {
     val summary = summary
     val handle = summary?.name?.takeIf { it.isNotBlank() } ?: agentId.value
     val label = summary?.displayName?.takeIf { it.isNotBlank() } ?: handle
-    val status = AgentStatus.fromWireValue(summary?.activity ?: summary?.status) ?: AgentStatus.Offline
     val avatarUrl = summary?.avatarUrl?.takeIf { it.isNotBlank() }
     return MemberProfile(
         id = agentId,
@@ -12098,8 +12245,8 @@ private fun AgentDetailSnapshot.toMemberProfile(server: ServerSummary): MemberPr
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.take(1).uppercase(),
-        presence = status.presence,
-        agentStatus = status,
+        presence = Presence.Offline,
+        agentStatus = null,
         permissionBadges = listOfNotNull(
             summary?.runtime?.takeIf { it.isNotBlank() },
             summary?.machineName?.takeIf { it.isNotBlank() }?.let { "computer:$it" },
@@ -12111,39 +12258,16 @@ private fun AgentDetailSnapshot.toMemberProfile(server: ServerSummary): MemberPr
     )
 }
 
-private fun AgentDetailSnapshot.withMemberProfileProjection(member: MemberProfile): AgentDetailSnapshot {
+internal fun AgentDetailSnapshot.withMemberProfileProjection(member: MemberProfile): AgentDetailSnapshot {
     val fallbackName = member.handle.ifBlank { member.displayName.ifBlank { member.id.value } }
     val nextSummary =
         (summary ?: AgentDetailSummary(id = member.id.value, name = fallbackName)).copy(
             name = fallbackName,
             displayName = member.displayName.ifBlank { fallbackName },
             description = member.description?.takeIf { it.isNotBlank() },
-            status = member.agentStatus?.label ?: summary?.status,
             runtime = member.roleDescription ?: summary?.runtime,
             avatarUrl = member.avatar?.wireValue ?: member.avatarUrl ?: summary?.avatarUrl
         )
-    return copy(summary = nextSummary)
-}
-
-private fun AgentDetailSnapshot.withMemberDetailLifecycleResult(
-    action: MembersAgentLifecycleAction
-): AgentDetailSnapshot {
-    val currentSummary = summary ?: AgentDetailSummary(id = agentId.value, name = agentId.value)
-    val nextSummary =
-        when (action) {
-            MembersAgentLifecycleAction.Start,
-            MembersAgentLifecycleAction.Restart ->
-                currentSummary.copy(status = AgentStatus.Working.label, activity = AgentStatus.Working.label)
-            MembersAgentLifecycleAction.Stop ->
-                currentSummary.copy(status = AgentStatus.Offline.label, activity = AgentStatus.Offline.label)
-            MembersAgentLifecycleAction.UnassignMachine ->
-                currentSummary.copy(machineId = null, machineName = null)
-            MembersAgentLifecycleAction.Delete ->
-                currentSummary.copy(deletedAt = currentSummary.deletedAt ?: "deleted")
-            MembersAgentLifecycleAction.ResetSession,
-            MembersAgentLifecycleAction.ResetFull ->
-                currentSummary
-        }
     return copy(summary = nextSummary)
 }
 

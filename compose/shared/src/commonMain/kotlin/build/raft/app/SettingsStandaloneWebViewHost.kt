@@ -177,7 +177,7 @@ private fun SettingsWebViewScreen() {
                 spec = settingsAdministrationWebViewSpec,
             )
         // Keep old settings-webview route payloads compatible while rendering
-        // the native Release Notes page introduced on main.
+        // the Hands-hosted Release Notes WebView.
         SettingsWebViewSurface.ReleaseNotes -> ReleaseNotesScreen()
         null -> SettingsWebViewInvalidRoute(pager)
     }

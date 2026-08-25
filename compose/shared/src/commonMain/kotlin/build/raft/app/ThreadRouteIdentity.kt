@@ -30,6 +30,83 @@ internal data class ThreadRouteIdentity(
                 (parentKey != null && parentConversationKind != null)
 }
 
+/**
+ * Structural guard for rows crossing the durable pending-send boundary.
+ * Route identity is persisted as strings for SQL portability, so do not let an
+ * unknown/corrupt surface or parent kind become a new wildcard route merely
+ * because it happens to compare equal to a similarly malformed payload.
+ */
+internal fun ThreadRouteIdentity.isValidPendingSendRoute(): Boolean {
+    if (surfaceKind !in setOf(
+            KuiklyThreadSurfaceKind.Channel,
+            KuiklyThreadSurfaceKind.DirectMessage,
+            KuiklyThreadSurfaceKind.ReplyThread,
+        )
+    ) return false
+    if (instanceKey.isBlank()) return false
+    if (timelineKey.isNullOrBlank() != !canRenderTimelineCandidates) return false
+    return when (surfaceKind) {
+        KuiklyThreadSurfaceKind.Channel ->
+            channelKind.normalizedThreadChannelKind() != null &&
+                parentConversationKind == null &&
+                parentKey == null
+        KuiklyThreadSurfaceKind.DirectMessage ->
+            channelKind == null &&
+                parentConversationKind == null &&
+                parentKey == null
+        KuiklyThreadSurfaceKind.ReplyThread ->
+            channelKind == null &&
+                parentConversationKind in setOf(
+                    ConversationKind.Channel,
+                    ConversationKind.Joint,
+                    ConversationKind.DirectMessage,
+                ) &&
+                !parentKey.isNullOrBlank()
+        else -> false
+    }
+}
+
+/**
+ * Equality used by the pending-send journal and send authority fence.
+ *
+ * A reply route can be admitted before the server resolves its stream id
+ * (`reply-parent:<channel>:<message>`) and later be observed with the
+ * canonical stream (`reply-stream:<thread>`).  Those two identities are the
+ * same send surface only when their typed parent is the same.  Once both
+ * sides have a stream, however, a different stream is a hard identity
+ * mismatch even if the parent happens to match.  Channel and DM routes do
+ * not have this unresolved/resolved equivalence and therefore require exact
+ * identity equality.
+ */
+internal fun ThreadRouteIdentity.isPendingSendEquivalentTo(
+    other: ThreadRouteIdentity,
+): Boolean {
+    if (!isValidPendingSendRoute() || !other.isValidPendingSendRoute()) return false
+    if (surfaceKind != other.surfaceKind) return false
+    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return this == other
+    // A pending send must never be admitted or consumed from an untyped reply
+    // parent.  Treating null as a wildcard would let a Channel-shaped route
+    // and a DM-shaped route share the same local row when one side has lost its
+    // typed parent metadata during a rebuild.
+    if (!hasCompleteReplyIdentity || !other.hasCompleteReplyIdentity) return false
+    if (this == other) return true
+    if (
+        parentConversationKind != other.parentConversationKind
+    ) {
+        return false
+    }
+    if (parentKey != null && other.parentKey != null && parentKey != other.parentKey) return false
+    val leftStream = timelineKey?.takeIf { it.isNotBlank() }
+    val rightStream = other.timelineKey?.takeIf { it.isNotBlank() }
+    if (leftStream != null && rightStream != null) return leftStream == rightStream
+    // An unresolved route may safely become resolved only through the same
+    // typed parent identity.  A route with no parent proof cannot be
+    // upgraded by a stream observation.
+    return (leftStream == null || rightStream == null) &&
+        parentKey != null &&
+        parentKey == other.parentKey
+}
+
 internal fun ThreadRouteIdentity.canRetainThreadPageFor(incoming: ThreadRouteIdentity): Boolean {
     if (this == incoming) return true
     if (routeKind != incoming.routeKind) return false

@@ -11,8 +11,8 @@ WORKFLOWS = (
     ROOT / ".github/workflows/ohos-release.yml",
 )
 NETWORK_VERSIONS = (
-    "0.1.0-raft.34",
-    "0.1.0-raft.32-ohos",
+    "0.1.0-raft.35",
+    "0.1.0-raft.35-ohos",
 )
 
 

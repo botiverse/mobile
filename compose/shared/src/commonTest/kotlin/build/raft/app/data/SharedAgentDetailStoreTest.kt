@@ -261,8 +261,8 @@ class SharedAgentDetailStoreTest {
         assertEquals(SharedAgentDetailLoadStatus.Content, state.detailLoadStatus)
         assertEquals("agent-one", summary?.name)
         assertEquals("Agent One", summary?.displayName)
-        assertEquals("Working", summary?.status)
-        assertEquals("Working", summary?.activity)
+        assertNull(summary?.status)
+        assertNull(summary?.activity)
         assertEquals("Building Android", summary?.activityDetail)
         assertEquals("gpt-5-codex", summary?.runtime)
         assertEquals("pixel:agent-one", summary?.avatarUrl)
@@ -396,7 +396,8 @@ class SharedAgentDetailStoreTest {
 
         assertEquals("remote-agent", s.state.value.detail?.summary?.name)
         assertEquals("Remote Agent", s.state.value.detail?.summary?.displayName)
-        assertEquals("Offline", s.state.value.detail?.summary?.status)
+        assertNull(s.state.value.detail?.summary?.status)
+        assertNull(s.state.value.detail?.summary?.activity)
     }
 
     @Test
@@ -491,7 +492,8 @@ class SharedAgentDetailStoreTest {
         val state = s.state.value
         assertEquals(SharedAgentDetailLoadStatus.Loading, state.detailLoadStatus)
         assertEquals(testMemberId, state.detail?.agentId)
-        assertEquals("Working", state.detail?.summary?.status)
+        assertNull(state.detail?.summary?.status)
+        assertNull(state.detail?.summary?.activity)
     }
 
     @Test

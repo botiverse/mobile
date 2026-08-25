@@ -2,6 +2,7 @@ package build.raft.app
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -217,6 +218,69 @@ class SlockPlatformLogTest {
                     "slock_platform_log_queue_dropped lane=auth_critical count=1 " +
                     "overflow=1 admissionBusy=0 capacity=16"
             }
+        )
+    }
+
+    @Test
+    fun sharedActivityDiagnosticsLoggerStampsOneMonotonicSequenceAcrossInstances() = runBlocking {
+        val entries = mutableListOf<SlockPlatformLogRecord>()
+        installSlockPlatformLogRecordSink(entries::add)
+        try {
+            // Two instances on purpose: both call sites build their own logger, and
+            // independent counters would make the runs uncomparable — which is what
+            // makes a contiguous run usable as proof that nothing was dropped.
+            val first = sharedActivityStoreDiagnosticsLogger()
+            val second = sharedActivityStoreDiagnosticsLogger()
+            first("store_load domain=activity phase=probe channel=live")
+            second("store_load domain=activity phase=start")
+            first("store_load domain=activity result=ok")
+            flushSlockPlatformLogsForTest()
+        } finally {
+            installSlockPlatformLogRecordSink(null)
+        }
+
+        val sequences =
+            entries
+                .filter { it.message.contains("domain=activity") }
+                .mapNotNull { record -> Regex("""seq=(\d+)""").find(record.message)?.groupValues?.get(1)?.toLong() }
+        assertEquals(3, sequences.size, "every activity diagnostic line must carry a sequence; actual=$entries")
+        assertEquals(
+            sequences.sorted(),
+            sequences,
+            "sequence must be monotonic across both logger instances; actual=$sequences"
+        )
+        assertEquals(
+            (sequences.first()..sequences.last()).toList(),
+            sequences,
+            "a run with no drops must be contiguous, otherwise absence carries no information; actual=$sequences"
+        )
+    }
+
+    @Test
+    fun sharedActivityDiagnosticsSequenceNeverRepeatsAValueUnderConcurrency() = runBlocking {
+        // Tested on the stamping function directly, NOT through the logger. Delivery
+        // drops under admission contention, so a duplicated number could be hidden by
+        // one of the pair being dropped — the assertion would then pass on a broken
+        // counter. Off the lossy path every allocation is observable, so this locks
+        // the contract deterministically.
+        //
+        // Uniqueness is the property the whole protocol rests on: if one value were
+        // handed to two lines, a dropped value could be masked by a surviving one and
+        // a gap-free set would stop proving that nothing was lost.
+        val emitters = 64
+        val perEmitter = 16
+        val stamped =
+            (1..emitters)
+                .map { async(Dispatchers.Default) { List(perEmitter) { stampSharedActivityDiagnosticsSequence("line") } } }
+                .flatMap { it.await() }
+
+        val values =
+            stamped.mapNotNull { line -> Regex("""^seq=(\d+) """).find(line)?.groupValues?.get(1)?.toLong() }
+        assertEquals(emitters * perEmitter, values.size, "every stamp must carry a parseable sequence")
+        assertEquals(
+            values.size,
+            values.distinct().size,
+            "a sequence value must never be handed out twice under concurrency"
         )
     }
 }

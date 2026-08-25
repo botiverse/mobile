@@ -249,15 +249,14 @@ class ThreadMessageLongPressSurfaceTest {
                 refreshVisibleConversation = true,
                 rejoinVisibleRooms = true
             ),
-            threadVisibleResumePlan(lifecycleSeen = true, routeActive = true)
+            threadVisibleResumePlan(routeActive = true)
         )
-        assertNull(threadVisibleResumePlan(lifecycleSeen = false, routeActive = true))
-        assertNull(threadVisibleResumePlan(lifecycleSeen = true, routeActive = false))
+        assertNull(threadVisibleResumePlan(routeActive = false))
     }
 
     @Test
     fun hiddenThreadSkipsAppShellResumeThenRefreshesExactlyOnceAfterAppearing() {
-        val gate = ThreadVisibleResumeGate(lifecycleSeen = true)
+        val gate = ThreadVisibleResumeGate()
         var conversationRefreshes = 0
         var roomRejoins = 0
 
@@ -274,15 +273,15 @@ class ThreadMessageLongPressSurfaceTest {
 
     @Test
     fun threadAppearanceWithoutPendingResumeDoesNotRefresh() {
-        val gate = ThreadVisibleResumeGate(lifecycleSeen = true)
+        val gate = ThreadVisibleResumeGate()
 
         assertNull(gate.onRouteBecameVisible())
         assertNull(gate.onRouteBecameVisible())
     }
 
     @Test
-    fun visibleLifecycleResumeDoesNotLeaveWorkForAppearance() {
-        val gate = ThreadVisibleResumeGate(lifecycleSeen = true)
+    fun firstVisibleLifecycleResumeRefreshesWithoutWaitingForScrollOrAppearance() {
+        val gate = ThreadVisibleResumeGate()
 
         assertEquals(
             ThreadVisibleResumePlan(

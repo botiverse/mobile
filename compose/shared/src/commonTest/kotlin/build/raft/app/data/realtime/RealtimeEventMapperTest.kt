@@ -881,6 +881,23 @@ class RealtimeEventMapperTest {
     }
 
     @Test
+    fun agentActivityLifecycleActiveDoesNotProjectAsOnline() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentActivity,
+                """
+                {
+                  "agentId": "agent-4",
+                  "activity": "active",
+                  "detail": ""
+                }
+                """.trimIndent()
+            )
+
+        assertNull(event)
+    }
+
+    @Test
     fun serverWireEventsIncludeWebRealtimeContractEvents() {
         val events = RealtimeSocketEvents.ServerWireEvents
 

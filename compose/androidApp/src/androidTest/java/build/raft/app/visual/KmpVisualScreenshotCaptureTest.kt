@@ -1215,7 +1215,15 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    @Ignore("Quarantined by task #228: the compact menu on the last row is bistable after #2146 (417078cecd) - either no menu renders or it paints over the Composer. Un-quarantine only when the #2146 author lands a fix.")
+    @Ignore(
+        "Quarantined by task #228. This case renders compact-FIRST, and it fails with " +
+            "'Long press must render the compact message menu', changedRatio=0.0002965 - the menu " +
+            "never appears at all. Re-measured 2026-08-21 in run 32448428878: still reproduces, " +
+            "digit-identical to run 32100665318, so it is deterministic and not order-sensitive. " +
+            "NOTE: an earlier version of this annotation described the compact-LAST failure; that " +
+            "was a mislabel - the two cases fail in different ways and only compact-last relates " +
+            "to #2146 (417078cecd). Un-quarantine when the implementation side lands a fix."
+    )
     @Test
     fun captureThreadNewMessageMenuDemo() {
         captureThreadNewMessageMenuCompactTarget(
@@ -1232,7 +1240,15 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    @Ignore("Quarantined by task #228: the compact menu on the last row is bistable after #2146 (417078cecd) - either no menu renders or it paints over the Composer. Un-quarantine only when the #2146 author lands a fix.")
+    @Ignore(
+        "Quarantined by task #228. This case renders compact-LAST and fails with " +
+            "'Compact menu must not paint over the Composer boundary', " +
+            "bottomBandChangedRatio=0.14443202 - the menu opens but covers the Composer. " +
+            "Introduced by #2146 (417078cecd). Re-measured 2026-08-21 in run 32448428878: still " +
+            "reproduces, digit-identical to run 32072273428, so it is deterministic. The " +
+            "never-quarantined compact-MIDDLE case passed in the same run, so the harness is " +
+            "sound. Un-quarantine when the implementation side lands a fix."
+    )
     @Test
     fun captureThreadNewMessageMenuCompactLast() {
         captureThreadNewMessageMenuCompactTarget(

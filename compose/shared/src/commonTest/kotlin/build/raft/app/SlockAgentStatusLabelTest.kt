@@ -85,6 +85,61 @@ class SlockAgentStatusLabelTest {
     }
 
     @Test
+    fun explicitCanonicalUnknownCannotBeCaptionedByStaleSummaryActivity() {
+        val unknown =
+            resolveMembersAgentStatusIndicatorState(
+                canonicalState = null,
+                fixtureFallback = null,
+                fixtureStatusFallbackEnabled = false
+            )
+
+        assertEquals(
+            "—",
+            membersLiveAgentStatusLabel(
+                indicatorState = unknown,
+                summaryStatus = "active",
+                summaryActivity = "working",
+                summaryActivityDetail = "Running stale work",
+                fallback = "Agent"
+            )
+        )
+        assertEquals(null, unknown.status)
+        assertEquals(SlockColor.StatusNeutralGray, unknown.color)
+        assertFalse(unknown.pulsing)
+    }
+
+    @Test
+    fun fixtureStatusFallbackIsExplicitAndCanonicalStateStillWins() {
+        val fixture = slockAgentStatusIndicatorState(AgentStatus.Online, Presence.Active)
+        val canonical = slockAgentStatusIndicatorState(AgentStatus.Working, Presence.Active)
+
+        assertEquals(
+            null,
+            resolveMembersAgentStatusIndicatorState(
+                canonicalState = null,
+                fixtureFallback = fixture,
+                fixtureStatusFallbackEnabled = false
+            ).status
+        )
+        assertEquals(
+            AgentStatus.Online,
+            resolveMembersAgentStatusIndicatorState(
+                canonicalState = null,
+                fixtureFallback = fixture,
+                fixtureStatusFallbackEnabled = true
+            ).status
+        )
+        assertEquals(
+            AgentStatus.Working,
+            resolveMembersAgentStatusIndicatorState(
+                canonicalState = canonical,
+                fixtureFallback = fixture,
+                fixtureStatusFallbackEnabled = true
+            ).status
+        )
+    }
+
+    @Test
     fun agentStatusBeatsRawPresenceInColorMapping() {
         // A Working agent whose presence maps Active must render yellow via
         // the shared resolver on every surface (settings picker regression).

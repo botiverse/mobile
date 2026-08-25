@@ -307,6 +307,7 @@
     <string name="thread_inline_draft">草稿</string>
     <string name="thread_state_no_messages">暂无消息</string>
     <string name="thread_state_no_messages_detail">当前对话还没有消息。</string>
+    <string name="thread_parent_authority_resolving">正在确认权限，暂时无法发送</string>
     <string name="thread_action_join_channel">加入频道</string>
     <string name="thread_timestamp_now">此刻</string>
     <string name="relative_time_unknown">未知时间</string>
@@ -953,6 +954,7 @@
     <string name="member_error_avatar_save">头像保存失败：%1$s</string>
     <string name="member_error_profile_edit_unavailable">Agent 资料编辑不可用。</string>
     <string name="member_error_role_edit_unavailable">Agent 角色编辑不可用。</string>
+    <string name="member_error_role_update_unconfirmed">未确认角色更新。请检查当前角色后重试。</string>
     <string name="member_error_runtime_edit_unavailable">运行时配置编辑不可用。</string>
     <string name="member_error_display_name_required">显示名称不能为空</string>
     <string name="member_error_save">保存失败：%1$s</string>

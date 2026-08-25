@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.SharedServerMembersStore
-import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -33,7 +32,6 @@ internal fun KuiklyThreadMessageItem.toThreadAuthorProfileCandidate(
         avatar = AvatarReference.fromWireValue(avatarCandidate),
         avatarLabel = avatarLabel.ifBlank { displayName.take(1).uppercase() },
         serverId = serverId,
-        agentStatus = AgentStatus.fromWireValue(authorAgentStatus),
         membershipStatus = senderMembershipStatus?.takeIf { it.isNotBlank() },
         agentDeletedAt = authorDeletedAt?.takeIf { it.isNotBlank() }
     )

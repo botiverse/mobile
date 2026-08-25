@@ -140,6 +140,64 @@ CI always registers the signed IPA and dSYM in a Hands draft before any
 server-side submission. Hands remains the sole TestFlight delivery boundary
 after CI has uploaded those artifacts.
 
+## TestFlight Distribution And Tester Notification
+
+An ASC build being `VALID` is upload/processing success, not TestFlight
+publication. After processing:
+
+1. Resolve the exact stable internal/external beta group IDs with
+   `hands builds testflight-groups`.
+2. Publish the exact build to the owner-selected audience with localized What
+   to Test. External publication uses `--distribution external`.
+3. When the owner says `publish iOS` or `publish to TestFlight` without a
+   narrower boundary, include `--notify-testers`. This is part of publication,
+   not an optional follow-up. Only `upload only`, `submit for review`,
+   `internal only`, or an explicit `do not notify` stops earlier.
+4. Preserve the mutating publish response. For an already-approved build it
+   must report `notification=sent` (or `already_sent` on an idempotent replay).
+   Do not combine this receipt-producing call with `--wait`: the current CLI's
+   `--wait --json` output replaces the POST response with a later GET status,
+   which does not preserve `notification` or `operation_id`.
+5. Use the separate read-only `testflight-status` command for a bounded
+   recheck. Require `external_build_state=IN_BETA_TESTING` before reporting
+   `published`, `sent`, or `available in TestFlight`. If review is
+   asynchronous, schedule the recheck and, after approval, invoke the same
+   idempotent external publish with `--notify-testers` again.
+
+The `notification` values are exhaustive: `not_requested` and `scheduled` are
+not completion; `sent` and `already_sent` satisfy the operation-receipt half of
+the completion contract. When the first response is `scheduled`, wait for the
+exact build to reach `IN_BETA_TESTING`, then replay the same publish without
+`--wait` to preserve the expected `already_sent` receipt, and fresh-read the
+exact status again.
+
+Example for an already-approved external build:
+
+```bash
+hands builds testflight-publish raft-ios <hands-build-id> \
+  --distribution external \
+  --group-id <external-group-id> \
+  --what-to-test-file en-US=./testflight.en.txt \
+  --what-to-test-file zh-Hans=./testflight.zh.txt \
+  --notify-testers \
+  --json
+
+# Repeat this read-only command with a bounded interval/timeout until the
+# exact build reaches IN_BETA_TESTING, or report notification unverified.
+hands builds testflight-status raft-ios <hands-build-id> \
+  --distribution external \
+  --json
+```
+
+Do not infer notification from `BETA_APPROVED`, group assignment,
+`public_link_enabled`, or `auto_notify_enabled=false`. The last value may mean
+manual notification is required; Hands then uses Apple's official build beta
+notification operation. Record marketing version/build number, Hands and ASC
+build IDs, named external group IDs, localization readback, review state,
+publish operation ID, `notification` result, and the final external build
+state. Tester notification does not activate a Hands release and never implies
+App Store production publication.
+
 ## Post-Delivery Git Audit Tag
 
 An iOS release tag is an immutable audit pointer created **after** the exact

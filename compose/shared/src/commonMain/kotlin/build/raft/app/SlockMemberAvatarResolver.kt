@@ -34,6 +34,7 @@ internal fun slockMemberAvatarResolver(
     diagnosticsLogger: (String) -> Unit = {}
 ): SlockMemberAvatarResolver {
     val cleanServerId = serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        ?: return EmptySlockMemberAvatarResolver
     return SlockMemberAvatarResolver(
         currentAvatar = { memberId ->
             serverMembersStore

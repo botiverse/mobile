@@ -790,9 +790,14 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
-    fun visibleMemberCandidateOwnsImeActionWhenSendKeyPreferenceIsDisabled() {
+    fun visibleMemberCandidateLeavesNewlineModeAlone() {
+        // Was: a visible candidate claimed the IME action even with the preference off, so Enter
+        // accepted the suggestion. Device measurement showed the action is never withdrawn when
+        // the panel closes, after which Enter is swallowed and the composer cannot break lines
+        // until the page is re-entered. Newline mode now never claims the action; suggestions are
+        // accepted by tapping.
         assertEquals(
-            true,
+            false,
             threadComposerUsesImeAction(
                 composerSendKeyEnabled = false,
                 panelState = ThreadComposerSuggestionPanelState.MemberItems,
@@ -1026,10 +1031,13 @@ class ThreadComposerLayoutTest {
         )
     }
 
+    // Updated per the note that used to sit here: device measurement did show the raise causes
+    // harm (HuaTuo, cell 4c — the stale Send survives the panel closing and swallows Enter), so
+    // newline mode no longer claims the action and this assertion flipped as that note predicted.
     @Test
-    fun visibleChannelCandidateOwnsImeActionWhenSendKeyPreferenceIsDisabled() {
+    fun visibleChannelCandidateLeavesNewlineModeAlone() {
         assertEquals(
-            true,
+            false,
             threadComposerUsesImeAction(
                 composerSendKeyEnabled = false,
                 panelState = ThreadComposerSuggestionPanelState.ChannelItems,

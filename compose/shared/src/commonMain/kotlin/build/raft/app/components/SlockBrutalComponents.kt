@@ -77,6 +77,7 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.core.views.KeyboardParams
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal data class SlockModalShellModel(
@@ -672,6 +673,8 @@ internal fun SlockBrutalInputField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
+    keyboardHeightChange: (KeyboardParams) -> Unit = {},
+    onFocusChanged: (Boolean) -> Unit = {},
     focusRequester: FocusRequester = remember { FocusRequester() },
     showClearWhenNotEmpty: Boolean = false,
     onClear: (() -> Unit)? = null,
@@ -719,11 +722,18 @@ internal fun SlockBrutalInputField(
                 placeholder = placeholder,
                 placeholderColor = placeholderColor,
                 autoFocus = autoFocus && focusPolicy.acceptsFocus,
-                onFocus = { focused = true },
-                onBlur = { focused = false },
+                onFocus = {
+                    focused = true
+                    onFocusChanged(true)
+                },
+                onBlur = {
+                    focused = false
+                    onFocusChanged(false)
+                },
                 maxLines = maxLines,
                 keyboardOptions = keyboardOptions,
                 keyboardActions = keyboardActions,
+                keyboardHeightChange = keyboardHeightChange,
                 enabled = focusPolicy.acceptsFocus,
                 readOnly = !focusPolicy.acceptsFocus,
                 textStyle = resolvedTextStyle,
@@ -773,6 +783,8 @@ internal fun SlockBrutalInputField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
+    keyboardHeightChange: (KeyboardParams) -> Unit = {},
+    onFocusChanged: (Boolean) -> Unit = {},
     focusRequester: FocusRequester = remember { FocusRequester() },
     showClearWhenNotEmpty: Boolean = false,
     onClear: (() -> Unit)? = null,
@@ -820,11 +832,18 @@ internal fun SlockBrutalInputField(
                 placeholder = placeholder,
                 placeholderColor = placeholderColor,
                 autoFocus = autoFocus && focusPolicy.acceptsFocus,
-                onFocus = { focused = true },
-                onBlur = { focused = false },
+                onFocus = {
+                    focused = true
+                    onFocusChanged(true)
+                },
+                onBlur = {
+                    focused = false
+                    onFocusChanged(false)
+                },
                 maxLines = maxLines,
                 keyboardOptions = keyboardOptions,
                 keyboardActions = keyboardActions,
+                keyboardHeightChange = keyboardHeightChange,
                 enabled = focusPolicy.acceptsFocus,
                 readOnly = !focusPolicy.acceptsFocus,
                 textStyle = resolvedTextStyle,

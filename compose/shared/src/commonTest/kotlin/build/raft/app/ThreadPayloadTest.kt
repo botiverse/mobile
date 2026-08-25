@@ -1098,176 +1098,44 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun serverMembersRosterResolvesAgentStatusWithoutMutatingThreadMessages() {
-        val payload =
-            KuiklyThreadScreenPayload(
-                originMessage =
-                    KuiklyThreadMessageItem(
-                        id = "origin",
-                        authorId = "agent-1",
-                        authorName = "Agent",
-                        authorKind = "agent",
-                        authorAgentStatus = AgentStatus.Online.name,
-                        body = "origin"
-                    ),
-                messages =
-                    listOf(
-                        KuiklyThreadMessageItem(
-                            id = "m1",
-                            authorId = "agent-1",
-                            authorName = "Agent",
-                            authorKind = "agent",
-                            authorAgentStatus = AgentStatus.Online.name,
-                            body = "hello"
-                        ),
-                        KuiklyThreadMessageItem(
-                            id = "m2",
-                            authorId = "u1",
-                            authorName = "Artin",
-                            authorKind = "human",
-                            body = "human"
-                        )
-                    )
-            )
-        val serverMembersState =
-            SharedServerMembersState(
-                entriesByServerId =
-                    mapOf(
-                        "server-1" to
-                            SharedServerMembersEntry(
-                                serverId = "server-1",
-                                members =
-                                    listOf(
-                                        MemberProfile(
-                                            id = MemberId("agent-1"),
-                                            displayName = "Agent",
-                                            handle = "agent",
-                                            kind = MemberKind.Agent,
-                                            presence = AgentStatus.Thinking.presence,
-                                            agentStatus = AgentStatus.Thinking
-                                        )
-                                    )
-                            )
-                    )
+    fun threadRowDoesNotUseMessageStatusWhenCanonicalStatusIsUnavailable() {
+        val message =
+            KuiklyThreadMessageItem(
+                id = "m1",
+                authorId = "agent-1",
+                authorName = "Agent",
+                authorKind = "agent",
+                body = "hello"
             )
 
-        val lookup =
-            ThreadAgentStatusLookup.from(
-                serverMembersState = serverMembersState,
-                serverId = "server-1"
-            )
-
-        val originMessage = payload.originMessage!!
-        assertEquals(AgentStatus.Thinking, lookup.indicatorStateForMemberId(originMessage.authorId)?.status)
-        assertEquals(AgentStatus.Thinking, lookup.indicatorStateForMemberId(payload.messages[0].authorId)?.status)
-        assertEquals(null, lookup.indicatorStateForMemberId(payload.messages[1].authorId))
-        assertEquals(AgentStatus.Online.name, originMessage.authorAgentStatus)
-        assertEquals(AgentStatus.Online.name, payload.messages[0].authorAgentStatus)
+        assertNull(resolveThreadAgentStatusIndicatorState(message, canonicalState = null))
+        assertNull(
+            message.toThreadAuthorProfileCandidate(ServerId("server-1"))?.agentStatus,
+            "message author snapshots may carry static profile candidates, never runtime status"
+        )
+        assertEquals(
+            AgentStatus.Working,
+            resolveThreadAgentStatusIndicatorState(
+                message,
+                canonicalState = slockAgentStatusIndicatorState(
+                    status = AgentStatus.Working,
+                    presence = Presence.Active
+                )
+            )?.status
+        )
     }
 
     @Test
-    fun serverMembersPresenceFactResolvesAgentStatusWithoutLoadedRoster() {
-        val payload =
-            KuiklyThreadScreenPayload(
-                messages =
-                    listOf(
-                        KuiklyThreadMessageItem(
-                            id = "m1",
-                            authorId = "agent-1",
-                            authorName = "Agent",
-                            authorKind = "agent",
-                            authorAgentStatus = AgentStatus.Online.name,
-                            body = "hello"
-                        )
-                    )
-            )
-        val serverMembersState = SharedServerMembersState()
+    @OptIn(ExperimentalSerializationApi::class)
+    fun threadMemberSnapshotSchemaCarriesNoRuntimeStatus() {
+        val descriptor = KuiklyThreadMemberItem.serializer().descriptor
+        val names =
+            (0 until descriptor.elementsCount)
+                .map(descriptor::getElementName)
+                .toSet()
 
-        val lookup =
-            ThreadAgentStatusLookup.from(
-                serverMembersState = serverMembersState,
-                serverId = "server-1",
-                presenceFacts =
-                    mapOf(
-                        "agent-1" to
-                            MemberPresenceUpdated(
-                                memberId = MemberId("agent-1"),
-                                presence = AgentStatus.Working.presence,
-                                kind = MemberKind.Agent,
-                                agentStatus = AgentStatus.Working
-                            )
-                    )
-            )
-
-        assertEquals(AgentStatus.Working, lookup.indicatorStateForMemberId(payload.messages[0].authorId)?.status)
-        assertEquals(AgentStatus.Online.name, payload.messages[0].authorAgentStatus)
-    }
-
-    @Test
-    fun agentStatusLookupConsumesOwnerFactsOnBothBranches() {
-        // task #136 gate (Cindy): executable proof that BOTH branches of
-        // recordThreadAgentStatuses consume the passed owner-partitioned
-        // facts — the direct facts loop AND the roster loop (fact overrides
-        // the member's wire status; members without a fact keep wire truth).
-        val serverMembersState =
-            SharedServerMembersState(
-                entriesByServerId =
-                    mapOf(
-                        "server-1" to
-                            SharedServerMembersEntry(
-                                serverId = "server-1",
-                                members =
-                                    listOf(
-                                        MemberProfile(
-                                            id = MemberId("agent-overridden"),
-                                            displayName = "Overridden",
-                                            handle = "overridden",
-                                            kind = MemberKind.Agent,
-                                            presence = Presence.Active,
-                                            agentStatus = AgentStatus.Online
-                                        ),
-                                        MemberProfile(
-                                            id = MemberId("agent-wire"),
-                                            displayName = "Wire",
-                                            handle = "wire",
-                                            kind = MemberKind.Agent,
-                                            presence = Presence.Active,
-                                            agentStatus = AgentStatus.Idle
-                                        )
-                                    )
-                            )
-                    )
-            )
-
-        val lookup =
-            ThreadAgentStatusLookup.from(
-                serverMembersState = serverMembersState,
-                serverId = "server-1",
-                presenceFacts =
-                    mapOf(
-                        "agent-overridden" to
-                            MemberPresenceUpdated(
-                                memberId = MemberId("agent-overridden"),
-                                presence = Presence.Offline,
-                                kind = MemberKind.Agent,
-                                agentStatus = AgentStatus.Offline
-                            ),
-                        "agent-facts-only" to
-                            MemberPresenceUpdated(
-                                memberId = MemberId("agent-facts-only"),
-                                presence = Presence.Active,
-                                kind = MemberKind.Agent,
-                                agentStatus = AgentStatus.Working
-                            )
-                    )
-            )
-
-        // Branch 1 (facts loop): fact-only member resolved from the partition.
-        assertEquals(AgentStatus.Working, lookup.indicatorStateForMemberId("agent-facts-only")?.status)
-        // Branch 2 (roster loop): the fact OVERRIDES the member's wire status…
-        assertEquals(AgentStatus.Offline, lookup.indicatorStateForMemberId("agent-overridden")?.status)
-        // …and a member without a fact keeps wire truth.
-        assertEquals(AgentStatus.Idle, lookup.indicatorStateForMemberId("agent-wire")?.status)
+        assertFalse("presence" in names)
+        assertFalse("agentStatus" in names)
     }
 
     @Test
@@ -2137,22 +2005,33 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadMemberFallbackActivityUsesProjectedAgentStatusAndPresence() {
-        val working =
-            threadMemberFallbackAgentStatusIndicatorState(
-                agentStatus = AgentStatus.Working,
-                presence = null
-            )
-        val away =
-            threadMemberFallbackAgentStatusIndicatorState(
-                agentStatus = null,
-                presence = Presence.Away
+    fun threadMemberRowsUseCanonicalStatusOnly() {
+        val canonical =
+            slockAgentStatusIndicatorState(
+                status = AgentStatus.Working,
+                presence = Presence.Active
             )
 
-        assertEquals("Working", working.label)
-        assertEquals(true, working.pulsing)
-        assertEquals("Away", away.label)
-        assertEquals(false, away.pulsing)
+        assertNull(
+            resolveThreadMemberAgentStatusIndicatorState(
+                memberKind = "agent",
+                canonicalState = null
+            ),
+            "member payload status must not become a fallback state"
+        )
+        assertEquals(
+            AgentStatus.Working,
+            resolveThreadMemberAgentStatusIndicatorState(
+                memberKind = "agent",
+                canonicalState = canonical
+            )?.status
+        )
+        assertNull(
+            resolveThreadMemberAgentStatusIndicatorState(
+                memberKind = "human",
+                canonicalState = canonical
+            )
+        )
     }
 
     @Test

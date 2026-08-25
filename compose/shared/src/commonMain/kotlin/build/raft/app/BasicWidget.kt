@@ -1502,6 +1502,12 @@ internal fun TextField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     focusRequester: FocusRequester = remember { FocusRequester() },
     systemNewlineAction: Boolean = false,
+    /**
+     * True when the host wants Enter to trigger the IME action (send) rather than
+     * insert a newline. Android can only offer an action key on a single-line field,
+     * so the native view needs this before it fixes its line mode.
+     */
+    imeActionRequested: Boolean = true,
     participatesInGlobalFocusDismiss: Boolean = true,
     /**
      * Task #43 QA-4: visual transformation for password-typed inputs.
@@ -1533,6 +1539,7 @@ internal fun TextField(
 
     val updatedModifier = modifier
         .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
+        .let { if (systemNewlineAction) it.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, if (imeActionRequested) 1 else 0) else it }
         .let { if (systemNewlineAction) it.setProp(SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP, maxLines) else it }
         .keyboardHeightChange { params ->
             currentKeyboardHeightChange(params)
@@ -1617,6 +1624,12 @@ internal fun TextField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     focusRequester: FocusRequester = remember { FocusRequester() },
     systemNewlineAction: Boolean = false,
+    /**
+     * True when the host wants Enter to trigger the IME action (send) rather than
+     * insert a newline. Android can only offer an action key on a single-line field,
+     * so the native view needs this before it fixes its line mode.
+     */
+    imeActionRequested: Boolean = true,
     participatesInGlobalFocusDismiss: Boolean = true,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     contentAlignment: Alignment = Alignment.CenterStart,
@@ -1647,6 +1660,7 @@ internal fun TextField(
 
     val updatedModifier = modifier
         .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
+        .let { if (systemNewlineAction) it.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, if (imeActionRequested) 1 else 0) else it }
         .let { if (systemNewlineAction) it.setProp(SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP, maxLines) else it }
         .keyboardHeightChange { params ->
             currentKeyboardHeightChange(params)
@@ -1732,6 +1746,12 @@ internal fun TextField(
 
 private const val SLOCK_SYSTEM_NEWLINE_ACTION_PROP = "slockSystemNewlineAction"
 private const val SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP = "numberOfLines"
+
+// Android claims the single-line declaration to make the IME render an action key, and a
+// multi-line field suppresses that key entirely. The native view decides the mode exactly once,
+// and numberOfLines is what triggers that decision — so this prop must be attached ahead of
+// SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP in the modifier chain, not after it.
+private const val SLOCK_IME_ACTION_REQUESTED_PROP = "slockImeActionRequested"
 
 @Composable
 fun Modifier.dtReport(enable: Boolean): Modifier {

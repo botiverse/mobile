@@ -1,6 +1,9 @@
 package build.raft.app
 
+import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -8,14 +11,14 @@ import kotlin.test.assertTrue
 
 class SlockAgentStatusIndicatorTest {
     @Test
-    fun lowercaseWorkingFallbackUsesCanonicalWorkingIndicator() {
+    fun workingStatusUsesCanonicalWorkingIndicator() {
         val state =
             slockAgentStatusIndicatorState(
-                statusValue = "working",
-                fallbackPresence = Presence.Offline
+                status = AgentStatus.Working,
+                presence = Presence.Offline
             )
 
-        assertEquals("Working", state.status?.label)
+        assertEquals(AgentStatus.Working, state.status)
         assertEquals(SlockColor.BrandYellow, state.color)
         assertTrue(state.pulsing)
     }
@@ -24,12 +27,18 @@ class SlockAgentStatusIndicatorTest {
     fun activePresenceWithoutStatusUsesOnlineColorButDoesNotPulse() {
         val state =
             slockAgentStatusIndicatorState(
-                statusValue = null,
-                fallbackPresence = Presence.Active
+                status = null,
+                presence = Presence.Active
             )
 
         assertEquals(null, state.status)
         assertEquals(SlockColor.AccentLime, state.color)
         assertFalse(state.pulsing)
+    }
+
+    @Test
+    fun missingServerScopeReturnsNeutralResolver() = runBlocking {
+        assertEquals(null, slockAgentStatusResolver(null, null)("agent-1").first())
+        assertEquals(null, slockScopedAgentStatusResolver(null, "")("agent-1").first())
     }
 }

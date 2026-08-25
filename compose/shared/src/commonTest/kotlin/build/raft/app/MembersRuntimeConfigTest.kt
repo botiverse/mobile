@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.AgentResetMode
+import build.raft.app.model.AgentStatus
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
@@ -10,6 +11,7 @@ import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -133,6 +135,17 @@ class MembersRuntimeConfigTest {
 
         assertEquals(AgentResetMode.Restart, membersRuntimeConfigResetMode(current, next, activeAgent = true))
         assertNull(membersRuntimeConfigResetMode(current, next, activeAgent = false))
+    }
+
+    @Test
+    fun unknownRuntimeStatusBlocksMutationInsteadOfActingInactive() {
+        assertFalse(membersAgentRuntimeStatusResolved(null))
+        assertTrue(membersAgentRuntimeStatusResolved(AgentStatus.Offline))
+        assertTrue(membersAgentRuntimeStatusResolved(AgentStatus.Working))
+
+        assertFalse(membersAgentRuntimeActive(null))
+        assertFalse(membersAgentRuntimeActive(AgentStatus.Offline))
+        assertTrue(membersAgentRuntimeActive(AgentStatus.Working))
     }
 
     @Test
