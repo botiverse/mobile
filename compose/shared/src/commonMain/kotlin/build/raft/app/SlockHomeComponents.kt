@@ -6023,10 +6023,10 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             }
             if (isAgent) {
                 memberId?.takeIf { it.isNotBlank() }?.let {
-                    val status =
-                        rememberSlockAgentStatusIndicatorState(agentStatusResolver, it)
-                            ?: slockAgentStatusIndicatorState(status = null, presence = Presence.Offline)
-                    DirectMessageStatusDot(status)
+                    // A missing resolver value means presence is still Unknown/not ready.
+                    // Do not manufacture Offline: that falsely renders a gray dot while the
+                    // authoritative member/presence projection is loading or recovering.
+                    rememberSlockAgentStatusIndicatorState(agentStatusResolver, it)?.let(::DirectMessageStatusDot)
                 }
             }
             if (hasDraft) {

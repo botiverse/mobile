@@ -814,15 +814,14 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                     result.memberId
                         ?.takeIf { it.isNotBlank() }
                         ?.let { rememberSlockMemberAvatarWireValue(memberAvatarResolver, it) }
-                val status =
-                    if (result.showPresence) {
-                        result.memberId
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let { rememberSlockAgentStatusIndicatorState(agentStatusResolver, it) }
-                            ?: slockAgentStatusIndicatorState(status = null, presence = Presence.Offline)
-                    } else {
-                        null
-                    }
+                    val status =
+                        if (result.showPresence) {
+                            result.memberId
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { rememberSlockAgentStatusIndicatorState(agentStatusResolver, it) }
+                        } else {
+                            null
+                        }
 
                 SlockAvatarWithStatus(
                     statusColor = status?.color,
