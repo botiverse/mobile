@@ -390,6 +390,18 @@ internal fun ThreadMessageVisualScreenContent() {
             threadVisualFixture(fixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }, instanceId = instanceId)
                 .withNewMessageMenuTargetReplyCount(newMessageMenuTargetReplyCount)
         }
+    // A visual route must publish an explicit readiness boundary.  In
+    // particular, the wrapped+nested GFM fixture previously let the Android
+    // harness capture the host's CALL_KOTLIN fallback as a workflow-green PNG.
+    // Emit only after the fixture payload has been resolved and this host
+    // composition is active; the capture harness requires this token before
+    // accepting a screenshot for the regression case.
+    val visualReadyBridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    LaunchedEffect(visualFixture, instanceId) {
+        if (visualFixture.isNotBlank()) {
+            visualReadyBridge.log("thread_visual_ready fixtureKey=$visualFixture")
+        }
+    }
     val agentStatusResolver =
         remember(visualFixture) {
             threadMessageVisualAgentStatusResolver(visualFixture)
