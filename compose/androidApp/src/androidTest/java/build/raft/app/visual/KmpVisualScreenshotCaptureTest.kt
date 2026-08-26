@@ -1299,13 +1299,23 @@ class KmpVisualScreenshotCaptureTest {
                                 )
                             },
                             rendered = { b, shot, changedRatio ->
-                                // Full render: the compact menu's black chrome,
-                                // which paints slightly after the first pixel
-                                // change. A changed-ratio-only gate can return
-                                // while the press ripple is still visible.
+                                // task #228: the discriminator is the menu's COLOURED
+                                // reaction row, not darkness or area. The panel is white
+                                // with a hairline border on a white background, so the
+                                // former criteria could not see it at all - they were
+                                // in fact reacting to the pressed-row grey highlight,
+                                // which made compact-first a false RED and compact-middle
+                                // a false GREEN under one and the same rule.
+                                //
+                                // changedRatio is retained only to exclude a completely
+                                // static screen; on its own it cannot distinguish a
+                                // ripple from a menu, which is what it was misused for.
                                 changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
-                                    shot.countNewNearBlackSamplesComparedWith(b) >=
-                                    THREAD_NEW_MESSAGE_MENU_MIN_ADDED_BLACK_SAMPLES
+                                    shot.countNewSaturatedPixelsComparedWith(
+                                        before = b,
+                                        topPx = 0,
+                                        bottomPx = shot.height,
+                                    ) >= THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
                             },
                         )
                         val threadOpenAfter = after.countThreadNewMessageMenuOpenProbeSamples()
@@ -1874,6 +1884,55 @@ class KmpVisualScreenshotCaptureTest {
             y += FORWARD_PROBE_PIXEL_STRIDE
         }
         return samples
+    }
+
+    /**
+     * task #228: counts pixels that became strongly saturated relative to [before].
+     *
+     * The compact menu is a WHITE panel with a hairline black outline drawn over a
+     * white background, so the two original criteria could not see it: changedRatio
+     * stayed at ~1.9% because white-on-white changes few pixels, and the near-black
+     * probe returned ~1 sample because the only dark pixels are a 1-2px border that
+     * a strided scan steps over. The menu rendered correctly in every failing run;
+     * the instrument was blind to it (run 32942109128).
+     *
+     * The menu's reaction row is the one strongly coloured element on an otherwise
+     * monochrome screen - measured 0.00% saturated before it appears, 2.74% after,
+     * with the whole screen at 0.01%. Colour also has AREA, unlike an outline, so
+     * it does not depend on sampling density.
+     *
+     * Deliberately scans every pixel: FORWARD_PROBE_PIXEL_STRIDE has 17 callers
+     * calibrated against it, so widening the scan globally would move unrelated
+     * thresholds. Full-scanning one bitmap is negligible here.
+     */
+    private fun Bitmap.countNewSaturatedPixelsComparedWith(
+        before: Bitmap,
+        topPx: Int,
+        bottomPx: Int,
+    ): Int {
+        require(width == before.width && height == before.height) {
+            "Bitmap size changed: ${width}x$height vs ${before.width}x${before.height}"
+        }
+        fun saturated(pixel: Int): Boolean {
+            val r = Color.red(pixel)
+            val g = Color.green(pixel)
+            val b = Color.blue(pixel)
+            val mx = maxOf(r, g, b)
+            val mn = minOf(r, g, b)
+            return mx > 90 && (mx - mn) * 100 / mx > 45
+        }
+        var count = 0
+        var y = topPx.coerceAtLeast(0)
+        val end = bottomPx.coerceAtMost(height)
+        while (y < end) {
+            var x = 0
+            while (x < width) {
+                if (saturated(getPixel(x, y)) && !saturated(before.getPixel(x, y))) count++
+                x++
+            }
+            y++
+        }
+        return count
     }
 
     private fun Bitmap.countNewNearBlackSamplesComparedWith(before: Bitmap): Int {
@@ -6174,6 +6233,23 @@ class KmpVisualScreenshotCaptureTest {
         // task #228: 3x the 500ms default long-press timeout, so a late-scheduled
         // delayed message on a loaded emulator cannot let ACTION_UP win the race.
         private const val COMPACT_MENU_LONG_PRESS_HOLD_MS = 1_500L
+
+        // task #228: the menu's reaction row is the only strongly coloured element on
+        // this fixture, so it is what distinguishes a rendered menu from a press
+        // ripple or a pressed-row highlight.
+        //
+        // Measured directly on the CI frames from run 32942109128, counting pixels
+        // that BECOME saturated relative to the pre-press frame:
+        //   real menu present            4164
+        //   no menu (frame against self)    0
+        // The floor is set at 1500 - roughly a third of the signal and far above a
+        // measured noise of zero. An earlier draft of this constant used 4000, which
+        // left only a 4% margin on the positive sample and would have gone red on any
+        // small variation in emoji rendering.
+        //
+        // Colour has area, unlike the hairline outline the previous criterion tried to
+        // detect, so this does not depend on sampling density.
+        private const val THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX = 1_500
 
         private const val LONG_PRESS_RETRY_SUPPRESS_CHANGED_RATIO = 0.002f
 
