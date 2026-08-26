@@ -1299,6 +1299,33 @@ class KmpVisualScreenshotCaptureTest {
                                 )
                             },
                             rendered = { b, shot, changedRatio ->
+                                // task #228 precondition, HARD failure not a warning:
+                                // this criterion works only because the fixture is
+                                // otherwise monochrome - whole-screen saturated pixels
+                                // measured 0.01% before the menu appears. A fixture with
+                                // a colour avatar or an inline image would raise that
+                                // floor until the signal drowned, and a noise-swamped
+                                // criterion fails QUIETLY: it reads exactly like "the
+                                // menu did not appear". So assert the premise, from the
+                                // SAME capture as the judgement, and trip before it can
+                                // mislead.
+                                //
+                                // Two independent measurements agree on the signal, which
+                                // is why the number is trusted: in-band 2.74% over a band
+                                // that is 6.3% of the screen ~= 0.17% whole-screen, versus
+                                // 0.15% measured whole-screen directly. Changing the
+                                // resolution or the band invalidates that reconciliation.
+                                val baselineSaturated = b.countNewSaturatedPixelsComparedWith(
+                                    before = b,
+                                    topPx = 0,
+                                    bottomPx = b.height,
+                                )
+                                check(baselineSaturated == 0) {
+                                    "task #228 precondition broken: the pre-press frame " +
+                                        "already contains $baselineSaturated saturated " +
+                                        "pixels. This case detects the menu by its coloured " +
+                                        "reaction row, which requires a monochrome fixture."
+                                }
                                 // task #228: the discriminator is the menu's COLOURED
                                 // reaction row, not darkness or area. The panel is white
                                 // with a hairline border on a white background, so the
@@ -1310,12 +1337,24 @@ class KmpVisualScreenshotCaptureTest {
                                 // changedRatio is retained only to exclude a completely
                                 // static screen; on its own it cannot distinguish a
                                 // ripple from a menu, which is what it was misused for.
+                                val addedSaturated = shot.countNewSaturatedPixelsComparedWith(
+                                    before = b,
+                                    topPx = 0,
+                                    bottomPx = shot.height,
+                                )
+                                // Log the deciding number. Without it a reader can only
+                                // infer WHY a case passed from the metric's definition,
+                                // which is how this investigation lost six rounds: the
+                                // old gate logged changedRatio but never the count that
+                                // actually decided the verdict.
+                                Log.i(
+                                    VISUAL_LOG_TAG,
+                                    "$caseId compact-menu detect addedSaturated=$addedSaturated " +
+                                        "floor=$THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX " +
+                                        "changedRatio=$changedRatio"
+                                )
                                 changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
-                                    shot.countNewSaturatedPixelsComparedWith(
-                                        before = b,
-                                        topPx = 0,
-                                        bottomPx = shot.height,
-                                    ) >= THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
+                                    addedSaturated >= THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
                             },
                         )
                         val threadOpenAfter = after.countThreadNewMessageMenuOpenProbeSamples()
