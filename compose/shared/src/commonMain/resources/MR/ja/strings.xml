@@ -618,7 +618,7 @@
     <string name="thread_video_playback_failed">動画を再生できませんでした</string>
     <string name="thread_video_attachment_fallback_name">動画の添付ファイル</string>
     <string name="thread_action_back_to_bottom">最下部に戻る</string>
-    <string name="thread_action_unread_count">↑ 未読 %1$d 件</string>
+    <string name="thread_action_unread_count">↓ 新着 %1$d 件</string>
     <string name="thread_label_saved">保存済み</string>
     <string name="thread_state_refreshing_original">元のメッセージを更新中…</string>
     <string name="thread_error_refresh_original">更新に失敗しました: %1$s</string>
