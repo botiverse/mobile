@@ -1319,7 +1319,7 @@ class KmpVisualScreenshotCaptureTest {
                                     before = b,
                                     topPx = 0,
                                     bottomPx = b.height,
-                                )
+                                ).count
                                 check(baselineSaturated == 0) {
                                     "task #228 precondition broken: the pre-press frame " +
                                         "already contains $baselineSaturated saturated " +
@@ -1337,11 +1337,12 @@ class KmpVisualScreenshotCaptureTest {
                                 // changedRatio is retained only to exclude a completely
                                 // static screen; on its own it cannot distinguish a
                                 // ripple from a menu, which is what it was misused for.
-                                val addedSaturated = shot.countNewSaturatedPixelsComparedWith(
+                                val saturatedRegion = shot.countNewSaturatedPixelsComparedWith(
                                     before = b,
                                     topPx = 0,
                                     bottomPx = shot.height,
                                 )
+                                val addedSaturated = saturatedRegion.count
                                 // Log the deciding number. Without it a reader can only
                                 // infer WHY a case passed from the metric's definition,
                                 // which is how this investigation lost six rounds: the
@@ -1351,6 +1352,8 @@ class KmpVisualScreenshotCaptureTest {
                                     VISUAL_LOG_TAG,
                                     "$caseId compact-menu detect addedSaturated=$addedSaturated " +
                                         "floor=$THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX " +
+                                        "yRange=${saturatedRegion.minY}..${saturatedRegion.maxY} " +
+                                        "centroidY=${saturatedRegion.centroidY} " +
                                         "changedRatio=$changedRatio"
                                 )
                                 changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
@@ -1948,7 +1951,7 @@ class KmpVisualScreenshotCaptureTest {
         before: Bitmap,
         topPx: Int,
         bottomPx: Int,
-    ): Int {
+    ): SaturatedRegion {
         require(width == before.width && height == before.height) {
             "Bitmap size changed: ${width}x$height vs ${before.width}x${before.height}"
         }
@@ -1961,18 +1964,43 @@ class KmpVisualScreenshotCaptureTest {
             return mx > 90 && (mx - mn) * 100 / mx > 45
         }
         var count = 0
+        var minY = Int.MAX_VALUE
+        var maxY = Int.MIN_VALUE
+        var sumY = 0L
         var y = topPx.coerceAtLeast(0)
         val end = bottomPx.coerceAtMost(height)
         while (y < end) {
             var x = 0
             while (x < width) {
-                if (saturated(getPixel(x, y)) && !saturated(before.getPixel(x, y))) count++
+                if (saturated(getPixel(x, y)) && !saturated(before.getPixel(x, y))) {
+                    count++
+                    if (y < minY) minY = y
+                    if (y > maxY) maxY = y
+                    sumY += y
+                }
                 x++
             }
             y++
         }
-        return count
+        // task #228: the vertical extent is returned alongside the count because a
+        // count on its own cannot show that the measurement is live. The three cases
+        // anchor their menus at different y, so these values MUST differ between them
+        // if each is really computed from its own frame - whereas three identical
+        // counts are equally consistent with a cached or shared value.
+        return SaturatedRegion(
+            count = count,
+            minY = if (count == 0) -1 else minY,
+            maxY = if (count == 0) -1 else maxY,
+            centroidY = if (count == 0) -1 else (sumY / count).toInt(),
+        )
     }
+
+    private data class SaturatedRegion(
+        val count: Int,
+        val minY: Int,
+        val maxY: Int,
+        val centroidY: Int,
+    )
 
     private fun Bitmap.countNewNearBlackSamplesComparedWith(before: Bitmap): Int {
         require(width == before.width && height == before.height) {
