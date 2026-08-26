@@ -17,7 +17,6 @@ private const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "foregroundMessageBan
 private const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "activityTaskStatusBadgesEnabled"
 private const val KEY_ACTIVITY_SENDER_AVATARS_ENABLED = "activitySenderAvatarsEnabled"
 private const val KEY_COMPOSER_SEND_KEY_ENABLED = "composerSendKeyEnabled"
-private const val KEY_COMPOSER_ACTION_TRAY_ENABLED = "composerActionTrayEnabled"
 private const val KEY_MULTI_SHELL_HOST_ENABLED = "multiShellHostEnabled"
 private const val KEY_SERVER_DRAWER_ENABLED = "serverDrawerEnabled"
 private const val KEY_NEW_DESIGN_SETTINGS_ENABLED = "newDesignSettingsEnabled"
@@ -144,9 +143,6 @@ fun kuiklyChatLayoutPreferenceRepository(
         override suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setComposerSendKeyEnabled(enabled) }
 
-        override suspend fun setComposerActionTrayEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
-            persistAndPublish { delegate.setComposerActionTrayEnabled(enabled) }
-
         override suspend fun setMultiShellHostEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setMultiShellHostEnabled(enabled) }
 
@@ -181,7 +177,6 @@ private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JSONObject =
         .put(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, activityTaskStatusBadgesEnabled)
         .put(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, activitySenderAvatarsEnabled)
         .put(KEY_COMPOSER_SEND_KEY_ENABLED, composerSendKeyEnabled)
-        .put(KEY_COMPOSER_ACTION_TRAY_ENABLED, composerActionTrayEnabled)
         .put(KEY_MULTI_SHELL_HOST_ENABLED, multiShellHostEnabled)
         .put(KEY_SERVER_DRAWER_ENABLED, serverDrawerEnabled)
         .put(KEY_NEW_DESIGN_SETTINGS_ENABLED, newDesignSettingsEnabled)
@@ -204,7 +199,6 @@ internal fun JSONObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPrefer
         activityTaskStatusBadgesEnabled = optBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, false),
         activitySenderAvatarsEnabled = optBoolean(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, false),
         composerSendKeyEnabled = optBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, false),
-        composerActionTrayEnabled = optBoolean(KEY_COMPOSER_ACTION_TRAY_ENABLED, false),
         multiShellHostEnabled = optBoolean(KEY_MULTI_SHELL_HOST_ENABLED, false),
         serverDrawerEnabled = optBoolean(KEY_SERVER_DRAWER_ENABLED, false),
         newDesignSettingsEnabled = optBoolean(KEY_NEW_DESIGN_SETTINGS_ENABLED, false),

@@ -2823,6 +2823,10 @@ internal fun ThreadComposerContentLeaf(
                             horizontalArrangement = Arrangement.spacedBy(ThreadComposerLeftActionGroupSpacing)
                         ) {
                             if (state.attachmentActionsEnabled) {
+                                // Gallery / camera / file, in that order (artin, task #1096). Camera
+                                // used to exist only as this button's long-press, which meant nobody
+                                // found it; the long-press stays so existing muscle memory keeps
+                                // working, and the dedicated button is what makes it discoverable.
                                 ComposerIconButton(
                                     icon = SlockLucideIconName.ImagePlus,
                                     enabled = composerEnabled,
@@ -2835,9 +2839,23 @@ internal fun ThreadComposerContentLeaf(
                                         onEvent(threadComposerImageAction(longPress = false), null, null, null)
                                     }
                                 )
-                                ComposerIconButton(SlockLucideIconName.Paperclip, composerEnabled) {
-                                    onEvent("attachFile", null, null, null)
-                                }
+                                ComposerIconButton(
+                                    icon = SlockLucideIconName.Camera,
+                                    enabled = composerEnabled,
+                                    contentDescription = stringResource(MR.strings.composer_take_photo),
+                                    onClick = {
+                                        // Same action the long-press already emitted, so capture
+                                        // keeps its existing confirm/cancel editor step: nothing
+                                        // reaches the pending tray until the user confirms.
+                                        onEvent(threadComposerImageAction(longPress = true), null, null, null)
+                                    }
+                                )
+                                ComposerIconButton(
+                                    icon = SlockLucideIconName.Paperclip,
+                                    enabled = composerEnabled,
+                                    contentDescription = stringResource(MR.strings.composer_attach_file),
+                                    onClick = { onEvent("attachFile", null, null, null) }
+                                )
                             }
                         }
                         Row(
