@@ -6573,6 +6573,34 @@ class KmpVisualScreenshotCaptureTest {
          * theoretical. It stays acceptable only because the largest baseline seen
          * is far below the floor - if that gap closes, this needs a real mechanism
          * rather than a wider bound.
+         *
+         * ⚠️ Separate the certain part of the above from the untested part.
+         *
+         * CERTAIN, by construction: a pixel already saturated in BEFORE cannot
+         * enter the difference, because the predicate requires !saturated(before).
+         * That is a property of the code, not an observation.
+         *
+         * NOT ESTABLISHED: the prediction people (myself included) drew from it -
+         * that colour either sits in the baseline or arrives in the window, so
+         * baseline + added should be roughly constant across the three cases. It
+         * is not. Within run 32948862386, paired inside that single run:
+         *
+         *   compact-first    baseline 216   added 4164   sum 4380
+         *   compact-middle   baseline   0   added 4768   sum 4768
+         *   compact-last     baseline 593   added 4164   sum 4757
+         *
+         * Two of three follow the expected direction (middle has the lowest
+         * baseline and the highest delta, last the reverse); compact-first does
+         * not, and the sums differ by 388. The likely confound is that the sum
+         * estimates the AFTER frame's total colour, which has no reason to match
+         * across cases since the three menus cover different content - but that is
+         * an untested explanation for an untested prediction, so treat the
+         * mechanism as UNDETERMINED rather than supported.
+         *
+         * What would settle it, cheaply: also log the AFTER frame's absolute
+         * saturated count. Then after_total - baseline must equal added exactly if
+         * no baseline pixel ever loses saturation, and any residual quantifies the
+         * gap directly instead of leaving it to argument.
          */
         private const val THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX =
             THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
