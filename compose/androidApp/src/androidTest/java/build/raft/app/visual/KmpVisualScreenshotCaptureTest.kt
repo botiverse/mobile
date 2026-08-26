@@ -1253,6 +1253,18 @@ class KmpVisualScreenshotCaptureTest {
             assertFalse(preferenceStore.readNewMessageMenuEnabledSync())
             runBlocking { preferenceStore.saveNewMessageMenuEnabled(true) }
             assertTrue(preferenceStore.readNewMessageMenuEnabledSync())
+            // task #228: ask the fixture to report when its compact menu opens,
+            // instead of inferring it from pixels. The sibling preference-off
+            // case has gated on this token all along - the compact path just
+            // never passed one. A product-emitted state transition outranks any
+            // screenshot criterion, and this one carries the messageId, so the
+            // three cases cannot produce interchangeable observations.
+            //
+            // elapsedRealtimeNanos makes the token unique per launch, so a token
+            // left in logcat by an earlier case can never satisfy a later one.
+            val menuVisibleToken =
+                "thread_compact_menu_visible_${visualAttempt()}_" +
+                    "${SystemClock.elapsedRealtimeNanos()}"
             captureKmpComponentCase(
                 caseId = caseId,
                 pageName = "compose_thread_message_row_visual",
@@ -1261,6 +1273,7 @@ class KmpVisualScreenshotCaptureTest {
                         .put("instanceId", "visual-$caseId")
                         .put("visualFixture", "new_message_menu_demo")
                         .put("newMessageMenuComposerBoundaryVisible", composerBoundaryVisible)
+                        .put("longPressMenuVisibleToken", menuVisibleToken)
                         .put("singleTapOpensThreadEnabled", true),
                 crop = FULL_VIEWPORT_CROP,
                 suppressSoftKeyboard = false,
@@ -1315,16 +1328,35 @@ class KmpVisualScreenshotCaptureTest {
                                 // that is 6.3% of the screen ~= 0.17% whole-screen, versus
                                 // 0.15% measured whole-screen directly. Changing the
                                 // resolution or the band invalidates that reconciliation.
-                                val baselineSaturated = b.countNewSaturatedPixelsComparedWith(
-                                    before = b,
+                                // ⚠️ This assertion was previously written as
+                                // b.countNewSaturatedPixelsComparedWith(before = b) - a
+                                // frame diffed against ITSELF. Its predicate is
+                                // "saturated(after) && !saturated(before)", so with
+                                // after === before it reduces to saturated(p) &&
+                                // !saturated(p): identically zero for every possible
+                                // image. It did not measure that the baseline was clean;
+                                // it computed the constant 0 and asserted 0 == 0.
+                                //
+                                // An absolute count is the only form that can fail.
+                                val baselineSaturated = b.countSaturatedPixels(
                                     topPx = 0,
                                     bottomPx = b.height,
-                                ).count
-                                check(baselineSaturated == 0) {
+                                )
+                                Log.i(
+                                    VISUAL_LOG_TAG,
+                                    "$caseId compact-menu baseline saturated=$baselineSaturated " +
+                                        "ceiling=$THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX"
+                                )
+                                check(
+                                    baselineSaturated <=
+                                        THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX
+                                ) {
                                     "task #228 precondition broken: the pre-press frame " +
                                         "already contains $baselineSaturated saturated " +
                                         "pixels. This case detects the menu by its coloured " +
-                                        "reaction row, which requires a monochrome fixture."
+                                        "reaction row, which requires a near-monochrome " +
+                                        "fixture; that much standing colour can reach the " +
+                                        "menu floor on its own."
                                 }
                                 // task #228: the discriminator is the menu's COLOURED
                                 // reaction row, not darkness or area. The panel is white
@@ -1348,15 +1380,23 @@ class KmpVisualScreenshotCaptureTest {
                                 // which is how this investigation lost six rounds: the
                                 // old gate logged changedRatio but never the count that
                                 // actually decided the verdict.
+                                val menuReported = logcatContainsToken(menuVisibleToken)
                                 Log.i(
                                     VISUAL_LOG_TAG,
-                                    "$caseId compact-menu detect addedSaturated=$addedSaturated " +
+                                    "$caseId compact-menu detect menuReported=$menuReported " +
+                                        "addedSaturated=$addedSaturated " +
                                         "floor=$THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX " +
                                         "yRange=${saturatedRegion.minY}..${saturatedRegion.maxY} " +
                                         "centroidY=${saturatedRegion.centroidY} " +
                                         "changedRatio=$changedRatio"
                                 )
-                                changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
+                                // changedRatio is NOT part of the criterion. It was shown
+                                // to have no discriminating power here (it reacts to the
+                                // pressed-row highlight, not to the menu), and as a
+                                // conjunct it can only turn a real menu RED: compact-middle
+                                // measured 0.0237 against a 0.02 floor, an 18% margin on a
+                                // quantity we do not trust. Logged for diagnosis only.
+                                menuReported &&
                                     addedSaturated >= THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
                             },
                         )
@@ -1372,9 +1412,26 @@ class KmpVisualScreenshotCaptureTest {
                             } else {
                                 0f
                             }
+                        // The fixture reports the menu's own state transition; the
+                        // saturated count independently confirms it was painted.
+                        // changedRatio is deliberately absent from both - see the
+                        // detect lambda above for why it cannot decide this.
+                        val menuReported = logcatContainsToken(menuVisibleToken)
+                        val addedSaturated = after.countNewSaturatedPixelsComparedWith(
+                            before = before,
+                            topPx = 0,
+                            bottomPx = after.height,
+                        ).count
                         assertTrue(
-                            "Long press must render the compact message menu; changedRatio=$changedRatio",
-                            changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
+                            "Long press must open the compact message menu; the fixture " +
+                                "never reported it opening. changedRatio=$changedRatio " +
+                                "addedSaturated=$addedSaturated",
+                            menuReported
+                        )
+                        assertTrue(
+                            "Long press must paint the compact menu's coloured reaction " +
+                                "row; addedSaturated=$addedSaturated",
+                            addedSaturated >= THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
                         )
                         assertTrue(
                             "Long press must render the compact menu chrome; addedNearBlack=$addedToolbarBlack",
@@ -1993,6 +2050,34 @@ class KmpVisualScreenshotCaptureTest {
             maxY = if (count == 0) -1 else maxY,
             centroidY = if (count == 0) -1 else (sumY / count).toInt(),
         )
+    }
+
+    /**
+     * Absolute count of saturated pixels in one frame.
+     *
+     * Unlike [countNewSaturatedPixelsComparedWith] this takes a single frame, so
+     * it can actually come back non-zero - which is the whole point of using it
+     * as a precondition. Diffing a frame against itself cannot.
+     */
+    private fun Bitmap.countSaturatedPixels(topPx: Int, bottomPx: Int): Int {
+        var count = 0
+        var y = topPx.coerceAtLeast(0)
+        val end = bottomPx.coerceAtMost(height)
+        while (y < end) {
+            var x = 0
+            while (x < width) {
+                val pixel = getPixel(x, y)
+                val r = Color.red(pixel)
+                val g = Color.green(pixel)
+                val b = Color.blue(pixel)
+                val mx = maxOf(r, g, b)
+                val mn = minOf(r, g, b)
+                if (mx > 90 && (mx - mn) * 100 / mx > 45) count++
+                x++
+            }
+            y++
+        }
+        return count
     }
 
     private data class SaturatedRegion(
@@ -6317,6 +6402,35 @@ class KmpVisualScreenshotCaptureTest {
         // Colour has area, unlike the hairline outline the previous criterion tried to
         // detect, so this does not depend on sampling density.
         private const val THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX = 1_500
+
+        /**
+         * What the saturated-pixel criterion does and does NOT establish.
+         *
+         * It proves "at least [THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX]
+         * saturated pixels appeared", not "the menu opened". Those coincide only
+         * because this fixture is otherwise near-monochrome - a property of the
+         * FIXTURE, not of the criterion. Three consequences worth stating:
+         *
+         *  - The precondition below bounds the BASELINE only. A colour element
+         *    that arrives inside the observation window (a late-loading avatar
+         *    or inline image) passes the precondition and can still satisfy the
+         *    floor on its own. This fixture has no async images, so it does not
+         *    apply today; adding one would reopen it.
+         *  - The count includes saturated pixels OUTSIDE the menu. Measured at a
+         *    few dozen (they are what stretches the reported yRange well past
+         *    the menu itself). Its failure direction is FALSE GREEN, which is
+         *    the direction that does not announce itself.
+         *  - yRange/centroidY are diagnostics, never criteria.
+         *
+         * Since the fixture now reports the menu opening directly, this count is
+         * the corroborating half, not the deciding one.
+         *
+         * Ceiling: one fifth of the floor. Chosen so standing colour cannot come
+         * close to the menu's signal on its own; the measured baseline is logged
+         * on every run, so a real value replaces this reasoning as soon as one
+         * exists.
+         */
+        private const val THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX = 300
 
         private const val LONG_PRESS_RETRY_SUPPRESS_CHANGED_RATIO = 0.002f
 
