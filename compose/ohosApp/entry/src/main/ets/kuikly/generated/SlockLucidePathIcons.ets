@@ -35,6 +35,7 @@ export const SlockLucidePathIconNames: string[] = [
   'bug',
   'building-2',
   'calendar',
+  'camera',
   'chart-bar',
   'check',
   'chevron-down',
@@ -1078,6 +1079,33 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'M 3 10 h 18',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'camera':
+      return [
+    {
+      commands: 'M 13.997 4 a 2 2 0 0 1 1.76 1.05 l 0.486 0.9 A 2 2 0 0 0 18.003 7 H 20 a 2 2 0 0 1 2 2 v 9 a 2 2 0 0 1 -2 2 H 4 a 2 2 0 0 1 -2 -2 V 9 a 2 2 0 0 1 2 -2 h 1.997 a 2 2 0 0 0 1.759 -1.048 l 0.489 -0.904 A 2 2 0 0 1 10.004 4 z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 9 13 A 3 3 0 1 0 15 13 A 3 3 0 1 0 9 13 Z',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,

@@ -2051,6 +2051,7 @@
     <string name="home_adaptive_select_conversation">选择一个会话</string>
     <string name="composer_add_image">添加图片</string>
     <string name="composer_take_photo">拍照</string>
+    <string name="composer_attach_file">文件</string>
     <string name="markdown_task_list_checkbox">任务列表复选框</string>
     <string name="markdown_task_list_checked">已完成</string>
     <string name="markdown_task_list_unchecked">未完成</string>

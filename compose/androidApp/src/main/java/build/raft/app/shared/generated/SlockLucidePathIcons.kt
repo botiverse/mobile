@@ -1053,6 +1053,44 @@ internal object SlockLucidePathIcons {
         )
     }
 
+    private val Camera: SlockLucideIconSpec by lazy {
+        SlockLucideIconSpec(
+            name = "camera",
+            viewBox =
+                SlockLucideViewBox(
+                    minX = 0f,
+                    minY = 0f,
+                    width = 24f,
+                    height = 24f,
+                ),
+            paths =
+                listOf(
+            SlockLucidePathSpec(
+                pathData = "M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M 9.0 13.0 A 3.0 3.0 0 1 0 15.0 13.0 A 3.0 3.0 0 1 0 9.0 13.0 Z",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+                ),
+        )
+    }
+
     private val ChartBar: SlockLucideIconSpec by lazy {
         SlockLucideIconSpec(
             name = "chart-bar",
@@ -10228,6 +10266,7 @@ internal object SlockLucidePathIcons {
             "bug",
             "building-2",
             "calendar",
+            "camera",
             "chart-bar",
             "check",
             "chevron-down",
@@ -10427,6 +10466,7 @@ internal object SlockLucidePathIcons {
             "bug" -> Bug
             "building-2" -> Building2
             "calendar" -> Calendar
+            "camera" -> Camera
             "chart-bar" -> ChartBar
             "check" -> Check
             "chevron-down" -> ChevronDown
