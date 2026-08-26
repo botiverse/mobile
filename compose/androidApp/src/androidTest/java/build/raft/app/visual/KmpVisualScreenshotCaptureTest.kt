@@ -1389,7 +1389,19 @@ class KmpVisualScreenshotCaptureTest {
                                 // which is how this investigation lost six rounds: the
                                 // old gate logged changedRatio but never the count that
                                 // actually decided the verdict.
-                                val menuReported = logcatContainsToken(menuVisibleToken)
+                                // Copy the fixture's own line into the visual log:
+                                // it carries the messageId, so the archive shows
+                                // WHICH message opened a menu, and three cases that
+                                // reported the same id would be visible after the
+                                // fact instead of being unrecoverable.
+                                val menuLine = logcatFindToken(menuVisibleToken)
+                                val menuReported = menuLine != null
+                                Log.i(
+                                    VISUAL_LOG_TAG,
+                                    "$caseId compact-menu reported " +
+                                        (menuLine?.substringAfter(menuVisibleToken)?.trim()
+                                            ?: "<no menu-visible token in logcat>")
+                                )
                                 Log.i(
                                     VISUAL_LOG_TAG,
                                     "$caseId compact-menu detect menuReported=$menuReported " +
@@ -4961,6 +4973,34 @@ class KmpVisualScreenshotCaptureTest {
      * Any failure returns false so the caller falls through to its deadline
      * rather than throwing.
      */
+    /**
+     * The matching logcat line for [token], or null.
+     *
+     * [logcatContainsToken] answers only yes/no, and the fixture writes its token
+     * under a tag the archived logcat does not keep (it retains VisualCapture,
+     * TestRunner, System.out and Task139Reuse). So a criterion that reads the
+     * token live leaves NO trace in the evidence: the run says the menu opened
+     * and the artifact cannot show it. Returning the line lets the caller copy it
+     * into the visual log, where it is archived - which matters because this
+     * cannot be reconstructed after the run.
+     */
+    private fun logcatFindToken(token: String): String? {
+        var process: Process? = null
+        return try {
+            process = Runtime.getRuntime().exec(
+                arrayOf("logcat", "-d", "-s", REACTION_ATLAS_LOG_TAG)
+            )
+            process.inputStream.bufferedReader().useLines { lines ->
+                lines.firstOrNull { it.contains(token) }
+            }
+        } catch (t: Throwable) {
+            Log.w(VISUAL_LOG_TAG, "logcatFindToken failed: ${t.message}")
+            null
+        } finally {
+            process?.destroy()
+        }
+    }
+
     private fun logcatContainsToken(token: String): Boolean {
         var process: Process? = null
         return try {
@@ -6476,6 +6516,17 @@ class KmpVisualScreenshotCaptureTest {
          * menu's whole signal, so tripping it means the equivalence this criterion
          * rests on has actually broken. The measured baseline is logged on every
          * run, so the value can be tightened from data rather than from taste.
+         *
+         * Measured (run 32947725178): 212, 212, 216 across the three cases. Two
+         * things follow, and both argue against tightening this by feel:
+         *
+         *  - The baseline is NOT zero, which the assertion this replaced had been
+         *    "confirming" for as long as it existed. The fixture carries a couple
+         *    of hundred saturated pixels of its own.
+         *  - floor/5 = 300 would have left a 29% margin over a value nobody had
+         *    ever measured. It would have looked like a tight, careful bound right
+         *    up until a fixture tweak pushed 216 past 300 and turned the nightly
+         *    red for a reason unrelated to any menu.
          */
         private const val THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX =
             THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
