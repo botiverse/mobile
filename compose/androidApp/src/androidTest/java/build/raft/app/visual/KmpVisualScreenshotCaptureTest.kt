@@ -39,7 +39,6 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Assert.assertFalse
 import org.junit.Assume.assumeTrue
 import org.junit.BeforeClass
@@ -1215,15 +1214,6 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    @Ignore(
-        "Quarantined by task #228. This case renders compact-FIRST, and it fails with " +
-            "'Long press must render the compact message menu', changedRatio=0.0002965 - the menu " +
-            "never appears at all. Re-measured 2026-08-21 in run 32448428878: still reproduces, " +
-            "digit-identical to run 32100665318, so it is deterministic and not order-sensitive. " +
-            "NOTE: an earlier version of this annotation described the compact-LAST failure; that " +
-            "was a mislabel - the two cases fail in different ways and only compact-last relates " +
-            "to #2146 (417078cecd). Un-quarantine when the implementation side lands a fix."
-    )
     @Test
     fun captureThreadNewMessageMenuDemo() {
         captureThreadNewMessageMenuCompactTarget(
@@ -1240,15 +1230,6 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    @Ignore(
-        "Quarantined by task #228. This case renders compact-LAST and fails with " +
-            "'Compact menu must not paint over the Composer boundary', " +
-            "bottomBandChangedRatio=0.14443202 - the menu opens but covers the Composer. " +
-            "Introduced by #2146 (417078cecd). Re-measured 2026-08-21 in run 32448428878: still " +
-            "reproduces, digit-identical to run 32072273428, so it is deterministic. The " +
-            "never-quarantined compact-MIDDLE case passed in the same run, so the harness is " +
-            "sound. Un-quarantine when the implementation side lands a fix."
-    )
     @Test
     fun captureThreadNewMessageMenuCompactLast() {
         captureThreadNewMessageMenuCompactTarget(
@@ -4054,12 +4035,27 @@ class KmpVisualScreenshotCaptureTest {
                 }
                 return latest!!
             }
+            // task #228: only re-press when the screen has not responded at all.
+            // Re-pressing while a ripple (or menu) is already showing muddies the
+            // state and overwrites the poll=1 scene, so the render-fail evidence
+            // written afterwards shows an empty screen. That made "the gate did
+            // not recognise it" and "nothing happened" indistinguishable for five
+            // investigation rounds (run 32849366613 logcat).
+            val screenResponded = changedRatio >= LONG_PRESS_RETRY_SUPPRESS_CHANGED_RATIO
             if (!retried && elapsed >= retryAtMs) {
-                Log.i(
-                    VISUAL_LOG_TAG,
-                    "$label long-press retry poll=$poll elapsedMs=$elapsed"
-                )
-                longPress()
+                if (screenResponded) {
+                    Log.i(
+                        VISUAL_LOG_TAG,
+                        "$label long-press retry suppressed poll=$poll " +
+                            "elapsedMs=$elapsed changedRatio=$changedRatio"
+                    )
+                } else {
+                    Log.i(
+                        VISUAL_LOG_TAG,
+                        "$label long-press retry poll=$poll elapsedMs=$elapsed"
+                    )
+                    longPress()
+                }
                 retried = true
             }
         }
@@ -6143,6 +6139,11 @@ class KmpVisualScreenshotCaptureTest {
         // Matches the fixed host bounds in the compact-last visual fixture.
         // The sampled band therefore contains only the real Composer host.
         private const val THREAD_NEW_MESSAGE_MENU_COMPOSER_BOUNDARY_HEIGHT_DP = 150
+        // task #228: above this the screen has demonstrably reacted, so re-pressing
+        // would disturb the state we are waiting on. Noise floor 2.7e-5; smallest
+        // genuine render seen 0.0257.
+        private const val LONG_PRESS_RETRY_SUPPRESS_CHANGED_RATIO = 0.002f
+
         private const val THREAD_NEW_MESSAGE_MENU_COMPOSER_MAX_CHANGED_RATIO = 0.005f
         private const val THREAD_NEW_MESSAGE_MENU_OPEN_PROBE_TOLERANCE = 8
         private const val SEARCH_PIN_MENU_MIN_CHANGED_RATIO = 0.004f
