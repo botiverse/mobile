@@ -1318,9 +1318,10 @@ class KmpVisualScreenshotCaptureTest {
                         )
                         if (composerBoundaryVisible) {
                             assertTrue(
-                                "Compact menu must not paint over the Composer boundary; " +
+                                "Compact menu must paint over the Composer boundary (by design; " +
+                                    "otherwise the Composer would cover the menu); " +
                                     "bottomBandChangedRatio=$composerChangedRatio",
-                                composerChangedRatio < THREAD_NEW_MESSAGE_MENU_COMPOSER_MAX_CHANGED_RATIO
+                                composerChangedRatio >= THREAD_NEW_MESSAGE_MENU_COMPOSER_MIN_CHANGED_RATIO
                             )
                         }
                         menuArtifact = after
@@ -6155,7 +6156,13 @@ class KmpVisualScreenshotCaptureTest {
         // genuine render seen 0.0257.
         private const val LONG_PRESS_RETRY_SUPPRESS_CHANGED_RATIO = 0.002f
 
-        private const val THREAD_NEW_MESSAGE_MENU_COMPOSER_MAX_CHANGED_RATIO = 0.005f
+        // task #228: the LAST row's compact menu is *designed* to paint over the
+        // Composer. artin, 2026-08-25: "压住输入框 是对的，那要不然被输入框挡住啊"
+        // - if it did not overlap, the Composer would cover the menu instead. So
+        // this is a FLOOR, not a ceiling: too little change in the bottom band
+        // means the menu failed to reach the Composer. Correct reading observed
+        // 0.14443202; the no-gesture noise floor is 2.7e-5.
+        private const val THREAD_NEW_MESSAGE_MENU_COMPOSER_MIN_CHANGED_RATIO = 0.05f
         private const val THREAD_NEW_MESSAGE_MENU_OPEN_PROBE_TOLERANCE = 8
         private const val SEARCH_PIN_MENU_MIN_CHANGED_RATIO = 0.004f
         private const val THREAD_OPEN_PROBE_TOP_BAND_FRACTION = 0.15f
