@@ -1280,7 +1280,24 @@ class KmpVisualScreenshotCaptureTest {
                         after = captureAfterLongPressRendered(
                             label = caseId,
                             before = before,
-                            longPress = { longPressDisplayDp(x = 300f, y = targetYDp) },
+                            longPress = {
+                                // task #228: hold well past the long-press threshold.
+                                // ViewConfiguration.getLongPressTimeout() is 500ms by
+                                // default and the shared default here is 700ms - a 200ms
+                                // margin. The long press fires from a delayed message
+                                // posted on ACTION_DOWN, so on a loaded CI emulator that
+                                // message can be scheduled late, ACTION_UP arrives first,
+                                // and the gesture degrades to a tap: no menu, and only a
+                                // small changedRatio. That matches the observed spread
+                                // (0.085 on a good run, 0.019 on a bad one, run
+                                // 32940998377). A longer hold removes the race without
+                                // relying on any measurement of how long the menu takes.
+                                longPressDisplayDp(
+                                    x = 300f,
+                                    y = targetYDp,
+                                    durationMs = COMPACT_MENU_LONG_PRESS_HOLD_MS,
+                                )
+                            },
                             rendered = { b, shot, changedRatio ->
                                 // Full render: the compact menu's black chrome,
                                 // which paints slightly after the first pixel
@@ -6154,6 +6171,10 @@ class KmpVisualScreenshotCaptureTest {
         // task #228: above this the screen has demonstrably reacted, so re-pressing
         // would disturb the state we are waiting on. Noise floor 2.7e-5; smallest
         // genuine render seen 0.0257.
+        // task #228: 3x the 500ms default long-press timeout, so a late-scheduled
+        // delayed message on a loaded emulator cannot let ACTION_UP win the race.
+        private const val COMPACT_MENU_LONG_PRESS_HOLD_MS = 1_500L
+
         private const val LONG_PRESS_RETRY_SUPPRESS_CHANGED_RATIO = 0.002f
 
         // task #228: the LAST row's compact menu is *designed* to paint over the
