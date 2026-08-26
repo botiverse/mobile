@@ -2844,9 +2844,17 @@ internal fun ThreadComposerContentLeaf(
                                     enabled = composerEnabled,
                                     contentDescription = stringResource(MR.strings.composer_take_photo),
                                     onClick = {
-                                        // Same action the long-press already emitted, so capture
-                                        // keeps its existing confirm/cancel editor step: nothing
-                                        // reaches the pending tray until the user confirms.
+                                        // longPress = true is what makes this the camera: it emits
+                                        // captureImage, so capture keeps its existing confirm/cancel
+                                        // editor step and nothing reaches the pending tray until the
+                                        // user confirms. Flipping it to false silently turns this
+                                        // button into a second gallery entry.
+                                        //
+                                        // No test covers this call site. commonTest cannot drive
+                                        // Compose and the composer has no visual host, so nothing in
+                                        // the repo can reach ComposerIconButton. The helper's mapping
+                                        // is tested (ThreadPayloadTest), but the argument passed here
+                                        // is not -- do not read that test as guarding this line.
                                         onEvent(threadComposerImageAction(longPress = true), null, null, null)
                                     }
                                 )

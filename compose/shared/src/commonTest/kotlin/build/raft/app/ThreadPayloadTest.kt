@@ -324,19 +324,6 @@ class ThreadPayloadTest {
         assertEquals(ThreadComposerCaptureImageAction, threadComposerImageAction(longPress = true))
     }
 
-    /**
-     * The dedicated camera button (task #1096) emits the action the long-press already emitted,
-     * which is what keeps capture on its existing confirm/cancel editor step. Asserting the two
-     * are the same action is what would catch someone "simplifying" the button onto
-     * [ThreadComposerAttachImageAction] later: the picker would open instead of the camera, and
-     * the button would still look correct.
-     */
-    @Test
-    fun dedicatedCameraButtonEmitsTheSameActionAsTheLongPress() {
-        assertEquals(ThreadComposerCaptureImageAction, threadComposerImageAction(longPress = true))
-        assertNotEquals(ThreadComposerCaptureImageAction, threadComposerImageAction(longPress = false))
-    }
-
     @Test
     fun capturedImageUsesTheSameAnnotationPipelineAsPickedImage() {
         assertEquals(
