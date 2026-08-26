@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-26T22:55:42.406Z",
+  "generatedAt": "2026-08-26T22:59:46.293Z",
   "latestRunId": "dcd71319-20260826225301",
   "latest": {
     "runId": "dcd71319-20260826225301",
     "commit": "dcd71319-20260826225301",
     "commitSubject": "feat(composer): give the camera its own button (#2257)",
-    "generatedAt": "2026-08-26T22:55:42.406Z",
+    "generatedAt": "2026-08-26T22:59:46.293Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 92,
-      "ready": 79,
-      "pending": 13
+      "ready": 86,
+      "pending": 6
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "dcd71319-20260826225301",
       "commit": "dcd71319-20260826225301",
       "commitSubject": "feat(composer): give the camera its own button (#2257)",
-      "generatedAt": "2026-08-26T22:55:42.406Z",
+      "generatedAt": "2026-08-26T22:59:46.293Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 92,
-        "ready": 79,
-        "pending": 13
+        "ready": 86,
+        "pending": 6
       },
       "comparisons": [
         "react__android",

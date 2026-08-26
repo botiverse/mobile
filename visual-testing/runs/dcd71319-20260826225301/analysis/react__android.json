@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-26T22:55:32.568Z",
+  "generatedAt": "2026-08-26T22:59:37.354Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 79,
-    "pending": 13
+    "ready": 86,
+    "pending": 6
   },
   "cases": [
     {
@@ -915,28 +915,74 @@
     },
     {
       "id": "components.thread.composer.empty",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffffffffffefffffffcfffc0ffc0ffc0fff0fff0000000000000000ffffffff80010001bffc7ffdfffefffdbffe33fd81fe03fdeffe7ffdfffefffd8ffc07f987fc07f987dc079987c0078187dc079987f807f98ffc0001800000018000ffffffffffff0000000080000001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-08-26T22:55:31.267Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-26T22:57:58.391Z",
+      "severity": "medium",
+      "summary": [
+        "Android variant includes an extra camera icon between the image and attachment buttons that is absent in React baseline",
+        "Right-edge send/arrow button has a visible drop shadow on Android that does not appear in React",
+        "Android 'As Task' checkbox and label sit slightly further right than in React, increasing gap between attachments cluster and the task toggle",
+        "'Message design' placeholder text appears slightly larger or with looser tracking on Android vs React",
+        "Overall horizontal layout is shifted; Android has more padding on the left/right inside the composer container"
+      ],
+      "likelyCauses": [
+        "Android composer exposes a camera action button not yet implemented or hidden in the React web build",
+        "Android elevation/shadow token differs from React shadow style on the primary send button",
+        "Inconsistent horizontal padding values between React (web) and Android Composer component",
+        "Placeholder text style token (fontSize/letterSpacing) not unified across platforms"
+      ],
+      "suggestedOwner": "android-composer",
+      "suggestedFixes": [
+        "Hide the camera icon on Android or add the same icon to the React composer so action set matches across platforms",
+        "Normalize the send-button shadow/elevation to the React baseline (remove extra drop shadow on Android)",
+        "Align composer internal padding and the gap between attachment cluster and As Task toggle to the React spec",
+        "Unify the placeholder text style (size and tracking) for 'Message design' across React and Android",
+        "Re-capture baseline screenshot after fixes and verify pixel-perfect similarity rises above 95%"
+      ],
+      "intentional": [
+        "Camera icon presence on Android may be platform-intentional pending React parity decision",
+        "Button elevation difference may be a Material elevation token applied unintentionally"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.20123456790123462
     },
     {
       "id": "components.thread.composer.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffffffffffffffffffefffc0ffc0ffc8fff0fff0000000000000000ffffffff80010001fffefffdfffefffd80b6000d80060005fffefffdfffefffd8ff807f987f807f187d8079187c007c187d8079187f807f18ff80009800000018000ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-08-26T22:55:31.292Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-26T22:57:58.488Z",
+      "severity": "medium",
+      "summary": [
+        "Android composer has an additional camera icon button between the gallery and attachment icons that is missing in React baseline",
+        "React shows 2 action icons (gallery/plus, paperclip) while Android shows 3 action icons (gallery/plus, camera, paperclip)",
+        "Outer card container in Android render appears slightly offset (cropped 24px right) compared to React baseline",
+        "Underlined header text 'Thread Composer States' and 'Review the Android composer crop' align consistently between both renders",
+        "Send button (pink with paper plane icon) and 'As Task' checkbox position remain consistent across both versions"
+      ],
+      "likelyCauses": [
+        "Incomplete icon mapping for the composer toolbar when porting from React to Android",
+        "Missing camera/photo capture action in React baseline or unintended extra action added in Android",
+        "Android crop rect manually offset by 24px on x-axis causing misalignment in comparison view",
+        "Feature parity gap in composer input area between platforms"
+      ],
+      "suggestedOwner": "android-composer",
+      "suggestedFixes": [
+        "Remove the extra camera icon from Android composer to match React baseline icon set",
+        "Verify intended composer actions across both platforms and align iconography",
+        "Adjust the Android crop contract rect from x:24 to x:0 to match baseline component bounds",
+        "Document the composer action set in shared design tokens and enforce parity in both implementations",
+        "Re-run visual regression after fix to confirm pixel-perfect match improves above 95%"
+      ],
+      "intentional": [
+        "If camera capture is intentionally platform-specific, document it and exclude from parity tests",
+        "Platform-specific icon ordering may be acceptable if explicitly defined in design spec"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.21514294996751138
     },
     {
@@ -977,15 +1023,38 @@
     },
     {
       "id": "components.thread.composer.as-task-selected",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffffffffffffffffffefffc03fc03fc97ff17ff0000000000000000ffffffff80010001fffefffdfffefffd80b6000d80060005fffefffdfffefffd8ff807f987f807f987d8079187c0078187d8079187f807f98ff80009800000018001ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-08-26T22:55:31.304Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-26T22:57:58.491Z",
+      "severity": "medium",
+      "summary": [
+        "Android renders an additional middle icon (camera) in the composer icon row that is not present on React baseline.",
+        "React shows two icons (compose/plus and paperclip); Android shows three icons (compose/plus, camera, paperclip) with smaller gaps between them.",
+        "Icon spacing is tighter on Android (no visible gap between adjacent icon buttons vs. React's clear spacing).",
+        "Pink send button on Android appears slightly smaller in width than the React baseline.",
+        "Checkbox + 'As Task' label and typography appear consistent between the two implementations."
+      ],
+      "likelyCauses": [
+        "Android composer toolbar extends the action set with an extra camera/attachment affordance not implemented in React.",
+        "Icon button padding/margin was not unified across platforms in the design tokens (or Android uses Material default icon button insets).",
+        "Send (pink) button width may differ due to per-platform padding/insets on the raised button.",
+        "Manual crop rect offset (x:24) on the Android side may be cutting the left edge of the composer card."
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Confirm whether the camera icon is an intentional platform-specific affordance; if not, remove it or gate it behind a feature flag so React and Android match.",
+        "Align composer icon button horizontal spacing via shared design tokens (e.g., 8dp/12dp gap) on both platforms.",
+        "Normalize the send button horizontal padding/insets so its width matches the React baseline (±1dp tolerance).",
+        "Re-evaluate the crop rect for the Android screenshot so the composer card's left border is not clipped against the canvas edge.",
+        "Add a Slock contract check asserting the icon count and order of the composer toolbar per platform."
+      ],
+      "intentional": [
+        "Android-only extra camera shortcut in the composer toolbar.",
+        "Platform-specific default Material insets producing slightly tighter icon spacing."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2178460038986355
     },
     {
@@ -1056,15 +1125,35 @@
     },
     {
       "id": "components.thread.composer.image-preview",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffeffff07fc07fc020000000000000080000fff80000fff80000fff83fc0fff80001fff80010fffa004000380022009801200018ff83efd87c007f987d80781800007f180010001ffffff8ffffffffffffffffffffffffffffeffff0000fffffffffffffffffffffffffffffffffffffffffffeffff8001fff85fffffffffff",
-      "generatedAt": "2026-08-26T22:55:31.365Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-26T22:57:58.567Z",
+      "severity": "high",
+      "summary": [
+        "React shows an error banner ('The upload size limit could not be checked…') that is missing on Android.",
+        "Android renders the selected image thumbnail (yellow square with close button) above the composer, which is absent on React.",
+        "Android shows three attachment icons (image+plus, camera, paperclip); React shows only two (image+plus, paperclip) – camera button is missing.",
+        "Android canvas is taller (270 vs 210) due to the additional image preview row.",
+        "Bottom action row (icon buttons, 'As Task' checkbox, pink send button) is vertically larger / taller on Android."
+      ],
+      "likelyCauses": [
+        "Android implementation includes an attached image preview block not present (or hidden) in the React version.",
+        "Error/banner state is not being rendered on Android, or React version is showing a stale error state.",
+        "Camera/attachment affordance is missing from the React composer toolbar.",
+        "Different vertical padding/dimensions on the Android action bar vs React."
+      ],
+      "suggestedOwner": "android-composer",
+      "suggestedFixes": [
+        "Confirm whether the image preview thumbnail + close button should render on Android and align state handling with React.",
+        "Add/remove the camera icon so both platforms show the same set of attachment affordances.",
+        "Match the action bar height/padding so the bottom row bounds align across platforms.",
+        "Ensure the upload-size-limit error banner component is wired in on Android.",
+        "Re-crop the comparison using identical manual-rect bounds for both baselines to avoid 210 vs 270 height skew."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.29756575939162033
     },
     {
@@ -1709,22 +1798,42 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83f7c3e4c20ec00cc37fc3ffc07fc3ffc3ffc39fc30fc1ffc3ffc1ffc0ffc3ffc3dfc2ffc3ffc03fc27fc3ffc2d9c3ffc3ffc3ff42ffc7ffc3ffc3ffc2ffc07fc3ffc3ffc3ffc3ffc3ffc07fc3ffc27fc2ffc3ffc3ff40ffc3ffc3ffc3ffc7ffc3d047f7c3804380000000000ffffffff",
-      "generatedAt": "2026-08-26T22:55:31.798Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-26T22:57:59.292Z",
+      "severity": "high",
+      "summary": [
+        "Android renders additional fields (Reasoning dropdown, Mode section, Model refresh icon) absent on React baseline",
+        "React shows a 'Could not load models…' error state under Model; Android instead displays a populated Reasoning dropdown with 'Medium' value",
+        "Form vertical density is tighter on Android: Computer, Name, and Description inputs are stacked with less vertical padding vs React",
+        "Agent-limit banner is taller on React (wraps to 2 centered lines with extra padding) vs Android (left-aligned, more compact 2-line wrap)",
+        "Close (X) button position differs: React has a visible offset/boxed styling; Android shows a plain X flush in top-right"
+      ],
+      "likelyCauses": [
+        "Android implementation renders a more complete form (Reasoning + Mode) while React was captured in a partial/error state",
+        "Inconsistent test fixtures between platforms: Model list failed to load on React baseline, succeeded on Android",
+        "Different copy/spacing tokens between React and Android design systems for dialog padding and field gap",
+        "Screenshot crop contract mismatch (modal-viewport vs viewport-bounds) makes the Android screenshot include surrounding chrome, shifting apparent bounds"
+      ],
+      "suggestedOwner": "android-ui",
+      "suggestedFixes": [
+        "Stabilize the test fixture: ensure both platforms use the same agent-limit-reached state and either both pre-load models or both show the error path",
+        "Align Android form to React baseline by hiding Reasoning/Mode fields (or moving them under '> MORE') and matching field vertical spacing",
+        "Normalize crop contract to modal-viewport on both sides so dialog bounds match in visual diffs",
+        "Update React baseline to match the richer Android form (add Reasoning, Mode) if those are the intended product fields",
+        "Tighten header banner padding and font weight so the limit-reached alert has identical height/alignment across platforms"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.20538745088508126
     },
     {
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:31.693Z",
+      "generatedAt": "2026-08-26T22:59:36.512Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1737,7 +1846,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:31.693Z",
+      "generatedAt": "2026-08-26T22:59:36.512Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1748,28 +1857,73 @@
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83f7c3e4c20ec00cc37fc3ffc07fc3ffc3ffc39fc30fc1ffc3ffc1ffc0ffc3ffc3dfc2ffc3ffc03fc27fc3ffc2d9c3ffc3ffc3ff42ffc7ffc3ffc3ffc2ffc03fc3ffc2ffc3ffc3ffc3ffc0ffc3ffc7ffc2ffc7ffc3ff43ffc3ffc3ffc3ffc7ffc3d047f7c3804380000000000ffffffff",
-      "generatedAt": "2026-08-26T22:55:31.820Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-26T22:57:59.365Z",
+      "severity": "high",
+      "summary": [
+        "Android layout is more compact/condensed vertically vs React, resulting in fields rendered closer together",
+        "Android shows a Provider dropdown with helper text ('Default leaves Claude Code provider settings untouched...') which is absent on React",
+        "Android Model field includes a refresh/reload icon button on the right side that React lacks",
+        "React shows 'Could not load models from this Computer. Retry' error state under Model dropdown; Android does not show this error",
+        "React shows '> MORE' collapsible expander near the bottom; Android omits this control entirely"
+      ],
+      "likelyCauses": [
+        "Android Compose form uses a different vertical rhythm/spacing token than React web form",
+        "Android implementation renders additional Provider section that React either hides or conditionally renders",
+        "React is showing a network-error fallback state while Android is in a successful-loading state (timing/race difference)",
+        "Dialog bottom safe-area/padding not accounting for scrollable content height on Android",
+        "Missing 'More' section toggle suggests incomplete feature parity in Android component"
+      ],
+      "suggestedOwner": "android-eng",
+      "suggestedFixes": [
+        "Match vertical field spacing/insets in Android CreateAgentDialog to React baseline tokens",
+        "Add a 'MORE' expandable section (or hide Provider consistently across platforms)",
+        "Add the same model-load retry/error affordance with 'Retry' link on Android",
+        "Add refresh icon to Android Model dropdown header if parity is required",
+        "Ensure dialog content is scrollable or its height accounts for all fields to prevent bottom clipping"
+      ],
+      "intentional": [
+        "Provider dropdown and helper text on Android could be a deliberate extra feature",
+        "Refresh icon on Model field on Android could be an intentional enhancement"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2044757024614845
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:efffcfff000000003ffc3dfc2bf82df83f6c3e0c206c00cc37fc3ffc07fc1ffc3ffc39fc307c1ffc3ffc1ffc0ffc3ffc3dfc2ffc3ffc03fc27fc3ffc2d8c3ffc3ffc3ff427fc7ffc3ffc3ffc2ffc03fc3ffc2ffc3bfc3ffc3ffc0ffc2ffc3ffc27fc7ffc3ffc3ffc3ffc1ffc2ffc7ffc303c7f7c3ffc38003ffc0000ffffffff",
-      "generatedAt": "2026-08-26T22:55:31.836Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-26T22:58:02.264Z",
+      "severity": "medium",
+      "summary": [
+        "Android view shows significantly more vertical content packed into the same viewport — fields are tighter and lower-positioned, pushing Cancel/Create Agent buttons into view while React's view is scrolled near the API URL field",
+        "The Cancel and Create Agent buttons are visible only on the Android side (bottom-right) but absent from the React capture, indicating React's modal content extends beyond the captured viewport",
+        "Form field vertical spacing is noticeably compressed on Android — gaps between COMPUTER, NAME, DESCRIPTION, RUNTIME, PROVIDER and API URL labels/inputs are smaller than on React",
+        "Typography on Android appears slightly lighter/thinner for labels (COMPUTER, NAME, RUNTIME, PROVIDER, API URL) compared to React's bolder label weight",
+        "The pink/peach 'Agent limit reached' banner has visibly different padding on Android — more vertical padding, making it taller than the React version"
+      ],
+      "likelyCauses": [
+        "Android implementation uses tighter line-height / vertical rhythm for form fields",
+        "React modal has larger default margins between form sections (likely 16–24dp gap vs Android's ~12dp)",
+        "Scroll position differs between captures — React captured higher in the form, Android captured lower showing footer buttons",
+        "Possible font-weight token mismatch: React uses 600–700 for labels, Android uses 400–500",
+        "Banner component may use different padding tokens across platforms"
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Align form-field vertical spacing tokens between React and Android (e.g., sectionGap = 24dp on both)",
+        "Match label font-weight to React's bolder style (use semibold/600 instead of regular)",
+        "Standardize banner padding so both platforms render the 'Agent limit reached' notice at the same height",
+        "Ensure modal scroll position is reset or captured at the same offset for parity testing",
+        "Verify the modal viewport contract captures the full dialog including footer buttons consistently"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.22532878303020487
     },
     {
@@ -2813,7 +2967,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:32.471Z",
+      "generatedAt": "2026-08-26T22:59:37.263Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2826,7 +2980,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:32.471Z",
+      "generatedAt": "2026-08-26T22:59:37.263Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2839,7 +2993,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:32.471Z",
+      "generatedAt": "2026-08-26T22:59:37.263Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2852,7 +3006,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:32.471Z",
+      "generatedAt": "2026-08-26T22:59:37.263Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

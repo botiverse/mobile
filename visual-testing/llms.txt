@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-26 22:55:42 UTC
+Generated: 2026-08-26 22:59:46 UTC
 Latest run: dcd71319-20260826225301
 Latest commit: dcd71319-20260826225301
 Commit subject: feat(composer): give the camera its own button (#2257)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 92, same 0, pass 0, basic-pass 0, different 86, missing 6
-AI analysis: ready 79 / total 92, pending 13
+AI analysis: ready 86 / total 92, pending 6
 Visual coverage matrix: active 101 / total 120, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

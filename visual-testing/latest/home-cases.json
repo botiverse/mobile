@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-26T22:55:42.406Z",
+  "generatedAt": "2026-08-26T22:59:46.293Z",
   "runId": "dcd71319-20260826225301",
   "cases": [
     {
@@ -5471,17 +5471,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.708Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:58:14.899Z",
+            "severity": "low",
+            "summary": [
+              "Both sides render the same row of 4 status dots (green, orange, gray, blue) and a pink 'Waiting pulse' label with matching colors, shapes, and vertical positions.",
+              "'Waiting pulse' text and the pink dot appear slightly larger on the iOS (right) side; spacing between the pink dot and the text label is visibly wider on iOS.",
+              "Pink 'Waiting pulse' dot on iOS appears marginally lighter/more washed-out than the saturated pink on Android.",
+              "No missing elements or clipping; all components are present and aligned within the card bounds on both sides."
+            ],
+            "likelyCauses": [
+              "iOS renders text/dot at a different scale due to density bucket (1170×2532 vs Android's 1026×276 baseline frame).",
+              "Pink status-dot color token may resolve to a slightly different hex on iOS vs Android due to platform-specific color resource lookup.",
+              "Typography font metrics differ between Android and iOS font stacks, producing wider letter spacing on iOS."
+            ],
+            "suggestedOwner": "kuikly-ui",
+            "suggestedFixes": [
+              "Normalize status-dot pixel size and label gap to a token shared across platforms (e.g., dp-constant scaled by device density).",
+              "Align the pink dot color to a single cross-platform color token; verify the iOS resolves to the same hex as Android.",
+              "Use a platform-agnostic font/metrics policy for labels so 'Waiting pulse' spacing matches across Android and iOS.",
+              "If the differences are intentional platform tweaks, mark this case as known-acceptable in the test tolerance.",
+              "Re-crop both baselines to identical dp coordinates before comparison to reduce density-induced scale drift."
+            ],
+            "intentional": [
+              "Possible intentional iOS density-based enlargement of text and dot.",
+              "Possible intentional platform-specific pink shade."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -5555,17 +5573,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.708Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:58:14.899Z",
+            "severity": "low",
+            "summary": [
+              "Both sides render the same row of 4 status dots (green, orange, gray, blue) and a pink 'Waiting pulse' label with matching colors, shapes, and vertical positions.",
+              "'Waiting pulse' text and the pink dot appear slightly larger on the iOS (right) side; spacing between the pink dot and the text label is visibly wider on iOS.",
+              "Pink 'Waiting pulse' dot on iOS appears marginally lighter/more washed-out than the saturated pink on Android.",
+              "No missing elements or clipping; all components are present and aligned within the card bounds on both sides."
+            ],
+            "likelyCauses": [
+              "iOS renders text/dot at a different scale due to density bucket (1170×2532 vs Android's 1026×276 baseline frame).",
+              "Pink status-dot color token may resolve to a slightly different hex on iOS vs Android due to platform-specific color resource lookup.",
+              "Typography font metrics differ between Android and iOS font stacks, producing wider letter spacing on iOS."
+            ],
+            "suggestedOwner": "kuikly-ui",
+            "suggestedFixes": [
+              "Normalize status-dot pixel size and label gap to a token shared across platforms (e.g., dp-constant scaled by device density).",
+              "Align the pink dot color to a single cross-platform color token; verify the iOS resolves to the same hex as Android.",
+              "Use a platform-agnostic font/metrics policy for labels so 'Waiting pulse' spacing matches across Android and iOS.",
+              "If the differences are intentional platform tweaks, mark this case as known-acceptable in the test tolerance.",
+              "Re-crop both baselines to identical dp coordinates before comparison to reduce density-induced scale drift."
+            ],
+            "intentional": [
+              "Possible intentional iOS density-based enlargement of text and dot.",
+              "Possible intentional platform-specific pink shade."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -10433,17 +10469,37 @@
         "currentHeight": 300
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-26T22:55:32.810Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-26T22:57:58.391Z",
+        "severity": "medium",
+        "summary": [
+          "Android variant includes an extra camera icon between the image and attachment buttons that is absent in React baseline",
+          "Right-edge send/arrow button has a visible drop shadow on Android that does not appear in React",
+          "Android 'As Task' checkbox and label sit slightly further right than in React, increasing gap between attachments cluster and the task toggle",
+          "'Message design' placeholder text appears slightly larger or with looser tracking on Android vs React",
+          "Overall horizontal layout is shifted; Android has more padding on the left/right inside the composer container"
+        ],
+        "likelyCauses": [
+          "Android composer exposes a camera action button not yet implemented or hidden in the React web build",
+          "Android elevation/shadow token differs from React shadow style on the primary send button",
+          "Inconsistent horizontal padding values between React (web) and Android Composer component",
+          "Placeholder text style token (fontSize/letterSpacing) not unified across platforms"
+        ],
+        "suggestedOwner": "android-composer",
+        "suggestedFixes": [
+          "Hide the camera icon on Android or add the same icon to the React composer so action set matches across platforms",
+          "Normalize the send-button shadow/elevation to the React baseline (remove extra drop shadow on Android)",
+          "Align composer internal padding and the gap between attachment cluster and As Task toggle to the React spec",
+          "Unify the placeholder text style (size and tracking) for 'Message design' across React and Android",
+          "Re-capture baseline screenshot after fixes and verify pixel-perfect similarity rises above 95%"
+        ],
+        "intentional": [
+          "Camera icon presence on Android may be platform-intentional pending React parity decision",
+          "Button elevation difference may be a Material elevation token applied unintentionally"
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -10530,17 +10586,37 @@
             "currentHeight": 300
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:32.810Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:57:58.391Z",
+            "severity": "medium",
+            "summary": [
+              "Android variant includes an extra camera icon between the image and attachment buttons that is absent in React baseline",
+              "Right-edge send/arrow button has a visible drop shadow on Android that does not appear in React",
+              "Android 'As Task' checkbox and label sit slightly further right than in React, increasing gap between attachments cluster and the task toggle",
+              "'Message design' placeholder text appears slightly larger or with looser tracking on Android vs React",
+              "Overall horizontal layout is shifted; Android has more padding on the left/right inside the composer container"
+            ],
+            "likelyCauses": [
+              "Android composer exposes a camera action button not yet implemented or hidden in the React web build",
+              "Android elevation/shadow token differs from React shadow style on the primary send button",
+              "Inconsistent horizontal padding values between React (web) and Android Composer component",
+              "Placeholder text style token (fontSize/letterSpacing) not unified across platforms"
+            ],
+            "suggestedOwner": "android-composer",
+            "suggestedFixes": [
+              "Hide the camera icon on Android or add the same icon to the React composer so action set matches across platforms",
+              "Normalize the send-button shadow/elevation to the React baseline (remove extra drop shadow on Android)",
+              "Align composer internal padding and the gap between attachment cluster and As Task toggle to the React spec",
+              "Unify the placeholder text style (size and tracking) for 'Message design' across React and Android",
+              "Re-capture baseline screenshot after fixes and verify pixel-perfect similarity rises above 95%"
+            ],
+            "intentional": [
+              "Camera icon presence on Android may be platform-intentional pending React parity decision",
+              "Button elevation difference may be a Material elevation token applied unintentionally"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -10780,17 +10856,37 @@
         "currentHeight": 300
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-26T22:55:32.824Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-26T22:57:58.488Z",
+        "severity": "medium",
+        "summary": [
+          "Android composer has an additional camera icon button between the gallery and attachment icons that is missing in React baseline",
+          "React shows 2 action icons (gallery/plus, paperclip) while Android shows 3 action icons (gallery/plus, camera, paperclip)",
+          "Outer card container in Android render appears slightly offset (cropped 24px right) compared to React baseline",
+          "Underlined header text 'Thread Composer States' and 'Review the Android composer crop' align consistently between both renders",
+          "Send button (pink with paper plane icon) and 'As Task' checkbox position remain consistent across both versions"
+        ],
+        "likelyCauses": [
+          "Incomplete icon mapping for the composer toolbar when porting from React to Android",
+          "Missing camera/photo capture action in React baseline or unintended extra action added in Android",
+          "Android crop rect manually offset by 24px on x-axis causing misalignment in comparison view",
+          "Feature parity gap in composer input area between platforms"
+        ],
+        "suggestedOwner": "android-composer",
+        "suggestedFixes": [
+          "Remove the extra camera icon from Android composer to match React baseline icon set",
+          "Verify intended composer actions across both platforms and align iconography",
+          "Adjust the Android crop contract rect from x:24 to x:0 to match baseline component bounds",
+          "Document the composer action set in shared design tokens and enforce parity in both implementations",
+          "Re-run visual regression after fix to confirm pixel-perfect match improves above 95%"
+        ],
+        "intentional": [
+          "If camera capture is intentionally platform-specific, document it and exclude from parity tests",
+          "Platform-specific icon ordering may be acceptable if explicitly defined in design spec"
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -10877,17 +10973,37 @@
             "currentHeight": 300
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:32.824Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:57:58.488Z",
+            "severity": "medium",
+            "summary": [
+              "Android composer has an additional camera icon button between the gallery and attachment icons that is missing in React baseline",
+              "React shows 2 action icons (gallery/plus, paperclip) while Android shows 3 action icons (gallery/plus, camera, paperclip)",
+              "Outer card container in Android render appears slightly offset (cropped 24px right) compared to React baseline",
+              "Underlined header text 'Thread Composer States' and 'Review the Android composer crop' align consistently between both renders",
+              "Send button (pink with paper plane icon) and 'As Task' checkbox position remain consistent across both versions"
+            ],
+            "likelyCauses": [
+              "Incomplete icon mapping for the composer toolbar when porting from React to Android",
+              "Missing camera/photo capture action in React baseline or unintended extra action added in Android",
+              "Android crop rect manually offset by 24px on x-axis causing misalignment in comparison view",
+              "Feature parity gap in composer input area between platforms"
+            ],
+            "suggestedOwner": "android-composer",
+            "suggestedFixes": [
+              "Remove the extra camera icon from Android composer to match React baseline icon set",
+              "Verify intended composer actions across both platforms and align iconography",
+              "Adjust the Android crop contract rect from x:24 to x:0 to match baseline component bounds",
+              "Document the composer action set in shared design tokens and enforce parity in both implementations",
+              "Re-run visual regression after fix to confirm pixel-perfect match improves above 95%"
+            ],
+            "intentional": [
+              "If camera capture is intentionally platform-specific, document it and exclude from parity tests",
+              "Platform-specific icon ordering may be acceptable if explicitly defined in design spec"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -11500,17 +11616,37 @@
         "currentHeight": 300
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-26T22:55:32.840Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-26T22:57:58.491Z",
+        "severity": "medium",
+        "summary": [
+          "Android renders an additional middle icon (camera) in the composer icon row that is not present on React baseline.",
+          "React shows two icons (compose/plus and paperclip); Android shows three icons (compose/plus, camera, paperclip) with smaller gaps between them.",
+          "Icon spacing is tighter on Android (no visible gap between adjacent icon buttons vs. React's clear spacing).",
+          "Pink send button on Android appears slightly smaller in width than the React baseline.",
+          "Checkbox + 'As Task' label and typography appear consistent between the two implementations."
+        ],
+        "likelyCauses": [
+          "Android composer toolbar extends the action set with an extra camera/attachment affordance not implemented in React.",
+          "Icon button padding/margin was not unified across platforms in the design tokens (or Android uses Material default icon button insets).",
+          "Send (pink) button width may differ due to per-platform padding/insets on the raised button.",
+          "Manual crop rect offset (x:24) on the Android side may be cutting the left edge of the composer card."
+        ],
+        "suggestedOwner": "android",
+        "suggestedFixes": [
+          "Confirm whether the camera icon is an intentional platform-specific affordance; if not, remove it or gate it behind a feature flag so React and Android match.",
+          "Align composer icon button horizontal spacing via shared design tokens (e.g., 8dp/12dp gap) on both platforms.",
+          "Normalize the send button horizontal padding/insets so its width matches the React baseline (±1dp tolerance).",
+          "Re-evaluate the crop rect for the Android screenshot so the composer card's left border is not clipped against the canvas edge.",
+          "Add a Slock contract check asserting the icon count and order of the composer toolbar per platform."
+        ],
+        "intentional": [
+          "Android-only extra camera shortcut in the composer toolbar.",
+          "Platform-specific default Material insets producing slightly tighter icon spacing."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -11597,17 +11733,37 @@
             "currentHeight": 300
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:32.840Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:57:58.491Z",
+            "severity": "medium",
+            "summary": [
+              "Android renders an additional middle icon (camera) in the composer icon row that is not present on React baseline.",
+              "React shows two icons (compose/plus and paperclip); Android shows three icons (compose/plus, camera, paperclip) with smaller gaps between them.",
+              "Icon spacing is tighter on Android (no visible gap between adjacent icon buttons vs. React's clear spacing).",
+              "Pink send button on Android appears slightly smaller in width than the React baseline.",
+              "Checkbox + 'As Task' label and typography appear consistent between the two implementations."
+            ],
+            "likelyCauses": [
+              "Android composer toolbar extends the action set with an extra camera/attachment affordance not implemented in React.",
+              "Icon button padding/margin was not unified across platforms in the design tokens (or Android uses Material default icon button insets).",
+              "Send (pink) button width may differ due to per-platform padding/insets on the raised button.",
+              "Manual crop rect offset (x:24) on the Android side may be cutting the left edge of the composer card."
+            ],
+            "suggestedOwner": "android",
+            "suggestedFixes": [
+              "Confirm whether the camera icon is an intentional platform-specific affordance; if not, remove it or gate it behind a feature flag so React and Android match.",
+              "Align composer icon button horizontal spacing via shared design tokens (e.g., 8dp/12dp gap) on both platforms.",
+              "Normalize the send button horizontal padding/insets so its width matches the React baseline (±1dp tolerance).",
+              "Re-evaluate the crop rect for the Android screenshot so the composer card's left border is not clipped against the canvas edge.",
+              "Add a Slock contract check asserting the icon count and order of the composer toolbar per platform."
+            ],
+            "intentional": [
+              "Android-only extra camera shortcut in the composer toolbar.",
+              "Platform-specific default Material insets producing slightly tighter icon spacing."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -12634,17 +12790,34 @@
         "currentHeight": 810
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-26T22:55:32.882Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-26T22:57:58.567Z",
+        "severity": "high",
+        "summary": [
+          "React shows an error banner ('The upload size limit could not be checked…') that is missing on Android.",
+          "Android renders the selected image thumbnail (yellow square with close button) above the composer, which is absent on React.",
+          "Android shows three attachment icons (image+plus, camera, paperclip); React shows only two (image+plus, paperclip) – camera button is missing.",
+          "Android canvas is taller (270 vs 210) due to the additional image preview row.",
+          "Bottom action row (icon buttons, 'As Task' checkbox, pink send button) is vertically larger / taller on Android."
+        ],
+        "likelyCauses": [
+          "Android implementation includes an attached image preview block not present (or hidden) in the React version.",
+          "Error/banner state is not being rendered on Android, or React version is showing a stale error state.",
+          "Camera/attachment affordance is missing from the React composer toolbar.",
+          "Different vertical padding/dimensions on the Android action bar vs React."
+        ],
+        "suggestedOwner": "android-composer",
+        "suggestedFixes": [
+          "Confirm whether the image preview thumbnail + close button should render on Android and align state handling with React.",
+          "Add/remove the camera icon so both platforms show the same set of attachment affordances.",
+          "Match the action bar height/padding so the bottom row bounds align across platforms.",
+          "Ensure the upload-size-limit error banner component is wired in on Android.",
+          "Re-crop the comparison using identical manual-rect bounds for both baselines to avoid 210 vs 270 height skew."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -12731,17 +12904,34 @@
             "currentHeight": 810
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:32.882Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:57:58.567Z",
+            "severity": "high",
+            "summary": [
+              "React shows an error banner ('The upload size limit could not be checked…') that is missing on Android.",
+              "Android renders the selected image thumbnail (yellow square with close button) above the composer, which is absent on React.",
+              "Android shows three attachment icons (image+plus, camera, paperclip); React shows only two (image+plus, paperclip) – camera button is missing.",
+              "Android canvas is taller (270 vs 210) due to the additional image preview row.",
+              "Bottom action row (icon buttons, 'As Task' checkbox, pink send button) is vertically larger / taller on Android."
+            ],
+            "likelyCauses": [
+              "Android implementation includes an attached image preview block not present (or hidden) in the React version.",
+              "Error/banner state is not being rendered on Android, or React version is showing a stale error state.",
+              "Camera/attachment affordance is missing from the React composer toolbar.",
+              "Different vertical padding/dimensions on the Android action bar vs React."
+            ],
+            "suggestedOwner": "android-composer",
+            "suggestedFixes": [
+              "Confirm whether the image preview thumbnail + close button should render on Android and align state handling with React.",
+              "Add/remove the camera icon so both platforms show the same set of attachment affordances.",
+              "Match the action bar height/padding so the bottom row bounds align across platforms.",
+              "Ensure the upload-size-limit error banner component is wired in on Android.",
+              "Re-crop the comparison using identical manual-rect bounds for both baselines to avoid 210 vs 270 height skew."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -20019,17 +20209,34 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-26T22:55:33.302Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-26T22:57:59.292Z",
+        "severity": "high",
+        "summary": [
+          "Android renders additional fields (Reasoning dropdown, Mode section, Model refresh icon) absent on React baseline",
+          "React shows a 'Could not load models…' error state under Model; Android instead displays a populated Reasoning dropdown with 'Medium' value",
+          "Form vertical density is tighter on Android: Computer, Name, and Description inputs are stacked with less vertical padding vs React",
+          "Agent-limit banner is taller on React (wraps to 2 centered lines with extra padding) vs Android (left-aligned, more compact 2-line wrap)",
+          "Close (X) button position differs: React has a visible offset/boxed styling; Android shows a plain X flush in top-right"
+        ],
+        "likelyCauses": [
+          "Android implementation renders a more complete form (Reasoning + Mode) while React was captured in a partial/error state",
+          "Inconsistent test fixtures between platforms: Model list failed to load on React baseline, succeeded on Android",
+          "Different copy/spacing tokens between React and Android design systems for dialog padding and field gap",
+          "Screenshot crop contract mismatch (modal-viewport vs viewport-bounds) makes the Android screenshot include surrounding chrome, shifting apparent bounds"
+        ],
+        "suggestedOwner": "android-ui",
+        "suggestedFixes": [
+          "Stabilize the test fixture: ensure both platforms use the same agent-limit-reached state and either both pre-load models or both show the error path",
+          "Align Android form to React baseline by hiding Reasoning/Mode fields (or moving them under '> MORE') and matching field vertical spacing",
+          "Normalize crop contract to modal-viewport on both sides so dialog bounds match in visual diffs",
+          "Update React baseline to match the richer Android form (add Reasoning, Mode) if those are the intended product fields",
+          "Tighten header banner padding and font weight so the limit-reached alert has identical height/alignment across platforms"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -20116,17 +20323,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:33.302Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:57:59.292Z",
+            "severity": "high",
+            "summary": [
+              "Android renders additional fields (Reasoning dropdown, Mode section, Model refresh icon) absent on React baseline",
+              "React shows a 'Could not load models…' error state under Model; Android instead displays a populated Reasoning dropdown with 'Medium' value",
+              "Form vertical density is tighter on Android: Computer, Name, and Description inputs are stacked with less vertical padding vs React",
+              "Agent-limit banner is taller on React (wraps to 2 centered lines with extra padding) vs Android (left-aligned, more compact 2-line wrap)",
+              "Close (X) button position differs: React has a visible offset/boxed styling; Android shows a plain X flush in top-right"
+            ],
+            "likelyCauses": [
+              "Android implementation renders a more complete form (Reasoning + Mode) while React was captured in a partial/error state",
+              "Inconsistent test fixtures between platforms: Model list failed to load on React baseline, succeeded on Android",
+              "Different copy/spacing tokens between React and Android design systems for dialog padding and field gap",
+              "Screenshot crop contract mismatch (modal-viewport vs viewport-bounds) makes the Android screenshot include surrounding chrome, shifting apparent bounds"
+            ],
+            "suggestedOwner": "android-ui",
+            "suggestedFixes": [
+              "Stabilize the test fixture: ensure both platforms use the same agent-limit-reached state and either both pre-load models or both show the error path",
+              "Align Android form to React baseline by hiding Reasoning/Mode fields (or moving them under '> MORE') and matching field vertical spacing",
+              "Normalize crop contract to modal-viewport on both sides so dialog bounds match in visual diffs",
+              "Update React baseline to match the richer Android form (add Reasoning, Mode) if those are the intended product fields",
+              "Tighten header banner padding and font weight so the limit-reached alert has identical height/alignment across platforms"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -20149,17 +20373,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:37.462Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:58:08.652Z",
+            "severity": "high",
+            "summary": [
+              "Create Agent primary button on iOS is rendered as a disabled/greyed state instead of the pink/active state shown on React",
+              "iOS dialog omits the Runtime select field, Model select field, 'Could not load models' error with Retry, and 'MORE' disclosure row that are all present on React",
+              "iOS dialog content is compressed into a smaller scroll area because the iOS keyboard occupies the lower half of the viewport, cropping fields and action buttons",
+              "React shows the 72/3000 character counter under the description; iOS does not",
+              "iOS Description label includes the '(optional)' suffix in a lighter weight; React label omits the suffix entirely"
+            ],
+            "likelyCauses": [
+              "iOS SwiftUI implementation missing the Runtime, Model, error, and MORE sections from the React spec",
+              "iOS Create Agent button is not being enabled when form fields are populated (likely bound to an empty validation state)",
+              "iOS dialog is not being resized/scrolled correctly when the software keyboard appears, leaving fields hidden beneath it",
+              "React description label and counter may be iOS-only additions or vice versa; verify which is canonical"
+            ],
+            "suggestedOwner": "ios-engineering",
+            "suggestedFixes": [
+              "Add the Runtime picker, Model picker, model-load error row with Retry, and MORE disclosure to the iOS Create Agent dialog to match React",
+              "Wire the primary 'Create Agent' button's enabled state to form validity (name + computer + runtime selected) so it renders active when valid",
+              "Adjust the dialog to scroll above the keyboard or use .scrollDismissesKeyboard so lower fields and actions remain reachable",
+              "Align the Description label text — pick one canonical wording ('DESCRIPTION' alone vs 'DESCRIPTION (optional)') and apply in both platforms",
+              "Restore the 72/3000 character counter beneath the description on iOS if it should be present per spec"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -20238,17 +20479,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:37.462Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:58:08.652Z",
+            "severity": "high",
+            "summary": [
+              "Create Agent primary button on iOS is rendered as a disabled/greyed state instead of the pink/active state shown on React",
+              "iOS dialog omits the Runtime select field, Model select field, 'Could not load models' error with Retry, and 'MORE' disclosure row that are all present on React",
+              "iOS dialog content is compressed into a smaller scroll area because the iOS keyboard occupies the lower half of the viewport, cropping fields and action buttons",
+              "React shows the 72/3000 character counter under the description; iOS does not",
+              "iOS Description label includes the '(optional)' suffix in a lighter weight; React label omits the suffix entirely"
+            ],
+            "likelyCauses": [
+              "iOS SwiftUI implementation missing the Runtime, Model, error, and MORE sections from the React spec",
+              "iOS Create Agent button is not being enabled when form fields are populated (likely bound to an empty validation state)",
+              "iOS dialog is not being resized/scrolled correctly when the software keyboard appears, leaving fields hidden beneath it",
+              "React description label and counter may be iOS-only additions or vice versa; verify which is canonical"
+            ],
+            "suggestedOwner": "ios-engineering",
+            "suggestedFixes": [
+              "Add the Runtime picker, Model picker, model-load error row with Retry, and MORE disclosure to the iOS Create Agent dialog to match React",
+              "Wire the primary 'Create Agent' button's enabled state to form validity (name + computer + runtime selected) so it renders active when valid",
+              "Adjust the dialog to scroll above the keyboard or use .scrollDismissesKeyboard so lower fields and actions remain reachable",
+              "Align the Description label text — pick one canonical wording ('DESCRIPTION' alone vs 'DESCRIPTION (optional)') and apply in both platforms",
+              "Restore the 72/3000 character counter beneath the description on iOS if it should be present per spec"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -20333,7 +20591,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-26T22:55:32.577Z",
+        "generatedAt": "2026-08-26T22:59:37.362Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20394,7 +20652,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:32.577Z",
+            "generatedAt": "2026-08-26T22:59:37.362Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20416,7 +20674,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20438,7 +20696,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20463,7 +20721,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20486,7 +20744,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20526,7 +20784,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-26T22:55:32.577Z",
+        "generatedAt": "2026-08-26T22:59:37.362Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20587,7 +20845,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:32.577Z",
+            "generatedAt": "2026-08-26T22:59:37.362Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20609,7 +20867,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20631,7 +20889,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20656,7 +20914,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20679,7 +20937,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20729,17 +20987,38 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-26T22:55:33.305Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-26T22:57:59.365Z",
+        "severity": "high",
+        "summary": [
+          "Android layout is more compact/condensed vertically vs React, resulting in fields rendered closer together",
+          "Android shows a Provider dropdown with helper text ('Default leaves Claude Code provider settings untouched...') which is absent on React",
+          "Android Model field includes a refresh/reload icon button on the right side that React lacks",
+          "React shows 'Could not load models from this Computer. Retry' error state under Model dropdown; Android does not show this error",
+          "React shows '> MORE' collapsible expander near the bottom; Android omits this control entirely"
+        ],
+        "likelyCauses": [
+          "Android Compose form uses a different vertical rhythm/spacing token than React web form",
+          "Android implementation renders additional Provider section that React either hides or conditionally renders",
+          "React is showing a network-error fallback state while Android is in a successful-loading state (timing/race difference)",
+          "Dialog bottom safe-area/padding not accounting for scrollable content height on Android",
+          "Missing 'More' section toggle suggests incomplete feature parity in Android component"
+        ],
+        "suggestedOwner": "android-eng",
+        "suggestedFixes": [
+          "Match vertical field spacing/insets in Android CreateAgentDialog to React baseline tokens",
+          "Add a 'MORE' expandable section (or hide Provider consistently across platforms)",
+          "Add the same model-load retry/error affordance with 'Retry' link on Android",
+          "Add refresh icon to Android Model dropdown header if parity is required",
+          "Ensure dialog content is scrollable or its height accounts for all fields to prevent bottom clipping"
+        ],
+        "intentional": [
+          "Provider dropdown and helper text on Android could be a deliberate extra feature",
+          "Refresh icon on Model field on Android could be an intentional enhancement"
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -20826,17 +21105,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:33.305Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:57:59.365Z",
+            "severity": "high",
+            "summary": [
+              "Android layout is more compact/condensed vertically vs React, resulting in fields rendered closer together",
+              "Android shows a Provider dropdown with helper text ('Default leaves Claude Code provider settings untouched...') which is absent on React",
+              "Android Model field includes a refresh/reload icon button on the right side that React lacks",
+              "React shows 'Could not load models from this Computer. Retry' error state under Model dropdown; Android does not show this error",
+              "React shows '> MORE' collapsible expander near the bottom; Android omits this control entirely"
+            ],
+            "likelyCauses": [
+              "Android Compose form uses a different vertical rhythm/spacing token than React web form",
+              "Android implementation renders additional Provider section that React either hides or conditionally renders",
+              "React is showing a network-error fallback state while Android is in a successful-loading state (timing/race difference)",
+              "Dialog bottom safe-area/padding not accounting for scrollable content height on Android",
+              "Missing 'More' section toggle suggests incomplete feature parity in Android component"
+            ],
+            "suggestedOwner": "android-eng",
+            "suggestedFixes": [
+              "Match vertical field spacing/insets in Android CreateAgentDialog to React baseline tokens",
+              "Add a 'MORE' expandable section (or hide Provider consistently across platforms)",
+              "Add the same model-load retry/error affordance with 'Retry' link on Android",
+              "Add refresh icon to Android Model dropdown header if parity is required",
+              "Ensure dialog content is scrollable or its height accounts for all fields to prevent bottom clipping"
+            ],
+            "intentional": [
+              "Provider dropdown and helper text on Android could be a deliberate extra feature",
+              "Refresh icon on Model field on Android could be an intentional enhancement"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -20859,17 +21159,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:37.485Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:58:08.676Z",
+            "severity": "high",
+            "summary": [
+              "iOS view shows keyboard occupying the lower half of the screen, hiding the Runtime, Model, and MORE sections visible in React",
+              "iOS Create Agent button is disabled (greyed out) while React's is highlighted in pink/red, likely because the form is incomplete when keyboard is focused",
+              "React form is taller and scrollable; iOS dialog is compressed at the top with Description field smaller (2 lines vs 3)",
+              "Layout crop differs: iOS view extends to ~50% screen height while React fits the entire modal viewport",
+              "Alert banner text wrapping differs: iOS wraps 'Upgrade for more' on a new line, React keeps it inline"
+            ],
+            "likelyCauses": [
+              "iOS native dialog does not auto-scroll or resize content when soft keyboard appears",
+              "iOS form validation does not auto-populate Runtime/Model fields, leaving Create Agent disabled",
+              "Different keyboard avoidance behavior between React web view and native iOS implementation",
+              "iOS dialog uses fixed-height modal without scroll behavior while React has scrollable container"
+            ],
+            "suggestedOwner": "iOS",
+            "suggestedFixes": [
+              "Add keyboard avoidance layout to iOS dialog so form fields remain scrollable when keyboard appears",
+              "Set Runtime and Model default values on iOS to match React behavior and enable Create Agent button",
+              "Make iOS modal scrollable and ensure all fields (Runtime, Model, MORE) remain reachable with keyboard up",
+              "Match form field heights and description textarea size between iOS and React baselines",
+              "Validate form submission logic so Create Agent button state matches across platforms"
+            ],
+            "intentional": [
+              "Keyboard appearance in iOS is expected native behavior",
+              "iOS button disabled state may be intentional when required fields are empty"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -20945,17 +21265,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:37.485Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:58:08.676Z",
+            "severity": "high",
+            "summary": [
+              "iOS view shows keyboard occupying the lower half of the screen, hiding the Runtime, Model, and MORE sections visible in React",
+              "iOS Create Agent button is disabled (greyed out) while React's is highlighted in pink/red, likely because the form is incomplete when keyboard is focused",
+              "React form is taller and scrollable; iOS dialog is compressed at the top with Description field smaller (2 lines vs 3)",
+              "Layout crop differs: iOS view extends to ~50% screen height while React fits the entire modal viewport",
+              "Alert banner text wrapping differs: iOS wraps 'Upgrade for more' on a new line, React keeps it inline"
+            ],
+            "likelyCauses": [
+              "iOS native dialog does not auto-scroll or resize content when soft keyboard appears",
+              "iOS form validation does not auto-populate Runtime/Model fields, leaving Create Agent disabled",
+              "Different keyboard avoidance behavior between React web view and native iOS implementation",
+              "iOS dialog uses fixed-height modal without scroll behavior while React has scrollable container"
+            ],
+            "suggestedOwner": "iOS",
+            "suggestedFixes": [
+              "Add keyboard avoidance layout to iOS dialog so form fields remain scrollable when keyboard appears",
+              "Set Runtime and Model default values on iOS to match React behavior and enable Create Agent button",
+              "Make iOS modal scrollable and ensure all fields (Runtime, Model, MORE) remain reachable with keyboard up",
+              "Match form field heights and description textarea size between iOS and React baselines",
+              "Validate form submission logic so Create Agent button state matches across platforms"
+            ],
+            "intentional": [
+              "Keyboard appearance in iOS is expected native behavior",
+              "iOS button disabled state may be intentional when required fields are empty"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -21046,17 +21386,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-26T22:55:33.324Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-26T22:58:02.264Z",
+        "severity": "medium",
+        "summary": [
+          "Android view shows significantly more vertical content packed into the same viewport — fields are tighter and lower-positioned, pushing Cancel/Create Agent buttons into view while React's view is scrolled near the API URL field",
+          "The Cancel and Create Agent buttons are visible only on the Android side (bottom-right) but absent from the React capture, indicating React's modal content extends beyond the captured viewport",
+          "Form field vertical spacing is noticeably compressed on Android — gaps between COMPUTER, NAME, DESCRIPTION, RUNTIME, PROVIDER and API URL labels/inputs are smaller than on React",
+          "Typography on Android appears slightly lighter/thinner for labels (COMPUTER, NAME, RUNTIME, PROVIDER, API URL) compared to React's bolder label weight",
+          "The pink/peach 'Agent limit reached' banner has visibly different padding on Android — more vertical padding, making it taller than the React version"
+        ],
+        "likelyCauses": [
+          "Android implementation uses tighter line-height / vertical rhythm for form fields",
+          "React modal has larger default margins between form sections (likely 16–24dp gap vs Android's ~12dp)",
+          "Scroll position differs between captures — React captured higher in the form, Android captured lower showing footer buttons",
+          "Possible font-weight token mismatch: React uses 600–700 for labels, Android uses 400–500",
+          "Banner component may use different padding tokens across platforms"
+        ],
+        "suggestedOwner": "android",
+        "suggestedFixes": [
+          "Align form-field vertical spacing tokens between React and Android (e.g., sectionGap = 24dp on both)",
+          "Match label font-weight to React's bolder style (use semibold/600 instead of regular)",
+          "Standardize banner padding so both platforms render the 'Agent limit reached' notice at the same height",
+          "Ensure modal scroll position is reset or captured at the same offset for parity testing",
+          "Verify the modal viewport contract captures the full dialog including footer buttons consistently"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -21143,17 +21501,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:33.324Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:58:02.264Z",
+            "severity": "medium",
+            "summary": [
+              "Android view shows significantly more vertical content packed into the same viewport — fields are tighter and lower-positioned, pushing Cancel/Create Agent buttons into view while React's view is scrolled near the API URL field",
+              "The Cancel and Create Agent buttons are visible only on the Android side (bottom-right) but absent from the React capture, indicating React's modal content extends beyond the captured viewport",
+              "Form field vertical spacing is noticeably compressed on Android — gaps between COMPUTER, NAME, DESCRIPTION, RUNTIME, PROVIDER and API URL labels/inputs are smaller than on React",
+              "Typography on Android appears slightly lighter/thinner for labels (COMPUTER, NAME, RUNTIME, PROVIDER, API URL) compared to React's bolder label weight",
+              "The pink/peach 'Agent limit reached' banner has visibly different padding on Android — more vertical padding, making it taller than the React version"
+            ],
+            "likelyCauses": [
+              "Android implementation uses tighter line-height / vertical rhythm for form fields",
+              "React modal has larger default margins between form sections (likely 16–24dp gap vs Android's ~12dp)",
+              "Scroll position differs between captures — React captured higher in the form, Android captured lower showing footer buttons",
+              "Possible font-weight token mismatch: React uses 600–700 for labels, Android uses 400–500",
+              "Banner component may use different padding tokens across platforms"
+            ],
+            "suggestedOwner": "android",
+            "suggestedFixes": [
+              "Align form-field vertical spacing tokens between React and Android (e.g., sectionGap = 24dp on both)",
+              "Match label font-weight to React's bolder style (use semibold/600 instead of regular)",
+              "Standardize banner padding so both platforms render the 'Agent limit reached' notice at the same height",
+              "Ensure modal scroll position is reset or captured at the same offset for parity testing",
+              "Verify the modal viewport contract captures the full dialog including footer buttons consistently"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -21176,17 +21552,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:37.489Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:58:08.665Z",
+            "severity": "high",
+            "summary": [
+              "iOS dialog is scrolled to top and shows fewer fields; React baseline reveals Runtime, Provider, API URL, and additional form fields hidden below the fold on iOS due to keyboard occlusion",
+              "iOS shows the iOS keyboard occupying the lower half of the screen, which is absent on the React baseline",
+              "iOS dialog appears compressed/scaled within the visible viewport whereas React baseline fits the entire form (taller modal content) within the viewport",
+              "Close (X) button on iOS sits higher and is smaller relative to the dialog; spacing/padding around header differs between the two",
+              "iOS Cancel and Create Agent action buttons appear side-by-side inline at the bottom of the dialog, while React baseline does not show these buttons in the cropped viewport area (they would be below)"
+            ],
+            "likelyCauses": [
+              "iOS viewport is reduced when the soft keyboard is shown, causing the dialog content to scroll and hide lower fields",
+              "iOS modal sizing/insets (safe area, keyboard avoidance) not matching React responsive sizing",
+              "Missing or different scroll-to-focus behavior on iOS compared to React's scroll handling",
+              "Different dialog padding/margin tokens between React and iOS implementations",
+              "Action button layout differs: React likely stacks or places buttons in a footer that is below the crop, while iOS uses an inline button row visible above the keyboard"
+            ],
+            "suggestedOwner": "mobile-ios",
+            "suggestedFixes": [
+              "Ensure the iOS dialog content view scrolls properly so all fields (Runtime, Provider, API URL, API Key) remain reachable when the keyboard appears",
+              "Use a consistent footer action button container so Cancel and Create Agent stay anchored at the dialog bottom across platforms",
+              "Match dialog horizontal padding and header spacing tokens to the React baseline",
+              "Add keyboard avoidance behavior (e.g., adjust content insets) so the focused input and its label remain visible",
+              "Verify the dialog's max height and scrolling behavior so no fields are clipped on smaller viewports or when keyboard is present"
+            ],
+            "intentional": [
+              "Keyboard presence and OS-native keyboard UI on iOS is expected",
+              "Status bar / platform chrome differences between mobile iOS and desktop React view"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -21262,17 +21659,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-26T22:55:37.489Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-26T22:58:08.665Z",
+            "severity": "high",
+            "summary": [
+              "iOS dialog is scrolled to top and shows fewer fields; React baseline reveals Runtime, Provider, API URL, and additional form fields hidden below the fold on iOS due to keyboard occlusion",
+              "iOS shows the iOS keyboard occupying the lower half of the screen, which is absent on the React baseline",
+              "iOS dialog appears compressed/scaled within the visible viewport whereas React baseline fits the entire form (taller modal content) within the viewport",
+              "Close (X) button on iOS sits higher and is smaller relative to the dialog; spacing/padding around header differs between the two",
+              "iOS Cancel and Create Agent action buttons appear side-by-side inline at the bottom of the dialog, while React baseline does not show these buttons in the cropped viewport area (they would be below)"
+            ],
+            "likelyCauses": [
+              "iOS viewport is reduced when the soft keyboard is shown, causing the dialog content to scroll and hide lower fields",
+              "iOS modal sizing/insets (safe area, keyboard avoidance) not matching React responsive sizing",
+              "Missing or different scroll-to-focus behavior on iOS compared to React's scroll handling",
+              "Different dialog padding/margin tokens between React and iOS implementations",
+              "Action button layout differs: React likely stacks or places buttons in a footer that is below the crop, while iOS uses an inline button row visible above the keyboard"
+            ],
+            "suggestedOwner": "mobile-ios",
+            "suggestedFixes": [
+              "Ensure the iOS dialog content view scrolls properly so all fields (Runtime, Provider, API URL, API Key) remain reachable when the keyboard appears",
+              "Use a consistent footer action button container so Cancel and Create Agent stay anchored at the dialog bottom across platforms",
+              "Match dialog horizontal padding and header spacing tokens to the React baseline",
+              "Add keyboard avoidance behavior (e.g., adjust content insets) so the focused input and its label remain visible",
+              "Verify the dialog's max height and scrolling behavior so no fields are clipped on smaller viewports or when keyboard is present"
+            ],
+            "intentional": [
+              "Keyboard presence and OS-native keyboard UI on iOS is expected",
+              "Status bar / platform chrome differences between mobile iOS and desktop React view"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -25737,7 +26155,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25759,7 +26177,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25784,7 +26202,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25807,7 +26225,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26007,7 +26425,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26029,7 +26447,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26054,7 +26472,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26077,7 +26495,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26277,7 +26695,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26299,7 +26717,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26324,7 +26742,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26347,7 +26765,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26543,7 +26961,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26565,7 +26983,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26590,7 +27008,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26613,7 +27031,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26809,7 +27227,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26831,7 +27249,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26856,7 +27274,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26879,7 +27297,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32269,7 +32687,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-26T22:55:32.577Z",
+        "generatedAt": "2026-08-26T22:59:37.362Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32330,7 +32748,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:32.577Z",
+            "generatedAt": "2026-08-26T22:59:37.362Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32352,7 +32770,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32374,7 +32792,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32399,7 +32817,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32422,7 +32840,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32462,7 +32880,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-26T22:55:32.577Z",
+        "generatedAt": "2026-08-26T22:59:37.362Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32523,7 +32941,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:32.577Z",
+            "generatedAt": "2026-08-26T22:59:37.362Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32545,7 +32963,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32567,7 +32985,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32592,7 +33010,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32615,7 +33033,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32655,7 +33073,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-26T22:55:32.577Z",
+        "generatedAt": "2026-08-26T22:59:37.362Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32716,7 +33134,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:32.577Z",
+            "generatedAt": "2026-08-26T22:59:37.362Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32738,7 +33156,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32760,7 +33178,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32785,7 +33203,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32808,7 +33226,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32848,7 +33266,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-26T22:55:32.577Z",
+        "generatedAt": "2026-08-26T22:59:37.362Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32909,7 +33327,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:32.577Z",
+            "generatedAt": "2026-08-26T22:59:37.362Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32931,7 +33349,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32953,7 +33371,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32978,7 +33396,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:36.181Z",
+            "generatedAt": "2026-08-26T22:59:40.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33001,7 +33419,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-26T22:55:40.297Z",
+            "generatedAt": "2026-08-26T22:59:44.442Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

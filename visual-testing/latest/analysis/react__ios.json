@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-26T22:55:36.174Z",
+  "generatedAt": "2026-08-26T22:59:40.625Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 78,
-    "pending": 14
+    "ready": 81,
+    "pending": 11
   },
   "cases": [
     {
@@ -1769,22 +1769,42 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83ffc3e7c20ec00cc3ffc3ffc27fc3ffc3ffc39fc38fc1ffc3ffc1ffc0ffc21fc3dfc03fc3ffc03fc2ffc3ffc2d9c7ffc3ffc7f7c2ffc38543ffc00002ffc80013ffcde733ffcffff3ffcffff3ffcffff2ffc1ff83ff41ff83ffc0ff03ffc0fe03d0480013844800100008001ffffffff",
-      "generatedAt": "2026-08-26T22:55:35.481Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-26T22:58:08.652Z",
+      "severity": "high",
+      "summary": [
+        "Create Agent primary button on iOS is rendered as a disabled/greyed state instead of the pink/active state shown on React",
+        "iOS dialog omits the Runtime select field, Model select field, 'Could not load models' error with Retry, and 'MORE' disclosure row that are all present on React",
+        "iOS dialog content is compressed into a smaller scroll area because the iOS keyboard occupies the lower half of the viewport, cropping fields and action buttons",
+        "React shows the 72/3000 character counter under the description; iOS does not",
+        "iOS Description label includes the '(optional)' suffix in a lighter weight; React label omits the suffix entirely"
+      ],
+      "likelyCauses": [
+        "iOS SwiftUI implementation missing the Runtime, Model, error, and MORE sections from the React spec",
+        "iOS Create Agent button is not being enabled when form fields are populated (likely bound to an empty validation state)",
+        "iOS dialog is not being resized/scrolled correctly when the software keyboard appears, leaving fields hidden beneath it",
+        "React description label and counter may be iOS-only additions or vice versa; verify which is canonical"
+      ],
+      "suggestedOwner": "ios-engineering",
+      "suggestedFixes": [
+        "Add the Runtime picker, Model picker, model-load error row with Retry, and MORE disclosure to the iOS Create Agent dialog to match React",
+        "Wire the primary 'Create Agent' button's enabled state to form validity (name + computer + runtime selected) so it renders active when valid",
+        "Adjust the dialog to scroll above the keyboard or use .scrollDismissesKeyboard so lower fields and actions remain reachable",
+        "Align the Description label text — pick one canonical wording ('DESCRIPTION' alone vs 'DESCRIPTION (optional)') and apply in both platforms",
+        "Restore the 72/3000 character counter beneath the description on iOS if it should be present per spec"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.44260508229702544
     },
     {
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:35.349Z",
+      "generatedAt": "2026-08-26T22:59:39.925Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1797,7 +1817,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:35.349Z",
+      "generatedAt": "2026-08-26T22:59:39.925Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1808,28 +1828,75 @@
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83ffc3e7c20ec00cc3ffc3ffc27fc3ffc3ffc39fc38fc1ffc3ffc1ffc0ffc21fc3dfc03fc3ffc03fc2ffc3ffc2d9c7ffc3ffc7f7c2ffc38543ffc00002ffc80013ffcde733ffcffff3ffcffff3ffcffff2ffc1ff83ff41ff83ffc0ff03ffc0fe03d0480013844800100008001ffffffff",
-      "generatedAt": "2026-08-26T22:55:35.514Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-26T22:58:08.676Z",
+      "severity": "high",
+      "summary": [
+        "iOS view shows keyboard occupying the lower half of the screen, hiding the Runtime, Model, and MORE sections visible in React",
+        "iOS Create Agent button is disabled (greyed out) while React's is highlighted in pink/red, likely because the form is incomplete when keyboard is focused",
+        "React form is taller and scrollable; iOS dialog is compressed at the top with Description field smaller (2 lines vs 3)",
+        "Layout crop differs: iOS view extends to ~50% screen height while React fits the entire modal viewport",
+        "Alert banner text wrapping differs: iOS wraps 'Upgrade for more' on a new line, React keeps it inline"
+      ],
+      "likelyCauses": [
+        "iOS native dialog does not auto-scroll or resize content when soft keyboard appears",
+        "iOS form validation does not auto-populate Runtime/Model fields, leaving Create Agent disabled",
+        "Different keyboard avoidance behavior between React web view and native iOS implementation",
+        "iOS dialog uses fixed-height modal without scroll behavior while React has scrollable container"
+      ],
+      "suggestedOwner": "iOS",
+      "suggestedFixes": [
+        "Add keyboard avoidance layout to iOS dialog so form fields remain scrollable when keyboard appears",
+        "Set Runtime and Model default values on iOS to match React behavior and enable Create Agent button",
+        "Make iOS modal scrollable and ensure all fields (Runtime, Model, MORE) remain reachable with keyboard up",
+        "Match form field heights and description textarea size between iOS and React baselines",
+        "Validate form submission logic so Create Agent button state matches across platforms"
+      ],
+      "intentional": [
+        "Keyboard appearance in iOS is expected native behavior",
+        "iOS button disabled state may be intentional when required fields are empty"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.44260508229702544
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83f7c3e4c20ec004c37fc3ffc07fc1ffc3ffc38fc30fc1ffc3ffc1ffc0ffc21fc3dfc03fc3ffc03fc27fc3ffc2d9c7ffc3ffc7f7c2ffc38443ffc00002ffc80003ffcce733ffcffff3ffcffff2ffcfffe27fc1ff83ffc1ff83ffc0ff02ffc0fe0383c80013ffc80013ffc8001ffffffff",
-      "generatedAt": "2026-08-26T22:55:35.529Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-26T22:58:08.665Z",
+      "severity": "high",
+      "summary": [
+        "iOS dialog is scrolled to top and shows fewer fields; React baseline reveals Runtime, Provider, API URL, and additional form fields hidden below the fold on iOS due to keyboard occlusion",
+        "iOS shows the iOS keyboard occupying the lower half of the screen, which is absent on the React baseline",
+        "iOS dialog appears compressed/scaled within the visible viewport whereas React baseline fits the entire form (taller modal content) within the viewport",
+        "Close (X) button on iOS sits higher and is smaller relative to the dialog; spacing/padding around header differs between the two",
+        "iOS Cancel and Create Agent action buttons appear side-by-side inline at the bottom of the dialog, while React baseline does not show these buttons in the cropped viewport area (they would be below)"
+      ],
+      "likelyCauses": [
+        "iOS viewport is reduced when the soft keyboard is shown, causing the dialog content to scroll and hide lower fields",
+        "iOS modal sizing/insets (safe area, keyboard avoidance) not matching React responsive sizing",
+        "Missing or different scroll-to-focus behavior on iOS compared to React's scroll handling",
+        "Different dialog padding/margin tokens between React and iOS implementations",
+        "Action button layout differs: React likely stacks or places buttons in a footer that is below the crop, while iOS uses an inline button row visible above the keyboard"
+      ],
+      "suggestedOwner": "mobile-ios",
+      "suggestedFixes": [
+        "Ensure the iOS dialog content view scrolls properly so all fields (Runtime, Provider, API URL, API Key) remain reachable when the keyboard appears",
+        "Use a consistent footer action button container so Cancel and Create Agent stay anchored at the dialog bottom across platforms",
+        "Match dialog horizontal padding and header spacing tokens to the React baseline",
+        "Add keyboard avoidance behavior (e.g., adjust content insets) so the focused input and its label remain visible",
+        "Verify the dialog's max height and scrolling behavior so no fields are clipped on smaller viewports or when keyboard is present"
+      ],
+      "intentional": [
+        "Keyboard presence and OS-native keyboard UI on iOS is expected",
+        "Status bar / platform chrome differences between mobile iOS and desktop React view"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.4427377432116769
     },
     {
@@ -2213,7 +2280,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:35.723Z",
+      "generatedAt": "2026-08-26T22:59:40.210Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2226,7 +2293,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:35.723Z",
+      "generatedAt": "2026-08-26T22:59:40.210Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2239,7 +2306,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:35.723Z",
+      "generatedAt": "2026-08-26T22:59:40.210Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2252,7 +2319,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:35.723Z",
+      "generatedAt": "2026-08-26T22:59:40.210Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2265,7 +2332,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:35.723Z",
+      "generatedAt": "2026-08-26T22:59:40.210Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2753,7 +2820,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:36.064Z",
+      "generatedAt": "2026-08-26T22:59:40.533Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2766,7 +2833,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:36.064Z",
+      "generatedAt": "2026-08-26T22:59:40.534Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2779,7 +2846,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:36.064Z",
+      "generatedAt": "2026-08-26T22:59:40.534Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2792,7 +2859,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:55:36.064Z",
+      "generatedAt": "2026-08-26T22:59:40.534Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
