@@ -6129,9 +6129,20 @@ class KmpVisualScreenshotCaptureTest {
         // Bounds for captureAfterLongPressRendered: wait for the long-press UI to
         // actually render instead of a fixed sleep. Timeout must comfortably
         // exceed a loaded-shard menu render; retry re-issues the press once.
-        private const val LONG_PRESS_RENDER_TIMEOUT_MS = 4_000L
+        // task #228: the first observation alone costs ~2-3s (700ms press + fixture
+        // readiness + capture), and the menu's black chrome paints after the press
+        // ripple. A 4s budget left only one or two polls, so whether the gate saw
+        // the finished menu came down to scheduling jitter. Poll to a generous
+        // deadline instead: polling early is free, polling late does not misjudge,
+        // and no constant has to encode "how long the menu takes" - a quantity we
+        // cannot measure reliably, since readings from different runs cannot be
+        // combined (per-run variance is the defect under investigation).
+        private const val LONG_PRESS_RENDER_TIMEOUT_MS = 12_000L
         private const val LONG_PRESS_RENDER_POLL_MS = 200L
-        private const val LONG_PRESS_RENDER_RETRY_AT_MS = 2_000L
+        // Kept only as a floor for the no-response case; the retry is suppressed
+        // once the screen has reacted (see LONG_PRESS_RETRY_SUPPRESS_CHANGED_RATIO),
+        // because re-pressing then disturbs the state the gate is waiting on.
+        private const val LONG_PRESS_RENDER_RETRY_AT_MS = 6_000L
         private const val LONG_PRESS_INPUT_READY_SETTLE_MS = 100L
         private const val THREAD_LEGACY_MENU_MIN_ADDED_BLACK_SAMPLES = 300
         private const val THREAD_NEW_MESSAGE_MENU_MIN_ADDED_BLACK_SAMPLES = 40
