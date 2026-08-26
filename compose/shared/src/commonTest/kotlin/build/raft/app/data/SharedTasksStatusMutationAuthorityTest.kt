@@ -1,6 +1,9 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
@@ -169,6 +172,52 @@ class SharedTasksStatusMutationAuthorityTest {
             )
         )
         assertEquals(emptyList(), authority.store.projection(ServerA, SharedTasksScope.Server).tasks)
+    }
+
+    @Test
+    fun beginAssignMutationPublishesOptimisticAssigneeAndSharesOneMutationSlot() = runBlocking {
+        val authority = authority()
+        val assignee = MemberProfile(MemberId("user-2"), "Nathan Peer", "nathan", MemberKind.Human)
+        val previousTask = task(status = TaskStatus.Todo, revision = 50L).copy(assignee = null)
+        assertEquals(
+            SharedTaskFactFoldOutcome.Accepted,
+            authority.store.upsertTaskForCurrentOwner(ServerA, previousTask)
+        )
+
+        val permit =
+            assertNotNull(
+                authority.store.beginAssignMutation(
+                    serverId = ServerA,
+                    scope = SharedTasksScope.Channel(ChannelA),
+                    taskId = previousTask.id,
+                    expectedRevision = 50L,
+                    assignee = assignee
+                )
+            )
+
+        assertEquals(null, permit.previousTask.assignee)
+        assertEquals(MemberId("user-2"), permit.optimisticTask.assignee?.id)
+        assertEquals(MemberId("user-2"), authority.projectedTask().assignee?.id)
+
+        // Chained-begin semantics (same as status): a second begin while one write
+        // is pending bases its previousTask on the pending optimistic projection.
+        val chained =
+            assertNotNull(
+                authority.store.beginStatusMutation(
+                    serverId = ServerA,
+                    scope = SharedTasksScope.Channel(ChannelA),
+                    taskId = previousTask.id,
+                    expectedRevision = 50L,
+                    status = TaskStatus.Done
+                )
+            )
+        assertEquals(MemberId("user-2"), chained.previousTask.assignee?.id)
+        assertEquals(TaskStatus.Done, chained.optimisticTask.status)
+
+        // Rollback path is shared with status mutations: the assign write failing
+        // restores its own previousTask snapshot.
+        val restored = authority.store.rollbackStatusMutation(permit)
+        assertEquals(null, restored?.assignee)
     }
 
     private class MutationAuthority(

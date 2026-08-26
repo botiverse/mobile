@@ -384,6 +384,7 @@
     <string name="thread_error_task_status_unsupported">不支持此任务状态</string>
     <string name="thread_feedback_task_updated">任务已更新</string>
     <string name="thread_error_update_task">无法更新任务</string>
+    <string name="thread_error_update_assignee">无法更新负责人</string>
     <string name="thread_error_join_channel">无法加入频道</string>
     <string name="thread_feedback_joined_channel">已加入频道</string>
     <string name="thread_error_attachment_retry">无法重试附件，请移除后重新添加。</string>

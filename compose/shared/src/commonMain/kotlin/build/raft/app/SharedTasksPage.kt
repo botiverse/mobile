@@ -28,6 +28,7 @@ import build.raft.app.data.tasksIdentityFilterId
 import build.raft.app.data.tasksSourceLabel
 import build.raft.app.data.visibleContent
 import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.TaskStatus
@@ -501,6 +502,9 @@ private fun SharedTasksLoadedBodyContent(
     // moves the menu away from the chip and can leave the menu under the touch barrier.
     var statusMenuTask by remember { mutableStateOf<TaskSummary?>(null) }
     var statusMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var assigneeMenuTask by remember { mutableStateOf<TaskSummary?>(null) }
+    var assigneeMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var assigneeMenuSearch by remember { mutableStateOf("") }
     val listModeListState =
         rememberLazyListState(
             initialFirstVisibleItemIndex = initialListPosition.firstVisibleItemIndex,
@@ -595,12 +599,16 @@ private fun SharedTasksLoadedBodyContent(
         tasksAssigneeFilterOptions(visibleContent.assigneeOptions, unassignedAssigneeLabel)
     }
     SlockBackHandler(
-        enabled = createDialogOpen || statusMenuTask != null || presentationState.openFilterId != null
+        enabled = createDialogOpen || statusMenuTask != null || assigneeMenuTask != null || presentationState.openFilterId != null
     ) {
         when {
             createDialogOpen && !createLoading -> createDialogOpen = false
             createDialogOpen -> Unit
             statusMenuTask != null -> statusMenuTask = null
+            assigneeMenuTask != null -> {
+                assigneeMenuTask = null
+                assigneeMenuSearch = ""
+            }
             presentationState.openFilterId != null ->
                 presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null))
         }
@@ -703,6 +711,10 @@ private fun SharedTasksLoadedBodyContent(
                                         statusMenuTask = task
                                         statusMenuAnchor = anchor
                                     },
+                                    onAssigneeBadgeClick = { task, anchor ->
+                                        assigneeMenuTask = task
+                                        assigneeMenuAnchor = anchor
+                                    },
                                     onLongPressTask = { task, anchor ->
                                         statusMenuTask = task
                                         statusMenuAnchor = anchor
@@ -769,6 +781,10 @@ private fun SharedTasksLoadedBodyContent(
                                                 onStatusBadgeClick = { anchor ->
                                                     statusMenuTask = task
                                                     statusMenuAnchor = anchor
+                                                },
+                                                onAssigneeBadgeClick = { anchor ->
+                                                    assigneeMenuTask = task
+                                                    assigneeMenuAnchor = anchor
                                                 },
                                                 onLongPress = { anchor ->
                                                     statusMenuTask = task
@@ -848,6 +864,60 @@ private fun SharedTasksLoadedBodyContent(
                         onIntent(SharedTasksRouteIntent.UpdateStatus(task, next))
                     }
                 }
+            )
+        }
+
+        // Assignee editor (task v2 port, task #244). Per the web ruling the assignee
+        // picker reuses the searchable filter popover (stdrc msg=4c357cb1) — humans
+        // first, then agents, "unassigned" sentinel always first and never filtered
+        // away. Matching is on the visible display name, mirroring TaskProperties.tsx.
+        assigneeMenuTask?.let { task ->
+            val resolvedAssigneeAnchor =
+                assigneeMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
+                    ?: return@let
+            val unassignedLabel = stringResource(MR.strings.tasks_assignee_unassigned)
+            val needle = assigneeMenuSearch.trim().lowercase()
+            val people =
+                visibleContent.assigneeOptions
+                    .filter { it.kind != MemberKind.System }
+                    .filter { needle.isEmpty() || it.displayName.lowercase().contains(needle) }
+                    .sortedWith(compareByDescending<MemberProfile> { it.kind == MemberKind.Human }.thenBy { it.displayName.lowercase() })
+            val selectedId = task.assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
+            SlockFilterPopover(
+                anchor = resolvedAssigneeAnchor,
+                title = stringResource(MR.strings.tasks_filter_assignee),
+                searchPlaceholder = stringResource(MR.strings.tasks_search_assignees),
+                searchText = assigneeMenuSearch,
+                onSearchChange = { assigneeMenuSearch = it },
+                options =
+                    listOf(
+                        SlockFilterOption(
+                            id = TasksUnassignedAssigneeFilterId,
+                            label = unassignedLabel
+                        )
+                    ) +
+                        people.map { member ->
+                            SlockFilterOption(
+                                id = member.tasksIdentityFilterId(),
+                                label = member.displayName
+                            )
+                        },
+                selectedIds = setOf(selectedId),
+                onToggle = { id ->
+                    assigneeMenuTask = null
+                    assigneeMenuSearch = ""
+                    if (id != selectedId) {
+                        val member = people.firstOrNull { it.tasksIdentityFilterId() == id }
+                        onIntent(SharedTasksRouteIntent.AssignTask(task, member))
+                    }
+                },
+                onClear = { assigneeMenuSearch = "" },
+                onDismiss = {
+                    assigneeMenuTask = null
+                    assigneeMenuSearch = ""
+                },
+                multiSelect = false,
+                showClearWhenSelected = false
             )
         }
 
@@ -1100,6 +1170,7 @@ private fun SharedTasksBoardColumn(
     onOpenTask: ((TaskSummary) -> Unit)?,
     timeContext: SlockTimeContext?,
     onStatusBadgeClick: (TaskSummary, SlockPopoverAnchor) -> Unit,
+    onAssigneeBadgeClick: (TaskSummary, SlockPopoverAnchor) -> Unit,
     onLongPressTask: (TaskSummary, SlockPopoverAnchor) -> Unit,
     bottomContentPadding: Dp,
     draftProjection: SharedThreadComposerDraftProjection,
@@ -1157,6 +1228,7 @@ private fun SharedTasksBoardColumn(
                             timeContext = timeContext,
                             onClick = { onOpenTask?.invoke(task) },
                             onStatusBadgeClick = { anchor -> onStatusBadgeClick(task, anchor) },
+                            onAssigneeBadgeClick = { anchor -> onAssigneeBadgeClick(task, anchor) },
                             onLongPress = { anchor -> onLongPressTask(task, anchor) }
                         )
                     }
@@ -1215,6 +1287,7 @@ private fun SharedTaskCard(
     timeContext: SlockTimeContext? = null,
     onClick: () -> Unit,
     onStatusBadgeClick: (SlockPopoverAnchor) -> Unit,
+    onAssigneeBadgeClick: (SlockPopoverAnchor) -> Unit = {},
     onLongPress: (SlockPopoverAnchor) -> Unit
 ) {
     // Keep a live card coordinate so long-press conversion remains correct after scrolling.
@@ -1342,16 +1415,26 @@ private fun SharedTaskCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val assigneeDisplayName = task.tasksAssigneeDisplayName()
-                Text(
-                    text = assigneeDisplayName?.let { "@$it" }
+                // Assignee pill with trailing pencil mirrors React's card assignee
+                // InlineBadgeEditor (searchable popover reuse per stdrc msg=4c357cb1;
+                // uppercase=false like the @assignee label). Same anchored Button model
+                // as the status chip so the tap wins over the parent card gesture.
+                SlockAnchoredMetaChip(
+                    label = assigneeDisplayName?.let { "@$it" }
                         ?: stringResource(MR.strings.tasks_assignee_unassigned),
-                    style = SlockType.Caption
-                        .withSlockFontWeight(FontWeight.Bold)
-                        .copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    iconName = null,
+                    color = SlockColor.SurfaceWhite,
+                    onClick = onAssigneeBadgeClick,
+                    clickIdentity = tasksAssigneeChipClickIdentity(task.id.value),
+                    anchorOwnerIdentity = tasksStatusMenuOwnerIdentity(task.id.value),
+                    modifier = Modifier.weight(1f),
+                    trailingIconName = SlockLucideIconName.Pencil,
+                    minHeight = 24.dp,
+                    horizontalPadding = 8.dp,
+                    labelFontSize = 12.sp,
+                    labelLineHeight = 16.sp,
+                    borderWidth = SlockStroke.Default,
+                    anchorPlacement = SlockAnchorPlacement.BottomEnd
                 )
                 // Use the same anchored Button(onClick2) model as thread meta chips so the
                 // status pill reliably wins the tap instead of the parent card gesture.
@@ -1389,6 +1472,9 @@ private data class SharedTaskCardGestureCallbacks(
 
 internal fun tasksStatusChipClickIdentity(taskId: String, status: TaskStatus): String =
     "tasks-status:$taskId:${status.name}"
+
+internal fun tasksAssigneeChipClickIdentity(taskId: String): String =
+    "tasks-assignee:$taskId"
 
 internal fun tasksStatusMenuOwnerIdentity(taskId: String): String = "task:$taskId"
 

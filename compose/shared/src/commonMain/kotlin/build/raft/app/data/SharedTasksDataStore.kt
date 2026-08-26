@@ -873,26 +873,66 @@ internal class SharedTasksDataStore(
             val channelId = previousTask.channelId ?: return@withLock null
             if (scope is SharedTasksScope.Channel && scope.channelId != channelId) return@withLock null
             val optimisticTask = previousTask.copy(status = status)
-            val projected = current.projectTaskMutation(normalizedServerId, optimisticTask)
-            val permit =
-                SharedTasksStatusMutationPermit(
-                    id = current.nextStatusMutationId + 1L,
-                    ownerIdentity = ownerIdentity,
-                    ownerGeneration = ownerGeneration,
-                    serverId = normalizedServerId,
-                    channelId = channelId,
-                    taskId = taskId,
-                    previousTask = previousTask,
-                    optimisticTask = optimisticTask,
-                    mutationRevision = projected.mutationRevision
-                )
-            state.value =
-                projected.copy(
-                    nextStatusMutationId = permit.id,
-                    statusMutations = projected.statusMutations + (SharedTasksTaskKey(normalizedServerId, taskId) to permit)
-                )
-            permit
+            beginTaskMutationLocked(current, normalizedServerId, channelId, taskId, previousTask, optimisticTask)
         }
+    }
+
+    /**
+     * Assign/unassign twin of [beginStatusMutation]: snapshots the projected task
+     * and projects the optimistic assignee copy. Shares the same one-pending-
+     * mutation-per-task invariant (same permit table), so an in-flight status
+     * write blocks an assign on the same task and vice versa.
+     */
+    suspend fun beginAssignMutation(
+        serverId: String,
+        scope: SharedTasksScope,
+        taskId: TaskId,
+        expectedRevision: Long?,
+        assignee: MemberProfile?
+    ): SharedTasksStatusMutationPermit? {
+        bindCurrentOwnerIdentity()
+        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return null
+        return loadMutex.withLock {
+            if (!isCurrentServerLocked(normalizedServerId)) return@withLock null
+            val current = state.value
+            val previousTask =
+                current.statusMutationProjection(normalizedServerId, taskId, expectedRevision)
+                    ?: return@withLock null
+            val channelId = previousTask.channelId ?: return@withLock null
+            if (scope is SharedTasksScope.Channel && scope.channelId != channelId) return@withLock null
+            val optimisticTask = previousTask.copy(assignee = assignee)
+            beginTaskMutationLocked(current, normalizedServerId, channelId, taskId, previousTask, optimisticTask)
+        }
+    }
+
+    /** Permit-table insert shared by every task mutation kind. Caller holds [loadMutex]. */
+    private fun beginTaskMutationLocked(
+        current: SharedTasksDataStoreState,
+        normalizedServerId: String,
+        channelId: ChannelId,
+        taskId: TaskId,
+        previousTask: TaskSummary,
+        optimisticTask: TaskSummary
+    ): SharedTasksStatusMutationPermit {
+        val projected = current.projectTaskMutation(normalizedServerId, optimisticTask)
+        val permit =
+            SharedTasksStatusMutationPermit(
+                id = current.nextStatusMutationId + 1L,
+                ownerIdentity = ownerIdentity,
+                ownerGeneration = ownerGeneration,
+                serverId = normalizedServerId,
+                channelId = channelId,
+                taskId = taskId,
+                previousTask = previousTask,
+                optimisticTask = optimisticTask,
+                mutationRevision = projected.mutationRevision
+            )
+        state.value =
+            projected.copy(
+                nextStatusMutationId = permit.id,
+                statusMutations = projected.statusMutations + (SharedTasksTaskKey(normalizedServerId, taskId) to permit)
+            )
+        return permit
     }
 
     suspend fun completeStatusMutation(

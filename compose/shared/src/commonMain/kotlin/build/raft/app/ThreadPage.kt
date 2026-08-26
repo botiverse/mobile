@@ -5610,6 +5610,7 @@ internal fun SharedThreadRouteContent(
     val taskCreatedLabel = stringResource(MR.strings.thread_feedback_task_created)
     val unsupportedTaskStatusLabel = stringResource(MR.strings.thread_error_task_status_unsupported)
     val unableToUpdateTaskLabel = stringResource(MR.strings.thread_error_update_task)
+    val unableToUpdateAssigneeLabel = stringResource(MR.strings.thread_error_update_assignee)
     val unableToJoinChannelLabel = stringResource(MR.strings.thread_error_join_channel)
     val joinedChannelLabel = stringResource(MR.strings.thread_feedback_joined_channel)
     val attachmentRetryUnavailableLabel = stringResource(MR.strings.thread_error_attachment_retry)
@@ -6107,8 +6108,11 @@ internal fun SharedThreadRouteContent(
         tasksViewModel?.uiEvents?.collect { event ->
             when (event) {
                 is SharedTasksEvent.OperationFailed -> {
-                    if (event.code.startsWith("tasks_status") && !routeAuthRequired(event.code)) {
-                        bridge.toast(unableToUpdateTaskLabel)
+                    when {
+                        event.code.startsWith("tasks_status") && !routeAuthRequired(event.code) ->
+                            bridge.toast(unableToUpdateTaskLabel)
+                        event.code.startsWith("tasks_assign") && !routeAuthRequired(event.code) ->
+                            bridge.toast(unableToUpdateAssigneeLabel)
                     }
                 }
             }

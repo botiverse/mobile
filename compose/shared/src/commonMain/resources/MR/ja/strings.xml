@@ -384,6 +384,7 @@
     <string name="thread_error_task_status_unsupported">サポートされていないタスクステータスです</string>
     <string name="thread_feedback_task_updated">タスクを更新しました</string>
     <string name="thread_error_update_task">タスクを更新できませんでした</string>
+    <string name="thread_error_update_assignee">担当者を更新できませんでした</string>
     <string name="thread_error_join_channel">チャンネルに参加できませんでした</string>
     <string name="thread_feedback_joined_channel">チャンネルに参加しました</string>
     <string name="thread_error_attachment_retry">添付ファイルを再試行できません。削除してから、もう一度添付してください。</string>
