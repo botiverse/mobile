@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-25T22:14:00.326Z",
+  "generatedAt": "2026-08-26T22:55:32.568Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 86,
-    "ready": 85,
-    "pending": 1
+    "total": 92,
+    "ready": 79,
+    "pending": 13
   },
   "cases": [
     {
@@ -460,7 +460,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe9ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe0ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-10T22:11:45.609Z",
       "severity": "low",
       "summary": [
@@ -552,7 +552,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4149707602339181
+      "metricMismatch": 0.41497942386831277
     },
     {
       "id": "components.ui.spinner.states",
@@ -915,75 +915,34 @@
     },
     {
       "id": "components.thread.composer.empty",
-      "status": "ready",
-      "imageHash": "p1:fffffffffffefffffffcfffc0ffc0ffc0fff0fff0000000000000000ffffffff80010001bffc7ffdfffefffdbffe33fd81fe03fdeffe7ffdfffefffd8ffc0ff987fc0ff987dc0f9987c00f8187dc0f9987f80ff98ffc0001800000018000ffffffffffff0000000080000001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-08-07T00:05:48.728Z",
-      "severity": "medium",
-      "summary": [
-        "Android version is horizontally offset by 24px to the right relative to the React baseline (manual-rect crop offset)",
-        "Send arrow icon background appears slightly more saturated/lighter pink on Android vs React",
-        "Attachment icons (image/plus, paperclip) on Android appear positioned slightly closer to left edge",
-        "'Message design' placeholder text appears at similar position but with very slight font weight/spacing differences",
-        "Overall component bounds are nearly identical in width and height but shifted right on Android"
-      ],
-      "likelyCauses": [
-        "Android crop was captured using manual-rect starting at x=24 while React used element-bounds at x=0",
-        "Possible difference in container horizontal padding or margin handling between platforms",
-        "Minor anti-aliasing/font rendering differences between web fonts and Android Compose TextView",
-        "Icon button internal padding/spacing may differ between React component library and Android Material implementation"
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Re-capture Android screenshot using element-bounds contract instead of manual-rect to eliminate the 24px offset",
-        "Verify the composer container's horizontal margin/padding matches React baseline exactly",
-        "Audit icon button spacing in Android Compose to match React attachment button cluster spacing",
-        "Confirm the 'As Task' checkbox label spacing matches between platforms",
-        "Compare font weight and letter-spacing of the 'Message design' placeholder between platforms"
-      ],
-      "intentional": [
-        "The 24px horizontal shift is likely a test capture artifact from manual-rect crop rather than an intentional layout difference"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.19193957115009752
+      "status": "pending",
+      "imageHash": "p1:fffffffffffefffffffcfffc0ffc0ffc0fff0fff0000000000000000ffffffff80010001bffc7ffdfffefffdbffe33fd81fe03fdeffe7ffdfffefffd8ffc07f987fc07f987dc079987c0078187dc079987f807f98ffc0001800000018000ffffffffffff0000000080000001fffffffffffffffffff81fffffffffffffffffff",
+      "generatedAt": "2026-08-26T22:55:31.267Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.20123456790123462
     },
     {
       "id": "components.thread.composer.states",
-      "status": "ready",
-      "imageHash": "p1:fffffffffffffffffffcfffc0ffc0ffc8fff0fff0000000000000000ffffffff80010001fffe7ffdfffe7ffd8096000580060005fffefffdfffefffd8ff80ff987f80ff187d80f9187c00fc187d80f9187f80ff18ff80001800000018000ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-08-16T22:07:25.091Z",
-      "severity": "medium",
-      "summary": [
-        "Android composer component bounds are shifted ~24px to the right relative to the React baseline (manual-rect crop offset x:24 vs element-crop x:0).",
-        "The Android card occupies a larger horizontal area (extends past the right margin) compared to React, causing edge clipping risk against the canvas boundary.",
-        "Pink send button, image/attachment icons, checkbox, and 'As Task' label render in matching positions and styling within the card itself — internal composer contents are consistent.",
-        "Card border thickness, typography weight of 'Review the Android composer crop', and icon sizes appear visually identical between platforms."
-      ],
-      "likelyCauses": [
-        "Android snapshot used a manual-rect crop with x:24 offset instead of an element-bounds crop, causing a positional mismatch rather than a true component difference.",
-        "Possible missing outset/padding configuration in the Android visual-regression contract.",
-        "Coordinate-system offset between the two platform harness implementations."
-      ],
-      "suggestedOwner": "android-visual-testing",
-      "suggestedFixes": [
-        "Switch Android crop mode from 'manual-rect' to 'element' with contract 'component-bounds' to match React baseline cropping behavior.",
-        "Verify the Android harness renders the composer at the same origin (x:0) as the React harness, or apply a consistent outset value.",
-        "Re-run the comparison after aligning crop strategies; if the 24px offset is intentional, document it in the contract and re-baseline.",
-        "Confirm the card's right-edge clipping is not a real layout bug by inspecting the underlying Compose layout for padding/end constraints."
-      ],
-      "intentional": [
-        "If the 24px x-offset is by design to account for platform-specific padding or status-bar inset, mark it intentional and update the baseline accordingly."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.20584795321637428
+      "status": "pending",
+      "imageHash": "p1:fffffffffffffffffffefffc0ffc0ffc8fff0fff0000000000000000ffffffff80010001fffefffdfffefffd80b6000d80060005fffefffdfffefffd8ff807f987f807f187d8079187c007c187d8079187f807f18ff80009800000018000ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
+      "generatedAt": "2026-08-26T22:55:31.292Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.21514294996751138
     },
     {
       "id": "components.thread.composer.pending-mention-actions",
       "status": "ready",
-      "imageHash": "p1:ffffffff03fe03fc000000008001000380000001f03e407dc07e4ffdcffe77f5f7de7e79fc0e7ffdfc047ffdfc06701d800070098001700d80010001bffe000183fe7ffdbffe03fd87dc7ffd87cc0ff984180f8980000801ffff0001fffffffffffffffffffffffffffffffffffffffffffeffff80018001ffffffffffffffff",
+      "imageHash": "p1:ffffffff03fe03fc000000008001000380000001f03e407dc07e4ffdcffe77f5f7de7e79fc0e7ffdfc047ffdfc06701d800070098001700d80010001bffe000183fe7ffdbffe03fd87dc7ffd87cc07f98418078980000001ffff0001fffffffffffffffffffffffffffffffffffffffffffeffff80018001ffffffffffffffff",
       "generatedAt": "2026-08-07T00:05:48.816Z",
       "severity": "medium",
       "summary": [
@@ -1014,45 +973,25 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.27455468172346575
+      "metricMismatch": 0.27652192422307365
     },
     {
       "id": "components.thread.composer.as-task-selected",
-      "status": "ready",
-      "imageHash": "p1:fffffffffffffffffffefffc03fc03fc97ff17ff0000000000000000ffffffff80010001fffefffdfffefffd80b6000d80060005fffefffdfffefffd8ff80ff987f80ff187d80f9187c00f8187d80f9187f80ff18ff80009800000018000ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-08-07T00:05:52.974Z",
-      "severity": "medium",
-      "summary": [
-        "The Android composer crop is shifted right by ~24px relative to the React baseline, causing horizontal offset of the entire card.",
-        "The checkbox in the Android variant is noticeably larger and filled with solid black, while the React baseline checkbox is smaller with a thinner check mark.",
-        "The send/arrow icon button on the right is rendered slightly smaller in the Android variant and positioned closer to the right edge.",
-        "Spacing between the 'As Task' label and the send button is tighter on Android than on React."
-      ],
-      "likelyCauses": [
-        "Manual crop rect on the Android side was offset (x=24 vs x=0), so the comparison canvas is not aligned with the baseline component bounds.",
-        "Android checkbox component may use a larger default size or a different style than the React Checkbox primitive.",
-        "Icon button sizing tokens differ between React and Android design system mappings."
-      ],
-      "suggestedOwner": "android-ui-engineering",
-      "suggestedFixes": [
-        "Re-capture the Android screenshot using the same element-bounds crop mode as the React baseline (x=0, width=342) to eliminate the 24px offset.",
-        "Audit the Android Checkbox component size and fill state to match the React baseline dimensions and stroke weight.",
-        "Verify the send icon button uses the same width/height token across platforms.",
-        "Add a layout tolerance or align the component bounds contract so cross-platform comparisons share the same coordinate space.",
-        "Re-run the Slock visual test after alignment fixes to confirm mismatch ratio drops below the 2% tolerance."
-      ],
-      "intentional": [
-        "Platform-specific checkbox and icon styling may be intentionally different."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2085510071474984
+      "status": "pending",
+      "imageHash": "p1:fffffffffffffffffffefffc03fc03fc97ff17ff0000000000000000ffffffff80010001fffefffdfffefffd80b6000d80060005fffefffdfffefffd8ff807f987f807f987d8079187c0078187d8079187f807f98ff80009800000018001ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
+      "generatedAt": "2026-08-26T22:55:31.304Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2178460038986355
     },
     {
       "id": "components.thread.composer.member-suggestions",
       "status": "ready",
-      "imageHash": "p1:fffeffff03fe03fcffffffffcc01ffff81fcffffb3feffffbe0400018000f7ff80003c0bbffc000187fc000187fc7fff800003ff80fe07fffffc0001bffc01ff97fcfffffffe3fffbffc23ff80003fff80000000bffc0001bffc3ffdbffc3ffd87d80ff987c80f9184180ff180000001ffffffff80008000ffffffffffffffff",
+      "imageHash": "p1:fffeffff03fe03fcffffffffcc01ffff81fcffffb3feffffbe0400018000f7ff80003c0bbffc000187fc000187fc7fff800003ff80fe07fffffc0001bffc01ff97fcfffffffe3fffbffc23ff80003fff80000000bffc0001bffc3ffdbffc3ffd87d807f987c80791841807f180000001ffffffff80008000ffffffffffffffff",
       "generatedAt": "2026-08-09T22:12:45.688Z",
       "severity": "high",
       "summary": [
@@ -1081,12 +1020,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3164595516569201
+      "metricMismatch": 0.3194677956465237
     },
     {
       "id": "components.thread.composer.channel-suggestions",
       "status": "ready",
-      "imageHash": "p1:fffeffff03fe03fcffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8000ffff8000ffff80000001800000019ffc000187fc3ffbfffe0fff80fc3fff80fc3fff800001ff80000000bffc0001bffc7ffdfffc7ffd87d80ff987c80f9184180ff180000001ffffffff80008000ffffffffffffffff",
+      "imageHash": "p1:fffeffff03fe03fcffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8000ffff8000ffff80000001800000019ffc000187fc3ffbfffe0fff80fc3fff80fc3fff800001ff80000000bffc0001bffc7ffdfffc7ffd87d807f987c80791841807f180000001ffffffff80008000ffffffffffffffff",
       "generatedAt": "2026-08-09T22:12:11.938Z",
       "severity": "medium",
       "summary": [
@@ -1113,41 +1052,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26425438596491224
+      "metricMismatch": 0.2672626299545159
     },
     {
       "id": "components.thread.composer.image-preview",
-      "status": "ready",
-      "imageHash": "p1:fffefffd07fc07fc000000000000000080000fff80000fff80000fff83fc0fff80000fff80010fffa004000380002001801000018ff83efd87c00ff187d80f8180000ff180000001fffff007fffffffffffffffffffffffffffeffff0000fffffffffffffffffffffffffffffffffffffffffffeffff8001fff85fffffffffff",
-      "generatedAt": "2026-08-10T22:15:45.578Z",
-      "severity": "medium",
-      "summary": [
-        "React shows an error banner ('The upload size limit could not be checked. Try again in a moment.'); Android version does not display this error state.",
-        "Android displays an actual image preview thumbnail (yellow image with pink circle/mountain graphics) with a circular close (X) button overlay; React version is missing the preview image and its dismiss affordance.",
-        "Layout dimensions differ: Android canvas is taller (342×270 vs 342×210), indicating the image-preview thumbnail block is taller/positioned higher on Android.",
-        "Header resolution metadata matches (1026×630 vs 1026×810) but the two states represent fundamentally different composer states (error vs. preview with image)."
-      ],
-      "likelyCauses": [
-        "Android implementation renders the image preview thumbnail in the loading/selected state while React snapshot was captured during an error/limit-check failure state.",
-        "State-condition divergence: React triggers the 'upload size limit could not be checked' error banner under conditions that the Android build does not, or vice versa.",
-        "Missing preview image and close button on React suggests the image attachment is not rendered during the loading phase in the web build.",
-        "Crop rect mismatch (auto element-bounds vs manual 342×270) on Android may be capturing extra UI not present in the React baseline."
-      ],
-      "suggestedOwner": "android-composer",
-      "suggestedFixes": [
-        "Sync state machine so both platforms render the same composer state (error vs. preview-with-image) under identical triggers.",
-        "Ensure React renders the image-preview thumbnail and close (X) button while the image is selected/uploading, matching Android.",
-        "Add the 'upload size limit could not be checked' error banner to the Android composer for parity.",
-        "Re-baseline React snapshot in the preview-with-image state (not the error state) so visual diffs compare equivalent conditions.",
-        "Re-crop Android snapshot using auto element-bounds mode instead of manual rect to avoid extra whitespace inflating the canvas."
-      ],
-      "intentional": [
-        "Differences may reflect intentionally divergent platform states (error fallback on web vs. preview on Android) that need product confirmation before treating as regressions."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2942916275599836
+      "status": "pending",
+      "imageHash": "p1:fffeffff07fc07fc020000000000000080000fff80000fff80000fff83fc0fff80001fff80010fffa004000380022009801200018ff83efd87c007f987d80781800007f180010001ffffff8ffffffffffffffffffffffffffffeffff0000fffffffffffffffffffffffffffffffffffffffffffeffff8001fff85fffffffffff",
+      "generatedAt": "2026-08-26T22:55:31.365Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.29756575939162033
     },
     {
       "id": "components.thread.files.list",
@@ -1254,7 +1172,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3482922911027486
+      "metricMismatch": 0.34832255011993574
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1572,7 +1490,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26934081365360985
+      "metricMismatch": 0.2693425014515062
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1606,7 +1524,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26917102118523917
+      "metricMismatch": 0.2691784474959831
     },
     {
       "id": "components.home.saved.results",
@@ -1643,7 +1561,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1904106143494938
+      "metricMismatch": 0.19037131358863113
     },
     {
       "id": "components.home.activity.results",
@@ -1679,7 +1597,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18519723741851646
+      "metricMismatch": 0.18532666792429098
     },
     {
       "id": "components.tasks.panel.states",
@@ -1791,86 +1709,22 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000007ffc3ffc7df83ff83e5c202c00fc01fc7ffc3ffc3ffc07fc3ffc203c3ffc3ffc1ffc3ffc3ffc25fc7ffc27fc03fc3ffc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc2ffc07fc2ffc3ffc3ffc3ffc3ffc07fc2ffc27fc3ffc3ffc7ffc0ffc3ffc3ffc3f047ffc3ffc7f7c0000380000000000ffffffff",
-      "generatedAt": "2026-08-21T22:08:40.676Z",
-      "severity": "high",
-      "summary": [
-        "Android renders additional fields (REASONING, MODE) absent from React baseline; React has a '> MORE' disclosure where Android expands them inline",
-        "Android Runtime field shows 'Codex CLI' pre-selected vs React's placeholder 'Select...'; Model shows 'GPT-5.6 Sol' vs React's 'opus'",
-        "Android is missing the 'Models could not be loaded from this Computer. / Retry model check' error/empty-state block present in React",
-        "Android's 'Create Agent' button is disabled (grayed) and right-aligned while React's is pink/highlighted and also right-aligned — disabled state diverges",
-        "Vertical spacing/padding between form fields is tighter on Android; dialog overall appears vertically denser and content extends further down the viewport"
-      ],
-      "likelyCauses": [
-        "Android implementation expanded an advanced section that React keeps collapsed behind '> MORE'",
-        "Runtime/Model fields are pre-populated from cached state on Android while React is in initial empty state",
-        "Android omits the empty-model error message component or hides it when models load successfully",
-        "Disabled-button styling and color tokens differ between platforms (gray vs pink)",
-        "Form field vertical rhythm/spacing tokens not shared across web and Android token sets"
-      ],
-      "suggestedOwner": "android-platform",
-      "suggestedFixes": [
-        "Sync the field set: keep REASONING and MODE hidden behind a '> MORE' disclosure on Android to match React",
-        "Reset Runtime/Model to empty/placeholder values or load models consistently before render to match baseline initial state",
-        "Render the 'Models could not be loaded' empty state with retry link on Android when model list is unavailable",
-        "Align 'Create Agent' disabled-state color/spacing with the React token (or keep intentional, but flag the divergence)",
-        "Unify form vertical spacing scale (dp) with the web spacing scale used in the React baseline"
-      ],
-      "intentional": [
-        "Additional REASONING/MODE fields on Android may be an intentional advanced-options expansion",
-        "Pre-selected Runtime/Model values may reflect persisted user defaults unique to Android"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.25957183942965933
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83f7c3e4c20ec00cc37fc3ffc07fc3ffc3ffc39fc30fc1ffc3ffc1ffc0ffc3ffc3dfc2ffc3ffc03fc27fc3ffc2d9c3ffc3ffc3ff42ffc7ffc3ffc3ffc2ffc07fc3ffc3ffc3ffc3ffc3ffc07fc3ffc27fc2ffc3ffc3ff40ffc3ffc3ffc3ffc7ffc3d047f7c3804380000000000ffffffff",
+      "generatedAt": "2026-08-26T22:55:31.798Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.20538745088508126
     },
     {
-      "id": "components.members.create-agent.claude-dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000007ffc3ffc7df83ff83e5c202c00fc01fc7ffc3ffc3ffc07fc3ffc203c3ffc3ffc1ffc3ffc3ffc25fc7ffc27fc03fc3ffc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc2ffc03fc2ffc6ffc3ffc3ffc3ffc1ffc2ffc7ffc3ffc7ffc7ffc7ffc3ffc3ffc3f047ffc3ffc7f7c0000380000000000ffffffff",
-      "generatedAt": "2026-08-21T22:08:40.804Z",
-      "severity": "high",
-      "summary": [
-        "Android renders an additional PROVIDER field (with helper text) between RUNTIME and MODEL that is absent on React",
-        "Android Model dropdown is clipped at the bottom of the viewport (overflow into the footer area), while React places Model fully visible with a 'MORE' disclosure below",
-        "Android shows only the RUNTIME field prefilled ('Claude Code'); React shows a 'Select…' placeholder, and field ordering of MODEL/RUNTIME is swapped between the two",
-        "Android Create Agent button is rendered disabled/grey, React shows it pink/highlighted (enabled state)",
-        "Android typography appears slightly heavier/larger for body labels (COMPUTER, NAME, RUNTIME, PROVIDER, MODEL) and tighter vertical spacing between sections"
-      ],
-      "likelyCauses": [
-        "Android dialog renders an extra PROVIDER dropdown (plus helper text) that the React baseline does not include",
-        "Different form-field ordering or RUNTIME/Model data prefilled differently across platforms",
-        "Android modal uses a fixed height that does not scroll, causing the Model field to clip against the action footer",
-        "Disabled vs enabled state of the primary CTA differs (Android disabled, React enabled)",
-        "Platform-specific type scale/spacing tokens applied to form labels and inputs"
-      ],
-      "suggestedOwner": "android-engineering",
-      "suggestedFixes": [
-        "Remove (or hide behind 'MORE') the PROVIDER field and its helper text on Android to match the React baseline field set",
-        "Ensure the dialog body scrolls so MODEL and any remaining fields are not clipped behind the Cancel/Create Agent footer",
-        "Unify the order and placeholders of RUNTIME/Model fields across platforms (both should show Select… when unset, or both should be prefilled consistently)",
-        "Apply consistent enabled/disabled styling to the Create Agent CTA so both render with the same color and opacity when ready to submit",
-        "Align typography weight/size and vertical rhythm of form labels and inputs to a shared design token set used by React"
-      ],
-      "intentional": [
-        "Header title 'CREATE AGENT' and close (×) button placement are consistent",
-        "Warning banner copy and peach background color for the 'Agent limit reached' notice match",
-        "Required-asterisk color and position on COMPUTER/NAME labels match",
-        "Cancel button styling and placement are consistent",
-        "Character counter '72/3000' position relative to Description is consistent"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.26293798355409725
-    },
-    {
-      "id": "components.members.create-agent.claude-custom-provider-dialog",
+      "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:13:59.403Z",
+      "generatedAt": "2026-08-26T22:55:31.693Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1878,6 +1732,45 @@
       "suggestedFixes": [],
       "error": "missing side-by-side image",
       "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.dialog-onboarding",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:31.693Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.claude-dialog",
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83f7c3e4c20ec00cc37fc3ffc07fc3ffc3ffc39fc30fc1ffc3ffc1ffc0ffc3ffc3dfc2ffc3ffc03fc27fc3ffc2d9c3ffc3ffc3ff42ffc7ffc3ffc3ffc2ffc03fc3ffc2ffc3ffc3ffc3ffc0ffc3ffc7ffc2ffc7ffc3ff43ffc3ffc3ffc3ffc7ffc3d047f7c3804380000000000ffffffff",
+      "generatedAt": "2026-08-26T22:55:31.820Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2044757024614845
+    },
+    {
+      "id": "components.members.create-agent.claude-custom-provider-dialog",
+      "status": "pending",
+      "imageHash": "p1:efffcfff000000003ffc3dfc2bf82df83f6c3e0c206c00cc37fc3ffc07fc1ffc3ffc39fc307c1ffc3ffc1ffc0ffc3ffc3dfc2ffc3ffc03fc27fc3ffc2d8c3ffc3ffc3ff427fc7ffc3ffc3ffc2ffc03fc3ffc2ffc3bfc3ffc3ffc0ffc2ffc3ffc27fc7ffc3ffc3ffc3ffc1ffc2ffc7ffc303c7f7c3ffc38003ffc0000ffffffff",
+      "generatedAt": "2026-08-26T22:55:31.836Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.22532878303020487
     },
     {
       "id": "components.members.agent-detail.profile",
@@ -2156,7 +2049,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1986230944761751
+      "metricMismatch": 0.1985677347051754
     },
     {
       "id": "components.settings.notifications.page",
@@ -2263,7 +2156,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e2817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
       "generatedAt": "2026-08-14T22:11:11.250Z",
       "severity": "high",
       "summary": [
@@ -2328,7 +2221,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.061287317211487835
+      "metricMismatch": 0.06130183227339625
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2533,7 +2426,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.24155898516088092
+      "metricMismatch": 0.2415596602800394
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2601,7 +2494,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.16914941737216616
+      "metricMismatch": 0.1691487422530077
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2915,6 +2808,58 @@
       "analysisModel": "MiniMax-M3",
       "error": null,
       "metricMismatch": 0.6371364483331308
+    },
+    {
+      "id": "components.members.create-agent.dialog-no-computer",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:32.471Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.dialog-empty",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:32.471Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.builtin-provider-dialog",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:32.471Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.pi-provider-dialog",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:32.471Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
     }
   ]
 }

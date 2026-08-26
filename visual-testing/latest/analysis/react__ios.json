@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-25T22:14:04.053Z",
+  "generatedAt": "2026-08-26T22:55:36.174Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 86,
-    "ready": 80,
-    "pending": 6
+    "total": 92,
+    "ready": 78,
+    "pending": 14
   },
   "cases": [
     {
@@ -552,7 +552,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06209779776130486
+      "metricMismatch": 0.062095097284670775
     },
     {
       "id": "components.ui.spinner.states",
@@ -909,7 +909,7 @@
     {
       "id": "components.thread.composer.empty",
       "status": "ready",
-      "imageHash": "p1:000000000001000203f903b20001080200010002fffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "imageHash": "p1:000000000001000203f903b20001000200010002fffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
       "generatedAt": "2026-08-07T00:06:28.980Z",
       "severity": "low",
       "summary": [
@@ -937,12 +937,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.01986065540567905
+      "metricMismatch": 0.020991817555798598
     },
     {
       "id": "components.thread.composer.states",
       "status": "ready",
-      "imageHash": "p1:0000000000010002000100020081080200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff80fff",
+      "imageHash": "p1:0000000000010002000100020081000200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
       "generatedAt": "2026-08-07T00:06:29.012Z",
       "severity": "low",
       "summary": [
@@ -968,12 +968,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.020929706593213693
+      "metricMismatch": 0.02206086874333324
     },
     {
       "id": "components.thread.composer.pending-mention-actions",
       "status": "ready",
-      "imageHash": "p1:01f803fc0001000200090002080966020001701a0001000203f9000207810fb200010002fffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "imageHash": "p1:01f803fc0001000200090002080966020001701a0001000203f90002078107b200010002fffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
       "generatedAt": "2026-08-02T22:43:54.296Z",
       "severity": "medium",
       "summary": [
@@ -998,12 +998,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0812073831031177
+      "metricMismatch": 0.08182309177569846
     },
     {
       "id": "components.thread.composer.as-task-selected",
       "status": "ready",
-      "imageHash": "p1:0000000000010002000100020081080200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "imageHash": "p1:0000000000010002000100020081000200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
       "generatedAt": "2026-08-07T00:06:29.152Z",
       "severity": "low",
       "summary": [
@@ -1033,12 +1033,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.021368534046259158
+      "metricMismatch": 0.022499696196378705
     },
     {
       "id": "components.thread.composer.member-suggestions",
       "status": "ready",
-      "imageHash": "p1:03f807fc0001fffe000100020001000280090002000900023ff9000217f93ffa00010003100900020f910fb200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
+      "imageHash": "p1:03f807fc0001fffe000100020001000280090002000900023ff9000217f93ffa00010003100900020f9107b200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
       "generatedAt": "2026-08-07T00:06:32.418Z",
       "severity": "medium",
       "summary": [
@@ -1067,12 +1067,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10920052389246704
+      "metricMismatch": 0.11035126449818389
     },
     {
       "id": "components.thread.composer.channel-suggestions",
       "status": "ready",
-      "imageHash": "p1:03f807fcfffdfffefffdfffefffdfffe0001fffe0001000207f9000200292ffa00010003300900020f910fb200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "imageHash": "p1:03f807fcfffdfffefffdfffefffdfffe0001fffe0001000207f9000200292ffa00010003300900020f9107b200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
       "generatedAt": "2026-08-07T00:06:32.688Z",
       "severity": "medium",
       "summary": [
@@ -1105,12 +1105,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09195528010693887
+      "metricMismatch": 0.09310602071265583
     },
     {
       "id": "components.thread.composer.image-preview",
       "status": "ready",
-      "imageHash": "p1:03f800000001000200014ffe00010ffa0001000200010f0200010002fffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "imageHash": "p1:03f800000001000200014ffe00010ffa000100020001070200010002fffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
       "generatedAt": "2026-08-10T22:15:52.039Z",
       "severity": "medium",
       "summary": [
@@ -1141,7 +1141,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.07983689121129878
+      "metricMismatch": 0.08088568882407743
     },
     {
       "id": "components.thread.files.list",
@@ -1555,7 +1555,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26933845073655505
+      "metricMismatch": 0.2693418263323477
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1588,7 +1588,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.269471786770365
+      "metricMismatch": 0.26947516236615765
     },
     {
       "id": "components.home.saved.results",
@@ -1624,7 +1624,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11140208746843816
+      "metricMismatch": 0.1113811587745237
     },
     {
       "id": "components.home.activity.results",
@@ -1659,7 +1659,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1066931313376811
+      "metricMismatch": 0.10677583343460118
     },
     {
       "id": "components.tasks.panel.states",
@@ -1769,78 +1769,22 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000007dfc3ffc6df83ff83ffc242c00cc21fc7ffc3ffc3ffc07fc3dfc203c7ffc3ffc1ffc3ffc31fc2dfc07fc27fc07fc3ffc3ffc3ffc7ffc3ffc7f7c3ffc787c3ffc00002ffc80012ffcfff33ffcffff3ffcffff3ffcffff3ffcbff87ffc3ff83ffc0ff03f840ff03ffc8101000080010000a001ffffffff",
-      "generatedAt": "2026-08-21T22:08:53.812Z",
-      "severity": "high",
-      "summary": [
-        "iOS view shows a focused/scrolled state with keyboard open — Name field has focus caret, dialog content is scrolled so RUNTIME, MODEL, MORE sections and Retry model check error are not visible, and iOS keyboard occupies lower half of screen.",
-        "Cancel and Create Agent buttons on iOS are repositioned next to the Description field (inline), while React places them at the bottom of the full form.",
-        "Description textarea on iOS is single-line/collapsed visually compared to React's multi-line textarea with 72/3000 character counter.",
-        "iOS Create Agent button appears in disabled/grayed state (faded fill) versus React's pink/disabled styled button — state styling differs.",
-        "Layout density and vertical spacing differ: iOS fields are taller and more vertically spaced; React packs fields tighter with smaller heights."
-      ],
-      "likelyCauses": [
-        "iOS implementation is missing scroll-to-focused-field behavior or keyboard avoidance is compressing the scroll area so only top fields render.",
-        "iOS dialog is rendered as a sheet/window without the full form height, missing RUNTIME, MODEL, and MORE sections.",
-        "Cancel/Create Agent button group is anchored relative to the keyboard or a fixed region instead of the dialog footer.",
-        "iOS is using a different disabled-button color token (light gray) versus React's pink disabled style.",
-        "Character counter (72/3000) is not implemented on iOS textarea."
-      ],
-      "suggestedOwner": "iOS",
-      "suggestedFixes": [
-        "Ensure iOS dialog scrolls the Name field above the keyboard and renders full form (RUNTIME, MODEL, MORE) when scrolled to bottom.",
-        "Move Cancel/Create Agent buttons to the dialog footer rather than beside the Description field.",
-        "Match disabled button styling across platforms (same fill color/contrast) for Create Agent when form is incomplete.",
-        "Restore multi-line textarea height and add 0/3000 character counter to match React.",
-        "Verify scroll content insets so the focused field is not occluded by the keyboard."
-      ],
-      "intentional": [
-        "Keyboard appearance on iOS is platform-expected and shifts layout upward."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.4860999716449953
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83ffc3e7c20ec00cc3ffc3ffc27fc3ffc3ffc39fc38fc1ffc3ffc1ffc0ffc21fc3dfc03fc3ffc03fc2ffc3ffc2d9c7ffc3ffc7f7c2ffc38543ffc00002ffc80013ffcde733ffcffff3ffcffff3ffcffff2ffc1ff83ff41ff83ffc0ff03ffc0fe03d0480013844800100008001ffffffff",
+      "generatedAt": "2026-08-26T22:55:35.481Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.44260508229702544
     },
     {
-      "id": "components.members.create-agent.claude-dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000007dfc3ffc6df83ff83ffc242c00cc21fc7ffc3ffc3ffc07fc3dfc203c7ffc3ffc1ffc3ffc31fc2dfc07fc27fc07fc3ffc3ffc3ffc7ffc3ffc7f7c3ffc787c3ffc00002ffc80012ffcfff33ffcffff3ffcffff3ffcffff3ffcbff87ffc3ff83ffc0ff03f840ff03ffc8101000080010000a001ffffffff",
-      "generatedAt": "2026-08-21T22:08:53.820Z",
-      "severity": "high",
-      "summary": [
-        "iOS modal only renders up to DESCRIPTION field; RUNTIME, MODEL, 'Models could not be loaded' message, Retry link, and 'MORE' disclosure are missing/clipped because iOS keyboard occupies bottom half of viewport.",
-        "iOS Create Agent CTA appears disabled (greyed) while React shows it pink/disabled; React Cancel and Create Agent buttons sit below the form, iOS buttons sit above the keyboard.",
-        "iOS keyboard is visible (system QWERTY with 'done' key) confirming input focus state; React has no keyboard and form fields render with full vertical extent.",
-        "Form field spacing and label-to-input gaps differ: iOS uses tighter vertical rhythm; React shows larger gaps between fields (COMPUTER→NAME→DESCRIPTION→RUNTIME→MODEL).",
-        "Typography weight in iOS title and labels appears slightly heavier; asterisk '*' for required fields is present in both but iOS asterisks render in pink/red whereas React asterisks are pink/magenta."
-      ],
-      "likelyCauses": [
-        "iOS view does not implement keyboard avoidance / scroll-into-view for the modal, so lower form fields and CTAs are hidden behind the software keyboard.",
-        "iOS modal likely lacks the 'MORE' expandable section (RUNTIME, MODEL, additional fields) or renders it below the visible area without scroll.",
-        "Button disabled state styling differs between platforms (iOS grey vs React pink fill).",
-        "Different safe-area / inset handling on iOS vs web modal viewport."
-      ],
-      "suggestedOwner": "iOS",
-      "suggestedFixes": [
-        "Add keyboard avoidance (keyboardLayoutGuide) and scroll the modal content so RUNTIME, MODEL, 'MORE', and CTAs remain reachable while keyboard is up.",
-        "Ensure the iOS modal content view is scrollable; currently the form appears non-scrollable under keyboard.",
-        "Reconcile disabled CTA color with design tokens (pink vs grey) so Create Agent disabled state matches across platforms.",
-        "Verify the 'MORE' disclosure and Runtime/Model fields render in iOS — they may be conditionally hidden or unmounted.",
-        "Align label/asterisk color tokens and vertical spacing scale between React and iOS implementations."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.4860999716449953
-    },
-    {
-      "id": "components.members.create-agent.claude-custom-provider-dialog",
+      "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:14:03.122Z",
+      "generatedAt": "2026-08-26T22:55:35.349Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1848,6 +1792,45 @@
       "suggestedFixes": [],
       "error": "missing side-by-side image",
       "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.dialog-onboarding",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:35.349Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.claude-dialog",
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83ffc3e7c20ec00cc3ffc3ffc27fc3ffc3ffc39fc38fc1ffc3ffc1ffc0ffc21fc3dfc03fc3ffc03fc2ffc3ffc2d9c7ffc3ffc7f7c2ffc38543ffc00002ffc80013ffcde733ffcffff3ffcffff3ffcffff2ffc1ff83ff41ff83ffc0ff03ffc0fe03d0480013844800100008001ffffffff",
+      "generatedAt": "2026-08-26T22:55:35.514Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.44260508229702544
+    },
+    {
+      "id": "components.members.create-agent.claude-custom-provider-dialog",
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83f7c3e4c20ec004c37fc3ffc07fc1ffc3ffc38fc30fc1ffc3ffc1ffc0ffc21fc3dfc03fc3ffc03fc27fc3ffc2d9c7ffc3ffc7f7c2ffc38443ffc00002ffc80003ffcce733ffcffff3ffcffff2ffcfffe27fc1ff83ffc1ff83ffc0ff02ffc0fe0383c80013ffc80013ffc8001ffffffff",
+      "generatedAt": "2026-08-26T22:55:35.529Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4427377432116769
     },
     {
       "id": "components.members.agent-detail.profile",
@@ -2124,7 +2107,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19633410296917408
+      "metricMismatch": 0.1963114864773633
     },
     {
       "id": "components.settings.notifications.page",
@@ -2230,7 +2213,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:14:03.401Z",
+      "generatedAt": "2026-08-26T22:55:35.723Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2243,7 +2226,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:14:03.401Z",
+      "generatedAt": "2026-08-26T22:55:35.723Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2256,7 +2239,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:14:03.401Z",
+      "generatedAt": "2026-08-26T22:55:35.723Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2269,7 +2252,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:14:03.401Z",
+      "generatedAt": "2026-08-26T22:55:35.723Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2282,7 +2265,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:14:03.401Z",
+      "generatedAt": "2026-08-26T22:55:35.723Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2389,7 +2372,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.24257773997110488
+      "metricMismatch": 0.24257807753068417
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2456,7 +2439,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19331058181769079
+      "metricMismatch": 0.19330923157937374
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2765,6 +2748,58 @@
       "analysisModel": "MiniMax-M3",
       "error": null,
       "metricMismatch": 0.06667510565614831
+    },
+    {
+      "id": "components.members.create-agent.dialog-no-computer",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:36.064Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.dialog-empty",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:36.064Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.builtin-provider-dialog",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:36.064Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.pi-provider-dialog",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:36.064Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
     }
   ]
 }

@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-25T22:14:08.342Z",
+  "generatedAt": "2026-08-26T22:55:40.286Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 86,
-    "ready": 81,
-    "pending": 5
+    "total": 92,
+    "ready": 80,
+    "pending": 12
   },
   "cases": [
     {
@@ -457,31 +457,16 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03f407fe43fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-25T22:12:50.529Z",
-      "severity": "low",
-      "summary": [
-        "Status dots (green, orange, gray, blue, pink) appear visually isomorphic between Android and iOS renders — colors, sizes, and stroke treatment match.",
-        "'Waiting pulse' label typography matches across platforms with no observable weight/size differences.",
-        "Horizontal spacing between the four small status dots and between the pink dot and label appear consistent within visual tolerance.",
-        "No clipping, missing elements, or component bounds issues observed in the rendered region."
-      ],
-      "likelyCauses": [
-        "Minor pixel mismatch (~0.30%) likely attributable to anti-aliasing rounding across different rasterizers (Skia on Android vs CoreGraphics on iOS)."
-      ],
-      "suggestedOwner": "ui-engineering",
-      "suggestedFixes": [
-        "No action required; differences fall within the 2% pixel ratio and 1dp layout tolerance thresholds.",
-        "If a stricter match is desired, enable the ignoreAntialiasing tolerance (already on) and verify both renders use identical font fallback stacks."
-      ],
-      "intentional": [
-        "Platform-specific font hinting may produce sub-pixel differences in glyph edges without affecting perceived layout."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.0029985417426175998
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-08-26T22:55:38.575Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.002999216861776066
     },
     {
       "id": "components.ui.progress-bar.states",
@@ -888,7 +873,7 @@
     {
       "id": "components.thread.composer.empty",
       "status": "ready",
-      "imageHash": "p1:000000000000000203b903b20801080200010002fffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "imageHash": "p1:000000000000000203b903b20001000200010002fffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
       "generatedAt": "2026-08-02T22:45:50.294Z",
       "severity": "low",
       "summary": [
@@ -914,12 +899,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.015568585355315245
+      "metricMismatch": 0.016726414712196713
     },
     {
       "id": "components.thread.composer.states",
       "status": "ready",
-      "imageHash": "p1:0000000000010002000100020801080200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "imageHash": "p1:0000000000010002000100020001000200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
       "generatedAt": "2026-08-02T22:45:50.878Z",
       "severity": "low",
       "summary": [
@@ -940,12 +925,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.017579090209421944
+      "metricMismatch": 0.01873691956630341
     },
     {
       "id": "components.thread.composer.pending-mention-actions",
       "status": "ready",
-      "imageHash": "p1:01f803fc0001000200010002260166027019701a00010002000100020fb10fb200010002fffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "imageHash": "p1:01f803fc0001000200010002660166827019701a000100020001000207b107b200010002fffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
       "generatedAt": "2026-08-13T22:15:13.212Z",
       "severity": "low",
       "summary": [
@@ -974,12 +959,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.07158828533236117
+      "metricMismatch": 0.07301751259097233
     },
     {
       "id": "components.thread.composer.as-task-selected",
       "status": "ready",
-      "imageHash": "p1:0000000000010002000100020901080200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "imageHash": "p1:0000000000010002000100020101000200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
       "generatedAt": "2026-08-02T22:45:52.278Z",
       "severity": "low",
       "summary": [
@@ -1005,12 +990,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.01805336141829028
+      "metricMismatch": 0.01921119077517186
     },
     {
       "id": "components.thread.composer.member-suggestions",
       "status": "ready",
-      "imageHash": "p1:03f807fcfffdfffe00010002000100020001000202010002000100023ff93ffa00010002200900020fb10fb200010002200dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "imageHash": "p1:03f807fcfffdfffe00010002000100020001000202010002000100023ff93ffa000100022009000207b107b200010002100dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
       "generatedAt": "2026-08-02T22:45:55.560Z",
       "severity": "medium",
       "summary": [
@@ -1038,12 +1023,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05732841846585923
+      "metricMismatch": 0.05884473609592089
     },
     {
       "id": "components.thread.composer.channel-suggestions",
       "status": "ready",
-      "imageHash": "p1:03f807fc7ffdfffefffdfffefffdfffefffdfffe00010002000100020ff92ffa00010002000100020fb10fb200010002600dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "imageHash": "p1:03f807fc7ffdfffefffdfffefffdfffefffdfffe00010002000100020ff92ffa000100020001000207b107b200010002500dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
       "generatedAt": "2026-08-02T22:45:55.933Z",
       "severity": "low",
       "summary": [
@@ -1071,12 +1056,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0510933554772417
+      "metricMismatch": 0.05260967310730347
     },
     {
       "id": "components.thread.composer.image-preview",
       "status": "ready",
-      "imageHash": "p1:00000000000100020ffd4ffe0ff50ff2000100020f810f02000100027ffdfffe7ffdfffe7ffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "imageHash": "p1:00000000000100020ffd4ffe0ff50ff20001000207810702000100027ffdfffe7ffdfffe7ffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
       "generatedAt": "2026-08-02T22:45:56.346Z",
       "severity": "medium",
       "summary": [
@@ -1104,7 +1089,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.033527767650990414
+      "metricMismatch": 0.03475614695993845
     },
     {
       "id": "components.thread.files.list",
@@ -1138,7 +1123,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.059477660307044156
+      "metricMismatch": 0.05948373637947102
     },
     {
       "id": "components.thread.header.states",
@@ -1204,7 +1189,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.03947826791428688
+      "metricMismatch": 0.03949345809535387
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1271,7 +1256,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3693445268089818
+      "metricMismatch": 0.3693438516898232
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1304,7 +1289,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3719268575903647
+      "metricMismatch": 0.3717800191733841
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1719,6 +1704,32 @@
       "metricMismatch": 0.3620100322706957
     },
     {
+      "id": "components.members.create-agent.dialog-error",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:39.492Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.dialog-onboarding",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:39.492Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
       "id": "components.members.create-agent.claude-dialog",
       "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc7dfc3df86df83f6c3ffc01ec00cc3ffc3ffc3ffc3ffc3ffc39fc3ffc3ffc3ffc1ffc3ffc31fc3ffc03fc03fc07fc3ffc3ffc3ffc7ffc3ff47f7c3ffc78743ffc000023fc80012ffcdef33ffcffff2ffcffff3ffcffff3ffcbff83ffc1ff83ffc8ff03ffc0ff03f7c80013800800100008001ffffffff",
@@ -2125,7 +2136,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:14:07.885Z",
+      "generatedAt": "2026-08-26T22:55:39.807Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2138,7 +2149,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:14:07.885Z",
+      "generatedAt": "2026-08-26T22:55:39.807Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2151,7 +2162,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:14:07.885Z",
+      "generatedAt": "2026-08-26T22:55:39.807Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2164,7 +2175,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:14:07.885Z",
+      "generatedAt": "2026-08-26T22:55:39.807Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2177,7 +2188,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-25T22:14:07.885Z",
+      "generatedAt": "2026-08-26T22:55:39.807Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2649,6 +2660,58 @@
       "analysisModel": "MiniMax-M3",
       "error": null,
       "metricMismatch": 0.3958179743724768
+    },
+    {
+      "id": "components.members.create-agent.dialog-no-computer",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:40.193Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.dialog-empty",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:40.194Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.builtin-provider-dialog",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:40.194Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.pi-provider-dialog",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-08-26T22:55:40.194Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
     }
   ]
 }

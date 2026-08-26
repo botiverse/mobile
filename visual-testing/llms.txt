@@ -1,29 +1,29 @@
 # Raft Visual Testing
 
-Generated: 2026-08-25 22:14:10 UTC
-Latest run: 7ae5b181-20260825220736
-Latest commit: 7ae5b181-20260825220736
-Commit subject: fix(android): make the IME composition barrier verify itself (#2228)
+Generated: 2026-08-26 22:55:42 UTC
+Latest run: dcd71319-20260826225301
+Latest commit: dcd71319-20260826225301
+Commit subject: feat(composer): give the camera its own button (#2257)
 Providers: react vs android, react vs ios, android vs ios
-Summary: total 86, same 0, pass 0, basic-pass 0, different 85, missing 1
-AI analysis: ready 85 / total 86, pending 1
-Visual coverage matrix: active 95 / total 114, pending 16, skipped 3
+Summary: total 92, same 0, pass 0, basic-pass 0, different 86, missing 6
+AI analysis: ready 79 / total 92, pending 13
+Visual coverage matrix: active 101 / total 120, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 86, same 0, pass 0, basic-pass 0, different 85, missing 1
-- react__ios: total 86, same 0, pass 11, basic-pass 13, different 56, missing 6
-- android__ios: total 86, same 0, pass 16, basic-pass 20, different 45, missing 5
+- react__android: total 92, same 0, pass 0, basic-pass 0, different 86, missing 6
+- react__ios: total 92, same 0, pass 11, basic-pass 13, different 57, missing 11
+- android__ios: total 92, same 0, pass 16, basic-pass 20, different 45, missing 11
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 84, pending 2, total 88
+- Components Parity (component-fixture): active 90, pending 2, total 94
 - Screens Parity (real-screen): active 11, pending 14, total 26
 
 ## Provider Coverage
 
-- react: active 95, pending 13, unsupported 0
+- react: active 97, pending 13, unsupported 0
 - android: active 89, pending 19, unsupported 0
 - harmony: active 0, pending 82, unsupported 0
 - ios: active 0, pending 1, unsupported 0
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- dcd71319-20260826225301: react vs android, total 92, pass 0, basic-pass 0, different 86, matrix runs/dcd71319-20260826225301/component-matrix.json, page runs/dcd71319-20260826225301/
 - 7ae5b181-20260825220736: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/7ae5b181-20260825220736/component-matrix.json, page runs/7ae5b181-20260825220736/
 - 46b3672f-20260824220618: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/46b3672f-20260824220618/component-matrix.json, page runs/46b3672f-20260824220618/
 - 6176b42c-20260823215922: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/6176b42c-20260823215922/component-matrix.json, page runs/6176b42c-20260823215922/

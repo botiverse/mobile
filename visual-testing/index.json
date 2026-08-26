@@ -1,27 +1,27 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-25T22:14:10.494Z",
-  "latestRunId": "7ae5b181-20260825220736",
+  "generatedAt": "2026-08-26T22:55:42.406Z",
+  "latestRunId": "dcd71319-20260826225301",
   "latest": {
-    "runId": "7ae5b181-20260825220736",
-    "commit": "7ae5b181-20260825220736",
-    "commitSubject": "fix(android): make the IME composition barrier verify itself (#2228)",
-    "generatedAt": "2026-08-25T22:14:10.494Z",
+    "runId": "dcd71319-20260826225301",
+    "commit": "dcd71319-20260826225301",
+    "commitSubject": "feat(composer): give the camera its own button (#2257)",
+    "generatedAt": "2026-08-26T22:55:42.406Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 86,
+      "total": 92,
       "same": 0,
       "pass": 0,
       "basic-pass": 0,
-      "different": 85,
-      "missing": 1
+      "different": 86,
+      "missing": 6
     },
     "analysisSummary": {
-      "total": 86,
-      "ready": 85,
-      "pending": 1
+      "total": 92,
+      "ready": 79,
+      "pending": 13
     },
     "comparisons": [
       "react__android",
@@ -29,14 +29,14 @@
       "android__ios"
     ],
     "componentMatrixSummary": {
-      "total": 114,
-      "active": 95,
+      "total": 120,
+      "active": 101,
       "pending": 16,
       "skipped": 3,
       "captureTypes": {
         "component-fixture": {
-          "total": 88,
-          "active": 84,
+          "total": 94,
+          "active": 90,
           "pending": 2,
           "skipped": 2
         },
@@ -49,10 +49,10 @@
       },
       "providers": {
         "react": {
-          "active": 95,
+          "active": 97,
           "pending": 13,
           "unsupported": 0,
-          "total": 108
+          "total": 110
         },
         "android": {
           "active": 89,
@@ -74,19 +74,19 @@
         }
       }
     },
-    "href": "runs/7ae5b181-20260825220736/",
-    "componentMatrix": "runs/7ae5b181-20260825220736/component-matrix.json",
-    "llms": "runs/7ae5b181-20260825220736/metadata.json"
+    "href": "runs/dcd71319-20260826225301/",
+    "componentMatrix": "runs/dcd71319-20260826225301/component-matrix.json",
+    "llms": "runs/dcd71319-20260826225301/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 114,
-    "active": 95,
+    "total": 120,
+    "active": 101,
     "pending": 16,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 88,
-        "active": 84,
+        "total": 94,
+        "active": 90,
         "pending": 2,
         "skipped": 2
       },
@@ -99,10 +99,10 @@
     },
     "providers": {
       "react": {
-        "active": 95,
+        "active": 97,
         "pending": 13,
         "unsupported": 0,
-        "total": 108
+        "total": 110
       },
       "android": {
         "active": 89,
@@ -125,6 +125,81 @@
     }
   },
   "runs": [
+    {
+      "runId": "dcd71319-20260826225301",
+      "commit": "dcd71319-20260826225301",
+      "commitSubject": "feat(composer): give the camera its own button (#2257)",
+      "generatedAt": "2026-08-26T22:55:42.406Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 92,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 0,
+        "different": 86,
+        "missing": 6
+      },
+      "analysisSummary": {
+        "total": 92,
+        "ready": 79,
+        "pending": 13
+      },
+      "comparisons": [
+        "react__android",
+        "react__ios",
+        "android__ios"
+      ],
+      "componentMatrixSummary": {
+        "total": 120,
+        "active": 101,
+        "pending": 16,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 94,
+            "active": 90,
+            "pending": 2,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 97,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 110
+          },
+          "android": {
+            "active": 89,
+            "pending": 19,
+            "unsupported": 0,
+            "total": 108
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 82,
+            "unsupported": 0,
+            "total": 82
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/dcd71319-20260826225301/",
+      "componentMatrix": "runs/dcd71319-20260826225301/component-matrix.json",
+      "llms": "runs/dcd71319-20260826225301/metadata.json"
+    },
     {
       "runId": "7ae5b181-20260825220736",
       "commit": "7ae5b181-20260825220736",
