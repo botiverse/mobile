@@ -651,6 +651,25 @@ jobs:
             --metadata-dir visual-testing-results/ios \
             --log-for 'visual-testing-results/ios/%s.caps.log' || true
           rm -f visual-testing-results/ios/*.caps.log
+          # A case_filter that selects no iOS cases is a legitimate outcome, not a
+          # failure: an Android-only filter (the compact-menu cases under task #228,
+          # for instance) leaves this provider with nothing to do. Failing here made
+          # every filtered dispatch report a RED run while the Android shard was
+          # green - which is worse than a plain false alarm, because anyone
+          # re-checking an Android result by run status saw failure and anyone
+          # reading the shard saw success, both correctly.
+          #
+          # Same "no work is not a failure" defect PR #2226 fixed for artifact
+          # upload (if-no-files-found, above). That fix covered "no files"; this
+          # branch of the guard, "no cases", never inherited it.
+          if [ "$total" -eq 0 ]; then
+            if [ -n "$CASE_FILTER" ]; then
+              echo "::warning::case_filter selected no iOS cases; nothing to capture"
+              exit 0
+            fi
+            # An unfiltered run with zero cases means enumeration itself broke.
+            echo "::error::no iOS cases to capture"; exit 1
+          fi
           if [ "$captured" -eq 0 ]; then
             echo "::error::no cases captured"; exit 1
           fi
@@ -741,8 +760,20 @@ jobs:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
         run: node scripts/generate_pixel_avatars.mjs --check
 
+      # A targeted case_filter can select cases for one provider only, in which
+      # case the other provider legitimately uploads nothing and this download
+      # has nothing to find. PR #2226 made the UPLOAD side tolerate that
+      # (if-no-files-found: warn when filtered) but not this side, so the failure
+      # simply moved one job downstream: react-capture went green, uploaded no
+      # artifact, and the report job died on "Artifact not found for name:
+      # visual-results-react". Every filtered dispatch has been reporting a red
+      # run for that reason while its Android shard was green.
+      #
+      # Tolerated ONLY when a filter is in play. An unfiltered run that produces
+      # no react/android artifact is a real failure and must still be one.
       - name: Download react results
         if: ${{ !inputs.site_only }}
+        continue-on-error: ${{ inputs.case_filter != '' }}
         uses: actions/download-artifact@v7
         with:
           name: visual-results-react
@@ -750,6 +781,7 @@ jobs:
 
       - name: Download android results (merge shards)
         if: ${{ !inputs.site_only }}
+        continue-on-error: ${{ inputs.case_filter != '' }}
         uses: actions/download-artifact@v7
         with:
           pattern: visual-results-android-shard-*
