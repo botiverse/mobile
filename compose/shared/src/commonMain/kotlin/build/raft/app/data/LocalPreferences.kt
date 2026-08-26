@@ -249,6 +249,7 @@ data class ChatLayoutPreferenceSnapshot(
     val activityTaskStatusBadgesEnabled: Boolean = false,
     val activitySenderAvatarsEnabled: Boolean = false,
     val composerSendKeyEnabled: Boolean = false,
+    val composerActionTrayEnabled: Boolean = false,
     val multiShellHostEnabled: Boolean = false,
     val serverDrawerEnabled: Boolean = DEFAULT_SERVER_DRAWER_ENABLED,
     val newDesignSettingsEnabled: Boolean = false,
@@ -296,6 +297,9 @@ interface ChatLayoutPreferenceStore {
     fun readComposerSendKeyEnabledSync(): Boolean
     suspend fun readComposerSendKeyEnabled(): Boolean
     suspend fun saveComposerSendKeyEnabled(enabled: Boolean)
+    fun readComposerActionTrayEnabledSync(): Boolean
+    suspend fun readComposerActionTrayEnabled(): Boolean
+    suspend fun saveComposerActionTrayEnabled(enabled: Boolean)
     fun readMultiShellHostEnabledSync(): Boolean
     suspend fun readMultiShellHostEnabled(): Boolean
     suspend fun saveMultiShellHostEnabled(enabled: Boolean)
@@ -450,6 +454,16 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, enabled)
     }
 
+    override fun readComposerActionTrayEnabledSync(): Boolean =
+        store.getBoolean(KEY_COMPOSER_ACTION_TRAY_ENABLED, false)
+
+    override suspend fun readComposerActionTrayEnabled(): Boolean =
+        readComposerActionTrayEnabledSync()
+
+    override suspend fun saveComposerActionTrayEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_COMPOSER_ACTION_TRAY_ENABLED, enabled)
+    }
+
     override fun readMultiShellHostEnabledSync(): Boolean =
         store.getBoolean(KEY_MULTI_SHELL_HOST_ENABLED, false)
 
@@ -528,6 +542,7 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "chatLayout:activity_task_status_badges_enabled"
         const val KEY_ACTIVITY_SENDER_AVATARS_ENABLED = "chatLayout:activity_sender_avatars_enabled"
         const val KEY_COMPOSER_SEND_KEY_ENABLED = "chatLayout:composer_send_key_enabled"
+        const val KEY_COMPOSER_ACTION_TRAY_ENABLED = "chatLayout:composer_action_tray_enabled"
         const val KEY_MULTI_SHELL_HOST_ENABLED = "mobile:multi_shell_host_enabled"
         const val KEY_SERVER_DRAWER_ENABLED = "mobile:server_drawer_enabled"
         const val KEY_NEW_DESIGN_SETTINGS_ENABLED = "mobile:new_design_settings_enabled"
@@ -555,6 +570,7 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setActivitySenderAvatarsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
+    suspend fun setComposerActionTrayEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setMultiShellHostEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setServerDrawerEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setNewDesignSettingsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
@@ -580,6 +596,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
+            composerActionTrayEnabled = store.readComposerActionTrayEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
@@ -605,6 +622,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
+            composerActionTrayEnabled = store.readComposerActionTrayEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
@@ -631,6 +649,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
+            composerActionTrayEnabled = store.readComposerActionTrayEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
@@ -655,6 +674,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
+            composerActionTrayEnabled = store.readComposerActionTrayEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
@@ -704,6 +724,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
+            composerActionTrayEnabled = store.readComposerActionTrayEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
@@ -728,6 +749,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = enabled,
             activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
+            composerActionTrayEnabled = store.readComposerActionTrayEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),
@@ -744,6 +766,11 @@ class PersistentChatLayoutPreferenceRepository(
 
     override suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
         store.saveComposerSendKeyEnabled(enabled)
+        return getChatLayoutPreference()
+    }
+
+    override suspend fun setComposerActionTrayEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+        store.saveComposerActionTrayEnabled(enabled)
         return getChatLayoutPreference()
     }
 
@@ -782,6 +809,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
+            composerActionTrayEnabled = store.readComposerActionTrayEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             newDesignSettingsEnabled = store.readNewDesignSettingsEnabled(),

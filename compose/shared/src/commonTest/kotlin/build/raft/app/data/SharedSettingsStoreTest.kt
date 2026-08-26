@@ -4007,6 +4007,7 @@ class SharedSettingsStoreTest {
         var activityTaskStatusBadgesEnabled: Boolean = false,
         var activitySenderAvatarsEnabled: Boolean = false,
         var composerSendKeyEnabled: Boolean = true,
+        var composerActionTrayEnabled: Boolean = false,
         var multiShellHostEnabled: Boolean = false,
         var serverDrawerEnabled: Boolean = false,
         var newDesignSettingsEnabled: Boolean = false,
@@ -4138,6 +4139,11 @@ class SharedSettingsStoreTest {
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
             )
+        }
+
+        override suspend fun setComposerActionTrayEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+            composerActionTrayEnabled = enabled
+            return getChatLayoutPreference()
         }
 
         override suspend fun setMultiShellHostEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {

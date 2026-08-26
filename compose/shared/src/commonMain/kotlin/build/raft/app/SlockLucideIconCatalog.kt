@@ -30,6 +30,7 @@ enum class SlockLucideIconName(val wireName: String) {
     Bug("bug"),
     Building2("building-2"),
     Calendar("calendar"),
+    Camera("camera"),
     ChartBar("chart-bar"),
     Check("check"),
     ChevronDown("chevron-down"),
