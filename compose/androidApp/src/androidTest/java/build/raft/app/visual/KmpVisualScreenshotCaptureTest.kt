@@ -38,6 +38,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assert.fail
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Assume.assumeTrue
@@ -1443,6 +1444,31 @@ class KmpVisualScreenshotCaptureTest {
                             topPx = 0,
                             bottomPx = after.height,
                         ).count
+                        // The two are kept as separate evidence, not merged into one
+                        // verdict. @HuaTuo and @LiBai drew the line: the token is the
+                        // app's own account of itself, the pixels are the only
+                        // external evidence, and a menu that is composed but never
+                        // painted reports the token perfectly. Dropping either half
+                        // would stop this being a visual case at all.
+                        //
+                        // Their disagreement is therefore its own failure class, not
+                        // a strict-criterion red - otherwise the one defect this case
+                        // exists to catch gets read as "the threshold needs raising".
+                        if (menuReported &&
+                            addedSaturated < THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
+                        ) {
+                            fail(
+                                "task #228 RENDER FAILURE (app claims visible, screen " +
+                                    "does not show it): the fixture reported the compact " +
+                                    "menu open for its message, but the screen gained " +
+                                    "only $addedSaturated saturated pixels against a " +
+                                    "floor of " +
+                                    "$THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX. " +
+                                    "This is not the criterion being too strict - the " +
+                                    "menu was composed and not painted. See the " +
+                                    "'compact-menu reported' log line for which message."
+                            )
+                        }
                         assertTrue(
                             "Long press must open the compact message menu; the fixture " +
                                 "never reported it opening. changedRatio=$changedRatio " +
