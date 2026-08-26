@@ -6532,27 +6532,47 @@ class KmpVisualScreenshotCaptureTest {
          * Since the fixture now reports the menu opening directly, this count is
          * the corroborating half, not the deciding one.
          *
-         * Ceiling: the menu floor itself, not a tighter guess.
+         * ⚠️ What this ceiling does NOT mean, since a wrong reason gets reused
+         * long after a wrong number gets adjusted:
          *
-         * A tighter number (floor/5 was the first draft) would be arbitrary, and
-         * an arbitrary precondition is a new source of FALSE RED in the nightly -
-         * which is precisely the failure we spent this investigation removing.
-         * @Codex-Android-DevOPS caught that. The floor is the non-arbitrary bound:
-         * it is exactly the point at which standing colour could account for the
-         * menu's whole signal, so tripping it means the equivalence this criterion
-         * rests on has actually broken. The measured baseline is logged on every
-         * run, so the value can be tightened from data rather than from taste.
+         * It is NOT "past this point standing colour could account for the menu's
+         * signal". That was the first explanation written here and it is wrong on
+         * mechanism (@HuaTuo and @LiBai). The criterion counts pixels that are
+         * saturated in AFTER and not saturated in BEFORE, so anything already
+         * coloured in the baseline is structurally excluded from the difference.
+         * A static colour element contributes exactly zero no matter how large it
+         * is - five thousand pixels of motionless avatar would not move the count.
          *
-         * Measured (run 32947725178): 212, 212, 216 across the three cases. Two
-         * things follow, and both argue against tightening this by feel:
+         * The baseline count is a DOUBLE PROXY: it stands in for "this fixture
+         * contains colour at all", which stands in for "colour might appear or
+         * move during the observation window". Only that last thing can produce a
+         * false green, and this number does not measure it. What is genuinely
+         * undefended is a colour element ARRIVING inside the window - a late image
+         * or an animation - which contributes in full even when the baseline is 0.
          *
-         *  - The baseline is NOT zero, which the assertion this replaced had been
-         *    "confirming" for as long as it existed. The fixture carries a couple
-         *    of hundred saturated pixels of its own.
-         *  - floor/5 = 300 would have left a 29% margin over a value nobody had
-         *    ever measured. It would have looked like a tight, careful bound right
-         *    up until a fixture tweak pushed 216 past 300 and turned the nightly
-         *    red for a reason unrelated to any menu.
+         * Ceiling is therefore a conservative bound on the proxy, not a mechanism:
+         * floor/5 = 300 was the first draft and would have been arbitrary. An
+         * arbitrary precondition is a new source of FALSE RED in the nightly,
+         * which is the failure this investigation existed to remove
+         * (@Codex-Android-DevOPS).
+         *
+         * Measured baselines, same code and fixture:
+         *   run 32947725178:  212, 212, 216
+         *   run 32948862386:  216,   0, 593
+         *
+         * Two things to carry forward:
+         *  - It is not zero, and not stable. The assertion this replaced had been
+         *    "confirming" a baseline of 0 for as long as it existed.
+         *  - 300 would have passed the first run and FAILED the second on 593,
+         *    turning a green run red for a reason having nothing to do with a
+         *    menu. That is the false-red this ceiling is deliberately loose to
+         *    avoid.
+         *
+         * The 0..593 spread is itself the useful signal: colour presence here is
+         * time-dependent, so the undefended direction above is live rather than
+         * theoretical. It stays acceptable only because the largest baseline seen
+         * is far below the floor - if that gap closes, this needs a real mechanism
+         * rather than a wider bound.
          */
         private const val THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX =
             THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
