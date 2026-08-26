@@ -1338,6 +1338,15 @@ class KmpVisualScreenshotCaptureTest {
                                 // it computed the constant 0 and asserted 0 == 0.
                                 //
                                 // An absolute count is the only form that can fail.
+                                //
+                                // Positive control, run here rather than as its own
+                                // @Test: instrumentation selects tests by name, so a
+                                // standalone guard can silently stop being executed,
+                                // while this one runs exactly when the instrument is
+                                // used. It answers "what would I see if the counter
+                                // were broken" - a counter stuck at 0 (the shape of
+                                // the bug this replaces) fails the second check.
+                                assertSaturatedCounterDiscriminates()
                                 val baselineSaturated = b.countSaturatedPixels(
                                     topPx = 0,
                                     bottomPx = b.height,
@@ -2050,6 +2059,38 @@ class KmpVisualScreenshotCaptureTest {
             maxY = if (count == 0) -1 else maxY,
             centroidY = if (count == 0) -1 else (sumY / count).toInt(),
         )
+    }
+
+    /**
+     * Proves [countSaturatedPixels] can return both answers.
+     *
+     * The precondition it feeds asserts an absence ("the baseline carries no
+     * meaningful colour"), and an absence assertion is only worth its ink if the
+     * instrument behind it is capable of saying otherwise. The version this
+     * replaced was not: it diffed a frame against itself and returned 0 for every
+     * possible image, so it "passed" on any fixture, including one that would have
+     * invalidated the whole criterion.
+     *
+     * White must count 0 and a saturated red must count every pixel. If either
+     * side stops holding, the counter is broken in exactly the direction that
+     * would make the precondition vacuous again.
+     */
+    private fun assertSaturatedCounterDiscriminates() {
+        val probe = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        try {
+            probe.eraseColor(Color.WHITE)
+            val whiteCount = probe.countSaturatedPixels(topPx = 0, bottomPx = probe.height)
+            probe.eraseColor(Color.rgb(220, 40, 40))
+            val redCount = probe.countSaturatedPixels(topPx = 0, bottomPx = probe.height)
+            check(whiteCount == 0 && redCount == probe.width * probe.height) {
+                "task #228: the saturated counter no longer discriminates - " +
+                    "white=$whiteCount (expected 0), red=$redCount " +
+                    "(expected ${probe.width * probe.height}). Every conclusion " +
+                    "drawn from it, including the baseline precondition, is void."
+            }
+        } finally {
+            probe.recycle()
+        }
     }
 
     /**
@@ -6425,12 +6466,19 @@ class KmpVisualScreenshotCaptureTest {
          * Since the fixture now reports the menu opening directly, this count is
          * the corroborating half, not the deciding one.
          *
-         * Ceiling: one fifth of the floor. Chosen so standing colour cannot come
-         * close to the menu's signal on its own; the measured baseline is logged
-         * on every run, so a real value replaces this reasoning as soon as one
-         * exists.
+         * Ceiling: the menu floor itself, not a tighter guess.
+         *
+         * A tighter number (floor/5 was the first draft) would be arbitrary, and
+         * an arbitrary precondition is a new source of FALSE RED in the nightly -
+         * which is precisely the failure we spent this investigation removing.
+         * @Codex-Android-DevOPS caught that. The floor is the non-arbitrary bound:
+         * it is exactly the point at which standing colour could account for the
+         * menu's whole signal, so tripping it means the equivalence this criterion
+         * rests on has actually broken. The measured baseline is logged on every
+         * run, so the value can be tightened from data rather than from taste.
          */
-        private const val THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX = 300
+        private const val THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX =
+            THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
 
         private const val LONG_PRESS_RETRY_SUPPRESS_CHANGED_RATIO = 0.002f
 
