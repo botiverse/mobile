@@ -1411,7 +1411,10 @@ private fun SharedTaskCard(
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                // Task #251 (artin msg=c06b26d3): right-align the badge row so the
+                // shrink-wrapped assignee + status pills pack against the card's
+                // trailing edge instead of hugging the title.
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, alignment = Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val assigneeDisplayName = task.tasksAssigneeDisplayName()
@@ -1419,6 +1422,10 @@ private fun SharedTaskCard(
                 // InlineBadgeEditor (searchable popover reuse per stdrc msg=4c357cb1;
                 // uppercase=false like the @assignee label). Same anchored Button model
                 // as the status chip so the tap wins over the parent card gesture.
+                // Task #251: the pill must shrink-wrap its label like Web's
+                // InlineBadgeEditor does — never stretch to the leftover card width
+                // (artin 2026-08-27 verify-session screenshot). Long display names are
+                // capped and ellipsized so the status pill keeps its slot.
                 SlockAnchoredMetaChip(
                     label = assigneeDisplayName?.let { "@$it" }
                         ?: stringResource(MR.strings.tasks_assignee_unassigned),
@@ -1427,7 +1434,7 @@ private fun SharedTaskCard(
                     onClick = onAssigneeBadgeClick,
                     clickIdentity = tasksAssigneeChipClickIdentity(task.id.value),
                     anchorOwnerIdentity = tasksStatusMenuOwnerIdentity(task.id.value),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.widthIn(max = SharedTaskCardAssigneeChipMaxWidth),
                     trailingIconName = SlockLucideIconName.Pencil,
                     minHeight = 24.dp,
                     horizontalPadding = 8.dp,
@@ -1637,6 +1644,7 @@ private val TaskStatus.color: com.tencent.kuikly.compose.ui.graphics.Color
         }
 
 private val SharedTaskCardStatusChipMinWidth = 78.dp
+private val SharedTaskCardAssigneeChipMaxWidth = 160.dp
 
 private val TaskStatus.iconName: SlockLucideIconName
     get() =
