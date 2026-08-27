@@ -384,6 +384,7 @@
     <string name="thread_error_task_status_unsupported">Unsupported task status</string>
     <string name="thread_feedback_task_updated">Task updated</string>
     <string name="thread_error_update_task">Unable to update task</string>
+    <string name="thread_error_update_assignee">Unable to update assignee</string>
     <string name="thread_error_join_channel">Unable to join channel</string>
     <string name="thread_feedback_joined_channel">Joined channel</string>
     <string name="thread_error_attachment_retry">Attachment retry unavailable. Remove and attach again.</string>

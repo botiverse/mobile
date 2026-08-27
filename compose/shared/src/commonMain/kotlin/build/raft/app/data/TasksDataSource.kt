@@ -8,6 +8,7 @@ import build.raft.app.strictTaskStatusOrNull
 import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
 import build.raft.app.model.Presence
@@ -21,6 +22,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.time.TimeSource
 
 private val tasksJson = Json {
@@ -87,6 +91,20 @@ class SharedTasksDataSource(
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_status_network", retryable = true))
+        }
+
+    override suspend fun assignTask(
+        serverId: ServerId,
+        taskId: TaskId,
+        assignee: MemberProfile?,
+        expectedRevision: Long?
+    ): DataResult<TaskActionResult> =
+        try {
+            typedApi.assignTask(serverId, taskId, assignee, expectedRevision)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            DataResult.Error(ScreenError(code = "tasks_assign_network", retryable = true))
         }
 
     /**
@@ -354,6 +372,23 @@ internal class NetworkSlockTasksApi(
             buildSharedTaskStatusBody(status)
         )
 
+    override suspend fun assignTask(taskId: TaskId, bodyText: String): HomeNetworkResponse =
+        networkClient.request(
+            DataRequestPriority.Foreground,
+            "tasks/${taskId.value}/assignee",
+            method = "PATCH",
+            bodyText = bodyText
+        )
+
+    override suspend fun assignTask(serverId: ServerId, taskId: TaskId, bodyText: String): HomeNetworkResponse =
+        networkClient.request(
+            DataRequestPriority.Foreground,
+            "tasks/${taskId.value}/assignee",
+            method = "PATCH",
+            bodyText = bodyText,
+            serverIdOverride = serverId
+        )
+
     override suspend fun updateTaskStatus(
         serverId: ServerId,
         taskId: TaskId,
@@ -473,6 +508,17 @@ interface SlockTasksApi {
     suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+
+    /**
+     * `PATCH /api/tasks/:taskId/assignee` (server contract: body `{ assignee:
+     * {type:'user'|'agent', id} | null, expectedRevision? }`; explicit `null`
+     * unassigns; 409 + `currentRevision` on lost OCC race). Body is pre-built by
+     * [buildSharedTaskAssignBody].
+     */
+    suspend fun assignTask(taskId: TaskId, bodyText: String): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun assignTask(serverId: ServerId, taskId: TaskId, bodyText: String): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun deleteTask(taskId: TaskId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun deleteTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
@@ -511,6 +557,58 @@ fun buildSharedTasksCreateBody(drafts: List<TaskCreateDraft>): String =
 
 fun buildSharedTaskConvertBody(messageId: MessageId): String =
     tasksJson.encodeToString(TaskConvertRequestBody(messageId.value))
+
+/** Wire value for [MemberKind] in the assignee PATCH body; System members are not assignable. */
+internal fun MemberProfile.taskAssigneeTypeValueOrNull(): String? =
+    when (kind) {
+        MemberKind.Human -> "user"
+        MemberKind.Agent -> "agent"
+        MemberKind.System -> null
+    }
+
+/**
+ * `PATCH /api/tasks/:taskId/assignee` request body.
+ *
+ * Built manually instead of through [tasksJson] because `explicitNulls = false`
+ * would drop the `assignee` key entirely, while the server treats a missing key
+ * as a 400 ("assignee is required (use null to unassign)"). An explicit JSON
+ * `null` is the unassign sentinel and must survive serialization.
+ */
+fun buildSharedTaskAssignBody(assignee: MemberProfile?, expectedRevision: Long?): String {
+    val root = buildJsonObject {
+        if (assignee == null) {
+            put("assignee", JsonNull)
+        } else {
+            val type = assignee.taskAssigneeTypeValueOrNull()
+                ?: throw IllegalArgumentException(
+                    "MemberKind ${assignee.kind} is not a valid task assignee"
+                )
+            put(
+                "assignee",
+                buildJsonObject {
+                    put("type", type)
+                    put("id", assignee.id.value)
+                }
+            )
+        }
+        if (expectedRevision != null) {
+            put("expectedRevision", expectedRevision)
+        }
+    }
+    return root.toString()
+}
+
+/** Sentinel error code for a lost OCC race on the assignee write (server 409). */
+internal const val TASKS_ASSIGN_CONFLICT = "tasks_assign_conflict"
+
+internal fun taskAssignConflictErrorCode(payload: String?): Boolean {
+    val text = payload?.takeIf { it.isNotBlank() } ?: return false
+    val envelope =
+        runCatching {
+            tasksJson.decodeFromString(TaskAssignErrorEnvelope.serializer(), text)
+        }.getOrNull() ?: return false
+    return envelope.error?.trim()?.equals("task state changed concurrently", ignoreCase = true) == true
+}
 
 internal class SlockTasksApiClient(
     private val transport: SlockTasksApi,
@@ -634,6 +732,20 @@ internal class SlockTasksApiClient(
             requestedStatus = status,
         )
 
+    suspend fun assignTask(
+        serverId: ServerId,
+        taskId: TaskId,
+        assignee: MemberProfile?,
+        expectedRevision: Long?
+    ): DataResult<TaskActionResult> =
+        transport
+            .assignTask(
+                serverId,
+                taskId,
+                buildSharedTaskAssignBody(assignee = assignee, expectedRevision = expectedRevision)
+            )
+            .toTaskAssignActionResult(diagnostics = diagnosticsLogger)
+
     suspend fun deleteTask(taskId: TaskId): DataResult<Unit> =
         transport.deleteTask(taskId).toTaskDeleteResult()
 
@@ -730,6 +842,40 @@ internal fun HomeNetworkResponse.toTaskActionResult(
         ?: return requestedStatus.taskStatusAppliedWithoutProjectionResult(source)
     val summary = task.toTaskSummary(diagnostics)
         ?: return requestedStatus.taskStatusAppliedWithoutProjectionResult(source)
+    return DataResult.Content(TaskActionResult(summary))
+}
+
+/**
+ * Mapper for `PATCH /tasks/:taskId/assignee`. Mirrors [toTaskActionResult] with one
+ * contract addition: a 409 whose body reports `task state changed concurrently` is
+ * the server's OCC-lost signal (`currentRevision` included when re-readable) and
+ * maps to [TASKS_ASSIGN_CONFLICT] so callers can re-read + retry instead of
+ * surfacing a generic failure.
+ */
+internal fun HomeNetworkResponse.toTaskAssignActionResult(
+    source: String = "tasks_assign",
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): DataResult<TaskActionResult> {
+    unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
+    val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
+    if (code == 401 || code == 403) {
+        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
+    }
+    if (!isSuccessful) {
+        val conflictPayload = errorBodyText?.takeIf { it.isNotBlank() } ?: bodyText
+        if (code == 409 && taskAssignConflictErrorCode(conflictPayload)) {
+            return DataResult.Error(
+                ScreenError(code = TASKS_ASSIGN_CONFLICT, retryable = true, serverMessage = serverMessage)
+            )
+        }
+        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true, serverMessage = serverMessage))
+    }
+    val body = bodyText
+        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
+    val envelope = runCatching { tasksJson.decodeFromString<TaskEnvelope>(body) }.getOrNull()
+        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
+    val summary = envelope.task?.toTaskSummary(diagnostics)
+        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
     return DataResult.Content(TaskActionResult(summary))
 }
 
@@ -877,6 +1023,13 @@ internal data class OkEnvelope(val ok: Boolean = false)
 private data class TaskActionErrorEnvelope(
     val error: String? = null,
     val code: String? = null,
+)
+
+/** Error payload of `PATCH /tasks/:id/assignee` (409 OCC carries `currentRevision`). */
+@Serializable
+internal data class TaskAssignErrorEnvelope(
+    val error: String? = null,
+    val currentRevision: Long? = null,
 )
 
 private fun HomeNetworkResponse.tasksServerErrorTextOrNull(): String? {
