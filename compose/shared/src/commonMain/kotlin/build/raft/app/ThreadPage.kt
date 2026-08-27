@@ -12328,8 +12328,12 @@ private fun ThreadPageContent(
                         if (!imagePath.isNullOrBlank()) {
                             shareExportScope.launch {
                                 val result = runCatching { onSaveShareImage(imagePath) }.getOrNull()
+                                val saved = result?.optString("status") == "ok"
+                                if (saved) {
+                                    activeModal = null
+                                }
                                 onThreadEvent(
-                                    if (result?.optString("status") == "ok") {
+                                    if (saved) {
                                         "shareSelectionImageSaved"
                                     } else {
                                         "shareSelectionExportFailed"
