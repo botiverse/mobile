@@ -1411,7 +1411,10 @@ private fun SharedTaskCard(
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                // Task #251 (artin msg=c06b26d3): right-align the badge row so the
+                // shrink-wrapped assignee + status pills pack against the card's
+                // trailing edge instead of hugging the title.
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, alignment = Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val assigneeDisplayName = task.tasksAssigneeDisplayName()
