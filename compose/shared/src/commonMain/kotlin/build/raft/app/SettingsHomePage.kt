@@ -19817,7 +19817,7 @@ private fun SharedHomePanelButton(
     }
 }
 
-private data class SearchChannelFilterItem(
+internal data class SearchChannelFilterItem(
     val id: String,
     val label: String,
     val icon: SlockLucideIconName
@@ -19826,7 +19826,7 @@ private data class SearchChannelFilterItem(
 private val SearchChannelFilterItem.iconName: SlockLucideIconName
     get() = icon
 
-private fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannelFilterItem> {
+internal fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannelFilterItem> {
     val snapshot = (state.content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
     val channelFilters =
         snapshot.channels
@@ -19834,7 +19834,7 @@ private fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannel
                 val channelId = conversation.channelId?.value ?: return@mapNotNull null
                 SearchChannelFilterItem(
                     id = channelId,
-                    label = "#${conversation.name}",
+                    label = conversation.name.removePrefix("#"),
                     icon = SlockLucideIconName.Hash
                 )
             }
@@ -20053,17 +20053,17 @@ internal fun homeSearchEntityResults(
         .take(5)
 }
 
-private data class HomeSearchEntityCandidate(
+internal data class HomeSearchEntityCandidate(
     val result: SearchEntityResult,
     val searchFields: List<HomeSearchEntitySearchField>,
 )
 
-private data class HomeSearchEntitySearchField(
+internal data class HomeSearchEntitySearchField(
     val value: String,
     val priority: Int,
 )
 
-private fun homeSearchEntityCandidates(
+internal fun homeSearchEntityCandidates(
     homeState: SharedHomeState,
     senderFilters: List<SearchSenderFilterItem>,
     channelLabel: String,
@@ -20097,7 +20097,7 @@ private fun homeSearchEntityCandidates(
                     SearchEntityResult(
                         key = "conversation:${conversation.threadId.value}",
                         type = type,
-                        title = if (type == SearchEntityType.Channel) "#${conversation.name}" else conversation.name,
+                        title = conversation.name,
                         subtitle =
                             conversation.subtitle?.takeIf { it.isNotBlank() }
                                 ?: if (type == SearchEntityType.Channel) channelLabel else dmLabel,
