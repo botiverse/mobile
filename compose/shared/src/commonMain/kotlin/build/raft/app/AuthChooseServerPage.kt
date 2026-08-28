@@ -66,8 +66,15 @@ private fun AuthChooseServerPageContent() {
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
             )
         }
-    val authDataSource = remember(sharedStores, avatarNativeCache) {
-        sharedStores.createAuthDataSourceForCurrentEnvironment(avatarNativeCache)
+    val authSessionStore = remember(sharedStores, fromShell, sourceStoreScope) {
+        if (fromShell) sharedStores.authStore(sourceStoreScope) else sharedStores.authStore
+    }
+    val authDataSource = remember(sharedStores, fromShell, sourceStoreScope, avatarNativeCache) {
+        if (fromShell) {
+            sharedStores.createAuthDataSourceForCurrentEnvironment(sourceStoreScope, avatarNativeCache)
+        } else {
+            sharedStores.createAuthDataSourceForCurrentEnvironment(avatarNativeCache)
+        }
     }
     var session by remember { mutableStateOf<StoredAuthSession?>(null) }
     var errorPresentation by remember { mutableStateOf<AuthGateMessage?>(null) }
@@ -80,8 +87,8 @@ private fun AuthChooseServerPageContent() {
         )
     }
 
-    LaunchedEffect(sharedStores.authStore, restoreAttempt) {
-        runCatchingPreservingCancellation { sharedStores.authStore.readSession() }
+    LaunchedEffect(authSessionStore, restoreAttempt) {
+        runCatchingPreservingCancellation { authSessionStore.readSession() }
             .onSuccess { restored ->
                 session = restored
                 authDataSource.logDiagnostics(
