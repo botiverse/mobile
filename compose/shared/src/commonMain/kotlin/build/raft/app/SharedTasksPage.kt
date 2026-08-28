@@ -847,20 +847,14 @@ private fun SharedTasksLoadedBodyContent(
         }
 
         statusMenuTask?.let { task ->
-            val resolvedStatusAnchor =
-                statusMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
-                    ?: return@let
-            SlockTaskStatusMenuOverlay(
-                anchor = resolvedStatusAnchor,
-                items = TaskStatus.values().map { next ->
-                    SlockBaseMenuItem(id = next.name, label = next.localizedLabel())
-                },
-                selectedId = task.status.name,
-                onDismiss = { statusMenuTask = null },
-                onSelect = { id ->
-                    val next = TaskStatus.values().firstOrNull { it.name == id }
-                    statusMenuTask = null
-                    if (next != null && next != task.status) {
+            val updating = state.statusUpdatingTaskId == task.id.value
+            TasksStatusDialog(
+                task = task,
+                updating = updating,
+                errorCode = state.statusUpdateErrorCode,
+                onDismiss = { if (!updating) statusMenuTask = null },
+                onSelect = { next ->
+                    if (!updating && next != task.status) {
                         onIntent(SharedTasksRouteIntent.UpdateStatus(task, next))
                     }
                 }
@@ -1710,6 +1704,52 @@ private fun String.toTaskSortValue(): Long {
     return Long.MIN_VALUE
 }
 
+
+@Composable
+private fun TasksStatusDialog(
+    task: TaskSummary,
+    updating: Boolean,
+    errorCode: String?,
+    onDismiss: () -> Unit,
+    onSelect: (TaskStatus) -> Unit
+) {
+    SlockUnifiedDialog(
+        title = stringResource(MR.strings.tasks_label_status),
+        onDismiss = onDismiss,
+        dismissEnabled = !updating,
+        contentSpacing = SlockSpacing.Sm
+    ) {
+        Text(
+            text = task.tasksMeaningfulDisplayTitle(),
+            style = SlockType.ButtonBold,
+            color = SlockColor.TextBlack,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = stringResource(MR.strings.tasks_current_status, task.status.localizedLabel()),
+            style = SlockType.Caption,
+            color = SlockColor.TextBlack.copy(alpha = 0.65f)
+        )
+        TaskStatus.values().forEach { status ->
+            val selected = status == task.status
+            SlockModalFullWidthActionButton(
+                label = status.localizedLabel(),
+                icon = if (selected) SlockLucideIconName.Check else SlockLucideIconName.Circle,
+                color = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
+                enabled = !updating && !selected,
+                onClick = { onSelect(status) }
+            )
+        }
+        errorCode?.takeIf { it.isNotBlank() }?.let { code ->
+            Text(
+                text = "${stringResource(MR.strings.tasks_error_update_status)}: $code",
+                style = SlockType.Caption,
+                color = SlockColor.AccentRed
+            )
+        }
+    }
+}
 
 @Composable
 private fun TasksCreateDialog(

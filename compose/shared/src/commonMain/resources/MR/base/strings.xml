@@ -1147,6 +1147,8 @@
     <string name="tasks_error_load">Could not load tasks</string>
     <string name="tasks_error_action_unavailable">Action unavailable</string>
     <string name="tasks_error_update_status">Could not update status</string>
+    <string name="tasks_label_status">Task status</string>
+    <string name="tasks_current_status">Current status: %1$s</string>
     <string name="tasks_action_clear_all">Clear all</string>
     <string name="tasks_action_new_task">NEW TASK</string>
     <string name="tasks_view_board">Board</string>
