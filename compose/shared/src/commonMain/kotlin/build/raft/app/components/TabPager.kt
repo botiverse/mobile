@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import kotlinx.coroutines.CancellationException
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -74,6 +75,13 @@ fun TabPager(
         initialPage = selectedIndex.coerceIn(0, (pageCount - 1).coerceAtLeast(0)),
         pageCount = { pageCount },
     )
+    // Round-6 (run 33158645283, group 2): the port's animateScrollToPage
+    // RETURNS before the pages actually transition ("animate ok" logged before
+    // current=1), so a multi-page programmatic scroll walks currentPage
+    // through intermediate pages afterwards. The pager->selection sync must
+    // not report those — track the programmatic target and suppress reports
+    // until the pager arrives.
+    val programmaticTarget = remember { mutableStateOf<Int?>(null) }
 
     // Tab tap (or any external selection change) -> move the pager over.
     // animateScrollToPage with a scrollToPage fallback, each swallowing its
@@ -85,6 +93,7 @@ fun TabPager(
     LaunchedEffect(pagerState, selectedIndex) {
         onDebugEvent?.invoke("sel-effect sel=$selectedIndex cur=${pagerState.currentPage}")
         if (selectedIndex in 0 until pageCount && selectedIndex != pagerState.currentPage) {
+            programmaticTarget.value = selectedIndex
             try {
                 pagerState.animateScrollToPage(selectedIndex)
                 onDebugEvent?.invoke("animate ok -> $selectedIndex")
@@ -97,6 +106,8 @@ fun TabPager(
                     .onSuccess { onDebugEvent?.invoke("scrollTo ok -> $selectedIndex") }
                     .onFailure { onDebugEvent?.invoke("scrollTo ERR ${it::class.simpleName}") }
             }
+            // NOT cleared here: the port's animate returns early, so the
+            // currentPage effect clears the target on arrival instead.
         }
     }
 
@@ -111,7 +122,15 @@ fun TabPager(
     // is retained as a harmless idempotent belt for ports where it works.
     val currentPage = pagerState.currentPage
     LaunchedEffect(currentPage) {
-        onDebugEvent?.invoke("current=$currentPage sel=$selectedIndex")
+        val pending = programmaticTarget.value
+        onDebugEvent?.invoke("current=$currentPage sel=$selectedIndex pend=${pending ?: "-"}")
+        if (pending != null) {
+            // Mid-programmatic-scroll transitions are the pager catching up
+            // with a tab tap, not user intent: report nothing. Arrival (or a
+            // fresh gesture landing exactly on the target) clears the gate.
+            if (currentPage == pending) programmaticTarget.value = null
+            return@LaunchedEffect
+        }
         if (currentPage != selectedIndex && currentPage in 0 until pageCount) {
             onSelectedIndexChange(currentPage)
             onDebugEvent?.invoke("report -> $currentPage")
