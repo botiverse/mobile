@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-28T01:01:20.351Z",
+  "generatedAt": "2026-08-28T22:40:44.148Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 81,
-    "pending": 11
+    "ready": 77,
+    "pending": 15
   },
   "cases": [
     {
@@ -551,7 +551,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062097122642146285
+      "metricMismatch": 0.062095097284670775
     },
     {
       "id": "components.ui.spinner.states",
@@ -1036,37 +1036,16 @@
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "ready",
-      "imageHash": "p1:03f807fc0001fffe000100020001000280090002000900023ff9000217f93ffa00010003100900020f9107b200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
-      "generatedAt": "2026-08-07T00:06:32.418Z",
-      "severity": "medium",
-      "summary": [
-        "iOS shows a different highlighted/selected suggestion: 'Cindy - Keeps visual testing releas...' is highlighted in yellow, whereas React highlights 'artin' (no status text) as selected.",
-        "iOS list order differs: iOS shows Cindy first under 'IN THIS CHANNEL' followed by Product UX; React shows 'artin' first, then Cindy. Different users are featured.",
-        "iOS avatars use the placeholder pixel/robot image for all entries; React mix avatar styles (purple silhouette for artin, robot for others).",
-        "Secondary description text is visible on iOS ('Keeps visual testing releas...', 'Turns...', 'I...') but is absent on most React rows except Cindy.",
-        "Usernames are more aggressively truncated on iOS (e.g., 'Product UX…', '@Product-UX-Desi…', '@Android-Develop…') while React shows fuller 'artin' / 'Product UX De…' with different truncation points."
-      ],
-      "likelyCauses": [
-        "Test data fixture mismatch between React and iOS runs (different member list/order/selection).",
-        "iOS component renders a status/subtitle line per suggestion that React either omits or renders conditionally.",
-        "Different truncation/elipsis logic for display name and handle on iOS vs React.",
-        "Avatar source/placeholder fallback diverges between platforms for members without profile images.",
-        "Cropping target on iOS is not element-cropped (current crop is null), so alignment is done against full canvas 1170x2532 causing scale-driven size differences."
-      ],
-      "suggestedOwner": "ios-chat-composer",
-      "suggestedFixes": [
-        "Align the test fixture so both platforms render the same member set, ordering, and selected row.",
-        "Decide whether the secondary status text ('Keeps visual testing...') should render on both platforms; if yes, wire it through the React suggestions component.",
-        "Harmonize display-name and handle truncation rules (max chars + ellipsis position) across React and iOS suggestion rows.",
-        "Use a shared avatar placeholder across platforms so missing avatars look identical.",
-        "Apply element-bounds cropping to iOS (matching baseline contract) before diffing to remove scale artifacts."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.11035126449818389
+      "status": "pending",
+      "imageHash": "p1:03f807fc0001fffe0001000200010002800900020009000239f9000211f93ffa00010003104900020f9107b200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
+      "generatedAt": "2026-08-28T22:40:43.081Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11120799071036036
     },
     {
       "id": "components.thread.composer.channel-suggestions",
@@ -1554,12 +1533,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26898468829748445
+      "metricMismatch": 0.26900933014677086
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f000038021c300012fc7cfe00fc00fe9e802400879d7c0000819c00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff43ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f000038021c300012fc7cfe00fc00fe9e802400879d7c0000819c00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff41ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-28T00:59:29.821Z",
       "severity": "high",
       "summary": [
@@ -1587,7 +1566,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2691824982109342
+      "metricMismatch": 0.2692071400602206
     },
     {
       "id": "components.home.saved.results",
@@ -1623,7 +1602,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11126470071967698
+      "metricMismatch": 0.1114284171156209
     },
     {
       "id": "components.home.activity.results",
@@ -1658,7 +1637,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10665464954564485
+      "metricMismatch": 0.10669853229094939
     },
     {
       "id": "components.tasks.panel.states",
@@ -1799,7 +1778,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:19.538Z",
+      "generatedAt": "2026-08-28T22:40:43.453Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1812,7 +1791,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:19.538Z",
+      "generatedAt": "2026-08-28T22:40:43.453Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1896,40 +1875,16 @@
     },
     {
       "id": "components.members.agent-detail.profile",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010002100000000000207e281ff0fff8fff001f8fff0bffffff9fff83ffc7ffffffdfff81fbffff803f80f7ffffffffffffffff8fff0fff8fff0fffc0fff8ff80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c7f80010c7f80ff0003807f0003807fffffffff87ffdfff97ff80786802ffffffff",
-      "generatedAt": "2026-08-14T22:11:33.850Z",
-      "severity": "high",
-      "summary": [
-        "iOS header shows a full QR-style avatar glyph while React uses a plain solid cyan avatar square; the iOS avatar is also smaller and aligned differently relative to the title row.",
-        "React header subtitle is truncated ('Turns product feedback, s...') while iOS renders the full subtitle ('Turns product feedback, screensh...') and places it below the title rather than inline next to the avatar.",
-        "Tab row uses a yellow highlight bar in React but iOS uses a filled yellow tab pill with no bottom indicator; tab text/icon spacing and underline differ.",
-        "React INFO section stacks Role/Computer/Created/Creator vertically with edit pencil icons and a green 'Connected' dot; iOS lays the same fields out as a two-column key/value grid with no edit icons and no status dot, and reorders Creator below Created.",
-        "React 'Runtime Config' uses a 4-column row (Runtime / Model / Reasoning / Mode) with pill labels; iOS uses a 2x2 grid with stacked labels above values."
-      ],
-      "likelyCauses": [
-        "iOS build is rendering at a larger device pixel size (1170x2532 vs 390x844) without applying a consistent scale factor, causing layout reflow into a 2-column grid instead of the 1-column stack used in React.",
-        "Avatar asset differs between platforms: React uses a flat solid color placeholder while iOS uses a generated QR/pattern glyph.",
-        "Edit affordances (pencil icons) and the Connected status dot are missing on iOS, indicating component parity gaps in the iOS implementation.",
-        "Truncation logic differs: React header subtitle is truncated to fit next to the avatar while iOS allows it to wrap below, suggesting a different header layout component.",
-        "Created Agents row overflow handling differs: React allows vertical overflow/cropping while iOS constrains height to the viewport."
-      ],
-      "suggestedOwner": "mobile-ios",
-      "suggestedFixes": [
-        "Normalize avatar rendering so both platforms show the same placeholder style/size; if QR is intentional on iOS, align it identically in React.",
-        "Unify the header subtitle layout: either always inline with truncation or always wrap below, and keep the same avatar size in both.",
-        "Restore edit pencil icons on iOS for Display Name, Description, and Role fields to match React affordances.",
-        "Restore the green 'Connected' status dot (or equivalent) and 'computer v0.0.48' inline label on the iOS Computer field.",
-        "Use a single-column stack for INFO on iOS (or apply the same 2-column grid in React) so Created/Creator order and spacing match across platforms."
-      ],
-      "intentional": [
-        "The iOS canvas is a different raw pixel resolution (1170x2532) than React (390x844), so absolute pixel coordinates are not directly comparable.",
-        "The QR-pattern avatar may be an intentional iOS placeholder while the React side uses a color block placeholder during design."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1854896639256829
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe801000318010002100000000000207e281ff0fff8fff001f8fff0bffffff9fff83ffc7ffffffdfff81fbffff803f80f7ffffffffffffffff8fff0fff8fff0fffc0fff8ff80fff1fffffff1ffd47fffffffffffffdfff0c3f800f0c7f800f0c7f8fff00038fff000380ffffff807f87ff807f97fffffe6802ffffffff",
+      "generatedAt": "2026-08-28T22:40:43.636Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1767056885540298
     },
     {
       "id": "components.channel.settings.panel",
@@ -2169,7 +2124,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19629190802176588
+      "metricMismatch": 0.19632498886053384
     },
     {
       "id": "components.settings.notifications.page",
@@ -2275,7 +2230,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:19.845Z",
+      "generatedAt": "2026-08-28T22:40:43.728Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2288,7 +2243,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:19.845Z",
+      "generatedAt": "2026-08-28T22:40:43.728Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2301,7 +2256,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:19.845Z",
+      "generatedAt": "2026-08-28T22:40:43.729Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2314,7 +2269,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:19.845Z",
+      "generatedAt": "2026-08-28T22:40:43.729Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2327,7 +2282,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:19.845Z",
+      "generatedAt": "2026-08-28T22:40:43.729Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2371,70 +2326,29 @@
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe8010003180100821000c0000008405dc80008c018fff00018fff0bffffff9fff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff1fff8fff0fffc0fff8ff81fff1fffffff1ffd47fffffffffffffdfff0c3f80010c7f80010c7f80ff0003807f0003807fffffffff87ffdfff97ff80f87c02ffffffff",
-      "generatedAt": "2026-08-14T22:11:38.226Z",
-      "severity": "high",
-      "summary": [
-        "Stop Agent / Restart Reset menu positioning differs: React overlays the Profile/Activity tabs area near the top, while iOS appears offset right and lower, partially overlapping the Product UX Designer heading and description",
-        "Description text in React is wrapped onto 2 lines ('Turns product feedback, screenshots, and release\\nnotes into actionable UX specs.'), whereas iOS renders it on a single line",
-        "Info section layout differs: React uses a stacked two-column layout (Created + Creator side by side under Computer), iOS uses a fully stacked single-column layout (Computer, Created, Creator each on their own row)",
-        "Connected indicator styling differs: React shows a filled green dot with 'Connected' text inline, iOS shows just 'Connected' text without a visible status dot",
-        "Role section in React includes a pencil/edit icon next to the '?' icon; iOS only shows the '?' info icon"
-      ],
-      "likelyCauses": [
-        "Different layout frameworks (CSS grid/flex in React vs UIKit/Auto Layout in iOS) interpreting the same spec differently",
-        "Missing or divergent design tokens for spacing, typography wrapping, and component density between platforms",
-        "iOS implementation not honoring the same responsive breakpoints as React",
-        "Component-level differences in how status indicators (Connected dot, Working badge, Role edit icon) are conditionally rendered",
-        "Avatar/image rendering pipeline differs: React likely uses solid color placeholder while iOS renders a generated pattern"
-      ],
-      "suggestedOwner": "design-systems",
-      "suggestedFixes": [
-        "Unify description text wrapping behavior by enforcing a max-width or word-break policy across platforms",
-        "Align the Info section layout: standardize on a single column with consistent label/value row height",
-        "Add explicit Connected status dot rendering on iOS to match React's filled green circle",
-        "Remove or render the Working badge consistently across both platforms",
-        "Stack Environment Variables rows uniformly rather than using a 2-column grid on iOS"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.20115647911856438
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe8010003180100821000c0000008405dc80008c018fff00018fff0bffffff9fff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff1fff8fff0fffc0fff8ff81fff1fffffff1ffd47fffffffffffffdfff0c3f800f8c7f800f0c7f8fff00038fff000380ffffff807f87ff807f97fffffe7c02ffffffff",
+      "generatedAt": "2026-08-28T22:40:43.919Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19238533101092348
     },
     {
       "id": "components.members.avatar-management",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffe801b0033841008310000000081fe000f81ff093f8fff8fff8fffffffffffc7ffa001ffff8001cfff8001c1ff8003fffff81ffffffe7f0fff87ff8ffffffffdfffffff1ff803bfbffffffffffffff8c7fffff8c3f8fff9c7fdfff8c7f80ff0003ffff8627fcfffffffeff97ffffff9fff99dbffff80010ffeffffffff",
-      "generatedAt": "2026-08-14T22:11:38.293Z",
-      "severity": "high",
-      "summary": [
-        "Header avatar differs: React shows a solid teal placeholder square while iOS shows a selected pixelated avatar (blue/teal pattern).",
-        "React includes a full avatar picker grid (Choose Avatar section, 16 thumbnails) that is entirely missing from the iOS layout.",
-        "React header subtitle is truncated ('Turns product feedback, s…') while iOS shows fuller text 'Turns product feedback, screensh…' with different font weight.",
-        "iOS shows an additional secondary avatar/title block beneath the header (avatar + 'Product UX Designer' + @Product-UX-Designer + Working status) that is absent on React.",
-        "iOS adds extra sections not present on React: Created Agents (Visual QA card), Environment Variables (RAFT_PROFILE, SLOCK_VISUAL_PROVIDER), and Skills (2)."
-      ],
-      "likelyCauses": [
-        "iOS implementation skipped or conditionally hid the avatar selection UI ('Choose Avatar' grid).",
-        "Different content state between snapshots (created date, computer name, daemon version) indicates non-deterministic test data rather than a layout regression.",
-        "iOS layout adds downstream sections (Environment Variables, Created Agents, Skills) that React either does not implement yet or has not reached in the scroll region.",
-        "Header avatar state differs because React uses an unselected default placeholder while iOS reflects a selected avatar value."
-      ],
-      "suggestedOwner": "ios-ui",
-      "suggestedFixes": [
-        "Add the 'Choose Avatar' grid component to iOS, mirroring React's 4-row avatar picker (including upload tile) and binding it to the selected avatar shown in the header.",
-        "Hide or guard the iOS-only sections (Environment Variables, Created Agents, Skills) or align them with React's spec so both platforms show identical surface area.",
-        "Normalize displayed metadata (computer name truncation, daemon version, created date) by sourcing from the same shared mock/fixture.",
-        "Add edit-pencil affordances next to iOS Display Name and Description labels, or remove them from React for parity.",
-        "Match the header subtitle truncation behavior and font weight between platforms; ensure only one avatar/title block is shown (remove the duplicate in iOS)."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.24257807753068417
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffe801b0033841008310000000081fe000f81ff093f8fff8fff8fffffffffffc7ffa001ffff8001cfff8001c1ff8003fffff81ffffffe7f0fff87ff8ffffffffdfffffff1ff803bfbffffffffffffff8c7fffff8c3f8fff9c7fdfff8c7f80ff0003ffff8627fcfffffffcff97ffffff9fff89cfffff80070ffeffffffff",
+      "generatedAt": "2026-08-28T22:40:43.906Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2392578415090263
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2501,7 +2415,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19330923157937374
+      "metricMismatch": 0.1933102442581116
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2815,7 +2729,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:20.235Z",
+      "generatedAt": "2026-08-28T22:40:44.021Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2828,7 +2742,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:20.235Z",
+      "generatedAt": "2026-08-28T22:40:44.021Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2841,7 +2755,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:20.235Z",
+      "generatedAt": "2026-08-28T22:40:44.021Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2854,7 +2768,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:20.235Z",
+      "generatedAt": "2026-08-28T22:40:44.021Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-28 01:01:26 UTC
-Latest run: bbe9c375-20260828005428
-Latest commit: bbe9c375-20260828005428
-Commit subject: fix(thread): dismiss share preview after successful download (#2262)
+Generated: 2026-08-28 22:40:49 UTC
+Latest run: 98ec5ddf-20260828223831
+Latest commit: 98ec5ddf-20260828223831
+Commit subject: fix(auth): keep shell server chooser on scoped store
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 92, same 0, pass 0, basic-pass 0, different 86, missing 6
-AI analysis: ready 86 / total 92, pending 6
+AI analysis: ready 81 / total 92, pending 11
 Visual coverage matrix: active 101 / total 120, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 98ec5ddf-20260828223831: react vs android, total 92, pass 0, basic-pass 0, different 86, matrix runs/98ec5ddf-20260828223831/component-matrix.json, page runs/98ec5ddf-20260828223831/
 - bbe9c375-20260828005428: react vs android, total 92, pass 0, basic-pass 0, different 86, matrix runs/bbe9c375-20260828005428/component-matrix.json, page runs/bbe9c375-20260828005428/
 - dcd71319-20260826225301: react vs android, total 92, pass 0, basic-pass 0, different 86, matrix runs/dcd71319-20260826225301/component-matrix.json, page runs/dcd71319-20260826225301/
 - 7ae5b181-20260825220736: react vs android, total 86, pass 0, basic-pass 0, different 85, matrix runs/7ae5b181-20260825220736/component-matrix.json, page runs/7ae5b181-20260825220736/

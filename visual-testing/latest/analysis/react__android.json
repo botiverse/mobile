@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-28T01:01:16.634Z",
+  "generatedAt": "2026-08-28T22:40:41.050Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 86,
-    "pending": 6
+    "ready": 81,
+    "pending": 11
   },
   "cases": [
     {
@@ -488,7 +488,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04021174110800352
+      "metricMismatch": 0.04018349012628186
     },
     {
       "id": "components.ui.progress-bar.states",
@@ -552,7 +552,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41496209659952354
+      "metricMismatch": 0.41497942386831277
     },
     {
       "id": "components.ui.spinner.states",
@@ -1059,37 +1059,16 @@
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "ready",
-      "imageHash": "p1:fffeffff03fe03fcffffffffcc01ffff81fcffffb3feffffbe0400018000f7ff80003c0bbffc000187fc000187fc7fff800003ff80fe07fffffc0001bffc01ff97fcfffffffe3fffbffc23ff80003fff80000000bffc0001bffc3ffdbffc3ffd87d807f987c80791841807f180000001ffffffff80008000ffffffffffffffff",
-      "generatedAt": "2026-08-09T22:12:45.688Z",
-      "severity": "high",
-      "summary": [
-        "Different highlighted/selected row: React highlights 'artin' as the first suggestion; Android highlights 'Cindy' as the first suggestion",
-        "Different first 'In This Channel' suggestion: React shows '@artin' (person icon, purple); Android shows 'Cindy Keeps visual testing releas…' (robot avatar)",
-        "Row content order differs between sections — React shows 'artin' then 'Cindy' in 'In This Channel', Android shows 'Cindy' then 'Product UX…'",
-        "Row vertical spacing differs — Android rows are visibly taller, causing the 'NOT IN THIS CHANNEL' section to shift down and crop the second row ('Product UX De…') at the bottom edge",
-        "Right-side metadata handle is cropped/truncated differently: React shows full '@Product-UX-Designe…', Android shows full '@Android-Develop…' but first section's handle '@artin' is not rendered on Android"
-      ],
-      "likelyCauses": [
-        "Android member-suggestion data source/list ordering is not synchronized with React (different fixture data or different sort order)",
-        "Default highlighted/selected suggestion differs — Android may be defaulting to first result rather than matching React's selection state",
-        "Row line-height / vertical padding values differ between platforms (Android uses larger row height)",
-        "Avatar glyph rendering differs — Android uses bot/robot placeholder avatars where React uses person icons",
-        "Section header spacing (gap between 'IN THIS CHANNEL' and 'NOT IN THIS CHANNEL' groups) is larger on Android"
-      ],
-      "suggestedOwner": "android-composer",
-      "suggestedFixes": [
-        "Align the suggestion fixture/list order and highlighted item so React and Android render identical first suggestion",
-        "Match row height/padding tokens (vertical spacing) between platforms to prevent section overflow",
-        "Verify avatar assets/fallbacks are consistent — replace robot placeholder avatars with the expected person icons on Android",
-        "Reduce spacing between 'IN THIS CHANNEL' and 'NOT IN THIS CHANNEL' section headers on Android so the second row is not clipped",
-        "Ensure crop/clipping contract accounts for the actual component height given Android's larger row sizing (increase capture height or reduce inner padding)"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3194677956465237
+      "status": "pending",
+      "imageHash": "p1:fffeffff03fe03fcffffffffcc01ffff81fcffffb3feffffbf0400018000f7ff80003c0bbffc000181fc000183fc7fff800003ff80fe07fffffc0001bffc01ff9dfcfffffffe3fffbffc23ff80003fff80000000bffc0001bffc3ffdbffc3ffd87d807f987c80791841807f180000001ffffffff80008000ffffffffffffffff",
+      "generatedAt": "2026-08-28T22:40:39.943Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.322174504548408
     },
     {
       "id": "components.thread.composer.channel-suggestions",
@@ -1579,12 +1558,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26901203062340506
+      "metricMismatch": 0.2690359973535329
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f000038021c380012fc7cfe00fc00fe9e813c00879d3c000081fc00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff43ffc9ffffff9fffffff807fffffffffffffd83fffffc3fffffffffffffff81ffffffc3ffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f000038021c380012fc7cfe00fc00fe9e813c00879d3c000081fc00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff41ffc9ffffff9fffffff807fffffffffffffd83fffffc3fffffffffffffff81ffffffc3ffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-13T22:14:38.408Z",
       "severity": "high",
       "summary": [
@@ -1613,7 +1592,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26885304006157085
+      "metricMismatch": 0.2688935472110827
     },
     {
       "id": "components.home.saved.results",
@@ -1650,7 +1629,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19017376176402778
+      "metricMismatch": 0.1904320987654321
     },
     {
       "id": "components.home.activity.results",
@@ -1686,7 +1665,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18514221635330863
+      "metricMismatch": 0.18521033767213735
     },
     {
       "id": "components.tasks.panel.states",
@@ -1829,7 +1808,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:15.762Z",
+      "generatedAt": "2026-08-28T22:40:40.245Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1842,7 +1821,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:15.762Z",
+      "generatedAt": "2026-08-28T22:40:40.245Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1924,40 +1903,16 @@
     },
     {
       "id": "components.members.agent-detail.profile",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fffc0fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
-      "generatedAt": "2026-08-14T22:11:02.696Z",
-      "severity": "medium",
-      "summary": [
-        "Agent header card on Android has a QR/pattern avatar instead of the solid teal square avatar shown in React; React avatar is solid cyan, Android avatar is a black/teal pixelated pattern.",
-        "React shows a horizontal navigation tab bar (Profile/Activity/Chat/Reminders) with distinct segmented buttons and borders; Android tab bar appears with thinner borders and different paddings.",
-        "React shows a truncated in-card title 'Product...' with a 'Capturing determ...' status pill; Android shows the full agent name 'Product UX Designer' in a larger, two-line avatar+title layout and replaces the status text with 'Working' beneath the handle.",
-        "Android omits the edit (pencil) icons that appear in the React version next to DISPLAY NAME and RUNTIME CONFIG section headers.",
-        "React uses a 2-column Created/Creator row; Android uses a single column with Created above Creator, increasing vertical spacing."
-      ],
-      "likelyCauses": [
-        "Android layout was implemented from a different design spec or without parity to the React web version's profile card structure.",
-        "React renders a horizontal segmented tab bar component that was not ported equivalently to Android.",
-        "Avatar asset differs between platforms (placeholder QR/pattern image used on Android instead of solid color square).",
-        "Different responsive layout breakpoints chosen for Android — single-column Info section vs React's 2-column grid.",
-        "Environment variables list rendered with flex-direction:row on Android but column on React."
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Align the Android avatar with the React baseline: use the solid teal square asset or share a single avatar component across platforms.",
-        "Match the Profile/Activity/Chat/Reminders segmented control styling and padding on Android to mirror the React tab bar.",
-        "Render DISPLAY NAME and RUNTIME CONFIG section headers with the edit (pencil) affordance on Android.",
-        "Change Android Info section to a 2-column layout for Computer/Connection and Created/Creator rows to match React, reducing vertical spacing.",
-        "Render environment variables in a single column on Android (RAFT_PROFILE above SLOCK_VISUAL_PROVIDER)."
-      ],
-      "intentional": [
-        "The Android avatar QR/pattern may be an intentional placeholder for the screenshot fixture.",
-        "Platform-specific tab bar styling differences may be accepted per design system if documented."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.18556797774807254
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fffc0fff87f80fff1fffffff1ffd47fffffffffffffdfff0c3f800f0c3f800f0c7f8fff00078fff000380ffffff807f97ff807f87fffffe1c02ffffffff",
+      "generatedAt": "2026-08-28T22:40:40.434Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1801018754810224
     },
     {
       "id": "components.channel.settings.panel",
@@ -2199,7 +2154,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19857482345634003
+      "metricMismatch": 0.19858123708834607
     },
     {
       "id": "components.settings.notifications.page",
@@ -2305,37 +2260,16 @@
     },
     {
       "id": "screens.members.agent-detail.profile",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
-      "generatedAt": "2026-08-14T22:11:11.250Z",
-      "severity": "high",
-      "summary": [
-        "Header avatar differs: React shows a solid cyan square, Android shows a checkered/placeholder pattern with cyan and white blocks",
-        "Header title text is truncated/clipped on React ('Produc...' with 'Capturing determi...') vs Android renders full text 'Product UX Designer' and 'Working' status",
-        "Role field shows 'No role' on React vs 'Member' on Android - actual data/label difference",
-        "Computer value differs: React shows full 'Jiachengs-MacBook-Pro' on one line, Android shows truncated 'Jiachengs-MacB...' with 'Connected · daemon v0.61.1' on same line",
-        "Created date differs: React 'Jun 18, 2026' vs Android 'Jun 1, 2026'"
-      ],
-      "likelyCauses": [
-        "Different placeholder/avatar rendering between React and Android when image asset is missing or not yet loaded",
-        "Responsive text truncation (ellipsis) applied differently in React vs Android TextView/Compose",
-        "Layout grid change: React uses single-row flex layout for Runtime Config; Android uses label-value 2-column grid",
-        "Edit affordance icons (pencil) conditionally rendered or missing in Android implementation",
-        "Different data source or mocked values for Role, Created date, Computer status between platforms"
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Replace avatar placeholder on Android with the same solid cyan fallback used on React, or load the actual avatar asset consistently",
-        "Ensure header title and subtitle TextViews use proper maxLines and ellipsizing to match React behavior, or prevent truncation if text fits",
-        "Verify Role field renders consistently - either 'No role' or 'Member' should match the data contract across platforms",
-        "Align Runtime Config layout in Android to a single 4-column row matching React, or accept the label-value grid as intentional and update baseline",
-        "Add pencil edit icons next to DISPLAY NAME, DESCRIPTION, and RUNTIME CONFIG section headers on Android to match React"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.18608039318939795
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffdfff0c3f800f0c3f800f0c7f8fff00078fff000380ffffff807f97ff807f87fffffe1c02ffffffff",
+      "generatedAt": "2026-08-28T22:40:40.665Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.18061429092234782
     },
     {
       "id": "screens.members.agent-detail.reminders",
@@ -2371,7 +2305,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06130419519045116
+      "metricMismatch": 0.06128225381779884
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2512,71 +2446,29 @@
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe8010003180100821000c000000840dfc80008c018fff00018fff0fffffffdfff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff1fff8fff0fffc0fff87f81fff9fffffff1ffd47fffffffffffffdfff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80f81ffeffffffff",
-      "generatedAt": "2026-08-14T22:11:13.230Z",
-      "severity": "medium",
-      "summary": [
-        "Avatar image is missing on Android — only a solid cyan square is shown on React while Android displays a stylized agent icon",
-        "Profile/Activity tabs are positioned differently; Android tabs are clipped by the dropdown menu and lack proper horizontal padding",
-        "Dropdown menu (Stop Agent / Restart / Reset) overlaps the tab bar and avatar section on Android more severely than React",
-        "Created/Creator metadata fields are laid out vertically on Android but side-by-side on React",
-        "Runtime Config grid on React is a 4-column row (Runtime, Model, Reasoning, Mode) but Android is a 2-column grid, causing different visual flow"
-      ],
-      "likelyCauses": [
-        "React implementation uses CSS grid/flex with different breakpoint assumptions than Android Compose",
-        "Android layout is using a Column with IntrinsicSize or fixed two-column constraints for Info and Runtime Config sections",
-        "Dropdown menu positioning lacks z-index/stacking logic on Android, causing overlap with header tabs",
-        "Image/avatar component not yet implemented on Android for member profiles (placeholder QR-style icon used)",
-        "Inconsistent spacing tokens between React and Android design systems"
-      ],
-      "suggestedOwner": "android-ui-engineer",
-      "suggestedFixes": [
-        "Implement avatar image loading on Android to match React's rendering (replace placeholder icon)",
-        "Apply consistent horizontal layout for Info section (Created/Creator) — either both side-by-side or both stacked",
-        "Refactor Runtime Config to match React's 4-column header arrangement, or apply consistent grid token across platforms",
-        "Stack Environment Variables vertically on Android to match React layout, or align both to a 2-column grid via shared token",
-        "Adjust dropdown menu z-order/elevation so it does not overlap the Profile/Activity tab bar"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.20205843831436243
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe8010003180100821000c000000840dfc80008c018fff00018fff0fffffffdfff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff1fff8fff0fffc0fff87f81fff9fffffff1ffd47fffffffffffffdfff0c3f800f8c3f800f0c7f8fff00078fff000380ffffff807f97ff807f87fffffe1ffeffffffff",
+      "generatedAt": "2026-08-28T22:40:40.837Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1962092059248457
     },
     {
       "id": "components.members.avatar-management",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffe801b003384100a310000000081fe000e81ff0b3f8fff8fff8fffffffffffc7ffa001ffff8001ffff8001c1ff8003fffff81ffffffe7f0fff87ff0ffffffffdfffffff1ff803bfbffffffffffffff9cffffff8c3f8fff9c7fdfff8c7f80ff0003ffff8403fcfffffffeff87ffffff97ff99dbffff80010ffeffffffff",
-      "generatedAt": "2026-08-14T22:11:13.821Z",
-      "severity": "high",
-      "summary": [
-        "Header avatar differs: React shows a solid teal square placeholder; Android shows a pixel-art avatar with cyan/black pattern.",
-        "Header layout differs: React places avatar, title, subtitle and action icons on a single row; Android stacks the avatar with title and description on two rows, showing @Product-UX-Designer handle and a 'Working' status indicator missing in React.",
-        "Subtitle/description text is truncated with ellipsis on both, but React uses one-line truncation 'Turns product feedback, s…' while Android wraps onto a second line 'Turns product feedback, screensho…'.",
-        "Profile overview block order is reordered: React puts Display Name, Description, then Info (Role/Computer/Created/Creator); Android puts Display Name, Description, then a header/profile card with handle and status before Info, and visually swaps 'Created' above 'Creator'.",
-        "'CHOOSE AVATAR' avatar picker grid (3 rows × up to 7 columns of avatar tiles with an upload tile) is present in React but entirely missing in Android view."
-      ],
-      "likelyCauses": [
-        "Android implementation is rendering a different component variant (profile detail/full view vs. React's edit/management view) rather than the same avatar management screen.",
-        "Missing avatar picker grid on Android indicates the 'Choose Avatar' section was not ported or was conditionally hidden on the Android screen.",
-        "Section ordering (Display Name/Description/Info/Runtime Config vs. Android's interleaved profile header) suggests a different screen layout spec or a misunderstanding of the screen's purpose.",
-        "Data discrepancies (Created date, Computer name truncation, agent count, skills count) may indicate the Android screen loaded a different member record or test fixture.",
-        "Header avatar divergence (solid color placeholder vs. pixel-art image) suggests the Android version has the uploaded avatar asset but the React screenshot was taken before asset load or used a fallback."
-      ],
-      "suggestedOwner": "android-engineering",
-      "suggestedFixes": [
-        "Align Android's Members Avatar Management screen with React's screen contract: render one header row (avatar + title + subtitle + chat/menu icons) instead of a two-row profile header with @handle and status.",
-        "Add the 'CHOOSE AVATAR' grid section (avatar tiles + upload tile) to the Android screen, matching React's 3-row layout and selection state.",
-        "Reorder Info fields on Android to match React: Role (with help '?' and edit pencil) → Computer (full, non-truncated) → Created → Creator.",
-        "Unify Runtime Config layout: render Runtime/Model/Reasoning/Mode in a single horizontal row, and add the section edit pencil; remove or move 'Environment Variables' and 'Created Agents' / 'Skills' sections unless they are part of the same component's contract.",
-        "Truncate subtitle/description consistently (same number of characters and ellipsis behavior) across platforms."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2415596602800394
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffe801b003384100a310000000081fe000e81ff0b3f8fff8fff8fffffffffffc7ffa001ffff8001ffff8001c1ff8003fffff81ffffffe7f0fff87ff0ffffffffdfffffff1ff803bfbffffffffffffff9cffffff8c3f8fff9c7fdfff8c7f80ff0003ffff8403fcfffffffcff87ffffff97ff89cfffff80070ffeffffffff",
+      "generatedAt": "2026-08-28T22:40:40.833Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.23827351777588746
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2644,7 +2536,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1691487422530077
+      "metricMismatch": 0.16914941737216616
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2963,7 +2855,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:16.525Z",
+      "generatedAt": "2026-08-28T22:40:40.965Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2976,7 +2868,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:16.525Z",
+      "generatedAt": "2026-08-28T22:40:40.965Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2989,7 +2881,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:16.525Z",
+      "generatedAt": "2026-08-28T22:40:40.965Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3002,7 +2894,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T01:01:16.525Z",
+      "generatedAt": "2026-08-28T22:40:40.965Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
