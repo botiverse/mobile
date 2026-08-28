@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -73,6 +74,15 @@ private fun SlockTabPagerProbeScreen() {
             .optInt(TAB_PAGER_PROBE_INITIAL_TAB, 0)
             .coerceIn(0, TabPagerProbeLabels.lastIndex)
     var selectedTab by remember { mutableStateOf(initialTab) }
+    // task #233 round-3: on-screen event chain. Newest first, bounded, with a
+    // monotonic sequence number so screenshots prove ordering and liveness.
+    var eventSeq by remember { mutableStateOf(0) }
+    val eventLog = remember { mutableStateListOf<String>() }
+    val logEvent: (String) -> Unit = { line ->
+        eventSeq += 1
+        eventLog.add(0, "#$eventSeq $line")
+        while (eventLog.size > 10) eventLog.removeAt(eventLog.size - 1)
+    }
     val pageListStates = listOf(
         rememberLazyListState(),
         rememberLazyListState(),
@@ -81,7 +91,11 @@ private fun SlockTabPagerProbeScreen() {
     Box(modifier = Modifier.fillMaxSize().background(Color.White)) {
         TabPager(
             selectedIndex = selectedTab,
-            onSelectedIndexChange = { selectedTab = it },
+            onSelectedIndexChange = {
+                logEvent("onSelectedIndexChange -> $it")
+                selectedTab = it
+            },
+            onDebugEvent = logEvent,
             pageCount = TabPagerProbeLabels.size,
             gesturePolicy = TabPagerGesturePolicy(
                 startEdgeInset = slockPlatformTabPagerStartEdgeInsetDp().dp,
@@ -93,11 +107,21 @@ private fun SlockTabPagerProbeScreen() {
                     text = "selected=$selectedTab (${TabPagerProbeLabels[selectedTab]})",
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                 )
+                // Event-chain readout: which link is dead shows up as the last
+                // line that ever appears (gesture never reaching the pager /
+                // settle never firing / effect not running / callback lost).
+                eventLog.forEach { line ->
+                    Text(
+                        text = line,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    )
+                }
                 Row(modifier = Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 16.dp)) {
                     SegmentedControl(
                         selectedValue = TabPagerProbeLabels[selectedTab],
                         options = TabPagerProbeLabels.map { SegmentedControlOption(value = it, label = it) },
                         onValueSelected = { value ->
+                            logEvent("tap $value")
                             TabPagerProbeLabels.indexOf(value).takeIf { it >= 0 }?.let { selectedTab = it }
                         },
                         modifier = Modifier.fillMaxWidth()

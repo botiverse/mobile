@@ -59,6 +59,13 @@ fun TabPager(
     modifier: Modifier = Modifier,
     gesturePolicy: TabPagerGesturePolicy = TabPagerGesturePolicy(),
     tabBar: @Composable () -> Unit = {},
+    /**
+     * task #233 diagnostic tap: every sync-relevant event (effect launches,
+     * page transitions, sync calls and their failures) is reported here so an
+     * acceptance carrier can render the event chain on screen. Production
+     * callers leave it null — no strings are built when unset.
+     */
+    onDebugEvent: ((String) -> Unit)? = null,
     pageContent: @Composable (page: Int, settled: Boolean) -> Unit,
 ) {
     val pagerState = rememberPagerState(
@@ -74,13 +81,19 @@ fun TabPager(
     // (SlockPagerScrollProbePage); a cancellation mid-animation must not be
     // treated as failure, so CancellationException rethrows.
     LaunchedEffect(pagerState, selectedIndex) {
+        onDebugEvent?.invoke("sel-effect sel=$selectedIndex cur=${pagerState.currentPage}")
         if (selectedIndex in 0 until pageCount && selectedIndex != pagerState.currentPage) {
             try {
                 pagerState.animateScrollToPage(selectedIndex)
+                onDebugEvent?.invoke("animate ok -> $selectedIndex")
             } catch (cancelled: CancellationException) {
+                onDebugEvent?.invoke("animate cancelled -> $selectedIndex")
                 throw cancelled
-            } catch (_: Throwable) {
+            } catch (failed: Throwable) {
+                onDebugEvent?.invoke("animate ERR ${failed::class.simpleName}")
                 runCatching { pagerState.scrollToPage(selectedIndex) }
+                    .onSuccess { onDebugEvent?.invoke("scrollTo ok -> $selectedIndex") }
+                    .onFailure { onDebugEvent?.invoke("scrollTo ERR ${it::class.simpleName}") }
             }
         }
     }
@@ -93,9 +106,18 @@ fun TabPager(
     // nothing.
     val settledPage = pagerState.settledPage
     LaunchedEffect(settledPage) {
+        onDebugEvent?.invoke("settled=$settledPage sel=$selectedIndex")
         if (settledPage != selectedIndex && settledPage in 0 until pageCount) {
             onSelectedIndexChange(settledPage)
+            onDebugEvent?.invoke("report -> $settledPage")
         }
+    }
+    // Raw pager motion, visible even when settle never fires: value-keyed on
+    // currentPage (an effect, not a composition-body call — the debug sink
+    // mutates state, which is illegal during composition).
+    val currentPage = pagerState.currentPage
+    LaunchedEffect(currentPage) {
+        onDebugEvent?.invoke("current=$currentPage")
     }
 
     Column(modifier = modifier) {
