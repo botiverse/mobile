@@ -1660,7 +1660,7 @@ private fun TaskStatus.nextStatus(): TaskStatus =
         TaskStatus.Closed -> TaskStatus.Todo
     }
 
-private fun TaskSummary.tasksMeaningfulDisplayTitle(): String {
+internal fun TaskSummary.tasksMeaningfulDisplayTitle(): String {
     val raw = tasksDisplayTitle()
     val numberLabel = taskNumber?.let { "#$it" } ?: return raw
     return raw.removePrefix(numberLabel).trim().takeIf { it.isNotBlank() } ?: raw
