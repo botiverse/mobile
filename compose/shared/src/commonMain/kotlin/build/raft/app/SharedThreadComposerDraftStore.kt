@@ -29,6 +29,8 @@ internal data class SharedThreadComposerDraftState(
     val draftKey: String? = null,
     val seedText: String = "",
     val seedAsTask: Boolean = false,
+    /** Session-only image policy; deliberately excluded from persisted drafts. */
+    val originalImage: Boolean = false,
     val syncNonce: Int = 0,
     val editorCommandNonce: Int = 0,
     val editorCommand: ThreadComposerEditorCommand? = null,
@@ -774,6 +776,7 @@ private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosti
     when (this) {
         is SharedThreadComposerDraftIntent.Start -> "Start"
         is SharedThreadComposerDraftIntent.Change -> "Change"
+        is SharedThreadComposerDraftIntent.SetOriginalImage -> "SetOriginalImage"
         is SharedThreadComposerDraftIntent.InsertMention -> "InsertMention"
         SharedThreadComposerDraftIntent.Flush -> "Flush"
         is SharedThreadComposerDraftIntent.BeginSend -> "BeginSend"
@@ -813,6 +816,7 @@ internal sealed interface SharedThreadComposerDraftIntent {
         val draftKey: String? = null
     ) : SharedThreadComposerDraftIntent
     data class Change(val seedText: String? = null, val seedAsTask: Boolean? = null) : SharedThreadComposerDraftIntent
+    data class SetOriginalImage(val enabled: Boolean) : SharedThreadComposerDraftIntent
     data class InsertMention(val handle: String) : SharedThreadComposerDraftIntent
     data object Flush : SharedThreadComposerDraftIntent
     data object BeginSend : SharedThreadComposerDraftIntent
@@ -895,21 +899,27 @@ internal class SharedThreadComposerDraftStore(
     ): SharedThreadComposerDraftState =
         when (intent) {
             is SharedThreadComposerDraftIntent.Start -> {
-                val sameInstance = current.instanceId == intent.composer.instanceId
+                val nextDraftKey = intent.draftKey?.takeIf { it.isNotBlank() }
+                val sameSession =
+                    current.instanceId == intent.composer.instanceId &&
+                        current.draftKey == nextDraftKey
                 val replaceMountedEditor =
-                    sameInstance &&
+                    sameSession &&
                         (current.seedText != intent.composer.seedText || current.seedAsTask != intent.composer.seedAsTask)
                 val commandId =
                     when {
                         replaceMountedEditor -> current.editorCommandNonce + 1
-                        sameInstance -> current.editorCommandNonce
+                        sameSession -> current.editorCommandNonce
                         else -> 0
                     }
                 SharedThreadComposerDraftState(
                     instanceId = intent.composer.instanceId,
-                    draftKey = intent.draftKey,
+                    draftKey = nextDraftKey,
                     seedText = intent.composer.seedText,
                     seedAsTask = intent.composer.seedAsTask,
+                    // This preference belongs to the mounted composer session. A remount of the
+                    // same instance keeps the user's choice; a new instance starts compressed.
+                    originalImage = if (sameSession) current.originalImage else false,
                     syncNonce = intent.composer.syncNonce,
                     editorCommandNonce = commandId,
                     editorCommand =
@@ -922,7 +932,7 @@ internal class SharedThreadComposerDraftStore(
                                 expectedText = current.seedText,
                                 expectedAsTask = current.seedAsTask,
                             )
-                        } else if (sameInstance) {
+                        } else if (sameSession) {
                             current.editorCommand
                         } else {
                             null
@@ -950,6 +960,8 @@ internal class SharedThreadComposerDraftStore(
                             }
                     )
                 }
+            is SharedThreadComposerDraftIntent.SetOriginalImage ->
+                current.copy(originalImage = intent.enabled)
             is SharedThreadComposerDraftIntent.InsertMention ->
                 current.copy(
                     seedText = current.seedText.withInsertedThreadMention(intent.handle),
@@ -991,6 +1003,8 @@ internal class SharedThreadComposerDraftStore(
                     focusRequestNonce = current.focusRequestNonce + 1,
                     sending = true,
                     failureLabel = null,
+                    // Keep the choice until the send attempt reaches a terminal completion.
+                    originalImage = current.originalImage,
                     removedAttachmentIds = emptySet(),
                     uploadedAttachments = emptyList(),
                     externalShareSources = emptyList(),
@@ -1050,6 +1064,7 @@ internal class SharedThreadComposerDraftStore(
                     uploadedAttachments = if (shouldClearComposer) emptyList() else current.uploadedAttachments,
                     externalShareSources = if (shouldClearComposer) emptyList() else current.externalShareSources,
                     pendingMentionActions = intent.pendingMentionActions,
+                    originalImage = if (shouldClearComposer) false else current.originalImage,
                     mentionActionNoticeTitle = null,
                     mentionActionNotice = null,
                     mentionActionStates = emptyMap(),

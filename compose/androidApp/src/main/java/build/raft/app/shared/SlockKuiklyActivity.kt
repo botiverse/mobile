@@ -18,6 +18,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Typeface
@@ -27,6 +28,7 @@ import android.graphics.fonts.Font
 import android.graphics.fonts.FontFamily
 import android.graphics.fonts.FontStyle
 import android.net.Uri
+import android.media.ExifInterface
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -160,6 +162,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import java.io.FileOutputStream
 import java.net.URL
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -186,6 +189,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 internal const val THREAD_CAMERA_CAPTURE_CACHE_DIR_NAME = "slock-camera-captures"
+internal const val THREAD_ATTACHMENT_IMAGE_MAX_EDGE_PX = 2048
+internal const val THREAD_ATTACHMENT_IMAGE_JPEG_QUALITY = 82
+internal const val THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR = "attachment_image_compression_failed"
+private val THREAD_ATTACHMENT_IMAGE_EXTENSIONS =
+        setOf("avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "webp")
+private val THREAD_ATTACHMENT_VIDEO_EXTENSIONS =
+        setOf("3gp", "avi", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "webm", "wmv")
+
+private class ThreadAttachmentImageCompressionException(
+        message: String,
+        cause: Throwable? = null,
+) : IOException(message, cause)
 
 internal fun formatMergedSettingsDiagnosticsExportText(
         about: Map<String, Any>,
@@ -1452,6 +1467,7 @@ open class SlockKuiklyActivity :
             channelId: String,
             imageOnly: Boolean,
             capture: Boolean,
+            compressImages: Boolean = false,
             callback: KuiklyRenderCallback?
     ) {
         if (pendingThreadAttachmentUpload != null) {
@@ -1466,7 +1482,12 @@ open class SlockKuiklyActivity :
             return
         }
         pendingThreadAttachmentUpload =
-                PendingThreadAttachmentUpload(channelId = channelId, callback = callback)
+                PendingThreadAttachmentUpload(
+                        channelId = channelId,
+                        imageOnly = imageOnly,
+                        compressImages = compressImages,
+                        callback = callback
+                )
         runCatching {
                     if (capture) {
                         val cameraCapture = createPendingThreadCameraCapture()
@@ -1633,7 +1654,12 @@ open class SlockKuiklyActivity :
         lifecycleScope.launch(Dispatchers.IO) {
             val result =
                     try {
-                        readThreadPlatformPickedFiles(uris, source = source)
+                        readThreadPlatformPickedFiles(
+                                uris = uris,
+                                source = source,
+                                imageOnly = pending.imageOnly,
+                                compressImages = pending.compressImages
+                        )
                     } finally {
                         sourceFilesToDelete.forEach { file -> runCatching { file.delete() } }
                     }
@@ -1666,23 +1692,35 @@ open class SlockKuiklyActivity :
 
     private fun readThreadPlatformPickedFiles(
             uris: List<Uri>,
-            source: String = "platform_picker"
+            source: String = "platform_picker",
+            imageOnly: Boolean = false,
+            compressImages: Boolean = false,
     ): Map<String, Any> {
         cleanupPickedThreadAttachmentCache()
         val files = mutableListOf<PickedThreadAttachment>()
         val errorsJson = JSONArray()
         uris.forEachIndexed { index, uri ->
             runCatching {
-                        pickedThreadAttachmentRef(uri)
+                        pickedThreadAttachmentRef(
+                                uri,
+                                imageOnly = imageOnly,
+                                compressImages = compressImages
+                        )
                     }
                     .onSuccess { file ->
                         files += file
                     }
                     .onFailure { throwable ->
+                        val errorCode =
+                                if (throwable is ThreadAttachmentImageCompressionException) {
+                                    THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+                                } else {
+                                    "attachment_read_failed"
+                                }
                         errorsJson.put(
                                 JSONObject()
                                         .put("index", index)
-                                        .put("errorCode", "attachment_read_failed")
+                                        .put("errorCode", errorCode)
                                         .put("message", throwable.message ?: "Attachment read failed")
                         )
                         SlockAppLog.record(
@@ -1692,11 +1730,24 @@ open class SlockKuiklyActivity :
                     }
         }
         if (files.isEmpty()) {
+            val compressionFailed =
+                    (0 until errorsJson.length()).any { index ->
+                        errorsJson.optJSONObject(index)?.optString("errorCode") ==
+                                THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+                    }
             return mapOf(
                     "code" to 400,
                     "bodyText" to "",
-                    "errorCode" to "attachment_read_failed",
-                    "errorBodyText" to "No readable attachments"
+                    "errorCode" to if (compressionFailed) {
+                        THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+                    } else {
+                        "attachment_read_failed"
+                    },
+                    "errorBodyText" to if (compressionFailed) {
+                        "Unable to compress image attachment"
+                    } else {
+                        "No readable attachments"
+                    }
             )
         }
         val filesJson = JSONArray()
@@ -1717,6 +1768,11 @@ open class SlockKuiklyActivity :
                 "picker_files_ready fileCount=${files.size} bytes=${files.sumOf { it.sizeBytes ?: 0L }}"
         )
         val skippedCount = errorsJson.length()
+        val hasCompressionFailure =
+                (0 until errorsJson.length()).any { index ->
+                    errorsJson.optJSONObject(index)?.optString("errorCode") ==
+                            THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+                }
         val body =
                 JSONObject().put("files", filesJson).apply {
                     if (skippedCount > 0) {
@@ -1731,25 +1787,229 @@ open class SlockKuiklyActivity :
             if (skippedCount > 0) {
                 put("errors", errorsJson)
                 put("skippedCount", skippedCount)
-                put("errorCode", "attachment_read_partial")
+                put(
+                        "errorCode",
+                        if (hasCompressionFailure) {
+                            THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+                        } else {
+                            "attachment_read_partial"
+                        }
+                )
                 put("errorBodyText", "$skippedCount attachment(s) could not be read")
             }
         }
     }
 
-    private fun pickedThreadAttachmentRef(uri: Uri): PickedThreadAttachment {
+    private fun pickedThreadAttachmentRef(
+            uri: Uri,
+            imageOnly: Boolean = false,
+            compressImages: Boolean = false,
+    ): PickedThreadAttachment {
         val fileName = queryPickedFileName(uri) ?: uri.lastPathSegment ?: "attachment"
         val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-        val cachedFile = cachePickedThreadAttachment(uri, fileName, mimeType)
+        val shouldCompress = compressImages && isImageAttachment(fileName, mimeType, imageOnly)
+        val cachedFile =
+                if (shouldCompress) {
+                    cacheCompressedPickedImage(uri, fileName, mimeType)
+                } else {
+                    cachePickedThreadAttachment(uri, fileName, mimeType)
+                }
         val fileRef = Uri.fromFile(cachedFile).toString()
+        val resolvedMimeType =
+                if (shouldCompress) {
+                    "image/jpeg"
+                } else {
+                    mimeType
+                }
         val sizeBytes = cachedFile.length().takeIf { it > 0L } ?: queryPickedFileSize(uri)
         return PickedThreadAttachment(
                 fileRef = fileRef,
-                fileName = fileName,
-                mimeType = mimeType,
+                fileName = if (resolvedMimeType == "image/jpeg") {
+                    compressedPickedImageFileName(fileName)
+                } else {
+                    fileName
+                },
+                mimeType = resolvedMimeType,
                 previewUri = fileRef,
                 sizeBytes = sizeBytes
         )
+    }
+
+    private fun isImageAttachment(fileName: String, mimeType: String, imageOnly: Boolean): Boolean {
+        val normalizedMimeType = mimeType.substringBefore(';').trim().lowercase(Locale.US)
+        if (normalizedMimeType.startsWith("video/")) return false
+        if (normalizedMimeType.startsWith("image/")) return true
+        val extension = fileName
+                .substringAfterLast('/')
+                .substringAfterLast('\\')
+                .substringAfterLast('.', "")
+                .lowercase(Locale.US)
+        // PickVisualMedia.ImageAndVideo can return a video even though the shared
+        // action was requested with imageOnly=true.  Check video extensions before
+        // the image-only/octet-stream fallback so an unavailable provider MIME type
+        // never sends an MP4/MOV through the image decoder.
+        if (extension in THREAD_ATTACHMENT_VIDEO_EXTENSIONS) return false
+        if (extension in THREAD_ATTACHMENT_IMAGE_EXTENSIONS) return true
+        return imageOnly && normalizedMimeType == "application/octet-stream"
+    }
+
+    private fun compressedPickedImageFileName(fileName: String): String {
+        val leaf = fileName.substringAfterLast('/').substringAfterLast('\\').ifBlank { "image" }
+        val stem = leaf.substringBeforeLast('.', leaf).ifBlank { "image" }
+        return "$stem.jpg"
+    }
+
+    private fun cacheCompressedPickedImage(uri: Uri, fileName: String, mimeType: String): File {
+        val sourceFile = cachePickedThreadAttachment(uri, fileName, mimeType)
+        val outputFile =
+                File(
+                        pickedThreadAttachmentCacheDir(),
+                        safePickedThreadAttachmentFileName(
+                                compressedPickedImageFileName(fileName),
+                                "image/jpeg"
+                        )
+                )
+        return try {
+            compressPickedImageFile(sourceFile, outputFile)
+            outputFile
+        } catch (throwable: Throwable) {
+            runCatching { outputFile.delete() }
+            if (throwable is ThreadAttachmentImageCompressionException) {
+                throw throwable
+            }
+            throw ThreadAttachmentImageCompressionException(
+                    throwable.message ?: "Unable to compress image attachment",
+                    throwable
+            )
+        } finally {
+            runCatching { sourceFile.delete() }
+        }
+    }
+
+    private fun compressPickedImageFile(sourceFile: File, outputFile: File) {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(sourceFile.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            throw ThreadAttachmentImageCompressionException("Unable to decode image attachment")
+        }
+        val orientation =
+                runCatching {
+                    ExifInterface(sourceFile.absolutePath).getAttributeInt(
+                            ExifInterface.TAG_ORIENTATION,
+                            ExifInterface.ORIENTATION_NORMAL
+                    )
+                }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+        val sampleSize = imageCompressionSampleSize(bounds.outWidth, bounds.outHeight)
+        var decoded: Bitmap? = null
+        var oriented: Bitmap? = null
+        var resized: Bitmap? = null
+        try {
+            decoded =
+                    BitmapFactory.decodeFile(
+                            sourceFile.absolutePath,
+                            BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                    ) ?: throw ThreadAttachmentImageCompressionException("Unable to decode image attachment")
+            oriented = decoded
+            val decodedBitmap = requireNotNull(decoded)
+            val orientationMatrix = imageOrientationMatrix(orientation)
+            if (!orientationMatrix.isIdentity) {
+                oriented = Bitmap.createBitmap(
+                        decodedBitmap,
+                        0,
+                        0,
+                        decodedBitmap.width,
+                        decodedBitmap.height,
+                        orientationMatrix,
+                        true
+                )
+            }
+            val orientedBitmap = requireNotNull(oriented)
+            val longestEdge = max(orientedBitmap.width, orientedBitmap.height)
+            val scale =
+                    THREAD_ATTACHMENT_IMAGE_MAX_EDGE_PX.toFloat() /
+                            longestEdge.coerceAtLeast(1).toFloat()
+            resized =
+                    if (scale < 1f) {
+                        Bitmap.createScaledBitmap(
+                                orientedBitmap,
+                                (orientedBitmap.width * scale).roundToInt().coerceAtLeast(1),
+                                (orientedBitmap.height * scale).roundToInt().coerceAtLeast(1),
+                                true
+                        )
+                    } else {
+                        orientedBitmap
+                    }
+            val resizedBitmap = requireNotNull(resized)
+            if (!outputFile.parentFile?.exists().orFalse() &&
+                    outputFile.parentFile?.mkdirs() != true) {
+                throw ThreadAttachmentImageCompressionException("Attachment cache unavailable")
+            }
+            FileOutputStream(outputFile).use { stream ->
+                if (!resizedBitmap.compress(
+                                Bitmap.CompressFormat.JPEG,
+                                THREAD_ATTACHMENT_IMAGE_JPEG_QUALITY,
+                                stream
+                        )
+                ) {
+                    throw ThreadAttachmentImageCompressionException("Unable to encode image attachment")
+                }
+            }
+            if (!outputFile.isFile || outputFile.length() <= 0L) {
+                throw ThreadAttachmentImageCompressionException("Unable to encode image attachment")
+            }
+        } catch (throwable: Throwable) {
+            if (throwable is ThreadAttachmentImageCompressionException) throw throwable
+            throw ThreadAttachmentImageCompressionException(
+                    throwable.message ?: "Unable to compress image attachment",
+                    throwable
+            )
+        } finally {
+            // Every decoder/transform allocation is owned by this method.  Keep
+            // nullable references until the end so exceptions from createBitmap,
+            // createScaledBitmap, or the encoder cannot leak a native bitmap.
+            if (resized !== oriented) resized?.recycleIfNeeded()
+            if (oriented !== decoded) oriented?.recycleIfNeeded()
+            decoded?.recycleIfNeeded()
+        }
+    }
+
+    private fun imageCompressionSampleSize(sourceWidth: Int, sourceHeight: Int): Int {
+        var sampleSize = 1
+        val sampledEdge = max(sourceWidth, sourceHeight).toLong()
+        while (
+                sampleSize <= Int.MAX_VALUE / 2 &&
+                        sampledEdge / (sampleSize.toLong() * 2L) >= THREAD_ATTACHMENT_IMAGE_MAX_EDGE_PX
+        ) {
+            sampleSize *= 2
+        }
+        return sampleSize
+    }
+
+    private fun imageOrientationMatrix(orientation: Int): Matrix =
+            Matrix().apply {
+                when (orientation) {
+                    ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> postScale(-1f, 1f)
+                    ExifInterface.ORIENTATION_ROTATE_180 -> postRotate(180f)
+                    ExifInterface.ORIENTATION_FLIP_VERTICAL -> postScale(1f, -1f)
+                    ExifInterface.ORIENTATION_TRANSPOSE -> {
+                        postRotate(90f)
+                        postScale(-1f, 1f)
+                    }
+                    ExifInterface.ORIENTATION_ROTATE_90 -> postRotate(90f)
+                    ExifInterface.ORIENTATION_TRANSVERSE -> {
+                        postRotate(-90f)
+                        postScale(-1f, 1f)
+                    }
+                    ExifInterface.ORIENTATION_ROTATE_270 -> postRotate(-90f)
+                }
+            }
+
+    private fun Boolean?.orFalse(): Boolean = this == true
+
+    private fun Bitmap.recycleIfNeeded() {
+        runCatching {
+            if (!isRecycled) recycle()
+        }
     }
 
     private fun cachePickedThreadAttachment(uri: Uri, fileName: String, mimeType: String): File {
@@ -1762,19 +2022,23 @@ open class SlockKuiklyActivity :
                         cacheDir,
                         safePickedThreadAttachmentFileName(fileName, mimeType)
                 )
-        val bytesCopied =
-                contentResolver.openInputStream(uri)?.use { input ->
-                    targetFile.outputStream().use { output -> input.copyTo(output) }
-                } ?: throw IOException("Unable to read attachment")
-        if (bytesCopied <= 0L || !targetFile.isFile || targetFile.length() <= 0L) {
+        return try {
+            val bytesCopied =
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        targetFile.outputStream().use { output -> input.copyTo(output) }
+                    } ?: throw IOException("Unable to read attachment")
+            if (bytesCopied <= 0L || !targetFile.isFile || targetFile.length() <= 0L) {
+                throw IOException("Unable to read attachment")
+            }
+            SlockAppLog.record(
+                    "SlockKuiklyAttachment",
+                    "picker_cached_file uriScheme=${uri.scheme.orEmpty()} fileName=${fileName.take(80)} bytes=${targetFile.length()}"
+            )
+            targetFile
+        } catch (throwable: Throwable) {
             runCatching { targetFile.delete() }
-            throw IOException("Unable to read attachment")
+            throw throwable
         }
-        SlockAppLog.record(
-                "SlockKuiklyAttachment",
-                "picker_cached_file uriScheme=${uri.scheme.orEmpty()} fileName=${fileName.take(80)} bytes=${targetFile.length()}"
-        )
-        return targetFile
     }
 
     private fun pickedThreadAttachmentCacheDir(): File =
@@ -2450,6 +2714,8 @@ internal object SlockKuiklyAdapters {
 
 private data class PendingThreadAttachmentUpload(
         val channelId: String,
+        val imageOnly: Boolean,
+        val compressImages: Boolean,
         val callback: KuiklyRenderCallback?
 )
 
@@ -3461,6 +3727,7 @@ internal class SlockKuiklyBridgeModule(
                         channelId = request.optString("channelId"),
                         imageOnly = request.optBoolean("imageOnly", false),
                         capture = request.optBoolean("capture", false),
+                        compressImages = request.optBoolean("compressImages", false),
                         callback = callback
                 ) ?: callback?.invoke(
                         mapOf(

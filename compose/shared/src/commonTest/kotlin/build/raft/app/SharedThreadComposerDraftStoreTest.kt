@@ -15,6 +15,82 @@ import kotlin.test.assertTrue
 
 class SharedThreadComposerDraftStoreTest {
     @Test
+    fun originalImageDefaultsToCompressedAndTogglesWithinSession() {
+        val store = SharedThreadComposerDraftStore()
+        val composer = KuiklyThreadComposerPayload(instanceId = "composer-image")
+
+        store.dispatch(SharedThreadComposerDraftIntent.Start(composer = composer, draftKey = "send=channel-image"))
+        assertFalse(store.state.value.originalImage)
+
+        store.dispatch(SharedThreadComposerDraftIntent.SetOriginalImage(true))
+        assertTrue(store.state.value.originalImage)
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = composer.copy(seedText = "remounted"),
+                draftKey = "send=channel-image"
+            )
+        )
+        assertTrue(store.state.value.originalImage)
+    }
+
+    @Test
+    fun originalImageResetsForNewSessionAndAfterCompletedSend() {
+        val store = SharedThreadComposerDraftStore()
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-old"),
+                draftKey = "send=channel-old"
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.SetOriginalImage(true))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-new"),
+                draftKey = "send=channel-new"
+            )
+        )
+        assertFalse(store.state.value.originalImage)
+
+        store.dispatch(SharedThreadComposerDraftIntent.SetOriginalImage(true))
+        store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        store.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
+        assertFalse(store.state.value.originalImage)
+    }
+
+    @Test
+    fun originalImagePreferenceIsNotWrittenToPersistedDraft() {
+        val storage = InMemorySlockKeyValueStore()
+        val persistence = SharedThreadComposerDraftPersistence(storage)
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val key = "send=channel-image|parent=_|mention=channel-image"
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-image"),
+                draftKey = key
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.SetOriginalImage(true))
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "persisted text"))
+        store.dispatch(SharedThreadComposerDraftIntent.Flush)
+
+        val restored = SharedThreadComposerDraftPersistence(storage).read(key)
+        assertEquals("persisted text", restored?.text)
+
+        val restoredStore = SharedThreadComposerDraftStore(persistSlices = listOf(SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))))
+        restoredStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-restored"),
+                draftKey = key
+            )
+        )
+        assertFalse(restoredStore.state.value.originalImage)
+    }
+
+    @Test
     fun localEditorEchoAndChromeNeverCreateAHostEditorCommand() {
         val store = SharedThreadComposerDraftStore()
         store.dispatch(
