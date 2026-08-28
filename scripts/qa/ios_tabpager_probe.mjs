@@ -151,7 +151,26 @@ try {
   }
 
   if (groups.includes("5")) {
-    rec("group 5: scroll retention — two upward drags, leave tab, return");
+    // ⚠️ Pin the starting tab first. Run 33163848659 scrolled whichever tab group 4
+    // happened to leave selected — that was Gamma, the LAST tab, so the "leave"
+    // leg had nowhere to go and the "return" landed on a different tab that had
+    // never been scrolled. The reading looked like lost scroll position and was
+    // actually a sequence that never performed the round trip. Retention has to
+    // be tested on a tab that has a neighbour to leave to.
+    const alphaLine = (await drv.dumpUi()).split("\n").find((l) => /"Alpha"/.test(l));
+    if (alphaLine) {
+      const m = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(alphaLine);
+      if (m) {
+        const pt = { x: Math.round((Number(m[1]) + Number(m[3])) / 2), y: Math.round((Number(m[2]) + Number(m[4])) / 2) };
+        await drv.tap(pt.x, pt.y);
+        await wait(1200);
+        rec("group 5: pinned start tab to Alpha", { at: pt });
+      }
+    }
+    const startDump = await drv.dumpUi();
+    const startSel = (/selected=(\d+)/.exec(startDump) || [])[1];
+    verdict.g5StartTab = startSel ?? null;
+    rec("group 5: scroll retention — two upward drags, leave tab, return", { startTab: startSel });
     for (const n of [1, 2]) {
       await drv.drag({ from: { x: 0.5, y: 0.75 }, to: { x: 0.5, y: 0.30 }, durationSeconds: 0.3 });
       rec(`group 5: scroll drag ${n}/2`);
