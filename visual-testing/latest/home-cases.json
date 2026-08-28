@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-28T00:56:48.028Z",
+  "generatedAt": "2026-08-28T01:01:26.333Z",
   "runId": "bbe9c375-20260828005428",
   "cases": [
     {
@@ -5424,17 +5424,30 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.856Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-28T00:59:28.882Z",
+            "severity": "low",
+            "summary": [
+              "Status dot colors and 'Waiting pulse' label appear visually consistent between React and iOS renders.",
+              "Typography weight, size, and color of the 'Waiting pulse' label match between platforms.",
+              "No missing or extra elements detected in the iOS render compared to the React baseline.",
+              "Dot sizing, spacing, and circular shape appear equivalent across both platforms.",
+              "Pixel mismatch ratio of 0.23% is within tolerance and reflects only minor anti-aliasing differences."
+            ],
+            "likelyCauses": [
+              "Minor anti-aliasing variation between web (React) and native (iOS) rasterization pipelines.",
+              "Subpixel rendering differences in font hinting between the two platforms."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "No action required; current visual diff is within acceptable tolerance.",
+              "If stricter parity is desired, consider aligning dot border/stroke width to a shared design token.",
+              "Optional: tune ignoreAntialiasing tolerance if false positives persist."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -5511,17 +5524,30 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.856Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-28T00:59:28.882Z",
+            "severity": "low",
+            "summary": [
+              "Status dot colors and 'Waiting pulse' label appear visually consistent between React and iOS renders.",
+              "Typography weight, size, and color of the 'Waiting pulse' label match between platforms.",
+              "No missing or extra elements detected in the iOS render compared to the React baseline.",
+              "Dot sizing, spacing, and circular shape appear equivalent across both platforms.",
+              "Pixel mismatch ratio of 0.23% is within tolerance and reflects only minor anti-aliasing differences."
+            ],
+            "likelyCauses": [
+              "Minor anti-aliasing variation between web (React) and native (iOS) rasterization pipelines.",
+              "Subpixel rendering differences in font hinting between the two platforms."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "No action required; current visual diff is within acceptable tolerance.",
+              "If stricter parity is desired, consider aligning dot border/stroke width to a shared design token.",
+              "Optional: tune ignoreAntialiasing tolerance if false positives persist."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -18011,17 +18037,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T00:56:43.575Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-28T00:59:29.821Z",
+            "severity": "high",
+            "summary": [
+              "Channel dropdown overlay on iOS uses a different background treatment with no visible border/outline, while React renders a plain floating panel.",
+              "iOS dropdown includes a 'Clear' affordance and a 4th row '@Product UX Designer' that React does not show.",
+              "React shows 'From', '@ Scope', '# Channel', 'Any Time', '↑ Relevant' filter chips above the dropdown; iOS instead shows 'From: Me', '@ Scope 2', '# design', and a calendar icon as filled highlighted buttons.",
+              "iOS header search bar uses a back arrow on the left (no magnifier icon); React shows a magnifier icon on the left and an 'x' clear button on the right.",
+              "iOS results list is fully rendered (channels, entities, messages including thread, load more) whereas React shows only partial results clipped at the top edge."
+            ],
+            "likelyCauses": [
+              "Component-bounds crop on baseline caused the React left side to be truncated/clipped while iOS rendered the full screen.",
+              "iOS implementation renders the channel dropdown as an overlay with additional actions (Clear, extra entries, selection check) not present on React.",
+              "Different header layout decisions between platforms (back-arrow vs search icon, trailing clear button differences).",
+              "Filter chip row differs in content and styling (filled highlight on iOS vs outlined on React)."
+            ],
+            "suggestedOwner": "iOS",
+            "suggestedFixes": [
+              "Align the channel dropdown overlay background/border treatment with the React baseline (white panel with outline).",
+              "Match filter chip row content and visual style between platforms; remove 'From: Me' / extra highlighted buttons if not intended for React parity.",
+              "Unify search header left/right iconography (magnifier vs back arrow, presence of clear 'x').",
+              "Ensure selection indicator (checkmark) on the active channel row appears consistently on both platforms.",
+              "Re-capture baseline crop so React side is not clipped at left/top edges for accurate comparison."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -18097,17 +18140,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T00:56:43.575Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-28T00:59:29.821Z",
+            "severity": "high",
+            "summary": [
+              "Channel dropdown overlay on iOS uses a different background treatment with no visible border/outline, while React renders a plain floating panel.",
+              "iOS dropdown includes a 'Clear' affordance and a 4th row '@Product UX Designer' that React does not show.",
+              "React shows 'From', '@ Scope', '# Channel', 'Any Time', '↑ Relevant' filter chips above the dropdown; iOS instead shows 'From: Me', '@ Scope 2', '# design', and a calendar icon as filled highlighted buttons.",
+              "iOS header search bar uses a back arrow on the left (no magnifier icon); React shows a magnifier icon on the left and an 'x' clear button on the right.",
+              "iOS results list is fully rendered (channels, entities, messages including thread, load more) whereas React shows only partial results clipped at the top edge."
+            ],
+            "likelyCauses": [
+              "Component-bounds crop on baseline caused the React left side to be truncated/clipped while iOS rendered the full screen.",
+              "iOS implementation renders the channel dropdown as an overlay with additional actions (Clear, extra entries, selection check) not present on React.",
+              "Different header layout decisions between platforms (back-arrow vs search icon, trailing clear button differences).",
+              "Filter chip row differs in content and styling (filled highlight on iOS vs outlined on React)."
+            ],
+            "suggestedOwner": "iOS",
+            "suggestedFixes": [
+              "Align the channel dropdown overlay background/border treatment with the React baseline (white panel with outline).",
+              "Match filter chip row content and visual style between platforms; remove 'From: Me' / extra highlighted buttons if not intended for React parity.",
+              "Unify search header left/right iconography (magnifier vs back arrow, presence of clear 'x').",
+              "Ensure selection indicator (checkmark) on the active channel row appears consistently on both platforms.",
+              "Re-capture baseline crop so React side is not clipped at left/top edges for accurate comparison."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -18983,17 +19043,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-28T00:56:39.985Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-28T00:59:17.158Z",
+        "severity": "low",
+        "summary": [
+          "Android header shows a checkmark icon next to 'Tasks' title that is absent on the React baseline.",
+          "Android renders the Board/List toggle with slightly smaller/less prominent chips compared to the React baseline (smaller padding, lighter border).",
+          "React baseline shows the filter chips wrapped onto two rows (Channel/Creator on row 1, Assignee on row 2); Android renders them on a single row — a known platform difference, not a defect.",
+          "React baseline lacks per-card top-right timestamps (e.g. '6 minutes ago', 'in 3 days') and bottom-left assignee lines that Android displays — intentional, React to adopt later.",
+          "Overall RGB similarity 87.4% / pixel-perfect 80.0% with a 20% mismatch ratio is driven primarily by the intentional feature gaps (timestamps, assignee lines, filter-row layout, header icon), not by visual regressions on shared components."
+        ],
+        "likelyCauses": [
+          "Intentional feature divergence declared under task #373 (timestamps, assignee lines) — React has not yet adopted them.",
+          "Header checkmark icon is an Android-only adornment; React baseline does not render it.",
+          "Board/List chip token (padding/border) on Android is not fully aligned to the shared design tokens used by React, producing the slightly smaller toggle appearance."
+        ],
+        "suggestedOwner": "react-frontend",
+        "suggestedFixes": [
+          "Confirm shared chip-token application for the Board/List toggle so padding and border weight match React on Android.",
+          "Track adoption of per-card timestamp and assignee line in the React panel under task #373; do not block the parity report on this.",
+          "If the header checkmark icon is intended for both platforms, add it to the React header; if Android-only, annotate the divergence to avoid future false-positive diffs."
+        ],
+        "intentional": [
+          "Filter chip row wraps to two rows on React but stays on a single row on Android (platform-difference).",
+          "Android task cards show a relative timestamp at the top-right ('6 minutes ago', 'in 3 days'); React panel does not — React will adopt later (react-adopts-later).",
+          "Android task cards show an assignee chip at the bottom-left (e.g. 'Unassigned', '@Cindy', '@Product UX Designer'); React panel does not — React will adopt later (react-adopts-later)."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -19080,17 +19158,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T00:56:39.985Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-28T00:59:17.158Z",
+            "severity": "low",
+            "summary": [
+              "Android header shows a checkmark icon next to 'Tasks' title that is absent on the React baseline.",
+              "Android renders the Board/List toggle with slightly smaller/less prominent chips compared to the React baseline (smaller padding, lighter border).",
+              "React baseline shows the filter chips wrapped onto two rows (Channel/Creator on row 1, Assignee on row 2); Android renders them on a single row — a known platform difference, not a defect.",
+              "React baseline lacks per-card top-right timestamps (e.g. '6 minutes ago', 'in 3 days') and bottom-left assignee lines that Android displays — intentional, React to adopt later.",
+              "Overall RGB similarity 87.4% / pixel-perfect 80.0% with a 20% mismatch ratio is driven primarily by the intentional feature gaps (timestamps, assignee lines, filter-row layout, header icon), not by visual regressions on shared components."
+            ],
+            "likelyCauses": [
+              "Intentional feature divergence declared under task #373 (timestamps, assignee lines) — React has not yet adopted them.",
+              "Header checkmark icon is an Android-only adornment; React baseline does not render it.",
+              "Board/List chip token (padding/border) on Android is not fully aligned to the shared design tokens used by React, producing the slightly smaller toggle appearance."
+            ],
+            "suggestedOwner": "react-frontend",
+            "suggestedFixes": [
+              "Confirm shared chip-token application for the Board/List toggle so padding and border weight match React on Android.",
+              "Track adoption of per-card timestamp and assignee line in the React panel under task #373; do not block the parity report on this.",
+              "If the header checkmark icon is intended for both platforms, add it to the React header; if Android-only, annotate the divergence to avoid future false-positive diffs."
+            ],
+            "intentional": [
+              "Filter chip row wraps to two rows on React but stays on a single row on Android (platform-difference).",
+              "Android task cards show a relative timestamp at the top-right ('6 minutes ago', 'in 3 days'); React panel does not — React will adopt later (react-adopts-later).",
+              "Android task cards show an assignee chip at the bottom-left (e.g. 'Unassigned', '@Cindy', '@Product UX Designer'); React panel does not — React will adopt later (react-adopts-later)."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -19113,17 +19209,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T00:56:43.608Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-28T00:59:29.909Z",
+            "severity": "medium",
+            "summary": [
+              "iOS adds a large square checked-task icon inside the yellow header, shifting “Tasks” and the subtitle rightward and reducing their available width.",
+              "Task card top-right timestamps appear on iOS; this is an intentional feature for React to adopt later.",
+              "Task card bottom-left assignee labels appear on iOS; this is an intentional feature for React to adopt later.",
+              "iOS card title and description text appears slightly larger and more widely spaced than React, changing wrapping within the card.",
+              "iOS task cards have noticeably thicker dark borders and slightly smaller internal content bounds than React."
+            ],
+            "likelyCauses": [
+              "Platform-specific task-card metadata rendering is present on iOS but absent on React.",
+              "Different font metrics, line-height, or typography scaling between the React and iOS implementations.",
+              "Different border-width and content-inset tokens between platforms."
+            ],
+            "suggestedOwner": "Cross-platform task panel owner",
+            "suggestedFixes": [
+              "Add the iOS-style task timestamp and assignee metadata to React task cards when the planned adoption is implemented.",
+              "Align shared card typography, line height, and internal content insets to the same tokens on React and iOS.",
+              "Verify that the intentional iOS-only filter row and wrapping behavior remain platform-specific."
+            ],
+            "intentional": [
+              "iOS task-card timestamps are a react-adopts-later feature.",
+              "iOS task-card assignee labels are a react-adopts-later feature.",
+              "iOS filter chips use a single row, while React uses a wrapped layout; this is an intentional platform difference."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -19146,17 +19260,33 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T00:56:47.296Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-28T00:59:38.748Z",
+            "severity": "low",
+            "summary": [
+              "State badge casing differs: Android uses ALL-CAPS labels (TODO, IN PROGRESS, IN REVIEW, DONE) while iOS uses Title case (Todo, In Progress, In Review, Done).",
+              "State badge colors are slightly different: Android badges appear as flat solid color blocks, iOS badges appear with a slightly different shade and possibly softer fill.",
+              "Typography weight in card titles and body text is subtly different — iOS renders slightly heavier/larger glyphs (system font weight).",
+              "Task card metadata (issue number #214, #212, #210, #208) appears in lighter gray on iOS vs darker gray on Android."
+            ],
+            "likelyCauses": [
+              "Kuikly text component not applying a shared text-transform token for status labels across platforms",
+              "Platform-native font (SF Pro on iOS vs Roboto on Android) producing different perceived weights at same dp size",
+              "State badge color tokens not normalized in shared design-token bridge"
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "Normalize status label casing via a single token (e.g., transform: uppercase) applied uniformly across Kuikly renderers",
+              "Map badge background colors to shared semantic tokens (state.todo, state.inProgress, state.inReview, state.done) with identical values per platform",
+              "Verify card meta text color uses the shared text.tertiary token on both ends",
+              "Run a token-level diff between Android and iOS Kuikly style bridges to catch any un-mapped color/weight values"
+            ],
+            "intentional": [
+              "Filter chip row (Channel/Creator/Assignee) presence and single-row layout on Android vs wrapped layout on iOS is a documented platform-difference; not a defect."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -19182,17 +19312,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T00:56:43.608Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-28T00:59:29.909Z",
+            "severity": "medium",
+            "summary": [
+              "iOS adds a large square checked-task icon inside the yellow header, shifting “Tasks” and the subtitle rightward and reducing their available width.",
+              "Task card top-right timestamps appear on iOS; this is an intentional feature for React to adopt later.",
+              "Task card bottom-left assignee labels appear on iOS; this is an intentional feature for React to adopt later.",
+              "iOS card title and description text appears slightly larger and more widely spaced than React, changing wrapping within the card.",
+              "iOS task cards have noticeably thicker dark borders and slightly smaller internal content bounds than React."
+            ],
+            "likelyCauses": [
+              "Platform-specific task-card metadata rendering is present on iOS but absent on React.",
+              "Different font metrics, line-height, or typography scaling between the React and iOS implementations.",
+              "Different border-width and content-inset tokens between platforms."
+            ],
+            "suggestedOwner": "Cross-platform task panel owner",
+            "suggestedFixes": [
+              "Add the iOS-style task timestamp and assignee metadata to React task cards when the planned adoption is implemented.",
+              "Align shared card typography, line height, and internal content insets to the same tokens on React and iOS.",
+              "Verify that the intentional iOS-only filter row and wrapping behavior remain platform-specific."
+            ],
+            "intentional": [
+              "iOS task-card timestamps are a react-adopts-later feature.",
+              "iOS task-card assignee labels are a react-adopts-later feature.",
+              "iOS filter chips use a single row, while React uses a wrapped layout; this is an intentional platform difference."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -19216,17 +19364,33 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T00:56:47.296Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-28T00:59:38.748Z",
+            "severity": "low",
+            "summary": [
+              "State badge casing differs: Android uses ALL-CAPS labels (TODO, IN PROGRESS, IN REVIEW, DONE) while iOS uses Title case (Todo, In Progress, In Review, Done).",
+              "State badge colors are slightly different: Android badges appear as flat solid color blocks, iOS badges appear with a slightly different shade and possibly softer fill.",
+              "Typography weight in card titles and body text is subtly different — iOS renders slightly heavier/larger glyphs (system font weight).",
+              "Task card metadata (issue number #214, #212, #210, #208) appears in lighter gray on iOS vs darker gray on Android."
+            ],
+            "likelyCauses": [
+              "Kuikly text component not applying a shared text-transform token for status labels across platforms",
+              "Platform-native font (SF Pro on iOS vs Roboto on Android) producing different perceived weights at same dp size",
+              "State badge color tokens not normalized in shared design-token bridge"
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "Normalize status label casing via a single token (e.g., transform: uppercase) applied uniformly across Kuikly renderers",
+              "Map badge background colors to shared semantic tokens (state.todo, state.inProgress, state.inReview, state.done) with identical values per platform",
+              "Verify card meta text color uses the shared text.tertiary token on both ends",
+              "Run a token-level diff between Android and iOS Kuikly style bridges to catch any un-mapped color/weight values"
+            ],
+            "intentional": [
+              "Filter chip row (Channel/Creator/Assignee) presence and single-row layout on Android vs wrapped layout on iOS is a documented platform-difference; not a defect."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20417,7 +20581,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-28T00:56:39.441Z",
+        "generatedAt": "2026-08-28T01:01:16.645Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20478,7 +20642,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:39.441Z",
+            "generatedAt": "2026-08-28T01:01:16.645Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20500,7 +20664,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20522,7 +20686,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20547,7 +20711,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20570,7 +20734,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20610,7 +20774,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-28T00:56:39.441Z",
+        "generatedAt": "2026-08-28T01:01:16.645Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20671,7 +20835,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:39.441Z",
+            "generatedAt": "2026-08-28T01:01:16.645Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20693,7 +20857,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20715,7 +20879,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20740,7 +20904,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20763,7 +20927,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25981,7 +26145,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26003,7 +26167,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26028,7 +26192,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26051,7 +26215,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26251,7 +26415,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26273,7 +26437,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26298,7 +26462,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26321,7 +26485,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26521,7 +26685,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26543,7 +26707,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26568,7 +26732,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26591,7 +26755,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26787,7 +26951,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26809,7 +26973,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26834,7 +26998,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26857,7 +27021,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27053,7 +27217,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27075,7 +27239,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27100,7 +27264,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27123,7 +27287,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32513,7 +32677,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-28T00:56:39.441Z",
+        "generatedAt": "2026-08-28T01:01:16.645Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32574,7 +32738,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:39.441Z",
+            "generatedAt": "2026-08-28T01:01:16.645Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32596,7 +32760,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32618,7 +32782,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32643,7 +32807,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32666,7 +32830,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32706,7 +32870,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-28T00:56:39.441Z",
+        "generatedAt": "2026-08-28T01:01:16.645Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32767,7 +32931,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:39.441Z",
+            "generatedAt": "2026-08-28T01:01:16.645Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32789,7 +32953,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32811,7 +32975,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32836,7 +33000,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32859,7 +33023,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32899,7 +33063,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-28T00:56:39.441Z",
+        "generatedAt": "2026-08-28T01:01:16.645Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32960,7 +33124,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:39.441Z",
+            "generatedAt": "2026-08-28T01:01:16.645Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32982,7 +33146,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33004,7 +33168,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33029,7 +33193,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33052,7 +33216,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33092,7 +33256,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-28T00:56:39.441Z",
+        "generatedAt": "2026-08-28T01:01:16.645Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -33153,7 +33317,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:39.441Z",
+            "generatedAt": "2026-08-28T01:01:16.645Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33175,7 +33339,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33197,7 +33361,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33222,7 +33386,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:42.536Z",
+            "generatedAt": "2026-08-28T01:01:20.360Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33245,7 +33409,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T00:56:46.113Z",
+            "generatedAt": "2026-08-28T01:01:24.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

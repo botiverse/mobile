@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-28T00:56:48.028Z",
+  "generatedAt": "2026-08-28T01:01:26.333Z",
   "runId": "bbe9c375-20260828005428",
   "commit": "bbe9c375-20260828005428",
   "commitSubject": "fix(thread): dismiss share preview after successful download (#2262)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 92,
-        "ready": 85,
-        "pending": 7
+        "ready": 86,
+        "pending": 6
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 92,
-        "ready": 78,
-        "pending": 14
+        "ready": 81,
+        "pending": 11
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 92,
-        "ready": 80,
-        "pending": 12
+        "ready": 81,
+        "pending": 11
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 92,
-    "ready": 85,
-    "pending": 7
+    "ready": 86,
+    "pending": 6
   },
   "componentMatrixSummary": {
     "total": 120,

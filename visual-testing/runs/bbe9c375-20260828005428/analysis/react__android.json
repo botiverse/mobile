@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-28T00:56:39.434Z",
+  "generatedAt": "2026-08-28T01:01:16.634Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 85,
-    "pending": 7
+    "ready": 86,
+    "pending": 6
   },
   "cases": [
     {
@@ -1690,15 +1690,36 @@
     },
     {
       "id": "components.tasks.panel.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe7ffe0000000000000000801e0006ffffffefef80ff818f80df819fff9fff9ffc9ffd9ffc9ff487e487f49ffebffcfff0ffe4bfe0b00187ff87ff87ff87ffbffcbffc80368034bff4ffc4ffc0a00180018fff8fff8fff9ffcfffc8efe808cffe0f001a00080019fff9fff9fff9ffdfffc807c803cff00bff0ff00ffffffff",
-      "generatedAt": "2026-08-28T00:56:38.732Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-28T00:59:17.158Z",
+      "severity": "low",
+      "summary": [
+        "Android header shows a checkmark icon next to 'Tasks' title that is absent on the React baseline.",
+        "Android renders the Board/List toggle with slightly smaller/less prominent chips compared to the React baseline (smaller padding, lighter border).",
+        "React baseline shows the filter chips wrapped onto two rows (Channel/Creator on row 1, Assignee on row 2); Android renders them on a single row — a known platform difference, not a defect.",
+        "React baseline lacks per-card top-right timestamps (e.g. '6 minutes ago', 'in 3 days') and bottom-left assignee lines that Android displays — intentional, React to adopt later.",
+        "Overall RGB similarity 87.4% / pixel-perfect 80.0% with a 20% mismatch ratio is driven primarily by the intentional feature gaps (timestamps, assignee lines, filter-row layout, header icon), not by visual regressions on shared components."
+      ],
+      "likelyCauses": [
+        "Intentional feature divergence declared under task #373 (timestamps, assignee lines) — React has not yet adopted them.",
+        "Header checkmark icon is an Android-only adornment; React baseline does not render it.",
+        "Board/List chip token (padding/border) on Android is not fully aligned to the shared design tokens used by React, producing the slightly smaller toggle appearance."
+      ],
+      "suggestedOwner": "react-frontend",
+      "suggestedFixes": [
+        "Confirm shared chip-token application for the Board/List toggle so padding and border weight match React on Android.",
+        "Track adoption of per-card timestamp and assignee line in the React panel under task #373; do not block the parity report on this.",
+        "If the header checkmark icon is intended for both platforms, add it to the React header; if Android-only, annotate the divergence to avoid future false-positive diffs."
+      ],
+      "intentional": [
+        "Filter chip row wraps to two rows on React but stays on a single row on Android (platform-difference).",
+        "Android task cards show a relative timestamp at the top-right ('6 minutes ago', 'in 3 days'); React panel does not — React will adopt later (react-adopts-later).",
+        "Android task cards show an assignee chip at the bottom-left (e.g. 'Unassigned', '@Cindy', '@Product UX Designer'); React panel does not — React will adopt later (react-adopts-later)."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2004442284063137
     },
     {
@@ -1808,7 +1829,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:38.681Z",
+      "generatedAt": "2026-08-28T01:01:15.762Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1821,7 +1842,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:38.681Z",
+      "generatedAt": "2026-08-28T01:01:15.762Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2942,7 +2963,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:39.343Z",
+      "generatedAt": "2026-08-28T01:01:16.525Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2955,7 +2976,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:39.343Z",
+      "generatedAt": "2026-08-28T01:01:16.525Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2968,7 +2989,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:39.343Z",
+      "generatedAt": "2026-08-28T01:01:16.525Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2981,7 +3002,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:39.343Z",
+      "generatedAt": "2026-08-28T01:01:16.525Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

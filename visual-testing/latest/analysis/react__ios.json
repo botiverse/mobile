@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-28T00:56:42.531Z",
+  "generatedAt": "2026-08-28T01:01:20.351Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 78,
-    "pending": 14
+    "ready": 81,
+    "pending": 11
   },
   "cases": [
     {
@@ -467,15 +467,31 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-28T00:56:41.083Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-28T00:59:28.882Z",
+      "severity": "low",
+      "summary": [
+        "Status dot colors and 'Waiting pulse' label appear visually consistent between React and iOS renders.",
+        "Typography weight, size, and color of the 'Waiting pulse' label match between platforms.",
+        "No missing or extra elements detected in the iOS render compared to the React baseline.",
+        "Dot sizing, spacing, and circular shape appear equivalent across both platforms.",
+        "Pixel mismatch ratio of 0.23% is within tolerance and reflects only minor anti-aliasing differences."
+      ],
+      "likelyCauses": [
+        "Minor anti-aliasing variation between web (React) and native (iOS) rasterization pipelines.",
+        "Subpixel rendering differences in font hinting between the two platforms."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "No action required; current visual diff is within acceptable tolerance.",
+        "If stricter parity is desired, consider aligning dot border/stroke width to a shared design token.",
+        "Optional: tune ignoreAntialiasing tolerance if false positives persist."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -1542,15 +1558,35 @@
     },
     {
       "id": "components.home.search.channel-dropdown",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f000038021c300012fc7cfe00fc00fe9e802400879d7c0000819c00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff43ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-08-28T00:56:41.799Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-28T00:59:29.821Z",
+      "severity": "high",
+      "summary": [
+        "Channel dropdown overlay on iOS uses a different background treatment with no visible border/outline, while React renders a plain floating panel.",
+        "iOS dropdown includes a 'Clear' affordance and a 4th row '@Product UX Designer' that React does not show.",
+        "React shows 'From', '@ Scope', '# Channel', 'Any Time', '↑ Relevant' filter chips above the dropdown; iOS instead shows 'From: Me', '@ Scope 2', '# design', and a calendar icon as filled highlighted buttons.",
+        "iOS header search bar uses a back arrow on the left (no magnifier icon); React shows a magnifier icon on the left and an 'x' clear button on the right.",
+        "iOS results list is fully rendered (channels, entities, messages including thread, load more) whereas React shows only partial results clipped at the top edge."
+      ],
+      "likelyCauses": [
+        "Component-bounds crop on baseline caused the React left side to be truncated/clipped while iOS rendered the full screen.",
+        "iOS implementation renders the channel dropdown as an overlay with additional actions (Clear, extra entries, selection check) not present on React.",
+        "Different header layout decisions between platforms (back-arrow vs search icon, trailing clear button differences).",
+        "Filter chip row differs in content and styling (filled highlight on iOS vs outlined on React)."
+      ],
+      "suggestedOwner": "iOS",
+      "suggestedFixes": [
+        "Align the channel dropdown overlay background/border treatment with the React baseline (white panel with outline).",
+        "Match filter chip row content and visual style between platforms; remove 'From: Me' / extra highlighted buttons if not intended for React parity.",
+        "Unify search header left/right iconography (magnifier vs back arrow, presence of clear 'x').",
+        "Ensure selection indicator (checkmark) on the active channel row appears consistently on both platforms.",
+        "Re-capture baseline crop so React side is not clipped at left/top edges for accurate comparison."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2691824982109342
     },
     {
@@ -1626,15 +1662,36 @@
     },
     {
       "id": "components.tasks.panel.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:bffe7ffe0000000000000000801e0006ffffffefef81ffc1ef80ffc19fff9fff9ffc9ffd9ffe9ff487fe87f4bffebffcfff0ff20bfe0b80187ff87ff8fff87fffffcbffc82368014bffcffe1ffc0a001800187ff8fff8fff9ffc9ffc8ffe800cffe0f001a00080019fff9fff9fff9ffdfffe807c887eff01bff00000ffffffff",
-      "generatedAt": "2026-08-28T00:56:41.891Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-28T00:59:29.909Z",
+      "severity": "medium",
+      "summary": [
+        "iOS adds a large square checked-task icon inside the yellow header, shifting “Tasks” and the subtitle rightward and reducing their available width.",
+        "Task card top-right timestamps appear on iOS; this is an intentional feature for React to adopt later.",
+        "Task card bottom-left assignee labels appear on iOS; this is an intentional feature for React to adopt later.",
+        "iOS card title and description text appears slightly larger and more widely spaced than React, changing wrapping within the card.",
+        "iOS task cards have noticeably thicker dark borders and slightly smaller internal content bounds than React."
+      ],
+      "likelyCauses": [
+        "Platform-specific task-card metadata rendering is present on iOS but absent on React.",
+        "Different font metrics, line-height, or typography scaling between the React and iOS implementations.",
+        "Different border-width and content-inset tokens between platforms."
+      ],
+      "suggestedOwner": "Cross-platform task panel owner",
+      "suggestedFixes": [
+        "Add the iOS-style task timestamp and assignee metadata to React task cards when the planned adoption is implemented.",
+        "Align shared card typography, line height, and internal content insets to the same tokens on React and iOS.",
+        "Verify that the intentional iOS-only filter row and wrapping behavior remain platform-specific."
+      ],
+      "intentional": [
+        "iOS task-card timestamps are a react-adopts-later feature.",
+        "iOS task-card assignee labels are a react-adopts-later feature.",
+        "iOS filter chips use a single row, while React uses a wrapped layout; this is an intentional platform difference."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.19085213540189838
     },
     {
@@ -1742,7 +1799,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:41.824Z",
+      "generatedAt": "2026-08-28T01:01:19.538Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1755,7 +1812,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:41.824Z",
+      "generatedAt": "2026-08-28T01:01:19.538Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2218,7 +2275,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:42.100Z",
+      "generatedAt": "2026-08-28T01:01:19.845Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2231,7 +2288,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:42.100Z",
+      "generatedAt": "2026-08-28T01:01:19.845Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2244,7 +2301,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:42.100Z",
+      "generatedAt": "2026-08-28T01:01:19.845Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2257,7 +2314,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:42.100Z",
+      "generatedAt": "2026-08-28T01:01:19.845Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2270,7 +2327,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:42.100Z",
+      "generatedAt": "2026-08-28T01:01:19.845Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2758,7 +2815,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:42.445Z",
+      "generatedAt": "2026-08-28T01:01:20.235Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2771,7 +2828,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:42.445Z",
+      "generatedAt": "2026-08-28T01:01:20.235Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2784,7 +2841,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:42.445Z",
+      "generatedAt": "2026-08-28T01:01:20.235Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2797,7 +2854,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T00:56:42.445Z",
+      "generatedAt": "2026-08-28T01:01:20.235Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>bbe9c375-20260828005428</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-28T00:56:48.028Z" data-timestamp="2026-08-28T00:56:48.028Z" title="2026-08-28T00:56:48.028Z">2026-08-28 00:56:48 UTC</time></p>
+    <p class="runMeta"><code>bbe9c375-20260828005428</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-28T01:01:26.333Z" data-timestamp="2026-08-28T01:01:26.333Z" title="2026-08-28T01:01:26.333Z">2026-08-28 01:01:26 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 92</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 86</span>
       <span class="pill">Missing 6</span>
-      <span class="pill">AI 85/92 ready</span>
+      <span class="pill">AI 86/92 ready</span>
       <span class="pill">Matrix 101/120 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -3987,7 +3987,12 @@
       <p><code>RGB 87.4%</code><br/><code>Pixel 79.96%</code><br/><code>Mismatch 20.04%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / component-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · react-frontend</summary>
+    <ul><li>Android header shows a checkmark icon next to 'Tasks' title that is absent on the React baseline.</li><li>Android renders the Board/List toggle with slightly smaller/less prominent chips compared to the React baseline (smaller padding, lighter border).</li><li>React baseline shows the filter chips wrapped onto two rows (Channel/Creator on row 1, Assignee on row 2); Android renders them on a single row — a known platform difference, not a defect.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Confirm shared chip-token application for the Board/List toggle so padding and border weight match React on Android.</li><li>Track adoption of per-card timestamp and assignee line in the React panel under task #373; do not block the parity report on this.</li><li>If the header checkmark icon is intended for both platforms, add it to the React header; if Android-only, annotate the divergence to avoid future false-positive diffs.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.tasks.panel.states.png" data-current-src="android/components.tasks.panel.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

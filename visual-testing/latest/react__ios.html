@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>bbe9c375-20260828005428</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-28T00:56:48.028Z" data-timestamp="2026-08-28T00:56:48.028Z" title="2026-08-28T00:56:48.028Z">2026-08-28 00:56:48 UTC</time></p>
+    <p class="runMeta"><code>bbe9c375-20260828005428</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-28T01:01:26.333Z" data-timestamp="2026-08-28T01:01:26.333Z" title="2026-08-28T01:01:26.333Z">2026-08-28 01:01:26 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 92</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 13</span>
       <span class="pill">Different 57</span>
       <span class="pill">Missing 11</span>
-      <span class="pill">AI 78/92 ready</span>
+      <span class="pill">AI 81/92 ready</span>
       <span class="pill">Matrix 101/120 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1028,7 +1028,12 @@
       <p><code>RGB 98.0%</code><br/><code>Pixel 99.77%</code><br/><code>Mismatch 0.23%</code><br/><code>Raw 1026×276 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.77% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×92 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · design-system</summary>
+    <ul><li>Status dot colors and 'Waiting pulse' label appear visually consistent between React and iOS renders.</li><li>Typography weight, size, and color of the 'Waiting pulse' label match between platforms.</li><li>No missing or extra elements detected in the iOS render compared to the React baseline.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No action required; current visual diff is within acceptable tolerance.</li><li>If stricter parity is desired, consider aligning dot border/stroke width to a shared design token.</li><li>Optional: tune ignoreAntialiasing tolerance if false positives persist.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.status-dot.states.png" data-current-src="ios/components.ui.status-dot.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3723,7 +3728,12 @@
       <p><code>RGB 87.8%</code><br/><code>Pixel 73.08%</code><br/><code>Mismatch 26.92%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS</summary>
+    <ul><li>Channel dropdown overlay on iOS uses a different background treatment with no visible border/outline, while React renders a plain floating panel.</li><li>iOS dropdown includes a 'Clear' affordance and a 4th row '@Product UX Designer' that React does not show.</li><li>React shows 'From', '@ Scope', '# Channel', 'Any Time', '↑ Relevant' filter chips above the dropdown; iOS instead shows 'From: Me', '@ Scope 2', '# design', and a calendar icon as filled highlighted buttons.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align the channel dropdown overlay background/border treatment with the React baseline (white panel with outline).</li><li>Match filter chip row content and visual style between platforms; remove 'From: Me' / extra highlighted buttons if not intended for React parity.</li><li>Unify search header left/right iconography (magnifier vs back arrow, presence of clear 'x').</li><li>Ensure selection indicator (checkmark) on the active channel row appears consistently on both platforms.</li><li>Re-capture baseline crop so React side is not clipped at left/top edges for accurate comparison.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.home.search.channel-dropdown.png" data-current-src="ios/components.home.search.channel-dropdown.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3977,7 +3987,12 @@
       <p><code>RGB 87.4%</code><br/><code>Pixel 80.91%</code><br/><code>Mismatch 19.09%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · Cross-platform task panel owner</summary>
+    <ul><li>iOS adds a large square checked-task icon inside the yellow header, shifting “Tasks” and the subtitle rightward and reducing their available width.</li><li>Task card top-right timestamps appear on iOS; this is an intentional feature for React to adopt later.</li><li>Task card bottom-left assignee labels appear on iOS; this is an intentional feature for React to adopt later.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Add the iOS-style task timestamp and assignee metadata to React task cards when the planned adoption is implemented.</li><li>Align shared card typography, line height, and internal content insets to the same tokens on React and iOS.</li><li>Verify that the intentional iOS-only filter row and wrapping behavior remain platform-specific.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.tasks.panel.states.png" data-current-src="ios/components.tasks.panel.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
