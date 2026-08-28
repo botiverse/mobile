@@ -34,6 +34,10 @@
 #endif
 
 static NSString *const SlockBridgeDefaultLogTag = @"SlockKuikly";
+static NSUInteger const SlockThreadAttachmentImageMaxEdge = 2048;
+static CGFloat const SlockThreadAttachmentImageJPEGQuality = 0.82;
+static NSString *const SlockThreadAttachmentImageCompressionErrorDomain =
+    @"build.raft.app.thread-attachment-image-compression";
 static NSString *const SlockAttachmentExportDestinationFiles = @"files";
 static NSString *const SlockAttachmentExportDestinationPhotos = @"photos";
 static NSString *const SlockThreadShareImageDirectoryName = @"RaftThreadShareImages";
@@ -1987,6 +1991,133 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     return displayName;
 }
 
+static BOOL SlockAttachmentIsImage(NSString *fileName, NSString *mimeType, NSURL *sourceURL) {
+    NSString *normalizedMimeType = SlockBridgeString(mimeType).lowercaseString;
+    if ([normalizedMimeType hasPrefix:@"image/"]) {
+        return YES;
+    }
+    NSString *extension = SlockBridgeString(fileName).pathExtension.lowercaseString;
+    if (extension.length == 0) {
+        extension = sourceURL.pathExtension.lowercaseString;
+    }
+    NSSet<NSString *> *imageExtensions = [NSSet setWithArray:@[
+        @"avif", @"bmp", @"gif", @"heic", @"heif", @"jpeg", @"jpg", @"png", @"webp", @"tif", @"tiff"
+    ]];
+    return [imageExtensions containsObject:extension];
+}
+
+static NSError *SlockThreadAttachmentImageCompressionError(NSString *message) {
+    return [NSError errorWithDomain:SlockThreadAttachmentImageCompressionErrorDomain
+                                code:1
+                            userInfo:@{ NSLocalizedDescriptionKey :
+                                            message.length > 0 ? message : @"Unable to compress image attachment" }];
+}
+
+static BOOL SlockIsThreadAttachmentImageCompressionError(NSError *error) {
+    return [error.domain isEqualToString:SlockThreadAttachmentImageCompressionErrorDomain];
+}
+
+static NSString *SlockCompressedAttachmentFileName(NSString *fileName) {
+    NSString *leaf = SlockBridgeString(fileName).lastPathComponent;
+    if (leaf.length == 0) {
+        leaf = @"image";
+    }
+    NSString *stem = [leaf stringByDeletingPathExtension];
+    if (stem.length == 0) {
+        stem = @"image";
+    }
+    return [stem stringByAppendingPathExtension:@"jpg"];
+}
+
+static BOOL SlockWriteJPEGFromCGImage(CGImageRef image,
+                                      NSURL *targetURL,
+                                      NSError **error) {
+    if (!image || CGImageGetWidth(image) == 0 || CGImageGetHeight(image) == 0) {
+        if (error) *error = SlockThreadAttachmentImageCompressionError(@"Unable to decode image attachment");
+        return NO;
+    }
+    CGImageDestinationRef destination = CGImageDestinationCreateWithURL(
+        (__bridge CFURLRef)targetURL,
+        (__bridge CFStringRef)UTTypeJPEG.identifier,
+        1,
+        NULL
+    );
+    if (!destination) {
+        if (error) *error = SlockThreadAttachmentImageCompressionError(@"Unable to prepare image encoder");
+        return NO;
+    }
+    NSDictionary *properties = @{
+        (NSString *)kCGImageDestinationLossyCompressionQuality : @(SlockThreadAttachmentImageJPEGQuality)
+    };
+    CGImageDestinationAddImage(destination, image, (__bridge CFDictionaryRef)properties);
+    BOOL finalized = CGImageDestinationFinalize(destination);
+    CFRelease(destination);
+    if (!finalized) {
+        if (error) *error = SlockThreadAttachmentImageCompressionError(@"Unable to encode image attachment");
+        return NO;
+    }
+    NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:targetURL.path error:nil];
+    if (![attributes[NSFileSize] respondsToSelector:@selector(unsignedLongLongValue)] ||
+        [attributes[NSFileSize] unsignedLongLongValue] == 0) {
+        if (error) *error = SlockThreadAttachmentImageCompressionError(@"Unable to encode image attachment");
+        return NO;
+    }
+    return YES;
+}
+
+static BOOL SlockWriteCompressedPickedImage(NSURL *sourceURL,
+                                            NSURL *targetURL,
+                                            NSError **error) {
+    CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)sourceURL, NULL);
+    if (!source || CGImageSourceGetCount(source) == 0) {
+        if (source) CFRelease(source);
+        if (error) *error = SlockThreadAttachmentImageCompressionError(@"Unable to decode image attachment");
+        return NO;
+    }
+    NSDictionary *thumbnailOptions = @{
+        (NSString *)kCGImageSourceCreateThumbnailFromImageAlways : @YES,
+        (NSString *)kCGImageSourceCreateThumbnailWithTransform : @YES,
+        (NSString *)kCGImageSourceThumbnailMaxPixelSize : @(SlockThreadAttachmentImageMaxEdge),
+        (NSString *)kCGImageSourceShouldCacheImmediately : @NO
+    };
+    CGImageRef thumbnail = CGImageSourceCreateThumbnailAtIndex(
+        source,
+        0,
+        (__bridge CFDictionaryRef)thumbnailOptions
+    );
+    BOOL result = SlockWriteJPEGFromCGImage(thumbnail, targetURL, error);
+    if (thumbnail) CFRelease(thumbnail);
+    CFRelease(source);
+    return result;
+}
+
+static BOOL SlockWriteCompressedCameraImage(UIImage *image,
+                                            NSURL *targetURL,
+                                            NSError **error) {
+    CGImageRef source = image.CGImage;
+    if (!source || CGImageGetWidth(source) == 0 || CGImageGetHeight(source) == 0) {
+        if (error) *error = SlockThreadAttachmentImageCompressionError(@"Unable to decode captured image");
+        return NO;
+    }
+    CGFloat sourceWidth = (CGFloat)CGImageGetWidth(source);
+    CGFloat sourceHeight = (CGFloat)CGImageGetHeight(source);
+    CGFloat scale = MIN(1.0, (CGFloat)SlockThreadAttachmentImageMaxEdge /
+                              MAX(sourceWidth, sourceHeight));
+    CGSize targetSize = CGSizeMake(MAX(1.0, round(sourceWidth * scale)),
+                                   MAX(1.0, round(sourceHeight * scale)));
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.scale = 1.0;
+    format.opaque = YES;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:targetSize
+                                                                                   format:format];
+    UIImage *normalized = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [[UIColor whiteColor] setFill];
+        CGContextFillRect(context.CGContext, CGRectMake(0, 0, targetSize.width, targetSize.height));
+        [image drawInRect:CGRectMake(0, 0, targetSize.width, targetSize.height)];
+    }];
+    return SlockWriteJPEGFromCGImage(normalized.CGImage, targetURL, error);
+}
+
 static NSDictionary *SlockThreadShareImageFailure(NSString *message) {
     return @{
         @"status" : @"failed",
@@ -2221,6 +2352,7 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportPermissionStatus;
 @property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentPickerCallback;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentPickerChannelId;
+@property(nonatomic) BOOL slock_attachmentPickerCompressImages;
 
 - (void)slock_finishAttachmentExport:(NSDictionary *)result;
 - (void)slock_startAttachmentExport:(NSDictionary *)args destination:(NSString *)destination;
@@ -2238,6 +2370,7 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
 - (nullable NSDictionary *)slock_cachePickedAttachmentURL:(NSURL *)sourceURL
                                             suggestedName:(nullable NSString *)suggestedName
                                                  mimeType:(nullable NSString *)mimeType
+                                        compressImages:(BOOL)compressImages
                                                     error:(NSError * _Nullable * _Nullable)error;
 
 @end
@@ -2754,6 +2887,7 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
     self.slock_attachmentPickerChannelId = SlockBridgeString(params[@"channelId"]);
     BOOL imageOnly = SlockBridgeBool(params[@"imageOnly"]);
     BOOL capture = SlockBridgeBool(params[@"capture"]);
+    self.slock_attachmentPickerCompressImages = SlockBridgeBool(params[@"compressImages"]);
     SlockDiagnosticsRecord(
         @"info",
         @"SlockKuiklyAttachment",
@@ -3372,34 +3506,42 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         }];
         return;
     }
+    BOOL compressImages = self.slock_attachmentPickerCompressImages;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSData *jpegData = UIImageJPEGRepresentation(image, 0.92);
-        if (jpegData.length == 0) {
-            [self slock_finishAttachmentPicker:@{
-                @"code" : @400,
-                @"bodyText" : @"",
-                @"errorCode" : @"attachment_read_failed",
-                @"errorBodyText" : @"Captured image could not be encoded"
-            }];
-            return;
-        }
         NSURL *temporaryURL = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
             URLByAppendingPathComponent:[NSUUID.UUID.UUIDString stringByAppendingPathExtension:@"jpg"]
                          isDirectory:NO];
         NSError *error = nil;
-        NSDictionary *file = nil;
-        if ([jpegData writeToURL:temporaryURL options:NSDataWritingAtomic error:&error]) {
-            file = [self slock_cachePickedAttachmentURL:temporaryURL
-                                          suggestedName:@"camera.jpg"
-                                               mimeType:@"image/jpeg"
-                                                  error:&error];
+        BOOL encoded = compressImages
+            ? SlockWriteCompressedCameraImage(image, temporaryURL, &error)
+            : [UIImageJPEGRepresentation(image, 0.92) writeToURL:temporaryURL
+                                                          options:NSDataWritingAtomic
+                                                            error:&error];
+        if (!encoded) {
+            [NSFileManager.defaultManager removeItemAtURL:temporaryURL error:nil];
+            [self slock_finishAttachmentPicker:@{
+                @"code" : @400,
+                @"bodyText" : @"",
+                @"errorCode" : compressImages
+                    ? @"attachment_image_compression_failed" : @"attachment_read_failed",
+                @"errorBodyText" : error.localizedDescription ?: @"Captured image could not be encoded"
+            }];
+            return;
         }
+        NSDictionary *file = nil;
+        file = [self slock_cachePickedAttachmentURL:temporaryURL
+                                      suggestedName:@"camera.jpg"
+                                           mimeType:@"image/jpeg"
+                                      compressImages:NO
+                                               error:&error];
         [NSFileManager.defaultManager removeItemAtURL:temporaryURL error:nil];
         if (!file) {
             [self slock_finishAttachmentPicker:@{
                 @"code" : @400,
                 @"bodyText" : @"",
-                @"errorCode" : @"attachment_read_failed",
+                @"errorCode" : compressImages &&
+                    SlockIsThreadAttachmentImageCompressionError(error)
+                    ? @"attachment_image_compression_failed" : @"attachment_read_failed",
                 @"errorBodyText" : error.localizedDescription ?: @"Captured image could not be cached"
             }];
             return;
@@ -3440,6 +3582,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 }
 
 - (void)slock_processPhotoPickerResults:(NSArray<PHPickerResult *> *)results {
+    BOOL compressImages = self.slock_attachmentPickerCompressImages;
     dispatch_queue_t worker = dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0);
     dispatch_group_t group = dispatch_group_create();
     NSMutableArray *orderedFiles = [NSMutableArray arrayWithCapacity:results.count];
@@ -3469,6 +3612,8 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                 file = [self slock_cachePickedAttachmentURL:url
                                              suggestedName:provider.suggestedName
                                                   mimeType:mediaType.preferredMIMEType
+                                             compressImages:compressImages &&
+                                                 [mediaType conformsToType:UTTypeImage]
                                                      error:&cacheError];
             }
             if (file) {
@@ -3476,10 +3621,14 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                     orderedFiles[index] = file;
                 }
             } else {
+                NSString *errorCode =
+                    SlockIsThreadAttachmentImageCompressionError(cacheError)
+                        ? @"attachment_image_compression_failed"
+                        : @"attachment_read_failed";
                 @synchronized (errors) {
                     [errors addObject:@{
                         @"index" : @(index),
-                        @"errorCode" : @"attachment_read_failed",
+                        @"errorCode" : errorCode,
                         @"message" : cacheError.localizedDescription ?: @"Unable to read attachment"
                     }];
                 }
@@ -3501,6 +3650,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 }
 
 - (void)slock_processDocumentPickerURLs:(NSArray<NSURL *> *)urls {
+    BOOL compressImages = self.slock_attachmentPickerCompressImages;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSMutableArray<NSDictionary *> *files = [NSMutableArray array];
         NSMutableArray<NSDictionary *> *errors = [NSMutableArray array];
@@ -3510,6 +3660,8 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
             NSDictionary *file = [self slock_cachePickedAttachmentURL:url
                                                         suggestedName:url.lastPathComponent
                                                              mimeType:nil
+                                                        compressImages:compressImages &&
+                                                            SlockAttachmentIsImage(url.lastPathComponent, nil, url)
                                                                 error:&error];
             if (securityScoped) {
                 [url stopAccessingSecurityScopedResource];
@@ -3517,9 +3669,13 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
             if (file) {
                 [files addObject:file];
             } else {
+                NSString *errorCode =
+                    SlockIsThreadAttachmentImageCompressionError(error)
+                        ? @"attachment_image_compression_failed"
+                        : @"attachment_read_failed";
                 [errors addObject:@{
                     @"index" : @(index),
-                    @"errorCode" : @"attachment_read_failed",
+                    @"errorCode" : errorCode,
                     @"message" : error.localizedDescription ?: @"Unable to read attachment"
                 }];
             }
@@ -3531,11 +3687,18 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 - (void)slock_finishAttachmentPickerFiles:(NSArray<NSDictionary *> *)files
                                     errors:(NSArray<NSDictionary *> *)errors {
     if (files.count == 0) {
+        BOOL compressionFailed = NO;
+        for (NSDictionary *entry in errors) {
+            if ([entry[@"errorCode"] isEqualToString:@"attachment_image_compression_failed"]) {
+                compressionFailed = YES;
+                break;
+            }
+        }
         [self slock_finishAttachmentPicker:@{
             @"code" : @400,
             @"bodyText" : @"",
-            @"errorCode" : @"attachment_read_failed",
-            @"errorBodyText" : @"No readable attachments"
+            @"errorCode" : compressionFailed ? @"attachment_image_compression_failed" : @"attachment_read_failed",
+            @"errorBodyText" : compressionFailed ? @"Unable to compress image attachment" : @"No readable attachments"
         }];
         return;
     }
@@ -3552,9 +3715,16 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         @"files" : files
     } mutableCopy];
     if (errors.count > 0) {
+        BOOL compressionFailed = NO;
+        for (NSDictionary *entry in errors) {
+            if ([entry[@"errorCode"] isEqualToString:@"attachment_image_compression_failed"]) {
+                compressionFailed = YES;
+                break;
+            }
+        }
         result[@"errors"] = errors;
         result[@"skippedCount"] = @(errors.count);
-        result[@"errorCode"] = @"attachment_read_partial";
+        result[@"errorCode"] = compressionFailed ? @"attachment_image_compression_failed" : @"attachment_read_partial";
         result[@"errorBodyText"] = [NSString stringWithFormat:@"%lu attachment(s) could not be read", (unsigned long)errors.count];
     }
     [self slock_finishAttachmentPicker:result];
@@ -3563,6 +3733,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 - (NSDictionary *)slock_cachePickedAttachmentURL:(NSURL *)sourceURL
                                     suggestedName:(NSString *)suggestedName
                                          mimeType:(NSString *)mimeType
+                                    compressImages:(BOOL)compressImages
                                             error:(NSError **)error {
     NSFileManager *fileManager = NSFileManager.defaultManager;
     NSURL *cacheRoot = [fileManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
@@ -3581,12 +3752,23 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         cacheName = [cacheName stringByAppendingPathExtension:extension];
     }
     NSURL *targetURL = [directory URLByAppendingPathComponent:cacheName isDirectory:NO];
-    if (![fileManager copyItemAtURL:sourceURL toURL:targetURL error:error]) {
+    BOOL isImage = SlockAttachmentIsImage(displayName, mimeType, sourceURL);
+    if (compressImages && isImage) {
+        NSString *compressedName = SlockCompressedAttachmentFileName(displayName);
+        targetURL = [directory URLByAppendingPathComponent:
+            [NSString stringWithFormat:@"%@-%@", NSUUID.UUID.UUIDString, compressedName]
+                                                   isDirectory:NO];
+        if (!SlockWriteCompressedPickedImage(sourceURL, targetURL, error)) {
+            [fileManager removeItemAtURL:targetURL error:nil];
+            return nil;
+        }
+        displayName = compressedName;
+    } else if (![fileManager copyItemAtURL:sourceURL toURL:targetURL error:error]) {
         return nil;
     }
     NSNumber *fileSize = nil;
     [targetURL getResourceValue:&fileSize forKey:NSURLFileSizeKey error:nil];
-    NSString *resolvedMimeType = mimeType;
+    NSString *resolvedMimeType = compressImages && isImage ? @"image/jpeg" : mimeType;
     if (resolvedMimeType.length == 0 && extension.length > 0) {
         resolvedMimeType = [UTType typeWithFilenameExtension:extension].preferredMIMEType;
     }
@@ -3610,6 +3792,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     NSArray *files = [result[@"files"] isKindOfClass:NSArray.class] ? result[@"files"] : @[];
     self.slock_attachmentPickerCallback = nil;
     self.slock_attachmentPickerChannelId = nil;
+    self.slock_attachmentPickerCompressImages = NO;
     SlockDiagnosticsRecord(
         @"info",
         @"SlockKuiklyAttachment",

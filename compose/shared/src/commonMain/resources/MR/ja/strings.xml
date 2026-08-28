@@ -286,6 +286,7 @@
     <string name="thread_error_reason_server_unavailable">サーバーは現在利用できません。しばらくしてから、もう一度お試しください。</string>
     <string name="thread_error_reason_not_found">この項目が見つかりませんでした。移動または削除された可能性があります。</string>
     <string name="thread_error_reason_attachment_too_large">添付ファイルが大きすぎます。より小さいファイルを選択して、もう一度お試しください。</string>
+    <string name="thread_error_reason_attachment_image_compression_failed">画像を圧縮できませんでした。もう一度選択するか、「元画像」を選択してください。</string>
     <string name="thread_error_reason_rate_limited">試行回数が多すぎます。しばらく待ってから、もう一度お試しください。</string>
     <string name="thread_error_reason_response_unreadable">応答を読み取れませんでした。もう一度お試しください。</string>
     <string name="thread_error_reason_cancelled">リクエストはキャンセルされました。もう一度お試しください。</string>
@@ -402,6 +403,7 @@
     <string name="thread_composer_placeholder_channel">#%1$s にメッセージを送信</string>
     <string name="thread_composer_placeholder_reply">スレッドに返信</string>
     <string name="thread_composer_as_task">タスクとして</string>
+    <string name="thread_composer_original_image">元画像</string>
     <string name="thread_composer_members_parent_channel">親チャンネルのメンバー</string>
     <string name="thread_composer_members_this_channel">このチャンネルのメンバー</string>
     <string name="thread_composer_members_this_thread">このスレッドのメンバー</string>

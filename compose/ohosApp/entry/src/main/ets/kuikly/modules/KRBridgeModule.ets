@@ -75,6 +75,30 @@ interface OhosPickedThreadAttachmentPayload {
   source: string;
 }
 
+interface OhosPickedThreadAttachmentReadResult {
+  files: Array<OhosPickedThreadAttachment>;
+  errors: Array<Record<string, Object>>;
+}
+
+interface SlockOhosCachedPickedAttachmentLike {
+  fileName: string;
+  mimeType: string;
+  previewUri: string;
+  fileRef: string;
+  sizeBytes: number;
+}
+
+const SLOCK_THREAD_ATTACHMENT_IMAGE_MAX_EDGE = 2048;
+const SLOCK_THREAD_ATTACHMENT_IMAGE_JPEG_QUALITY = 82;
+const SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR = 'attachment_image_compression_failed';
+
+class SlockThreadAttachmentImageCompressionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR;
+  }
+}
+
 interface OhosDiagnosticEntryPayload {
   timestampLabel: string;
   tag: string;
@@ -1774,9 +1798,12 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const imageOnly = imageOnlyValue === true || imageOnlyValue === "true";
       const captureValue = records["capture"];
       const capture = captureValue === true || captureValue === "true";
+      const compressImagesValue = records["compressImages"];
+      const compressImages = compressImagesValue === true || compressImagesValue === "true";
       SlockOhosDiagnostics.record(
         "ThreadAttachmentUpload",
-        `start imageOnly=${imageOnly} capture=${capture} channelIdPresent=${channelId.length > 0}`
+        `start imageOnly=${imageOnly} capture=${capture} compressImages=${compressImages} ` +
+          `channelIdPresent=${channelId.length > 0}`
       );
 
       if (channelId.length === 0) {
@@ -1797,15 +1824,27 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         return;
       }
 
-      const files = this.readPickedThreadAttachments(uris, imageOnly);
+      const readResult = await this.readPickedThreadAttachments(uris, imageOnly, compressImages);
+      const files = readResult.files;
+      const errors = readResult.errors;
       const byteCount = files.reduce((sum: number, file: OhosPickedThreadAttachment) => sum + file.sizeBytes, 0);
-      SlockOhosDiagnostics.record("ThreadAttachmentUpload", `picked_file_refs count=${files.length} bytes=${byteCount}`);
+      SlockOhosDiagnostics.record(
+        "ThreadAttachmentUpload",
+        `picked_file_refs count=${files.length} errors=${errors.length} bytes=${byteCount}`
+      );
       if (files.length === 0) {
-        callback(this.threadAttachmentError(400, "attachment_read_failed", "No readable attachments"));
+        const compressionFailed = errors.some(
+          (entry: Record<string, Object>) => entry["errorCode"] === SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+        );
+        callback(this.threadAttachmentError(
+          400,
+          compressionFailed ? SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR : "attachment_read_failed",
+          compressionFailed ? "Unable to compress image attachment" : "No readable attachments"
+        ));
         return;
       }
 
-      callback(this.threadPickedAttachmentFiles(files, capture));
+      callback(this.threadPickedAttachmentFiles(files, capture, errors));
     } catch (error) {
       const businessError = error as BusinessError;
       const message = businessError.message ?? `${error}`;
@@ -1816,7 +1855,11 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       );
       callback(this.threadAttachmentError(
         0,
-        pickerUnavailable ? "attachment_picker_unavailable" : "attachment_upload_failed",
+        pickerUnavailable
+          ? "attachment_picker_unavailable"
+          : error instanceof SlockThreadAttachmentImageCompressionError
+            ? SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+            : "attachment_upload_failed",
         message
       ));
     }
@@ -1847,54 +1890,84 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     return await new picker.DocumentViewPicker(getContext(this) as common.UIAbilityContext).select(options);
   }
 
-  private readPickedThreadAttachments(uris: Array<string>, imageOnly: boolean): Array<OhosPickedThreadAttachment> {
+  private async readPickedThreadAttachments(
+    uris: Array<string>,
+    imageOnly: boolean,
+    compressImages: boolean
+  ): Promise<OhosPickedThreadAttachmentReadResult> {
     const files: Array<OhosPickedThreadAttachment> = [];
+    const errors: Array<Record<string, Object>> = [];
     const context = getContext(this) as common.UIAbilityContext;
     const cacheDir = `${context.cacheDir}/slock-attachments`;
     ensureSlockOhosAttachmentCacheDirectory(cacheDir);
     this.cleanupAttachmentCache(cacheDir);
     const pickedAt = Date.now();
-    uris.forEach((uri: string, index: number) => {
-      const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+    for (let index = 0; index < uris.length; index++) {
+      const uri = uris[index];
       try {
-        const stat = fs.statSync(file.fd);
-        const mimeType = this.mimeTypeFromName(uri, imageOnly);
-        const fileName = normalizeSlockOhosImagePickerFileName(
-          this.fileNameFromUri(uri, index, imageOnly),
-          mimeType,
-          imageOnly,
-        );
-        const targetPath = `${cacheDir}/${this.safeAttachmentCacheFileName(
-          `picked-${pickedAt}-${index}`,
-          fileName,
-          mimeType
-        )}`;
-        const cached = cacheSlockOhosPickedAttachment(
-          file.fd,
-          targetPath,
-          fileName,
-          mimeType,
-          stat.size
-        );
-        files.push({
-          fileName: cached.fileName,
-          mimeType: cached.mimeType,
-          previewUri: cached.previewUri,
-          fileRef: cached.fileRef,
-          sizeBytes: cached.sizeBytes
+        const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+        try {
+          const stat = fs.statSync(file.fd);
+          const sourceFileName = this.fileNameFromUri(uri, index, imageOnly);
+          const sourceMimeType = this.mimeTypeFromName(uri, imageOnly);
+          const fileName = normalizeSlockOhosImagePickerFileName(
+            sourceFileName,
+            sourceMimeType,
+            imageOnly,
+          );
+          const shouldCompress = compressImages && this.isOhosImageAttachment(uri, sourceMimeType, imageOnly);
+          const cached = shouldCompress
+            ? await this.cacheCompressedPickedThreadImage(
+                file.fd,
+                `${cacheDir}/${this.safeAttachmentCacheFileName(
+                  `picked-${pickedAt}-${index}`,
+                  fileName,
+                  'image/jpeg'
+                )}`,
+                fileName
+              )
+            : cacheSlockOhosPickedAttachment(
+                file.fd,
+                `${cacheDir}/${this.safeAttachmentCacheFileName(
+                  `picked-${pickedAt}-${index}`,
+                  fileName,
+                  sourceMimeType
+                )}`,
+                fileName,
+                sourceMimeType,
+                stat.size
+              );
+          files.push({
+            fileName: shouldCompress ? this.compressedImageFileName(fileName) : cached.fileName,
+            mimeType: shouldCompress ? 'image/jpeg' : cached.mimeType,
+            previewUri: cached.previewUri,
+            fileRef: cached.fileRef,
+            sizeBytes: cached.sizeBytes
+          });
+        } finally {
+          fs.closeSync(file);
+        }
+      } catch (error) {
+        const compressionFailed = error instanceof SlockThreadAttachmentImageCompressionError;
+        errors.push({
+          "index": index,
+          "errorCode": compressionFailed ? SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR : "attachment_read_failed",
+          "message": (error as Error).message ?? `${error}`
         });
-      } finally {
-        fs.closeSync(file);
       }
-    });
-    return files;
+    }
+    return { files: files, errors: errors };
   }
 
   private threadPickedAttachmentFiles(
     files: Array<OhosPickedThreadAttachment>,
-    capture: boolean
+    capture: boolean,
+    errors: Array<Record<string, Object>> = []
   ): Record<string, Object> {
-    return {
+    const compressionFailed = errors.some(
+      (entry: Record<string, Object>) => entry["errorCode"] === SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+    );
+    const result: Record<string, Object> = {
       "code": 200,
       "bodyText": "",
       "files": files.map((file: OhosPickedThreadAttachment, index: number): OhosPickedThreadAttachmentPayload => {
@@ -1909,6 +1982,171 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         };
       })
     };
+    if (errors.length > 0) {
+      result["code"] = 206;
+      result["errors"] = errors;
+      result["skippedCount"] = errors.length;
+      result["errorCode"] = compressionFailed
+        ? SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+        : "attachment_read_partial";
+      result["errorBodyText"] = `${errors.length} attachment(s) could not be read`;
+    }
+    return result;
+  }
+
+  private compressedImageFileName(fileName: string): string {
+    const leaf = fileName.split('/').pop()?.split('\\').pop() ?? 'image';
+    const stem = leaf.replace(/\.[^.]*$/, '') || 'image';
+    return `${stem}.jpg`;
+  }
+
+  private isOhosImageAttachment(uri: string, mimeType: string, imageOnly: boolean): boolean {
+    const normalizedMimeType = mimeType.split(';')[0].trim().toLowerCase();
+    if (normalizedMimeType.startsWith('video/')) return false;
+    if (normalizedMimeType.startsWith('image/')) return true;
+    const lowerUri = uri.toLowerCase().split('?')[0];
+    if (/\.(avif|bmp|gif|heic|heif|jpe?g|png|webp|tiff?)$/.test(lowerUri)) return true;
+    return imageOnly && normalizedMimeType === 'application/octet-stream';
+  }
+
+  private async cacheCompressedPickedThreadImage(
+    sourceFd: number,
+    targetPath: string,
+    sourceFileName: string
+  ): Promise<SlockOhosCachedPickedAttachmentLike> {
+    let imageSource: image.ImageSource | undefined = undefined;
+    let pixelMap: image.PixelMap | undefined = undefined;
+    let packer: image.ImagePacker | undefined = undefined;
+    let outputFile: fs.File | undefined = undefined;
+    let complete = false;
+    try {
+      imageSource = image.createImageSource(sourceFd);
+      if (imageSource === undefined) {
+        throw new SlockThreadAttachmentImageCompressionError('Unable to decode image attachment');
+      }
+      const imageInfo = await imageSource.getImageInfo();
+      const sourceWidth = imageInfo.size.width;
+      const sourceHeight = imageInfo.size.height;
+      if (sourceWidth <= 0 || sourceHeight <= 0) {
+        throw new SlockThreadAttachmentImageCompressionError('Unable to decode image attachment');
+      }
+      const scale = Math.min(
+        1,
+        SLOCK_THREAD_ATTACHMENT_IMAGE_MAX_EDGE / Math.max(sourceWidth, sourceHeight)
+      );
+      const desiredSize = {
+        width: Math.max(1, Math.round(sourceWidth * scale)),
+        height: Math.max(1, Math.round(sourceHeight * scale))
+      };
+      pixelMap = await imageSource.createPixelMap({ desiredSize: desiredSize });
+      if (pixelMap === undefined) {
+        throw new SlockThreadAttachmentImageCompressionError('Unable to decode image attachment');
+      }
+      await this.applyOhosImageOrientation(imageSource, pixelMap);
+      ensureSlockOhosAttachmentCacheDirectory(targetPath.substring(0, targetPath.lastIndexOf('/')));
+      outputFile = fs.openSync(
+        targetPath,
+        fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.WRITE_ONLY
+      );
+      packer = image.createImagePacker();
+      await packer.packToFile(
+        pixelMap,
+        outputFile.fd,
+        {
+          format: 'image/jpeg',
+          quality: SLOCK_THREAD_ATTACHMENT_IMAGE_JPEG_QUALITY
+        }
+      );
+      fs.closeSync(outputFile);
+      outputFile = undefined;
+      const outputStat = fs.statSync(targetPath);
+      if (!outputStat.isFile() || outputStat.size <= 0) {
+        throw new SlockThreadAttachmentImageCompressionError('Unable to encode image attachment');
+      }
+      const cachedFileRef = fileUri.getUriFromPath(targetPath);
+      const cachedPreviewUri = `file://${targetPath}`;
+      if (!cachedFileRef.startsWith('file://')) {
+        throw new SlockThreadAttachmentImageCompressionError('Attachment cache URI is unavailable');
+      }
+      complete = true;
+      return {
+        fileName: this.compressedImageFileName(sourceFileName),
+        mimeType: 'image/jpeg',
+        previewUri: cachedPreviewUri,
+        fileRef: cachedFileRef,
+        sizeBytes: outputStat.size
+      };
+    } catch (error) {
+      if (error instanceof SlockThreadAttachmentImageCompressionError) throw error;
+      throw new SlockThreadAttachmentImageCompressionError(
+        (error as Error).message ?? 'Unable to compress image attachment'
+      );
+    } finally {
+      if (outputFile !== undefined) {
+        fs.closeSync(outputFile);
+      }
+      if (packer !== undefined) {
+        await packer.release();
+      }
+      if (pixelMap !== undefined) {
+        await pixelMap.release();
+      }
+      if (imageSource !== undefined) {
+        await imageSource.release();
+      }
+      if (!complete) {
+        try {
+          fs.unlinkSync(targetPath);
+        } catch (_) {
+        }
+      }
+    }
+  }
+
+  private async applyOhosImageOrientation(
+    imageSource: image.ImageSource,
+    pixelMap: image.PixelMap
+  ): Promise<void> {
+    let orientation = '';
+    try {
+      orientation = (await imageSource.getImageProperty(image.PropertyKey.ORIENTATION)).toString();
+    } catch (_) {
+      return;
+    }
+    switch (orientation) {
+      case '2':
+      case 'Top-right':
+        await pixelMap.flip(true, false);
+        break;
+      case '3':
+      case 'Bottom-right':
+        await pixelMap.rotate(180);
+        break;
+      case '4':
+      case 'Bottom-left':
+        await pixelMap.flip(false, true);
+        break;
+      case '5':
+      case 'Left-top':
+        await pixelMap.flip(true, false);
+        await pixelMap.rotate(270);
+        break;
+      case '6':
+      case 'Right-top':
+        await pixelMap.rotate(90);
+        break;
+      case '7':
+      case 'Right-bottom':
+        await pixelMap.flip(true, false);
+        await pixelMap.rotate(90);
+        break;
+      case '8':
+      case 'Left-bottom':
+        await pixelMap.rotate(270);
+        break;
+      default:
+        break;
+    }
   }
 
   private fileNameFromUri(uri: string, index: number, imageOnly: boolean): string {
@@ -1931,6 +2169,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     if (lower.endsWith(".gif")) return "image/gif";
     if (lower.endsWith(".webp")) return "image/webp";
     if (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || imageOnly) return "image/jpeg";
+    if (lower.endsWith(".mp4")) return "video/mp4";
+    if (lower.endsWith(".mov")) return "video/quicktime";
+    if (lower.endsWith(".m4v")) return "video/x-m4v";
+    if (lower.endsWith(".webm")) return "video/webm";
     if (lower.endsWith(".pdf")) return "application/pdf";
     if (lower.endsWith(".txt")) return "text/plain";
     return "application/octet-stream";

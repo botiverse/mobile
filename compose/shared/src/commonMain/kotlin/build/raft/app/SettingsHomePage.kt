@@ -11857,6 +11857,10 @@ internal fun SharedHandsFeedbackContent(
                         placeholder = copy.placeholder,
                         enabled = !busy,
                         attachmentActionsEnabled = remainingSlots > 0,
+                        // Settings feedback accepts images and files as evidence, but it has no
+                        // thread-composer image policy. Do not expose a checkbox whose event this
+                        // surface cannot own or persist.
+                        originalImageOptionEnabled = false,
                         composerMode = if (busy) "sending" else if (!error.isNullOrBlank()) "failed" else "idle",
                         statusLabel = error?.takeIf { it.isNotBlank() },
                         suggestionsEnabled = false,
@@ -11940,7 +11944,7 @@ internal fun SharedHandsFeedbackContent(
                             }
                         "previewAttachment" ->
                             attachmentId?.takeIf { it.isNotBlank() }?.let(::previewAttachment)
-                        "retryAttachments", "blur", "toggleAsTask" -> Unit
+                        "retryAttachments", "blur", "toggleAsTask", "toggleOriginalImage" -> Unit
                     }
                 },
                 contentPaddingTop = 10.dp,

@@ -43,6 +43,11 @@ internal fun BridgeLogLevel.mirrorsToConsole(): Boolean = this != BridgeLogLevel
 
 private val bridgeAttachmentExportOperationSequence = atomic(0L)
 
+private val bridgeThreadImageCompressionOperationSequence = atomic(0L)
+
+private fun nextBridgeThreadImageCompressionRequestId(): String =
+    "thread-image-compress-${bridgeThreadImageCompressionOperationSequence.incrementAndGet()}"
+
 internal fun nextBridgeAttachmentExportOperationId(owner: AttachmentOwnerLease): String =
     "${owner.principalKey.value}:${owner.scopeId}:${owner.generation}:" +
         bridgeAttachmentExportOperationSequence.incrementAndGet()
@@ -829,14 +834,66 @@ internal class BridgeModule : Module() {
         channelId: String,
         imageOnly: Boolean,
         capture: Boolean = false,
+        compressImages: Boolean = false,
     ): JSONObject? =
         suspendCoroutine { continuation ->
             val methodArgs = JSONObject()
             methodArgs.put("channelId", channelId)
             methodArgs.put("imageOnly", imageOnly)
             methodArgs.put("capture", capture)
+            methodArgs.put("compressImages", compressImages)
             callNativeMethod("threadAttachmentUpload", methodArgs) {
                 continuation.resume(it)
+            }
+        }
+
+    /**
+     * Compresses one app-owned editor output on the host and returns the new temporary file
+     * metadata.  The request id is part of the native cancellation/late-callback fence; it is
+     * intentionally generated in shared code rather than inferred from a file path.
+     */
+    suspend fun compressThreadImage(
+        fileRef: String,
+        fileName: String,
+        mimeType: String,
+        requestId: String = nextBridgeThreadImageCompressionRequestId()
+    ): JSONObject? =
+        suspendCancellableCoroutine { continuation ->
+            val cleanRequestId = requestId.trim().ifBlank { nextBridgeThreadImageCompressionRequestId() }
+            val methodArgs = JSONObject().apply {
+                put("requestId", cleanRequestId)
+                put("fileRef", fileRef)
+                put("fileName", fileName)
+                put("mimeType", mimeType)
+            }
+            var callbackRef: CallbackRef? = null
+            val terminal = atomic(false)
+            fun finish(payload: JSONObject?) {
+                if (!terminal.compareAndSet(false, true)) return
+                callbackRef?.let { removeCallback(it) }
+                if (continuation.isActive) continuation.resume(payload)
+            }
+            val result =
+                toNative(
+                    keepCallbackAlive = false,
+                    methodName = COMPRESS_THREAD_IMAGE,
+                    param = methodArgs.toString(),
+                    callback = { payload -> finish(payload) },
+                    syncCall = false
+                )
+            callbackRef = result.callbackRef
+            // A synchronous native rejection can complete before toNative returns.  Do not leave
+            // that callback registered in the renderer in that race.
+            if (terminal.value) callbackRef?.let { removeCallback(it) }
+            continuation.invokeOnCancellation {
+                if (terminal.compareAndSet(false, true)) {
+                    callNativeMethod(
+                        CANCEL_COMPRESS_THREAD_IMAGE,
+                        JSONObject().apply { put("requestId", cleanRequestId) },
+                        null
+                    )
+                }
+                callbackRef?.let { removeCallback(it) }
             }
         }
 
@@ -1241,6 +1298,8 @@ internal class BridgeModule : Module() {
         const val REMOTE_CONFIG = "loadRemoteConfig"
         const val SIGN_ALERT = "signAlert"
         const val CLOSE_KEYBOARD = "closeKeyboard"
+        const val COMPRESS_THREAD_IMAGE = "compressThreadImage"
+        const val CANCEL_COMPRESS_THREAD_IMAGE = "cancelCompressThreadImage"
         const val URL_ENCODE = "urlEncode"
         const val URL_DECODE = "urlDecode"
         const val SHOW_PHOTO_BROWSER = "showPhotoBrowser"

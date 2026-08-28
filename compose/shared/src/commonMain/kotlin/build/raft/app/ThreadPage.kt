@@ -779,6 +779,7 @@ internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
             "inviteMention",
             "notifyMention",
             "attachImage",
+            "toggleOriginalImage",
             "attachFile",
             "removeAttachment",
             "retryAttachments"
@@ -9252,6 +9253,16 @@ internal fun SharedThreadRouteContent(
                         SharedThreadComposerDraftIntent.Change(seedAsTask = asTask)
                     )
                 }
+                "toggleOriginalImage" -> {
+                    val enabled = asTask ?: !currentDraftState.originalImage
+                    bridge.log(
+                        "thread_composer_toggle_original_image instanceId=$composerInstanceId " +
+                            "originalImage=$enabled draftKey=${currentDraftState.draftKey.orEmpty()}"
+                    )
+                    composerDraftViewModel.dispatch(
+                        SharedThreadComposerDraftIntent.SetOriginalImage(enabled)
+                    )
+                }
                 "send" -> {
                     handleComposerSendRequest(
                         ThreadComposerSendRequest(
@@ -9398,6 +9409,7 @@ internal fun SharedThreadRouteContent(
                                 channelId = channelId,
                                 imageOnly = action != "attachFile",
                                 capture = action == ThreadComposerCaptureImageAction,
+                                compressImages = action != "attachFile" && !currentDraftState.originalImage,
                             )
                         val files = parseSharedThreadPickedPlatformFiles(response)
                         bridge.log(
@@ -10861,6 +10873,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
         instanceId = instanceId.ifBlank { renderedPayload.instanceId },
         seedText = draftState.seedText,
         seedAsTask = draftState.seedAsTask,
+        originalImage = draftState.originalImage,
         syncNonce = draftState.syncNonce,
         editorCommand = draftState.editorCommand,
         focusRequestNonce = draftState.focusRequestNonce,
