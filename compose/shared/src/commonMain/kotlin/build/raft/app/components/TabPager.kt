@@ -15,6 +15,8 @@ import com.tencent.kuikly.compose.foundation.pager.rememberPagerState
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
+import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -115,12 +117,17 @@ fun TabPager(
             onDebugEvent?.invoke("report -> $currentPage")
         }
     }
+    // settledPage is LOG-ONLY. Round-5 evidence (run 33158645283, group 1):
+    // on the Kuikly iOS renderer settledPage can regress to a stale value
+    // after a completed swipe (settled=1 -> settled=0 while sel=1); a
+    // reporting effect fed by it then REVERTED the correct selection and
+    // animated the page back — a broken signal behind a "harmless belt" is
+    // an active reverter, not redundancy. currentPage is the sole sync
+    // authority; this stays only so acceptance logs keep showing what the
+    // port's settle bookkeeping does.
     val settledPage = pagerState.settledPage
     LaunchedEffect(settledPage) {
         onDebugEvent?.invoke("settled=$settledPage sel=$selectedIndex")
-        if (settledPage != selectedIndex && settledPage in 0 until pageCount) {
-            onSelectedIndexChange(settledPage)
-        }
     }
 
     Column(modifier = modifier) {
@@ -162,10 +169,22 @@ private fun BoxScope.EdgeGuard(inset: Dp, alignment: Alignment) {
             .align(alignment)
             .width(inset)
             .fillMaxHeight()
-            // An empty pointerInput block still participates in hit testing,
-            // which is exactly the point: touches born here belong to the
-            // platform (edge-back), never to the pager underneath.
-            .pointerInput(Unit) {},
+            // Round-5 evidence (group 3): an EMPTY pointerInput does NOT keep
+            // the pager from receiving edge-born drags on this port — the
+            // pager paged and bounced on a drag starting at x=10pt. Actively
+            // consume every change of a touch born in the inset instead, so
+            // the pager never sees it and the platform edge gesture stays
+            // free to win (same awaitEachGesture pattern as the AppShell
+            // drawer's admission logic).
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown()
+                    do {
+                        val event = awaitPointerEvent()
+                        event.changes.forEach { it.consume() }
+                    } while (event.changes.any { it.pressed })
+                }
+            },
     )
 }
 
