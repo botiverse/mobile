@@ -61,6 +61,30 @@ internal fun slockKeyboardInsetExcludesBottomSafeArea(): Boolean =
         .params
         .optBoolean(KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA, false)
 
+/**
+ * Returns the effective bottom obstruction reported by a keyboard watcher.
+ *
+ * This is deliberately a pure inset calculation. The caller owns the container
+ * policy used to consume the obstruction (for example, viewport reduction or
+ * scroll content padding). When a host says the native keyboard inset excludes
+ * the bottom safe area, that area is appended only while the keyboard is open;
+ * otherwise it would be double-counted or alter closed-keyboard layout.
+ */
+internal fun slockEffectiveKeyboardInsetDp(
+    keyboardHeightDp: Float,
+    bottomSafeArea: Dp,
+    keyboardInsetExcludesBottomSafeArea: Boolean
+): Dp {
+    val keyboardInset = keyboardHeightDp.coerceAtLeast(0f).dp
+    val safeAreaInset =
+        if (keyboardHeightDp > 0f && keyboardInsetExcludesBottomSafeArea) {
+            bottomSafeArea.value.coerceAtLeast(0f).dp
+        } else {
+            0.dp
+        }
+    return keyboardInset + safeAreaInset
+}
+
 internal fun resolveSlockSafeAreaDp(primaryDp: Float, fallbackDp: Float): Float =
     primaryDp.coerceAtLeast(fallbackDp).coerceAtLeast(0f)
 

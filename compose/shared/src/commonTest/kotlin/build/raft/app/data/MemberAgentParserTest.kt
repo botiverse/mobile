@@ -426,7 +426,7 @@ class MemberAgentParserTest {
               "name": "builder",
               "displayName": "Builder",
               "runtime": "codex",
-              "role": "Admin"
+              "serverRole": "Admin"
             }
             """.trimIndent()
         )

@@ -17,6 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -358,6 +360,238 @@ class SharedThreadInitialAccessTest {
         assertEquals(beforeStaleAccess.writeActionsEnabled, frame.writeActionsEnabled)
         assertEquals(1, channelRepository.channelsCalls)
         assertEquals(0, channelRepository.homeCalls)
+        scope.cancel()
+    }
+
+    @Test
+    fun parentAccessLookupTimeoutMarksAuthorityUnknownAndHintRecoversComposer() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val route = replyThreadInitialAccessPayload()
+        val home = replyThreadAccessHomeSnapshot()
+        val neverCompleteChannels = CompletableDeferred<DataResult<ChannelSnapshot>>()
+        val channelRepository =
+            FakeChannelRepository(
+                channelsResult = { _ -> neverCompleteChannels.await() },
+                homeResult = { _ -> DataResult.Content(home) },
+            )
+        val diagnostics = mutableListOf<String>()
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = ReplyThreadAccessNetworkApi,
+                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        conversationRepository =
+                            ReplyThreadAccessConversationRepositoryRecorder(
+                                replyResult = DataResult.Content(replyThreadAccessSnapshot())
+                            ),
+                        channelRepository = channelRepository,
+                    ),
+                scope = scope,
+                diagnosticsLogger = { diagnostics.add(it) },
+            )
+
+        store.accept(SharedThreadIntent.Start(route))
+        store.state.filter { state ->
+            state.initialHomeAccessLookupComplete &&
+                state.accessResolution == ThreadAccessResolution.Resolved &&
+                !state.payload.composer.enabled
+        }.first()
+        // The timeout must land in an explicit Unknown authority state, not a
+        // silently frozen read-only fallback.
+        assertEquals(ReplyParentAuthorityStatus.Unknown, store.state.value.replyParentAuthority)
+        assertFalse(store.state.value.payload.composer.enabled)
+        assertFalse(store.state.value.writeActionsEnabled)
+
+        // Event-driven recovery (direction A): the shared Home directory row for
+        // the exact parent arrives; no network, no retry counter.
+        store.accept(
+            SharedThreadIntent.ApplyParentDirectoryHint(
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                present = true,
+                joined = true,
+                canSend = true,
+            )
+        )
+        store.state.filter { state -> state.payload.composer.enabled }.first()
+        val recovered = store.state.value
+        assertEquals(ReplyParentAuthorityStatus.Writable, recovered.replyParentAuthority)
+        assertTrue(recovered.payload.joined)
+        assertTrue(recovered.payload.canSend)
+        assertTrue(recovered.payload.composer.enabled)
+        assertTrue(recovered.writeActionsEnabled)
+        assertEquals(1, channelRepository.channelsCalls)
+        scope.cancel()
+    }
+
+    @Test
+    fun explicitNoSendParentIsDeniedAndHintCannotSilentlyReopenWithoutGrant() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val route = replyThreadInitialAccessPayload()
+        val home = replyThreadAccessHomeSnapshot(joined = true, canSend = false)
+        val channelRepository =
+            FakeChannelRepository(
+                channelsResult = { serverId ->
+                    DataResult.Content(
+                        ChannelSnapshot(
+                            server = ServerSummary(id = serverId, name = "One"),
+                            channels = home.channels,
+                        )
+                    )
+                },
+            )
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = ReplyThreadAccessNetworkApi,
+                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        conversationRepository =
+                            ReplyThreadAccessConversationRepositoryRecorder(
+                                replyResult = DataResult.Content(replyThreadAccessSnapshot())
+                            ),
+                        channelRepository = channelRepository,
+                    ),
+                scope = scope,
+            )
+
+        store.accept(SharedThreadIntent.Start(route))
+        store.state.filter { state ->
+            state.initialHomeAccessLookupComplete &&
+                state.replyParentAuthority == ReplyParentAuthorityStatus.Denied
+        }.first()
+        assertFalse(store.state.value.payload.composer.enabled)
+        assertFalse(store.state.value.payload.canSend)
+
+        // A hint that still denies send keeps the composer closed.
+        store.accept(
+            SharedThreadIntent.ApplyParentDirectoryHint(
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                present = true,
+                joined = true,
+                canSend = false,
+            )
+        )
+        assertEquals(ReplyParentAuthorityStatus.Denied, store.state.value.replyParentAuthority)
+        assertFalse(store.state.value.payload.composer.enabled)
+
+        // A live grant from the directory re-evaluates event-driven (join or
+        // permission changes while the thread is open).
+        store.accept(
+            SharedThreadIntent.ApplyParentDirectoryHint(
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                present = true,
+                joined = true,
+                canSend = true,
+            )
+        )
+        store.state.filter { state -> state.replyParentAuthority == ReplyParentAuthorityStatus.Writable }.first()
+        assertTrue(store.state.value.payload.composer.enabled)
+        assertTrue(store.state.value.writeActionsEnabled)
+        scope.cancel()
+    }
+
+    @Test
+    fun hintsForOtherParentsOrBeforeLookupCompletionAreIgnored() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val route = replyThreadInitialAccessPayload()
+        val home = replyThreadAccessHomeSnapshot()
+        val releaseLookup = CompletableDeferred<Unit>()
+        var firstCall = true
+        val channelRepository =
+            FakeChannelRepository(
+                channelsResult = { serverId ->
+                    if (firstCall) {
+                        firstCall = false
+                        releaseLookup.await()
+                    }
+                    DataResult.Content(
+                        ChannelSnapshot(
+                            server = ServerSummary(id = serverId, name = "One"),
+                            channels = home.channels,
+                        )
+                    )
+                },
+            )
+        val diagnostics = mutableListOf<String>()
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = ReplyThreadAccessNetworkApi,
+                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        conversationRepository =
+                            ReplyThreadAccessConversationRepositoryRecorder(
+                                replyResult = DataResult.Content(replyThreadAccessSnapshot())
+                            ),
+                        channelRepository = channelRepository,
+                    ),
+                scope = scope,
+                diagnosticsLogger = { diagnostics.add(it) },
+            )
+
+        fun assertNotWritable(stage: String) {
+            val state = store.state.value
+            // payload.composer.enabled alone is not the write gate pre-lookup;
+            // the store-level authority gate is writeActionsEnabled.
+            if (state.writeActionsEnabled) {
+                throw AssertionError(
+                    stage + ": composer=" + state.payload.composer.enabled +
+                        " writeActions=" + state.writeActionsEnabled +
+                        " authority=" + state.replyParentAuthority +
+                        " lookupComplete=" + state.initialHomeAccessLookupComplete +
+                        " canonical=" + state.canonicalAccessResolved +
+                        " diagnostics=" + diagnostics
+                )
+            }
+        }
+
+        store.accept(SharedThreadIntent.Start(route))
+        // Before the initial lookup completes: hints must not pre-grant write access.
+        store.accept(
+            SharedThreadIntent.ApplyParentDirectoryHint(
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                present = true,
+                joined = true,
+                canSend = true,
+            )
+        )
+        assertNotWritable("hint before lookup complete")
+
+        // Wrong parent id: ignored.
+        store.accept(
+            SharedThreadIntent.ApplyParentDirectoryHint(
+                parentChannelId = "channel-other",
+                parentMessageId = "m1",
+                present = true,
+                joined = true,
+                canSend = true,
+            )
+        )
+        assertNotWritable("wrong parent id")
+
+        // Wrong parent message id: ignored.
+        store.accept(
+            SharedThreadIntent.ApplyParentDirectoryHint(
+                parentChannelId = "channel-1",
+                parentMessageId = "other-message",
+                present = true,
+                joined = true,
+                canSend = true,
+            )
+        )
+        assertNotWritable("wrong parent message id")
+
+        releaseLookup.complete(Unit)
+        store.state.filter { state ->
+            state.initialHomeAccessLookupComplete && state.payload.composer.enabled
+        }.first()
+        assertEquals(ReplyParentAuthorityStatus.Writable, store.state.value.replyParentAuthority)
+        assertTrue(store.state.value.writeActionsEnabled)
         scope.cancel()
     }
 }

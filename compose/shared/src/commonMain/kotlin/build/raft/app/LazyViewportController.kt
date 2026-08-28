@@ -22,6 +22,15 @@ internal sealed interface LazyViewportIntent {
     data object UserDragging : LazyViewportIntent
 }
 
+// task #232 diagnostics: compact intent tag for viewport transition logs.
+internal fun LazyViewportIntent.logTag(): String =
+    when (this) {
+        LazyViewportIntent.FollowingLatest -> "following"
+        LazyViewportIntent.PinnedTop -> "pinned_top"
+        LazyViewportIntent.UserDragging -> "user_dragging"
+        is LazyViewportIntent.Anchored -> "anchored:${target}"
+    }
+
 internal sealed interface LazyViewportAnchorTarget {
     data class Message(val messageId: String) : LazyViewportAnchorTarget
 

@@ -2823,6 +2823,10 @@ internal fun ThreadComposerContentLeaf(
                             horizontalArrangement = Arrangement.spacedBy(ThreadComposerLeftActionGroupSpacing)
                         ) {
                             if (state.attachmentActionsEnabled) {
+                                // Gallery / camera / file, in that order (artin, task #1096). Camera
+                                // used to exist only as this button's long-press, which meant nobody
+                                // found it; the long-press stays so existing muscle memory keeps
+                                // working, and the dedicated button is what makes it discoverable.
                                 ComposerIconButton(
                                     icon = SlockLucideIconName.ImagePlus,
                                     enabled = composerEnabled,
@@ -2835,9 +2839,31 @@ internal fun ThreadComposerContentLeaf(
                                         onEvent(threadComposerImageAction(longPress = false), null, null, null)
                                     }
                                 )
-                                ComposerIconButton(SlockLucideIconName.Paperclip, composerEnabled) {
-                                    onEvent("attachFile", null, null, null)
-                                }
+                                ComposerIconButton(
+                                    icon = SlockLucideIconName.Camera,
+                                    enabled = composerEnabled,
+                                    contentDescription = stringResource(MR.strings.composer_take_photo),
+                                    onClick = {
+                                        // longPress = true is what makes this the camera: it emits
+                                        // captureImage, so capture keeps its existing confirm/cancel
+                                        // editor step and nothing reaches the pending tray until the
+                                        // user confirms. Flipping it to false silently turns this
+                                        // button into a second gallery entry.
+                                        //
+                                        // No test covers this call site. commonTest cannot drive
+                                        // Compose and the composer has no visual host, so nothing in
+                                        // the repo can reach ComposerIconButton. The helper's mapping
+                                        // is tested (ThreadPayloadTest), but the argument passed here
+                                        // is not -- do not read that test as guarding this line.
+                                        onEvent(threadComposerImageAction(longPress = true), null, null, null)
+                                    }
+                                )
+                                ComposerIconButton(
+                                    icon = SlockLucideIconName.Paperclip,
+                                    enabled = composerEnabled,
+                                    contentDescription = stringResource(MR.strings.composer_attach_file),
+                                    onClick = { onEvent("attachFile", null, null, null) }
+                                )
                             }
                         }
                         Row(

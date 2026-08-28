@@ -116,6 +116,9 @@ sealed interface SharedTasksIntent {
     data class UpdateTaskStatus(val taskId: String, val nextStatus: TaskStatus) : SharedTasksIntent
     data class TaskStatusUpdateSucceeded(val task: TaskSummary) : SharedTasksIntent
     data class TaskStatusUpdateFailed(val previousTask: TaskSummary, val errorCode: String) : SharedTasksIntent
+    data class TaskAssignStarted(val taskId: String, val assignee: MemberProfile?) : SharedTasksIntent
+    data class TaskAssignSucceeded(val task: TaskSummary) : SharedTasksIntent
+    data class TaskAssignFailed(val previousTask: TaskSummary, val errorCode: String) : SharedTasksIntent
     data class NavigationFailed(val errorCode: String?) : SharedTasksIntent
     data class CreateTasksStarted(val operation: TasksCreateOperationId) : SharedTasksIntent
     data class CreateTasksSucceeded(
@@ -134,6 +137,9 @@ sealed interface SharedTasksRouteIntent {
     data object Refresh : SharedTasksRouteIntent
     data class SelectFilter(val status: TaskStatus?) : SharedTasksRouteIntent
     data class UpdateStatus(val task: TaskSummary, val status: TaskStatus) : SharedTasksRouteIntent
+
+    /** Assign (or, with `assignee == null`, unassign) a task from the task card. */
+    data class AssignTask(val task: TaskSummary, val assignee: MemberProfile?) : SharedTasksRouteIntent
     data class ApplyTaskStatus(val taskId: String, val status: TaskStatus) : SharedTasksRouteIntent
     data class ApplyTaskUpdate(val task: TaskSummary) : SharedTasksRouteIntent
     data object ClearNavigationError : SharedTasksRouteIntent
@@ -209,6 +215,7 @@ internal class SharedTasksViewModel(
     private var loadJobPriority: DataRequestPriority? = null
     private var observeJob: Job? = null
     private var statusJob: Job? = null
+    private var assignJob: Job? = null
     private var lastRefreshCompletedAt: TimeMark? = null
     private var canonicalRefetchRequested = false
 
@@ -235,6 +242,21 @@ internal class SharedTasksViewModel(
                 statusJob =
                     runtimeScope.launch {
                         updateStatus(action.task, action.status)
+                    }
+            }
+            is SharedTasksRouteIntent.AssignTask -> {
+                val skipReason = state.value.taskAssignUpdateSkipReason(action.task, action.assignee)
+                if (skipReason != null) {
+                    diagnosticsLogger(
+                        "tasks_assign_update_skip reason=${skipReason.logValue} " +
+                            "taskId=${action.task.id.value} requestedAssignee=${action.assignee?.id?.value ?: "null"}"
+                    )
+                    return
+                }
+                assignJob?.cancel()
+                assignJob =
+                    runtimeScope.launch {
+                        assignTask(action.task, action.assignee)
                     }
             }
             is SharedTasksRouteIntent.ApplyTaskStatus -> {
@@ -675,6 +697,114 @@ internal class SharedTasksViewModel(
         }
     }
 
+    private suspend fun assignTask(task: TaskSummary, assignee: MemberProfile?) {
+        val serverId = useCase.currentServerId()
+        val sharedStore = sharedTasksDataStore
+        val mutationPermit =
+            if (sharedStore != null && serverId != null) {
+                sharedStore.beginAssignMutation(
+                    serverId = serverId.value,
+                    scope = scope,
+                    taskId = task.id,
+                    expectedRevision = task.revision,
+                    assignee = assignee
+                )
+            } else {
+                null
+            }
+        val mutationTask =
+            if (sharedStore == null) {
+                task
+            } else {
+                mutationPermit?.previousTask
+            }
+        if (serverId == null || mutationTask == null) {
+            diagnosticsLogger(
+                "tasks_assign_reject reason=missing_local_projection taskId=${task.id.value} " +
+                    "revision=${task.revision ?: -1L}"
+            )
+            events.emit(SharedTasksEvent.OperationFailed("tasks_local_projection_missing"))
+            return
+        }
+        store.accept(SharedTasksIntent.TaskAssignStarted(mutationTask.id.value, assignee))
+        try {
+            when (
+                val result =
+                    useCase.assignTask(
+                        serverId,
+                        mutationTask.id,
+                        assignee,
+                        expectedRevision = mutationTask.revision
+                    )
+            ) {
+                is DataResult.Content -> {
+                    val acceptedTask =
+                        if (sharedStore == null) {
+                            result.data.task
+                        } else {
+                            mutationPermit?.let { permit ->
+                                sharedStore.completeStatusMutation(permit, result.data.task)
+                            }
+                        }
+                    if (acceptedTask != null) {
+                        store.accept(SharedTasksIntent.TaskAssignSucceeded(acceptedTask))
+                    } else {
+                        diagnosticsLogger(
+                            "tasks_assign_result_ignore reason=permit_superseded taskId=${task.id.value} " +
+                                "serverId=${serverId.value}"
+                        )
+                    }
+                }
+                else -> {
+                    val errorCode = result.failureCodeOrNull() ?: "tasks_assign_unknown"
+                    val restoredTask =
+                        if (sharedStore == null) {
+                            mutationTask
+                        } else {
+                            mutationPermit?.let { permit -> sharedStore.rollbackStatusMutation(permit) }
+                        }
+                    if (restoredTask != null) {
+                        events.emit(SharedTasksEvent.OperationFailed(errorCode))
+                        store.accept(SharedTasksIntent.TaskAssignFailed(restoredTask, errorCode))
+                    } else {
+                        diagnosticsLogger(
+                            "tasks_assign_failure_ignore reason=permit_superseded taskId=${task.id.value} " +
+                                "serverId=${serverId.value} errorCode=$errorCode"
+                        )
+                    }
+                    // Server contract: a lost OCC race means our projected revision is
+                    // stale; re-read once so the next attempt carries a fresh token.
+                    if (errorCode == TASKS_ASSIGN_CONFLICT) {
+                        runtimeScope.launch { load(SharedTasksRouteIntent.Refresh) }
+                    }
+                }
+            }
+        } catch (cancellation: CancellationException) {
+            if (sharedStore != null && mutationPermit != null) {
+                withContext(NonCancellable) {
+                    sharedStore.rollbackStatusMutation(mutationPermit)
+                }
+            }
+            throw cancellation
+        } catch (_: Throwable) {
+            val restoredTask =
+                if (sharedStore == null) {
+                    mutationTask
+                } else {
+                    mutationPermit?.let { permit -> sharedStore.rollbackStatusMutation(permit) }
+                }
+            if (restoredTask != null) {
+                events.emit(SharedTasksEvent.OperationFailed("tasks_assign_network"))
+                store.accept(SharedTasksIntent.TaskAssignFailed(restoredTask, "tasks_assign_network"))
+            } else {
+                diagnosticsLogger(
+                    "tasks_assign_failure_ignore reason=permit_superseded taskId=${task.id.value} " +
+                        "serverId=${serverId.value} errorCode=tasks_assign_network"
+                )
+            }
+        }
+    }
+
     private suspend fun createTasks(operation: TasksCreateOperationId, titles: List<String>) {
         val serverId = useCase.currentServerId()
         val isLocalChannelScope = scope is SharedTasksScope.Channel && scope.channelId == operation.channelId
@@ -773,6 +903,7 @@ private fun SharedTasksRouteIntent.tasksRefreshReason(): String =
         SharedTasksRouteIntent.Refresh -> "manual"
         is SharedTasksRouteIntent.SelectFilter -> "filter"
         is SharedTasksRouteIntent.UpdateStatus -> "status"
+        is SharedTasksRouteIntent.AssignTask -> "assign"
         is SharedTasksRouteIntent.ApplyTaskStatus -> "apply_task_status"
         is SharedTasksRouteIntent.ApplyTaskUpdate -> "apply_task_update"
         SharedTasksRouteIntent.ClearNavigationError -> "navigation"
@@ -842,6 +973,14 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
         is SharedTasksIntent.UpdateTaskStatus -> withTaskStatusUpdating(intent.taskId, intent.nextStatus)
         is SharedTasksIntent.TaskStatusUpdateSucceeded -> withTaskStatusUpdateSuccess(intent.task)
         is SharedTasksIntent.TaskStatusUpdateFailed ->
+            withTaskStatusUpdateFailure(
+                previousTask = intent.previousTask,
+                errorCode = intent.errorCode
+            )
+        is SharedTasksIntent.TaskAssignStarted ->
+            withTaskAssignUpdating(taskId = intent.taskId, assignee = intent.assignee)
+        is SharedTasksIntent.TaskAssignSucceeded -> withTaskStatusUpdateSuccess(intent.task)
+        is SharedTasksIntent.TaskAssignFailed ->
             withTaskStatusUpdateFailure(
                 previousTask = intent.previousTask,
                 errorCode = intent.errorCode
@@ -1222,6 +1361,31 @@ internal fun TasksUiState.taskStatusUpdateSkipReason(
     }
 }
 
+internal enum class TaskAssignSkipReason(val logValue: String) {
+    AlreadyCurrent("already_current"),
+    StaleTaskAssignee("stale_task_assignee"),
+}
+
+/**
+ * Assignee twin of [taskStatusUpdateSkipReason]. A task missing from the current
+ * projection is not skipped here (same as status): the caller treats it as
+ * `tasks_local_projection_missing`.
+ */
+internal fun TasksUiState.taskAssignUpdateSkipReason(
+    task: TaskSummary,
+    requestedAssignee: MemberProfile?
+): TaskAssignSkipReason? {
+    val currentTask = currentTaskSummary(task.id.value) ?: return null
+    val sameAssignee =
+        currentTask.assignee?.id == requestedAssignee?.id &&
+            (currentTask.assignee != null) == (requestedAssignee != null)
+    return when {
+        sameAssignee -> TaskAssignSkipReason.AlreadyCurrent
+        currentTask.assignee?.id != task.assignee?.id -> TaskAssignSkipReason.StaleTaskAssignee
+        else -> null
+    }
+}
+
 internal fun TasksUiState.currentTaskSummary(taskId: String): TaskSummary? =
     (loadState as? ScreenLoadState.Content)
         ?.data
@@ -1348,6 +1512,46 @@ private fun TasksContent.withTaskStatus(
             if (task.matchesTaskKey(taskId)) task.copy(status = status) else task
         }
     return copy(tasks = nextTasks, summaryCounts = nextTasks.summaryCounts())
+}
+
+/** Optimistic in-place assignee copy mirroring [withTaskStatus]. */
+private fun TasksContent.withTaskAssignee(
+    taskId: String,
+    assignee: MemberProfile?
+): TasksContent {
+    val nextTasks =
+        tasks.map { task ->
+            if (task.matchesTaskKey(taskId)) task.copy(assignee = assignee) else task
+        }
+    return copy(tasks = nextTasks, summaryCounts = nextTasks.summaryCounts())
+}
+
+/**
+ * Assignee twin of [withTaskStatusUpdating]: optimistic projection plus the same
+ * per-card busy/error slots (a task has at most one in-flight mutation).
+ */
+fun TasksUiState.withTaskAssignUpdating(
+    taskId: String,
+    assignee: MemberProfile?
+): TasksUiState {
+    val contentState = loadState as? ScreenLoadState.Content
+    return if (contentState != null) {
+        copy(
+            loadState =
+                ScreenLoadState.Content(
+                    contentState.data.withTaskAssignee(taskId = taskId, assignee = assignee)
+                ),
+            navigationErrorCode = null,
+            statusUpdatingTaskId = taskId,
+            statusUpdateErrorCode = null
+        )
+    } else {
+        copy(
+            navigationErrorCode = null,
+            statusUpdatingTaskId = taskId,
+            statusUpdateErrorCode = null
+        )
+    }
 }
 
 private fun TaskSummary.matchesTaskKey(taskId: String): Boolean {

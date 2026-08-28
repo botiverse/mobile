@@ -175,7 +175,10 @@ $ scripts/avd_screenshot.sh Pixel_9a_3 /tmp/pixel_9a_3_home.png
 # Verify: file /tmp/pixel_9a_3_home.png → image dimensions match AVD
 ```
 
-For visual-testing suites, use `scripts/slock-visual-testing.mjs`; it forwards to the canonical CLI in `third_party/slock-source/packages/visual-testing`.
+For visual-testing suites, use `scripts/slock-visual-testing.mjs`; it forwards
+to the canonical CLI in an external `<slock-source>/packages/visual-testing`
+checkout selected by `SLOCK_SOURCE_REPO` (or the documented compatibility
+alias). Record the external checkout SHA when attaching visual evidence.
 
 ---
 

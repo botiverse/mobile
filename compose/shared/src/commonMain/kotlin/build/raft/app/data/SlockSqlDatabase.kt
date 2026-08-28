@@ -67,6 +67,16 @@ internal class SlockSqlDatabase(
         }
     }
 
+    /**
+     * Synchronous transaction seam for admission paths that deliberately run before the
+     * network request is launched.  The journal API is synchronous so a caller cannot
+     * accidentally suspend after the UI has been admitted but before the durable write
+     * commits; this helper still uses SQLDelight's real transaction boundary.
+     */
+    fun transactionBlocking(block: SlockSqlDatabase.() -> Unit) {
+        database.transaction { block(this@SlockSqlDatabase) }
+    }
+
     private fun SqlPreparedStatement.bind(values: List<RelationalValue>) {
         values.forEachIndexed { index, value ->
             when (value) {
@@ -92,7 +102,9 @@ internal class SlockSqlDatabase(
         // independent receiver-private viewer-overlay table, and v4 adds the independent owner read-state
         // fact family. v5 adds environment ownership to durable facts; v6 adds only scoped avatar
         // metadata/resource-failure policy while native caches keep byte ownership. Every migration
-        // preserves outbox and every unrelated definition.
+        // preserves outbox and every unrelated definition. v7 adds the native avatar commit
+        // identity; v8 adds the identity-bound Thread pending-send journal while leaving the
+        // legacy outbox table/query family intact.
         const val DatabaseName: String = "slock_cache_v4.db"
 
         val Schema = SlockDatabase.Schema

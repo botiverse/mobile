@@ -390,6 +390,18 @@ internal fun ThreadMessageVisualScreenContent() {
             threadVisualFixture(fixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }, instanceId = instanceId)
                 .withNewMessageMenuTargetReplyCount(newMessageMenuTargetReplyCount)
         }
+    // A visual route must publish an explicit readiness boundary.  In
+    // particular, the wrapped+nested GFM fixture previously let the Android
+    // harness capture the host's CALL_KOTLIN fallback as a workflow-green PNG.
+    // Emit only after the fixture payload has been resolved and this host
+    // composition is active; the capture harness requires this token before
+    // accepting a screenshot for the regression case.
+    val visualReadyBridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    LaunchedEffect(visualFixture, instanceId) {
+        if (visualFixture.isNotBlank()) {
+            visualReadyBridge.log("thread_visual_ready fixtureKey=$visualFixture")
+        }
+    }
     val agentStatusResolver =
         remember(visualFixture) {
             threadMessageVisualAgentStatusResolver(visualFixture)
@@ -573,7 +585,8 @@ internal fun ThreadMessageVisualScreenContent() {
             agentStatusResolver = agentStatusResolver,
             newMessageMenuEnabled = newMessageMenuEnabled,
             singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
-            composerBoundaryVisible = newMessageMenuComposerBoundaryVisible
+            composerBoundaryVisible = newMessageMenuComposerBoundaryVisible,
+            longPressMenuVisibleToken = longPressMenuVisibleToken
         )
         return
     }
@@ -916,10 +929,26 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
     agentStatusResolver: SlockAgentStatusResolver,
     newMessageMenuEnabled: Boolean,
     singleTapOpensThreadEnabled: Boolean,
-    composerBoundaryVisible: Boolean
+    composerBoundaryVisible: Boolean,
+    longPressMenuVisibleToken: String = ""
 ) {
     var openedMessageId by remember { mutableStateOf<String?>(null) }
     var compactMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    // task #228: report the compact menu's own state the way the legacy menu
+    // already does. The sibling case (preference-off) has always gated on this
+    // token; the compact path simply never passed one, which is why its tests
+    // had to infer "the menu opened" from pixels instead of being told.
+    //
+    // messageId is part of the payload deliberately: the three compact cases
+    // press three different messages, so a shared or replayed observation shows
+    // up immediately as the same id appearing twice.
+    var compactMenuMessageId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(longPressMenuVisibleToken, compactMenuMessageId) {
+        val openedFor = compactMenuMessageId
+        if (longPressMenuVisibleToken.isNotBlank() && openedFor != null) {
+            Utils.logToNative("$longPressMenuVisibleToken messageId=$openedFor")
+        }
+    }
     val renderedMessages =
         if (composerBoundaryVisible) {
             messages.take(THREAD_NEW_MESSAGE_MENU_TARGET_GROUP_SIZE)
@@ -955,7 +984,10 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
                         showSaveAction = false,
                         showReactionAddAction = false,
                         onShowActions = { anchor ->
-                            if (newMessageMenuEnabled) compactMenuAnchor = anchor
+                            if (newMessageMenuEnabled) {
+                                compactMenuAnchor = anchor
+                                compactMenuMessageId = message.id
+                            }
                         },
                         onOpenMember = {},
                         onOpenThread = { openedMessageId = it },
@@ -979,7 +1011,10 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
                             save = false,
                             translate = false
                         ),
-                    onDismiss = { compactMenuAnchor = null },
+                    onDismiss = {
+                        compactMenuAnchor = null
+                        compactMenuMessageId = null
+                    },
                     onReact = {},
                     onCopy = {},
                     onReply = {},
@@ -987,7 +1022,10 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
                     onSave = {},
                     onTranslate = {},
                     onSelect = {},
-                    onMore = { compactMenuAnchor = null }
+                    onMore = {
+                        compactMenuAnchor = null
+                        compactMenuMessageId = null
+                    }
                 )
             }
             if (openedMessageId != null) {

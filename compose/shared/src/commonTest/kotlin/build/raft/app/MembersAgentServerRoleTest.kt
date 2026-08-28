@@ -2,6 +2,10 @@ package build.raft.app
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.ServerId
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsServerActionResult
@@ -174,6 +178,85 @@ class MembersAgentServerRoleTest {
         assertTrue(options.first { it.id == "member" }.selected)
         assertFalse(options.first { it.id == "admin" }.selected)
     }
+
+    @Test
+    fun agentRoleSaveRequiresReturnedRoleAndServerToMatchRequest() {
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.Success,
+            DataResult.Content(agentProfile(serverRole = "admin", serverId = "server-1"))
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
+        )
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.MismatchedContent,
+            DataResult.Content(agentProfile(serverRole = "member", serverId = "server-1"))
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
+        )
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.MismatchedContent,
+            DataResult.Content(agentProfile(serverRole = "admin", serverId = "server-2"))
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
+        )
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.MismatchedContent,
+            DataResult.Content(agentProfile(serverRole = "admin", serverId = null))
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
+        )
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.MismatchedContent,
+            DataResult.Content(agentProfile(serverRole = "admin", serverId = "server-1", id = "agent-2"))
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
+        )
+    }
+
+    @Test
+    fun agentRoleSaveKeepsEmptyAndPermissionResultsAsFailures() {
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.Empty,
+            DataResult.Empty(EmptyReason.NoMembers).membersAgentServerRoleSaveOutcome(
+                MemberId("agent-1"),
+                ServerId("server-1"),
+                MembersAgentServerRole.Admin
+            )
+        )
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.NoPermission,
+            DataResult.NoPermission(PermissionBlocker("forbidden")).membersAgentServerRoleSaveOutcome(
+                MemberId("agent-1"),
+                ServerId("server-1"),
+                MembersAgentServerRole.Admin
+            )
+        )
+    }
+
+    private fun agentProfile(serverRole: String?, serverId: String?, id: String = "agent-1"): MemberProfile =
+        MemberProfile(
+            id = MemberId(id),
+            displayName = "Agent One",
+            handle = "agent-1",
+            kind = MemberKind.Agent,
+            serverId = serverId?.let(::ServerId),
+            serverRole = serverRole
+        )
 
     @Test
     fun humanRemoveActionFollowsReactServerRoleGate() {

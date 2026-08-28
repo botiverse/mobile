@@ -789,7 +789,11 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                         .border(SlockStroke.Thin, SlockColor.BorderBlack),
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon(SlockLucideIconName.Hash, color = "#FF000000", modifier = Modifier.size(15.dp))
+                SlockLucideIcon(
+                    result.homeSearchEntityLeadingIconName() ?: SlockLucideIconName.Hash,
+                    color = "#FF000000",
+                    modifier = Modifier.size(15.dp)
+                )
             }
 
         SearchEntityType.Computer ->
@@ -2451,11 +2455,13 @@ private fun SlockAppShellReadyContent(
             conversationRepository,
             sharedStores.threadMessageStore,
             sharedStores.threadPayloadStore,
+            sharedStores.threadPendingSendJournal,
             sharedStores.apiEnvironmentStore
         ) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(appShellNetworkClient),
                 sessionStore = shellAuthStore,
+                pendingSendJournal = sharedStores.threadPendingSendJournal,
                 selectedServerStore = selectedServerStore,
                 conversationRepository = conversationRepository,
                 messageStore = sharedStores.threadMessageStore,
@@ -2497,7 +2503,8 @@ private fun SlockAppShellReadyContent(
                 memberRepository = memberRepository,
                 prewarmReplyThread = homeActivityReplyThreadPrewarmDataSource::prewarmReplyThread,
                 onUnreadCountsChanged = { homeStore.dispatch(SharedHomeIntent.ForegroundRefresh) },
-                diagnosticsLogger = slockLogger("SlockHomeActivity", "shared_home_activity")
+                // task #436: shared store — both call sites must use one identity.
+                diagnosticsLogger = sharedActivityStoreDiagnosticsLogger()
             )
         }
     val appShellComputersStore =
@@ -19810,7 +19817,7 @@ private fun SharedHomePanelButton(
     }
 }
 
-private data class SearchChannelFilterItem(
+internal data class SearchChannelFilterItem(
     val id: String,
     val label: String,
     val icon: SlockLucideIconName
@@ -19819,7 +19826,7 @@ private data class SearchChannelFilterItem(
 private val SearchChannelFilterItem.iconName: SlockLucideIconName
     get() = icon
 
-private fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannelFilterItem> {
+internal fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannelFilterItem> {
     val snapshot = (state.content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
     val channelFilters =
         snapshot.channels
@@ -19827,7 +19834,7 @@ private fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannel
                 val channelId = conversation.channelId?.value ?: return@mapNotNull null
                 SearchChannelFilterItem(
                     id = channelId,
-                    label = "#${conversation.name}",
+                    label = conversation.name.removePrefix("#"),
                     icon = SlockLucideIconName.Hash
                 )
             }
@@ -19893,6 +19900,22 @@ internal data class SearchEntityResult(
     val memberId: String?
         get() = memberIdentity?.memberId?.value
 }
+
+internal fun ThreadLaunchConversationIdentity.homeSearchChannelLeadingIconName(): SlockLucideIconName =
+    when {
+        kind == ConversationKind.Joint -> SlockLucideIconName.GitBranch
+        channelType.equals("private", ignoreCase = true) -> SlockLucideIconName.Lock
+        else -> SlockLucideIconName.Hash
+    }
+
+internal fun SearchEntityResult.homeSearchEntityLeadingIconName(): SlockLucideIconName? =
+    when (type) {
+        SearchEntityType.Channel -> conversationIdentity?.homeSearchChannelLeadingIconName() ?: SlockLucideIconName.Hash
+        SearchEntityType.Computer -> SlockLucideIconName.Monitor
+        SearchEntityType.DirectMessage,
+        SearchEntityType.Human,
+        SearchEntityType.Agent -> null
+    }
 
 internal sealed interface HomeSearchEntityDestination {
     data class Conversation(val identity: ThreadLaunchConversationIdentity) : HomeSearchEntityDestination
@@ -20030,17 +20053,17 @@ internal fun homeSearchEntityResults(
         .take(5)
 }
 
-private data class HomeSearchEntityCandidate(
+internal data class HomeSearchEntityCandidate(
     val result: SearchEntityResult,
     val searchFields: List<HomeSearchEntitySearchField>,
 )
 
-private data class HomeSearchEntitySearchField(
+internal data class HomeSearchEntitySearchField(
     val value: String,
     val priority: Int,
 )
 
-private fun homeSearchEntityCandidates(
+internal fun homeSearchEntityCandidates(
     homeState: SharedHomeState,
     senderFilters: List<SearchSenderFilterItem>,
     channelLabel: String,
@@ -20074,7 +20097,7 @@ private fun homeSearchEntityCandidates(
                     SearchEntityResult(
                         key = "conversation:${conversation.threadId.value}",
                         type = type,
-                        title = if (type == SearchEntityType.Channel) "#${conversation.name}" else conversation.name,
+                        title = conversation.name,
                         subtitle =
                             conversation.subtitle?.takeIf { it.isNotBlank() }
                                 ?: if (type == SearchEntityType.Channel) channelLabel else dmLabel,

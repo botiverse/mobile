@@ -1104,6 +1104,21 @@ open class SlockKuiklyActivity :
         executeMode: KuiklyRenderCoreExecuteModeBase
     ) {
         super.onUnhandledException(throwable, errorReason, executeMode)
+        // Keep the full local stack for the visual-fixture crash investigation. The previous
+        // diagnostics path retained only a sanitized summary, which made the deterministic
+        // wrapped+nested CALL_KOTLIN failure impossible to localize from logcat.
+        android.util.Log.e(
+            "SlockKuiklyCrash",
+            "unhandled page=${pageSpec?.pageName ?: pageName} reason=${errorReason.name} mode=${executeMode.mode}",
+            throwable
+        )
+        // Visual capture intentionally collects only a narrow tag allow-list. Mirror the
+        // throwable there so the wrapped CALL_KOTLIN cause survives the capture receipt.
+        android.util.Log.e(
+            "VisualCapture",
+            "kuikly_unhandled page=${pageSpec?.pageName ?: pageName} reason=${errorReason.name} mode=${executeMode.mode}",
+            throwable
+        )
         SlockAndroidLocalDiagnostics.reportCaughtException(
             name = "KuiklyUnhandledException",
             throwable = throwable,
@@ -1140,6 +1155,11 @@ open class SlockKuiklyActivity :
         if (hostErrorSurfaceShown || isFinishing || isDestroyed) return
         val container = findViewById<ViewGroup?>(R.id.slock_kuikly_container) ?: return
         hostErrorSurfaceShown = true
+        SlockAndroidLocalDiagnostics.recordLog(
+            "error",
+            "SlockKuikly",
+            "visual_host_error_surface reason=$reasonCode page=${pageSpec?.pageName ?: pageName}"
+        )
         val density = resources.displayMetrics.density
         fun dp(value: Int): Int = (value * density).toInt()
         val surface =

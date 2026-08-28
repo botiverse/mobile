@@ -63,6 +63,7 @@ import build.raft.app.data.ThreadRouteId
 import build.raft.app.data.ThreadReplySummariesSnapshot
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.ThreadApiResult
+import build.raft.app.data.ThreadPendingSendJournal
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.data.ThreadAttachmentOpenTarget
 import build.raft.app.data.ThreadMessagesPage
@@ -84,6 +85,7 @@ import build.raft.app.model.AttachmentId
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -186,10 +188,36 @@ internal fun ReplyCacheProvenance?.currentRevisionForReplyCacheOwner(
 
 internal val ReplyCacheProvenance.threadPayloadOwnerScopeId: String?
     get() =
+        // The payload cache predates the durable journal and still has legacy/test
+        // callers that do not provide an environment. Keep that compatibility key
+        // here; the journal uses the strict identity-bound key below instead.
         takeIf { provenance -> provenance.principalId.isNotBlank() && provenance.serverId.isNotBlank() }
             ?.let { provenance ->
                 listOf(
                     provenance.environmentId.ifBlank { "legacy_environment" },
+                    provenance.principalId,
+                    provenance.serverId,
+                    provenance.authGeneration.toString(),
+                    provenance.selectionGeneration.toString()
+                ).joinToString("\u001f")
+            }
+
+/**
+ * Owner key for the durable pending-send journal. Unlike the historical payload
+ * cache key, this key has no legacy namespace: an absent environment cannot prove
+ * which server realm owns a local send and therefore fails closed.
+ */
+internal val ReplyCacheProvenance.threadPendingSendOwnerScopeId: String?
+    get() =
+        takeIf { provenance ->
+            provenance.environmentId.isNotBlank() &&
+                provenance.principalId.isNotBlank() &&
+                provenance.serverId.isNotBlank() &&
+                provenance.authGeneration >= 0L
+        }
+            ?.let { provenance ->
+                listOf(
+                    provenance.environmentId,
                     provenance.principalId,
                     provenance.serverId,
                     provenance.authGeneration.toString(),
@@ -1295,6 +1323,7 @@ internal data class SharedThreadPageFetchResult(
 internal class SharedThreadDataSource(
     private val api: SlockThreadApi,
     private val sessionStore: SlockAuthSessionStore,
+    private val pendingSendJournal: ThreadPendingSendJournal? = null,
     private val selectedServerStore: SelectedServerStore? = null,
     private val memberRepository: MemberRepository? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
@@ -1390,6 +1419,7 @@ internal class SharedThreadDataSource(
     constructor(
         networkApi: SharedThreadNetworkApi,
         sessionStore: SlockAuthSessionStore,
+        pendingSendJournal: ThreadPendingSendJournal? = null,
         selectedServerStore: SelectedServerStore? = null,
         memberRepository: MemberRepository? = null,
         serverMembersStore: SharedServerMembersStore? = null,
@@ -1417,6 +1447,7 @@ internal class SharedThreadDataSource(
     ) : this(
         api = SlockThreadApiClient(networkApi, diagnosticsLogger),
         sessionStore = sessionStore,
+        pendingSendJournal = pendingSendJournal,
         selectedServerStore = selectedServerStore,
         memberRepository = memberRepository,
         serverMembersStore = serverMembersStore,
@@ -1470,6 +1501,91 @@ internal class SharedThreadDataSource(
         readReplyResolutionScope()?.let { scope ->
             ReplyCacheProducerContext(scope.session, scope.provenance)
         }
+
+    /** Durable admission gate for a local send. Must complete before the caller starts HTTP. */
+    internal fun persistPendingLocalSend(
+        provenance: ReplyCacheProvenance,
+        route: ThreadRouteIdentity,
+        message: KuiklyThreadMessageItem,
+    ): Boolean = pendingSendJournal?.persistSending(provenance, route, message) ?: true
+
+    internal fun clearPendingLocalSend(
+        provenance: ReplyCacheProvenance,
+        route: ThreadRouteIdentity,
+        localId: String,
+    ): ThreadPendingSendJournal.ConsumeResult =
+        pendingSendJournal?.consume(provenance, route, localId)
+            ?: ThreadPendingSendJournal.ConsumeResult.NotFound
+
+    /** True when terminal local-send cleanup has a durable row to fence. */
+    internal val hasDurablePendingSendJournal: Boolean
+        get() = pendingSendJournal != null
+
+    internal fun markPendingLocalSendFailed(
+        provenance: ReplyCacheProvenance,
+        route: ThreadRouteIdentity,
+        localId: String,
+        errorCode: String?,
+        errorMessage: String?,
+    ): Boolean =
+        pendingSendJournal?.markFailed(
+            provenance = provenance,
+            route = route,
+            localId = localId,
+            errorCode = errorCode,
+            errorMessage = errorMessage,
+        ) ?: true
+
+    internal fun restorePendingLocalSends(
+        provenance: ReplyCacheProvenance,
+        route: ThreadRouteIdentity,
+        canonicalPayload: KuiklyThreadScreenPayload,
+    ): KuiklyThreadScreenPayload {
+        val journal = pendingSendJournal ?: return canonicalPayload
+        // A cached/launch payload is only a canonical candidate. Pending rows
+        // are owned by the scoped journal, so discard any compatibility shadow
+        // before merging the journal projection back in.
+        val canonicalProjection = canonicalPayload.withoutLocalPendingSendMessages()
+        val canonicalRandomIds =
+            canonicalProjection.messages
+                .asSequence()
+                .filter { it.pendingSendContext == null }
+                .mapNotNull { it.randomId?.trim()?.takeIf(String::isNotBlank) }
+                .toSet()
+        val restored = journal.restore(provenance, route)
+        val surviving = restored.filterNot { item ->
+            val randomId = item.pendingSendContext?.randomId?.trim()?.takeIf(String::isNotBlank)
+            if (randomId == null || randomId !in canonicalRandomIds) return@filterNot false
+            when (journal.consumeCanonicalRandomId(provenance, route, randomId)) {
+                // A canonical row is authoritative even if the local row was already consumed by
+                // another merge path.  Keeping that stale shadow would render a duplicate bubble
+                // until the next refresh, so both terminal success and an idempotent miss remove
+                // it from this projection.
+                ThreadPendingSendJournal.ConsumeResult.Deleted,
+                ThreadPendingSendJournal.ConsumeResult.NotFound -> true
+                // Do not drop the recovered projection merely because the durable delete failed.
+                // The row remains recoverable on the next launch and the diagnostic preserves the
+                // distinction between a storage failure and an idempotent miss.
+                ThreadPendingSendJournal.ConsumeResult.Failed -> {
+                    diagnosticsLogger(
+                        "thread_pending_send_canonical_cleanup_failed randomId=$randomId " +
+                            "serverId=${provenance.serverId} route=${route.instanceKey}"
+                    )
+                    false
+                }
+            }
+        }
+        val existingIds = canonicalProjection.messages.mapTo(mutableSetOf()) { it.id }
+        val additions = surviving.filter { it.id !in existingIds }
+        return if (additions.isEmpty()) {
+            canonicalProjection
+        } else {
+            canonicalProjection.copy(
+                status = "content",
+                messages = (canonicalProjection.messages + additions).sortedByThreadTimeline()
+            ).withOriginReplyCountAtLeastLoadedReplies()
+        }
+    }
 
     private suspend fun readReplyResolutionScope(): ReplyResolutionScope? {
         val captureSequence = replyCacheCaptureSequence.incrementAndGet()
@@ -1650,12 +1766,21 @@ internal class SharedThreadDataSource(
             if (replyCacheProvenance.value?.threadPayloadOwnerScopeId != ownerScopeId) {
                 return@synchronized false
             }
+            val canonicalRoute = payload.resolveThreadRouteIdentity()
+            val canonicalProvenance = expectedProvenance ?: replyCacheProvenance.value
             val threadId =
-                payload.resolveThreadRouteIdentity().timelineChannelId
+                canonicalRoute.timelineChannelId
                     ?: return@synchronized false
             val cacheablePayload =
-                payload
-                    .withoutTransientLocalSendingMessages()
+                (if (pendingSendJournal == null) {
+                    // Fixture/legacy data sources without a journal retain their historical
+                    // failed-send cache projection.
+                    payload.withoutTransientLocalSendingMessages()
+                } else {
+                    // Production's durable journal is the sole pending-state authority. Do not
+                    // turn the canonical payload cache into a second pending database.
+                    payload.withoutLocalPendingSendMessages()
+                })
                     .withOriginReplyCountAtLeastLoadedReplies()
                     .asLoadedEmptyReplyThreadPayload()
             if (cacheablePayload.hasRenderableThreadContent()) {
@@ -1684,6 +1809,32 @@ internal class SharedThreadDataSource(
                 ) {
                     return@synchronized false
                 }
+            }
+            // The cache write is the commit point for this canonical observation.  Only after it
+            // succeeds do we attempt to retire local pending rows; if the delete itself fails,
+            // the canonical cache remains valid and a later pull can retry the idempotent cleanup.
+            if (canonicalProvenance != null) {
+                cacheablePayload.messages
+                    .asSequence()
+                    .filter { it.pendingSendContext == null }
+                    .mapNotNull { it.randomId?.trim()?.takeIf(String::isNotBlank) }
+                    .distinct()
+                    .forEach { randomId ->
+                        when (
+                            pendingSendJournal?.consumeCanonicalRandomId(
+                                provenance = canonicalProvenance,
+                                route = canonicalRoute,
+                                randomId = randomId,
+                            )
+                        ) {
+                            ThreadPendingSendJournal.ConsumeResult.Failed ->
+                                diagnosticsLogger(
+                                    "thread_pending_send_canonical_cleanup_failed randomId=$randomId " +
+                                        "serverId=${canonicalProvenance.serverId} route=${canonicalRoute.instanceKey}"
+                                )
+                            else -> Unit
+                        }
+                    }
             }
             true
         }
@@ -5001,6 +5152,7 @@ internal data class SharedThreadState(
     val canonicalAccessResolved: Boolean = false,
     val initialHomeAccessLookupComplete: Boolean = false,
     val initialHomeAccessCandidate: ConversationAccessCandidate? = null,
+    val replyParentAuthority: ReplyParentAuthorityStatus = ReplyParentAuthorityStatus.Resolving,
     val writeActionsEnabled: Boolean = false,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val channelProfileUpdateErrorCode: String? = null,
@@ -5018,6 +5170,37 @@ internal enum class ThreadAccessResolution {
     Resolved,
     Error,
     NoPermission
+}
+
+/**
+ * Task #228 successor authority model for reply-thread parent write access.
+ *
+ * "The parent conversation cannot currently be proven writable" is a distinct
+ * state from "the parent conversation is provably not writable". Collapsing
+ * both into `joined=false` hid the composer permanently whenever the parent
+ * directory lookup timed out. The composer stays disabled in every non-
+ * [Writable] state; the difference is what the UI explains and whether
+ * event-driven re-evaluation may still upgrade the state.
+ */
+internal enum class ReplyParentAuthorityStatus {
+    /** Initial lookup still in flight. */
+    Resolving,
+
+    /** Parent directory/server attests joined + canSend. */
+    Writable,
+
+    /** Provably not writable: terminal NoPermission/Error or an accepted
+     *  candidate that denies join/send. Only realtime membership changes to
+     *  the parent row may reopen this; it never times out into Writable. */
+    Denied,
+
+    /** Lookup completed without denial and without a candidate: canonical
+     *  content is readable but parent write authority is undetermined
+     *  (legacy server without parentAccess, or a conversation-list miss).
+     *  Event-driven re-evaluation upgrades this as soon as the parent row
+     *  or a server-provided parentAccess fact arrives. */
+    Unknown,
+
 }
 
 internal enum class ChannelProfileUpdateStatus {
@@ -5047,6 +5230,7 @@ internal data class SharedThreadRenderSlice(
     val highlightedMentions: Set<String>,
     val accessResolution: ThreadAccessResolution,
     val canonicalAccessResolved: Boolean,
+    val replyParentAuthority: ReplyParentAuthorityStatus,
     val writeActionsEnabled: Boolean,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
     val channelProfileUpdateErrorCode: String?
@@ -5060,6 +5244,7 @@ private fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
         highlightedMentions = highlightedMentions,
         accessResolution = accessResolution,
         canonicalAccessResolved = canonicalAccessResolved,
+        replyParentAuthority = replyParentAuthority,
         writeActionsEnabled = writeActionsEnabled,
         channelProfileUpdateStatus = channelProfileUpdateStatus,
         channelProfileUpdateErrorCode = channelProfileUpdateErrorCode
@@ -5102,6 +5287,21 @@ internal sealed interface SharedThreadIntent {
     data class Start(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
     data class ApplyRouteIntent(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
     data object Refresh : SharedThreadIntent
+
+    /**
+     * Task #228 successor: the foreground Thread page observes the shared Home
+     * directory (the same source the initial parent-authority lookup consults)
+     * and forwards the row state for this reply thread's exact parent whenever
+     * it appears or changes. Pure event-driven re-evaluation - no network, no
+     * retry counter.
+     */
+    data class ApplyParentDirectoryHint(
+        val parentChannelId: String,
+        val parentMessageId: String,
+        val present: Boolean,
+        val joined: Boolean,
+        val canSend: Boolean,
+    ) : SharedThreadIntent
     data object RetryAccessResolution : SharedThreadIntent
     data class AppendSentPage(val page: ThreadMessagesPage) : SharedThreadIntent
     data class ApplyLocalSendFailure(
@@ -5175,7 +5375,7 @@ internal sealed interface SharedThreadIntent {
     ) : SharedThreadIntent
     data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
         SharedThreadIntent
-    data object MarkVisibleRead : SharedThreadIntent
+    data class MarkVisibleRead(val visibleTailIndex: Int? = null) : SharedThreadIntent
     data object FirstContentReady : SharedThreadIntent
     data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
@@ -5304,7 +5504,8 @@ internal class SharedThreadStore(
                         accept(intent)
                     }
             }
-            SharedThreadIntent.RetryAccessResolution -> {
+            SharedThreadIntent.RetryAccessResolution,
+            is SharedThreadIntent.ApplyParentDirectoryHint -> {
                 scope.launch { accept(intent) }
             }
             is SharedThreadIntent.AppendSentPage,
@@ -5338,8 +5539,8 @@ internal class SharedThreadStore(
                     )
                 }
             }
-            SharedThreadIntent.MarkVisibleRead -> {
-                scope.launch { markVisibleRead() }
+            is SharedThreadIntent.MarkVisibleRead -> {
+                scope.launch { markVisibleRead(intent.visibleTailIndex) }
             }
             SharedThreadIntent.FirstContentReady -> {
                 scope.launch { markFirstContentReady() }
@@ -5403,6 +5604,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyActionCard -> applyActionCard(intent.messageId, intent.card)
             is SharedThreadIntent.ApplyMessageSaved -> applyMessageSaved(intent.messageId, intent.saved)
             is SharedThreadIntent.ApplyChannelJoined -> applyChannelJoined(intent.channelId)
+            is SharedThreadIntent.ApplyParentDirectoryHint -> applyParentDirectoryHint(intent)
             is SharedThreadIntent.UpdateChannelProfile -> updateChannelProfile(intent)
             SharedThreadIntent.ClearChannelProfileUpdateStatus -> clearChannelProfileUpdateStatus()
             is SharedThreadIntent.SelectTab -> selectTab(intent.tab)
@@ -5418,7 +5620,7 @@ internal class SharedThreadStore(
                     event = intent.event,
                     activeReplyParentMessageId = intent.activeReplyParentMessageId
                 )
-            SharedThreadIntent.MarkVisibleRead -> markVisibleRead()
+            is SharedThreadIntent.MarkVisibleRead -> markVisibleRead(intent.visibleTailIndex)
             SharedThreadIntent.FirstContentReady -> markFirstContentReady()
             SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
@@ -5535,6 +5737,14 @@ internal class SharedThreadStore(
                     candidate
                         .asRefreshFailed(failure.code)
                         .withTerminalAccessWriteAuthorityClosed(ThreadAccessResolution.Error)
+                } ?: candidate
+            }.let { candidate ->
+                producerContext?.let { context ->
+                    dataSource.restorePendingLocalSends(
+                        provenance = context.provenance,
+                        route = routeIdentity,
+                        canonicalPayload = candidate,
+                    )
                 } ?: candidate
             }
         diagnosticsLogger?.invoke(
@@ -6362,6 +6572,12 @@ internal class SharedThreadStore(
                             accessResolution = nextResolution,
                             initialHomeAccessLookupComplete = true,
                             initialHomeAccessCandidate = candidate,
+                            replyParentAuthority =
+                                resolveReplyParentAuthorityStatus(
+                                    accessResolution = nextResolution,
+                                    payload = authorityProjectedPayload,
+                                    candidate = candidate,
+                                ),
                             writeActionsEnabled =
                                 authorityProjectedPayload.hasWriteAuthorityForAccess(
                                     accessResolution = nextResolution,
@@ -6388,6 +6604,139 @@ internal class SharedThreadStore(
                     launchBackgroundHomeContextHydration(routePayload)
                 }
             }
+    }
+
+    /**
+     * Classifies the reply-thread parent write authority after an access
+     * resolution pass. Non-reply surfaces never carry parent authority.
+     */
+    private fun resolveReplyParentAuthorityStatus(
+        accessResolution: ThreadAccessResolution,
+        payload: KuiklyThreadScreenPayload,
+        candidate: ConversationAccessCandidate?,
+    ): ReplyParentAuthorityStatus {
+        if (payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) {
+            return ReplyParentAuthorityStatus.Writable
+        }
+        return when {
+            accessResolution == ThreadAccessResolution.NoPermission ||
+                accessResolution == ThreadAccessResolution.Error ->
+                ReplyParentAuthorityStatus.Denied
+            candidate != null && payload.acceptsInitialConversationAccessCandidate(candidate) ->
+                if (payload.joined && payload.canSend) {
+                    ReplyParentAuthorityStatus.Writable
+                } else {
+                    ReplyParentAuthorityStatus.Denied
+                }
+            else ->
+                // This classification only runs from the apply pass, which by
+                // definition completes the initial home access lookup.
+                if (payload.hasReadableCanonicalReplyContent()) {
+                    ReplyParentAuthorityStatus.Unknown
+                } else {
+                    ReplyParentAuthorityStatus.Resolving
+                }
+        }
+    }
+
+    /**
+     * Event-driven re-evaluation of reply-thread parent authority (task #228
+     * successor direction A). The Home directory is the same authority source
+     * the initial lookup consults; when its row for the exact parent appears
+     * or changes while the thread is open, this applies it in place - no
+     * retry loop, no network. Only upgrades [ReplyParentAuthorityStatus.Unknown]
+     * or recomputes a candidate-derived [ReplyParentAuthorityStatus.Denied];
+     * terminal NoPermission/Error and non-reply surfaces are untouched.
+     */
+    private suspend fun applyParentDirectoryHint(hint: SharedThreadIntent.ApplyParentDirectoryHint) {
+        val state = _state.value
+        val payload = state.payload
+        if (payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return
+        if (state.accessResolution == ThreadAccessResolution.NoPermission ||
+            state.accessResolution == ThreadAccessResolution.Error
+        ) {
+            return
+        }
+        if (!state.canonicalAccessResolved || !state.initialHomeAccessLookupComplete) return
+        val parentChannelId = payload.parentChannelId?.takeIf { it.isNotBlank() } ?: return
+        if (parentChannelId != hint.parentChannelId) return
+        val parentMessageId =
+            payload.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: payload.originParentMessageId?.takeIf { it.isNotBlank() }
+                ?: return
+        if (parentMessageId != hint.parentMessageId) return
+        val routeIdentity = payload.resolveThreadRouteIdentity()
+        if (routeIdentity.parentKey != "$parentChannelId:$parentMessageId") return
+        if (!hint.present) {
+            // Row absent: nothing new to learn - the state stays Unknown/Resolving.
+            return
+        }
+        if (state.replyParentAuthority == ReplyParentAuthorityStatus.Writable &&
+            payload.joined == hint.joined && payload.canSend == hint.canSend
+        ) {
+            return
+        }
+        val conversationKind =
+            routeIdentity.parentConversationKind ?: ConversationKind.Channel
+        val candidate =
+            ConversationAccessCandidate(
+                ids = setOf(parentChannelId),
+                conversationKind = conversationKind,
+                surfaceKind = "channel",
+                joined = hint.joined,
+                archived = false,
+                permissions =
+                    ConversationPermissions(
+                        canRead = true,
+                        canSend = hint.canSend,
+                        canAttach = hint.canSend,
+                        canCreateTask = hint.canSend,
+                    ),
+            )
+        if (!payload.acceptsInitialConversationAccessCandidate(candidate)) return
+        initialAccessStateMutex.withLock {
+            val current = _state.value
+            // Re-check under the lock: a route/account switch may have landed
+            // while the hint was queued on the dispatcher.
+            if (current.payload.parentChannelId != parentChannelId ||
+                current.payload.sourceThreadId != payload.sourceThreadId ||
+                current.accessResolution == ThreadAccessResolution.NoPermission ||
+                current.accessResolution == ThreadAccessResolution.Error
+            ) {
+                return
+            }
+            val projected =
+                current.payload
+                    .withInitialHomeConversationAccessFallbackUnlessCanonical(
+                        canonicalAccessResolved = current.canonicalAccessResolved,
+                        candidate = candidate,
+                    )
+                    .withTerminalAccessWriteAuthorityClosed(current.accessResolution)
+            val nextAuthority =
+                if (hint.joined && hint.canSend) {
+                    ReplyParentAuthorityStatus.Writable
+                } else {
+                    ReplyParentAuthorityStatus.Denied
+                }
+            val nextWriteActions =
+                projected.hasWriteAuthorityForAccess(
+                    accessResolution = current.accessResolution,
+                    homeLookupComplete = true,
+                    homeAccessCandidate = candidate
+                )
+            diagnosticsLogger?.invoke(
+                "thread_parent_authority_hint_applied threadId=${current.payload.sourceThreadId.orEmpty()} " +
+                    "authority=$nextAuthority joined=${hint.joined} canSend=${hint.canSend}"
+            )
+            reduceState(
+                current.copy(
+                    payload = projected,
+                    initialHomeAccessCandidate = candidate,
+                    replyParentAuthority = nextAuthority,
+                    writeActionsEnabled = nextWriteActions,
+                )
+            )
+        }
     }
 
     private suspend fun retryAccessResolution() {
@@ -7024,6 +7373,7 @@ internal class SharedThreadStore(
                 initialRequest = recoveryRequest,
                 staleToken = eventStaleToken,
                 recoveryId = recoveryId,
+                tagAsGapRefill = true,
             )
             return
         }
@@ -7111,7 +7461,7 @@ internal class SharedThreadStore(
             .maxOrNull()
     }
 
-    private suspend fun markVisibleRead() {
+    private suspend fun markVisibleRead(visibleTailIndex: Int? = null) {
         val authorityState = _state.value
         if (
             authorityState.accessResolution != ThreadAccessResolution.Resolved ||
@@ -7131,7 +7481,7 @@ internal class SharedThreadStore(
                 dataSource.isCurrentReplyCacheProvenance(expectedProvenance)
         }
         if (!authorityStillCurrent()) return
-        val marker = authorityState.payload.visibleReadMarker() ?: return
+        val marker = authorityState.payload.visibleReadMarker(visibleTailIndex) ?: return
         if (marker.wasRecentlyMarkedRead()) {
             diagnosticsLogger?.invoke(
                 "thread_read_skip channelId=${marker.channelId} reason=recently_marked latest=${marker.latestMessageId}"
@@ -7351,6 +7701,7 @@ internal class SharedThreadStore(
                                         pageSize = result.data.requestedPageSize
                                     )
                                     .preserveStableTimelineFrom(currentPayload)
+                                    .withGapRefillTagFrom(currentPayload)
                             dataSource
                                 .cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId)
                                 .withRouteContext(initial)
@@ -7447,7 +7798,7 @@ internal class SharedThreadStore(
             }
         }
         successorRecovery?.let { (successorInitial, request) ->
-            recoverRealtimeGap(successorInitial, request, staleToken)
+            recoverRealtimeGap(successorInitial, request, staleToken, tagAsGapRefill = true)
         }
         return outcome
     }
@@ -7523,7 +7874,7 @@ internal class SharedThreadStore(
                 serverSeq = serverSeq,
                 loading = false,
             ) ?: return
-        recoverRealtimeGap(initial, nextRequest, staleToken)
+        recoverRealtimeGap(initial, nextRequest, staleToken, tagAsGapRefill = true)
     }
 
     private suspend fun recoverRealtimeGapFromVisibleTail(replyCountGap: ReplyCountRealtimeGap) {
@@ -7547,7 +7898,8 @@ internal class SharedThreadStore(
                     sinceSeq = sinceSeq,
                     serverSeq = sinceSeq + replyCountGap.replyCount.toLong().coerceAtLeast(1L)
             ),
-            staleToken = staleToken
+            staleToken = staleToken,
+            tagAsGapRefill = true,
         )
     }
 
@@ -7572,14 +7924,19 @@ internal class SharedThreadStore(
                     sinceSeq = sinceSeq,
                     serverSeq = sinceSeq + 1L
                 ),
-            staleToken = staleToken
+            staleToken = staleToken,
+            // Resume/visible refresh arrivals are genuinely new to the user and
+            // keep counting toward ↓ x new (frozen task #232 contract); only
+            // foreground gap recovery is tagged as refill.
+            tagAsGapRefill = false,
         )
     }
 
     private suspend fun recoverRealtimeGap(
         initial: KuiklyThreadScreenPayload,
         initialRequest: RealtimeVisibleStreamGapRequest,
-        staleToken: MviStaleToken
+        staleToken: MviStaleToken,
+        tagAsGapRefill: Boolean,
     ) {
         val routeIdentity = initial.realtimeGapRouteIdentity()
         val recoveryId =
@@ -7634,7 +7991,7 @@ internal class SharedThreadStore(
                     id
                 }
             } ?: return
-        runRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId)
+        runRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId, tagAsGapRefill)
     }
 
     private suspend fun runRealtimeGapRecovery(
@@ -7642,6 +7999,7 @@ internal class SharedThreadStore(
         initialRequest: RealtimeVisibleStreamGapRequest,
         staleToken: MviStaleToken,
         recoveryId: Long,
+        tagAsGapRefill: Boolean,
     ) {
         var nextRequest = initialRequest
         try {
@@ -7725,6 +8083,13 @@ internal class SharedThreadStore(
                                         canLoadMoreAfter = false,
                                         newerMessagesStatus = if (shouldContinue) "loading" else "idle",
                                     )
+                                    .let { mergedPayload ->
+                                        if (tagAsGapRefill) {
+                                            mergedPayload.withGapRefillTagFrom(currentPayload)
+                                        } else {
+                                            mergedPayload
+                                        }
+                                    }
                             val selected =
                                 dataSource
                                     .cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId)
@@ -7845,7 +8210,7 @@ internal class SharedThreadStore(
             if (
                 !current.writeActionsEnabled ||
                 expectedProvenance.threadPayloadOwnerScopeId == null ||
-                current.payload.resolveThreadRouteIdentity() != expectedRoute
+                !current.payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)
             ) {
                 false
             } else {
@@ -7863,7 +8228,32 @@ internal class SharedThreadStore(
                             sentAttachmentIds = seed.sentAttachmentIds
                         )
                     } ?: withLocalSend
-                reduceState(current.copy(payload = nextPayload))
+                val durableMessage = nextPayload.messages.firstOrNull { it.id == message.id } ?: return@withCurrentReplyCacheProvenance false
+                if (!dataSource.persistPendingLocalSend(expectedProvenance, expectedRoute, durableMessage)) {
+                    diagnosticsLogger?.invoke(
+                        "thread_send_admission_rejected reason=pending_journal_write_failed localId=${message.id}"
+                    )
+                    return@withCurrentReplyCacheProvenance false
+                }
+                val emitted = reduceState(current.copy(payload = nextPayload))
+                if (!emitted) {
+                    when (
+                        dataSource.clearPendingLocalSend(
+                            expectedProvenance,
+                            expectedRoute,
+                            durableMessage.id
+                        )
+                    ) {
+                        ThreadPendingSendJournal.ConsumeResult.Failed ->
+                            diagnosticsLogger?.invoke(
+                                "thread_send_admission_rollback_failed localId=${durableMessage.id} " +
+                                    "serverId=${expectedProvenance.serverId} route=${expectedRoute.instanceKey}"
+                            )
+                        ThreadPendingSendJournal.ConsumeResult.Deleted,
+                        ThreadPendingSendJournal.ConsumeResult.NotFound -> Unit
+                    }
+                }
+                emitted
             }
         } ?: false
 
@@ -7874,10 +8264,26 @@ internal class SharedThreadStore(
         expectedProvenance: ReplyCacheProvenance,
         expectedRoute: ThreadRouteIdentity
     ) {
+        if (!dataSource.isCurrentReplyCacheProvenance(expectedProvenance)) return
+        if (!_state.value.payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)) return
+        val durableFailure =
+            dataSource.markPendingLocalSendFailed(
+                provenance = expectedProvenance,
+                route = expectedRoute,
+                localId = messageId,
+                errorCode = errorCode,
+                errorMessage = errorMessage,
+            )
+        if (!durableFailure) {
+            diagnosticsLogger?.invoke(
+                "thread_send_failure_projection_blocked reason=pending_journal_write_failed localId=$messageId"
+            )
+            return
+        }
         val emitted =
             dataSource.withCurrentReplyCacheProvenance(expectedProvenance) {
                 val payload = _state.value.payload
-                if (payload.resolveThreadRouteIdentity() != expectedRoute) {
+                if (!payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)) {
                     false
                 } else {
                     reducePayloadPatch { current ->
@@ -7895,12 +8301,36 @@ internal class SharedThreadStore(
     }
 
     private suspend fun dismissLocalFailedSend(messageId: String) {
+        val provenance = dataSource.currentReplyCacheProvenance() ?: return
+        val route = _state.value.payload.resolveThreadRouteIdentity()
+        val cleanup = dataSource.clearPendingLocalSend(provenance, route, messageId)
+        if (dataSource.hasDurablePendingSendJournal &&
+            cleanup == ThreadPendingSendJournal.ConsumeResult.Failed
+        ) {
+            diagnosticsLogger?.invoke(
+                "thread_send_dismiss_blocked reason=pending_journal_cleanup_${cleanup.name.lowercase()} " +
+                    "localId=$messageId"
+            )
+            return
+        }
         reducePayloadPatchAndCache(cachePayload = true) { payload ->
             payload.withoutLocalFailedSendMessage(messageId)
         }
     }
 
     private suspend fun cancelLocalSend(messageId: String) {
+        val provenance = dataSource.currentReplyCacheProvenance() ?: return
+        val route = _state.value.payload.resolveThreadRouteIdentity()
+        val cleanup = dataSource.clearPendingLocalSend(provenance, route, messageId)
+        if (dataSource.hasDurablePendingSendJournal &&
+            cleanup == ThreadPendingSendJournal.ConsumeResult.Failed
+        ) {
+            diagnosticsLogger?.invoke(
+                "thread_send_cancel_blocked reason=pending_journal_cleanup_${cleanup.name.lowercase()} " +
+                    "localId=$messageId"
+            )
+            return
+        }
         reducePayloadPatchAndCache(cachePayload = true) { payload ->
             payload.withoutLocalSendMessage(messageId)
         }
@@ -7925,7 +8355,7 @@ internal class SharedThreadStore(
                 if (!routeStillCurrent(routePayload, "thread_send", "replace_apply", payload)) {
                     return@reducePayloadPatch payload
                 }
-                if (payload.resolveThreadRouteIdentity() != expectedRoute) {
+                if (!payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)) {
                     return@reducePayloadPatch payload
                 }
                 val appended =
@@ -7953,11 +8383,26 @@ internal class SharedThreadStore(
                 applyToCurrentPayload()
             } ?: false
         if (emitted) {
-            dataSource.cachePayload(
+            val cached = dataSource.cachePayload(
                 payload = _state.value.payload,
                 ownerScopeId = expectedProvenance.threadPayloadOwnerScopeId.orEmpty(),
                 expectedProvenance = expectedProvenance
             )
+            if (cached) {
+                // Realtime may have consumed the row first.  That is a successful terminal path,
+                // not a reason to suppress the canonical projection above.
+                when (
+                    dataSource.clearPendingLocalSend(expectedProvenance, expectedRoute, messageId)
+                ) {
+                    ThreadPendingSendJournal.ConsumeResult.Failed ->
+                        diagnosticsLogger?.invoke(
+                            "thread_pending_send_success_cleanup_failed localId=$messageId " +
+                                "serverId=${expectedProvenance.serverId} route=${expectedRoute.instanceKey}"
+                        )
+                    ThreadPendingSendJournal.ConsumeResult.Deleted,
+                    ThreadPendingSendJournal.ConsumeResult.NotFound -> Unit
+                }
+            }
         }
     }
 
@@ -9765,10 +10210,18 @@ private fun KuiklyThreadScreenPayload.toThreadRouteId(serverId: ServerId? = null
     }
 }
 
-private fun KuiklyThreadScreenPayload.visibleReadMarker(): ThreadVisibleReadMarker? {
+private fun KuiklyThreadScreenPayload.visibleReadMarker(
+    visibleTailIndex: Int? = null
+): ThreadVisibleReadMarker? {
     val channelId = cacheThreadId() ?: return null
+    // task #232: bound the read marker to the rendered visible tail when known,
+    // so live appends while off-bottom never advance the shared read frontier.
+    val markerCandidates =
+        visibleTailIndex?.takeIf { it in messages.indices }?.let { tail ->
+            messages.subList(0, tail + 1)
+        } ?: messages
     val latest =
-        messages
+        markerCandidates
             .asSequence()
             .filter { message -> message.seq != null }
             .maxWithOrNull(
@@ -9861,7 +10314,23 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessages(
         .asLoadedEmptyReplyThreadPayload()
 }
 
-private fun KuiklyThreadScreenPayload.mergePagedMessages(
+/**
+ * Task #232 arrival provenance: records IDs first merged by this payload
+ * (relative to [base]) as gap-refill arrivals, which the ↓ x new projection
+ * excludes. Live realtime events and resume refreshes never call this.
+ */
+internal fun KuiklyThreadScreenPayload.withGapRefillTagFrom(
+    base: KuiklyThreadScreenPayload
+): KuiklyThreadScreenPayload {
+    val baseIds = base.messages.mapTo(mutableSetOf()) { it.id }
+    val added =
+        messages.mapTo(mutableSetOf()) { it.id } - baseIds
+    val newlyExcluded = added.filter { it.isNotBlank() }
+    if (newlyExcluded.isEmpty()) return this
+    return copy(gapRefillMessageIds = gapRefillMessageIds + newlyExcluded)
+}
+
+internal fun KuiklyThreadScreenPayload.mergePagedMessages(
     pageMessages: List<KuiklyThreadMessageItem>,
     before: Boolean,
     pageSize: Int
@@ -9937,6 +10406,11 @@ private fun KuiklyThreadScreenPayload.withoutLocalFailedSendMessage(messageId: S
 
 private fun KuiklyThreadScreenPayload.withoutTransientLocalSendingMessages(): KuiklyThreadScreenPayload {
     val retainedMessages = messages.filterNot { it.isTransientLocalSendingMessage() }
+    return if (retainedMessages.size == messages.size) this else copy(messages = retainedMessages)
+}
+
+private fun KuiklyThreadScreenPayload.withoutLocalPendingSendMessages(): KuiklyThreadScreenPayload {
+    val retainedMessages = messages.filterNot { it.pendingSendContext != null }
     return if (retainedMessages.size == messages.size) this else copy(messages = retainedMessages)
 }
 
@@ -10207,6 +10681,7 @@ internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadS
         status = patch.status,
         backgroundRefreshing = patch.backgroundRefreshing,
         messages = patch.messages,
+        gapRefillMessageIds = patch.gapRefillMessageIds,
         originMessage = patch.originMessage,
         originPreview = patch.originPreview,
         originParentMessageId = patch.originParentMessageId,

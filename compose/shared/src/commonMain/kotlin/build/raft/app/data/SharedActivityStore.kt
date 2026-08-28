@@ -954,6 +954,13 @@ class SharedActivityStore internal constructor(
                     val filter = previous.selectedFilter
                     var refreshLimit = SharedActivityPageSize
                     try {
+                        logActivityLoadStart(
+                            refresh = refresh,
+                            pullRefresh = pullRefresh,
+                            backgroundRefresh = backgroundRefresh,
+                            filter = filter,
+                            generation = generation
+                        )
                         val session = authStore.readSession()
                         if (session == null) {
                             synchronized(realtimeOwnerLock) {
@@ -966,7 +973,9 @@ class SharedActivityStore internal constructor(
                                 append = !refresh,
                                 filter = filter,
                                 backgroundRefresh = backgroundRefresh,
-                                durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                                durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+                                generation = generation,
+                                pullRefresh = pullRefresh
                             )
                             return@launch
                         }
@@ -982,7 +991,9 @@ class SharedActivityStore internal constructor(
                                 append = !refresh,
                                 filter = filter,
                                 backgroundRefresh = backgroundRefresh,
-                                durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                                durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+                                generation = generation,
+                                pullRefresh = pullRefresh
                             )
                             return@launch
                         }
@@ -992,6 +1003,21 @@ class SharedActivityStore internal constructor(
                             synchronized(realtimeOwnerLock) {
                                 if (!backgroundRefresh) setLoadError("server_missing", append = !refresh)
                             }
+                            // task #436: this exit previously logged nothing. After a start
+                            // line, silence is read as "never terminated" — the stuck
+                            // signature — so an unlogged exit makes the diagnostic
+                            // manufacture the very false positive it exists to rule out.
+                            logActivityLoad(
+                                result = "error",
+                                code = "server_missing",
+                                refresh = refresh,
+                                append = !refresh,
+                                filter = filter,
+                                backgroundRefresh = backgroundRefresh,
+                                durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+                                generation = generation,
+                                pullRefresh = pullRefresh
+                            )
                             return@launch
                         }
                         synchronized(realtimeOwnerLock) {
@@ -1082,8 +1108,16 @@ class SharedActivityStore internal constructor(
                                     )
                                 }
                             }
-                            diagnosticsLogger(
-                                "store_load domain=activity result=stale_session serverId=${serverId.value}"
+                            logActivityLoad(
+                                result = "stale_session",
+                                code = null,
+                                refresh = refresh,
+                                append = !refresh,
+                                filter = filter,
+                                backgroundRefresh = backgroundRefresh,
+                                durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+                                generation = generation,
+                                pullRefresh = pullRefresh
                             )
                             return@launch
                         }
@@ -1104,7 +1138,16 @@ class SharedActivityStore internal constructor(
                                     true
                                 }
                             }
-                        if (!applied) return@launch
+                        if (!applied) {
+                            logActivityLoadAbandoned(
+                                reason = "superseded_before_apply",
+                                generation = generation,
+                                pullRefresh = pullRefresh,
+                                backgroundRefresh = backgroundRefresh,
+                                durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                            )
+                            return@launch
+                        }
                         logActivityLoad(
                             result = result.activityDiagnosticsResult(),
                             code = null,
@@ -1112,9 +1155,18 @@ class SharedActivityStore internal constructor(
                             append = !refresh,
                             filter = filter,
                             backgroundRefresh = backgroundRefresh,
-                            durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                            durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+                            generation = generation,
+                            pullRefresh = pullRefresh
                         )
                     } catch (cancellation: CancellationException) {
+                        logActivityLoadAbandoned(
+                            reason = "cancelled",
+                            generation = generation,
+                            pullRefresh = pullRefresh,
+                            backgroundRefresh = backgroundRefresh,
+                            durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                        )
                         throw cancellation
                     } catch (_: Throwable) {
                         val handled =
@@ -1126,7 +1178,16 @@ class SharedActivityStore internal constructor(
                                     true
                                 }
                             }
-                        if (!handled) return@launch
+                        if (!handled) {
+                            logActivityLoadAbandoned(
+                                reason = "superseded_before_error",
+                                generation = generation,
+                                pullRefresh = pullRefresh,
+                                backgroundRefresh = backgroundRefresh,
+                                durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                            )
+                            return@launch
+                        }
                         logActivityLoad(
                             result = "exception",
                             code = "activity_network",
@@ -1134,7 +1195,9 @@ class SharedActivityStore internal constructor(
                             append = !refresh,
                             filter = filter,
                             backgroundRefresh = backgroundRefresh,
-                            durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                            durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+                            generation = generation,
+                            pullRefresh = pullRefresh
                         )
                     }
                 }.also { loadJob = it }
@@ -1215,11 +1278,55 @@ class SharedActivityStore internal constructor(
         append: Boolean,
         filter: InboxFilter,
         backgroundRefresh: Boolean = false,
-        durationMs: Long
+        durationMs: Long,
+        generation: Long,
+        pullRefresh: Boolean
     ) {
         diagnosticsLogger(
             "store_load domain=activity refresh=$refresh background=$backgroundRefresh append=$append filter=${filter.name} " +
-                "result=$result code=${code.orEmpty()} durationMs=$durationMs"
+                "result=$result code=${code.orEmpty()} durationMs=$durationMs " +
+                "generation=$generation pullRefresh=$pullRefresh pullRefreshingAfter=${_state.value.pullRefreshing}"
+        )
+    }
+
+    /**
+     * task #436: a load that never reaches a terminal branch previously left no
+     * trace at all, so "no line" could not be told apart from "never started".
+     *
+     * Every post-start exit must emit exactly one terminal or abandoned line.
+     * An unlogged exit is worse than no instrumentation: after a start line,
+     * silence is the stuck signature, so a silent return makes this diagnostic
+     * manufacture the false positive it exists to rule out.
+     *
+     * These lines are positive evidence only. A missing line means "not
+     * observed" — delivery crosses two bounded queues that drop silently — and
+     * never proves the load failed to terminate.
+     */
+    private fun logActivityLoadStart(
+        refresh: Boolean,
+        pullRefresh: Boolean,
+        backgroundRefresh: Boolean,
+        filter: InboxFilter,
+        generation: Long
+    ) {
+        diagnosticsLogger(
+            "store_load domain=activity phase=start refresh=$refresh background=$backgroundRefresh " +
+                "pullRefresh=$pullRefresh filter=${filter.name} generation=$generation " +
+                "pullRefreshingBefore=${_state.value.pullRefreshing}"
+        )
+    }
+
+    private fun logActivityLoadAbandoned(
+        reason: String,
+        generation: Long,
+        pullRefresh: Boolean,
+        backgroundRefresh: Boolean,
+        durationMs: Long
+    ) {
+        diagnosticsLogger(
+            "store_load domain=activity phase=abandoned reason=$reason generation=$generation " +
+                "currentGeneration=$loadGeneration pullRefresh=$pullRefresh background=$backgroundRefresh " +
+                "durationMs=$durationMs pullRefreshingAfter=${_state.value.pullRefreshing}"
         )
     }
 

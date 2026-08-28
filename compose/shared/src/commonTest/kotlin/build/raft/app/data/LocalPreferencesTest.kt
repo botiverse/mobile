@@ -131,7 +131,7 @@ class LocalPreferencesTest {
         assertEquals(true, snapshot.compactConsecutiveMessages)
         assertEquals(false, snapshot.longMessageCollapseEnabled)
         assertEquals(false, snapshot.singleTapOpensThreadEnabled)
-        assertEquals(false, snapshot.threadUnreadJumpEnabled)
+        assertEquals(true, snapshot.threadUnreadJumpEnabled)
         assertEquals(false, snapshot.newMessageMenuEnabled)
         assertEquals(false, snapshot.conversationForwardGestureEnabled)
         assertEquals(false, snapshot.foregroundMessageBannersEnabled)
@@ -139,7 +139,7 @@ class LocalPreferencesTest {
         assertEquals(false, snapshot.activitySenderAvatarsEnabled)
         assertEquals(false, snapshot.composerSendKeyEnabled)
         assertEquals(false, snapshot.multiShellHostEnabled)
-        assertEquals(true, snapshot.serverDrawerEnabled)
+        assertEquals(false, snapshot.serverDrawerEnabled)
         assertEquals(false, snapshot.newDesignSettingsEnabled)
         assertEquals(false, snapshot.homeServerAvatarEnabled)
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
@@ -153,15 +153,28 @@ class LocalPreferencesTest {
     }
 
     @Test
-    fun serverDrawerDefaultsOnButPreservesExplicitOff() = runBlocking {
+    fun threadUnreadJumpDefaultsOnButPreservesExplicitOff() = runBlocking {
         val store = InMemorySlockKeyValueStore()
         val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
 
-        assertEquals(true, repository.getChatLayoutPreference().serverDrawerEnabled)
+        // Task #232 frozen contract: the ↓ x new pill is on by default.
+        assertEquals(true, repository.getChatLayoutPreference().threadUnreadJumpEnabled)
 
-        repository.setServerDrawerEnabled(false)
+        repository.setThreadUnreadJumpEnabled(false)
+
+        assertEquals(false, repository.getChatLayoutPreference().threadUnreadJumpEnabled)
+    }
+
+    @Test
+    fun serverDrawerDefaultsOffButPreservesExplicitOn() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
 
         assertEquals(false, repository.getChatLayoutPreference().serverDrawerEnabled)
+
+        repository.setServerDrawerEnabled(true)
+
+        assertEquals(true, repository.getChatLayoutPreference().serverDrawerEnabled)
     }
 
     @Test

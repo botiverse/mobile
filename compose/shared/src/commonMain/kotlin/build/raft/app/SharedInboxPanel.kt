@@ -110,6 +110,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.launch
 
 private val ActivitySelectedRowShadowOffset = 2.dp
@@ -180,11 +181,13 @@ internal fun SharedHomeActivityScreen(
             conversationRepository,
             sharedStores.threadMessageStore,
             sharedStores.threadPayloadStore,
+            sharedStores.threadPendingSendJournal,
             sharedStores.apiEnvironmentStore
         ) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
+                pendingSendJournal = sharedStores.threadPendingSendJournal,
                 selectedServerStore = selectedServerStore,
                 conversationRepository = conversationRepository,
                 messageStore = sharedStores.threadMessageStore,
@@ -204,6 +207,17 @@ internal fun SharedHomeActivityScreen(
                 diagnosticsLogger = { message -> bridge.log("shared_activity_thread_prewarm $message") }
             )
         }
+    // task #436: this call site left the store's diagnostics logger at its no-op
+    // default, so the activity feed's load lifecycle was unobservable in shipped
+    // builds.
+    //
+    // The store is shared: SettingsHomePage resolves the same instance for the
+    // same shellInstanceId, and updateRuntimeIntegrations overwrites on non-null
+    // (last write wins). Injecting a second identity here would silently replace
+    // the one already established there and would not be restored when this page
+    // closes. Both call sites therefore go through one factory, and it keeps the
+    // identity SettingsHomePage already ships so existing consumers see no change.
+    val activityDiagnosticsLogger = remember { sharedActivityStoreDiagnosticsLogger() }
     val activityStore =
         remember(
             storeScope,
@@ -220,7 +234,8 @@ internal fun SharedHomeActivityScreen(
                 readReceiptRepository = readReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
-                prewarmReplyThread = replyThreadPrewarmDataSource::prewarmReplyThread
+                prewarmReplyThread = replyThreadPrewarmDataSource::prewarmReplyThread,
+                diagnosticsLogger = activityDiagnosticsLogger
             )
         }
     val state by activityStore.state.collectAsState()
@@ -288,6 +303,18 @@ internal fun SharedHomeActivityScreen(
         }
     val conversationNotReadyMessage = stringResource(MR.strings.inbox_error_conversation_not_ready)
     LaunchedEffect(activityStore) {
+        // task #436: the probe must run from a COMMITTED effect, not from a
+        // remember calculation. Composition can be abandoned or retried, so a
+        // composition-time side effect can emit for a page that never mounts and
+        // never dispatches a load — which would make the control claim "mounted"
+        // for a path that did not run. Emitted immediately before the initial
+        // dispatch so probe-then-start is a fixed order.
+        //
+        // Positive evidence only: seeing it proves the channel delivered at this
+        // level in this build. A missing line — this one or any other — means
+        // "not observed": delivery crosses two bounded queues that drop silently,
+        // so it never establishes that the load failed to start or to terminate.
+        activityDiagnosticsLogger("store_load domain=activity phase=probe channel=live")
         activityStore.dispatch(SharedActivityIntent.LoadInitial)
     }
     LaunchedEffect(sharedStores.activityUnreadSummaryStore, activitySummaryServerId) {
@@ -374,6 +401,68 @@ internal data class ActivityRefreshPresentation(
     val headerRefreshing: Boolean,
     val pullRefreshing: Boolean
 )
+
+/**
+ * Single diagnostics identity for the shared activity store (task #436).
+ *
+ * `SharedInboxPanel` and `SettingsHomePage` resolve the same store instance for
+ * the same shellInstanceId, and `updateRuntimeIntegrations` overwrites the
+ * logger on non-null. Two identities would mean whichever composed last wins,
+ * with no restore on close. Every call site must use this factory.
+ *
+ * The tag/prefix are the ones `SettingsHomePage` already shipped, so wiring the
+ * previously-unlogged call site does not change what existing consumers grep.
+ */
+internal fun sharedActivityStoreDiagnosticsLogger(): (String) -> Unit {
+    val delegate = slockLogger("SlockHomeActivity", "shared_home_activity")
+    return { message -> delegate(stampSharedActivityDiagnosticsSequence(message)) }
+}
+
+/**
+ * Stamping is separated from delivery so the uniqueness contract can be tested
+ * deterministically. Exercised through the logger it cannot be: the queue drops
+ * under admission contention, so a duplicated number could be hidden by one of
+ * the pair being dropped and the test would pass on a broken counter.
+ */
+internal fun stampSharedActivityDiagnosticsSequence(message: String): String =
+    "seq=${sharedActivityDiagnosticsSequence.incrementAndGet()} $message"
+
+/**
+ * Allocation-order sequence stamped on every line this logger emits (task #436).
+ *
+ * Without it these diagnostics can only *falsify* a stuck load, never confirm
+ * one: delivery crosses two bounded queues, so a missing terminal line has two
+ * explanations — never emitted, or emitted and dropped — and the reader cannot
+ * separate them. That leaves the instrument unable to answer the question it
+ * was built for.
+ *
+ * READ THE SET, NOT THE ARRIVAL ORDER. The number is allocated here, *before*
+ * the queues, which is what makes a drop visible at all — a dropped line still
+ * consumed its number, so its value is absent from the set. But allocation and
+ * enqueue are not one atomic step, and these lines are emitted from several
+ * coroutines, so a thread can take a number and be suspended while a later
+ * number is enqueued ahead of it. Logcat may therefore show 2 before 1.
+ *
+ * Interpretation, over the sorted set of observed values:
+ *
+ *   gap in the set   -> something was dropped; absence is unattributable
+ *   set contiguous   -> nothing dropped in that window, so a missing line
+ *                       really was never emitted
+ *
+ * Reordering cannot hide a drop: numbers are unique, so a missing value is
+ * missing whatever order the survivors arrive in. It can only cause a *false*
+ * gap — a number still in flight when observation stopped — which fails safe
+ * (the round is discarded, never wrongly confirmed). Hence a quiescence period
+ * before judging a gap.
+ *
+ * This still does not close the tail: a line emitted after the last observed
+ * one and then dropped leaves a contiguous set. Only a subsequent record
+ * closes that, which is an operator-side seal, not a property of this counter.
+ *
+ * Deliberately module-scoped rather than per-logger: both call sites build a
+ * logger, and two independent counters would make the sets uncomparable.
+ */
+private val sharedActivityDiagnosticsSequence = atomic(0L)
 
 @Suppress("UNUSED_PARAMETER")
 internal fun activityRefreshPresentation(

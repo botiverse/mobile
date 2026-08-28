@@ -11764,8 +11764,8 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        store.accept(SharedThreadIntent.MarkVisibleRead)
-        store.accept(SharedThreadIntent.MarkVisibleRead)
+        store.accept(SharedThreadIntent.MarkVisibleRead())
+        store.accept(SharedThreadIntent.MarkVisibleRead())
 
         assertEquals(listOf("channel-1"), api.readAllChannels)
         scope.cancel()
@@ -11793,7 +11793,7 @@ class SharedThreadStoreTest {
             assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
             assertFalse(store.state.value.writeActionsEnabled)
 
-            store.accept(SharedThreadIntent.MarkVisibleRead)
+            store.accept(SharedThreadIntent.MarkVisibleRead())
             assertTrue(api.readAllChannels.isEmpty())
             assertTrue(api.readSeqRequests.isEmpty())
 
@@ -11804,7 +11804,7 @@ class SharedThreadStoreTest {
                 }
             }
             assertTrue(store.state.value.writeActionsEnabled)
-            store.accept(SharedThreadIntent.MarkVisibleRead)
+            store.accept(SharedThreadIntent.MarkVisibleRead())
             assertEquals(1, api.readAllChannels.size + api.readSeqRequests.size)
             assertEquals(
                 "channel-1",
@@ -11835,7 +11835,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
         assertEquals(ThreadAccessResolution.NoPermission, store.state.value.accessResolution)
         assertFalse(store.state.value.writeActionsEnabled)
-        store.accept(SharedThreadIntent.MarkVisibleRead)
+        store.accept(SharedThreadIntent.MarkVisibleRead())
 
         assertTrue(api.readAllChannels.isEmpty())
         assertTrue(api.readSeqRequests.isEmpty())
@@ -11863,7 +11863,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        store.accept(SharedThreadIntent.MarkVisibleRead)
+        store.accept(SharedThreadIntent.MarkVisibleRead())
 
         assertEquals(listOf("channel-1" to 10L), api.readSeqRequests)
         assertTrue(api.readAllChannels.isEmpty())
@@ -11903,7 +11903,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        store.accept(SharedThreadIntent.MarkVisibleRead)
+        store.accept(SharedThreadIntent.MarkVisibleRead())
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
                 MessageNew(
@@ -11919,7 +11919,7 @@ class SharedThreadStoreTest {
                 )
             )
         )
-        store.accept(SharedThreadIntent.MarkVisibleRead)
+        store.accept(SharedThreadIntent.MarkVisibleRead())
 
         assertEquals(listOf("channel-1"), api.readAllChannels)
         scope.cancel()
@@ -12014,7 +12014,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        store.dispatch(SharedThreadIntent.MarkVisibleRead)
+        store.dispatch(SharedThreadIntent.MarkVisibleRead())
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
                 MessageNew(
@@ -12030,7 +12030,7 @@ class SharedThreadStoreTest {
                 )
             )
         )
-        store.dispatch(SharedThreadIntent.MarkVisibleRead)
+        store.dispatch(SharedThreadIntent.MarkVisibleRead())
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
                 MessageNew(
@@ -12046,7 +12046,7 @@ class SharedThreadStoreTest {
                 )
             )
         )
-        store.dispatch(SharedThreadIntent.MarkVisibleRead)
+        store.dispatch(SharedThreadIntent.MarkVisibleRead())
 
         delay(120L)
 
@@ -14370,6 +14370,8 @@ class SharedThreadStoreTest {
         val syncLimits: MutableList<Int> = mutableListOf()
         val channelIds: MutableList<String> = mutableListOf()
         var sendMessageCalls: Int = 0
+        /** Optional canonical POST /messages body for tests that exercise the send parser. */
+        var sendResponseBody: String? = null
         var lastAttachmentIds: List<String> = emptyList()
         var lastRandomId: String? = null
         val savedMessageIds: MutableList<String> = mutableListOf()
@@ -14447,7 +14449,7 @@ class SharedThreadStoreTest {
             sendMessageCalls += 1
             lastAttachmentIds = attachmentIds
             lastRandomId = randomId
-            return HomeNetworkResponse(code = 200, bodyText = messagesResponse(body))
+            return HomeNetworkResponse(code = 200, bodyText = sendResponseBody ?: messagesResponse(body))
         }
 
         override suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): HomeNetworkResponse {

@@ -307,6 +307,7 @@
     <string name="thread_inline_draft">Draft</string>
     <string name="thread_state_no_messages">No messages yet</string>
     <string name="thread_state_no_messages_detail">This conversation has no messages yet.</string>
+    <string name="thread_parent_authority_resolving">Checking permissions - sending is temporarily unavailable</string>
     <string name="thread_action_join_channel">Join channel</string>
     <string name="thread_timestamp_now">this minute</string>
     <string name="relative_time_unknown">unknown time</string>
@@ -383,6 +384,7 @@
     <string name="thread_error_task_status_unsupported">Unsupported task status</string>
     <string name="thread_feedback_task_updated">Task updated</string>
     <string name="thread_error_update_task">Unable to update task</string>
+    <string name="thread_error_update_assignee">Unable to update assignee</string>
     <string name="thread_error_join_channel">Unable to join channel</string>
     <string name="thread_feedback_joined_channel">Joined channel</string>
     <string name="thread_error_attachment_retry">Attachment retry unavailable. Remove and attach again.</string>
@@ -617,7 +619,7 @@
     <string name="thread_video_playback_failed">Video playback failed</string>
     <string name="thread_video_attachment_fallback_name">Video attachment</string>
     <string name="thread_action_back_to_bottom">Back to bottom</string>
-    <string name="thread_action_unread_count">↑ %1$d unread</string>
+    <string name="thread_action_unread_count">↓ %1$d new</string>
     <string name="thread_label_saved">Saved</string>
     <string name="thread_state_refreshing_original">Refreshing original message…</string>
     <string name="thread_error_refresh_original">Refresh failed: %1$s</string>
@@ -955,6 +957,7 @@
     <string name="member_error_avatar_save">Avatar save failed: %1$s</string>
     <string name="member_error_profile_edit_unavailable">Agent profile editing is not available.</string>
     <string name="member_error_role_edit_unavailable">Agent role editing is not available.</string>
+    <string name="member_error_role_update_unconfirmed">The role update was not confirmed. Check the current role and try again.</string>
     <string name="member_error_runtime_edit_unavailable">Runtime config editing is not available.</string>
     <string name="member_error_display_name_required">Display name is required</string>
     <string name="member_error_save">Save failed: %1$s</string>
@@ -2049,6 +2052,7 @@
     <string name="home_adaptive_select_conversation">Select a conversation</string>
     <string name="composer_add_image">Add image</string>
     <string name="composer_take_photo">Take photo</string>
+    <string name="composer_attach_file">Attach file</string>
     <string name="markdown_task_list_checkbox">Task list checkbox</string>
     <string name="markdown_task_list_checked">Completed</string>
     <string name="markdown_task_list_unchecked">Not completed</string>

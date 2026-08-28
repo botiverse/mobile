@@ -19,7 +19,7 @@ case "$*" in
   "api repos/botiverse/mobile/pulls/1459 --jq "*)
     printf 'open\tfalse\t%s\tmain\n' "${FAKE_HEAD_SHA:?}"
     ;;
-  "api --paginate --slurp repos/botiverse/mobile/pulls/1459/commits?per_page=100")
+  "api --paginate repos/botiverse/mobile/pulls/1459/commits?per_page=100")
     printf '%s\n' "${FAKE_COMMITS_JSON:?}"
     ;;
   "pr merge 1459 --repo botiverse/mobile --rebase --match-head-commit "*)
@@ -40,7 +40,7 @@ Signed-off-by: Merge Safety <merge-safety@mail.build>
 EOF
 )"
 commits_json="$(jq -cn --arg sha "$head_sha" --arg message "$message" \
-  '[[{sha: $sha, commit: {message: $message}}]]')"
+  '[{sha: $sha, commit: {message: $message}}]')"
 
 GH_BIN="$fake_gh" GH_RECORD="$record" FAKE_HEAD_SHA="$head_sha" \
   FAKE_COMMITS_JSON="$commits_json" \

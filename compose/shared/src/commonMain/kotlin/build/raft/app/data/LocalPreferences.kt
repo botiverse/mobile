@@ -2,7 +2,7 @@ package build.raft.app.data
 
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
-internal const val DEFAULT_SERVER_DRAWER_ENABLED = true
+internal const val DEFAULT_SERVER_DRAWER_ENABLED = false
 
 enum class AppLocale(
     val storageKey: String,
@@ -242,7 +242,7 @@ data class ChatLayoutPreferenceSnapshot(
     val compactConsecutiveMessages: Boolean = true,
     val longMessageCollapseEnabled: Boolean = false,
     val singleTapOpensThreadEnabled: Boolean = false,
-    val threadUnreadJumpEnabled: Boolean = false,
+    val threadUnreadJumpEnabled: Boolean = true,
     val newMessageMenuEnabled: Boolean = false,
     val conversationForwardGestureEnabled: Boolean = false,
     val foregroundMessageBannersEnabled: Boolean = false,
@@ -374,7 +374,7 @@ class KeyValueChatLayoutPreferenceStore(
     }
 
     override fun readThreadUnreadJumpEnabledSync(): Boolean =
-        store.getBoolean(KEY_THREAD_UNREAD_JUMP_ENABLED, false)
+        store.getBoolean(KEY_THREAD_UNREAD_JUMP_ENABLED, true)
 
     override suspend fun readThreadUnreadJumpEnabled(): Boolean =
         readThreadUnreadJumpEnabledSync()
