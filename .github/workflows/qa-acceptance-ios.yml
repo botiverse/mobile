@@ -492,9 +492,17 @@ jobs:
           mkdir -p "$RUNNER_TEMP/qa-loop"
           echo "QA_LOOP_IO_DIR=$RUNNER_TEMP/qa-loop" >> "$GITHUB_ENV"
           # TEST_RUNNER_* env vars are forwarded into the XCUITest runner.
+          # ⚠️ The env has to be set HERE, on the xcodebuild that starts the runner.
+          # Run 33155331720 failed because I set QA_LOOP_FIXTURE_PAGE on the probe
+          # step instead — that step runs AFTER this background harness has already
+          # launched the app, so the variable arrived too late and the app came up on
+          # the normal login screen. Same process-boundary mistake I had just fixed
+          # one layer down (SIMCTL_CHILD_* not reaching the app), made again on the
+          # step boundary. TEST_RUNNER_* is the only channel into the XCUITest runner.
           TEST_RUNNER_QA_LOOP_IO_DIR="$RUNNER_TEMP/qa-loop" \
           TEST_RUNNER_QA_LOOP_BUNDLE="$BUNDLE_ID" \
           TEST_RUNNER_QA_LOOP_IDLE_TIMEOUT="300" \
+          TEST_RUNNER_QA_LOOP_FIXTURE_PAGE="${{ inputs.fixture_page }}" \
             xcodebuild \
               -workspace iosApp.xcworkspace \
               -scheme iosAppUITests \
@@ -548,8 +556,6 @@ jobs:
       # auth-restore blocker in task #1101.
       - name: Run TabPager probe (task #232/#233)
         if: ${{ inputs.mode == 'tabpager-probe' }}
-        env:
-          QA_LOOP_FIXTURE_PAGE: ${{ inputs.fixture_page }}
         run: |
           mkdir -p qa-evidence
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
