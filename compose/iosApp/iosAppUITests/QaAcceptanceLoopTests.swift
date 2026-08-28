@@ -37,6 +37,12 @@ final class QaAcceptanceLoopTests: XCTestCase {
         let x2: Double?
         let y2: Double?
         let durationSeconds: Double?
+        // Speed of the drag segment, in points per second. Without this the
+        // segment always runs at XCUITest's default (fast) speed and a case that
+        // specifies a SLOW drag silently becomes a flick.
+        let velocityPointsPerSecond: Double?
+        let holdSeconds: Double?
+        let releaseHoldSeconds: Double?
     }
 
     override func setUpWithError() throws {
@@ -148,9 +154,23 @@ final class QaAcceptanceLoopTests: XCTestCase {
             }
             let from = app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
             let to = app.coordinate(withNormalizedOffset: CGVector(dx: x2, dy: y2))
-            let hold = min(max(action.durationSeconds ?? 0.3, 0.0), 10.0)
+            let hold = min(max(action.holdSeconds ?? 0.05, 0.0), 10.0)
+            // ⚠️ press(forDuration:thenDragTo:) holds, then drags at XCUITest's
+            // DEFAULT speed. Run 33161205106 group 4 asked for a slow 10%-width
+            // drag and got "long-press 1s, then flick" — and a flick turning the
+            // page is correct pager physics, so the harness manufactured a
+            // product FAIL. @CC-Cata caught it. Speed is the parameter that case
+            // turns on, so it has to be expressed, not implied by a hold.
+            if let velocity = action.velocityPointsPerSecond, velocity > 0 {
+                from.press(forDuration: hold,
+                           thenDragTo: to,
+                           withVelocity: XCUIGestureVelocity(rawValue: velocity),
+                           thenHoldForDuration: min(max(action.releaseHoldSeconds ?? 0.1, 0.0), 5.0))
+                return ["from": [x, y], "to": [x2, y2],
+                        "holdSeconds": hold, "velocityPointsPerSecond": velocity]
+            }
             from.press(forDuration: hold, thenDragTo: to)
-            return ["from": [x, y], "to": [x2, y2], "durationSeconds": hold]
+            return ["from": [x, y], "to": [x2, y2], "holdSeconds": hold, "velocity": "default"]
         case "swipe":
             switch action.direction {
             case "up": app.swipeUp()

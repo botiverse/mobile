@@ -139,8 +139,12 @@ try {
   if (groups.includes("4")) {
     // Short slow drag; criterion is that nothing changes. Slow on purpose — a
     // fast short flick can still be read as a page change.
-    rec("group 4: short drag rebound (0.45,0.60) -> (0.55,0.60), slow");
-    await drv.drag({ from: { x: 0.45, y: 0.60 }, to: { x: 0.55, y: 0.60 }, durationSeconds: 1.0 });
+    // The whole point of this group is SLOWNESS: a fast short drag is a flick and
+    // a flick turning the page is correct behaviour, so the speed must be in the
+    // record, not assumed. drv.drag returns the velocity it actually used.
+    const g4 = await drv.drag({ from: { x: 0.45, y: 0.60 }, to: { x: 0.55, y: 0.60 }, durationSeconds: 1.0 });
+    rec("group 4: slow short drag (0.45,0.60) -> (0.55,0.60)", g4);
+    verdict.gestureG4 = g4;
     await wait(1000);
     await capture("step-04-after-short-drag");
     verdict.performed.push(4);
