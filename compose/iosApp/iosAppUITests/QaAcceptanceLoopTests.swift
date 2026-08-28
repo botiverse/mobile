@@ -52,6 +52,17 @@ final class QaAcceptanceLoopTests: XCTestCase {
         let idleTimeout = Double(env["QA_LOOP_IDLE_TIMEOUT"] ?? "300") ?? 300
 
         var app = XCUIApplication(bundleIdentifier: bundleIdentifier)
+        // task #232/#233: let a scripted case drive a fixture page DIRECTLY, with no
+        // login. iosApp/ContentView.swift renders whatever SLOCK_VISUAL_FIXTURE_PAGE
+        // names, but that variable has to reach the APP — the runner's own
+        // environment is a different process, so SIMCTL_CHILD_* never arrives here.
+        // Absent the variable this is a no-op and the normal login path is unchanged.
+        if let fixturePage = env["QA_LOOP_FIXTURE_PAGE"], !fixturePage.isEmpty {
+            app.launchEnvironment["SLOCK_VISUAL_FIXTURE_PAGE"] = fixturePage
+            if let fixtureData = env["QA_LOOP_FIXTURE_PAGE_DATA"], !fixtureData.isEmpty {
+                app.launchEnvironment["SLOCK_VISUAL_FIXTURE_PAGE_DATA"] = fixtureData
+            }
+        }
         app.launch()
         writeReady(ioDir)
 
