@@ -51,6 +51,50 @@ class AuthShellServerSelectionTest {
     }
 
     @Test
+    fun scopedChooserSelectionSurvivesAProcessOnlyRestoreRead() = runBlocking {
+        val initial = authSessionFixture(userId = "user-1", servers = authServerFixtures(), selectedServerId = null)
+        val processStore = InMemorySlockAuthSessionStore(initial)
+        val selectedServerStore =
+            SelectedServerStore(SlockShellStoreScope.create("restore-read-shell"))
+        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+
+        // AppShell has already captured its own null selection before the chooser opens.
+        assertNull(shellStore.readSession()?.selectedServerId)
+
+        // This models the old process-wide chooser wiring: the process record changes, but the
+        // mounted shell authority does not, so the subsequent shell restore still sees no server.
+        val processOnlySelection =
+            selectStoredAuthServer(
+                sessionStore = processStore,
+                expectedSession = initial,
+                serverId = "server-2",
+            )
+        assertEquals(
+            "server-2",
+            assertIs<SharedAuthResult.Success<StoredAuthSession>>(processOnlySelection).data.selectedServerId,
+        )
+        assertNull(shellStore.readSession()?.selectedServerId)
+
+        // The scoped chooser writes the live shell authority as well. A later process-level
+        // restore/read cannot bypass that authority, even if its persisted selection is stale.
+        val scopedSelection =
+            selectStoredAuthServer(
+                sessionStore = shellStore,
+                expectedSession = requireNotNull(shellStore.readSession()),
+                serverId = "server-2",
+            )
+        assertEquals(
+            "server-2",
+            assertIs<SharedAuthResult.Success<StoredAuthSession>>(scopedSelection).data.selectedServerId,
+        )
+        processStore.updateSelectedServer(serverId = null, serverSlug = null)
+
+        assertNull(processStore.readSession()?.selectedServerId)
+        assertEquals("server-2", selectedServerStore.selectedServerId.value)
+        assertEquals("server-2", shellStore.readSession()?.selectedServerId)
+    }
+
+    @Test
     fun staleAccountGenerationCannotSelectIntoCurrentAccount() = runBlocking {
         val staleSession =
             authSessionFixture(
