@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-28T22:40:49.604Z",
+  "generatedAt": "2026-08-28T22:44:28.409Z",
   "runId": "98ec5ddf-20260828223831",
   "cases": [
     {
@@ -12006,17 +12006,35 @@
         "currentHeight": 960
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-28T22:40:41.297Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-28T22:42:48.558Z",
+        "severity": "high",
+        "summary": [
+          "Member suggestions list shows different users in each variant: React lists 'artin' first under IN THIS CHANNEL while Android lists 'Cindy' first",
+          "React uses purple placeholder avatar for first row; Android shows a black/white pixel avatar with a yellow status dot",
+          "React shows HUMAN/AGENT badge pills and 'Owner' subtitle for members; Android omits role badges and the 'Owner' label entirely",
+          "Android's IN THIS CHANNEL and NOT IN THIS CHANNEL rows have heavier line truncation (member names and handles clipped to '...') than React",
+          "Android composer toolbar shows three action icons (image, camera, paperclip) while React shows only two (image, paperclip)"
+        ],
+        "likelyCauses": [
+          "Android implementation did not port the role/subtitle metadata (HUMAN/AGENT, Owner) into the suggestion item view-model",
+          "Different truncation policies applied to member name + handle columns on Android (single-line ellipsis vs React's two-line with right-aligned handle)",
+          "Compose toolbar action set diverged between platforms; Android includes an extra camera/capture action not present on web",
+          "Avatar asset mapping differs: Android rendered a bot/agent pixel avatar for the first row where React rendered the default purple user placeholder",
+          "Section header padding inside the NOT IN THIS CHANNEL card on Android is insufficient, causing top-edge clipping"
+        ],
+        "suggestedOwner": "android-composer",
+        "suggestedFixes": [
+          "Render role badges (HUMAN/AGENT) and the 'Owner' subtitle in Android suggestion rows to match React's data contract",
+          "Use a two-line layout per row with name on line 1 and handle right-aligned; constrain only the handle column, not the name, when truncating",
+          "Remove the extra camera icon from the Android composer toolbar or add the matching action to React so both platforms ship the same affordance",
+          "Increase top padding inside the 'NOT IN THIS CHANNEL' section header card so the title is not clipped at the panel edge",
+          "Align avatar resolution logic so the same user yields the same avatar asset (or default placeholder) across web and Android"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -12103,17 +12121,35 @@
             "currentHeight": 960
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T22:40:41.297Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-28T22:42:48.558Z",
+            "severity": "high",
+            "summary": [
+              "Member suggestions list shows different users in each variant: React lists 'artin' first under IN THIS CHANNEL while Android lists 'Cindy' first",
+              "React uses purple placeholder avatar for first row; Android shows a black/white pixel avatar with a yellow status dot",
+              "React shows HUMAN/AGENT badge pills and 'Owner' subtitle for members; Android omits role badges and the 'Owner' label entirely",
+              "Android's IN THIS CHANNEL and NOT IN THIS CHANNEL rows have heavier line truncation (member names and handles clipped to '...') than React",
+              "Android composer toolbar shows three action icons (image, camera, paperclip) while React shows only two (image, paperclip)"
+            ],
+            "likelyCauses": [
+              "Android implementation did not port the role/subtitle metadata (HUMAN/AGENT, Owner) into the suggestion item view-model",
+              "Different truncation policies applied to member name + handle columns on Android (single-line ellipsis vs React's two-line with right-aligned handle)",
+              "Compose toolbar action set diverged between platforms; Android includes an extra camera/capture action not present on web",
+              "Avatar asset mapping differs: Android rendered a bot/agent pixel avatar for the first row where React rendered the default purple user placeholder",
+              "Section header padding inside the NOT IN THIS CHANNEL card on Android is insufficient, causing top-edge clipping"
+            ],
+            "suggestedOwner": "android-composer",
+            "suggestedFixes": [
+              "Render role badges (HUMAN/AGENT) and the 'Owner' subtitle in Android suggestion rows to match React's data contract",
+              "Use a two-line layout per row with name on line 1 and handle right-aligned; constrain only the handle column, not the name, when truncating",
+              "Remove the extra camera icon from the Android composer toolbar or add the matching action to React so both platforms ship the same affordance",
+              "Increase top padding inside the 'NOT IN THIS CHANNEL' section header card so the title is not clipped at the panel edge",
+              "Align avatar resolution logic so the same user yields the same avatar asset (or default placeholder) across web and Android"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -12136,17 +12172,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.898Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-28T22:42:58.308Z",
+            "severity": "medium",
+            "summary": [
+              "Suggestion order differs: React highlights 'artin' as the first/top member-suggestion row (selected/yellow), while iOS highlights 'Cindy' as the first suggestion.",
+              "iOS row content is more truncated than React: iOS shows 'Keeps visual testing releas…' and 'Turns…' inline, React shows 'Owner' and 'Keeps visual testin…' with more breathing room.",
+              "iOS composer toolbar has an extra camera icon (three icons: gallery, camera, paperclip); React only shows two icons (gallery, paperclip) — camera is missing on React.",
+              "Human/Agent badge styling differs: React uses outlined pill badges ('HUMAN', 'AGENT') with background fills; iOS badges are absent — role is inferred from avatar color and is not labeled.",
+              "iOS uses slightly larger avatar tiles and tighter horizontal padding inside the suggestion list, causing handles like '@Product-UX-Desi…' to truncate earlier than in React."
+            ],
+            "likelyCauses": [
+              "iOS component renders an additional camera/attachment action in the composer toolbar that the React counterpart doesn't expose.",
+              "Suggestion ranking/highlight differs across platforms (iOS puts Cindy first; React puts artin first), suggesting separate suggestion-source logic per platform.",
+              "Role badges (HUMAN/AGENT) are implemented in React's member-suggestion row but were dropped or not yet ported in the iOS implementation.",
+              "iOS applies more aggressive text truncation and denser spacing to suggestion rows compared to the React web layout."
+            ],
+            "suggestedOwner": "iOS engineering — member-suggestions / composer team",
+            "suggestedFixes": [
+              "Decide on the intended selection (first highlighted suggestion) and unify the suggestion-ranking logic so React and iOS surface the same member first.",
+              "Port the HUMAN/AGENT role pill badges into the iOS member-suggestion row to match React's information density.",
+              "Confirm whether the camera button should exist in the composer toolbar on both platforms; add it to React or remove it from iOS for parity.",
+              "Loosen iOS row truncation (e.g., allow two-line names/bios or smaller handle font) so @handles and bios don't clip earlier than on React.",
+              "Match React's avatar size and row padding in iOS (or define shared design tokens) to align suggestion-row visual rhythm across platforms."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -12222,17 +12275,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.898Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-28T22:42:58.308Z",
+            "severity": "medium",
+            "summary": [
+              "Suggestion order differs: React highlights 'artin' as the first/top member-suggestion row (selected/yellow), while iOS highlights 'Cindy' as the first suggestion.",
+              "iOS row content is more truncated than React: iOS shows 'Keeps visual testing releas…' and 'Turns…' inline, React shows 'Owner' and 'Keeps visual testin…' with more breathing room.",
+              "iOS composer toolbar has an extra camera icon (three icons: gallery, camera, paperclip); React only shows two icons (gallery, paperclip) — camera is missing on React.",
+              "Human/Agent badge styling differs: React uses outlined pill badges ('HUMAN', 'AGENT') with background fills; iOS badges are absent — role is inferred from avatar color and is not labeled.",
+              "iOS uses slightly larger avatar tiles and tighter horizontal padding inside the suggestion list, causing handles like '@Product-UX-Desi…' to truncate earlier than in React."
+            ],
+            "likelyCauses": [
+              "iOS component renders an additional camera/attachment action in the composer toolbar that the React counterpart doesn't expose.",
+              "Suggestion ranking/highlight differs across platforms (iOS puts Cindy first; React puts artin first), suggesting separate suggestion-source logic per platform.",
+              "Role badges (HUMAN/AGENT) are implemented in React's member-suggestion row but were dropped or not yet ported in the iOS implementation.",
+              "iOS applies more aggressive text truncation and denser spacing to suggestion rows compared to the React web layout."
+            ],
+            "suggestedOwner": "iOS engineering — member-suggestions / composer team",
+            "suggestedFixes": [
+              "Decide on the intended selection (first highlighted suggestion) and unify the suggestion-ranking logic so React and iOS surface the same member first.",
+              "Port the HUMAN/AGENT role pill badges into the iOS member-suggestion row to match React's information density.",
+              "Confirm whether the camera button should exist in the composer toolbar on both platforms; add it to React or remove it from iOS for parity.",
+              "Loosen iOS row truncation (e.g., allow two-line names/bios or smaller handle font) so @handles and bios don't clip earlier than on React.",
+              "Match React's avatar size and row padding in iOS (or define shared design tokens) to align suggestion-row visual rhythm across platforms."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -20509,7 +20579,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-28T22:40:41.057Z",
+        "generatedAt": "2026-08-28T22:44:20.072Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20570,7 +20640,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:41.057Z",
+            "generatedAt": "2026-08-28T22:44:20.072Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20592,7 +20662,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20614,7 +20684,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20639,7 +20709,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20662,7 +20732,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20702,7 +20772,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-28T22:40:41.057Z",
+        "generatedAt": "2026-08-28T22:44:20.072Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20763,7 +20833,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:41.057Z",
+            "generatedAt": "2026-08-28T22:44:20.072Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20785,7 +20855,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20807,7 +20877,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20832,7 +20902,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20855,7 +20925,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -21701,17 +21771,38 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-28T22:40:41.778Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-28T22:42:49.063Z",
+        "severity": "medium",
+        "summary": [
+          "Header layout differs: React places avatar+title+description inline with back/menu buttons; Android stacks them into two distinct rows with a wider avatar and a separate 'Working' status row.",
+          "React shows truncated description ('Turns product feedback, s…') with overflow ellipsis in header; Android shows full truncated text ('Turns product feedback, screensho…') on its own line below title.",
+          "React shows full profile header block (avatar + name + handle + 'Capturing determ…' status) as one row with content clipped; Android separates these into a large avatar on the left and name/handle/status on the right.",
+          "INFO section layout: React uses a 3-column inline grid (Computer, Created, Creator) with horizontal alignment; Android stacks these fields vertically with right-aligned values.",
+          "React shows Computer name in monospace code style ('Jiachengs-MacBook-Pro') on its own line; Android shows the same string inline next to 'Connected · daemon v0.61.1' status."
+        ],
+        "likelyCauses": [
+          "Independent implementation of the agent detail profile in the Android client that re-flows fields into a 2-column responsive grid rather than mirroring the React 3-column layout.",
+          "Missing or skipped rendering of edit-pencil affordances in Android component variants.",
+          "Different truncation strategy applied to the header description line on Android (separate line vs. inline).",
+          "Android surfaces a 'CREATED AGENTS' child list that React either renders below the fold or hides in this view.",
+          "Code-style (monospace) typography token for Computer field not ported to Android text style."
+        ],
+        "suggestedOwner": "android-engineering",
+        "suggestedFixes": [
+          "Replicate React's 3-column INFO row (Computer | Created | Creator) on Android or align both clients on a single responsive spec.",
+          "Restore the green 'Connected' status dot and the monospace styling for the Computer field name in Android.",
+          "Add edit-pencil affordances next to DISPLAY NAME, DESCRIPTION, and Runtime Config section headers to match React.",
+          "Move Environment Variables back to vertical stacking (one key per row) to match React's layout.",
+          "Decide whether CREATED AGENTS belongs in this view; if yes, ensure React renders it identically, otherwise hide it on Android."
+        ],
+        "intentional": [
+          "Avatar sizes and tab bar treatment differences may be intentional platform conventions.",
+          "CREATED AGENTS panel may be an intentional Android-only extension."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -21798,17 +21889,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T22:40:41.778Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-28T22:42:49.063Z",
+            "severity": "medium",
+            "summary": [
+              "Header layout differs: React places avatar+title+description inline with back/menu buttons; Android stacks them into two distinct rows with a wider avatar and a separate 'Working' status row.",
+              "React shows truncated description ('Turns product feedback, s…') with overflow ellipsis in header; Android shows full truncated text ('Turns product feedback, screensho…') on its own line below title.",
+              "React shows full profile header block (avatar + name + handle + 'Capturing determ…' status) as one row with content clipped; Android separates these into a large avatar on the left and name/handle/status on the right.",
+              "INFO section layout: React uses a 3-column inline grid (Computer, Created, Creator) with horizontal alignment; Android stacks these fields vertically with right-aligned values.",
+              "React shows Computer name in monospace code style ('Jiachengs-MacBook-Pro') on its own line; Android shows the same string inline next to 'Connected · daemon v0.61.1' status."
+            ],
+            "likelyCauses": [
+              "Independent implementation of the agent detail profile in the Android client that re-flows fields into a 2-column responsive grid rather than mirroring the React 3-column layout.",
+              "Missing or skipped rendering of edit-pencil affordances in Android component variants.",
+              "Different truncation strategy applied to the header description line on Android (separate line vs. inline).",
+              "Android surfaces a 'CREATED AGENTS' child list that React either renders below the fold or hides in this view.",
+              "Code-style (monospace) typography token for Computer field not ported to Android text style."
+            ],
+            "suggestedOwner": "android-engineering",
+            "suggestedFixes": [
+              "Replicate React's 3-column INFO row (Computer | Created | Creator) on Android or align both clients on a single responsive spec.",
+              "Restore the green 'Connected' status dot and the monospace styling for the Computer field name in Android.",
+              "Add edit-pencil affordances next to DISPLAY NAME, DESCRIPTION, and Runtime Config section headers to match React.",
+              "Move Environment Variables back to vertical stacking (one key per row) to match React's layout.",
+              "Decide whether CREATED AGENTS belongs in this view; if yes, ensure React renders it identically, otherwise hide it on Android."
+            ],
+            "intentional": [
+              "Avatar sizes and tab bar treatment differences may be intentional platform conventions.",
+              "CREATED AGENTS panel may be an intentional Android-only extension."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -21831,17 +21943,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T22:40:45.418Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-28T22:42:58.776Z",
+            "severity": "medium",
+            "summary": [
+              "Header layout differs: React places avatar, name, and subtitle in a single horizontal row; iOS stacks avatar above the name/handle and shifts the subtitle into a truncated second line of the header.",
+              "Profile tab strip has different proportions: React uses wider, more evenly distributed tabs; iOS compresses the tabs so the active 'Profile' tab has heavier visual weight and tighter spacing.",
+              "INFO section structure diverges: React uses a 2-column grid (Created/Creator side-by-side, Runtime/Model/Reasoning in a row); iOS uses a stacked vertical list for Created/Creator and a 2x2 grid for Runtime/Model/Reasoning/Mode.",
+              "React shows a 'CREATED AGENTS' section with a 'Visual QA' card at the bottom; iOS omits this section entirely, causing content cutoff at the viewport edge.",
+              "iOS header shows an additional 'Working' status indicator (yellow dot + text) under the handle, which is absent in React."
+            ],
+            "likelyCauses": [
+              "iOS native layout uses vertical stack vs. React's flexible grid, changing natural element flow.",
+              "Missing 'CREATED AGENTS' section on iOS suggests a component was not implemented or is conditionally hidden on the iOS variant.",
+              "Avatar image asset failed to load on iOS, falling back to a placeholder pattern.",
+              "Text truncation thresholds differ between platforms (iOS tighter truncation policies).",
+              "Tab strip width calculations differ between web flex layout and iOS UIKit constraints."
+            ],
+            "suggestedOwner": "iOS engineering",
+            "suggestedFixes": [
+              "Port the 'CREATED AGENTS' list section from React into the iOS Profile view so content matches the baseline.",
+              "Fix the avatar image loading on iOS so the cyan placeholder renders correctly, or align the placeholder design across platforms.",
+              "Adjust iOS truncation behavior to show full computer name 'Jiachengs-MacBook-Pro' or match React's line-break behavior.",
+              "Restructure the INFO section on iOS to use a multi-column grid that mirrors React's Runtime/Model/Reasoning inline row.",
+              "Align the header layout (avatar + name + handle) between platforms; either both stack or both use a horizontal row."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -21916,17 +22046,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T22:40:45.418Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-28T22:42:58.776Z",
+            "severity": "medium",
+            "summary": [
+              "Header layout differs: React places avatar, name, and subtitle in a single horizontal row; iOS stacks avatar above the name/handle and shifts the subtitle into a truncated second line of the header.",
+              "Profile tab strip has different proportions: React uses wider, more evenly distributed tabs; iOS compresses the tabs so the active 'Profile' tab has heavier visual weight and tighter spacing.",
+              "INFO section structure diverges: React uses a 2-column grid (Created/Creator side-by-side, Runtime/Model/Reasoning in a row); iOS uses a stacked vertical list for Created/Creator and a 2x2 grid for Runtime/Model/Reasoning/Mode.",
+              "React shows a 'CREATED AGENTS' section with a 'Visual QA' card at the bottom; iOS omits this section entirely, causing content cutoff at the viewport edge.",
+              "iOS header shows an additional 'Working' status indicator (yellow dot + text) under the handle, which is absent in React."
+            ],
+            "likelyCauses": [
+              "iOS native layout uses vertical stack vs. React's flexible grid, changing natural element flow.",
+              "Missing 'CREATED AGENTS' section on iOS suggests a component was not implemented or is conditionally hidden on the iOS variant.",
+              "Avatar image asset failed to load on iOS, falling back to a placeholder pattern.",
+              "Text truncation thresholds differ between platforms (iOS tighter truncation policies).",
+              "Tab strip width calculations differ between web flex layout and iOS UIKit constraints."
+            ],
+            "suggestedOwner": "iOS engineering",
+            "suggestedFixes": [
+              "Port the 'CREATED AGENTS' list section from React into the iOS Profile view so content matches the baseline.",
+              "Fix the avatar image loading on iOS so the cyan placeholder renders correctly, or align the placeholder design across platforms.",
+              "Adjust iOS truncation behavior to show full computer name 'Jiachengs-MacBook-Pro' or match React's line-break behavior.",
+              "Restructure the INFO section on iOS to use a multi-column grid that mirrors React's Runtime/Model/Reasoning inline row.",
+              "Align the header layout (avatar + name + handle) between platforms; either both stack or both use a horizontal row."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -25840,17 +25988,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-28T22:40:41.970Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-28T22:42:49.265Z",
+        "severity": "high",
+        "summary": [
+          "Profile header layout differs: React shows avatar, title and truncated description on one row with action icons on the right; Android shows avatar, title and full description below the title with action icons aligned right at the title baseline.",
+          "Header description text rendering differs: React truncates with ellipsis ('Turns product feedback, s...'), Android wraps to a second line ('Turns product feedback, screensho...') causing different vertical spacing.",
+          "Avatar asset differs: React uses a solid cyan square, Android renders a patterned/mosaic avatar glyph causing the header height to grow on Android.",
+          "User status row is clipped on React: 'Produc...' title and 'Capturing determi...' status are truncated; on Android the full title and 'Working' status with green dot fit, indicating React container is narrower or has overflow.",
+          "Tab bar spacing differs: React tabs have visible borders around each cell and tighter widths; Android tabs are borderless with more horizontal padding."
+        ],
+        "likelyCauses": [
+          "Android implementation re-flows the profile header into a different column structure rather than mirroring the React one-line header",
+          "Truncation behavior on React uses a fixed-width container with ellipsis, while Android allows wrapping",
+          "Avatar asset source diverged between platforms (placeholder color block on web vs styled glyph on Android)",
+          "Runtime Config component is implemented with a different grid system on Android (2-col vs 3-col)",
+          "Agent list section exists on Android but was not yet wired into the React agent-detail profile screen"
+        ],
+        "suggestedOwner": "android-ui",
+        "suggestedFixes": [
+          "Match Android header layout to React: single row with avatar, title, truncated description, and right-aligned action icons; constrain description with maxLines=1 and ellipsize=end",
+          "Replace Android avatar with the same solid cyan placeholder used on React, or ensure both platforms render the same avatar asset",
+          "Unify the Role chip rendering: use the same label and color treatment across platforms",
+          "Reflow INFO section on Android to match React's two-row layout (Computer/Connected on row 1, Created/Creator on row 2) with inline creator avatar",
+          "Align Runtime Config to a 3-column layout (Runtime, Model, Reasoning) with Mode on its own row to match React"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -25930,17 +26096,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T22:40:41.970Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-28T22:42:49.265Z",
+            "severity": "high",
+            "summary": [
+              "Profile header layout differs: React shows avatar, title and truncated description on one row with action icons on the right; Android shows avatar, title and full description below the title with action icons aligned right at the title baseline.",
+              "Header description text rendering differs: React truncates with ellipsis ('Turns product feedback, s...'), Android wraps to a second line ('Turns product feedback, screensho...') causing different vertical spacing.",
+              "Avatar asset differs: React uses a solid cyan square, Android renders a patterned/mosaic avatar glyph causing the header height to grow on Android.",
+              "User status row is clipped on React: 'Produc...' title and 'Capturing determi...' status are truncated; on Android the full title and 'Working' status with green dot fit, indicating React container is narrower or has overflow.",
+              "Tab bar spacing differs: React tabs have visible borders around each cell and tighter widths; Android tabs are borderless with more horizontal padding."
+            ],
+            "likelyCauses": [
+              "Android implementation re-flows the profile header into a different column structure rather than mirroring the React one-line header",
+              "Truncation behavior on React uses a fixed-width container with ellipsis, while Android allows wrapping",
+              "Avatar asset source diverged between platforms (placeholder color block on web vs styled glyph on Android)",
+              "Runtime Config component is implemented with a different grid system on Android (2-col vs 3-col)",
+              "Agent list section exists on Android but was not yet wired into the React agent-detail profile screen"
+            ],
+            "suggestedOwner": "android-ui",
+            "suggestedFixes": [
+              "Match Android header layout to React: single row with avatar, title, truncated description, and right-aligned action icons; constrain description with maxLines=1 and ellipsize=end",
+              "Replace Android avatar with the same solid cyan placeholder used on React, or ensure both platforms render the same avatar asset",
+              "Unify the Role chip rendering: use the same label and color treatment across platforms",
+              "Reflow INFO section on Android to match React's two-row layout (Computer/Connected on row 1, Created/Creator on row 2) with inline creator avatar",
+              "Align Runtime Config to a 3-column layout (Runtime, Model, Reasoning) with Mode on its own row to match React"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -25953,7 +26137,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25975,7 +26159,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26000,7 +26184,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26023,7 +26207,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26223,7 +26407,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26245,7 +26429,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26270,7 +26454,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26293,7 +26477,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26493,7 +26677,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26515,7 +26699,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26540,7 +26724,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26563,7 +26747,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26759,7 +26943,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26781,7 +26965,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26806,7 +26990,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26829,7 +27013,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27025,7 +27209,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27047,7 +27231,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27072,7 +27256,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27095,7 +27279,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27525,17 +27709,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-28T22:40:42.122Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-28T22:42:49.405Z",
+        "severity": "high",
+        "summary": [
+          "Cropping contracts differ (element-bounds vs viewport-bounds) so the Android side shows significantly more vertical content, exposing extra sections like Computer/Created/Creator rows in INFO and the CREATED AGENTS list.",
+          "Context menu (Stop Agent / Restart / Reset) overlaps the Profile/Activity tab bar and the agent card on both sides, but is clipped on the React baseline vs. fully visible on Android — different z-order and overflow handling.",
+          "Agent avatar image on Android renders with a black background and visible pixelation, while React shows a solid cyan fill with no apparent image — different avatar asset or placeholder.",
+          "Agent subtitle text is truncated on React ('Turns product feedback, s…') but renders fully on Android ('Turns product feedback, screensho…') — text-overflow ellipsis is not applied on Android.",
+          "Runtime Config section uses different grid layout: React is a single-column label/value stack (Runtime, Model, Reasoning on one row, Mode below), Android uses a 2-column grid (Runtime/Model top row, Reasoning/Mode bottom row) — relayout difference."
+        ],
+        "likelyCauses": [
+          "Slock used different crop contracts between runs, so the Android capture includes the full viewport while React was cropped to a component — accounts for the extra sections and most of the pixel mismatch.",
+          "React component may apply text truncation/ellipsis at the subtitle that the Android Compose implementation does not.",
+          "Avatar image source or fallback differs between platforms (Android shows a low-res/broken image; React shows a placeholder color).",
+          "Layout component for Runtime Config has different responsive rules across web vs. mobile.",
+          "Status dot color tokens map to different values on each platform."
+        ],
+        "suggestedOwner": "mobile-android",
+        "suggestedFixes": [
+          "Re-run Slock with matching crop contracts (both viewport-bounds or both component-bounds) before comparing to eliminate the layout-extension false positive.",
+          "Make subtitle truncation behavior consistent: apply ellipsis on overflow in Android Compose Text and align maxLines.",
+          "Verify avatar asset URL/fallback renders identically; ensure the same placeholder color or image is used on both platforms.",
+          "Refactor Runtime Config to use the same 2x2 grid on web, or a single-column stack on mobile, so the field order matches across platforms.",
+          "Unify status dot color tokens (use the same semantic green for Connected on both platforms)."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -27622,17 +27824,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T22:40:42.122Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-28T22:42:49.405Z",
+            "severity": "high",
+            "summary": [
+              "Cropping contracts differ (element-bounds vs viewport-bounds) so the Android side shows significantly more vertical content, exposing extra sections like Computer/Created/Creator rows in INFO and the CREATED AGENTS list.",
+              "Context menu (Stop Agent / Restart / Reset) overlaps the Profile/Activity tab bar and the agent card on both sides, but is clipped on the React baseline vs. fully visible on Android — different z-order and overflow handling.",
+              "Agent avatar image on Android renders with a black background and visible pixelation, while React shows a solid cyan fill with no apparent image — different avatar asset or placeholder.",
+              "Agent subtitle text is truncated on React ('Turns product feedback, s…') but renders fully on Android ('Turns product feedback, screensho…') — text-overflow ellipsis is not applied on Android.",
+              "Runtime Config section uses different grid layout: React is a single-column label/value stack (Runtime, Model, Reasoning on one row, Mode below), Android uses a 2-column grid (Runtime/Model top row, Reasoning/Mode bottom row) — relayout difference."
+            ],
+            "likelyCauses": [
+              "Slock used different crop contracts between runs, so the Android capture includes the full viewport while React was cropped to a component — accounts for the extra sections and most of the pixel mismatch.",
+              "React component may apply text truncation/ellipsis at the subtitle that the Android Compose implementation does not.",
+              "Avatar image source or fallback differs between platforms (Android shows a low-res/broken image; React shows a placeholder color).",
+              "Layout component for Runtime Config has different responsive rules across web vs. mobile.",
+              "Status dot color tokens map to different values on each platform."
+            ],
+            "suggestedOwner": "mobile-android",
+            "suggestedFixes": [
+              "Re-run Slock with matching crop contracts (both viewport-bounds or both component-bounds) before comparing to eliminate the layout-extension false positive.",
+              "Make subtitle truncation behavior consistent: apply ellipsis on overflow in Android Compose Text and align maxLines.",
+              "Verify avatar asset URL/fallback renders identically; ensure the same placeholder color or image is used on both platforms.",
+              "Refactor Runtime Config to use the same 2x2 grid on web, or a single-column stack on mobile, so the field order matches across platforms.",
+              "Unify status dot color tokens (use the same semantic green for Connected on both platforms)."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -27655,17 +27875,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T22:40:45.688Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-28T22:42:59.045Z",
+            "severity": "medium",
+            "summary": [
+              "Header avatar is larger and shows a checkered/mosaic pattern on iOS; React shows a solid cyan square avatar.",
+              "iOS adds a green status dot with 'Working' label below @Product-UX-Designer handle; React omits this status indicator.",
+              "Tab bar is clipped on iOS: only 'Profile' and partial 'Activ' are visible, Activity tab content is occluded by the action menu overlay.",
+              "Action menu (Stop Agent / Restart / Reset) overlays the agent header on iOS, partially covering the agent name and tabs; on React it overlaps the right side of tabs more cleanly.",
+              "Info section layout differs: iOS uses a two-column key/value grid (Computer/Created/Creator stacked) while React uses a single-column flow with Created on left and Creator on right."
+            ],
+            "likelyCauses": [
+              "iOS render uses a larger default avatar thumbnail size or different avatar placeholder asset",
+              "iOS surfaces an additional agent status indicator (Working) not implemented in React view",
+              "Action menu popover on iOS uses a different anchor point causing it to overlap header content",
+              "Info and Runtime Config sections use different layout strategies (grid vs flow) across platforms",
+              "iOS layout includes a Created Agents list section that React does not render in this component"
+            ],
+            "suggestedOwner": "iOS",
+            "suggestedFixes": [
+              "Match avatar dimensions between platforms or use a shared placeholder rendering rule",
+              "Either add the 'Working' status indicator to React or hide it on iOS for parity",
+              "Adjust action menu popover anchor/offset so it does not occlude the header name or tabs",
+              "Reconcile Info section layout to a consistent grid (or apply the same 2-col layout on React)",
+              "Standardize Runtime Config to a single grid layout across both platforms"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -27742,17 +27980,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T22:40:45.688Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-28T22:42:59.045Z",
+            "severity": "medium",
+            "summary": [
+              "Header avatar is larger and shows a checkered/mosaic pattern on iOS; React shows a solid cyan square avatar.",
+              "iOS adds a green status dot with 'Working' label below @Product-UX-Designer handle; React omits this status indicator.",
+              "Tab bar is clipped on iOS: only 'Profile' and partial 'Activ' are visible, Activity tab content is occluded by the action menu overlay.",
+              "Action menu (Stop Agent / Restart / Reset) overlays the agent header on iOS, partially covering the agent name and tabs; on React it overlaps the right side of tabs more cleanly.",
+              "Info section layout differs: iOS uses a two-column key/value grid (Computer/Created/Creator stacked) while React uses a single-column flow with Created on left and Creator on right."
+            ],
+            "likelyCauses": [
+              "iOS render uses a larger default avatar thumbnail size or different avatar placeholder asset",
+              "iOS surfaces an additional agent status indicator (Working) not implemented in React view",
+              "Action menu popover on iOS uses a different anchor point causing it to overlap header content",
+              "Info and Runtime Config sections use different layout strategies (grid vs flow) across platforms",
+              "iOS layout includes a Created Agents list section that React does not render in this component"
+            ],
+            "suggestedOwner": "iOS",
+            "suggestedFixes": [
+              "Match avatar dimensions between platforms or use a shared placeholder rendering rule",
+              "Either add the 'Working' status indicator to React or hide it on iOS for parity",
+              "Adjust action menu popover anchor/offset so it does not occlude the header name or tabs",
+              "Reconcile Info section layout to a consistent grid (or apply the same 2-col layout on React)",
+              "Standardize Runtime Config to a single grid layout across both platforms"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -27834,17 +28090,34 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-28T22:40:42.144Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-28T22:42:49.465Z",
+        "severity": "high",
+        "summary": [
+          "Android view is missing the 'Choose Avatar' avatar picker grid and the selected large edit-pencil avatar tile present on React.",
+          "Android header title and description text are clipped with ellipsis ('Product UX Designer', 'Turns product feedback, screensho…') whereas React shows full text.",
+          "Android renders an additional 'Runtime Config' grid (Runtime/Model/Reasoning/Mode) and 'Created Agents' and 'Skills' sections that are absent on React; React instead shows more detailed Info rows (Computer, Created, Creator) inline.",
+          "Section heading typography differs: React uses small-caps tracked labels ('CHOOSE AVATAR','DISPLAY NAME','DESCRIPTION','INFO','RUNTIME Config') while Android uses flat uppercase labels at different weights.",
+          "Android shows avatar state indicator as a blue/cyan checkerboard pattern while React uses a solid teal square with white pencil icon; selected avatar styling is inconsistent."
+        ],
+        "likelyCauses": [
+          "Android component renders a different page/screen (likely Profile details view) than the React Avatar Management edit view being compared.",
+          "Tab and content state mismatch: Android appears to be on a Profile/About sub-screen while React is on the avatar-selection edit screen.",
+          "Missing conditional rendering for the avatar picker grid and edit-pencil affordance on Android.",
+          "Different section ordering and additional Runtime Config / Created Agents / Skills blocks rendered only on Android, suggesting divergent component composition."
+        ],
+        "suggestedOwner": "android",
+        "suggestedFixes": [
+          "Align Android 'Avatar Management' screen to render the same view as React: include the 'Choose Avatar' grid and large selected avatar with edit-pencil overlay.",
+          "Ensure header title and description text are not truncated; allow wrapping or widen container instead of ellipsis on 390px viewport.",
+          "Match React section label style (uppercase small-caps tracked) or explicitly tokenize section headers in the design system.",
+          "Restrict Android render to the avatar management scope (remove Runtime Config, Created Agents, Skills sections) or move them to their own route.",
+          "Verify selected avatar visual treatment (solid color + pencil vs. checkerboard) against the shared design tokens."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -27931,17 +28204,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T22:40:42.144Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-28T22:42:49.465Z",
+            "severity": "high",
+            "summary": [
+              "Android view is missing the 'Choose Avatar' avatar picker grid and the selected large edit-pencil avatar tile present on React.",
+              "Android header title and description text are clipped with ellipsis ('Product UX Designer', 'Turns product feedback, screensho…') whereas React shows full text.",
+              "Android renders an additional 'Runtime Config' grid (Runtime/Model/Reasoning/Mode) and 'Created Agents' and 'Skills' sections that are absent on React; React instead shows more detailed Info rows (Computer, Created, Creator) inline.",
+              "Section heading typography differs: React uses small-caps tracked labels ('CHOOSE AVATAR','DISPLAY NAME','DESCRIPTION','INFO','RUNTIME Config') while Android uses flat uppercase labels at different weights.",
+              "Android shows avatar state indicator as a blue/cyan checkerboard pattern while React uses a solid teal square with white pencil icon; selected avatar styling is inconsistent."
+            ],
+            "likelyCauses": [
+              "Android component renders a different page/screen (likely Profile details view) than the React Avatar Management edit view being compared.",
+              "Tab and content state mismatch: Android appears to be on a Profile/About sub-screen while React is on the avatar-selection edit screen.",
+              "Missing conditional rendering for the avatar picker grid and edit-pencil affordance on Android.",
+              "Different section ordering and additional Runtime Config / Created Agents / Skills blocks rendered only on Android, suggesting divergent component composition."
+            ],
+            "suggestedOwner": "android",
+            "suggestedFixes": [
+              "Align Android 'Avatar Management' screen to render the same view as React: include the 'Choose Avatar' grid and large selected avatar with edit-pencil overlay.",
+              "Ensure header title and description text are not truncated; allow wrapping or widen container instead of ellipsis on 390px viewport.",
+              "Match React section label style (uppercase small-caps tracked) or explicitly tokenize section headers in the design system.",
+              "Restrict Android render to the avatar management scope (remove Runtime Config, Created Agents, Skills sections) or move them to their own route.",
+              "Verify selected avatar visual treatment (solid color + pencil vs. checkerboard) against the shared design tokens."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -27964,17 +28254,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T22:40:45.688Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-28T22:42:59.059Z",
+            "severity": "high",
+            "summary": [
+              "iOS version is missing the entire 'Choose Avatar' grid section (avatar picker with ~16 thumbnails and upload button) that is present in the React version.",
+              "iOS header uses a checkered/patterned avatar placeholder instead of the solid teal square avatar shown in React; the avatar in the header differs in both color and fill.",
+              "Profile header on iOS shows additional 'Working' status indicator with yellow dot that is not present in React; React shows 'Capturing determ…' status instead.",
+              "Info section layout differs: React lays out Computer/Created/Creator as a vertical stack with the edit icons inline, while iOS reorganizes them with a horizontal key/value grid (Computer, Created, Creator as separate rows) and omits the edit pencil icons next to Role.",
+              "Runtime Config on iOS adds a 'Mode' (Default) badge and an 'Environment Variables' section (RAFT_PROFILE, SLOCK_VISUAL_PROVIDER) plus a 'Created Agents' list that are not shown in React; React's Runtime Config is a more compact 3-chip row."
+            ],
+            "likelyCauses": [
+              "iOS build is rendering a different screen/route (possibly a detail/profile view) than the React baseline which shows the avatar management editor.",
+              "Native iOS component lacks the avatar picker affordance and inline edit fields used in the React web implementation.",
+              "Different layout token mapping (typography scale, section header style, spacing) between web and native design systems.",
+              "The iOS crop was not constrained to element bounds (current crop is null) causing the compared frame to include additional sections like Created Agents and Skills."
+            ],
+            "suggestedOwner": "iOS / Mobile Engineering",
+            "suggestedFixes": [
+              "Ensure the iOS screen under test is the Avatar Management editor screen that includes the avatar grid and inline edit controls, matching the React route.",
+              "Add the Choose Avatar grid component to the iOS profile editor, including the upload button and thumbnail list.",
+              "Align header avatar artwork between platforms or use a consistent avatar source (current user avatar vs. placeholder).",
+              "Normalize label styling: render section headers in the same case/weight and divider rules consistently across platforms.",
+              "Hide or crop to component-bounds when capturing the iOS screenshot so extra sections (Created Agents, Skills) do not inflate the diff."
+            ],
+            "intentional": [
+              "Differences in device canvas size (390x844 vs 1170x2532) explain absolute size differences but not content omissions."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -28049,17 +28358,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-28T22:40:45.688Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-28T22:42:59.059Z",
+            "severity": "high",
+            "summary": [
+              "iOS version is missing the entire 'Choose Avatar' grid section (avatar picker with ~16 thumbnails and upload button) that is present in the React version.",
+              "iOS header uses a checkered/patterned avatar placeholder instead of the solid teal square avatar shown in React; the avatar in the header differs in both color and fill.",
+              "Profile header on iOS shows additional 'Working' status indicator with yellow dot that is not present in React; React shows 'Capturing determ…' status instead.",
+              "Info section layout differs: React lays out Computer/Created/Creator as a vertical stack with the edit icons inline, while iOS reorganizes them with a horizontal key/value grid (Computer, Created, Creator as separate rows) and omits the edit pencil icons next to Role.",
+              "Runtime Config on iOS adds a 'Mode' (Default) badge and an 'Environment Variables' section (RAFT_PROFILE, SLOCK_VISUAL_PROVIDER) plus a 'Created Agents' list that are not shown in React; React's Runtime Config is a more compact 3-chip row."
+            ],
+            "likelyCauses": [
+              "iOS build is rendering a different screen/route (possibly a detail/profile view) than the React baseline which shows the avatar management editor.",
+              "Native iOS component lacks the avatar picker affordance and inline edit fields used in the React web implementation.",
+              "Different layout token mapping (typography scale, section header style, spacing) between web and native design systems.",
+              "The iOS crop was not constrained to element bounds (current crop is null) causing the compared frame to include additional sections like Created Agents and Skills."
+            ],
+            "suggestedOwner": "iOS / Mobile Engineering",
+            "suggestedFixes": [
+              "Ensure the iOS screen under test is the Avatar Management editor screen that includes the avatar grid and inline edit controls, matching the React route.",
+              "Add the Choose Avatar grid component to the iOS profile editor, including the upload button and thumbnail list.",
+              "Align header avatar artwork between platforms or use a consistent avatar source (current user avatar vs. placeholder).",
+              "Normalize label styling: render section headers in the same case/weight and divider rules consistently across platforms.",
+              "Hide or crop to component-bounds when capturing the iOS screenshot so extra sections (Created Agents, Skills) do not inflate the diff."
+            ],
+            "intentional": [
+              "Differences in device canvas size (390x844 vs 1170x2532) explain absolute size differences but not content omissions."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -32343,7 +32671,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-28T22:40:41.057Z",
+        "generatedAt": "2026-08-28T22:44:20.072Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32404,7 +32732,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:41.057Z",
+            "generatedAt": "2026-08-28T22:44:20.072Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32426,7 +32754,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32448,7 +32776,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32473,7 +32801,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32496,7 +32824,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32536,7 +32864,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-28T22:40:41.057Z",
+        "generatedAt": "2026-08-28T22:44:20.072Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32597,7 +32925,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:41.057Z",
+            "generatedAt": "2026-08-28T22:44:20.072Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32619,7 +32947,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32641,7 +32969,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32666,7 +32994,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32689,7 +33017,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32729,7 +33057,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-28T22:40:41.057Z",
+        "generatedAt": "2026-08-28T22:44:20.072Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32790,7 +33118,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:41.057Z",
+            "generatedAt": "2026-08-28T22:44:20.072Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32812,7 +33140,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32834,7 +33162,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32859,7 +33187,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32882,7 +33210,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32922,7 +33250,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-28T22:40:41.057Z",
+        "generatedAt": "2026-08-28T22:44:20.072Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32983,7 +33311,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:41.057Z",
+            "generatedAt": "2026-08-28T22:44:20.072Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33005,7 +33333,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33027,7 +33355,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33052,7 +33380,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:44.153Z",
+            "generatedAt": "2026-08-28T22:44:23.091Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33075,7 +33403,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-28T22:40:47.764Z",
+            "generatedAt": "2026-08-28T22:44:26.656Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

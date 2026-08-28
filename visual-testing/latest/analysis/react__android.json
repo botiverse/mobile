@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-28T22:40:41.050Z",
+  "generatedAt": "2026-08-28T22:44:20.061Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 81,
-    "pending": 11
+    "ready": 86,
+    "pending": 6
   },
   "cases": [
     {
@@ -1059,15 +1059,36 @@
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffeffff03fe03fcffffffffcc01ffff81fcffffb3feffffbf0400018000f7ff80003c0bbffc000181fc000183fc7fff800003ff80fe07fffffc0001bffc01ff9dfcfffffffe3fffbffc23ff80003fff80000000bffc0001bffc3ffdbffc3ffd87d807f987c80791841807f180000001ffffffff80008000ffffffffffffffff",
-      "generatedAt": "2026-08-28T22:40:39.943Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-28T22:42:48.558Z",
+      "severity": "high",
+      "summary": [
+        "Member suggestions list shows different users in each variant: React lists 'artin' first under IN THIS CHANNEL while Android lists 'Cindy' first",
+        "React uses purple placeholder avatar for first row; Android shows a black/white pixel avatar with a yellow status dot",
+        "React shows HUMAN/AGENT badge pills and 'Owner' subtitle for members; Android omits role badges and the 'Owner' label entirely",
+        "Android's IN THIS CHANNEL and NOT IN THIS CHANNEL rows have heavier line truncation (member names and handles clipped to '...') than React",
+        "Android composer toolbar shows three action icons (image, camera, paperclip) while React shows only two (image, paperclip)"
+      ],
+      "likelyCauses": [
+        "Android implementation did not port the role/subtitle metadata (HUMAN/AGENT, Owner) into the suggestion item view-model",
+        "Different truncation policies applied to member name + handle columns on Android (single-line ellipsis vs React's two-line with right-aligned handle)",
+        "Compose toolbar action set diverged between platforms; Android includes an extra camera/capture action not present on web",
+        "Avatar asset mapping differs: Android rendered a bot/agent pixel avatar for the first row where React rendered the default purple user placeholder",
+        "Section header padding inside the NOT IN THIS CHANNEL card on Android is insufficient, causing top-edge clipping"
+      ],
+      "suggestedOwner": "android-composer",
+      "suggestedFixes": [
+        "Render role badges (HUMAN/AGENT) and the 'Owner' subtitle in Android suggestion rows to match React's data contract",
+        "Use a two-line layout per row with name on line 1 and handle right-aligned; constrain only the handle column, not the name, when truncating",
+        "Remove the extra camera icon from the Android composer toolbar or add the matching action to React so both platforms ship the same affordance",
+        "Increase top padding inside the 'NOT IN THIS CHANNEL' section header card so the title is not clipped at the panel edge",
+        "Align avatar resolution logic so the same user yields the same avatar asset (or default placeholder) across web and Android"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.322174504548408
     },
     {
@@ -1808,7 +1829,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:40.245Z",
+      "generatedAt": "2026-08-28T22:44:19.297Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1821,7 +1842,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:40.245Z",
+      "generatedAt": "2026-08-28T22:44:19.297Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1903,15 +1924,39 @@
     },
     {
       "id": "components.members.agent-detail.profile",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fffc0fff87f80fff1fffffff1ffd47fffffffffffffdfff0c3f800f0c3f800f0c7f8fff00078fff000380ffffff807f97ff807f87fffffe1c02ffffffff",
-      "generatedAt": "2026-08-28T22:40:40.434Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-28T22:42:49.063Z",
+      "severity": "medium",
+      "summary": [
+        "Header layout differs: React places avatar+title+description inline with back/menu buttons; Android stacks them into two distinct rows with a wider avatar and a separate 'Working' status row.",
+        "React shows truncated description ('Turns product feedback, s…') with overflow ellipsis in header; Android shows full truncated text ('Turns product feedback, screensho…') on its own line below title.",
+        "React shows full profile header block (avatar + name + handle + 'Capturing determ…' status) as one row with content clipped; Android separates these into a large avatar on the left and name/handle/status on the right.",
+        "INFO section layout: React uses a 3-column inline grid (Computer, Created, Creator) with horizontal alignment; Android stacks these fields vertically with right-aligned values.",
+        "React shows Computer name in monospace code style ('Jiachengs-MacBook-Pro') on its own line; Android shows the same string inline next to 'Connected · daemon v0.61.1' status."
+      ],
+      "likelyCauses": [
+        "Independent implementation of the agent detail profile in the Android client that re-flows fields into a 2-column responsive grid rather than mirroring the React 3-column layout.",
+        "Missing or skipped rendering of edit-pencil affordances in Android component variants.",
+        "Different truncation strategy applied to the header description line on Android (separate line vs. inline).",
+        "Android surfaces a 'CREATED AGENTS' child list that React either renders below the fold or hides in this view.",
+        "Code-style (monospace) typography token for Computer field not ported to Android text style."
+      ],
+      "suggestedOwner": "android-engineering",
+      "suggestedFixes": [
+        "Replicate React's 3-column INFO row (Computer | Created | Creator) on Android or align both clients on a single responsive spec.",
+        "Restore the green 'Connected' status dot and the monospace styling for the Computer field name in Android.",
+        "Add edit-pencil affordances next to DISPLAY NAME, DESCRIPTION, and Runtime Config section headers to match React.",
+        "Move Environment Variables back to vertical stacking (one key per row) to match React's layout.",
+        "Decide whether CREATED AGENTS belongs in this view; if yes, ensure React renders it identically, otherwise hide it on Android."
+      ],
+      "intentional": [
+        "Avatar sizes and tab bar treatment differences may be intentional platform conventions.",
+        "CREATED AGENTS panel may be an intentional Android-only extension."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1801018754810224
     },
     {
@@ -2260,15 +2305,36 @@
     },
     {
       "id": "screens.members.agent-detail.profile",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffdfff0c3f800f0c3f800f0c7f8fff00078fff000380ffffff807f97ff807f87fffffe1c02ffffffff",
-      "generatedAt": "2026-08-28T22:40:40.665Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-28T22:42:49.265Z",
+      "severity": "high",
+      "summary": [
+        "Profile header layout differs: React shows avatar, title and truncated description on one row with action icons on the right; Android shows avatar, title and full description below the title with action icons aligned right at the title baseline.",
+        "Header description text rendering differs: React truncates with ellipsis ('Turns product feedback, s...'), Android wraps to a second line ('Turns product feedback, screensho...') causing different vertical spacing.",
+        "Avatar asset differs: React uses a solid cyan square, Android renders a patterned/mosaic avatar glyph causing the header height to grow on Android.",
+        "User status row is clipped on React: 'Produc...' title and 'Capturing determi...' status are truncated; on Android the full title and 'Working' status with green dot fit, indicating React container is narrower or has overflow.",
+        "Tab bar spacing differs: React tabs have visible borders around each cell and tighter widths; Android tabs are borderless with more horizontal padding."
+      ],
+      "likelyCauses": [
+        "Android implementation re-flows the profile header into a different column structure rather than mirroring the React one-line header",
+        "Truncation behavior on React uses a fixed-width container with ellipsis, while Android allows wrapping",
+        "Avatar asset source diverged between platforms (placeholder color block on web vs styled glyph on Android)",
+        "Runtime Config component is implemented with a different grid system on Android (2-col vs 3-col)",
+        "Agent list section exists on Android but was not yet wired into the React agent-detail profile screen"
+      ],
+      "suggestedOwner": "android-ui",
+      "suggestedFixes": [
+        "Match Android header layout to React: single row with avatar, title, truncated description, and right-aligned action icons; constrain description with maxLines=1 and ellipsize=end",
+        "Replace Android avatar with the same solid cyan placeholder used on React, or ensure both platforms render the same avatar asset",
+        "Unify the Role chip rendering: use the same label and color treatment across platforms",
+        "Reflow INFO section on Android to match React's two-row layout (Computer/Connected on row 1, Created/Creator on row 2) with inline creator avatar",
+        "Align Runtime Config to a 3-column layout (Runtime, Model, Reasoning) with Mode on its own row to match React"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.18061429092234782
     },
     {
@@ -2446,28 +2512,69 @@
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe3ffe8010003180100821000c000000840dfc80008c018fff00018fff0fffffffdfff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff1fff8fff0fffc0fff87f81fff9fffffff1ffd47fffffffffffffdfff0c3f800f8c3f800f0c7f8fff00078fff000380ffffff807f97ff807f87fffffe1ffeffffffff",
-      "generatedAt": "2026-08-28T22:40:40.837Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-28T22:42:49.405Z",
+      "severity": "high",
+      "summary": [
+        "Cropping contracts differ (element-bounds vs viewport-bounds) so the Android side shows significantly more vertical content, exposing extra sections like Computer/Created/Creator rows in INFO and the CREATED AGENTS list.",
+        "Context menu (Stop Agent / Restart / Reset) overlaps the Profile/Activity tab bar and the agent card on both sides, but is clipped on the React baseline vs. fully visible on Android — different z-order and overflow handling.",
+        "Agent avatar image on Android renders with a black background and visible pixelation, while React shows a solid cyan fill with no apparent image — different avatar asset or placeholder.",
+        "Agent subtitle text is truncated on React ('Turns product feedback, s…') but renders fully on Android ('Turns product feedback, screensho…') — text-overflow ellipsis is not applied on Android.",
+        "Runtime Config section uses different grid layout: React is a single-column label/value stack (Runtime, Model, Reasoning on one row, Mode below), Android uses a 2-column grid (Runtime/Model top row, Reasoning/Mode bottom row) — relayout difference."
+      ],
+      "likelyCauses": [
+        "Slock used different crop contracts between runs, so the Android capture includes the full viewport while React was cropped to a component — accounts for the extra sections and most of the pixel mismatch.",
+        "React component may apply text truncation/ellipsis at the subtitle that the Android Compose implementation does not.",
+        "Avatar image source or fallback differs between platforms (Android shows a low-res/broken image; React shows a placeholder color).",
+        "Layout component for Runtime Config has different responsive rules across web vs. mobile.",
+        "Status dot color tokens map to different values on each platform."
+      ],
+      "suggestedOwner": "mobile-android",
+      "suggestedFixes": [
+        "Re-run Slock with matching crop contracts (both viewport-bounds or both component-bounds) before comparing to eliminate the layout-extension false positive.",
+        "Make subtitle truncation behavior consistent: apply ellipsis on overflow in Android Compose Text and align maxLines.",
+        "Verify avatar asset URL/fallback renders identically; ensure the same placeholder color or image is used on both platforms.",
+        "Refactor Runtime Config to use the same 2x2 grid on web, or a single-column stack on mobile, so the field order matches across platforms.",
+        "Unify status dot color tokens (use the same semantic green for Connected on both platforms)."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1962092059248457
     },
     {
       "id": "components.members.avatar-management",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe3ffe801b003384100a310000000081fe000e81ff0b3f8fff8fff8fffffffffffc7ffa001ffff8001ffff8001c1ff8003fffff81ffffffe7f0fff87ff0ffffffffdfffffff1ff803bfbffffffffffffff9cffffff8c3f8fff9c7fdfff8c7f80ff0003ffff8403fcfffffffcff87ffffff97ff89cfffff80070ffeffffffff",
-      "generatedAt": "2026-08-28T22:40:40.833Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-28T22:42:49.465Z",
+      "severity": "high",
+      "summary": [
+        "Android view is missing the 'Choose Avatar' avatar picker grid and the selected large edit-pencil avatar tile present on React.",
+        "Android header title and description text are clipped with ellipsis ('Product UX Designer', 'Turns product feedback, screensho…') whereas React shows full text.",
+        "Android renders an additional 'Runtime Config' grid (Runtime/Model/Reasoning/Mode) and 'Created Agents' and 'Skills' sections that are absent on React; React instead shows more detailed Info rows (Computer, Created, Creator) inline.",
+        "Section heading typography differs: React uses small-caps tracked labels ('CHOOSE AVATAR','DISPLAY NAME','DESCRIPTION','INFO','RUNTIME Config') while Android uses flat uppercase labels at different weights.",
+        "Android shows avatar state indicator as a blue/cyan checkerboard pattern while React uses a solid teal square with white pencil icon; selected avatar styling is inconsistent."
+      ],
+      "likelyCauses": [
+        "Android component renders a different page/screen (likely Profile details view) than the React Avatar Management edit view being compared.",
+        "Tab and content state mismatch: Android appears to be on a Profile/About sub-screen while React is on the avatar-selection edit screen.",
+        "Missing conditional rendering for the avatar picker grid and edit-pencil affordance on Android.",
+        "Different section ordering and additional Runtime Config / Created Agents / Skills blocks rendered only on Android, suggesting divergent component composition."
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Align Android 'Avatar Management' screen to render the same view as React: include the 'Choose Avatar' grid and large selected avatar with edit-pencil overlay.",
+        "Ensure header title and description text are not truncated; allow wrapping or widen container instead of ellipsis on 390px viewport.",
+        "Match React section label style (uppercase small-caps tracked) or explicitly tokenize section headers in the design system.",
+        "Restrict Android render to the avatar management scope (remove Runtime Config, Created Agents, Skills sections) or move them to their own route.",
+        "Verify selected avatar visual treatment (solid color + pencil vs. checkerboard) against the shared design tokens."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.23827351777588746
     },
     {
@@ -2855,7 +2962,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:40.965Z",
+      "generatedAt": "2026-08-28T22:44:19.981Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2868,7 +2975,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:40.965Z",
+      "generatedAt": "2026-08-28T22:44:19.981Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2881,7 +2988,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:40.965Z",
+      "generatedAt": "2026-08-28T22:44:19.981Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2894,7 +3001,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:40.965Z",
+      "generatedAt": "2026-08-28T22:44:19.981Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

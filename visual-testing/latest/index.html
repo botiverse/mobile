@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>98ec5ddf-20260828223831</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-28T22:40:49.604Z" data-timestamp="2026-08-28T22:40:49.604Z" title="2026-08-28T22:40:49.604Z">2026-08-28 22:40:49 UTC</time></p>
+    <p class="runMeta"><code>98ec5ddf-20260828223831</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-28T22:44:28.409Z" data-timestamp="2026-08-28T22:44:28.409Z" title="2026-08-28T22:44:28.409Z">2026-08-28 22:44:28 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 92</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 86</span>
       <span class="pill">Missing 6</span>
-      <span class="pill">AI 81/92 ready</span>
+      <span class="pill">AI 86/92 ready</span>
       <span class="pill">Matrix 101/120 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -2189,7 +2189,12 @@
       <p><code>RGB 81.5%</code><br/><code>Pixel 67.78%</code><br/><code>Mismatch 32.22%</code><br/><code>Raw 1026×960 / 1026×960</code><br/><code>Canvas 1026×960</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×320 / component-bounds 342×320</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-composer</summary>
+    <ul><li>Member suggestions list shows different users in each variant: React lists 'artin' first under IN THIS CHANNEL while Android lists 'Cindy' first</li><li>React uses purple placeholder avatar for first row; Android shows a black/white pixel avatar with a yellow status dot</li><li>React shows HUMAN/AGENT badge pills and 'Owner' subtitle for members; Android omits role badges and the 'Owner' label entirely</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Render role badges (HUMAN/AGENT) and the 'Owner' subtitle in Android suggestion rows to match React's data contract</li><li>Use a two-line layout per row with name on line 1 and handle right-aligned; constrain only the handle column, not the name, when truncating</li><li>Remove the extra camera icon from the Android composer toolbar or add the matching action to React so both platforms ship the same affordance</li><li>Increase top padding inside the 'NOT IN THIS CHANNEL' section header card so the title is not clipped at the panel edge</li><li>Align avatar resolution logic so the same user yields the same avatar asset (or default placeholder) across web and Android</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.member-suggestions.png" data-current-src="android/components.thread.composer.member-suggestions.png" data-overlay-width="1026" data-overlay-height="960">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4363,7 +4368,12 @@
       <p><code>RGB 90.3%</code><br/><code>Pixel 81.99%</code><br/><code>Mismatch 18.01%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop page-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-engineering</summary>
+    <ul><li>Header layout differs: React places avatar+title+description inline with back/menu buttons; Android stacks them into two distinct rows with a wider avatar and a separate 'Working' status row.</li><li>React shows truncated description ('Turns product feedback, s…') with overflow ellipsis in header; Android shows full truncated text ('Turns product feedback, screensho…') on its own line below title.</li><li>React shows full profile header block (avatar + name + handle + 'Capturing determ…' status) as one row with content clipped; Android separates these into a large avatar on the left and name/handle/status on the right.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Replicate React's 3-column INFO row (Computer | Created | Creator) on Android or align both clients on a single responsive spec.</li><li>Restore the green 'Connected' status dot and the monospace styling for the Computer field name in Android.</li><li>Add edit-pencil affordances next to DISPLAY NAME, DESCRIPTION, and Runtime Config section headers to match React.</li><li>Move Environment Variables back to vertical stacking (one key per row) to match React's layout.</li><li>Decide whether CREATED AGENTS belongs in this view; if yes, ensure React renders it identically, otherwise hide it on Android.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.agent-detail.profile.png" data-current-src="android/components.members.agent-detail.profile.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4422,7 +4432,12 @@
       <p><code>RGB 89.4%</code><br/><code>Pixel 80.38%</code><br/><code>Mismatch 19.62%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · mobile-android</summary>
+    <ul><li>Cropping contracts differ (element-bounds vs viewport-bounds) so the Android side shows significantly more vertical content, exposing extra sections like Computer/Created/Creator rows in INFO and the CREATED AGENTS list.</li><li>Context menu (Stop Agent / Restart / Reset) overlaps the Profile/Activity tab bar and the agent card on both sides, but is clipped on the React baseline vs. fully visible on Android — different z-order and overflow handling.</li><li>Agent avatar image on Android renders with a black background and visible pixelation, while React shows a solid cyan fill with no apparent image — different avatar asset or placeholder.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Re-run Slock with matching crop contracts (both viewport-bounds or both component-bounds) before comparing to eliminate the layout-extension false positive.</li><li>Make subtitle truncation behavior consistent: apply ellipsis on overflow in Android Compose Text and align maxLines.</li><li>Verify avatar asset URL/fallback renders identically; ensure the same placeholder color or image is used on both platforms.</li><li>Refactor Runtime Config to use the same 2x2 grid on web, or a single-column stack on mobile, so the field order matches across platforms.</li><li>Unify status dot color tokens (use the same semantic green for Connected on both platforms).</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.agent-lifecycle-actions.png" data-current-src="android/components.members.agent-lifecycle-actions.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4481,7 +4496,12 @@
       <p><code>RGB 86.6%</code><br/><code>Pixel 76.17%</code><br/><code>Mismatch 23.83%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android</summary>
+    <ul><li>Android view is missing the 'Choose Avatar' avatar picker grid and the selected large edit-pencil avatar tile present on React.</li><li>Android header title and description text are clipped with ellipsis ('Product UX Designer', 'Turns product feedback, screensho…') whereas React shows full text.</li><li>Android renders an additional 'Runtime Config' grid (Runtime/Model/Reasoning/Mode) and 'Created Agents' and 'Skills' sections that are absent on React; React instead shows more detailed Info rows (Computer, Created, Creator) inline.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align Android 'Avatar Management' screen to render the same view as React: include the 'Choose Avatar' grid and large selected avatar with edit-pencil overlay.</li><li>Ensure header title and description text are not truncated; allow wrapping or widen container instead of ellipsis on 390px viewport.</li><li>Match React section label style (uppercase small-caps tracked) or explicitly tokenize section headers in the design system.</li><li>Restrict Android render to the avatar management scope (remove Runtime Config, Created Agents, Skills sections) or move them to their own route.</li><li>Verify selected avatar visual treatment (solid color + pencil vs. checkerboard) against the shared design tokens.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.avatar-management.png" data-current-src="android/components.members.avatar-management.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -5299,7 +5319,12 @@
       <p><code>RGB 90.3%</code><br/><code>Pixel 81.94%</code><br/><code>Mismatch 18.06%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop screen-route 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-ui</summary>
+    <ul><li>Profile header layout differs: React shows avatar, title and truncated description on one row with action icons on the right; Android shows avatar, title and full description below the title with action icons aligned right at the title baseline.</li><li>Header description text rendering differs: React truncates with ellipsis ('Turns product feedback, s...'), Android wraps to a second line ('Turns product feedback, screensho...') causing different vertical spacing.</li><li>Avatar asset differs: React uses a solid cyan square, Android renders a patterned/mosaic avatar glyph causing the header height to grow on Android.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Match Android header layout to React: single row with avatar, title, truncated description, and right-aligned action icons; constrain description with maxLines=1 and ellipsize=end</li><li>Replace Android avatar with the same solid cyan placeholder used on React, or ensure both platforms render the same avatar asset</li><li>Unify the Role chip rendering: use the same label and color treatment across platforms</li><li>Reflow INFO section on Android to match React's two-row layout (Computer/Connected on row 1, Created/Creator on row 2) with inline creator avatar</li><li>Align Runtime Config to a 3-column layout (Runtime, Model, Reasoning) with Mode on its own row to match React</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/screens.members.agent-detail.profile.png" data-current-src="android/screens.members.agent-detail.profile.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

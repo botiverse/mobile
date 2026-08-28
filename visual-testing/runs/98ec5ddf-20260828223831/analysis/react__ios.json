@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-28T22:40:44.148Z",
+  "generatedAt": "2026-08-28T22:44:23.085Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 77,
-    "pending": 15
+    "ready": 81,
+    "pending": 11
   },
   "cases": [
     {
@@ -1036,15 +1036,35 @@
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03f807fc0001fffe0001000200010002800900020009000239f9000211f93ffa00010003104900020f9107b200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
-      "generatedAt": "2026-08-28T22:40:43.081Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-28T22:42:58.308Z",
+      "severity": "medium",
+      "summary": [
+        "Suggestion order differs: React highlights 'artin' as the first/top member-suggestion row (selected/yellow), while iOS highlights 'Cindy' as the first suggestion.",
+        "iOS row content is more truncated than React: iOS shows 'Keeps visual testing releas…' and 'Turns…' inline, React shows 'Owner' and 'Keeps visual testin…' with more breathing room.",
+        "iOS composer toolbar has an extra camera icon (three icons: gallery, camera, paperclip); React only shows two icons (gallery, paperclip) — camera is missing on React.",
+        "Human/Agent badge styling differs: React uses outlined pill badges ('HUMAN', 'AGENT') with background fills; iOS badges are absent — role is inferred from avatar color and is not labeled.",
+        "iOS uses slightly larger avatar tiles and tighter horizontal padding inside the suggestion list, causing handles like '@Product-UX-Desi…' to truncate earlier than in React."
+      ],
+      "likelyCauses": [
+        "iOS component renders an additional camera/attachment action in the composer toolbar that the React counterpart doesn't expose.",
+        "Suggestion ranking/highlight differs across platforms (iOS puts Cindy first; React puts artin first), suggesting separate suggestion-source logic per platform.",
+        "Role badges (HUMAN/AGENT) are implemented in React's member-suggestion row but were dropped or not yet ported in the iOS implementation.",
+        "iOS applies more aggressive text truncation and denser spacing to suggestion rows compared to the React web layout."
+      ],
+      "suggestedOwner": "iOS engineering — member-suggestions / composer team",
+      "suggestedFixes": [
+        "Decide on the intended selection (first highlighted suggestion) and unify the suggestion-ranking logic so React and iOS surface the same member first.",
+        "Port the HUMAN/AGENT role pill badges into the iOS member-suggestion row to match React's information density.",
+        "Confirm whether the camera button should exist in the composer toolbar on both platforms; add it to React or remove it from iOS for parity.",
+        "Loosen iOS row truncation (e.g., allow two-line names/bios or smaller handle font) so @handles and bios don't clip earlier than on React.",
+        "Match React's avatar size and row padding in iOS (or define shared design tokens) to align suggestion-row visual rhythm across platforms."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.11120799071036036
     },
     {
@@ -1778,7 +1798,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:43.453Z",
+      "generatedAt": "2026-08-28T22:44:22.411Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1791,7 +1811,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:43.453Z",
+      "generatedAt": "2026-08-28T22:44:22.411Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1875,15 +1895,36 @@
     },
     {
       "id": "components.members.agent-detail.profile",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe3ffe801000318010002100000000000207e281ff0fff8fff001f8fff0bffffff9fff83ffc7ffffffdfff81fbffff803f80f7ffffffffffffffff8fff0fff8fff0fffc0fff8ff80fff1fffffff1ffd47fffffffffffffdfff0c3f800f0c7f800f0c7f8fff00038fff000380ffffff807f87ff807f97fffffe6802ffffffff",
-      "generatedAt": "2026-08-28T22:40:43.636Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-28T22:42:58.776Z",
+      "severity": "medium",
+      "summary": [
+        "Header layout differs: React places avatar, name, and subtitle in a single horizontal row; iOS stacks avatar above the name/handle and shifts the subtitle into a truncated second line of the header.",
+        "Profile tab strip has different proportions: React uses wider, more evenly distributed tabs; iOS compresses the tabs so the active 'Profile' tab has heavier visual weight and tighter spacing.",
+        "INFO section structure diverges: React uses a 2-column grid (Created/Creator side-by-side, Runtime/Model/Reasoning in a row); iOS uses a stacked vertical list for Created/Creator and a 2x2 grid for Runtime/Model/Reasoning/Mode.",
+        "React shows a 'CREATED AGENTS' section with a 'Visual QA' card at the bottom; iOS omits this section entirely, causing content cutoff at the viewport edge.",
+        "iOS header shows an additional 'Working' status indicator (yellow dot + text) under the handle, which is absent in React."
+      ],
+      "likelyCauses": [
+        "iOS native layout uses vertical stack vs. React's flexible grid, changing natural element flow.",
+        "Missing 'CREATED AGENTS' section on iOS suggests a component was not implemented or is conditionally hidden on the iOS variant.",
+        "Avatar image asset failed to load on iOS, falling back to a placeholder pattern.",
+        "Text truncation thresholds differ between platforms (iOS tighter truncation policies).",
+        "Tab strip width calculations differ between web flex layout and iOS UIKit constraints."
+      ],
+      "suggestedOwner": "iOS engineering",
+      "suggestedFixes": [
+        "Port the 'CREATED AGENTS' list section from React into the iOS Profile view so content matches the baseline.",
+        "Fix the avatar image loading on iOS so the cyan placeholder renders correctly, or align the placeholder design across platforms.",
+        "Adjust iOS truncation behavior to show full computer name 'Jiachengs-MacBook-Pro' or match React's line-break behavior.",
+        "Restructure the INFO section on iOS to use a multi-column grid that mirrors React's Runtime/Model/Reasoning inline row.",
+        "Align the header layout (avatar + name + handle) between platforms; either both stack or both use a horizontal row."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1767056885540298
     },
     {
@@ -2230,7 +2271,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:43.728Z",
+      "generatedAt": "2026-08-28T22:44:22.680Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2243,7 +2284,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:43.728Z",
+      "generatedAt": "2026-08-28T22:44:22.680Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2256,7 +2297,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:43.729Z",
+      "generatedAt": "2026-08-28T22:44:22.680Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2269,7 +2310,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:43.729Z",
+      "generatedAt": "2026-08-28T22:44:22.680Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2282,7 +2323,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:43.729Z",
+      "generatedAt": "2026-08-28T22:44:22.680Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2326,28 +2367,71 @@
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe3ffe8010003180100821000c0000008405dc80008c018fff00018fff0bffffff9fff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff1fff8fff0fffc0fff8ff81fff1fffffff1ffd47fffffffffffffdfff0c3f800f8c7f800f0c7f8fff00038fff000380ffffff807f87ff807f97fffffe7c02ffffffff",
-      "generatedAt": "2026-08-28T22:40:43.919Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-28T22:42:59.045Z",
+      "severity": "medium",
+      "summary": [
+        "Header avatar is larger and shows a checkered/mosaic pattern on iOS; React shows a solid cyan square avatar.",
+        "iOS adds a green status dot with 'Working' label below @Product-UX-Designer handle; React omits this status indicator.",
+        "Tab bar is clipped on iOS: only 'Profile' and partial 'Activ' are visible, Activity tab content is occluded by the action menu overlay.",
+        "Action menu (Stop Agent / Restart / Reset) overlays the agent header on iOS, partially covering the agent name and tabs; on React it overlaps the right side of tabs more cleanly.",
+        "Info section layout differs: iOS uses a two-column key/value grid (Computer/Created/Creator stacked) while React uses a single-column flow with Created on left and Creator on right."
+      ],
+      "likelyCauses": [
+        "iOS render uses a larger default avatar thumbnail size or different avatar placeholder asset",
+        "iOS surfaces an additional agent status indicator (Working) not implemented in React view",
+        "Action menu popover on iOS uses a different anchor point causing it to overlap header content",
+        "Info and Runtime Config sections use different layout strategies (grid vs flow) across platforms",
+        "iOS layout includes a Created Agents list section that React does not render in this component"
+      ],
+      "suggestedOwner": "iOS",
+      "suggestedFixes": [
+        "Match avatar dimensions between platforms or use a shared placeholder rendering rule",
+        "Either add the 'Working' status indicator to React or hide it on iOS for parity",
+        "Adjust action menu popover anchor/offset so it does not occlude the header name or tabs",
+        "Reconcile Info section layout to a consistent grid (or apply the same 2-col layout on React)",
+        "Standardize Runtime Config to a single grid layout across both platforms"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.19238533101092348
     },
     {
       "id": "components.members.avatar-management",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe3ffe801b0033841008310000000081fe000f81ff093f8fff8fff8fffffffffffc7ffa001ffff8001cfff8001c1ff8003fffff81ffffffe7f0fff87ff8ffffffffdfffffff1ff803bfbffffffffffffff8c7fffff8c3f8fff9c7fdfff8c7f80ff0003ffff8627fcfffffffcff97ffffff9fff89cfffff80070ffeffffffff",
-      "generatedAt": "2026-08-28T22:40:43.906Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-28T22:42:59.059Z",
+      "severity": "high",
+      "summary": [
+        "iOS version is missing the entire 'Choose Avatar' grid section (avatar picker with ~16 thumbnails and upload button) that is present in the React version.",
+        "iOS header uses a checkered/patterned avatar placeholder instead of the solid teal square avatar shown in React; the avatar in the header differs in both color and fill.",
+        "Profile header on iOS shows additional 'Working' status indicator with yellow dot that is not present in React; React shows 'Capturing determ…' status instead.",
+        "Info section layout differs: React lays out Computer/Created/Creator as a vertical stack with the edit icons inline, while iOS reorganizes them with a horizontal key/value grid (Computer, Created, Creator as separate rows) and omits the edit pencil icons next to Role.",
+        "Runtime Config on iOS adds a 'Mode' (Default) badge and an 'Environment Variables' section (RAFT_PROFILE, SLOCK_VISUAL_PROVIDER) plus a 'Created Agents' list that are not shown in React; React's Runtime Config is a more compact 3-chip row."
+      ],
+      "likelyCauses": [
+        "iOS build is rendering a different screen/route (possibly a detail/profile view) than the React baseline which shows the avatar management editor.",
+        "Native iOS component lacks the avatar picker affordance and inline edit fields used in the React web implementation.",
+        "Different layout token mapping (typography scale, section header style, spacing) between web and native design systems.",
+        "The iOS crop was not constrained to element bounds (current crop is null) causing the compared frame to include additional sections like Created Agents and Skills."
+      ],
+      "suggestedOwner": "iOS / Mobile Engineering",
+      "suggestedFixes": [
+        "Ensure the iOS screen under test is the Avatar Management editor screen that includes the avatar grid and inline edit controls, matching the React route.",
+        "Add the Choose Avatar grid component to the iOS profile editor, including the upload button and thumbnail list.",
+        "Align header avatar artwork between platforms or use a consistent avatar source (current user avatar vs. placeholder).",
+        "Normalize label styling: render section headers in the same case/weight and divider rules consistently across platforms.",
+        "Hide or crop to component-bounds when capturing the iOS screenshot so extra sections (Created Agents, Skills) do not inflate the diff."
+      ],
+      "intentional": [
+        "Differences in device canvas size (390x844 vs 1170x2532) explain absolute size differences but not content omissions."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2392578415090263
     },
     {
@@ -2729,7 +2813,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:44.021Z",
+      "generatedAt": "2026-08-28T22:44:22.989Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2742,7 +2826,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:44.021Z",
+      "generatedAt": "2026-08-28T22:44:22.989Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2755,7 +2839,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:44.021Z",
+      "generatedAt": "2026-08-28T22:44:22.989Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2768,7 +2852,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:40:44.021Z",
+      "generatedAt": "2026-08-28T22:44:22.989Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
