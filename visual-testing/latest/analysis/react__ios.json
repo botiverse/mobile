@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-26T22:59:40.625Z",
+  "generatedAt": "2026-08-28T00:56:42.531Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 81,
-    "pending": 11
+    "ready": 78,
+    "pending": 14
   },
   "cases": [
     {
@@ -467,32 +467,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-25T22:12:23.412Z",
-      "severity": "low",
-      "summary": [
-        "Status dot row, labels, and 'Waiting pulse' label match between React and iOS within tolerance (pixel mismatch 0.23%).",
-        "iOS dots appear marginally larger in absolute pixels but proportional to the larger 1170×2532 canvas; no clipping detected.",
-        "No missing or extra elements; colors (green, orange, gray, blue, pink) and order are consistent."
-      ],
-      "likelyCauses": [
-        "Minor DPI/render-scale differences between web and iOS rendering pipelines.",
-        "Antialiasing variance around small circular dot edges (tolerated by ignoreAntialiasing=true)."
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "No action required; similarity is above 99.7% and within configured pixelRatio tolerance.",
-        "If tighter parity is desired, align iOS dot diameter to the React spec in points and verify SF/SF Pro text metrics match the web font.",
-        "Re-run with a tighter layoutDp tolerance only if pixel mismatch rises above 1%."
-      ],
-      "intentional": [
-        "Size difference is an artifact of comparing 342×92 baseline to 1170×2532 full-screen iOS capture; the iOS canvas is intentionally larger.",
-        "Dot colors and arrangement intentionally mirror the React component spec."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-08-28T00:56:41.083Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -552,7 +535,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062095097284670775
+      "metricMismatch": 0.062097122642146285
     },
     {
       "id": "components.ui.spinner.states",
@@ -1524,7 +1507,7 @@
     {
       "id": "components.home.search.results",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800307120002dfffffffffffffff80ff80009fff803c80ff800080ff8803dfffe7ff7fffc0fe8003c00e8002fffe83ffd8fe87ffd05ec1fedffe9fffffff807effff4bffffff403fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800307000002dfffffffffffffff80ff80009fff803c80ff800080ff8803dfffe7ff7fffc0fe8003c00e8002fffe83ffd8fe87ffd05ec1fedffe9fffffff807effff4bffffff403fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-02T22:44:16.420Z",
       "severity": "medium",
       "summary": [
@@ -1555,40 +1538,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2693418263323477
+      "metricMismatch": 0.26898468829748445
     },
     {
       "id": "components.home.search.channel-dropdown",
-      "status": "ready",
-      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f000038021c100012fc7cfe00fc00fe9e803400879d3c000081cc00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff41ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-08-02T22:44:21.326Z",
-      "severity": "high",
-      "summary": [
-        "Channel dropdown is anchored to the input field on iOS but positioned lower-left and overlapping the search results card on React.",
-        "iOS shows the dropdown with a shadow, clear button, and selected checkmark; React version is missing the Clear action and selection indicator.",
-        "Filter chips render as filled yellow/active on iOS (From: Me, Scope 2, #design) but appear as outlined/unselected on React.",
-        "iOS shows a result count (\"5 results\") and a CHANNELS & DMS section with channel + person rows; React omits the person row and result count.",
-        "iOS includes a separate Messages section with timestamps (10:38, 10:31, 09:58) and a \"Load more results\" button; React shows a single combined MESSAGES section without timestamps or pagination."
-      ],
-      "likelyCauses": [
-        "Channel dropdown popover positioning logic differs between platforms (iOS uses popover anchored to input, React uses inline expanded panel).",
-        "iOS implementation has fully wired active filter state, checkmark, and Clear action; React implementation is missing these states/controls.",
-        "iOS search results component renders additional sections (result count, DMs, timestamps, pagination) that React does not.",
-        "Filter chip selected/active visual state is not applied on React."
-      ],
-      "suggestedOwner": "iOS",
-      "suggestedFixes": [
-        "Anchor the channel dropdown to the search input on React and constrain it within the search card so it does not overlap result content.",
-        "Add a \"Clear\" action, selected checkmark, and shadow styling to the React channel dropdown to match iOS.",
-        "Apply active/filled styling to filter chips on React when a filter is applied (From, Scope, Channel).",
-        "Add \"X results\" header and a Channels & DMs section to React to match iOS information architecture.",
-        "Add message timestamps and a \"Load more results\" button to the React messages section."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.26947516236615765
+      "status": "pending",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f000038021c300012fc7cfe00fc00fe9e802400879d7c0000819c00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff43ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "generatedAt": "2026-08-28T00:56:41.799Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2691824982109342
     },
     {
       "id": "components.home.saved.results",
@@ -1624,7 +1587,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1113811587745237
+      "metricMismatch": 0.11126470071967698
     },
     {
       "id": "components.home.activity.results",
@@ -1659,45 +1622,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10677583343460118
+      "metricMismatch": 0.10665464954564485
     },
     {
       "id": "components.tasks.panel.states",
-      "status": "ready",
-      "imageHash": "p1:3ffe7ffe0000000000000000801e0006ffffffefef80ffc18f80df809fff9fff9ffc9ffd9ffc9ff487e487d49ffebffcfff0ffe0bfe0800187ff85ff87ff87ffbffcbffc80368014bff4bfe0ffc08001800187ff8fff8fff9ffc9ffc8efe808cffe0b3e1a00080019fff9fff9fff9ffdfffc807c803cbfe0bff00000ffffffff",
-      "generatedAt": "2026-08-02T22:44:23.916Z",
-      "severity": "low",
-      "summary": [
-        "iOS header includes a leading checkbox icon next to the 'Tasks' title that React omits",
-        "React's filter chips wrap to a second row (Assignee below Channel/Creator) while iOS shows all three in a single row",
-        "iOS task cards render a relative timestamp at the top-right (e.g., '6 minutes ago', 'in 3 days') that React cards lack",
-        "iOS task cards render an assignee line at the bottom-left (e.g., 'Unassigned', '@Cindy', '@Product UX Designer') that React cards lack",
-        "React's last 'Done' card is clipped at the bottom edge of the viewport (task badge cut off) while iOS fits the full card"
-      ],
-      "likelyCauses": [
-        "React panel missing the leading checkbox affordance in the header",
-        "React task card component not yet implementing per-card timestamp slot",
-        "React task card component not yet implementing bottom-left assignee slot",
-        "React filter row lacks a single-row layout / flex-wrap prevents the three chips from fitting on 390px",
-        "React viewport height or card spacing leaves the final card below the visible crop boundary"
-      ],
-      "suggestedOwner": "design-system / tasks panel owner",
-      "suggestedFixes": [
-        "Add a trailing/leading checkbox icon to the React panel header to match iOS",
-        "Implement top-right relative timestamp on React task cards (react-adopts-later task #373)",
-        "Implement bottom-left assignee line on React task cards (react-adopts-later)",
-        "Adjust React filter chip layout or chip sizing so all three fit on one row at 390dp width",
-        "Increase React scroll/padding so the final 'Done' card is not clipped at the bottom of the 844dp viewport"
-      ],
-      "intentional": [
-        "Filter chip row layout (single-row on iOS vs wrapped on React) is an intentional platform difference; chip styling aligns to React",
-        "Task card top-right timestamp on iOS is an intentional platform feature pending React adoption",
-        "Task card bottom-left assignee line on iOS is an intentional platform feature pending React adoption"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.18490602341313245
+      "status": "pending",
+      "imageHash": "p1:bffe7ffe0000000000000000801e0006ffffffefef81ffc1ef80ffc19fff9fff9ffc9ffd9ffe9ff487fe87f4bffebffcfff0ff20bfe0b80187ff87ff8fff87fffffcbffc82368014bffcffe1ffc0a001800187ff8fff8fff9ffc9ffc8ffe800cffe0f001a00080019fff9fff9fff9ffdfffe807c887eff01bff00000ffffffff",
+      "generatedAt": "2026-08-28T00:56:41.891Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19085213540189838
     },
     {
       "id": "components.tasks.status-menu",
@@ -1804,7 +1742,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:39.925Z",
+      "generatedAt": "2026-08-28T00:56:41.824Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1817,7 +1755,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:39.925Z",
+      "generatedAt": "2026-08-28T00:56:41.824Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2174,7 +2112,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1963114864773633
+      "metricMismatch": 0.19629190802176588
     },
     {
       "id": "components.settings.notifications.page",
@@ -2280,7 +2218,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:40.210Z",
+      "generatedAt": "2026-08-28T00:56:42.100Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2293,7 +2231,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:40.210Z",
+      "generatedAt": "2026-08-28T00:56:42.100Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2306,7 +2244,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:40.210Z",
+      "generatedAt": "2026-08-28T00:56:42.100Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2319,7 +2257,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:40.210Z",
+      "generatedAt": "2026-08-28T00:56:42.100Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2332,7 +2270,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:40.210Z",
+      "generatedAt": "2026-08-28T00:56:42.100Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2820,7 +2758,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:40.533Z",
+      "generatedAt": "2026-08-28T00:56:42.445Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2833,7 +2771,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:40.534Z",
+      "generatedAt": "2026-08-28T00:56:42.445Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2846,7 +2784,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:40.534Z",
+      "generatedAt": "2026-08-28T00:56:42.445Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2859,7 +2797,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:40.534Z",
+      "generatedAt": "2026-08-28T00:56:42.445Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

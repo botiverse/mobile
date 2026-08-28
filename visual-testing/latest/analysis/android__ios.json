@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-26T22:59:44.435Z",
+  "generatedAt": "2026-08-28T00:56:46.107Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 81,
-    "pending": 11
+    "ready": 80,
+    "pending": 12
   },
   "cases": [
     {
@@ -458,7 +458,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffebffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
       "generatedAt": "2026-08-26T22:58:14.899Z",
       "severity": "low",
       "summary": [
@@ -1277,7 +1277,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3693438516898232
+      "metricMismatch": 0.3693445268089818
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1310,7 +1310,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3717800191733841
+      "metricMismatch": 0.3719268575903647
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1475,7 +1475,7 @@
     {
       "id": "components.home.search.results",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe97fc07fc8000000080000000800000009ffa1f7effffffffffffffff80ff80ff9fff9fff80ff80ff80fe80ffdfffdfffffffffff800380038003800383ff83ff87ff87ffc9ffd9ff9fff9fff827fc27ffffffffff83ff03f81ff83effffffc3ff81ff81ffc3ffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffe97fc07fc8000000080000000800000009ff61f76ffffffffffffffff80ff80ff9fff9fff80ff80ff80fe80ffdfffdfffffffffff800380038003800383ff83ff87ff87ffc9ffd9ff9fff9fff827fc27ffffffffff83ff03f81ff83effffffc3ff81ff81ffc3ffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-14T22:12:25.749Z",
       "severity": "low",
       "summary": [
@@ -1501,12 +1501,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0884537745912154
+      "metricMismatch": 0.08825799003524126
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:0ffe0ffe87fe07fc8000000080000000800000019c3cdc78fcfcfc7cfc00fc04813c813c9d3c9d3c81fc81fe80008000de00dc00ffffffff800380038003800387ff87ff8fff87ffdfffdfffbfff9fff967fc67ffffffffff83ff03fc3ffc3fffffffffff81ff81ffc3ffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:0ffe0ffe87fe07fc8000000080000000800000019c3cdc78fcfcfcfcfc00fc04817c813c9d3c9d7c81fc81fe80008000de00dc00ffffffff800380038003800387ff87ff8fff87ffdfffdfffbfff9fff967fc67ffffffffff83ff03fc3ffc3fffffffffff81ff81ffc3ffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-13T22:15:18.489Z",
       "severity": "medium",
       "summary": [
@@ -1534,7 +1534,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10406725537057293
+      "metricMismatch": 0.10367129798409425
     },
     {
       "id": "components.home.saved.results",
@@ -1601,31 +1601,16 @@
     },
     {
       "id": "components.tasks.panel.states",
-      "status": "ready",
-      "imageHash": "p1:bffe7ffe000000000000000080070006ffffffefff81ffc1dfc1ffc18fff9fff9ffd9ffd9ff49ff487fc87f4bffcfffcbff1ffe08801880187ff87ff87ff87ffbffdbffc80348014bfe1bfe18001800187ff87ff8fff8fffbffdbffc80cc808cb3e1b7e1800180019fff9fff9ffd9ffd887c807cbfe1ffe1bfe10000ffffffff",
-      "generatedAt": "2026-08-13T22:15:22.264Z",
-      "severity": "low",
-      "summary": [
-        "iOS rendering uses a monospace font across the panel — affecting channel badge, hashtag labels (#design), task IDs (#214, #212, #210, #208), assignee handles (@Cindy, @Product UX Designer), timestamps ('6 minutes ago', 'in 3 days'), counts ('4 channel tasks'), and the 'UNASSIGNED' label — while Android renders these in a proportional sans-serif, producing clear weight/metric divergence.",
-        "Status pill labels (Todo, In Progress, In Review, Done) render in Title case on iOS but in ALL CAPS on Android."
-      ],
-      "likelyCauses": [
-        "iOS Kuikly renderer is mapping text nodes to the platform monospace default (UICTFontTextStyle or equivalent) instead of the design sans-serif font family.",
-        "Status badge label text-transform (uppercase) is being applied on Android via Kuikly but not propagated/normalized on the iOS renderer."
-      ],
-      "suggestedOwner": "kuikly-render / typography",
-      "suggestedFixes": [
-        "Force the shared design sans-serif font family (and weight) on all iOS text nodes inside the task panel, including chip labels, badges, and metadata rows.",
-        "Normalize status pill text casing across both platforms so labels render identically (either Title case or UPPERCASE on both ends).",
-        "Add a visual regression snapshot for the panel metadata line (hashtag / ID / timestamp) to catch font fallback regressions early."
-      ],
-      "intentional": [
-        "Filter chip row (Channel/Creator/Assignee) appears as a single row on Android vs wrapped on iOS — accepted platform-difference for layout, chip casing/styling still aligns to React tokens."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.12101274624971303
+      "status": "pending",
+      "imageHash": "p1:fffe7ffe000000000000000080070006ffffffefffc1ffc1ffc1ffc19fff9fff9ffd9ffd9ffc9ff487fd87f4bffdfffcffe1ffe1b801f80187ff87ff87ff87ffbffdfffd80348034bfe1ffe1a001a00187ff8fff8fff8fffbffdbffc88cd800cf001f001800180019fff9fff9ffd9ffd89fc807cff01ff01ff010000ffffffff",
+      "generatedAt": "2026-08-28T00:56:45.397Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.13373502923265956
     },
     {
       "id": "components.tasks.status-menu",
@@ -1728,7 +1713,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:43.692Z",
+      "generatedAt": "2026-08-28T00:56:45.357Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1741,7 +1726,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:43.692Z",
+      "generatedAt": "2026-08-28T00:56:45.357Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2157,7 +2142,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:44.029Z",
+      "generatedAt": "2026-08-28T00:56:45.661Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2170,7 +2155,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:44.029Z",
+      "generatedAt": "2026-08-28T00:56:45.661Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2183,7 +2168,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:44.029Z",
+      "generatedAt": "2026-08-28T00:56:45.661Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2196,7 +2181,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:44.029Z",
+      "generatedAt": "2026-08-28T00:56:45.661Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2209,7 +2194,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:44.029Z",
+      "generatedAt": "2026-08-28T00:56:45.661Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2283,7 +2268,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0986558377553638
+      "metricMismatch": 0.0986555001957845
     },
     {
       "id": "components.members.avatar-management",
@@ -2315,7 +2300,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09793548561321075
+      "metricMismatch": 0.09786898637609542
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2686,7 +2671,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:44.348Z",
+      "generatedAt": "2026-08-28T00:56:46.009Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2699,7 +2684,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:44.348Z",
+      "generatedAt": "2026-08-28T00:56:46.009Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2712,7 +2697,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:44.348Z",
+      "generatedAt": "2026-08-28T00:56:46.009Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2725,7 +2710,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:44.348Z",
+      "generatedAt": "2026-08-28T00:56:46.009Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

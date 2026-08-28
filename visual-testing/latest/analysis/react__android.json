@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-26T22:59:37.354Z",
+  "generatedAt": "2026-08-28T00:56:39.434Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 86,
-    "pending": 6
+    "ready": 85,
+    "pending": 7
   },
   "cases": [
     {
@@ -552,7 +552,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41497942386831277
+      "metricMismatch": 0.41496209659952354
     },
     {
       "id": "components.ui.spinner.states",
@@ -1548,7 +1548,7 @@
     {
       "id": "components.home.search.results",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800307020002dfffffffffffffff80ff80009fff803c80ff800080ff8803dfffe7ffffffc0fe8001c00e8002fffe03ffd8fe87ffd05ec9fedffe9fffffff807effff7fffffff403fffffc1effffffffffffff81ffffffc3ffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800307000002dfffffffffffffff80ff80009fff803c80ff800080ff8803dfffe7ffffffc0fe8001c00e8002fffe03ffd8fe87ffd05ec9fedffe9fffffff807effff7fffffff403fffffc1effffffffffffff81ffffffc3ffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-13T22:14:37.330Z",
       "severity": "medium",
       "summary": [
@@ -1579,12 +1579,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2693425014515062
+      "metricMismatch": 0.26901203062340506
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f000038021c380012fc7cfe00fc00fe9e813c00879d3c000081fc00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff41ffc9ffffff9fffffff807fffffffffffffd83fffffc3fffffffffffffff81ffffffc3ffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f000038021c380012fc7cfe00fc00fe9e813c00879d3c000081fc00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff43ffc9ffffff9fffffff807fffffffffffffd83fffffc3fffffffffffffff81ffffffc3ffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-13T22:14:38.408Z",
       "severity": "high",
       "summary": [
@@ -1613,7 +1613,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2691784474959831
+      "metricMismatch": 0.26885304006157085
     },
     {
       "id": "components.home.saved.results",
@@ -1650,7 +1650,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19037131358863113
+      "metricMismatch": 0.19017376176402778
     },
     {
       "id": "components.home.activity.results",
@@ -1686,45 +1686,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18532666792429098
+      "metricMismatch": 0.18514221635330863
     },
     {
       "id": "components.tasks.panel.states",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffe000000000000000080060006ffffffefef80ff818f801f819fff9fff9ffc9ffd9ffc97f483a487f49ffefffcfff0ffe0bfa0800187ff841f87ff87ffbffcbffc80368014bff4bfe0ffc08001800187ff8fff8fff9ffcbffc8efe808cffe0a3c0a00080019fff9fff9fff9ffdfffc807c803cbfe0bff07fe0ffffffff",
-      "generatedAt": "2026-08-13T22:14:39.647Z",
-      "severity": "medium",
-      "summary": [
-        "The Android header adds a large checked-tasks icon to the left of the “Tasks” title, increasing the header’s internal spacing and shifting the title right.",
-        "Android task cards consistently position status badges at the bottom-right, while React alternates between bottom-right and vertically centered on the right edge.",
-        "The Android In Progress card is substantially shorter than its React counterpart, compressing vertical padding and reducing space between the assignee, title, and status badge.",
-        "Android’s In Review and Done cards are wider and their status labels use sentence case, while React uses title case.",
-        "The Android Done card is clipped at the bottom of the screenshot, omitting most of its status badge."
-      ],
-      "likelyCauses": [
-        "Different task-card templates or content-layout rules between platforms",
-        "Android-specific assignee and timestamp rows alter card content flow",
-        "Missing bottom safe-area or viewport spacing on Android",
-        "Inconsistent status-label capitalization across implementations",
-        "Different secondary-text color tokens for section counts"
-      ],
-      "suggestedOwner": "Tasks panel / cross-platform UI parity owner",
-      "suggestedFixes": [
-        "Match the Android bottom-right status-badge placement in React while preserving intentional assignee and timestamp additions.",
-        "Normalize card min-height and vertical padding so equivalent cards have consistent internal spacing across platforms.",
-        "Apply title casing to Android In Review and Done status labels.",
-        "Increase the bottom content inset or viewport handling on Android so the final card and its status badge are not clipped.",
-        "Align section-count text color with the React token."
-      ],
-      "intentional": [
-        "Android shows per-task relative timestamps at card top-right; React should adopt this later.",
-        "Android shows assignee text at card bottom-left; React should adopt this later.",
-        "The filter row is Android-only and remains in one unwrapped row; React’s wrapped Channel/Creator/Assignee layout is an intentional platform difference."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.19403363443647803
+      "status": "pending",
+      "imageHash": "p1:3ffe7ffe0000000000000000801e0006ffffffefef80ff818f80df819fff9fff9ffc9ffd9ffc9ff487e487f49ffebffcfff0ffe4bfe0b00187ff87ff87ff87ffbffcbffc80368034bff4ffc4ffc0a00180018fff8fff8fff9ffcfffc8efe808cffe0f001a00080019fff9fff9fff9ffdfffc807c803cff00bff0ff00ffffffff",
+      "generatedAt": "2026-08-28T00:56:38.732Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2004442284063137
     },
     {
       "id": "components.tasks.status-menu",
@@ -1833,7 +1808,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:36.512Z",
+      "generatedAt": "2026-08-28T00:56:38.681Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1846,7 +1821,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:36.512Z",
+      "generatedAt": "2026-08-28T00:56:38.681Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2203,7 +2178,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1985677347051754
+      "metricMismatch": 0.19857482345634003
     },
     {
       "id": "components.settings.notifications.page",
@@ -2310,7 +2285,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e2817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
       "generatedAt": "2026-08-14T22:11:11.250Z",
       "severity": "high",
       "summary": [
@@ -2375,7 +2350,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06130183227339625
+      "metricMismatch": 0.06130419519045116
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2967,7 +2942,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:37.263Z",
+      "generatedAt": "2026-08-28T00:56:39.343Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2980,7 +2955,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:37.263Z",
+      "generatedAt": "2026-08-28T00:56:39.343Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2993,7 +2968,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:37.263Z",
+      "generatedAt": "2026-08-28T00:56:39.343Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3006,7 +2981,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-26T22:59:37.263Z",
+      "generatedAt": "2026-08-28T00:56:39.343Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
