@@ -1145,6 +1145,8 @@
     <string name="tasks_error_load">无法加载任务</string>
     <string name="tasks_error_action_unavailable">操作不可用</string>
     <string name="tasks_error_update_status">无法更新状态</string>
+    <string name="tasks_label_status">任务状态</string>
+    <string name="tasks_current_status">当前状态：%1$s</string>
     <string name="tasks_action_clear_all">全部清除</string>
     <string name="tasks_action_new_task">新建任务</string>
     <string name="tasks_view_board">看板</string>
