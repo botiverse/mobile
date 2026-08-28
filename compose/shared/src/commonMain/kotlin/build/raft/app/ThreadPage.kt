@@ -776,6 +776,38 @@ internal fun threadEventRequiresWriteAccess(action: String): Boolean =
             "deleteLocalFailedSend"
         ) || (action == "settingsAction")
 
+// Task #258: pure selection rules for the inline task chip's combined detail
+// panel, extracted so the fail-closed fallback and the assignee ordering contract
+// (unassigned sentinel first, humans before agents, System excluded, display-name
+// search) are unit-testable without a Composable host.
+internal fun threadTaskDetailPanelUseLegacy(linkedTask: TaskSummary?): Boolean = linkedTask == null
+
+internal fun threadTaskAssigneeRows(
+    assigneeOptions: List<MemberProfile>,
+    search: String
+): List<MemberProfile?> {
+    val normalized = search.trim()
+    return (listOf<MemberProfile?>(null) + assigneeOptions)
+        .filter { row -> row == null || row.kind != MemberKind.System }
+        .filter { row -> row == null || normalized.isEmpty() || row.displayName.contains(normalized, ignoreCase = true) }
+        .sortedWith(
+            Comparator<MemberProfile?> { a, b ->
+                val aUnassigned = a == null
+                val bUnassigned = b == null
+                when {
+                    aUnassigned != bUnassigned -> if (aUnassigned) -1 else 1
+                    aUnassigned -> 0
+                    (a!!.kind == MemberKind.Human) != (b!!.kind == MemberKind.Human) ->
+                        if (a.kind == MemberKind.Human) -1 else 1
+                    else -> a.displayName.lowercase().compareTo(b.displayName.lowercase())
+                }
+            }
+        )
+}
+
+internal fun threadTaskAssigneeRowId(row: MemberProfile?): String =
+    row?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
+
 internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
     action in
         setOf(
@@ -16831,7 +16863,7 @@ private fun ThreadMessagesList(
                 // instead of the status-only menu. Fail closed to the legacy status
                 // menu when the linked task summary (title/description) isn't loaded.
                 val linkedTask = message.taskId?.let { linkedTasksProjection.taskById(it) }
-                if (linkedTask == null) {
+                if (linkedTask == null || threadTaskDetailPanelUseLegacy(linkedTask)) {
                     SlockTaskStatusMenuOverlay(
                         anchor = resolvedTaskStatusAnchor,
                         items = ThreadTaskStatusMenuItems,
@@ -26775,15 +26807,7 @@ private fun ThreadTaskDetailDialog(
     val unassignedLabel = stringResource(MR.strings.tasks_assignee_unassigned)
     val searchPlaceholder = stringResource(MR.strings.tasks_search_assignees)
     var assigneeSearch by remember { mutableStateOf(TextFieldValue("")) }
-    val people =
-        assigneeOptions
-            .filter { it.kind != MemberKind.System }
-            .filter {
-                assigneeSearch.text.isBlank() || it.displayName.contains(assigneeSearch.text, ignoreCase = true)
-            }
-            .sortedWith(
-                compareByDescending<MemberProfile> { it.kind == MemberKind.Human }.thenBy { it.displayName.lowercase() }
-            )
+    val assigneeRows = threadTaskAssigneeRows(assigneeOptions, assigneeSearch.text)
     val selectedAssigneeId = task.assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
     SlockUnifiedDialog(
         title = task.tasksMeaningfulDisplayTitle(),
@@ -26841,25 +26865,16 @@ private fun ThreadTaskDetailDialog(
             onClear = { assigneeSearch = TextFieldValue("") },
             modifier = Modifier.fillMaxWidth()
         )
-        val assigneeRows =
-            listOf<MemberProfile?>(null) + people
-        val visibleRows =
-            if (assigneeSearch.text.isBlank()) {
-                assigneeRows
-            } else {
-                assigneeRows.filter { row ->
-                    row == null || row.displayName.contains(assigneeSearch.text, ignoreCase = true)
-                }
-            }
+        val visibleRows = assigneeRows
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 256.dp)
         ) {
             LazyColumn {
-                items(visibleRows.size, key = { index -> visibleRows[index]?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId }) { index ->
+                items(visibleRows.size, key = { index -> threadTaskAssigneeRowId(visibleRows[index]) }) { index ->
                     val row = visibleRows[index]
-                    val rowId = row?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
+                    val rowId = threadTaskAssigneeRowId(row)
                     val selected = rowId == selectedAssigneeId
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Row(
