@@ -22,7 +22,7 @@
 //
 // Usage:
 //   node scripts/qa/ios_tabpager_probe.mjs --ios-io-dir "$QA_LOOP_IO_DIR" \
-//     --ios-udid "$UDID" --package build.raft.app --out qa-evidence [--groups 1,2]
+//     --ios-udid "$UDID" --package build.raft.app --out qa-evidence [--groups 1,2,3,4,5]
 
 import fs from "node:fs";
 import path from "node:path";
@@ -92,9 +92,8 @@ try {
   rec("probe page confirmed on screen");
 
   if (groups.includes("1")) {
-    const a = P(0.80, 0.60), b = P(0.20, 0.60);
-    rec("group 1: content swipe left", { from: a, to: b, durationMs: 300 });
-    await drv.swipe("left");
+    rec("group 1: content drag left (0.80,0.60) -> (0.20,0.60) over 300ms");
+    await drv.drag({ from: { x: 0.80, y: 0.60 }, to: { x: 0.20, y: 0.60 }, durationSeconds: 0.3 });
     await wait(1000);
     await capture("step-01-after-swipe-left");
     verdict.performed.push(1);
@@ -121,29 +120,47 @@ try {
     verdict.performed.push(2);
   }
 
-  // ⚠️ GROUPS 3-5 ARE DELIBERATELY NOT RUN HERE.
-  // The loop protocol exposes only whole-screen app.swipeUp/Down/Left/Right()
-  // (QaAcceptanceLoopTests.swift case "swipe") — there is no coordinate drag with a
-  // start point, end point and duration. The specified gestures need exactly that:
-  //   group 3  starts at x=10pt, i.e. the screen EDGE. swipeRight() starts from the
-  //            centre, so it does not exercise edge-back at all.
-  //   group 4  is a SHORT slow drag (0.45 -> 0.55) whose criterion is that the page
-  //            must NOT change. A full swipeRight() would very likely change it, and
-  //            would then read as a product failure caused by my gesture.
-  //   group 5  needs a measured scroll distance to compare retained row positions.
-  // Substituting a full-screen swipe would produce evidence about a different
-  // gesture than the one specified — worst on group 4, where the criterion is an
-  // absence. Adding a "drag" action (XCUICoordinate press(forDuration:thenDragTo:))
-  // is the fix, and it belongs in its own change with its own review.
-  if (groups.some((g) => ["3", "4", "5"].includes(g))) {
-    rec("groups 3-5 requested but NOT executed — no coordinate-drag action in the protocol", {
-      requested: groups.filter((g) => ["3", "4", "5"].includes(g)),
-    });
-    verdict.notExecuted = {
-      groups: groups.filter((g) => ["3", "4", "5"].includes(g)),
-      reason: "loop protocol has only whole-screen swipes; groups 3-5 need press-and-drag with " +
-        "explicit start/end/duration. Running a full swipe instead would test a different gesture.",
-    };
+  // Groups 3-5 now use the drag action added for this case. Before it existed
+  // these were skipped rather than approximated with a whole-screen swipe: a
+  // centre-origin flick never touches the screen edge, and it would almost
+  // certainly move the page in group 4 — whose criterion is that the page must
+  // NOT move. Substituting the gesture would have produced a product "failure"
+  // manufactured by the harness.
+  if (groups.includes("3")) {
+    // Left-edge yield: start at x=10pt (absolute), i.e. the interactive-pop zone.
+    const edgeX = 10 / w;
+    rec("group 3: left-edge yield", { fromNormX: edgeX, note: "x=10pt absolute" });
+    await drv.drag({ from: { x: edgeX, y: 0.60 }, to: { x: 0.60, y: 0.60 }, durationSeconds: 0.35 });
+    await wait(1000);
+    await capture("step-03-after-edge-yield");
+    verdict.performed.push(3);
+  }
+
+  if (groups.includes("4")) {
+    // Short slow drag; criterion is that nothing changes. Slow on purpose — a
+    // fast short flick can still be read as a page change.
+    rec("group 4: short drag rebound (0.45,0.60) -> (0.55,0.60), slow");
+    await drv.drag({ from: { x: 0.45, y: 0.60 }, to: { x: 0.55, y: 0.60 }, durationSeconds: 1.0 });
+    await wait(1000);
+    await capture("step-04-after-short-drag");
+    verdict.performed.push(4);
+  }
+
+  if (groups.includes("5")) {
+    rec("group 5: scroll retention — two upward drags, leave tab, return");
+    for (const n of [1, 2]) {
+      await drv.drag({ from: { x: 0.5, y: 0.75 }, to: { x: 0.5, y: 0.30 }, durationSeconds: 0.3 });
+      rec(`group 5: scroll drag ${n}/2`);
+      await wait(500);
+    }
+    await capture("step-05a-after-scroll");
+    await drv.drag({ from: { x: 0.80, y: 0.60 }, to: { x: 0.20, y: 0.60 }, durationSeconds: 0.3 });
+    await wait(1000);
+    await capture("step-05b-next-tab");
+    await drv.drag({ from: { x: 0.20, y: 0.60 }, to: { x: 0.80, y: 0.60 }, durationSeconds: 0.3 });
+    await wait(1000);
+    await capture("step-05c-returned");
+    verdict.performed.push(5);
   }
 
   // Liveness verdict, computed rather than eyeballed.

@@ -96,6 +96,19 @@ export function createIosDriver({ ioDir, udid = "booted", bundle = "build.raft.a
     async swipe(direction) {
       await send({ type: "swipe", direction });
     },
+    // task #232/#233: normalized press-and-drag. swipe() is a whole-screen flick
+    // and cannot express a start point, so it can neither reach the screen edge
+    // (interactive-pop) nor make a deliberately short movement. Fractions are
+    // 0..1 of the screen; durationSeconds is the press hold, so a larger value is
+    // a slower drag.
+    async drag({ from, to, durationSeconds = 0.3 }) {
+      await send({
+        type: "drag",
+        x: from.x, y: from.y,
+        x2: to.x, y2: to.y,
+        durationSeconds,
+      });
+    },
     async text(value) {
       await send({ type: "text", text: value });
     },

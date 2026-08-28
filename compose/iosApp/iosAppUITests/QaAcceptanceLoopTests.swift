@@ -29,6 +29,14 @@ final class QaAcceptanceLoopTests: XCTestCase {
         let direction: String?
         let seconds: Double?
         let count: Int?
+        // task #232/#233: press-and-drag needs an END point and a hold duration.
+        // Whole-screen swipeLeft/Right cannot express "start at the screen edge"
+        // (edge-back) or "drag a short distance and expect nothing to happen" —
+        // substituting one for the other tests a different gesture than the case
+        // specifies, which is worst when the criterion is an absence.
+        let x2: Double?
+        let y2: Double?
+        let durationSeconds: Double?
     }
 
     override func setUpWithError() throws {
@@ -128,6 +136,21 @@ final class QaAcceptanceLoopTests: XCTestCase {
         case "long_press":
             let c = try normalized(action, in: app)
             c.press(forDuration: 0.8)
+        case "drag":
+            // Normalized start -> normalized end, with an explicit hold duration.
+            // A longer duration is a slower drag, which is what distinguishes an
+            // interactive-pop edge gesture and a short rebound from a flick.
+            guard let x = action.x, let y = action.y, x >= 0, x <= 1, y >= 0, y <= 1 else {
+                throw HarnessError.bad("drag requires normalized x/y in 0..1")
+            }
+            guard let x2 = action.x2, let y2 = action.y2, x2 >= 0, x2 <= 1, y2 >= 0, y2 <= 1 else {
+                throw HarnessError.bad("drag requires normalized x2/y2 in 0..1")
+            }
+            let from = app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
+            let to = app.coordinate(withNormalizedOffset: CGVector(dx: x2, dy: y2))
+            let hold = min(max(action.durationSeconds ?? 0.3, 0.0), 10.0)
+            from.press(forDuration: hold, thenDragTo: to)
+            return ["from": [x, y], "to": [x2, y2], "durationSeconds": hold]
         case "swipe":
             switch action.direction {
             case "up": app.swipeUp()
