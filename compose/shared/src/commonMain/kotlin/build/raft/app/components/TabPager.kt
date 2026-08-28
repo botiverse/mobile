@@ -98,26 +98,29 @@ fun TabPager(
         }
     }
 
-    // Swipe settling on a new page -> report exactly once per settle.
-    // Value-keyed effect (NOT snapshotFlow): relaunches on every settledPage
-    // change even if snapshotFlow observation is inert in the Kuikly port —
-    // the other task #233 round-1 suspect for pager->tab sync never firing.
-    // settledPage (not currentPage) so a half-drag that springs back reports
-    // nothing.
+    // Swipe -> report the new page. task #233 round-4 evidence (run
+    // 33156483643): on the Kuikly iOS renderer settledPage NEVER tracks a
+    // scroll — it emitted once at composition and stayed frozen through both
+    // a user swipe (current=1, no settled=) and a successful
+    // animateScrollToPage (current=2, no settled=). currentPage is the signal
+    // that demonstrably fires on this port, so the sync is keyed on it; a
+    // sub-threshold drag never crosses the half-page point, so currentPage
+    // stays put and spring-backs still report nothing. The settledPage effect
+    // is retained as a harmless idempotent belt for ports where it works.
+    val currentPage = pagerState.currentPage
+    LaunchedEffect(currentPage) {
+        onDebugEvent?.invoke("current=$currentPage sel=$selectedIndex")
+        if (currentPage != selectedIndex && currentPage in 0 until pageCount) {
+            onSelectedIndexChange(currentPage)
+            onDebugEvent?.invoke("report -> $currentPage")
+        }
+    }
     val settledPage = pagerState.settledPage
     LaunchedEffect(settledPage) {
         onDebugEvent?.invoke("settled=$settledPage sel=$selectedIndex")
         if (settledPage != selectedIndex && settledPage in 0 until pageCount) {
             onSelectedIndexChange(settledPage)
-            onDebugEvent?.invoke("report -> $settledPage")
         }
-    }
-    // Raw pager motion, visible even when settle never fires: value-keyed on
-    // currentPage (an effect, not a composition-body call — the debug sink
-    // mutates state, which is illegal during composition).
-    val currentPage = pagerState.currentPage
-    LaunchedEffect(currentPage) {
-        onDebugEvent?.invoke("current=$currentPage")
     }
 
     Column(modifier = modifier) {
@@ -129,7 +132,10 @@ fun TabPager(
                 userScrollEnabled = gesturePolicy.swipeEnabled,
                 key = { page -> page },
             ) { page ->
-                pageContent(page, page == pagerState.settledPage)
+                // currentPage, not settledPage: the latter is frozen on the
+                // iOS port (round-4 evidence), which would leave every
+                // swiped-to page permanently rendered as "not settled".
+                pageContent(page, page == pagerState.currentPage)
             }
             // Edge guards: claim touches born inside the injected insets so the
             // pager never sees them and the platform edge gesture wins. The
