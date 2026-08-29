@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-29T21:58:47.195Z",
+  "generatedAt": "2026-08-29T22:02:31.586Z",
   "runId": "98ec5ddf-20260829215639",
   "commit": "98ec5ddf-20260829215639",
   "commitSubject": "fix(auth): keep shell server chooser on scoped store",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 92,
-        "ready": 83,
-        "pending": 9
+        "ready": 86,
+        "pending": 6
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 92,
-        "ready": 78,
-        "pending": 14
+        "ready": 81,
+        "pending": 11
       }
     },
     {
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 92,
-    "ready": 83,
-    "pending": 9
+    "ready": 86,
+    "pending": 6
   },
   "componentMatrixSummary": {
     "total": 120,

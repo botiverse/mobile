@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>98ec5ddf-20260829215639</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-29T21:58:47.195Z" data-timestamp="2026-08-29T21:58:47.195Z" title="2026-08-29T21:58:47.195Z">2026-08-29 21:58:47 UTC</time></p>
+    <p class="runMeta"><code>98ec5ddf-20260829215639</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-29T22:02:31.586Z" data-timestamp="2026-08-29T22:02:31.586Z" title="2026-08-29T22:02:31.586Z">2026-08-29 22:02:31 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 92</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 13</span>
       <span class="pill">Different 57</span>
       <span class="pill">Missing 11</span>
-      <span class="pill">AI 78/92 ready</span>
+      <span class="pill">AI 81/92 ready</span>
       <span class="pill">Matrix 101/120 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -4118,7 +4118,12 @@
       <p><code>RGB 80.0%</code><br/><code>Pixel 51.05%</code><br/><code>Mismatch 48.95%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS</summary>
+    <ul><li>iOS dialog is missing the RUNTIME select field, MODEL select field, and the 'Could not load models' error message and Retry link present in React</li><li>iOS dialog shows an active on-screen keyboard covering the lower half of the viewport, occluding the Cancel and Create Agent action buttons</li><li>iOS description field shows '(optional)' label suffix next to DESCRIPTION that is absent in React</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Ensure the iOS modal scrolls to keep focused input visible and that all form fields (Runtime, Model, error message) render above the keyboard</li><li>Add keyboard avoidance constraints (keyboardLayoutGuide / adjust content insets) so action buttons remain accessible</li><li>Match the DESCRIPTION label formatting or remove '(optional)' suffix for cross-platform consistency</li><li>Match the Create Agent button disabled visual style to React baseline and ensure button sizing matches</li><li>Verify the upgrade banner link styling is consistent (underline vs bold)</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.dialog.png" data-current-src="ios/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4235,7 +4240,12 @@
       <p><code>RGB 80.0%</code><br/><code>Pixel 51.05%</code><br/><code>Mismatch 48.95%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · ios-engineering</summary>
+    <ul><li>iOS view is vertically clipped by the on-screen keyboard, hiding the Runtime, Model, and More sections as well as the bottom Cancel/Create Agent button row.</li><li>The iOS modal's Create Agent button is rendered disabled (greyed text) while React shows it as a faded pink/disabled state — different disabled affordance styling between platforms.</li><li>Alert banner copy differs: React shows it on a single line ('Agent limit reached (2/2 on Free plan). Upgrade for more'), iOS wraps it across two lines because of the same clipping/context.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Add keyboard avoidance (e.g., KeyboardLayoutGuide) so the modal scrolls/repositions above the keyboard and the Cancel/Create Agent footer remains visible.</li><li>Pin the Cancel/Create Agent action bar to the bottom of the modal sheet (or above keyboard) instead of inline.</li><li>Align disabled button styling with design tokens to match React's faded pink/disabled appearance.</li><li>Restore the '72/3000' character counter under the Description textarea on iOS.</li><li>Decide on a single '(optional)' convention and apply it consistently in both React and iOS labels.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.claude-dialog.png" data-current-src="ios/components.members.create-agent.claude-dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4294,7 +4304,12 @@
       <p><code>RGB 81.0%</code><br/><code>Pixel 52.21%</code><br/><code>Mismatch 47.79%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · ios-engineering</summary>
+    <ul><li>iOS viewport scrolls and a system keyboard is visible at the bottom, whereas React shows the full modal including Runtime, Provider, API URL, and API KEY fields.</li><li>iOS modal is vertically compressed/shorter, cutting off all fields below Description; React renders the complete form in one viewport.</li><li>iOS alert banner text appears bolded for both the message line and 'Upgrade for more' link, while React keeps the message in regular weight and only the link is bold.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Dismiss the keyboard before capturing the screenshot, or capture the dialog in a state without focus on an input so the full form is visible.</li><li>Adjust iOS modal layout so it remains scrollable when the keyboard appears and key fields (Runtime, Provider, API URL, API KEY) are reachable.</li><li>Unify label rendering so 'Description' shows the '(optional)' qualifier on both platforms.</li><li>Match button visual styles (outlined Cancel vs. filled Create Agent, disabled state styling) between iOS and React.</li><li>Normalize the alert/banner typography weight so 'Agent limit reached…' uses regular weight on both platforms, leaving only 'Upgrade for more' bold.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.claude-custom-provider-dialog.png" data-current-src="ios/components.members.create-agent.claude-custom-provider-dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">

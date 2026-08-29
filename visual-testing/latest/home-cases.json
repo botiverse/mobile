@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-29T21:58:47.195Z",
+  "generatedAt": "2026-08-29T22:02:31.586Z",
   "runId": "98ec5ddf-20260829215639",
   "cases": [
     {
@@ -20197,17 +20197,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-29T21:58:39.708Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-29T22:00:51.432Z",
+        "severity": "medium",
+        "summary": [
+          "Android shows additional fields not present in React: REASONING (Medium) and MODE label, while React shows a '> MORE' expand control and a 'Could not load models' error with Retry link",
+          "Android Model dropdown shows 'GPT-5.6 Sol' selected; React shows 'opus' selected",
+          "Runtime values differ: Android 'Codex CLI' selected vs React showing placeholder 'Select...'",
+          "Description label differs: Android shows '(optional)' suffix in lighter weight; React label is bold without suffix",
+          "Spacing/vertical rhythm is denser on React baseline; Android form fields appear more compact with less gap between sections"
+        ],
+        "likelyCauses": [
+          "Native (Android) form renders extra sections (Reasoning, Mode) that the React baseline does not include, or React's 'More' disclosure is collapsed in baseline screenshot",
+          "React baseline is captured in a state showing a model-load error that Android render does not reproduce",
+          "Disabled Create Agent state styling on Android diverges from React's enabled pink variant",
+          "Typography token differences: label weights, placeholder opacity, link underline rendering differ between platforms",
+          "Vertical spacing token (gap between form rows) is not shared between React and Android implementations"
+        ],
+        "suggestedOwner": "android",
+        "suggestedFixes": [
+          "Conditionally render Reason and Mode sections on Android to match React's collapsed/More state, or ensure React baseline screenshot captures the expanded state",
+          "Align Runtime default value (Codex CLI) across platforms and remove placeholder when value is preselected",
+          "Standardize the disabled Create Agent button style between Android (gray) and React (pink) — pick one disabled treatment",
+          "Unify form row vertical spacing tokens (e.g., 16dp/24dp) between React and Android",
+          "Standardize Description label to include ' (optional)' on both, or remove it on both"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -20294,17 +20312,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-29T21:58:39.708Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-29T22:00:51.432Z",
+            "severity": "medium",
+            "summary": [
+              "Android shows additional fields not present in React: REASONING (Medium) and MODE label, while React shows a '> MORE' expand control and a 'Could not load models' error with Retry link",
+              "Android Model dropdown shows 'GPT-5.6 Sol' selected; React shows 'opus' selected",
+              "Runtime values differ: Android 'Codex CLI' selected vs React showing placeholder 'Select...'",
+              "Description label differs: Android shows '(optional)' suffix in lighter weight; React label is bold without suffix",
+              "Spacing/vertical rhythm is denser on React baseline; Android form fields appear more compact with less gap between sections"
+            ],
+            "likelyCauses": [
+              "Native (Android) form renders extra sections (Reasoning, Mode) that the React baseline does not include, or React's 'More' disclosure is collapsed in baseline screenshot",
+              "React baseline is captured in a state showing a model-load error that Android render does not reproduce",
+              "Disabled Create Agent state styling on Android diverges from React's enabled pink variant",
+              "Typography token differences: label weights, placeholder opacity, link underline rendering differ between platforms",
+              "Vertical spacing token (gap between form rows) is not shared between React and Android implementations"
+            ],
+            "suggestedOwner": "android",
+            "suggestedFixes": [
+              "Conditionally render Reason and Mode sections on Android to match React's collapsed/More state, or ensure React baseline screenshot captures the expanded state",
+              "Align Runtime default value (Codex CLI) across platforms and remove placeholder when value is preselected",
+              "Standardize the disabled Create Agent button style between Android (gray) and React (pink) — pick one disabled treatment",
+              "Unify form row vertical spacing tokens (e.g., 16dp/24dp) between React and Android",
+              "Standardize Description label to include ' (optional)' on both, or remove it on both"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -20327,17 +20363,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-29T21:58:43.171Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-29T22:01:04.399Z",
+            "severity": "high",
+            "summary": [
+              "iOS dialog is missing the RUNTIME select field, MODEL select field, and the 'Could not load models' error message and Retry link present in React",
+              "iOS dialog shows an active on-screen keyboard covering the lower half of the viewport, occluding the Cancel and Create Agent action buttons",
+              "iOS description field shows '(optional)' label suffix next to DESCRIPTION that is absent in React",
+              "iOS Cancel button appears smaller and visually less prominent than the React version; Create Agent button is rendered in a disabled/grey state vs React's pink filled state",
+              "iOS 'Upgrade for more' link is rendered as underlined text while React version is bold but not underlined"
+            ],
+            "likelyCauses": [
+              "iOS view renders only a partial scrollable portion of the modal, omitting fields below DESCRIPTION when keyboard is open",
+              "Missing keyboard avoidance / scroll-to-focused-field handling in the iOS modal implementation",
+              "Different field validation/state logic between React and iOS for the Create Agent CTA disabled state",
+              "Inconsistent typography rendering of label hints ('(optional)') between platforms"
+            ],
+            "suggestedOwner": "iOS",
+            "suggestedFixes": [
+              "Ensure the iOS modal scrolls to keep focused input visible and that all form fields (Runtime, Model, error message) render above the keyboard",
+              "Add keyboard avoidance constraints (keyboardLayoutGuide / adjust content insets) so action buttons remain accessible",
+              "Match the DESCRIPTION label formatting or remove '(optional)' suffix for cross-platform consistency",
+              "Match the Create Agent button disabled visual style to React baseline and ensure button sizing matches",
+              "Verify the upgrade banner link styling is consistent (underline vs bold)"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -20416,17 +20469,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-29T21:58:43.171Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-29T22:01:04.399Z",
+            "severity": "high",
+            "summary": [
+              "iOS dialog is missing the RUNTIME select field, MODEL select field, and the 'Could not load models' error message and Retry link present in React",
+              "iOS dialog shows an active on-screen keyboard covering the lower half of the viewport, occluding the Cancel and Create Agent action buttons",
+              "iOS description field shows '(optional)' label suffix next to DESCRIPTION that is absent in React",
+              "iOS Cancel button appears smaller and visually less prominent than the React version; Create Agent button is rendered in a disabled/grey state vs React's pink filled state",
+              "iOS 'Upgrade for more' link is rendered as underlined text while React version is bold but not underlined"
+            ],
+            "likelyCauses": [
+              "iOS view renders only a partial scrollable portion of the modal, omitting fields below DESCRIPTION when keyboard is open",
+              "Missing keyboard avoidance / scroll-to-focused-field handling in the iOS modal implementation",
+              "Different field validation/state logic between React and iOS for the Create Agent CTA disabled state",
+              "Inconsistent typography rendering of label hints ('(optional)') between platforms"
+            ],
+            "suggestedOwner": "iOS",
+            "suggestedFixes": [
+              "Ensure the iOS modal scrolls to keep focused input visible and that all form fields (Runtime, Model, error message) render above the keyboard",
+              "Add keyboard avoidance constraints (keyboardLayoutGuide / adjust content insets) so action buttons remain accessible",
+              "Match the DESCRIPTION label formatting or remove '(optional)' suffix for cross-platform consistency",
+              "Match the Create Agent button disabled visual style to React baseline and ensure button sizing matches",
+              "Verify the upgrade banner link styling is consistent (underline vs bold)"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -20511,7 +20581,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-29T21:58:39.106Z",
+        "generatedAt": "2026-08-29T22:02:23.269Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20572,7 +20642,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:39.106Z",
+            "generatedAt": "2026-08-29T22:02:23.269Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20594,7 +20664,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20616,7 +20686,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20641,7 +20711,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20664,7 +20734,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20704,7 +20774,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-29T21:58:39.106Z",
+        "generatedAt": "2026-08-29T22:02:23.269Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20765,7 +20835,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:39.106Z",
+            "generatedAt": "2026-08-29T22:02:23.269Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20787,7 +20857,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20809,7 +20879,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20834,7 +20904,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20857,7 +20927,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20907,17 +20977,36 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-29T21:58:39.713Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-29T22:00:51.526Z",
+        "severity": "high",
+        "summary": [
+          "Field order is reordered: Android shows RUNTIME before MODEL with a PROVIDER field inserted; React shows MODEL then MORE accordion with Runtime below.",
+          "React includes a 'Could not load models from this Computer. Retry' inline error and a '> MORE' disclosure; Android omits both and instead shows a 'PROVIDER' dropdown plus a helper text about ANTHROPIC_BASE_URL/API_KEY.",
+          "Android shows an extra 'Refresh' icon next to the MODEL label and a 'Description (optional)' hint on the DESCRIPTION label that React does not display.",
+          "Dialog vertical rhythm differs: React is more compact vertically while Android uses larger gaps between sections, pushing the Model select near the bottom of the viewport and visually clipping it.",
+          "Both render the 'Create Agent' primary CTA as disabled (pink/grey) with identical content values (Jiachengs-MacBook-Pro, Product-QA-Bot, Claude Code, Claude Opus, 72/3000)."
+        ],
+        "likelyCauses": [
+          "Android implementation diverged from the React design contract by reordering fields and introducing a PROVIDER control not present in React baseline.",
+          "Missing error/empty state ('Could not load models... Retry') and '> MORE' section on Android, indicating divergent component composition.",
+          "Spacing/padding tokens differ between platforms, causing larger vertical gaps and viewport clipping on Android.",
+          "Typography treatment of the optional label suffix and label-to-field spacing was not matched to the React baseline."
+        ],
+        "suggestedOwner": "android-engineering",
+        "suggestedFixes": [
+          "Reorder Android fields to match React: Computer, Name, Description, Runtime, Model, then a 'More' disclosure; add the 'Could not load models from this Computer. Retry' error pattern with a Retry action.",
+          "Remove the Android-only PROVIDER dropdown and its helper text, or add the equivalent control to the React baseline and design spec.",
+          "Match React spacing scale: reduce vertical gaps between label/input pairs and between sections so the Model select and footer buttons fit without clipping.",
+          "Drop the refresh icon next to the MODEL label and remove the '(optional)' hint on the DESCRIPTION label to match the React baseline typography.",
+          "Verify the disabled 'Create Agent' CTA color/label is the same token on both platforms (React pink vs. Android grey)."
+        ],
+        "intentional": [
+          "PROVIDER selector with ANTHROPIC_BASE_URL/API_KEY helper text if product intends Android-only advanced controls."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -21004,17 +21093,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-29T21:58:39.713Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-29T22:00:51.526Z",
+            "severity": "high",
+            "summary": [
+              "Field order is reordered: Android shows RUNTIME before MODEL with a PROVIDER field inserted; React shows MODEL then MORE accordion with Runtime below.",
+              "React includes a 'Could not load models from this Computer. Retry' inline error and a '> MORE' disclosure; Android omits both and instead shows a 'PROVIDER' dropdown plus a helper text about ANTHROPIC_BASE_URL/API_KEY.",
+              "Android shows an extra 'Refresh' icon next to the MODEL label and a 'Description (optional)' hint on the DESCRIPTION label that React does not display.",
+              "Dialog vertical rhythm differs: React is more compact vertically while Android uses larger gaps between sections, pushing the Model select near the bottom of the viewport and visually clipping it.",
+              "Both render the 'Create Agent' primary CTA as disabled (pink/grey) with identical content values (Jiachengs-MacBook-Pro, Product-QA-Bot, Claude Code, Claude Opus, 72/3000)."
+            ],
+            "likelyCauses": [
+              "Android implementation diverged from the React design contract by reordering fields and introducing a PROVIDER control not present in React baseline.",
+              "Missing error/empty state ('Could not load models... Retry') and '> MORE' section on Android, indicating divergent component composition.",
+              "Spacing/padding tokens differ between platforms, causing larger vertical gaps and viewport clipping on Android.",
+              "Typography treatment of the optional label suffix and label-to-field spacing was not matched to the React baseline."
+            ],
+            "suggestedOwner": "android-engineering",
+            "suggestedFixes": [
+              "Reorder Android fields to match React: Computer, Name, Description, Runtime, Model, then a 'More' disclosure; add the 'Could not load models from this Computer. Retry' error pattern with a Retry action.",
+              "Remove the Android-only PROVIDER dropdown and its helper text, or add the equivalent control to the React baseline and design spec.",
+              "Match React spacing scale: reduce vertical gaps between label/input pairs and between sections so the Model select and footer buttons fit without clipping.",
+              "Drop the refresh icon next to the MODEL label and remove the '(optional)' hint on the DESCRIPTION label to match the React baseline typography.",
+              "Verify the disabled 'Create Agent' CTA color/label is the same token on both platforms (React pink vs. Android grey)."
+            ],
+            "intentional": [
+              "PROVIDER selector with ANTHROPIC_BASE_URL/API_KEY helper text if product intends Android-only advanced controls."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -21037,17 +21145,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-29T21:58:43.224Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-29T22:01:04.425Z",
+            "severity": "high",
+            "summary": [
+              "iOS view is vertically clipped by the on-screen keyboard, hiding the Runtime, Model, and More sections as well as the bottom Cancel/Create Agent button row.",
+              "The iOS modal's Create Agent button is rendered disabled (greyed text) while React shows it as a faded pink/disabled state — different disabled affordance styling between platforms.",
+              "Alert banner copy differs: React shows it on a single line ('Agent limit reached (2/2 on Free plan). Upgrade for more'), iOS wraps it across two lines because of the same clipping/context.",
+              "Character count indicator ('72/3000') under the Description field is missing on the iOS side, likely hidden by keyboard overlap.",
+              "Cancel/Create Agent action placement differs: React renders them at the bottom of the dialog content, iOS overlays them inside the modal frame above the keyboard."
+            ],
+            "likelyCauses": [
+              "iOS modal does not account for keyboard inset (no KeyboardLayoutGuide/avoidance) so lower content is clipped.",
+              "iOS disabled-button style differs from web design tokens (likely a different ButtonStyle for .disabled state).",
+              "iOS description field lacks a visible character counter, suggesting a missing overlay/subview.",
+              "iOS label component renders an inline '(optional)' hint not present in the React label implementation.",
+              "iOS form action buttons are placed inside the scrolling content rather than pinned to the modal footer."
+            ],
+            "suggestedOwner": "ios-engineering",
+            "suggestedFixes": [
+              "Add keyboard avoidance (e.g., KeyboardLayoutGuide) so the modal scrolls/repositions above the keyboard and the Cancel/Create Agent footer remains visible.",
+              "Pin the Cancel/Create Agent action bar to the bottom of the modal sheet (or above keyboard) instead of inline.",
+              "Align disabled button styling with design tokens to match React's faded pink/disabled appearance.",
+              "Restore the '72/3000' character counter under the Description textarea on iOS.",
+              "Decide on a single '(optional)' convention and apply it consistently in both React and iOS labels."
+            ],
+            "intentional": [
+              "The two-line wrap of the alert banner on iOS may be intentional due to narrower available width when the keyboard is up.",
+              "Slight differences in input field heights may reflect platform-native touch target guidelines (44pt iOS vs web defaults)."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -21123,17 +21252,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-29T21:58:43.224Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-29T22:01:04.425Z",
+            "severity": "high",
+            "summary": [
+              "iOS view is vertically clipped by the on-screen keyboard, hiding the Runtime, Model, and More sections as well as the bottom Cancel/Create Agent button row.",
+              "The iOS modal's Create Agent button is rendered disabled (greyed text) while React shows it as a faded pink/disabled state — different disabled affordance styling between platforms.",
+              "Alert banner copy differs: React shows it on a single line ('Agent limit reached (2/2 on Free plan). Upgrade for more'), iOS wraps it across two lines because of the same clipping/context.",
+              "Character count indicator ('72/3000') under the Description field is missing on the iOS side, likely hidden by keyboard overlap.",
+              "Cancel/Create Agent action placement differs: React renders them at the bottom of the dialog content, iOS overlays them inside the modal frame above the keyboard."
+            ],
+            "likelyCauses": [
+              "iOS modal does not account for keyboard inset (no KeyboardLayoutGuide/avoidance) so lower content is clipped.",
+              "iOS disabled-button style differs from web design tokens (likely a different ButtonStyle for .disabled state).",
+              "iOS description field lacks a visible character counter, suggesting a missing overlay/subview.",
+              "iOS label component renders an inline '(optional)' hint not present in the React label implementation.",
+              "iOS form action buttons are placed inside the scrolling content rather than pinned to the modal footer."
+            ],
+            "suggestedOwner": "ios-engineering",
+            "suggestedFixes": [
+              "Add keyboard avoidance (e.g., KeyboardLayoutGuide) so the modal scrolls/repositions above the keyboard and the Cancel/Create Agent footer remains visible.",
+              "Pin the Cancel/Create Agent action bar to the bottom of the modal sheet (or above keyboard) instead of inline.",
+              "Align disabled button styling with design tokens to match React's faded pink/disabled appearance.",
+              "Restore the '72/3000' character counter under the Description textarea on iOS.",
+              "Decide on a single '(optional)' convention and apply it consistently in both React and iOS labels."
+            ],
+            "intentional": [
+              "The two-line wrap of the alert banner on iOS may be intentional due to narrower available width when the keyboard is up.",
+              "Slight differences in input field heights may reflect platform-native touch target guidelines (44pt iOS vs web defaults)."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -21224,17 +21374,34 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-29T21:58:39.737Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-08-29T22:00:51.529Z",
+        "severity": "high",
+        "summary": [
+          "Android version renders the form more compactly, vertically fitting all fields (COMPUTER, NAME, DESCRIPTION, RUNTIME, PROVIDER, API URL, API KEY) plus Cancel/Create buttons within the 844px viewport, while React shows the dialog extending beyond the viewport with API KEY cut off at the bottom.",
+          "Form labels and input sizes appear smaller on Android; React uses noticeably larger label font sizes and taller input heights.",
+          "Android shows '(optional)' suffix on DESCRIPTION label in muted gray; React shows only 'DESCRIPTION' without the optional indicator.",
+          "Description textarea is shorter on Android (~2 lines visible) vs React (~3 lines visible) before character counter, though counter position is consistent.",
+          "Cancel and Create Agent action buttons are visible in both renders but positioned differently: Android places them right-aligned at the bottom of the visible viewport, while React cuts off before showing them clearly."
+        ],
+        "likelyCauses": [
+          "Android implementation uses different typography scale and spacing tokens than the React web version.",
+          "Vertical layout density differs - Android packs fields with reduced vertical padding to fit the mobile viewport.",
+          "Description label lacks the '(optional)' hint on React baseline, suggesting Android added an accessibility/clarity enhancement that diverges from web spec.",
+          "Modal/dialog height not constrained on React causing overflow; Android enforces a scrollable bounded container."
+        ],
+        "suggestedOwner": "android-ui-engineering",
+        "suggestedFixes": [
+          "Align Android form spacing, label font sizes, and input heights to match React design tokens, accepting natural scrolling if content exceeds viewport.",
+          "Verify whether '(optional)' suffix on DESCRIPTION is intentional; if so, apply to React for parity, otherwise remove from Android.",
+          "Standardize character counter font size and position relative to textarea across platforms.",
+          "Ensure action buttons (Cancel, Create Agent) use consistent placement, sizing, and primary/secondary styling on both platforms.",
+          "Audit required-field asterisk color token for exact parity (currently visually consistent but verify hex match)."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -21321,17 +21488,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-29T21:58:39.737Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-29T22:00:51.529Z",
+            "severity": "high",
+            "summary": [
+              "Android version renders the form more compactly, vertically fitting all fields (COMPUTER, NAME, DESCRIPTION, RUNTIME, PROVIDER, API URL, API KEY) plus Cancel/Create buttons within the 844px viewport, while React shows the dialog extending beyond the viewport with API KEY cut off at the bottom.",
+              "Form labels and input sizes appear smaller on Android; React uses noticeably larger label font sizes and taller input heights.",
+              "Android shows '(optional)' suffix on DESCRIPTION label in muted gray; React shows only 'DESCRIPTION' without the optional indicator.",
+              "Description textarea is shorter on Android (~2 lines visible) vs React (~3 lines visible) before character counter, though counter position is consistent.",
+              "Cancel and Create Agent action buttons are visible in both renders but positioned differently: Android places them right-aligned at the bottom of the visible viewport, while React cuts off before showing them clearly."
+            ],
+            "likelyCauses": [
+              "Android implementation uses different typography scale and spacing tokens than the React web version.",
+              "Vertical layout density differs - Android packs fields with reduced vertical padding to fit the mobile viewport.",
+              "Description label lacks the '(optional)' hint on React baseline, suggesting Android added an accessibility/clarity enhancement that diverges from web spec.",
+              "Modal/dialog height not constrained on React causing overflow; Android enforces a scrollable bounded container."
+            ],
+            "suggestedOwner": "android-ui-engineering",
+            "suggestedFixes": [
+              "Align Android form spacing, label font sizes, and input heights to match React design tokens, accepting natural scrolling if content exceeds viewport.",
+              "Verify whether '(optional)' suffix on DESCRIPTION is intentional; if so, apply to React for parity, otherwise remove from Android.",
+              "Standardize character counter font size and position relative to textarea across platforms.",
+              "Ensure action buttons (Cancel, Create Agent) use consistent placement, sizing, and primary/secondary styling on both platforms.",
+              "Audit required-field asterisk color token for exact parity (currently visually consistent but verify hex match)."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -21354,17 +21538,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-29T21:58:43.232Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-29T22:01:04.420Z",
+            "severity": "high",
+            "summary": [
+              "iOS viewport scrolls and a system keyboard is visible at the bottom, whereas React shows the full modal including Runtime, Provider, API URL, and API KEY fields.",
+              "iOS modal is vertically compressed/shorter, cutting off all fields below Description; React renders the complete form in one viewport.",
+              "iOS alert banner text appears bolded for both the message line and 'Upgrade for more' link, while React keeps the message in regular weight and only the link is bold.",
+              "iOS shows a keyboard accessory bar with predictive text ('\"Bot\"', 'Both', 'Bottom') above the keys; React has no such bar.",
+              "Cancel and Create Agent buttons are right-aligned inside the modal in iOS but appear stacked vertically beneath the Description in the React layout (buttons rendered as part of the form)."
+            ],
+            "likelyCauses": [
+              "iOS render captured while the soft keyboard is open, reducing the available modal height and causing the bottom of the form to be clipped.",
+              "iOS dialog component uses a different layout container (likely a sheet/safe-area aware view) that resizes when keyboard appears, whereas the React modal has a fixed scrollable area.",
+              "iOS form labels include an inline '(optional)' suffix that React omits.",
+              "iOS button rendering uses platform-native or custom styles that differ from the web React button styling.",
+              "Typography weight differences stem from iOS using a bolder system font for alert/warning text by default."
+            ],
+            "suggestedOwner": "ios-engineering",
+            "suggestedFixes": [
+              "Dismiss the keyboard before capturing the screenshot, or capture the dialog in a state without focus on an input so the full form is visible.",
+              "Adjust iOS modal layout so it remains scrollable when the keyboard appears and key fields (Runtime, Provider, API URL, API KEY) are reachable.",
+              "Unify label rendering so 'Description' shows the '(optional)' qualifier on both platforms.",
+              "Match button visual styles (outlined Cancel vs. filled Create Agent, disabled state styling) between iOS and React.",
+              "Normalize the alert/banner typography weight so 'Agent limit reached…' uses regular weight on both platforms, leaving only 'Upgrade for more' bold."
+            ],
+            "intentional": [
+              "iOS system keyboard and predictive bar are platform-provided and expected when an input is focused.",
+              "iOS safe-area/insets handling around the modal may be intentional for mobile ergonomics."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -21440,17 +21645,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-29T21:58:43.232Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-29T22:01:04.420Z",
+            "severity": "high",
+            "summary": [
+              "iOS viewport scrolls and a system keyboard is visible at the bottom, whereas React shows the full modal including Runtime, Provider, API URL, and API KEY fields.",
+              "iOS modal is vertically compressed/shorter, cutting off all fields below Description; React renders the complete form in one viewport.",
+              "iOS alert banner text appears bolded for both the message line and 'Upgrade for more' link, while React keeps the message in regular weight and only the link is bold.",
+              "iOS shows a keyboard accessory bar with predictive text ('\"Bot\"', 'Both', 'Bottom') above the keys; React has no such bar.",
+              "Cancel and Create Agent buttons are right-aligned inside the modal in iOS but appear stacked vertically beneath the Description in the React layout (buttons rendered as part of the form)."
+            ],
+            "likelyCauses": [
+              "iOS render captured while the soft keyboard is open, reducing the available modal height and causing the bottom of the form to be clipped.",
+              "iOS dialog component uses a different layout container (likely a sheet/safe-area aware view) that resizes when keyboard appears, whereas the React modal has a fixed scrollable area.",
+              "iOS form labels include an inline '(optional)' suffix that React omits.",
+              "iOS button rendering uses platform-native or custom styles that differ from the web React button styling.",
+              "Typography weight differences stem from iOS using a bolder system font for alert/warning text by default."
+            ],
+            "suggestedOwner": "ios-engineering",
+            "suggestedFixes": [
+              "Dismiss the keyboard before capturing the screenshot, or capture the dialog in a state without focus on an input so the full form is visible.",
+              "Adjust iOS modal layout so it remains scrollable when the keyboard appears and key fields (Runtime, Provider, API URL, API KEY) are reachable.",
+              "Unify label rendering so 'Description' shows the '(optional)' qualifier on both platforms.",
+              "Match button visual styles (outlined Cancel vs. filled Create Agent, disabled state styling) between iOS and React.",
+              "Normalize the alert/banner typography weight so 'Agent limit reached…' uses regular weight on both platforms, leaving only 'Upgrade for more' bold."
+            ],
+            "intentional": [
+              "iOS system keyboard and predictive bar are platform-provided and expected when an input is focused.",
+              "iOS safe-area/insets handling around the modal may be intentional for mobile ergonomics."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -25909,7 +26135,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25931,7 +26157,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25956,7 +26182,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25979,7 +26205,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26179,7 +26405,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26201,7 +26427,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26226,7 +26452,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26249,7 +26475,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26449,7 +26675,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26471,7 +26697,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26496,7 +26722,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26519,7 +26745,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26715,7 +26941,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26737,7 +26963,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26762,7 +26988,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26785,7 +27011,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26981,7 +27207,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27003,7 +27229,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27028,7 +27254,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27051,7 +27277,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32443,7 +32669,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-29T21:58:39.106Z",
+        "generatedAt": "2026-08-29T22:02:23.269Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32504,7 +32730,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:39.106Z",
+            "generatedAt": "2026-08-29T22:02:23.269Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32526,7 +32752,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32548,7 +32774,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32573,7 +32799,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32596,7 +32822,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32636,7 +32862,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-29T21:58:39.106Z",
+        "generatedAt": "2026-08-29T22:02:23.269Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32697,7 +32923,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:39.106Z",
+            "generatedAt": "2026-08-29T22:02:23.269Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32719,7 +32945,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32741,7 +32967,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32766,7 +32992,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32789,7 +33015,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32829,7 +33055,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-29T21:58:39.106Z",
+        "generatedAt": "2026-08-29T22:02:23.269Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32890,7 +33116,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:39.106Z",
+            "generatedAt": "2026-08-29T22:02:23.269Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32912,7 +33138,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32934,7 +33160,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32959,7 +33185,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32982,7 +33208,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33022,7 +33248,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-29T21:58:39.106Z",
+        "generatedAt": "2026-08-29T22:02:23.269Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -33083,7 +33309,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:39.106Z",
+            "generatedAt": "2026-08-29T22:02:23.269Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33105,7 +33331,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33127,7 +33353,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33152,7 +33378,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:42.067Z",
+            "generatedAt": "2026-08-29T22:02:26.171Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33175,7 +33401,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-29T21:58:45.459Z",
+            "generatedAt": "2026-08-29T22:02:29.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

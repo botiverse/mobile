@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-29T21:58:39.100Z",
+  "generatedAt": "2026-08-29T22:02:23.262Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 83,
-    "pending": 9
+    "ready": 86,
+    "pending": 6
   },
   "cases": [
     {
@@ -1794,22 +1794,43 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc3dfc2bf87df83ffc3e4c007c00cc20fc3ffc2ffc3ffc3cfc39fc3ffc1ffc3ffc1ffc3ffc3ffc3dfc3ffc3ffc03fc27fc3ffc3ffc3ffc3ffc3ff42ffc7ffc3ffc3ffc2ffc07fc3ffc3ffc3ffc3ffc3ffc07fc3ffc27fc2ffc3ffc3ff40ffc3ffc3ffc3ffc7ffc3f447f7c3804380000000000ffffffff",
-      "generatedAt": "2026-08-29T21:58:38.465Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-29T22:00:51.432Z",
+      "severity": "medium",
+      "summary": [
+        "Android shows additional fields not present in React: REASONING (Medium) and MODE label, while React shows a '> MORE' expand control and a 'Could not load models' error with Retry link",
+        "Android Model dropdown shows 'GPT-5.6 Sol' selected; React shows 'opus' selected",
+        "Runtime values differ: Android 'Codex CLI' selected vs React showing placeholder 'Select...'",
+        "Description label differs: Android shows '(optional)' suffix in lighter weight; React label is bold without suffix",
+        "Spacing/vertical rhythm is denser on React baseline; Android form fields appear more compact with less gap between sections"
+      ],
+      "likelyCauses": [
+        "Native (Android) form renders extra sections (Reasoning, Mode) that the React baseline does not include, or React's 'More' disclosure is collapsed in baseline screenshot",
+        "React baseline is captured in a state showing a model-load error that Android render does not reproduce",
+        "Disabled Create Agent state styling on Android diverges from React's enabled pink variant",
+        "Typography token differences: label weights, placeholder opacity, link underline rendering differ between platforms",
+        "Vertical spacing token (gap between form rows) is not shared between React and Android implementations"
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Conditionally render Reason and Mode sections on Android to match React's collapsed/More state, or ensure React baseline screenshot captures the expanded state",
+        "Align Runtime default value (Codex CLI) across platforms and remove placeholder when value is preselected",
+        "Standardize the disabled Create Agent button style between Android (gray) and React (pink) — pick one disabled treatment",
+        "Unify form row vertical spacing tokens (e.g., 16dp/24dp) between React and Android",
+        "Standardize Description label to include ' (optional)' on both, or remove it on both"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.24379261689688225
     },
     {
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T21:58:38.357Z",
+      "generatedAt": "2026-08-29T22:02:22.530Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1822,7 +1843,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T21:58:38.357Z",
+      "generatedAt": "2026-08-29T22:02:22.530Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1833,28 +1854,70 @@
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83ffc3e4c007c00cc20fc3ffc2ffc3ffc3cfc39fc3ffc1ffc3ffc1ffc2ffc3ffc3dfc2ffc3ffc03fc27fc3ffc3ffc3ffc3ffc3ff42ffc7ffc3ffc3ffc2ffc03fc3ffc2ffc3ffc3ffc3ffc0ffc3ffc7ffc2ffc7ffc3ff43ffc3ffc3ffc3ffc7ffc3d047f7c3004380000000000ffffffff",
-      "generatedAt": "2026-08-29T21:58:38.468Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-29T22:00:51.526Z",
+      "severity": "high",
+      "summary": [
+        "Field order is reordered: Android shows RUNTIME before MODEL with a PROVIDER field inserted; React shows MODEL then MORE accordion with Runtime below.",
+        "React includes a 'Could not load models from this Computer. Retry' inline error and a '> MORE' disclosure; Android omits both and instead shows a 'PROVIDER' dropdown plus a helper text about ANTHROPIC_BASE_URL/API_KEY.",
+        "Android shows an extra 'Refresh' icon next to the MODEL label and a 'Description (optional)' hint on the DESCRIPTION label that React does not display.",
+        "Dialog vertical rhythm differs: React is more compact vertically while Android uses larger gaps between sections, pushing the Model select near the bottom of the viewport and visually clipping it.",
+        "Both render the 'Create Agent' primary CTA as disabled (pink/grey) with identical content values (Jiachengs-MacBook-Pro, Product-QA-Bot, Claude Code, Claude Opus, 72/3000)."
+      ],
+      "likelyCauses": [
+        "Android implementation diverged from the React design contract by reordering fields and introducing a PROVIDER control not present in React baseline.",
+        "Missing error/empty state ('Could not load models... Retry') and '> MORE' section on Android, indicating divergent component composition.",
+        "Spacing/padding tokens differ between platforms, causing larger vertical gaps and viewport clipping on Android.",
+        "Typography treatment of the optional label suffix and label-to-field spacing was not matched to the React baseline."
+      ],
+      "suggestedOwner": "android-engineering",
+      "suggestedFixes": [
+        "Reorder Android fields to match React: Computer, Name, Description, Runtime, Model, then a 'More' disclosure; add the 'Could not load models from this Computer. Retry' error pattern with a Retry action.",
+        "Remove the Android-only PROVIDER dropdown and its helper text, or add the equivalent control to the React baseline and design spec.",
+        "Match React spacing scale: reduce vertical gaps between label/input pairs and between sections so the Model select and footer buttons fit without clipping.",
+        "Drop the refresh icon next to the MODEL label and remove the '(optional)' hint on the DESCRIPTION label to match the React baseline typography.",
+        "Verify the disabled 'Create Agent' CTA color/label is the same token on both platforms (React pink vs. Android grey)."
+      ],
+      "intentional": [
+        "PROVIDER selector with ANTHROPIC_BASE_URL/API_KEY helper text if product intends Android-only advanced controls."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.24426283739079946
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:efffcfff000000003ffc3dfc2bf82df83ffc3e0c007c00cc27fc3ffc27fc1ffc3cfc39fc3ffc1ffc3ffc1ffc3ffc3ffc21fc2ffc3ffc03fc07fc3ffc3dec3ffc3ffc3ff43ffc7ffc3ffc3ffc2ffc03fc3bfc2ffc3ffc3ffc2ffc0ffc2ffc3ffc2ffc7ffc3ffc3ffc3ffc1ffc2ffc7ffc383c7f7c3ffc38002ffc0000ffffffff",
-      "generatedAt": "2026-08-29T21:58:38.490Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-29T22:00:51.529Z",
+      "severity": "high",
+      "summary": [
+        "Android version renders the form more compactly, vertically fitting all fields (COMPUTER, NAME, DESCRIPTION, RUNTIME, PROVIDER, API URL, API KEY) plus Cancel/Create buttons within the 844px viewport, while React shows the dialog extending beyond the viewport with API KEY cut off at the bottom.",
+        "Form labels and input sizes appear smaller on Android; React uses noticeably larger label font sizes and taller input heights.",
+        "Android shows '(optional)' suffix on DESCRIPTION label in muted gray; React shows only 'DESCRIPTION' without the optional indicator.",
+        "Description textarea is shorter on Android (~2 lines visible) vs React (~3 lines visible) before character counter, though counter position is consistent.",
+        "Cancel and Create Agent action buttons are visible in both renders but positioned differently: Android places them right-aligned at the bottom of the visible viewport, while React cuts off before showing them clearly."
+      ],
+      "likelyCauses": [
+        "Android implementation uses different typography scale and spacing tokens than the React web version.",
+        "Vertical layout density differs - Android packs fields with reduced vertical padding to fit the mobile viewport.",
+        "Description label lacks the '(optional)' hint on React baseline, suggesting Android added an accessibility/clarity enhancement that diverges from web spec.",
+        "Modal/dialog height not constrained on React causing overflow; Android enforces a scrollable bounded container."
+      ],
+      "suggestedOwner": "android-ui-engineering",
+      "suggestedFixes": [
+        "Align Android form spacing, label font sizes, and input heights to match React design tokens, accepting natural scrolling if content exceeds viewport.",
+        "Verify whether '(optional)' suffix on DESCRIPTION is intentional; if so, apply to React for parity, otherwise remove from Android.",
+        "Standardize character counter font size and position relative to textarea across platforms.",
+        "Ensure action buttons (Cancel, Create Agent) use consistent placement, sizing, and primary/secondary styling on both platforms.",
+        "Audit required-field asterisk color token for exact parity (currently visually consistent but verify hex match)."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.261163095286318
     },
     {
@@ -2897,7 +2960,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T21:58:39.024Z",
+      "generatedAt": "2026-08-29T22:02:23.178Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2910,7 +2973,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T21:58:39.024Z",
+      "generatedAt": "2026-08-29T22:02:23.178Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2923,7 +2986,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T21:58:39.024Z",
+      "generatedAt": "2026-08-29T22:02:23.178Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2936,7 +2999,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T21:58:39.024Z",
+      "generatedAt": "2026-08-29T22:02:23.178Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

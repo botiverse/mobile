@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>98ec5ddf-20260829215639</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-29T21:58:47.195Z" data-timestamp="2026-08-29T21:58:47.195Z" title="2026-08-29T21:58:47.195Z">2026-08-29 21:58:47 UTC</time></p>
+    <p class="runMeta"><code>98ec5ddf-20260829215639</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-29T22:02:31.586Z" data-timestamp="2026-08-29T22:02:31.586Z" title="2026-08-29T22:02:31.586Z">2026-08-29 22:02:31 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 92</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 86</span>
       <span class="pill">Missing 6</span>
-      <span class="pill">AI 83/92 ready</span>
+      <span class="pill">AI 86/92 ready</span>
       <span class="pill">Matrix 101/120 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -4118,7 +4118,12 @@
       <p><code>RGB 86.4%</code><br/><code>Pixel 75.62%</code><br/><code>Mismatch 24.38%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android</summary>
+    <ul><li>Android shows additional fields not present in React: REASONING (Medium) and MODE label, while React shows a '&gt; MORE' expand control and a 'Could not load models' error with Retry link</li><li>Android Model dropdown shows 'GPT-5.6 Sol' selected; React shows 'opus' selected</li><li>Runtime values differ: Android 'Codex CLI' selected vs React showing placeholder 'Select...'</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Conditionally render Reason and Mode sections on Android to match React's collapsed/More state, or ensure React baseline screenshot captures the expanded state</li><li>Align Runtime default value (Codex CLI) across platforms and remove placeholder when value is preselected</li><li>Standardize the disabled Create Agent button style between Android (gray) and React (pink) — pick one disabled treatment</li><li>Unify form row vertical spacing tokens (e.g., 16dp/24dp) between React and Android</li><li>Standardize Description label to include ' (optional)' on both, or remove it on both</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.dialog.png" data-current-src="android/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4235,7 +4240,12 @@
       <p><code>RGB 86.7%</code><br/><code>Pixel 75.57%</code><br/><code>Mismatch 24.43%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-engineering</summary>
+    <ul><li>Field order is reordered: Android shows RUNTIME before MODEL with a PROVIDER field inserted; React shows MODEL then MORE accordion with Runtime below.</li><li>React includes a 'Could not load models from this Computer. Retry' inline error and a '&gt; MORE' disclosure; Android omits both and instead shows a 'PROVIDER' dropdown plus a helper text about ANTHROPIC_BASE_URL/API_KEY.</li><li>Android shows an extra 'Refresh' icon next to the MODEL label and a 'Description (optional)' hint on the DESCRIPTION label that React does not display.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Reorder Android fields to match React: Computer, Name, Description, Runtime, Model, then a 'More' disclosure; add the 'Could not load models from this Computer. Retry' error pattern with a Retry action.</li><li>Remove the Android-only PROVIDER dropdown and its helper text, or add the equivalent control to the React baseline and design spec.</li><li>Match React spacing scale: reduce vertical gaps between label/input pairs and between sections so the Model select and footer buttons fit without clipping.</li><li>Drop the refresh icon next to the MODEL label and remove the '(optional)' hint on the DESCRIPTION label to match the React baseline typography.</li><li>Verify the disabled 'Create Agent' CTA color/label is the same token on both platforms (React pink vs. Android grey).</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.claude-dialog.png" data-current-src="android/components.members.create-agent.claude-dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4294,7 +4304,12 @@
       <p><code>RGB 85.0%</code><br/><code>Pixel 73.88%</code><br/><code>Mismatch 26.12%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-ui-engineering</summary>
+    <ul><li>Android version renders the form more compactly, vertically fitting all fields (COMPUTER, NAME, DESCRIPTION, RUNTIME, PROVIDER, API URL, API KEY) plus Cancel/Create buttons within the 844px viewport, while React shows the dialog extending beyond the viewport with API KEY cut off at the bottom.</li><li>Form labels and input sizes appear smaller on Android; React uses noticeably larger label font sizes and taller input heights.</li><li>Android shows '(optional)' suffix on DESCRIPTION label in muted gray; React shows only 'DESCRIPTION' without the optional indicator.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align Android form spacing, label font sizes, and input heights to match React design tokens, accepting natural scrolling if content exceeds viewport.</li><li>Verify whether '(optional)' suffix on DESCRIPTION is intentional; if so, apply to React for parity, otherwise remove from Android.</li><li>Standardize character counter font size and position relative to textarea across platforms.</li><li>Ensure action buttons (Cancel, Create Agent) use consistent placement, sizing, and primary/secondary styling on both platforms.</li><li>Audit required-field asterisk color token for exact parity (currently visually consistent but verify hex match).</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.claude-custom-provider-dialog.png" data-current-src="android/components.members.create-agent.claude-custom-provider-dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

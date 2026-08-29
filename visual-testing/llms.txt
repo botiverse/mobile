@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-29 21:58:47 UTC
+Generated: 2026-08-29 22:02:31 UTC
 Latest run: 98ec5ddf-20260829215639
 Latest commit: 98ec5ddf-20260829215639
 Commit subject: fix(auth): keep shell server chooser on scoped store
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 92, same 0, pass 0, basic-pass 0, different 86, missing 6
-AI analysis: ready 83 / total 92, pending 9
+AI analysis: ready 86 / total 92, pending 6
 Visual coverage matrix: active 101 / total 120, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
