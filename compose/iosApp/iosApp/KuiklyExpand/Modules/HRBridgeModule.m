@@ -17,6 +17,7 @@
 #import <PhotosUI/PhotosUI.h>
 #import <stdatomic.h>
 #import <string.h>
+#import <sys/stat.h>
 #import <time.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <UserNotifications/UserNotifications.h>
@@ -38,6 +39,10 @@ static NSUInteger const SlockThreadAttachmentImageMaxEdge = 2048;
 static CGFloat const SlockThreadAttachmentImageJPEGQuality = 0.82;
 static NSString *const SlockThreadAttachmentImageCompressionErrorDomain =
     @"build.raft.app.thread-attachment-image-compression";
+static NSString *const SlockThreadImageCompressionSource = @"composer_image_compressor";
+static NSString *const SlockThreadImageCompressionDirectoryName = @"PickedAttachments";
+static NSUInteger const SlockThreadImageCompressionMaxRequestIdLength = 128;
+static NSUInteger const SlockThreadImageCompressionMaxFileNameLength = 256;
 static NSString *const SlockAttachmentExportDestinationFiles = @"files";
 static NSString *const SlockAttachmentExportDestinationPhotos = @"photos";
 static NSString *const SlockThreadShareImageDirectoryName = @"RaftThreadShareImages";
@@ -1123,6 +1128,305 @@ static NSString *SlockDiagnosticsCanonicalDescendantFilePath(NSString *root, NSS
     return RaftDiagnosticsCanonicalDescendantRegularFilePath(NSFileManager.defaultManager, root, path);
 }
 
+static BOOL SlockIosPathHasControlCharacter(NSString *value) {
+    return [value rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound;
+}
+
+static BOOL SlockIosPathIsSymlink(NSString *path) {
+    if (path.length == 0) return NO;
+    const char *fileSystemPath = path.fileSystemRepresentation;
+    if (fileSystemPath == NULL) return NO;
+    struct stat attributes;
+    return lstat(fileSystemPath, &attributes) == 0 && S_ISLNK(attributes.st_mode);
+}
+
+static BOOL SlockIosPathIsSafeComponent(NSString *component) {
+    return component.length > 0 &&
+        ![component isEqualToString:@"."] &&
+        ![component isEqualToString:@".."] &&
+        !SlockIosPathHasControlCharacter(component);
+}
+
+static NSString * _Nullable SlockIosPathWithoutTrailingSlashes(NSString *path);
+
+/*
+ * iOS/Darwin presents a small, fixed set of system aliases as symlinks.  They
+ * are the only symlinked ancestors accepted by the raw walk; arbitrary app
+ * symlinks remain rejected.  Containment is still decided on the fully
+ * resolved path after this allow-list check.
+ */
+static BOOL SlockIosIsAllowedDarwinAliasSymlink(NSString *path, const struct stat *attributes) {
+    if (attributes == NULL || !S_ISLNK(attributes->st_mode)) return NO;
+    NSString *trimmed = SlockIosPathWithoutTrailingSlashes(path);
+    return [trimmed isEqualToString:@"/var"] || [trimmed isEqualToString:@"/tmp"];
+}
+
+static NSString * _Nullable SlockIosPathWithoutTrailingSlashes(NSString *path) {
+    if (path.length == 0 || ![path hasPrefix:@"/"]) return nil;
+    NSString *trimmed = path;
+    while (trimmed.length > 1 && [trimmed hasSuffix:@"/"]) {
+        trimmed = [trimmed substringToIndex:trimmed.length - 1];
+    }
+    return trimmed;
+}
+
+/*
+ * Split a pathname without normalizing it first.  In particular, a raw "." or
+ * ".." component is rejected instead of being folded away by
+ * stringByStandardizingPath.  Empty interior components are rejected too so
+ * that the pathname we later rename is exactly the pathname we validated.
+ */
+static NSArray<NSString *> * _Nullable SlockIosRawAbsolutePathComponents(NSString *path) {
+    NSString *trimmed = SlockIosPathWithoutTrailingSlashes(path);
+    if (trimmed.length == 0) return nil;
+    NSArray<NSString *> *parts = [trimmed componentsSeparatedByString:@"/"];
+    if (parts.count == 0 || ![parts.firstObject isEqualToString:@""]) return nil;
+    NSMutableArray<NSString *> *components = [NSMutableArray array];
+    for (NSUInteger index = 1; index < parts.count; index++) {
+        NSString *component = parts[index];
+        if (!SlockIosPathIsSafeComponent(component)) return nil;
+        [components addObject:component];
+    }
+    return components;
+}
+
+static BOOL SlockIosLstatPath(NSString *path, struct stat * _Nullable output) {
+    if (path.length == 0) return NO;
+    const char *fileSystemPath = path.fileSystemRepresentation;
+    if (fileSystemPath == NULL) return NO;
+    struct stat attributes;
+    if (lstat(fileSystemPath, &attributes) != 0) return NO;
+    if (output != NULL) *output = attributes;
+    return YES;
+}
+
+/* Validate the root itself and every parent component with lstat/no-follow. */
+static BOOL SlockIosValidateDirectoryRoot(NSString *root) {
+    NSString *trimmed = SlockIosPathWithoutTrailingSlashes(root);
+    NSArray<NSString *> *components = SlockIosRawAbsolutePathComponents(trimmed ?: @"");
+    if (components == nil) return NO;
+    struct stat rootAttributes;
+    if (!SlockIosLstatPath(trimmed, &rootAttributes) ||
+        (S_ISLNK(rootAttributes.st_mode) &&
+            !SlockIosIsAllowedDarwinAliasSymlink(trimmed, &rootAttributes)) ||
+        (!S_ISLNK(rootAttributes.st_mode) && !S_ISDIR(rootAttributes.st_mode))) {
+        return NO;
+    }
+    NSString *cursor = @"/";
+    for (NSString *component in components) {
+        cursor = [cursor stringByAppendingPathComponent:component];
+        struct stat attributes;
+        if (!SlockIosLstatPath(cursor, &attributes) ||
+            (S_ISLNK(attributes.st_mode)
+                ? !SlockIosIsAllowedDarwinAliasSymlink(cursor, &attributes)
+                : !S_ISDIR(attributes.st_mode))) {
+            return NO;
+        }
+    }
+    return YES;
+}
+
+/*
+ * Return the original (non-canonicalized) path only after every component has been
+ * lstat-style checked.  The retirement transition must rename this exact pathname;
+ * returning a symlink-resolved path would re-open an alias/ABA window.
+ */
+static NSString *SlockIosCacheOwnedTemporaryPath(NSString *root, NSString *candidatePath) {
+    if (root.length == 0 || candidatePath.length == 0 ||
+        SlockIosPathHasControlCharacter(root) || SlockIosPathHasControlCharacter(candidatePath)) {
+        return nil;
+    }
+    NSString *rawRoot = SlockIosPathWithoutTrailingSlashes(root);
+    NSString *rawCandidate = SlockIosPathWithoutTrailingSlashes(candidatePath);
+    NSArray<NSString *> *rootComponents = SlockIosRawAbsolutePathComponents(rawRoot ?: @"");
+    NSArray<NSString *> *candidateComponents = SlockIosRawAbsolutePathComponents(rawCandidate ?: @"");
+    if (rawRoot.length == 0 || rawCandidate.length == 0 || rootComponents == nil ||
+        candidateComponents == nil || !SlockIosValidateDirectoryRoot(rawRoot)) {
+        return nil;
+    }
+    /* Validate the candidate's complete raw path without following any component. */
+    NSString *cursor = @"/";
+    for (NSUInteger index = 0; index < candidateComponents.count; index++) {
+        NSString *component = candidateComponents[index];
+        cursor = [cursor stringByAppendingPathComponent:component];
+        struct stat attributes;
+        BOOL isFinal = index + 1 == candidateComponents.count;
+        if (!SlockIosLstatPath(cursor, &attributes)) return nil;
+        if (isFinal) {
+            if (S_ISLNK(attributes.st_mode) || !S_ISREG(attributes.st_mode) || attributes.st_size <= 0) {
+                return nil;
+            }
+        } else if (S_ISLNK(attributes.st_mode)
+            ? !SlockIosIsAllowedDarwinAliasSymlink(cursor, &attributes)
+            : !S_ISDIR(attributes.st_mode)) {
+            return nil;
+        }
+    }
+
+    /*
+     * Darwin exposes aliases such as /var and /private/var.  Raw component
+     * prefixes therefore cannot be the containment test.  Resolve aliases only
+     * after the complete raw lstat walk above; return the exact raw candidate
+     * below so the rename uses the pathname that was actually checked.
+     */
+    NSString *canonicalRoot = rawRoot.stringByResolvingSymlinksInPath;
+    NSString *canonicalCandidate = rawCandidate.stringByResolvingSymlinksInPath;
+    NSString *canonicalPrefix = [canonicalRoot stringByAppendingString:@"/"];
+    if (canonicalRoot.length == 0 || canonicalCandidate.length == 0 ||
+        ![canonicalCandidate hasPrefix:canonicalPrefix]) {
+        return nil;
+    }
+    return rawCandidate;
+}
+
+static NSString *SlockIosFilePathFromRetirementRef(NSString *fileRef) {
+    if (fileRef.length == 0 || SlockIosPathHasControlCharacter(fileRef)) return nil;
+    if ([fileRef hasPrefix:@"/"]) return fileRef;
+    NSURL *url = [NSURL URLWithString:fileRef];
+    if (!url.isFileURL || url.host.length != 0 || url.user.length != 0 ||
+        url.password.length != 0 || url.query.length != 0 || url.fragment.length != 0 ||
+        url.path.length == 0) {
+        return nil;
+    }
+    return url.path;
+}
+
+static SharedThreadComposerTemporaryFileRetirementResult *
+SlockIosRetireThreadComposerTemporaryFileRefs(
+    NSString *sessionId,
+    NSSet<NSString *> *fileRefs
+) {
+    NSString *cleanSessionId = [sessionId stringByTrimmingCharactersInSet:
+        NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSMutableSet<NSString *> *requested = [NSMutableSet set];
+    for (id rawRef in fileRefs) {
+        if (![rawRef isKindOfClass:NSString.class]) continue;
+        NSString *ref = [(NSString *)rawRef
+            stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (ref.length > 0) [requested addObject:ref];
+    }
+    if (cleanSessionId.length == 0 || cleanSessionId.length > 256 ||
+        SlockIosPathHasControlCharacter(cleanSessionId)) {
+        return [[SharedThreadComposerTemporaryFileRetirementResult alloc]
+            initWithSessionId:cleanSessionId
+            requestedFileRefs:requested
+            admittedFileRefs:[NSSet set]
+            quarantinedFileRefs:[NSSet set]
+            rejectedFileRefs:requested
+            failedFileRefs:[NSSet set]
+            tombstoneByFileRef:@{}
+            errorCode:SharedThreadComposerTemporaryFileRetirementResultCompanion.shared.InvalidSessionCode];
+    }
+    if (requested.count == 0) {
+        return [SharedThreadComposerTemporaryFileRetirementResultCompanion.shared
+            emptySessionId:cleanSessionId];
+    }
+
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSArray<NSString *> *candidateRoots = @[
+        NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject ?: @"",
+        NSTemporaryDirectory() ?: @""
+    ];
+    NSMutableArray<NSString *> *roots = [NSMutableArray array];
+    for (NSString *candidateRoot in candidateRoots) {
+        NSString *root = candidateRoot.stringByStandardizingPath;
+        if (root.length == 0 || SlockIosPathIsSymlink(root)) continue;
+        NSDictionary<NSFileAttributeKey, id> *attributes =
+            [fileManager attributesOfItemAtPath:root error:nil];
+        if (![attributes[NSFileType] isEqualToString:NSFileTypeDirectory]) continue;
+        if (![roots containsObject:root]) [roots addObject:root];
+    }
+
+    NSMutableSet<NSString *> *admitted = [NSMutableSet set];
+    NSMutableSet<NSString *> *quarantined = [NSMutableSet set];
+    NSMutableSet<NSString *> *rejected = [NSMutableSet set];
+    NSMutableSet<NSString *> *failed = [NSMutableSet set];
+    NSMutableDictionary<NSString *, NSString *> *tombstoneByRef = [NSMutableDictionary dictionary];
+    NSMutableArray<NSString *> *tombstones = [NSMutableArray array];
+
+    for (NSString *ref in requested) {
+        NSString *rawPath = SlockIosFilePathFromRetirementRef(ref);
+        NSString *ownedPath = nil;
+        for (NSString *root in roots) {
+            ownedPath = SlockIosCacheOwnedTemporaryPath(root, rawPath ?: @"");
+            if (ownedPath.length > 0) break;
+        }
+        if (ownedPath.length == 0) {
+            [rejected addObject:ref];
+            continue;
+        }
+        [admitted addObject:ref];
+
+        NSString *parent = [ownedPath stringByDeletingLastPathComponent];
+        NSString *leaf = ownedPath.lastPathComponent;
+        NSURL *sourceURL = [NSURL fileURLWithPath:ownedPath];
+        NSURL *tombstoneURL = nil;
+        for (NSUInteger attempt = 0; attempt < 4 && tombstoneURL == nil; attempt++) {
+            NSString *name = [NSString stringWithFormat:@".%@.retired-%@", leaf, NSUUID.UUID.UUIDString];
+            NSURL *candidate = [NSURL fileURLWithPath:[parent stringByAppendingPathComponent:name]];
+            if ([fileManager fileExistsAtPath:candidate.path]) continue;
+            NSError *moveError = nil;
+            if ([fileManager moveItemAtURL:sourceURL toURL:candidate error:&moveError]) {
+                tombstoneURL = candidate;
+            }
+        }
+        if (tombstoneURL == nil) {
+            [failed addObject:ref];
+            continue;
+        }
+        [quarantined addObject:ref];
+        tombstoneByRef[ref] = tombstoneURL.path;
+        [tombstones addObject:tombstoneURL.path];
+    }
+
+    if (tombstones.count > 0) {
+        NSArray<NSString *> *deferredPaths = [tombstones copy];
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            NSFileManager *deferredManager = NSFileManager.defaultManager;
+            for (NSString *path in deferredPaths) {
+                [deferredManager removeItemAtPath:path error:nil];
+            }
+        });
+    }
+    NSString *errorCode = failed.count > 0
+        ? SharedThreadComposerTemporaryFileRetirementResultCompanion.shared.HandlerFailureCode
+        : nil;
+    return [[SharedThreadComposerTemporaryFileRetirementResult alloc]
+        initWithSessionId:cleanSessionId
+        requestedFileRefs:requested
+        admittedFileRefs:admitted
+        quarantinedFileRefs:quarantined
+        rejectedFileRefs:rejected
+        failedFileRefs:failed
+        tombstoneByFileRef:tombstoneByRef
+        errorCode:errorCode];
+}
+
+@interface SlockIosThreadComposerTemporaryFileRetirementHandler : NSObject
+    <SharedThreadComposerTemporaryFileRetirementHandler>
+@end
+
+@implementation SlockIosThreadComposerTemporaryFileRetirementHandler
+- (SharedThreadComposerTemporaryFileRetirementResult *)retireSessionId:(NSString *)sessionId
+                                                               fileRefs:(NSSet<NSString *> *)fileRefs {
+    return SlockIosRetireThreadComposerTemporaryFileRefs(sessionId, fileRefs);
+}
+@end
+
+static SlockIosThreadComposerTemporaryFileRetirementHandler *SlockIosRetirementHandlerInstance;
+
+void SlockIosInstallThreadComposerTemporaryFileRetirement(void) {
+    if (SlockIosRetirementHandlerInstance == nil) {
+        SlockIosRetirementHandlerInstance = [SlockIosThreadComposerTemporaryFileRetirementHandler new];
+    }
+    [SharedThreadComposerTemporaryFileRetirement.shared
+        installHandler:SlockIosRetirementHandlerInstance];
+    SlockIosDiagnosticsRecord(
+        @"info",
+        @"SlockFilePreviewCleanup",
+        @"ios_retirement_handler_installed");
+}
+
 static NSArray<NSString *> *SlockDiagnosticsLogFilesAtRoot(NSString *root, NSUInteger maxSessions) {
     NSMutableArray<NSString *> *paths = [NSMutableArray array];
     NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:root error:nil] ?: @[];
@@ -1993,12 +2297,27 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
 
 static BOOL SlockAttachmentIsImage(NSString *fileName, NSString *mimeType, NSURL *sourceURL) {
     NSString *normalizedMimeType = SlockBridgeString(mimeType).lowercaseString;
+    normalizedMimeType = [[normalizedMimeType componentsSeparatedByString:@";"] firstObject] ?: @"";
+    NSString *nameExtension = SlockBridgeString(fileName).pathExtension.lowercaseString;
+    NSString *sourceExtension = sourceURL.pathExtension.lowercaseString;
+    // Picker providers occasionally pair an image MIME/name with a movie-backed URL.  Treat a
+    // known video suffix from either identity as authoritative and reject it before accepting
+    // image/*; otherwise generic attachFile can send the movie through ImageIO compression.
+    NSSet<NSString *> *videoExtensions = [NSSet setWithArray:@[
+        @"3gp", @"3g2", @"avi", @"flv", @"m4v", @"mkv", @"mov", @"mp4", @"mpeg", @"mpg",
+        @"m2p", @"m2ts", @"mts", @"qt", @"ts", @"webm", @"wmv"
+    ]];
+    if ([videoExtensions containsObject:nameExtension] ||
+        [videoExtensions containsObject:sourceExtension] ||
+        [normalizedMimeType hasPrefix:@"video/"]) {
+        return NO;
+    }
     if ([normalizedMimeType hasPrefix:@"image/"]) {
         return YES;
     }
-    NSString *extension = SlockBridgeString(fileName).pathExtension.lowercaseString;
+    NSString *extension = nameExtension;
     if (extension.length == 0) {
-        extension = sourceURL.pathExtension.lowercaseString;
+        extension = sourceExtension;
     }
     NSSet<NSString *> *imageExtensions = [NSSet setWithArray:@[
         @"avif", @"bmp", @"gif", @"heic", @"heif", @"jpeg", @"jpg", @"png", @"webp", @"tif", @"tiff"
@@ -2016,6 +2335,233 @@ static NSError *SlockThreadAttachmentImageCompressionError(NSString *message) {
 static BOOL SlockIsThreadAttachmentImageCompressionError(NSError *error) {
     return [error.domain isEqualToString:SlockThreadAttachmentImageCompressionErrorDomain];
 }
+
+static NSDictionary *SlockThreadImageCompressionFailurePayload(void) {
+    return @{
+        @"code" : @400,
+        @"errorCode" : @"attachment_image_compression_failed",
+        @"errorBodyText" : @"Unable to compress image attachment"
+    };
+}
+
+static NSString *SlockThreadImageCompressionMimeType(NSString *value) {
+    NSString *mime = SlockBridgeString(value).lowercaseString;
+    return [[mime componentsSeparatedByString:@";"] firstObject] ?: @"";
+}
+
+static BOOL SlockThreadImageCompressionSafeName(NSString *value) {
+    NSString *name = SlockBridgeString(value);
+    if (name.length == 0 || name.length > SlockThreadImageCompressionMaxFileNameLength) {
+        return NO;
+    }
+    if ([name containsString:@"/"] || [name containsString:@"\\"] || [name containsString:@".."] ||
+        [name rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound) {
+        return NO;
+    }
+    return YES;
+}
+
+static NSString *SlockThreadImageCompressionOutputName(NSString *fileName) {
+    NSString *leaf = SlockBridgeString(fileName).lastPathComponent;
+    if (leaf.length == 0) leaf = @"image";
+    NSString *stem = [leaf stringByDeletingPathExtension];
+    if (stem.length == 0) stem = @"image";
+    NSMutableString *safe = [NSMutableString stringWithCapacity:stem.length];
+    NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:
+        @"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._- "];
+    for (NSUInteger index = 0; index < stem.length; index++) {
+        unichar character = [stem characterAtIndex:index];
+        [safe appendFormat:@"%C", [allowed characterIsMember:character] ? character : '_'];
+    }
+    NSString *trimmed = [safe stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (trimmed.length == 0) trimmed = @"image";
+    if (trimmed.length > SlockThreadImageCompressionMaxFileNameLength) {
+        trimmed = [trimmed substringToIndex:SlockThreadImageCompressionMaxFileNameLength];
+    }
+    return [trimmed stringByAppendingPathExtension:@"jpg"];
+}
+
+static BOOL SlockThreadImageCompressionPathInside(NSString *rootPath, NSString *candidatePath) {
+    NSString *prefix = [rootPath hasSuffix:@"/"] ? rootPath : [rootPath stringByAppendingString:@"/"];
+    return [candidatePath hasPrefix:prefix];
+}
+
+static NSURL *SlockThreadImageCompressionSourceURL(NSString *fileRef, NSArray<NSURL *> *roots) {
+    NSString *raw = SlockBridgeString(fileRef);
+    if (raw.length == 0 ||
+        [raw rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound) {
+        return nil;
+    }
+    NSURL *url = nil;
+    if ([raw hasPrefix:@"/"]) {
+        url = [NSURL fileURLWithPath:raw];
+    } else {
+        NSURL *candidate = [NSURL URLWithString:raw];
+        if (!candidate.isFileURL || candidate.host.length > 0 || candidate.query.length > 0 ||
+            candidate.fragment.length > 0) {
+            return nil;
+        }
+        url = candidate;
+    }
+    if (!url || !url.isFileURL) return nil;
+    NSURL *resolved = [[[url URLByResolvingSymlinksInPath] standardizedURL] copy];
+    if (!resolved.path.length) return nil;
+    NSDictionary<NSFileAttributeKey, id> *attributes =
+        [NSFileManager.defaultManager attributesOfItemAtPath:resolved.path error:nil];
+    if (![attributes[NSFileType] isEqualToString:NSFileTypeRegular] ||
+        [attributes[NSFileSize] unsignedLongLongValue] == 0) {
+        return nil;
+    }
+    for (NSURL *rootURL in roots) {
+        NSString *rootPath = [[[rootURL URLByResolvingSymlinksInPath] standardizedURL] path];
+        if (rootPath.length > 0 && SlockThreadImageCompressionPathInside(rootPath, resolved.path)) {
+            return resolved;
+        }
+    }
+    return nil;
+}
+
+static BOOL SlockThreadImageCompressionInputIsImage(NSString *fileName,
+                                                     NSString *mimeType,
+                                                     NSURL *sourceURL) {
+    NSString *mime = SlockThreadImageCompressionMimeType(mimeType);
+    if (![mime hasPrefix:@"image/"]) return NO;
+    NSSet<NSString *> *videoExtensions = [NSSet setWithArray:@[
+        @"3gp", @"3g2", @"avi", @"flv", @"m4v", @"mkv", @"mov", @"mp4", @"mpeg", @"mpg",
+        @"m2p", @"m2ts", @"mts", @"qt", @"ts", @"webm", @"wmv"
+    ]];
+    NSString *nameExtension = fileName.pathExtension.lowercaseString;
+    NSString *sourceExtension = sourceURL.pathExtension.lowercaseString;
+    // Providers can disagree about the display name and URL extension.  Reject either known
+    // video extension before ImageIO gets a chance to interpret the bytes as an image.
+    return ![videoExtensions containsObject:nameExtension] &&
+        ![videoExtensions containsObject:sourceExtension];
+}
+
+typedef NS_ENUM(NSInteger, SlockThreadImageCompressionOperationState) {
+    SlockThreadImageCompressionOperationStateActive = 0,
+    SlockThreadImageCompressionOperationStatePending = 1,
+    SlockThreadImageCompressionOperationStateDelivered = 2,
+    SlockThreadImageCompressionOperationStateCancelled = 3,
+};
+
+/**
+ * State and output ownership for one asynchronous editor-image compression request.
+ *
+ * The renderer can destroy a page while ImageIO is still decoding.  Keeping cancellation and
+ * delivery state on a small lock-protected object lets the worker finish its autorelease pool
+ * without ever invoking a stale callback or publishing a part file as a JPEG.
+ */
+@interface SlockThreadImageCompressionOperation : NSObject
+
+@property(nonatomic, copy) NSString *requestId;
+@property(nonatomic, copy) KuiklyRenderCallback callback;
+@property(nonatomic, strong) NSURL *outputURL;
+@property(nonatomic, strong) NSURL *partURL;
+@property(nonatomic, strong) NSRecursiveLock *lock;
+/** Serializes write→rename with every output cleanup path. */
+@property(nonatomic, strong) NSRecursiveLock *outputLock;
+@property(nonatomic) SlockThreadImageCompressionOperationState state;
+
+- (BOOL)markCancelled;
+- (BOOL)markCancelledForce:(BOOL)force;
+- (BOOL)markPending;
+- (BOOL)markDelivered;
+- (BOOL)isCancelled;
+- (BOOL)isPending;
+- (BOOL)isDelivered;
+- (void)removeOutputs;
+
+@end
+
+@implementation SlockThreadImageCompressionOperation
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        // Delivery invokes an arbitrary renderer callback while the operation fence is held.
+        // Recursive locking keeps same-thread cancel/re-entry harmless while other threads
+        // wait until the callback has either completed or been fenced by teardown.
+        _lock = [[NSRecursiveLock alloc] init];
+        // Keep output ownership independent from state/map locks.  Callers must never acquire
+        // the map/state fence while holding this lock, which keeps teardown lock ordering acyclic.
+        _outputLock = [[NSRecursiveLock alloc] init];
+        _state = SlockThreadImageCompressionOperationStateActive;
+    }
+    return self;
+}
+
+- (BOOL)markCancelled {
+    return [self markCancelledForce:NO];
+}
+
+- (BOOL)markCancelledForce:(BOOL)force {
+    BOOL changed = NO;
+    [self.lock lock];
+    if (self.state != SlockThreadImageCompressionOperationStateCancelled &&
+        (force || self.state != SlockThreadImageCompressionOperationStateDelivered)) {
+        self.state = SlockThreadImageCompressionOperationStateCancelled;
+        changed = YES;
+    }
+    [self.lock unlock];
+    return changed;
+}
+
+- (BOOL)markPending {
+    BOOL changed = NO;
+    [self.lock lock];
+    if (self.state == SlockThreadImageCompressionOperationStateActive) {
+        self.state = SlockThreadImageCompressionOperationStatePending;
+        changed = YES;
+    }
+    [self.lock unlock];
+    return changed;
+}
+
+- (BOOL)markDelivered {
+    BOOL changed = NO;
+    [self.lock lock];
+    if (self.state == SlockThreadImageCompressionOperationStatePending) {
+        self.state = SlockThreadImageCompressionOperationStateDelivered;
+        changed = YES;
+    }
+    [self.lock unlock];
+    return changed;
+}
+
+- (BOOL)isCancelled {
+    [self.lock lock];
+    BOOL cancelled = self.state == SlockThreadImageCompressionOperationStateCancelled;
+    [self.lock unlock];
+    return cancelled;
+}
+
+- (BOOL)isDelivered {
+    [self.lock lock];
+    BOOL delivered = self.state == SlockThreadImageCompressionOperationStateDelivered;
+    [self.lock unlock];
+    return delivered;
+}
+
+- (BOOL)isPending {
+    [self.lock lock];
+    BOOL pending = self.state == SlockThreadImageCompressionOperationStatePending;
+    [self.lock unlock];
+    return pending;
+}
+
+- (void)removeOutputs {
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    [self.outputLock lock];
+    @try {
+        if (self.partURL) [fileManager removeItemAtURL:self.partURL error:nil];
+        if (self.outputURL) [fileManager removeItemAtURL:self.outputURL error:nil];
+    } @finally {
+        [self.outputLock unlock];
+    }
+}
+
+@end
 
 static NSString *SlockCompressedAttachmentFileName(NSString *fileName) {
     NSString *leaf = SlockBridgeString(fileName).lastPathComponent;
@@ -2068,6 +2614,11 @@ static BOOL SlockWriteJPEGFromCGImage(CGImageRef image,
 static BOOL SlockWriteCompressedPickedImage(NSURL *sourceURL,
                                             NSURL *targetURL,
                                             NSError **error) {
+    // Encode into a sibling part first.  A picker/bridge cancellation or encoder failure must
+    // never leave a path that looks like a complete JPEG; the final name is published only by
+    // same-directory rename after ImageIO has finalized and size-checked the part.
+    NSURL *partURL = [targetURL URLByAppendingPathExtension:@"part"];
+    [NSFileManager.defaultManager removeItemAtURL:partURL error:nil];
     CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)sourceURL, NULL);
     if (!source || CGImageSourceGetCount(source) == 0) {
         if (source) CFRelease(source);
@@ -2085,9 +2636,21 @@ static BOOL SlockWriteCompressedPickedImage(NSURL *sourceURL,
         0,
         (__bridge CFDictionaryRef)thumbnailOptions
     );
-    BOOL result = SlockWriteJPEGFromCGImage(thumbnail, targetURL, error);
+    BOOL result = SlockWriteJPEGFromCGImage(thumbnail, partURL, error);
     if (thumbnail) CFRelease(thumbnail);
     CFRelease(source);
+    if (!result) {
+        [NSFileManager.defaultManager removeItemAtURL:partURL error:nil];
+        return NO;
+    }
+    NSError *moveError = nil;
+    if (![NSFileManager.defaultManager moveItemAtURL:partURL toURL:targetURL error:&moveError]) {
+        [NSFileManager.defaultManager removeItemAtURL:partURL error:nil];
+        if (error) *error = SlockThreadAttachmentImageCompressionError(
+            moveError.localizedDescription ?: @"Unable to commit image attachment"
+        );
+        return NO;
+    }
     return result;
 }
 
@@ -2353,6 +2916,9 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
 @property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentPickerCallback;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentPickerChannelId;
 @property(nonatomic) BOOL slock_attachmentPickerCompressImages;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, SlockThreadImageCompressionOperation *> *slock_threadImageCompressionOperations;
+@property(nonatomic, strong) NSRecursiveLock *slock_threadImageCompressionOperationsLock;
+@property(nonatomic) BOOL slock_threadImageCompressionDestroyed;
 
 - (void)slock_finishAttachmentExport:(NSDictionary *)result;
 - (void)slock_startAttachmentExport:(NSDictionary *)args destination:(NSString *)destination;
@@ -2372,6 +2938,14 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
                                                  mimeType:(nullable NSString *)mimeType
                                         compressImages:(BOOL)compressImages
                                                     error:(NSError * _Nullable * _Nullable)error;
+- (void)compressThreadImage:(NSDictionary *)args;
+- (void)cancelCompressThreadImage:(NSDictionary *)args;
+- (BOOL)slock_finishThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation
+                                             payload:(NSDictionary *)payload;
+- (void)slock_removeThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation;
+- (BOOL)slock_isThreadImageCompressionDestroyed;
+- (BOOL)slock_isCurrentThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation;
+- (void)slock_dispatchThreadImageCompressionFailure:(KuiklyRenderCallback)callback;
 
 @end
 
@@ -2383,6 +2957,16 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
 @implementation HRBridgeModule
 
 @synthesize hr_rootView;
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _slock_threadImageCompressionOperations = [NSMutableDictionary dictionary];
+        _slock_threadImageCompressionOperationsLock = [[NSRecursiveLock alloc] init];
+        _slock_threadImageCompressionDestroyed = NO;
+    }
+    return self;
+}
 
 - (void)copyToPasteboard:(NSDictionary *)args {
     NSDictionary *params = SlockBridgeParams(args);
@@ -2938,6 +3522,326 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
             }
         });
     }];
+}
+
+- (void)compressThreadImage:(NSDictionary *)args {
+    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    if (!callback) {
+        return;
+    }
+    NSDictionary *params = SlockBridgeParams(args);
+    NSString *requestId = SlockBridgeString(params[@"requestId"]);
+    NSString *fileName = SlockBridgeString(params[@"fileName"]);
+    NSString *mimeType = SlockThreadImageCompressionMimeType(SlockBridgeString(params[@"mimeType"]));
+    NSString *fileRef = SlockBridgeRawString(params[@"fileRef"]);
+    BOOL validRequest = requestId.length > 0 &&
+        requestId.length <= SlockThreadImageCompressionMaxRequestIdLength &&
+        [requestId rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound &&
+        SlockThreadImageCompressionSafeName(fileName) &&
+        mimeType.length > 0 && [mimeType hasPrefix:@"image/"] &&
+        fileRef.length > 0 &&
+        [fileRef rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound;
+    if (!validRequest) {
+        [self slock_dispatchThreadImageCompressionFailure:callback];
+        return;
+    }
+
+    SlockThreadImageCompressionOperation *operation = [[SlockThreadImageCompressionOperation alloc] init];
+    operation.requestId = requestId;
+    operation.callback = callback;
+    NSArray<NSURL *> *roots = @[
+        [NSURL fileURLWithPath:NSTemporaryDirectory() ?: @"" isDirectory:YES],
+        [NSURL fileURLWithPath:NSSearchPathForDirectoriesInDomains(
+            NSCachesDirectory, NSUserDomainMask, YES).firstObject ?: @"" isDirectory:YES]
+    ];
+    NSString *cacheRootPath = NSSearchPathForDirectoriesInDomains(
+        NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+    NSURL *cacheDirectory = cacheRootPath.length > 0
+        ? [[[NSURL fileURLWithPath:cacheRootPath isDirectory:YES]
+            URLByAppendingPathComponent:@"Slock" isDirectory:YES]
+            URLByAppendingPathComponent:SlockThreadImageCompressionDirectoryName isDirectory:YES]
+        : nil;
+    if (!cacheDirectory) {
+        [operation markCancelled];
+        [self slock_dispatchThreadImageCompressionFailure:callback];
+        return;
+    }
+    NSString *outputName = [NSString stringWithFormat:@"composer-image-%@.jpg", NSUUID.UUID.UUIDString];
+    operation.outputURL = [cacheDirectory URLByAppendingPathComponent:outputName isDirectory:NO];
+    operation.partURL = [operation.outputURL URLByAppendingPathExtension:@"part"];
+
+    [self.slock_threadImageCompressionOperationsLock lock];
+    SlockThreadImageCompressionOperation *existing =
+        self.slock_threadImageCompressionOperations[requestId];
+    BOOL destroyed = self.slock_threadImageCompressionDestroyed;
+    if (!existing && !destroyed) {
+        self.slock_threadImageCompressionOperations[requestId] = operation;
+    }
+    [self.slock_threadImageCompressionOperationsLock unlock];
+    if (existing || destroyed) {
+        [operation markCancelled];
+        [self slock_dispatchThreadImageCompressionFailure:callback];
+        return;
+    }
+
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        @autoreleasepool {
+            BOOL responseAccepted = NO;
+            NSDictionary *terminalPayload = nil;
+            NSError *error = nil;
+            @try {
+                if ([operation isCancelled] || !weakSelf ||
+                    ![weakSelf slock_isCurrentThreadImageCompressionOperation:operation]) {
+                    [operation markCancelledForce:YES];
+                    return;
+                }
+                NSFileManager *fileManager = NSFileManager.defaultManager;
+                BOOL isDirectory = NO;
+                if (![fileManager createDirectoryAtURL:cacheDirectory
+                           withIntermediateDirectories:YES
+                                            attributes:nil
+                                                 error:&error] ||
+                    ![fileManager fileExistsAtPath:cacheDirectory.path isDirectory:&isDirectory] ||
+                    !isDirectory) {
+                    error = SlockThreadAttachmentImageCompressionError(@"Attachment cache unavailable");
+                    return;
+                }
+                NSURL *sourceURL = SlockThreadImageCompressionSourceURL(fileRef, roots);
+                if (!sourceURL || !SlockThreadImageCompressionInputIsImage(fileName, mimeType, sourceURL) ||
+                    [operation isCancelled] || !weakSelf ||
+                    ![weakSelf slock_isCurrentThreadImageCompressionOperation:operation]) {
+                    error = SlockThreadAttachmentImageCompressionError(@"Unable to decode image attachment");
+                    return;
+                }
+                // Serialize the complete part-write → rename → size-validation transaction with
+                // cancel/dealloc cleanup.  Without this fence, teardown can remove the output
+                // before ImageIO renames its sibling `.part`, allowing a late worker to recreate
+                // a final JPEG after the module has already retired the operation.
+                NSDictionary<NSFileAttributeKey, id> *attributes = nil;
+                BOOL encoded = NO;
+                [operation.outputLock lock];
+                @try {
+                    encoded = SlockWriteCompressedPickedImage(sourceURL, operation.outputURL, &error);
+                    if (encoded) {
+                        attributes = [fileManager attributesOfItemAtPath:operation.outputURL.path error:&error];
+                    }
+                } @finally {
+                    [operation.outputLock unlock];
+                }
+                if (!encoded ||
+                    ![attributes[NSFileType] isEqualToString:NSFileTypeRegular] ||
+                    [attributes[NSFileSize] unsignedLongLongValue] == 0 || [operation isCancelled] ||
+                    !weakSelf || ![weakSelf slock_isCurrentThreadImageCompressionOperation:operation]) {
+                    error = SlockThreadAttachmentImageCompressionError(@"Unable to encode image attachment");
+                    return;
+                }
+                NSString *outputRef = operation.outputURL.absoluteString ?: @"";
+                NSDictionary *file = @{
+                    @"fileRef" : outputRef,
+                    @"fileName" : SlockThreadImageCompressionOutputName(fileName),
+                    @"mimeType" : @"image/jpeg",
+                    @"previewUri" : outputRef,
+                    @"sizeBytes" : attributes[NSFileSize] ?: @0,
+                    @"source" : SlockThreadImageCompressionSource
+                };
+                NSData *bodyData = [NSJSONSerialization dataWithJSONObject:@{ @"files" : @[ file ] }
+                                                               options:0
+                                                                 error:&error];
+                if (!bodyData) {
+                    error = SlockThreadAttachmentImageCompressionError(@"Unable to encode image attachment");
+                    return;
+                }
+                NSString *bodyText = [[NSString alloc] initWithData:bodyData encoding:NSUTF8StringEncoding];
+                if (bodyText.length == 0) {
+                    return;
+                }
+                terminalPayload = @{ @"code" : @200, @"bodyText" : bodyText };
+            } @catch (__unused NSException *exception) {
+                error = SlockThreadAttachmentImageCompressionError(@"Unable to compress image attachment");
+            } @finally {
+                if (![operation isCancelled]) {
+                    @try {
+                        if (weakSelf) {
+                            // Build the terminal result first, then admit exactly one response.
+                            // An exception after the JPEG was encoded but before the success
+                            // payload was complete must still fail closed instead of leaving the
+                            // shared coroutine waiting forever.
+                            responseAccepted = [weakSelf slock_finishThreadImageCompressionOperation:
+                                operation
+                                payload:terminalPayload ?: SlockThreadImageCompressionFailurePayload()];
+                        } else {
+                            [operation markCancelledForce:YES];
+                        }
+                    } @catch (__unused NSException *exception) {
+                        // A bridge/lifecycle exception during response admission is terminal.
+                        // Never attempt a second callback; cancel and let the cleanup fence below
+                        // remove any unpublished output.
+                        [operation markCancelledForce:YES];
+                    }
+                }
+                BOOL terminalOwned = responseAccepted || [operation isPending] || [operation isDelivered];
+                // A generated JPEG is only owned by the consumer after finish has admitted the
+                // terminal payload to the main-thread delivery fence.  Rejected/stale/cancelled
+                // operations (and every failure payload) therefore clean both the final JPEG and
+                // its sibling part here.
+                if (!terminalPayload || !terminalOwned || [operation isCancelled]) {
+                    [operation removeOutputs];
+                }
+                if (!terminalOwned || [operation isCancelled]) {
+                    if (weakSelf) {
+                        [weakSelf slock_removeThreadImageCompressionOperation:operation];
+                    }
+                }
+            }
+        }
+    });
+}
+
+- (void)cancelCompressThreadImage:(NSDictionary *)args {
+    NSString *requestId = SlockBridgeString(SlockBridgeParams(args)[@"requestId"]);
+    if (requestId.length == 0) {
+        return;
+    }
+    [self.slock_threadImageCompressionOperationsLock lock];
+    SlockThreadImageCompressionOperation *operation = self.slock_threadImageCompressionOperations[requestId];
+    [self.slock_threadImageCompressionOperationsLock unlock];
+    if (!operation || ![operation markCancelled]) {
+        // In particular, an already-delivered response belongs to the consumer.  Do not remove
+        // its map entry or generated JPEG on an ordinary cancel; the delivery fence retires the
+        // entry after the callback returns.
+        return;
+    }
+    [self.slock_threadImageCompressionOperationsLock lock];
+    if (self.slock_threadImageCompressionOperations[requestId] == operation) {
+        [self.slock_threadImageCompressionOperations removeObjectForKey:requestId];
+    }
+    [self.slock_threadImageCompressionOperationsLock unlock];
+    [operation removeOutputs];
+}
+
+- (void)slock_removeThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation {
+    if (!operation) return;
+    [self.slock_threadImageCompressionOperationsLock lock];
+    if (self.slock_threadImageCompressionOperations[operation.requestId] == operation) {
+        [self.slock_threadImageCompressionOperations removeObjectForKey:operation.requestId];
+    }
+    [self.slock_threadImageCompressionOperationsLock unlock];
+}
+
+- (BOOL)slock_isThreadImageCompressionDestroyed {
+    [self.slock_threadImageCompressionOperationsLock lock];
+    BOOL destroyed = self.slock_threadImageCompressionDestroyed;
+    [self.slock_threadImageCompressionOperationsLock unlock];
+    return destroyed;
+}
+
+- (BOOL)slock_isCurrentThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation {
+    if (!operation) return NO;
+    [self.slock_threadImageCompressionOperationsLock lock];
+    BOOL current = !self.slock_threadImageCompressionDestroyed &&
+        self.slock_threadImageCompressionOperations[operation.requestId] == operation;
+    [self.slock_threadImageCompressionOperationsLock unlock];
+    return current;
+}
+
+- (void)slock_dispatchThreadImageCompressionFailure:(KuiklyRenderCallback)callback {
+    if (!callback) return;
+    __weak typeof(self) weakSelf = self;
+    SlockBridgeRunOnMain(^{
+        HRBridgeModule *strongSelf = weakSelf;
+        if (!strongSelf) {
+            return;
+        }
+        [strongSelf.slock_threadImageCompressionOperationsLock lock];
+        if (!strongSelf.slock_threadImageCompressionDestroyed) {
+            @try {
+                callback(SlockThreadImageCompressionFailurePayload());
+            } @catch (__unused NSException *exception) {
+                // Renderer callback removal during teardown is terminal and must not escape the
+                // native dispatch turn.
+            }
+        }
+        [strongSelf.slock_threadImageCompressionOperationsLock unlock];
+    });
+}
+
+- (BOOL)slock_finishThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation
+                                             payload:(NSDictionary *)payload {
+    if (!operation) return NO;
+
+    // Reserve ACTIVE -> PENDING while the map and operation locks are held together.  Keeping
+    // this lock order (map first, operation second) matches cancel and dealloc, so teardown
+    // cannot pass the identity check between reservation and the main-thread callback fence.
+    [self.slock_threadImageCompressionOperationsLock lock];
+    [operation.lock lock];
+    BOOL admitted = !self.slock_threadImageCompressionDestroyed &&
+        self.slock_threadImageCompressionOperations[operation.requestId] == operation &&
+        operation.state == SlockThreadImageCompressionOperationStateActive;
+    if (admitted) operation.state = SlockThreadImageCompressionOperationStatePending;
+    [operation.lock unlock];
+    [self.slock_threadImageCompressionOperationsLock unlock];
+    if (!admitted) {
+        if (![operation isDelivered]) {
+            [operation markCancelledForce:YES];
+            [operation removeOutputs];
+        }
+        return NO;
+    }
+
+    __weak typeof(self) weakSelf = self;
+    SlockBridgeRunOnMain(^{
+        HRBridgeModule *strongSelf = weakSelf;
+        if (!strongSelf) {
+            [operation markCancelledForce:YES];
+            [operation removeOutputs];
+            return;
+        }
+
+        BOOL callbackInvoked = NO;
+        BOOL callbackFailed = NO;
+        [strongSelf.slock_threadImageCompressionOperationsLock lock];
+        [operation.lock lock];
+        BOOL current = !strongSelf.slock_threadImageCompressionDestroyed &&
+            strongSelf.slock_threadImageCompressionOperations[operation.requestId] == operation &&
+            operation.state == SlockThreadImageCompressionOperationStatePending;
+        if (current) {
+            // Hold both lifecycle locks across callback invocation.  A re-entrant ordinary cancel
+            // observes DELIVERED and is a no-op; another thread waits until the callback has
+            // returned before it can cancel or force-clean this operation.
+            operation.state = SlockThreadImageCompressionOperationStateDelivered;
+            KuiklyRenderCallback callback = operation.callback;
+            if (callback) {
+                callbackInvoked = YES;
+                @try {
+                    callback(payload ?: SlockThreadImageCompressionFailurePayload());
+                } @catch (__unused NSException *exception) {
+                    callbackFailed = YES;
+                    operation.state = SlockThreadImageCompressionOperationStateCancelled;
+                }
+            } else {
+                operation.state = SlockThreadImageCompressionOperationStateCancelled;
+            }
+        } else if (strongSelf.slock_threadImageCompressionOperations[operation.requestId] == operation) {
+            // The operation became stale or teardown started after worker admission.  Fence it
+            // before releasing the locks so no later callback can observe a pending identity.
+            operation.state = SlockThreadImageCompressionOperationStateCancelled;
+            [strongSelf.slock_threadImageCompressionOperations removeObjectForKey:operation.requestId];
+        }
+        [operation.lock unlock];
+        [strongSelf.slock_threadImageCompressionOperationsLock unlock];
+
+        // Keep a DELIVERED operation in the map until this callback turn has finished.  This
+        // gives module destruction a chance to force-clean a still-tracked output, while a normal
+        // cancel that re-enters from the callback observes DELIVERED and leaves ownership alone.
+        if (current) {
+            [strongSelf slock_removeThreadImageCompressionOperation:operation];
+        }
+        if (!current || callbackFailed || !callbackInvoked) {
+            [operation removeOutputs];
+        }
+    });
+    return YES;
 }
 
 - (void)socialAuth:(NSDictionary *)args {
@@ -3844,72 +4748,41 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     }
 }
 
-- (void)retireFilePreviewTemporaryFiles:(NSDictionary *)args {
+- (NSString *)retireFilePreviewTemporaryFiles:(NSDictionary *)args {
     NSDictionary *params = SlockBridgeParams(args);
+    NSString *sessionId = SlockBridgeString(params[@"sessionId"]);
     NSArray *rawRefs = [params[@"fileRefs"] isKindOfClass:NSArray.class] ? params[@"fileRefs"] : @[];
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        NSFileManager *fileManager = NSFileManager.defaultManager;
-        NSMutableArray<NSString *> *cacheRoots = [NSMutableArray array];
-        NSArray<NSString *> *candidateRoots = @[
-            NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject ?: @"",
-            NSTemporaryDirectory() ?: @""
-        ];
-        for (NSString *candidateRoot in candidateRoots) {
-            if (candidateRoot.length == 0) continue;
-            NSString *root = [[[NSURL fileURLWithPath:candidateRoot isDirectory:YES] URLByResolvingSymlinksInPath] standardizedURL].path;
-            if (root.length > 0 && ![cacheRoots containsObject:root]) {
-                [cacheRoots addObject:root];
-            }
-        }
-
-        NSMutableSet<NSString *> *seenRefs = [NSMutableSet set];
-        NSUInteger admitted = 0;
-        NSUInteger deleted = 0;
-        for (id rawRef in rawRefs) {
-            if (![rawRef isKindOfClass:NSString.class]) continue;
-            NSString *fileRef = [(NSString *)rawRef stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-            if (fileRef.length == 0 || [seenRefs containsObject:fileRef]) continue;
-            [seenRefs addObject:fileRef];
-            NSURL *url = nil;
-            if ([fileRef hasPrefix:@"/"]) {
-                url = [NSURL fileURLWithPath:fileRef];
-            } else {
-                NSURL *candidate = [NSURL URLWithString:fileRef];
-                if (candidate.isFileURL && candidate.host.length == 0) {
-                    url = candidate;
-                }
-            }
-            if (!url) continue;
-            NSString *path = [[url URLByResolvingSymlinksInPath] standardizedURL].path;
-            NSDictionary<NSFileAttributeKey, id> *attributes =
-                path.length > 0 ? [fileManager attributesOfItemAtPath:path error:nil] : nil;
-            if (![attributes[NSFileType] isEqualToString:NSFileTypeRegular]) {
-                continue;
-            }
-            BOOL insideCache = NO;
-            for (NSString *root in cacheRoots) {
-                NSString *prefix = [root hasSuffix:@"/"] ? root : [root stringByAppendingString:@"/"];
-                if ([path hasPrefix:prefix]) {
-                    insideCache = YES;
-                    break;
-                }
-            }
-            if (!insideCache) continue;
-            admitted += 1;
-            if ([fileManager removeItemAtPath:path error:nil]) {
-                deleted += 1;
-            }
-        }
-        SlockDiagnosticsRecord(
-            @"info",
-            @"SlockFilePreviewCleanup",
-            [NSString stringWithFormat:@"requested=%lu admitted=%lu deleted=%lu rejected=%lu",
-                                       (unsigned long)seenRefs.count,
-                                       (unsigned long)admitted,
-                                       (unsigned long)deleted,
-                                       (unsigned long)(seenRefs.count - admitted)]
-        );
-    });
+    NSMutableSet<NSString *> *refs = [NSMutableSet set];
+    for (id rawRef in rawRefs) {
+        if (![rawRef isKindOfClass:NSString.class]) continue;
+        NSString *ref = [(NSString *)rawRef
+            stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (ref.length > 0) [refs addObject:ref];
+    }
+    SharedThreadComposerTemporaryFileRetirementResult *result =
+        SlockIosRetireThreadComposerTemporaryFileRefs(sessionId, refs);
+    SlockIosDiagnosticsRecord(
+        @"info",
+        @"SlockFilePreviewCleanup",
+        [NSString stringWithFormat:@"session=%@ requested=%d admitted=%d quarantined=%d rejected=%d failed=%d",
+                                   result.sessionId,
+                                   result.requestedCount,
+                                   result.admittedCount,
+                                   result.quarantinedCount,
+                                   result.rejectedCount,
+                                   result.failedCount]
+    );
+    return [NSString stringWithFormat:
+        @"{\"status\":\"%@\",\"requested\":%d,\"admitted\":%d,\"quarantined\":%d,\"rejected\":%d,\"failed\":%d%@}",
+        result.succeeded ? @"quarantined" : @"failed",
+        result.requestedCount,
+        result.admittedCount,
+        result.quarantinedCount,
+        result.rejectedCount,
+        result.failedCount,
+        result.errorCode.length > 0
+            ? [NSString stringWithFormat:@",\"errorCode\":\"%@\"", result.errorCode]
+            : @""];
 }
 
 - (void)attachmentDownloadControl:(NSDictionary *)args {
@@ -4460,6 +5333,26 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
             [label removeFromSuperview];
         }];
     }];
+}
+
+- (void)dealloc {
+    NSArray<SlockThreadImageCompressionOperation *> *operations = @[];
+    if (_slock_threadImageCompressionOperationsLock) {
+        [_slock_threadImageCompressionOperationsLock lock];
+        // Publish the terminal lifecycle fence before dropping the map.  Any worker/main block
+        // that still owns a weak reference will observe this bit and must not invoke a renderer
+        // callback after the module starts teardown.
+        _slock_threadImageCompressionDestroyed = YES;
+        operations = [_slock_threadImageCompressionOperations.allValues copy];
+        [_slock_threadImageCompressionOperations removeAllObjects];
+        [_slock_threadImageCompressionOperationsLock unlock];
+    }
+    for (SlockThreadImageCompressionOperation *operation in operations) {
+        // Destruction is the sole force-cancel path: even a DELIVERED operation may still own a
+        // tracked output until its callback turn has returned, so teardown must remove it.
+        [operation markCancelledForce:YES];
+        [operation removeOutputs];
+    }
 }
 
 @end

@@ -36,6 +36,10 @@ internal data class SettingsHandsFeedbackImageEditEvent(
     val groupId: String,
     val index: Int,
     val total: Int,
+    /** The closed source marker carried by the native editor finalization. */
+    val source: String,
+    /** Explicit JSON Boolean proving whether the final result is a JPEG compression output. */
+    val compressed: Boolean,
     val file: PlatformFile
 )
 
@@ -168,6 +172,10 @@ internal fun settingsHandsFeedbackImageEditRequest(
                 composerImageOwnedTemporaryFileRefs =
                     files.filter(PlatformFile::isComposerImageOwnedTemporary)
                         .mapNotNull(PlatformFile::fileRef),
+                // Feedback has no "original image" control. Freeze the product default here
+                // instead of inheriting SlockFilePreviewPayload's non-composer-safe false
+                // default: editor PNG output must receive the same JPEG pass as composer images.
+                composerImageCompressAfterEdit = true,
                 composerImageCanComplete = true,
                 composerImageCanEdit = true
             )
@@ -205,31 +213,37 @@ internal fun normalizeSettingsHandsFeedbackPickerFiles(
 internal fun parseSettingsHandsFeedbackImageEditEvent(
     data: JSONObject
 ): SettingsHandsFeedbackImageEditEvent? {
-    if (data.optString("action").orEmpty() != "complete") return null
-    val threadKey = data.optString("threadKey").takeIf { it.isNotBlank() } ?: return null
-    val actionId = data.optString("actionId").takeIf { it.isNotBlank() } ?: return null
-    val groupId = data.optString("groupId").takeIf { it.isNotBlank() } ?: return null
-    val fileRef = data.optString("fileRef").takeIf { it.isNotBlank() } ?: return null
-    val index = data.optInt("groupIndex", -1)
-    val total = data.optInt("groupTotal", -1)
-    val fileName = data.optString("fileName").takeIf { it.isNotBlank() } ?: "image.png"
-    val mimeType = data.optString("mimeType").takeIf { it.isNotBlank() } ?: "image/png"
-    val previewUri = data.optString("previewUri").takeIf { it.isNotBlank() } ?: fileRef
+    // Keep Settings and Thread on one strict parser.  In particular, group metadata and the
+    // explicit source/compressed finalization proof must not drift between consumers.
+    val payload =
+        parseSlockFilePreviewComposerImageEvent(
+            data = data,
+            requireGroup = true
+        ) ?: return null
+    if (payload.action != "complete") return null
+    val groupId = payload.groupId ?: return null
+    val index = payload.groupIndex ?: return null
+    val total = payload.groupTotal ?: return null
     return SettingsHandsFeedbackImageEditEvent(
-        threadKey = threadKey,
-        actionId = actionId,
+        threadKey = payload.threadKey,
+        actionId = payload.actionId,
         groupId = groupId,
         index = index,
         total = total,
+        source = payload.source,
+        compressed = payload.compressed,
         file =
             PlatformFile(
                 id = "feedback-edited-${groupId.take(24)}-$index",
-                fileName = fileName,
-                mimeType = mimeType,
-                sizeBytes = data.optLong("sizeBytes", 0L).takeIf { it > 0L },
-                previewUri = previewUri,
-                fileRef = fileRef,
-                source = "image_annotation"
+                fileName = payload.fileName,
+                mimeType = payload.mimeType,
+                sizeBytes = payload.sizeBytes,
+                previewUri = payload.previewUri,
+                fileRef = payload.fileRef,
+                // The wire source describes finalization; Settings promotion owns the durable
+                // draft source independently so it cannot accidentally persist a transient
+                // editor/compressor marker.
+                source = "settings_feedback_draft"
             )
     )
 }
@@ -239,6 +253,8 @@ internal fun settingsHandsFeedbackImageEditItemKey(
 ): String =
     listOf(
         event.actionId,
+        event.source,
+        event.compressed.toString(),
         event.file.fileRef,
         event.file.fileName,
         event.file.mimeType,

@@ -10,7 +10,10 @@ import build.raft.app.model.TaskSummary
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.ReentrantLock
+import kotlinx.atomicfu.locks.reentrantLock
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.atomicfu.locks.withLock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -144,14 +147,58 @@ internal fun InboxSnapshot.withComposerDraftProjection(
 ): InboxSnapshot =
     copy(items = items.map { item -> item.withComposerDraftProjection(draftProjection) })
 
+/**
+ * A preference store is the synchronization domain for composer drafts.  A page can construct
+ * more than one persistence facade around the same app-scope store (for example Home and Thread,
+ * or two remounted surfaces), so an instance-local lock is not sufficient for the active-key
+ * index and attachment rows.  Match stores by object identity: wrappers are deliberately not
+ * treated as equivalent merely because they expose the same interface.
+ *
+ * The registry is process-lived just like the app-scope preference store.  Keeping the lock after
+ * a facade is released is intentional: dropping it would permit an ABA where a waiter still owns
+ * the old lock while a later facade obtains a fresh lock for the same store.
+ */
+private object SharedThreadComposerDraftStoreLockRegistry {
+    private data class Entry(
+        val store: SharedPreferenceStore,
+        val lock: ReentrantLock
+    )
+
+    private val registryLock = SynchronizedObject()
+    private val entries = mutableListOf<Entry>()
+
+    fun lockFor(store: SharedPreferenceStore): ReentrantLock = synchronized(registryLock) {
+        entries.firstOrNull { entry -> entry.store === store }?.lock
+            ?: reentrantLock().also { lock -> entries += Entry(store = store, lock = lock) }
+    }
+}
+
 internal class SharedThreadComposerDraftPersistence(
     private val store: SharedPreferenceStore,
-    private val diagnosticsLogger: ((String) -> Unit)? = null
+    private val diagnosticsLogger: ((String) -> Unit)? = null,
+    /**
+     * Retire only cache-owned temporary refs which leave the durable draft.  The callback is
+     * deliberately injected at the host/provider seam so this persistence class never guesses
+     * how a platform deletes a file.  This legacy Unit callback remains available to focused
+     * tests and source-compatible callers; production uses [temporaryFileRetirement] below.
+     */
+    private val retireTemporaryFileRefs: ((String, Set<String>) -> Unit)? = null,
+    /**
+     * Typed synchronous retirement seam.  The default registry path is fail-closed when no
+     * platform handler is installed; it never silently treats a missing handler as success.
+     */
+    private val temporaryFileRetirement: ThreadComposerTemporaryFileRetirementHandler =
+        ThreadComposerTemporaryFileRetirementHandler { sessionId, refs ->
+            ThreadComposerTemporaryFileRetirement.retire(sessionId, refs)
+        },
+    /** Test seam for the write→retirement race; production leaves it null. */
+    private val beforeTemporaryFileRefsRetirementFence: (() -> Unit)? = null
 ) {
-    private val lock = SynchronizedObject()
+    /** Shared with every facade which wraps the same [store]. */
+    private val lock = SharedThreadComposerDraftStoreLockRegistry.lockFor(store)
 
-    fun read(key: String): SharedThreadComposerPersistedDraft? = synchronized(lock) {
-        val text = store.getString(textKey(key)) ?: return null
+    fun read(key: String): SharedThreadComposerPersistedDraft? = lock.withLock {
+        val text = store.getString(textKey(key)) ?: return@withLock null
         SharedThreadComposerPersistedDraft(
             text = text,
             asTask = store.getString(asTaskKey(key)) == "true",
@@ -160,9 +207,10 @@ internal class SharedThreadComposerDraftPersistence(
         )
     }
 
-    fun readWithReplyFallback(key: String): Pair<String, SharedThreadComposerPersistedDraft>? = synchronized(lock) {
-        readUnlocked(key)?.let { draft -> return key to draft }
-        val currentRecord = key.toSharedThreadComposerDraftRecord()?.takeUnless { it.isRootComposer } ?: return null
+    fun readWithReplyFallback(key: String): Pair<String, SharedThreadComposerPersistedDraft>? = lock.withLock {
+        readUnlocked(key)?.let { draft -> return@withLock key to draft }
+        val currentRecord = key.toSharedThreadComposerDraftRecord()?.takeUnless { it.isRootComposer }
+            ?: return@withLock null
         activeDraftRecordsUnlocked()
             .filter { record -> record.key != key && record.matchesReplyThreadIdentity(currentRecord) }
             .sortedBy { record -> record.key }
@@ -177,35 +225,113 @@ internal class SharedThreadComposerDraftPersistence(
         uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList(),
         externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList()
     ) {
-        synchronized(lock) {
-            val persistedAttachments = uploadedAttachments.persistableThreadComposerDraftAttachments()
-            diagnosticsLogger?.invoke(
-                "thread_composer_draft_persist_save key=$key textLen=${text.length} " +
-                    "textBlank=${text.isBlank()} asTask=$asTask attachments=${persistedAttachments.size} " +
-                    "activeBefore=${activeKeys().sorted().joinToString(separator = ",")}"
+        val refsToRetire = lock.withLock {
+            saveUnlocked(
+                key = key,
+                text = text,
+                asTask = asTask,
+                uploadedAttachments = uploadedAttachments,
+                externalShareSources = externalShareSources
             )
-            val persistedSources = externalShareSources.validExternalShareComposerSources()
-            if (text.isBlank() && !asTask && persistedAttachments.isEmpty() && persistedSources.isEmpty()) {
-                clearUnlocked(key)
-                return@synchronized
+        }
+        retireTemporaryFileRefsSafely(key, refsToRetire)
+    }
+
+    private fun saveUnlocked(
+        key: String,
+        text: String,
+        asTask: Boolean,
+        uploadedAttachments: List<SharedThreadComposerAttachment>,
+        externalShareSources: List<SharedThreadComposerExternalShareSource>
+    ): Set<String> {
+        val previous = readUnlocked(key)
+        val persistedAttachments = uploadedAttachments.persistableThreadComposerDraftAttachments()
+        val persistedSources = externalShareSources.validExternalShareComposerSources()
+        diagnosticsLogger?.invoke(
+            "thread_composer_draft_persist_save key=$key textLen=${text.length} " +
+                "textBlank=${text.isBlank()} asTask=$asTask attachments=${persistedAttachments.size} " +
+                "activeBefore=${activeKeys().sorted().joinToString(separator = ",")}"
+        )
+        if (text.isBlank() && !asTask && persistedAttachments.isEmpty() && persistedSources.isEmpty()) {
+            return clearUnlocked(key, previous = previous)
+        }
+        val refsToRetire =
+            temporaryRefsLeavingDraft(
+                key = key,
+                previous = previous?.uploadedAttachments.orEmpty(),
+                next = persistedAttachments
+            )
+        store.putString(textKey(key), text)
+        store.putString(asTaskKey(key), asTask.toString())
+        store.putString(
+            attachmentsKey(key),
+            persistedAttachments
+                .takeIf { it.isNotEmpty() }
+                ?.let { attachments -> ComposerDraftJson.encodeToString(attachments) }
+        )
+        store.putString(
+            sourcesKey(key),
+            persistedSources.takeIf { it.isNotEmpty() }
+                ?.let { sources -> ComposerDraftJson.encodeToString(sources) }
+        )
+        addActiveKey(key)
+        diagnosticsLogger?.invoke(
+            "thread_composer_draft_persist_saved key=$key activeAfter=${activeKeys().sorted().joinToString(separator = ",")}"
+        )
+        return refsToRetire
+    }
+
+    /*
+     * Keep the old implementation's shape in one place: all writes go through saveUnlocked so
+     * callers can compute ownership changes while holding the same storage lock.  In particular,
+     * a replacement must not retire a ref which is still referenced by a sibling row or another
+     * draft key.
+     */
+    private fun temporaryRefsLeavingDraft(
+        key: String,
+        previous: List<SharedThreadComposerAttachment>,
+        next: List<SharedThreadComposerAttachment>
+    ): Set<String> {
+        val candidates = previous.temporaryFileRefs() - next.temporaryFileRefs()
+        if (candidates.isEmpty()) return emptySet()
+        val referencedElsewhere =
+            activeKeys()
+                .filterNot { activeKey -> activeKey == key }
+                .flatMap { activeKey -> readUnlocked(activeKey)?.uploadedAttachments.orEmpty() }
+                .temporaryFileRefs()
+        return candidates - referencedElsewhere
+    }
+
+    private fun retireTemporaryFileRefsSafely(key: String, fileRefs: Set<String>) {
+        if (fileRefs.isEmpty()) return
+        // The native callback runs after the persistence lock is released. Re-read every active
+        // durable draft immediately before dispatch so a sibling save (or a second persistence
+        // instance sharing this store) can re-claim a ref during the write→callback window.
+        // This is a final ownership fence; the callback still receives only refs that are absent
+        // from the current durable set.
+        // Give another facade one explicit chance to publish a replacement between the first
+        // write phase and this final ownership fence.  The callback itself is then invoked while
+        // the shared re-entrant lock remains held, so no second facade can reclaim a ref in the
+        // check→callback gap.  A native retirement callback is synchronous at this seam; if a host
+        // needs asynchronous deletion it must enqueue that work after returning.
+        beforeTemporaryFileRefsRetirementFence?.invoke()
+        lock.withLock {
+            val stillUnreferenced =
+                fileRefs -
+                    activeKeys()
+                        .flatMap { activeKey -> readUnlocked(activeKey)?.uploadedAttachments.orEmpty() }
+                        .temporaryFileRefs()
+            if (stillUnreferenced.isEmpty()) return@withLock
+            runCatching {
+                retireTemporaryFileRefs?.invoke(key, stillUnreferenced)
+                    ?: temporaryFileRetirement.retire(key, stillUnreferenced)
             }
-            store.putString(textKey(key), text)
-            store.putString(asTaskKey(key), asTask.toString())
-            store.putString(
-                attachmentsKey(key),
-                persistedAttachments
-                    .takeIf { it.isNotEmpty() }
-                    ?.let { attachments -> ComposerDraftJson.encodeToString(attachments) }
-            )
-            store.putString(
-                sourcesKey(key),
-                persistedSources.takeIf { it.isNotEmpty() }
-                    ?.let { sources -> ComposerDraftJson.encodeToString(sources) }
-            )
-            addActiveKey(key)
-            diagnosticsLogger?.invoke(
-                "thread_composer_draft_persist_saved key=$key activeAfter=${activeKeys().sorted().joinToString(separator = ",")}"
-            )
+                .onFailure { error ->
+                    diagnosticsLogger?.invoke(
+                        "thread_composer_draft_temp_retire_failed refs=${stillUnreferenced.size} " +
+                            "error=${error::class.simpleName.orEmpty()}"
+                    )
+                }
         }
     }
 
@@ -219,19 +345,19 @@ internal class SharedThreadComposerDraftPersistence(
         text: String,
         attachments: List<SharedThreadComposerAttachment>,
         source: SharedThreadComposerExternalShareSource
-    ): ExternalShareComposerDraftStageResult = synchronized(lock) {
+    ): ExternalShareComposerDraftStageResult = lock.withLock {
         val record = key.toSharedThreadComposerDraftRecord()
-            ?: return@synchronized ExternalShareComposerDraftStageResult.Rejected(
+            ?: return@withLock ExternalShareComposerDraftStageResult.Rejected(
                 "external_share_composer_key_invalid"
             )
         if (!record.isRootComposer) {
-            return@synchronized ExternalShareComposerDraftStageResult.Rejected(
+            return@withLock ExternalShareComposerDraftStageResult.Rejected(
                 "external_share_reply_composer_not_supported"
             )
         }
         val normalizedAttachments = attachments.persistableThreadComposerDraftAttachments()
         if (listOf(source).validExternalShareComposerSources().size != 1) {
-            return@synchronized ExternalShareComposerDraftStageResult.Rejected(
+            return@withLock ExternalShareComposerDraftStageResult.Rejected(
                 "external_share_source_invalid"
             )
         }
@@ -239,7 +365,7 @@ internal class SharedThreadComposerDraftPersistence(
             normalizedAttachments.size != attachments.size ||
             normalizedAttachments.any { attachment -> !attachment.isValidExternalShareQueuedAttachment() }
         ) {
-            return@synchronized ExternalShareComposerDraftStageResult.Rejected(
+            return@withLock ExternalShareComposerDraftStageResult.Rejected(
                 "external_share_attachment_invalid"
             )
         }
@@ -257,7 +383,7 @@ internal class SharedThreadComposerDraftPersistence(
             (current?.externalShareSources.orEmpty() + source)
                 .validExternalShareComposerSources()
         if (nextText.isBlank() && nextAttachments.isEmpty()) {
-            return@synchronized ExternalShareComposerDraftStageResult.Rejected(
+            return@withLock ExternalShareComposerDraftStageResult.Rejected(
                 "external_share_composer_draft_empty"
             )
         }
@@ -279,11 +405,14 @@ internal class SharedThreadComposerDraftPersistence(
         ExternalShareComposerDraftStageResult.Staged
     }
 
-    fun clear(key: String) = synchronized(lock) {
-        clearUnlocked(key)
+    fun clear(key: String) {
+        val refsToRetire = lock.withLock {
+            clearUnlocked(key, previous = readUnlocked(key))
+        }
+        retireTemporaryFileRefsSafely(key, refsToRetire)
     }
 
-    fun activeDraftRecords(): Set<SharedThreadComposerDraftRecord> = synchronized(lock) {
+    fun activeDraftRecords(): Set<SharedThreadComposerDraftRecord> = lock.withLock {
         activeDraftRecordsUnlocked()
     }
 
@@ -300,7 +429,10 @@ internal class SharedThreadComposerDraftPersistence(
         )
     }
 
-    private fun clearUnlocked(key: String) {
+    private fun clearUnlocked(
+        key: String,
+        previous: SharedThreadComposerPersistedDraft? = readUnlocked(key)
+    ): Set<String> {
         diagnosticsLogger?.invoke(
             "thread_composer_draft_persist_clear key=$key activeBefore=${activeKeys().sorted().joinToString(separator = ",")}"
         )
@@ -311,6 +443,11 @@ internal class SharedThreadComposerDraftPersistence(
         removeActiveKey(key)
         diagnosticsLogger?.invoke(
             "thread_composer_draft_persist_cleared key=$key activeAfter=${activeKeys().sorted().joinToString(separator = ",")}"
+        )
+        return temporaryRefsLeavingDraft(
+            key = key,
+            previous = previous?.uploadedAttachments.orEmpty(),
+            next = emptyList()
         )
     }
 
@@ -344,7 +481,11 @@ internal class SharedThreadComposerDraftPersistence(
             .orEmpty()
             .persistableThreadComposerDraftAttachments()
             .map { attachment ->
-                if (attachment.source == "external_share" && attachment.status == "uploading") {
+                if (
+                    (attachment.source == "external_share" ||
+                        attachment.source in ThreadComposerOwnedTemporarySources) &&
+                        attachment.status == "uploading"
+                ) {
                     attachment.copy(
                         status = "queued",
                         errorCode = null,
@@ -632,13 +773,20 @@ internal class SharedThreadComposerDraftPersistSlice(
     }
 
     private fun flushPendingWrite(key: String) {
+        synchronized(persistenceWriteLock) {
+            flushPendingWriteLocked(key)
+        }
+    }
+
+    /** Flush while [persistenceWriteLock] is held; used by compound stage operations. */
+    private fun flushPendingWriteLocked(key: String) {
         val pending = synchronized(pendingWritesLock) {
             pendingWritesByDraftKey.remove(key).also {
                 advanceWriteGenerationLocked(key)
             }
         } ?: return
         pending.cancellation?.cancel()
-        persistState(key, pending.state, "ChangeFlush")
+        persistStateLocked(key, pending.state, "ChangeFlush")
     }
 
     private fun cancelPendingWrite(key: String) {
@@ -661,15 +809,23 @@ internal class SharedThreadComposerDraftPersistSlice(
         reason: String
     ) {
         synchronized(persistenceWriteLock) {
-            persistence.save(
-                key = key,
-                text = state.seedText,
-                asTask = state.seedAsTask,
-                uploadedAttachments = state.visiblePersistableThreadComposerDraftAttachments(),
-                externalShareSources = state.externalShareSources
-            )
-            refreshActiveDraftRecords(reason = reason)
+            persistStateLocked(key, state, reason)
         }
+    }
+
+    private fun persistStateLocked(
+        key: String,
+        state: SharedThreadComposerDraftState,
+        reason: String
+    ) {
+        persistence.save(
+            key = key,
+            text = state.seedText,
+            asTask = state.seedAsTask,
+            uploadedAttachments = state.visiblePersistableThreadComposerDraftAttachments(),
+            externalShareSources = state.externalShareSources
+        )
+        refreshActiveDraftRecords(reason = reason)
     }
 
     private fun persistStateIfGenerationCurrent(
@@ -682,14 +838,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                 writeGenerationByDraftKey[key] == generation
             }
             if (!isCurrent) return@synchronized
-            persistence.save(
-                key = key,
-                text = state.seedText,
-                asTask = state.seedAsTask,
-                uploadedAttachments = state.visiblePersistableThreadComposerDraftAttachments(),
-                externalShareSources = state.externalShareSources
-            )
-            refreshActiveDraftRecords(reason = "ChangeDebounced")
+            persistStateLocked(key, state, "ChangeDebounced")
         }
     }
 
@@ -734,8 +883,13 @@ internal class SharedThreadComposerDraftPersistSlice(
             ?: return ExternalShareComposerDraftStageResult.Rejected(
                 "external_share_composer_key_missing"
             )
-        flushPendingWrite(key)
-        val result = persistence.stageExternalShare(key, text, attachments, source)
+        val result = synchronized(persistenceWriteLock) {
+            // External-share staging is a compound write: flush the latest ordinary draft first,
+            // then merge the handoff without allowing a debounced save to overwrite it between
+            // those two operations.
+            flushPendingWriteLocked(key)
+            persistence.stageExternalShare(key, text, attachments, source)
+        }
         if (result is ExternalShareComposerDraftStageResult.Staged) {
             refreshActiveDraftRecords(reason = "external_share_stage")
         }
@@ -1326,10 +1480,36 @@ private fun List<SharedThreadComposerAttachment>.persistableThreadComposerDraftA
     asSequence()
         .filter { attachment -> attachment.id.isNotBlank() }
         .filter { attachment ->
-            attachment.status == "ready" || attachment.isValidExternalShareQueuedAttachment()
+            when {
+                attachment.source in ThreadComposerOwnedTemporarySources ->
+                    attachment.status in setOf("ready", "queued", "uploading", "failed") &&
+                        attachment.hasOwnedTemporaryFileRef()
+                attachment.status == "ready" -> true
+                attachment.isValidExternalShareQueuedAttachment() -> true
+                else -> false
+            }
         }
         .distinctBy { attachment -> attachment.id }
         .toList()
+
+/** A local retry row is durable only while its platform upload handle remains non-blank. */
+private fun SharedThreadComposerAttachment.hasOwnedTemporaryFileRef(): Boolean =
+    !fileRef?.trim().isNullOrBlank()
+
+/**
+ * Generic process-local ownership predicate used by draft replacement/clear cleanup.  The
+ * callback retires temporary bytes of every admitted local attachment, including videos and
+ * ordinary files; image/video classification is intentionally kept in the image-compression
+ * admission path and must not strand non-image picker handles here.
+ */
+private fun SharedThreadComposerAttachment.isOwnedTemporaryFileRef(): Boolean =
+    source in ThreadComposerOwnedTemporarySources && hasOwnedTemporaryFileRef()
+
+private fun List<SharedThreadComposerAttachment>.temporaryFileRefs(): Set<String> =
+    asSequence()
+        .filter(SharedThreadComposerAttachment::isOwnedTemporaryFileRef)
+        .mapNotNull { attachment -> attachment.fileRef?.trim()?.takeIf(String::isNotBlank) }
+        .toSet()
 
 private fun SharedThreadComposerAttachment.isValidExternalShareQueuedAttachment(): Boolean =
     source == "external_share" &&

@@ -14,12 +14,15 @@ import build.raft.app.data.AuthenticatedRouteAuthorityGateway
 import build.raft.app.data.AuthenticatedRouteOperationRunner
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.parseSharedAttachmentPreview
+import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.DataResult
 import build.raft.app.data.NetworkSlockThreadApi
+import build.raft.app.data.PlatformFile
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.data.SlockEventBus
 import build.raft.app.data.SlockEventBuses
 import build.raft.app.data.SlockSharedStoreRegistry
@@ -124,6 +127,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.Serializable
@@ -140,6 +144,327 @@ import kotlin.time.TimeSource
 
 internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
 internal const val SLOCK_COMPOSER_IMAGE_EDIT_EVENT = "slock.composerImageEdit"
+/** Stable fail-closed code shared by every host's editor-output compressor. */
+internal const val SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE =
+    "attachment_image_compression_failed"
+
+/** Source marker required on a successful native editor-output compression response. */
+internal const val SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE = "composer_image_compressor"
+
+/** Source marker for an editor result that was delivered without a JPEG compression pass. */
+internal const val SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE = "composer_image_editor"
+
+/**
+ * Resolve the source marker carried by a successful composer-image event from the explicit
+ * finalization state.  Do not infer this from a MIME string: an original JPEG and a compressor
+ * JPEG have the same MIME but different session semantics.
+ */
+internal fun slockFilePreviewComposerImageEventSource(compressed: Boolean): String =
+    if (compressed) {
+        SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE
+    } else {
+        SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE
+    }
+
+/**
+ * Validate the two fields which identify how an editor result was finalized.  The check is kept
+ * in common code so producers and consumers share one closed vocabulary.  A compressor result
+ * must be the literal JPEG representation; an uncompressed editor result must still be an image.
+ */
+internal fun slockFilePreviewComposerImageEventMetadataIsValid(
+    source: String,
+    compressed: Boolean,
+    mimeType: String
+): Boolean {
+    val cleanSource = source.trim()
+    val normalizedMimeType =
+        mimeType
+            .trim()
+            .substringBefore(';')
+            .lowercase()
+    return when (cleanSource) {
+        SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE ->
+            // Compression response admission uses the same literal wire value.  Do not let a
+            // MIME parameter or case-normalized provider value masquerade as a proven JPEG.
+            compressed && mimeType.trim() == "image/jpeg"
+        SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE ->
+            !compressed && normalizedMimeType.startsWith("image/")
+        else -> false
+    }
+}
+
+/**
+ * The wire fields shared by every composer-image event consumer.
+ *
+ * Event data crosses a native/event-bus boundary, so `optString`/`optBoolean` defaults are not
+ * safe here: a missing value must not be indistinguishable from a producer explicitly sending a
+ * default.  Keep the type and presence checks in one parser so Thread and Settings cannot drift.
+ */
+internal data class SlockFilePreviewComposerImageEventPayload(
+    val previewSessionId: String,
+    val threadKey: String,
+    val actionId: String,
+    val action: String,
+    val fileRef: String,
+    val previewUri: String,
+    val fileName: String,
+    val mimeType: String,
+    val source: String,
+    val compressed: Boolean,
+    val sizeBytes: Long?,
+    val groupId: String?,
+    val groupIndex: Int?,
+    val groupTotal: Int?
+)
+
+private fun JSONObject.requiredComposerImageEventString(key: String): String? {
+    if (!has(key)) return null
+    return (opt(key) as? String)?.trim()?.takeIf { it.isNotBlank() }
+}
+
+private fun JSONObject.requiredComposerImageEventBoolean(key: String): Boolean? {
+    if (!has(key)) return null
+    // Do not use optBoolean: the Kuikly JSON implementation intentionally coerces strings such
+    // as "true", while this event contract requires a real JSON Boolean.
+    return opt(key) as? Boolean
+}
+
+private fun JSONObject.optionalComposerImageEventLong(key: String): Long? {
+    if (!has(key)) return null
+    val value = opt(key) as? Number ?: return null
+    val longValue = value.toLong()
+    // Producers only emit a positive integral size. Reject fractional/negative values instead of
+    // silently truncating a malformed native envelope.
+    if (value.toDouble() != longValue.toDouble() || longValue <= 0L) return null
+    return longValue
+}
+
+private fun JSONObject.optionalComposerImageEventInt(key: String): Int? {
+    if (!has(key)) return null
+    val value = opt(key) as? Number ?: return null
+    val intValue = value.toInt()
+    if (value.toDouble() != intValue.toDouble()) return null
+    return intValue
+}
+
+/**
+ * Parse and validate a composer-image event without applying a consumer-specific ownership
+ * policy.  Settings and Thread both call this function before claiming/adopting the file.
+ */
+internal fun parseSlockFilePreviewComposerImageEvent(
+    data: JSONObject,
+    requireGroup: Boolean = false
+): SlockFilePreviewComposerImageEventPayload? {
+    val previewSessionId = data.requiredComposerImageEventString("previewSessionId") ?: return null
+    val threadKey = data.requiredComposerImageEventString("threadKey") ?: return null
+    val actionId = data.requiredComposerImageEventString("actionId") ?: return null
+    val action = data.requiredComposerImageEventString("action") ?: return null
+    if (action != "complete" && action != "replace") return null
+    val fileRef = data.requiredComposerImageEventString("fileRef") ?: return null
+    val previewUri = data.requiredComposerImageEventString("previewUri") ?: return null
+    val fileName = data.requiredComposerImageEventString("fileName") ?: return null
+    val mimeType = data.requiredComposerImageEventString("mimeType") ?: return null
+    val source = data.requiredComposerImageEventString("source") ?: return null
+    val compressed = data.requiredComposerImageEventBoolean("compressed") ?: return null
+    if (!slockFilePreviewComposerImageEventMetadataIsValid(source, compressed, mimeType)) return null
+
+    val sizeBytes =
+        if (data.has("sizeBytes")) {
+            data.optionalComposerImageEventLong("sizeBytes") ?: return null
+        } else {
+            null
+        }
+    val groupId =
+        if (data.has("groupId")) {
+            data.requiredComposerImageEventString("groupId") ?: return null
+        } else {
+            null
+        }
+    val groupIndex =
+        if (data.has("groupIndex")) {
+            data.optionalComposerImageEventInt("groupIndex") ?: return null
+        } else {
+            null
+        }
+    val groupTotal =
+        if (data.has("groupTotal")) {
+            data.optionalComposerImageEventInt("groupTotal") ?: return null
+        } else {
+            null
+        }
+    val hasAnyGroupField = groupId != null || groupIndex != null || groupTotal != null
+    if (requireGroup && (groupId == null || groupIndex == null || groupTotal == null)) return null
+    if (hasAnyGroupField && (groupId == null || groupIndex == null || groupTotal == null)) return null
+    if (groupId != null) {
+        val index = groupIndex ?: return null
+        val total = groupTotal ?: return null
+        if (index < 0 || total <= 0 || index >= total) return null
+    }
+
+    return SlockFilePreviewComposerImageEventPayload(
+        previewSessionId = previewSessionId,
+        threadKey = threadKey,
+        actionId = actionId,
+        action = action,
+        fileRef = fileRef,
+        previewUri = previewUri,
+        fileName = fileName,
+        mimeType = mimeType,
+        source = source,
+        compressed = compressed,
+        sizeBytes = sizeBytes,
+        groupId = groupId,
+        groupIndex = groupIndex,
+        groupTotal = groupTotal
+    )
+}
+
+/**
+ * A page-local token for an editor/gallery compression operation.
+ *
+ * The native bridge is asynchronous and a capture callback can outlive the page that requested
+ * it.  The generation makes a late callback from an older request unmatchable even when a new
+ * request is started with the same action id.  [retire] is permanent for the page instance.
+ */
+internal data class SlockFilePreviewComposerImageOperationToken(
+    val generation: Long,
+    val requestId: String
+)
+
+internal class SlockFilePreviewComposerImageOperationGate(
+    private val requestIdFactory: (Long) -> String = { generation ->
+        "file-preview-image-compress-$generation"
+    }
+) {
+    private val lock = SynchronizedObject()
+    private var nextGeneration = 0L
+    private var active: SlockFilePreviewComposerImageOperationToken? = null
+    private var retired = false
+
+    fun begin(requestId: String = ""): SlockFilePreviewComposerImageOperationToken? =
+        synchronized(lock) {
+            if (retired || active != null) return@synchronized null
+            nextGeneration += 1L
+            val generation = nextGeneration
+            val cleanRequestId = requestId.trim().ifBlank { requestIdFactory(generation) }
+            SlockFilePreviewComposerImageOperationToken(generation, cleanRequestId).also {
+                active = it
+            }
+        }
+
+    fun isCurrent(token: SlockFilePreviewComposerImageOperationToken): Boolean =
+        synchronized(lock) { !retired && active == token }
+
+    /** Atomically consumes the operation. A duplicate/late completion returns false. */
+    fun complete(token: SlockFilePreviewComposerImageOperationToken): Boolean =
+        synchronized(lock) {
+            if (retired || active != token) return@synchronized false
+            active = null
+            true
+        }
+
+    /** Cancels one operation without retiring the page (the user may retry). */
+    fun cancel(token: SlockFilePreviewComposerImageOperationToken): Boolean =
+        synchronized(lock) {
+            if (retired || active != token) return@synchronized false
+            active = null
+            true
+        }
+
+    /** Invalidates every outstanding callback for this page instance. */
+    fun retire() = synchronized(lock) {
+        retired = true
+        active = null
+    }
+
+    fun activeToken(): SlockFilePreviewComposerImageOperationToken? = synchronized(lock) { active }
+}
+
+internal sealed interface SlockFilePreviewCompressedImageResult {
+    data class Success(val file: PlatformFile) : SlockFilePreviewCompressedImageResult
+
+    data class Failure(
+        val errorCode: String = SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE,
+        val message: String = "Unable to compress image attachment"
+    ) : SlockFilePreviewCompressedImageResult
+}
+
+/**
+ * Parse the strict shared/native compression response.  A response is accepted only when the
+ * native side returned exactly one JPEG produced by the composer compressor.  In particular,
+ * an arbitrary picker file or a missing body is never treated as a successful compression.
+ */
+internal fun parseSlockFilePreviewCompressedImageResult(
+    response: JSONObject?
+): SlockFilePreviewCompressedImageResult {
+    val code = response?.optInt("code", -1) ?: -1
+    if (code != 200) {
+        return SlockFilePreviewCompressedImageResult.Failure(
+            // Keep the product-facing failure taxonomy stable even when a host
+            // returns an unknown/malformed provider-specific code.
+            errorCode = SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE,
+            message =
+                response
+                    ?.optString("errorBodyText")
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "Unable to compress image attachment"
+        )
+    }
+    val filesJson =
+        response?.optJSONArray("files")
+            ?: response?.optString("bodyText")
+                .orEmpty()
+                .takeIf { it.isNotBlank() }
+                ?.let { bodyText ->
+                    runCatching { JSONObject(bodyText).optJSONArray("files") }.getOrNull()
+                }
+    if (filesJson == null || filesJson.length() != 1) {
+        return SlockFilePreviewCompressedImageResult.Failure()
+    }
+    val rawFile = filesJson.optJSONObject(0) ?: return SlockFilePreviewCompressedImageResult.Failure()
+    // parseSharedThreadPickedPlatformFiles supplies compatibility defaults (for example an
+    // attachment-N file name).  Compression is stricter: every required field must be present in
+    // the native envelope itself, so a malformed response can never be promoted accidentally.
+    val rawFileRef = rawFile.optString("fileRef").trim()
+    val rawFileName = rawFile.optString("fileName").trim()
+    // MIME is an exact wire contract here.  Do not normalize case or strip
+    // parameters: a host response with anything other than literal
+    // `image/jpeg` is not proof that a JPEG was produced.
+    val rawMimeType = rawFile.optString("mimeType").trim()
+    val rawSource = rawFile.optString("source").trim()
+    if (
+        rawFileRef.isBlank() ||
+            rawFileName.isBlank() ||
+            rawMimeType != "image/jpeg" ||
+            rawSource != SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE
+    ) {
+        return SlockFilePreviewCompressedImageResult.Failure()
+    }
+    val files = parseSharedThreadPickedPlatformFiles(response)
+    if (files.size != 1) {
+        return SlockFilePreviewCompressedImageResult.Failure()
+    }
+    val file = files.single()
+    val mimeType = file.mimeType.orEmpty().trim()
+    if (
+        file.fileRef?.trim() != rawFileRef ||
+            file.fileName.trim() != rawFileName ||
+            mimeType != "image/jpeg" ||
+            file.source.trim() != rawSource
+    ) {
+        return SlockFilePreviewCompressedImageResult.Failure()
+    }
+    return SlockFilePreviewCompressedImageResult.Success(
+        file.copy(mimeType = "image/jpeg", source = SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE)
+    )
+}
+
+/** Any file refs in a malformed/failed response are still retired; they are never adopted. */
+internal fun slockFilePreviewCompressionResponseFileRefs(response: JSONObject?): Set<String> =
+    parseSharedThreadPickedPlatformFiles(response)
+        .mapNotNull { it.fileRef?.trim()?.takeIf { ref -> ref.isNotBlank() } }
+        .toSet()
 
 // task #113: whole-group edit-session result reconciliation (pure). A consumer
 // (e.g. Settings feedback draft) accumulates per-image edit events for a group and
@@ -1091,6 +1416,16 @@ internal data class SlockFilePreviewPayload(
     /** Cache-owned refs are kept process/persistence-local and never serialized into route data. */
     val composerImageOwnedTemporaryFileRefs: List<String> = emptyList(),
     val composerImageReplaceAttachmentId: String = "",
+    /**
+     * Whether the editor output must make a second, host-owned JPEG compression pass before it
+     * is delivered to the composer.  This is intentionally process-local and defaults to false
+     * so non-composer previews cannot accidentally invoke the compressor.
+     */
+    val composerImageCompressAfterEdit: Boolean = false,
+    /** True once the currently selected composer image has a final deliverable. */
+    val composerImageEditCompleted: Boolean = false,
+    /** True only when that final deliverable is the JPEG returned by the compressor. */
+    val composerImageCompressed: Boolean = false,
     val composerImageCanComplete: Boolean = false,
     val composerImageCanEdit: Boolean = false
 )
@@ -1105,7 +1440,11 @@ internal data class SlockFilePreviewGalleryImage(
     val composerImageFileRef: String = "",
     val composerImagePreviewUri: String = "",
     val composerImageSizeBytes: Long? = null,
-    val composerImageOwnedTemporary: Boolean = false
+    val composerImageOwnedTemporary: Boolean = false,
+    /** Explicit process-local finalization state; do not infer this from MIME type. */
+    val composerImageEditCompleted: Boolean = false,
+    /** True only for a successful composer-image JPEG compression result. */
+    val composerImageCompressed: Boolean = false
 )
 
 internal fun slockFilePreviewComposerImageGalleryActionId(
@@ -1115,7 +1454,7 @@ internal fun slockFilePreviewComposerImageGalleryActionId(
 ): String = "$baseActionId-gallery-$index-$attachmentId"
 
 private fun SlockFilePreviewPayload.ephemeralComposerActionIds(): Set<String> {
-    val baseActionId = composerImageActionId.trim().takeIf(String::isNotBlank) ?: return emptySet()
+    val baseActionId = composerImageActionId.trim().takeIf { it.isNotBlank() } ?: return emptySet()
     return if (imageGallery.isEmpty()) {
         setOf(baseActionId)
     } else {
@@ -1155,6 +1494,48 @@ private fun SlockFilePreviewPayload.toEphemeralSessionRegistrationOrNull(
         actionIds = actionIds,
         ownedTemporaryFileRefs = ownedEphemeralComposerFileRefs()
     )
+}
+
+/**
+ * Build composer-image delivery events as one atomic batch.
+ *
+ * A gallery is an N/N handoff: dropping a malformed member would make the consumer observe a
+ * partial edit group and could leave the omitted temporary file without a delivery owner.  The
+ * mapper therefore returns an empty list as soon as any gallery member cannot produce an event.
+ * The single-image branch keeps the legacy no-group shape while resolving grouped single images
+ * to the explicit N=1 contract.
+ */
+internal fun <T> slockFilePreviewComposerImageEventsForPayload(
+    eventPayload: SlockFilePreviewPayload,
+    singleEvent: (groupId: String, groupIndex: Int, groupTotal: Int) -> T?,
+    galleryEvent: (
+        index: Int,
+        image: SlockFilePreviewGalleryImage,
+        groupId: String,
+        groupTotal: Int
+    ) -> T?
+): List<T> {
+    val gallery = eventPayload.imageGallery
+    val groupId = eventPayload.composerImageGroupId
+    if (gallery.isEmpty()) {
+        return listOfNotNull(
+            singleEvent(
+                groupId,
+                eventPayload.imageGalleryIndex.coerceAtLeast(0),
+                SlockImageEditGroupReconcile.resolveGroupTotal(groupId, gallery.size)
+            )
+        )
+    }
+
+    val groupTotal = gallery.size
+    return gallery.mapIndexed { index, image ->
+        galleryEvent(
+            index,
+            image,
+            groupId,
+            groupTotal
+        ) ?: return emptyList()
+    }
 }
 
 @Page(SLOCK_FILE_PREVIEW_PAGE, supportInLocal = true)
@@ -1276,6 +1657,12 @@ private fun SlockFilePreviewStandalonePageContent() {
             SlockComposerImageEditorState()
         }
     var composerImageEditSaving by remember(payload.composerImageActionId) { mutableStateOf(false) }
+    var composerImageFinalizing by remember(payload.composerImageActionId) { mutableStateOf(false) }
+    val composerImageOperationGate =
+        remember(launchPayloadTrace.sessionId, payload.composerImageActionId) {
+            SlockFilePreviewComposerImageOperationGate()
+        }
+    val activeComposerImageOperationJob = remember { mutableStateOf<Job?>(null) }
     val composerImageEditCaptureOwner =
         SlockComposerImageEditCaptureOwner(
             actionId = payload.composerImageActionId,
@@ -2371,9 +2758,16 @@ private fun SlockFilePreviewStandalonePageContent() {
             bridge.retireFilePreviewTemporaryFiles(sessionId, cleanupRefs.toList())
         }
     }
-    fun trackEphemeralTemporaryFileRef(fileRef: String) {
+    /**
+     * Admit a host-created temporary ref to the currently live preview session.
+     *
+     * A false result is terminal for the caller: the session was already retired (usually page
+     * disposal) or the ref did not satisfy the session identity.  The helper retires the ref on
+     * that path so a late native result cannot continue toward delivery as an unowned file.
+     */
+    fun trackEphemeralTemporaryFileRef(fileRef: String): Boolean {
         val cleanRef = fileRef.trim()
-        if (cleanRef.isBlank()) return
+        if (cleanRef.isBlank()) return false
         val tracked =
             ephemeralActionRegistry.trackOwnedTemporaryFileRef(
                 sessionId = launchPayloadTrace.sessionId,
@@ -2385,7 +2779,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 sessionId = launchPayloadTrace.sessionId,
                 fileRefs = listOf(cleanRef)
             )
-            return
+            return false
         }
         val evictedRefs =
             ephemeralCleanupLedger.addFileRefs(
@@ -2398,6 +2792,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 fileRefs = evictedRefs.toList()
             )
         }
+        return true
     }
     fun composerImageEventData(
         fileRef: String,
@@ -2405,26 +2800,48 @@ private fun SlockFilePreviewStandalonePageContent() {
         actionId: String = payload.composerImageActionId,
         fileName: String = payload.composerImageFileName.ifBlank { payload.externalFileName.ifBlank { payload.name.ifBlank { "image.png" } } },
         mimeType: String = payload.composerImageMimeType.ifBlank { payload.externalMimeType.ifBlank { "image/png" } },
+        compressed: Boolean = payload.composerImageCompressed,
+        source: String = slockFilePreviewComposerImageEventSource(compressed),
         sizeBytes: Long? = payload.composerImageSizeBytes,
         replaceAttachmentId: String = payload.composerImageReplaceAttachmentId,
+        threadKey: String = payload.composerImageThreadKey,
         // task #113 whole-group contract: groupId + ordinal within the gallery + total count.
         // Blank groupId keeps legacy single-shot semantics (index/total ignored).
         // When groupId is set but this is a single image with no gallery, total must be 1
         // (single-image N=1 contract), never 0.
         groupId: String = payload.composerImageGroupId,
         groupIndex: Int = payload.imageGalleryIndex.coerceAtLeast(0),
-        groupTotal: Int = SlockImageEditGroupReconcile.resolveGroupTotal(payload.composerImageGroupId, payload.imageGallery.size)
+        groupTotal: Int = SlockImageEditGroupReconcile.resolveGroupTotal(groupId, payload.imageGallery.size)
     ): JSONObject? {
-        if (actionId.isBlank() || fileRef.isBlank()) return null
+        if (
+            actionId.isBlank() ||
+                fileRef.isBlank() ||
+                !slockFilePreviewComposerImageEventMetadataIsValid(
+                    source = source,
+                    compressed = compressed,
+                    mimeType = mimeType
+                )
+        ) {
+            return null
+        }
         return JSONObject().apply {
             put("previewSessionId", launchPayloadTrace.sessionId)
-            put("threadKey", payload.composerImageThreadKey)
+            put("threadKey", threadKey)
             put("actionId", actionId)
             put("action", if (replaceAttachmentId.isBlank()) "complete" else "replace")
             put("fileRef", fileRef)
-            put("previewUri", previewUri.orEmpty())
+            // A local picker/editor may not provide a separate thumbnail URI.  The upload handle
+            // is still a valid preview source, and the shared consumer parser requires a
+            // non-blank field; never emit an empty previewUri that would make an otherwise valid
+            // finalization event undeclarable.
+            put(
+                "previewUri",
+                previewUri?.trim()?.takeIf { it.isNotBlank() } ?: fileRef.trim()
+            )
             put("fileName", fileName)
             put("mimeType", mimeType)
+            put("source", source.trim())
+            put("compressed", compressed)
             sizeBytes?.takeIf { it > 0L }?.let { put("sizeBytes", it) }
             put("replaceAttachmentId", replaceAttachmentId)
             if (groupId.isNotBlank()) {
@@ -2436,7 +2853,8 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     fun postComposerImageEvents(
         events: List<JSONObject>,
-        closePage: Boolean = true
+        closePage: Boolean = true,
+        threadKey: String = payload.composerImageThreadKey
     ): Boolean {
         if (events.isEmpty()) return false
         val fileRefByActionId =
@@ -2447,7 +2865,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         val retirement =
             ephemeralActionRegistry.prepareDeliveryBatch(
                 sessionId = launchPayloadTrace.sessionId,
-                threadKey = payload.composerImageThreadKey,
+                threadKey = threadKey,
                 fileRefByActionId = fileRefByActionId
             )
         if (retirement == null) {
@@ -2488,13 +2906,16 @@ private fun SlockFilePreviewStandalonePageContent() {
         actionId: String = payload.composerImageActionId,
         fileName: String = payload.composerImageFileName.ifBlank { payload.externalFileName.ifBlank { payload.name.ifBlank { "image.png" } } },
         mimeType: String = payload.composerImageMimeType.ifBlank { payload.externalMimeType.ifBlank { "image/png" } },
+        compressed: Boolean = payload.composerImageCompressed,
+        source: String = slockFilePreviewComposerImageEventSource(compressed),
         sizeBytes: Long? = payload.composerImageSizeBytes,
         replaceAttachmentId: String = payload.composerImageReplaceAttachmentId,
         closePage: Boolean = true,
+        threadKey: String = payload.composerImageThreadKey,
         groupId: String = payload.composerImageGroupId,
         groupIndex: Int = payload.imageGalleryIndex.coerceAtLeast(0),
-        groupTotal: Int = SlockImageEditGroupReconcile.resolveGroupTotal(payload.composerImageGroupId, payload.imageGallery.size)
-    ) {
+        groupTotal: Int = SlockImageEditGroupReconcile.resolveGroupTotal(groupId, payload.imageGallery.size)
+    ): Boolean {
         val event =
             composerImageEventData(
                 fileRef = fileRef,
@@ -2502,86 +2923,430 @@ private fun SlockFilePreviewStandalonePageContent() {
                 actionId = actionId,
                 fileName = fileName,
                 mimeType = mimeType,
+                compressed = compressed,
+                source = source,
                 sizeBytes = sizeBytes,
                 replaceAttachmentId = replaceAttachmentId,
+                threadKey = threadKey,
                 groupId = groupId,
                 groupIndex = groupIndex,
                 groupTotal = groupTotal
-            ) ?: return
-        postComposerImageEvents(listOf(event), closePage = closePage)
+            ) ?: return false
+        return postComposerImageEvents(
+            listOf(event),
+            closePage = closePage,
+            threadKey = threadKey
+        )
     }
-    fun postComposerImageSelection() {
-        val gallery = payload.imageGallery.takeIf { it.isNotEmpty() }
-        if (gallery == null) {
-            postComposerImageResult(
-                fileRef = payload.composerImageFileRef,
-                previewUri = payload.composerImagePreviewUri.ifBlank { payload.imageUrl }
+    fun cleanupComposerImageTemporaryRefs(fileRefs: Collection<String>) {
+        val refs =
+            fileRefs
+                .map(String::trim)
+                .filter(String::isNotBlank)
+                .toSet()
+        if (refs.isNotEmpty()) {
+            bridge.retireFilePreviewTemporaryFiles(
+                sessionId = launchPayloadTrace.sessionId,
+                fileRefs = refs.toList()
             )
-            return
         }
-        val events =
-            gallery.mapIndexedNotNull { index, image ->
+    }
+
+    fun composerImageOperationRequestId(
+        token: SlockFilePreviewComposerImageOperationToken,
+        index: Int
+    ): String =
+        "${token.requestId}-item-${index.coerceAtLeast(0)}"
+
+    suspend fun compressComposerImageFile(
+        source: PlatformFile,
+        token: SlockFilePreviewComposerImageOperationToken,
+        index: Int
+    ): Pair<PlatformFile?, Set<String>> {
+        val sourceRef = source.fileRef?.trim()?.takeIf { it.isNotBlank() }
+            ?: return null to emptySet()
+        val response =
+            bridge.compressThreadImage(
+                fileRef = sourceRef,
+                fileName = source.fileName.ifBlank { "image.png" },
+                mimeType = source.mimeType?.ifBlank { "image/png" } ?: "image/png",
+                requestId = composerImageOperationRequestId(token, index)
+            )
+        // A malformed host envelope may echo the input ref.  That ref is not a
+        // generated JPEG and must remain available for a user retry; only refs
+        // other than the source are eligible for cleanup on a failed attempt.
+        val responseRefs =
+            slockFilePreviewCompressionResponseFileRefs(response)
+                .filterNot { it == sourceRef }
+                .toSet()
+        if (!composerImageOperationGate.isCurrent(token)) {
+            return null to responseRefs
+        }
+        return when (val parsed = parseSlockFilePreviewCompressedImageResult(response)) {
+            is SlockFilePreviewCompressedImageResult.Success -> {
+                val outputRef = parsed.file.fileRef?.trim().orEmpty()
+                // Native must write a new object.  Reusing the source ref would make a later
+                // retry observe a partially overwritten source and is therefore fail-closed.
+                if (outputRef.isBlank() || outputRef == sourceRef) {
+                    null to (responseRefs + outputRef).filterNot { it == sourceRef }.toSet()
+                } else {
+                    if (!trackEphemeralTemporaryFileRef(outputRef)) {
+                        // The page/session may have been retired while the native bridge was
+                        // running.  Do not let an otherwise valid JPEG escape that ownership
+                        // fence; the helper has already requested ref retirement.
+                        null to (responseRefs + outputRef)
+                    } else {
+                        parsed.file to emptySet()
+                    }
+                }
+            }
+            is SlockFilePreviewCompressedImageResult.Failure -> null to responseRefs
+        }
+    }
+
+    fun composerImageEventsForPayload(
+        eventPayload: SlockFilePreviewPayload
+    ): List<JSONObject> {
+        return slockFilePreviewComposerImageEventsForPayload(
+            eventPayload = eventPayload,
+            singleEvent = { groupId, groupIndex, groupTotal ->
+                composerImageEventData(
+                    fileRef = eventPayload.composerImageFileRef,
+                    previewUri = eventPayload.composerImagePreviewUri.ifBlank { eventPayload.imageUrl },
+                    actionId = eventPayload.composerImageActionId,
+                    fileName = eventPayload.composerImageFileName.ifBlank {
+                        eventPayload.externalFileName.ifBlank { eventPayload.name.ifBlank { "image.png" } }
+                    },
+                    mimeType = eventPayload.composerImageMimeType.ifBlank {
+                        eventPayload.externalMimeType.ifBlank { "image/png" }
+                    },
+                    compressed = eventPayload.composerImageCompressed,
+                    source = slockFilePreviewComposerImageEventSource(eventPayload.composerImageCompressed),
+                    sizeBytes = eventPayload.composerImageSizeBytes,
+                    replaceAttachmentId = eventPayload.composerImageReplaceAttachmentId,
+                    threadKey = eventPayload.composerImageThreadKey,
+                    groupId = groupId,
+                    groupIndex = groupIndex,
+                    groupTotal = groupTotal
+                )
+            },
+            galleryEvent = { index, image, groupId, groupTotal ->
                 composerImageEventData(
                     fileRef = image.composerImageFileRef,
                     previewUri = image.composerImagePreviewUri.ifBlank { image.thumbnailUrl.orEmpty() },
                     actionId =
                         slockFilePreviewComposerImageGalleryActionId(
-                            baseActionId = payload.composerImageActionId,
+                            baseActionId = eventPayload.composerImageActionId,
                             attachmentId = image.attachmentId,
                             index = index
                         ),
                     fileName = image.name.ifBlank { "image.png" },
                     mimeType = image.mimeType.ifBlank { "image/png" },
+                    compressed = image.composerImageCompressed,
+                    source = slockFilePreviewComposerImageEventSource(image.composerImageCompressed),
                     sizeBytes = image.composerImageSizeBytes,
                     replaceAttachmentId = "",
-                    groupId = payload.composerImageGroupId,
+                    threadKey = eventPayload.composerImageThreadKey,
+                    groupId = groupId,
                     groupIndex = index,
-                    groupTotal = gallery.size
+                    groupTotal = groupTotal
                 )
             }
-        if (events.size != gallery.size) {
-            // Do not tear down a pending batch if a late duplicate callback reaches
-            // this page after the first batch was already admitted.
-            retireCurrentEphemeralSession(cleanupPending = false)
-            return
-        }
-        postComposerImageEvents(events)
+        )
     }
+
+    fun postComposerImageSelection() {
+        if (composerImageFinalizing) return
+        val token =
+            composerImageOperationGate.begin(
+                requestId = "${payload.composerImageActionId.ifBlank { launchPayloadTrace.sessionId }}-done"
+            ) ?: return
+        composerImageFinalizing = true
+        val operationJob =
+            coroutineScope.launch(start = CoroutineStart.LAZY) {
+                val generatedRefs = mutableSetOf<String>()
+                try {
+                    var workingPayload = payload
+                    val compressAfterEdit = workingPayload.composerImageCompressAfterEdit
+                    if (workingPayload.imageGallery.isNotEmpty()) {
+                        for ((index, image) in workingPayload.imageGallery.withIndex()) {
+                            if (image.isComposerImageFinalized(compressAfterEdit)) continue
+                            val source = image.toComposerImagePlatformFile()
+                    val finalFileAndCleanup =
+                                if (compressAfterEdit) {
+                                    compressComposerImageFile(source, token, index)
+                                } else {
+                                    source to emptySet()
+                                }
+                            val finalFile = finalFileAndCleanup.first
+                            if (finalFile == null || !composerImageOperationGate.isCurrent(token)) {
+                                cleanupComposerImageTemporaryRefs(
+                                    generatedRefs + finalFileAndCleanup.second
+                                )
+                                if (composerImageOperationGate.isCurrent(token)) {
+                                    composerImageOperationGate.complete(token)
+                                    composerImageFinalizing = false
+                                    bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                                }
+                                return@launch
+                            }
+                            if (compressAfterEdit) {
+                                finalFile.fileRef?.trim()?.takeIf { it.isNotBlank() }?.let(generatedRefs::add)
+                            }
+                            workingPayload =
+                                workingPayload.withComposerImageGalleryFinalResult(
+                                    index = index,
+                                    file = finalFile,
+                                    compressed = compressAfterEdit
+                                )
+                        }
+                    } else if (
+                        !workingPayload.composerImageEditCompleted ||
+                            (compressAfterEdit && !workingPayload.composerImageCompressed)
+                    ) {
+                        val source = workingPayload.toComposerImagePlatformFile()
+                        val finalFileAndCleanup =
+                            if (compressAfterEdit) {
+                                compressComposerImageFile(source, token, 0)
+                            } else {
+                                source to emptySet()
+                            }
+                        val finalFile = finalFileAndCleanup.first
+                        if (finalFile == null || !composerImageOperationGate.isCurrent(token)) {
+                            cleanupComposerImageTemporaryRefs(
+                                generatedRefs + finalFileAndCleanup.second
+                            )
+                            if (composerImageOperationGate.isCurrent(token)) {
+                                composerImageOperationGate.complete(token)
+                                composerImageFinalizing = false
+                                bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                            }
+                            return@launch
+                        }
+                        if (compressAfterEdit) {
+                            finalFile.fileRef?.trim()?.takeIf { it.isNotBlank() }?.let(generatedRefs::add)
+                        }
+                        workingPayload =
+                            workingPayload.withComposerImageFinalResult(
+                                file = finalFile,
+                                compressed = compressAfterEdit
+                            )
+                    }
+                    if (!composerImageOperationGate.isCurrent(token)) {
+                        cleanupComposerImageTemporaryRefs(generatedRefs)
+                        return@launch
+                    }
+                    val events = composerImageEventsForPayload(workingPayload)
+                    if (
+                        events.isEmpty() ||
+                            (workingPayload.imageGallery.isNotEmpty() &&
+                                events.size != workingPayload.imageGallery.size)
+                    ) {
+                        cleanupComposerImageTemporaryRefs(generatedRefs)
+                        retireCurrentEphemeralSession(cleanupPending = false)
+                        composerImageOperationGate.complete(token)
+                        composerImageFinalizing = false
+                        bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                        return@launch
+                    }
+                    val posted =
+                        postComposerImageEvents(
+                            events = events,
+                            threadKey = workingPayload.composerImageThreadKey
+                        )
+                    if (!posted) {
+                        composerImageOperationGate.complete(token)
+                        composerImageFinalizing = false
+                        return@launch
+                    }
+                    // Commit page-local payload only after registry admission and event relay
+                    // both succeed. A stale/failed post may retire generated refs; writing the
+                    // working snapshot before that point would leave the UI pointing at files
+                    // that have already been cleaned up.
+                    payload = workingPayload
+                    composerImageOperationGate.complete(token)
+                    composerImageFinalizing = false
+                } catch (cancelled: CancellationException) {
+                    composerImageOperationGate.cancel(token)
+                    cleanupComposerImageTemporaryRefs(generatedRefs)
+                    throw cancelled
+                } catch (_: Throwable) {
+                    composerImageOperationGate.complete(token)
+                    cleanupComposerImageTemporaryRefs(generatedRefs)
+                    if (composerImageOperationGate.activeToken() == null) {
+                        composerImageFinalizing = false
+                        bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                    }
+                } finally {
+                    if (activeComposerImageOperationJob.value === currentCoroutineContext()[Job]) {
+                        activeComposerImageOperationJob.value = null
+                    }
+                }
+            }
+        activeComposerImageOperationJob.value = operationJob
+        operationJob.start()
+    }
+
     fun requestComposerImageEditSave() {
-        if (composerImageEditSaving) return
+        if (composerImageEditSaving || composerImageFinalizing) return
         val captureView = composerImageEditCaptureSlot.value.ref?.view
         if (captureView == null) {
             bridge.toast(imageEditorLoading)
             return
         }
+        val token =
+            composerImageOperationGate.begin(
+                requestId = "${payload.composerImageActionId.ifBlank { launchPayloadTrace.sessionId }}-save"
+            ) ?: return
         composerImageEditSaving = true
+        val captureTerminal = atomic(false)
         captureView.toImage(DeclarativeBaseView.ImageType.FILE, 1) { result ->
-            val code = result?.optInt("code", -1) ?: -1
-            val fileRef = result?.optString("data").orEmpty()
-            composerImageEditSaving = false
-            if (code == 0 && fileRef.isNotBlank()) {
-                trackEphemeralTemporaryFileRef(fileRef)
-                val currentGalleryIndex = payload.imageGalleryIndex.coerceIn(0, payload.imageGallery.lastIndex.coerceAtLeast(0))
-                val currentGalleryImage = payload.imageGallery.getOrNull(currentGalleryIndex)
-                if (payload.composerImageCanComplete && currentGalleryImage != null) {
-                    payload = payload.withComposerImageEditResult(fileRef)
-                    composerImageEditMode = false
-                } else {
-                    postComposerImageResult(
-                        fileRef = fileRef,
-                        previewUri = fileRef,
-                        fileName = payload.currentComposerImageFileName().toKuiklySnapshotPngFileName(),
-                        mimeType = KuiklySnapshotMimeType,
-                        sizeBytes = null
-                    )
+            if (!captureTerminal.compareAndSet(false, true)) return@toImage
+            val fileRef = result?.optString("data")?.trim().orEmpty()
+            // `toImage` has no cancellation handle. If the page went away while the renderer
+            // was producing its snapshot, retire the late file but never touch page state.
+            if (!composerImageOperationGate.isCurrent(token)) {
+                fileRef.takeIf { it.isNotBlank() }?.let { ref ->
+                    cleanupComposerImageTemporaryRefs(listOf(ref))
                 }
-            } else {
-                bridge.toast(result?.optString("message").orEmpty().ifBlank { imageEditorExportFailed })
+                return@toImage
             }
+            val code = result?.optInt("code", -1) ?: -1
+            if (code != 0 || fileRef.isBlank()) {
+                fileRef.takeIf { it.isNotBlank() }?.let { ref ->
+                    cleanupComposerImageTemporaryRefs(listOf(ref))
+                }
+                composerImageOperationGate.complete(token)
+                composerImageEditSaving = false
+                bridge.toast(result?.optString("message").orEmpty().ifBlank { imageEditorExportFailed })
+                return@toImage
+            }
+            if (!trackEphemeralTemporaryFileRef(fileRef)) {
+                // The session can retire between the gate check and registry admission. The
+                // helper already requested ref retirement; only reset UI while this token is
+                // still live.
+                if (composerImageOperationGate.complete(token)) {
+                    composerImageEditSaving = false
+                    bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                }
+                return@toImage
+            }
+            val editPayload = payload
+            val source =
+                PlatformFile(
+                    id = "composer-editor-${fileRef.hashCode().toUInt().toString(16)}",
+                    fileName = editPayload.currentComposerImageFileName().toKuiklySnapshotPngFileName(),
+                    mimeType = KuiklySnapshotMimeType,
+                    previewUri = fileRef,
+                    fileRef = fileRef,
+                    source = SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE
+                )
+            val operationJob =
+                coroutineScope.launch(start = CoroutineStart.LAZY) {
+                    val cleanupRefs = mutableSetOf(fileRef)
+                    try {
+                        val finalFile: PlatformFile
+                        val compressed: Boolean
+                        if (editPayload.composerImageCompressAfterEdit) {
+                            val compressedResult = compressComposerImageFile(source, token, 0)
+                            cleanupRefs += compressedResult.second
+                            finalFile = compressedResult.first ?: run {
+                                cleanupComposerImageTemporaryRefs(cleanupRefs)
+                                composerImageOperationGate.complete(token)
+                                composerImageEditSaving = false
+                                bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                                return@launch
+                            }
+                            compressed = true
+                        } else {
+                            finalFile = source
+                            compressed = false
+                        }
+                        // Keep every generated ref in the failure ledger until the delivery
+                        // relay has accepted it.  The source PNG is always tracked above; a
+                        // successful compressor adds a distinct JPEG that also needs cleanup if
+                        // the page goes stale or the immediate-send relay is rejected.
+                        finalFile.fileRef
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let(cleanupRefs::add)
+                        if (!composerImageOperationGate.isCurrent(token)) {
+                            cleanupComposerImageTemporaryRefs(cleanupRefs)
+                            return@launch
+                        }
+                        val nextPayload = editPayload.withComposerImageFinalResult(finalFile, compressed)
+                        if (!nextPayload.composerImageCanComplete) {
+                            // Immediate-send previews have no composer consumer to update after
+                            // this page closes.  Relay the exact next-payload fields first; only
+                            // after registry admission + event delivery succeeds may page-local
+                            // payload state point at the generated file.
+                            val posted =
+                                postComposerImageResult(
+                                    fileRef = nextPayload.composerImageFileRef,
+                                    previewUri = nextPayload.composerImagePreviewUri,
+                                    actionId = nextPayload.composerImageActionId,
+                                    fileName = nextPayload.composerImageFileName,
+                                    mimeType = nextPayload.composerImageMimeType,
+                                    compressed = compressed,
+                                    source = slockFilePreviewComposerImageEventSource(compressed),
+                                    sizeBytes = nextPayload.composerImageSizeBytes,
+                                    replaceAttachmentId = nextPayload.composerImageReplaceAttachmentId,
+                                    closePage = false,
+                                    threadKey = nextPayload.composerImageThreadKey,
+                                    groupId = nextPayload.composerImageGroupId,
+                                    groupIndex = nextPayload.imageGalleryIndex.coerceAtLeast(0),
+                                    groupTotal =
+                                        SlockImageEditGroupReconcile.resolveGroupTotal(
+                                            nextPayload.composerImageGroupId,
+                                            nextPayload.imageGallery.size
+                                        )
+                                )
+                            if (!posted) {
+                                // postComposerImageEvents owns failure cleanup.  In particular,
+                                // it must preserve a pending ref if a synchronous consumer
+                                // claimed it before an unrelated listener threw; deleting the
+                                // whole cleanup set here would race that consumer's transfer.
+                                composerImageOperationGate.complete(token)
+                                composerImageEditSaving = false
+                                return@launch
+                            }
+                        }
+                        // A completable session keeps the result for the caller's later Done;
+                        // an immediate-send session reaches this point only after relay success.
+                        payload = nextPayload
+                        composerImageEditMode = false
+                        composerImageEditSaving = false
+                        composerImageOperationGate.complete(token)
+                        if (!nextPayload.composerImageCanComplete) {
+                            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                        }
+                    } catch (cancelled: CancellationException) {
+                        composerImageOperationGate.cancel(token)
+                        cleanupComposerImageTemporaryRefs(cleanupRefs)
+                        throw cancelled
+                    } catch (_: Throwable) {
+                        composerImageOperationGate.complete(token)
+                        cleanupComposerImageTemporaryRefs(cleanupRefs)
+                        composerImageEditSaving = false
+                        bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                    } finally {
+                        if (activeComposerImageOperationJob.value === currentCoroutineContext()[Job]) {
+                            activeComposerImageOperationJob.value = null
+                        }
+                    }
+                }
+            activeComposerImageOperationJob.value = operationJob
+            operationJob.start()
         }
     }
     DisposableEffect(launchPayloadTrace.sessionId, launchPayloadTrace.routeKind) {
         onDispose {
+            // Invalidate callbacks before retiring the ephemeral registry. Cancellation then
+            // reaches BridgeModule's invokeOnCancellation, which asks each host to cancel its
+            // request-id keyed codec operation and remove its output.
+            composerImageOperationGate.retire()
+            activeComposerImageOperationJob.value?.cancel()
+            activeComposerImageOperationJob.value = null
             if (launchPayloadTrace.routeKind == SlockFilePreviewRouteEphemeral) {
                 retireCurrentEphemeralSession(cleanupPending = false)
             } else {
@@ -2770,7 +3535,10 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
             SlockFilePreviewComposerImageActionBar(
                 payload = payload,
-                enabled = !downloadActive,
+                // Finalization is asynchronous; keep the action visibly disabled while the
+                // in-flight operation owns the session, in addition to the function-level
+                // duplicate guard.
+                enabled = !downloadActive && !composerImageFinalizing,
                 onEdit = { composerImageEditMode = true },
                 onComplete = ::postComposerImageSelection
             )
@@ -4444,8 +5212,15 @@ private fun SlockFilePreviewPayload.withFilePreviewAuthorityRejected(): SlockFil
         composerImageActionId = "",
         composerImageGroupId = "",
         composerImageFileRef = "",
+        composerImageFileName = "",
+        composerImageMimeType = "",
+        composerImageSizeBytes = null,
         composerImagePreviewUri = "",
         composerImageOwnedTemporaryFileRefs = emptyList(),
+        composerImageReplaceAttachmentId = "",
+        composerImageCompressAfterEdit = false,
+        composerImageEditCompleted = false,
+        composerImageCompressed = false,
         composerImageCanComplete = false,
         composerImageCanEdit = false
     )
@@ -6264,40 +7039,315 @@ internal fun SlockFilePreviewPayload.canCompleteComposerImageSelection(): Boolea
         composerImageFileRef.isNotBlank()
     }
 
-internal fun SlockFilePreviewPayload.withComposerImageEditResult(fileRef: String): SlockFilePreviewPayload {
-    if (fileRef.isBlank() || imageGallery.isEmpty()) return this
-    val currentIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
-    val editedFileName =
-        imageGallery[currentIndex].name
-            .ifBlank { currentComposerImageFileName() }
-            .toKuiklySnapshotPngFileName()
+/**
+ * Returns whether at least one composer image still needs its final delivery representation.
+ *
+ * The source ref is deliberately not used as the completion signal: a picker ref may point at
+ * an uncompressed source, and a PNG editor snapshot may need a JPEG pass.  Callers use this
+ * predicate to start the asynchronous finalization workflow from the Done action; it must not be
+ * used to disable that action (a pending item is exactly what Done has to finalize).
+ */
+internal fun SlockFilePreviewPayload.hasPendingComposerImageFinalization(): Boolean {
+    if (!composerImageCanComplete) return false
+    return if (imageGallery.isNotEmpty()) {
+        imageGallery.any { image ->
+            !image.composerImageEditCompleted ||
+                (composerImageCompressAfterEdit && !image.composerImageCompressed)
+        }
+    } else {
+        !composerImageEditCompleted ||
+            (composerImageCompressAfterEdit && !composerImageCompressed)
+    }
+}
+
+/** Alias with a noun-oriented name for call sites that describe a gallery workflow. */
+internal fun SlockFilePreviewPayload.composerImageGalleryNeedsFinalization(): Boolean =
+    hasPendingComposerImageFinalization()
+
+internal fun SlockFilePreviewGalleryImage.isComposerImageFinalized(
+    compressAfterEdit: Boolean
+): Boolean =
+    composerImageEditCompleted && (!compressAfterEdit || composerImageCompressed)
+
+/**
+ * Marks an existing source ref as the final representation without changing its ownership.  This
+ * is used for the explicit "Original image" policy: the picker/editor ref is accepted as-is, but
+ * its completion state is still recorded so a later Done tap cannot deliver it twice.
+ */
+internal fun SlockFilePreviewPayload.markComposerImageFinalized(
+    compressed: Boolean
+): SlockFilePreviewPayload {
+    val currentIndex = imageGallery.takeIf { it.isNotEmpty() }?.let {
+        imageGalleryIndex.coerceIn(0, it.lastIndex)
+    }
     val updatedGallery =
-        imageGallery.mapIndexed { index, image ->
-            if (index == currentIndex) {
+        currentIndex?.let { index ->
+            imageGallery.mapIndexed { itemIndex, image ->
+                if (itemIndex == index) {
+                    image.copy(
+                        composerImageEditCompleted = true,
+                        composerImageCompressed = compressed
+                    )
+                } else {
+                    image
+                }
+            }
+        } ?: imageGallery
+    val selectedImage = currentIndex?.let(updatedGallery::get)
+    return copy(
+        composerImageEditCompleted = true,
+        composerImageCompressed = compressed,
+        imageGallery = updatedGallery,
+        composerImageFileRef = selectedImage?.composerImageFileRef ?: composerImageFileRef,
+        composerImageFileName = selectedImage?.name ?: composerImageFileName,
+        composerImageMimeType = selectedImage?.mimeType ?: composerImageMimeType,
+        composerImageSizeBytes = selectedImage?.composerImageSizeBytes ?: composerImageSizeBytes,
+        composerImagePreviewUri =
+            selectedImage?.composerImagePreviewUri?.ifBlank { selectedImage.thumbnailUrl.orEmpty() }
+                ?: composerImagePreviewUri
+    )
+}
+
+/** Mark one arbitrary gallery item final while preserving the current selection. */
+internal fun SlockFilePreviewPayload.markComposerImageGalleryItemFinalized(
+    index: Int,
+    compressed: Boolean
+): SlockFilePreviewPayload {
+    if (index !in imageGallery.indices) return this
+    val updatedGallery =
+        imageGallery.mapIndexed { itemIndex, image ->
+            if (itemIndex == index) {
                 image.copy(
-                    name = editedFileName,
-                    mimeType = KuiklySnapshotMimeType,
-                    sizeLabel = "",
-                    thumbnailUrl = fileRef,
-                    composerImageFileRef = fileRef,
-                    composerImagePreviewUri = fileRef,
-                    composerImageSizeBytes = null
+                    composerImageEditCompleted = true,
+                    composerImageCompressed = compressed
                 )
             } else {
                 image
             }
         }
+    val selectedIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
+    val selectedImage = updatedGallery[selectedIndex]
     return copy(
-        name = editedFileName,
-        imageUrl = fileRef,
-        externalFileName = editedFileName,
-        externalMimeType = KuiklySnapshotMimeType,
+        imageGallery = updatedGallery,
+        composerImageEditCompleted = selectedImage.composerImageEditCompleted,
+        composerImageCompressed = selectedImage.composerImageCompressed,
+        composerImageFileRef = selectedImage.composerImageFileRef,
+        composerImageFileName = selectedImage.name,
+        composerImageMimeType = selectedImage.mimeType,
+        composerImageSizeBytes = selectedImage.composerImageSizeBytes,
+        composerImagePreviewUri = selectedImage.composerImagePreviewUri
+    )
+}
+
+/** Convert an explicitly tracked gallery item back into a bridge-ready local file descriptor. */
+internal fun SlockFilePreviewGalleryImage.toComposerImagePlatformFile(): PlatformFile =
+    PlatformFile(
+        id = attachmentId.ifBlank { composerImageFileRef.ifBlank { "composer-image" } },
+        fileName = name.ifBlank { "image.png" },
+        mimeType = mimeType.takeIf { it.isNotBlank() },
+        sizeBytes = composerImageSizeBytes,
+        previewUri = composerImagePreviewUri.ifBlank { thumbnailUrl.orEmpty() }
+            .takeIf { it.isNotBlank() },
+        fileRef = composerImageFileRef.takeIf { it.isNotBlank() },
+        source = "composer_image_gallery"
+    )
+
+/** Convert a single-image payload into the same descriptor used by gallery finalization. */
+internal fun SlockFilePreviewPayload.toComposerImagePlatformFile(): PlatformFile =
+    PlatformFile(
+        id = composerImageActionId.ifBlank { composerImageFileRef.ifBlank { "composer-image" } },
+        fileName = composerImageFileName.ifBlank {
+            composerImageFileRef.substringAfterLast('/').ifBlank { "image.png" }
+        },
+        mimeType = composerImageMimeType.ifBlank { externalMimeType }.takeIf { it.isNotBlank() },
+        sizeBytes = composerImageSizeBytes,
+        previewUri = composerImagePreviewUri.ifBlank { imageUrl.orEmpty() }
+            .takeIf { it.isNotBlank() },
+        fileRef = composerImageFileRef.takeIf { it.isNotBlank() },
+        source = "composer_image_payload"
+    )
+
+/**
+ * Applies one final editor/bypass result to the process-local payload.  The caller must have
+ * already admitted the file through the native response parser when [compressed] is true.
+ * Invalid/blank refs are rejected by returning the original payload unchanged.
+ */
+internal fun SlockFilePreviewPayload.withComposerImageFinalResult(
+    file: PlatformFile,
+    compressed: Boolean
+): SlockFilePreviewPayload {
+    val fileRef = file.fileRef?.trim()?.takeIf { it.isNotBlank() } ?: return this
+    val mimeType =
+        file.mimeType
+            ?.trim()
+            ?.substringBefore(';')
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
+            ?: if (compressed) "image/jpeg" else KuiklySnapshotMimeType
+    if (compressed && mimeType != "image/jpeg") return this
+    val currentIndex = imageGallery.takeIf { it.isNotEmpty() }?.let {
+        imageGalleryIndex.coerceIn(0, it.lastIndex)
+    }
+    val currentImage = currentIndex?.let(imageGallery::get)
+    val fallbackName =
+        currentImage?.name
+            .orEmpty()
+            .ifBlank { currentComposerImageFileName() }
+            .ifBlank { "image.png" }
+    val fileName = file.fileName.trim().ifBlank {
+        if (compressed) fallbackName.toJpegFileName() else fallbackName.toKuiklySnapshotPngFileName()
+    }
+    val previewUri = file.previewUri?.trim()?.takeIf { it.isNotBlank() } ?: fileRef
+    val sizeBytes = file.sizeBytes?.takeIf { it > 0L }
+    val updatedGallery =
+        currentIndex?.let { index ->
+            imageGallery.mapIndexed { itemIndex, image ->
+                if (itemIndex != index) {
+                    image
+                } else {
+                    image.copy(
+                        name = fileName,
+                        mimeType = mimeType,
+                        sizeLabel = sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+                        thumbnailUrl = previewUri,
+                        composerImageFileRef = fileRef,
+                        composerImagePreviewUri = previewUri,
+                        composerImageSizeBytes = sizeBytes,
+                        composerImageOwnedTemporary = true,
+                        composerImageEditCompleted = true,
+                        composerImageCompressed = compressed
+                    )
+                }
+            }
+        } ?: imageGallery
+    val ownedRefs =
+        (composerImageOwnedTemporaryFileRefs + fileRef)
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
+    return copy(
+        name = fileName,
+        imageUrl = previewUri,
+        externalFileName = fileName,
+        externalMimeType = mimeType,
         composerImageFileRef = fileRef,
-        composerImageFileName = editedFileName,
-        composerImageMimeType = KuiklySnapshotMimeType,
-        composerImageSizeBytes = null,
-        composerImagePreviewUri = fileRef,
+        composerImageFileName = fileName,
+        composerImageMimeType = mimeType,
+        composerImageSizeBytes = sizeBytes,
+        composerImagePreviewUri = previewUri,
+        composerImageOwnedTemporaryFileRefs = ownedRefs,
+        composerImageEditCompleted = true,
+        composerImageCompressed = compressed,
         imageGallery = updatedGallery
+    )
+}
+
+/** String-field convenience overload for native/event call sites. */
+internal fun SlockFilePreviewPayload.withComposerImageFinalResult(
+    fileRef: String,
+    fileName: String,
+    mimeType: String,
+    previewUri: String? = fileRef,
+    sizeBytes: Long? = null,
+    compressed: Boolean = false
+): SlockFilePreviewPayload =
+    withComposerImageFinalResult(
+        file =
+            PlatformFile(
+                id = "composer-final-${fileRef.hashCode().toUInt().toString(16)}",
+                fileName = fileName,
+                mimeType = mimeType,
+                sizeBytes = sizeBytes,
+                previewUri = previewUri,
+                fileRef = fileRef,
+                source = slockFilePreviewComposerImageEventSource(compressed)
+            ),
+        compressed = compressed
+    )
+
+/** Applies a result to an arbitrary gallery ordinal, preserving the selected index. */
+internal fun SlockFilePreviewPayload.withComposerImageGalleryFinalResult(
+    index: Int,
+    file: PlatformFile,
+    compressed: Boolean
+): SlockFilePreviewPayload {
+    if (imageGallery.isEmpty() || index !in imageGallery.indices) return this
+    val fileRef = file.fileRef?.trim()?.takeIf { it.isNotBlank() } ?: return this
+    val mimeType =
+        file.mimeType
+            ?.trim()
+            ?.substringBefore(';')
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
+            ?: if (compressed) "image/jpeg" else KuiklySnapshotMimeType
+    if (compressed && mimeType != "image/jpeg") return this
+    val sourceImage = imageGallery[index]
+    val fallbackName =
+        sourceImage.name.ifBlank {
+            if (compressed) "image.jpg" else "image.png"
+        }
+    val fileName = file.fileName.trim().ifBlank {
+        if (compressed) fallbackName.toJpegFileName() else fallbackName.toKuiklySnapshotPngFileName()
+    }
+    val previewUri = file.previewUri?.trim()?.takeIf { it.isNotBlank() } ?: fileRef
+    val sizeBytes = file.sizeBytes?.takeIf { it > 0L }
+    val updatedImage =
+        sourceImage.copy(
+            name = fileName,
+            mimeType = mimeType,
+            sizeLabel = sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+            thumbnailUrl = previewUri,
+            composerImageFileRef = fileRef,
+            composerImagePreviewUri = previewUri,
+            composerImageSizeBytes = sizeBytes,
+            composerImageOwnedTemporary = true,
+            composerImageEditCompleted = true,
+            composerImageCompressed = compressed
+        )
+    val updatedGallery = imageGallery.toMutableList().also { it[index] = updatedImage }
+    val nextOwnedRefs =
+        (composerImageOwnedTemporaryFileRefs + fileRef)
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
+    val selectedIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
+    val selectedImage = updatedGallery[selectedIndex]
+    return copy(
+        name = selectedImage.name,
+        imageUrl = selectedImage.composerImagePreviewUri.ifBlank { selectedImage.thumbnailUrl.orEmpty() }
+            .takeIf { it.isNotBlank() },
+        externalFileName = selectedImage.name,
+        externalMimeType = selectedImage.mimeType,
+        composerImageFileRef = selectedImage.composerImageFileRef,
+        composerImageFileName = selectedImage.name,
+        composerImageMimeType = selectedImage.mimeType,
+        composerImageSizeBytes = selectedImage.composerImageSizeBytes,
+        composerImagePreviewUri = selectedImage.composerImagePreviewUri,
+        composerImageOwnedTemporaryFileRefs = nextOwnedRefs,
+        composerImageEditCompleted = selectedImage.composerImageEditCompleted,
+        composerImageCompressed = selectedImage.composerImageCompressed,
+        imageGallery = updatedGallery
+    )
+}
+
+internal fun SlockFilePreviewPayload.withComposerImageEditResult(fileRef: String): SlockFilePreviewPayload {
+    val cleanRef = fileRef.trim().takeIf { it.isNotBlank() } ?: return this
+    val editedFileName =
+        imageGallery.getOrNull(imageGalleryIndex.coerceIn(0, imageGallery.lastIndex.coerceAtLeast(0)))?.name
+            .orEmpty()
+            .ifBlank { currentComposerImageFileName() }
+            .toKuiklySnapshotPngFileName()
+    return withComposerImageFinalResult(
+        file =
+            PlatformFile(
+                id = "composer-editor-${cleanRef.hashCode().toUInt().toString(16)}",
+                fileName = editedFileName,
+                mimeType = KuiklySnapshotMimeType,
+                previewUri = cleanRef,
+                fileRef = cleanRef,
+                source = SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE
+            ),
+        compressed = false
     )
 }
 
@@ -6310,6 +7360,12 @@ private fun String.toKuiklySnapshotPngFileName(): String {
     val leaf = substringAfterLast('/').substringAfterLast('\\').ifBlank { "image" }
     val stem = leaf.substringBeforeLast('.', missingDelimiterValue = leaf).ifBlank { "image" }
     return "$stem.png"
+}
+
+private fun String.toJpegFileName(): String {
+    val leaf = substringAfterLast('/').substringAfterLast('\\').ifBlank { "image" }
+    val stem = leaf.substringBeforeLast('.', missingDelimiterValue = leaf).ifBlank { "image" }
+    return "$stem.jpg"
 }
 
 internal data class SlockFilePreviewImageGalleryResolutionState(
@@ -6617,6 +7673,9 @@ private fun SlockFilePreviewGalleryImage.toPreviewPayload(
             composerImageMimeType = mimeType,
             composerImageSizeBytes = composerImageSizeBytes,
             composerImagePreviewUri = composerImagePreviewUri.ifBlank { thumbnailUrl.orEmpty() },
+            composerImageCompressAfterEdit = previous.composerImageCompressAfterEdit,
+            composerImageEditCompleted = composerImageEditCompleted,
+            composerImageCompressed = composerImageCompressed,
             imageGalleryIndex = imageGalleryIndex
         )
     }
@@ -7013,7 +8072,7 @@ internal fun slockComposerImagePickerIsStrictImage(fileName: String, mimeType: S
     return mime.startsWith("image/") && extension in SlockFilePreviewImageExtensions
 }
 
-private val SlockFilePreviewVideoExtensions =
+internal val SlockFilePreviewVideoExtensions =
     setOf("3gp", "avi", "flv", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "webm", "wmv")
 
 private val SlockFilePreviewAudioExtensions =
