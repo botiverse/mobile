@@ -24,6 +24,8 @@ FOUNDATION_EXTERN void SlockIosDiagnosticsRecordUnhandledException(
     NSString *stack
 );
 FOUNDATION_EXTERN void SlockIosInstallHandsReporting(void);
+/** Installs the bridge-free temporary-file retirement handler used by shared draft persistence. */
+FOUNDATION_EXTERN void SlockIosInstallThreadComposerTemporaryFileRetirement(void);
 FOUNDATION_EXTERN NSArray<NSString *> *SlockIosPrepareDiagnosticsAttachmentPaths(NSString *reason);
 FOUNDATION_EXTERN NSArray<NSString *> *SlockIosPrepareDiagnosticsAttachmentPathsForCrash(int64_t crashAtMillis);
 FOUNDATION_EXTERN NSString * _Nullable SlockIosPrepareDiagnosticsCrashAttachmentPath(void);

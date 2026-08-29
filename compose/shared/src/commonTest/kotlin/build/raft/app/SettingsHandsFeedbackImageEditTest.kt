@@ -68,6 +68,7 @@ class SettingsHandsFeedbackImageEditTest {
         assertEquals("feedback-group-a", request.previewPayload.composerImageThreadKey)
         assertEquals("feedback-image-group-a", request.previewPayload.composerImageActionId)
         assertEquals("group-a", request.previewPayload.composerImageGroupId)
+        assertTrue(request.previewPayload.composerImageCompressAfterEdit)
         assertEquals("file:///picked/zero.png", request.previewPayload.composerImageFileRef)
         assertEquals(
             listOf("file:///picked/zero.png", "file:///picked/one.png"),
@@ -191,6 +192,10 @@ class SettingsHandsFeedbackImageEditTest {
         val session = session(expectedCount = 1)
         val parsed = parseSettingsHandsFeedbackImageEditEvent(eventJson(index = 0, total = 1))!!
 
+        assertEquals(SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE, parsed.source)
+        assertFalse(parsed.compressed)
+        assertEquals("settings_feedback_draft", parsed.file.source)
+
         val result =
             foldSettingsHandsFeedbackImageEditEvent(
                 session = session,
@@ -201,6 +206,24 @@ class SettingsHandsFeedbackImageEditTest {
 
         val complete = assertIs<SettingsHandsFeedbackImageEditFoldResult.Complete>(result)
         assertEquals(listOf("file:///edited/0.png"), complete.files.map { it.fileRef })
+    }
+
+    @Test
+    fun compressedWireMetadataIsRetainedWhileSettingsOwnsDurableSource() {
+        val parsed =
+            parseSettingsHandsFeedbackImageEditEvent(
+                eventJson().apply {
+                    put("fileName", "edited-0.jpg")
+                    put("mimeType", "image/jpeg")
+                    put("source", SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE)
+                    put("compressed", true)
+                }
+            )!!
+
+        assertEquals(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE, parsed.source)
+        assertTrue(parsed.compressed)
+        assertEquals("image/jpeg", parsed.file.mimeType)
+        assertEquals("settings_feedback_draft", parsed.file.source)
     }
 
     @Test
@@ -309,12 +332,40 @@ class SettingsHandsFeedbackImageEditTest {
         assertNull(parseSettingsHandsFeedbackImageEditEvent(eventJson().put("groupId", "")))
         assertNull(parseSettingsHandsFeedbackImageEditEvent(eventJson().put("fileRef", "")))
 
-        val invalidTotal = parseSettingsHandsFeedbackImageEditEvent(eventJson(total = 0))!!
-        val failed =
-            assertIs<SettingsHandsFeedbackImageEditFoldResult.Failed>(
-                fold(session(expectedCount = 1), invalidTotal)
+        // Finalization metadata is a strict wire contract. Missing, non-Boolean, unknown, and
+        // source/MIME-mismatched markers must never be normalized into a promotable PNG/JPEG.
+        assertNull(
+            parseSettingsHandsFeedbackImageEditEvent(
+                eventJson(includeSource = false)
             )
-        assertEquals(SlockImageEditGroupReconcile.REJECT_TOTAL_MISMATCH, failed.reason)
+        )
+        assertNull(
+            parseSettingsHandsFeedbackImageEditEvent(
+                eventJson(includeCompressed = false)
+            )
+        )
+        assertNull(
+            parseSettingsHandsFeedbackImageEditEvent(
+                eventJson().apply { put("compressed", "false") }
+            )
+        )
+        assertNull(
+            parseSettingsHandsFeedbackImageEditEvent(
+                eventJson().apply { put("source", "unknown-editor") }
+            )
+        )
+        assertNull(
+            parseSettingsHandsFeedbackImageEditEvent(
+                eventJson().apply {
+                    put("source", SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE)
+                    put("compressed", true)
+                }
+            )
+        )
+
+        // The shared parser owns group bounds now; malformed totals are rejected before the
+        // Settings fold/reconciliation layer can observe them.
+        assertNull(parseSettingsHandsFeedbackImageEditEvent(eventJson(total = 0)))
     }
 
     @Test
@@ -878,14 +929,19 @@ class SettingsHandsFeedbackImageEditTest {
             groupId = "group-a",
             index = index,
             total = total,
+            source = SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE,
+            compressed = false,
             file = image("edited-$index", "file:///edited/$index.png")
         )
 
     private fun eventJson(
         index: Int = 0,
-        total: Int = 1
+        total: Int = 1,
+        includeSource: Boolean = true,
+        includeCompressed: Boolean = true
     ): JSONObject =
         JSONObject().apply {
+            put("previewSessionId", "feedback-preview-group-a")
             put("threadKey", "feedback-group-a")
             put("actionId", "action-$index")
             put("action", "complete")
@@ -897,6 +953,8 @@ class SettingsHandsFeedbackImageEditTest {
             put("mimeType", "image/png")
             put("sizeBytes", 100L)
             put("previewUri", "file:///edited/$index-preview.png")
+            if (includeSource) put("source", SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE)
+            if (includeCompressed) put("compressed", false)
         }
 
     private fun fold(
@@ -927,6 +985,6 @@ class SettingsHandsFeedbackImageEditTest {
             sizeBytes = sizeBytes,
             previewUri = "$fileRef-preview",
             fileRef = fileRef,
-            source = "image_annotation"
+            source = SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE
         )
 }

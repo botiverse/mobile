@@ -1,6 +1,7 @@
 package build.raft.app.base
 
 import build.raft.app.AttachmentOwnerLease
+import build.raft.app.ThreadComposerTemporaryFileRetirement
 import build.raft.app.data.SLOCK_SOCKET_BASE_URL
 import build.raft.app.network.AttachmentDownloadCoordinator
 import build.raft.app.slockLogDebug
@@ -647,24 +648,46 @@ internal class BridgeModule : Module() {
         )
 
     /**
-     * Best-effort retirement for cache files owned by an ephemeral File Preview session.
-     * Hosts must independently fence every ref to their app-owned cache roots before deletion.
+     * Linearizes retirement of cache files owned by an ephemeral File Preview session.
+     *
+     * The native side must synchronously quarantine each admitted ref (an atomic same-directory
+     * rename) before this call returns.  Only the tombstone deletion may be asynchronous.  Keeping
+     * the call synchronous is important because shared draft persistence invokes it while holding
+     * the process-wide ownership lock; an asynchronous dispatch would re-open a post-dispatch ABA
+     * window in which a new draft can adopt the old pathname.
      */
     fun retireFilePreviewTemporaryFiles(
         sessionId: String,
         fileRefs: List<String>
-    ) {
+    ): String {
         val cleanSessionId = sessionId.trim()
         val cleanRefs = fileRefs.map(String::trim).filter(String::isNotBlank).distinct()
-        if (cleanRefs.isEmpty()) return
-        callNativeMethod(
-            RETIRE_FILE_PREVIEW_TEMPORARY_FILES,
-            JSONObject().apply {
-                put("sessionId", cleanSessionId)
-                put("fileRefs", JSONArray().apply { cleanRefs.forEach(::put) })
-            },
-            null
-        )
+        if (cleanRefs.isEmpty()) return ""
+        // Retirement is a shared ownership transition, not a renderer operation.  Calling the
+        // Kuikly sync bridge here is unsafe: persistence can invoke this method from its delayed
+        // coroutine worker, while the renderer only accepts synchronous calls on its context
+        // thread.  The app-scope registry provides a bridge-free, synchronous quarantine seam;
+        // platform handlers atomically rename each admitted file to a sibling tombstone before
+        // returning and may delete only those tombstones asynchronously.
+        val result = ThreadComposerTemporaryFileRetirement.retire(cleanSessionId, cleanRefs.toSet())
+        if (!result.succeeded) {
+            slockLogWarn(
+                BRIDGE_LOG_TAG,
+                "thread_composer_temp_retire_fail sessionId=$cleanSessionId " +
+                    "requested=${result.requestedCount} quarantined=${result.quarantinedCount} " +
+                    "failed=${result.failedCount} rejected=${result.rejectedCount} " +
+                    "errorCode=${result.errorCode.orEmpty()}"
+            )
+        }
+        return JSONObject().apply {
+            put("status", if (result.succeeded) "quarantined" else "failed")
+            put("requested", result.requestedCount)
+            put("admitted", result.admittedCount)
+            put("quarantined", result.quarantinedCount)
+            put("rejected", result.rejectedCount)
+            put("failed", result.failedCount)
+            result.errorCode?.let { put("errorCode", it) }
+        }.toString()
     }
 
     suspend fun exportDownloadedAttachment(

@@ -175,6 +175,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -195,12 +196,262 @@ internal const val THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR = "attachment_image
 private val THREAD_ATTACHMENT_IMAGE_EXTENSIONS =
         setOf("avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "webp")
 private val THREAD_ATTACHMENT_VIDEO_EXTENSIONS =
-        setOf("3gp", "avi", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "webm", "wmv")
+        setOf("3gp", "avi", "flv", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "webm", "wmv")
 
 private class ThreadAttachmentImageCompressionException(
         message: String,
         cause: Throwable? = null,
 ) : IOException(message, cause)
+
+private class ThreadImageCompressionCancelledException : IOException("cancelled")
+
+private const val THREAD_IMAGE_COMPRESSION_CACHE_DIR_NAME = "slock-picked-thread-attachments"
+private const val THREAD_IMAGE_COMPRESSION_SOURCE = "composer_image_compressor"
+private const val THREAD_IMAGE_COMPRESSION_MAX_REQUEST_ID_LENGTH = 128
+private const val THREAD_IMAGE_COMPRESSION_MAX_FILE_NAME_LENGTH = 256
+
+private fun threadImageCompressionFailurePayload(): Map<String, Any> =
+        mapOf(
+                "code" to 400,
+                "errorCode" to THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR,
+                "errorBodyText" to "Unable to compress image attachment"
+        )
+
+private fun normalizedThreadImageMimeType(value: String): String =
+        value.substringBefore(';').trim().lowercase(Locale.US)
+
+private fun threadImageCompressionFileName(fileName: String): String {
+    val leaf = fileName.substringAfterLast('/').substringAfterLast('\\').ifBlank { "image" }
+    val stem = leaf.substringBeforeLast('.', leaf).ifBlank { "image" }
+    val safeStem =
+            stem.map { character ->
+                if (
+                        character.isLetterOrDigit() ||
+                                character == '.' ||
+                                character == '-' ||
+                                character == '_' ||
+                                character == ' '
+                ) {
+                    character
+                } else {
+                    '_'
+                }
+            }.joinToString("").trim().take(THREAD_IMAGE_COMPRESSION_MAX_FILE_NAME_LENGTH)
+    return "${safeStem.ifBlank { "image" }}.jpg"
+}
+
+private fun threadImageCompressionPathInside(root: File, candidate: File): Boolean {
+    val rootPath = root.canonicalPath.trimEnd(File.separatorChar) + File.separator
+    return candidate.canonicalPath.startsWith(rootPath)
+}
+
+private fun parseThreadImageCompressionSource(
+        fileRef: String,
+        roots: List<File>
+): File? {
+    val raw = fileRef.trim()
+    if (raw.isBlank() || raw.any(Char::isISOControl)) return null
+    val path =
+            if (raw.startsWith("/")) {
+                raw
+            } else {
+                val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return null
+                if (
+                        !uri.scheme.equals("file", ignoreCase = true) ||
+                                !uri.host.isNullOrBlank() ||
+                                uri.query != null ||
+                                uri.fragment != null
+                ) {
+                    return null
+                }
+                uri.path ?: return null
+            }
+    if (path.isBlank() || path.indexOf('\u0000') >= 0) return null
+    val candidate = runCatching { File(path).canonicalFile }.getOrNull() ?: return null
+    if (!candidate.isFile || candidate.length() <= 0L) return null
+    return candidate.takeIf { file -> roots.any { root -> threadImageCompressionPathInside(root, file) } }
+}
+
+private fun isThreadImageCompressionInput(
+        fileName: String,
+        mimeType: String,
+        sourceFile: File
+): Boolean {
+    val normalizedMime = normalizedThreadImageMimeType(mimeType)
+    if (!normalizedMime.startsWith("image/") || !sourceFile.isFile || sourceFile.length() <= 0L) {
+        return false
+    }
+    val extension =
+            fileName.substringAfterLast('.', "").trim().lowercase(Locale.US)
+    if (extension in THREAD_ATTACHMENT_VIDEO_EXTENSIONS) return false
+    // The provider-supplied display name is not authoritative.  A mismatched tuple can carry an
+    // image MIME/name while the admitted cache path is actually a movie; reject the source path
+    // extension before BitmapFactory gets a chance to interpret it as an image.
+    val sourceExtension = sourceFile.extension.trim().lowercase(Locale.US)
+    if (sourceExtension in THREAD_ATTACHMENT_VIDEO_EXTENSIONS) return false
+    if (extension.isNotBlank() && extension !in THREAD_ATTACHMENT_IMAGE_EXTENSIONS) {
+        // A renderer snapshot may carry a synthetic/unknown extension while still declaring a
+        // valid image MIME.  Known non-image extensions are rejected above; unknown ones are
+        // left to BitmapFactory's decode gate.
+        return true
+    }
+    return true
+}
+
+private fun compressThreadImageFile(
+        sourceFile: File,
+        outputFile: File,
+        isCancelled: () -> Boolean
+) {
+    fun checkCancelled() {
+        if (isCancelled()) throw ThreadImageCompressionCancelledException()
+    }
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(sourceFile.absolutePath, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+        throw ThreadAttachmentImageCompressionException("Unable to decode image attachment")
+    }
+    checkCancelled()
+    val orientation =
+            runCatching {
+                ExifInterface(sourceFile.absolutePath).getAttributeInt(
+                        ExifInterface.TAG_ORIENTATION,
+                        ExifInterface.ORIENTATION_NORMAL
+                )
+            }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+    var decoded: Bitmap? = null
+    var oriented: Bitmap? = null
+    var resized: Bitmap? = null
+    val partFile = File(outputFile.path + ".part")
+    var committed = false
+    try {
+        // A cancellation may race the worker before it opens the output.  The part suffix keeps
+        // that race from ever exposing a partially encoded JPEG at the final file name.
+        runCatching { partFile.delete() }
+        val sampleSize =
+                imageCompressionSampleSizeForThreadImage(bounds.outWidth, bounds.outHeight)
+        decoded =
+                BitmapFactory.decodeFile(
+                        sourceFile.absolutePath,
+                        BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                ) ?: throw ThreadAttachmentImageCompressionException("Unable to decode image attachment")
+        checkCancelled()
+        oriented = decoded
+        val decodedBitmap = requireNotNull(decoded)
+        val orientationMatrix = threadImageOrientationMatrix(orientation)
+        if (!orientationMatrix.isIdentity) {
+            oriented = Bitmap.createBitmap(
+                    decodedBitmap,
+                    0,
+                    0,
+                    decodedBitmap.width,
+                    decodedBitmap.height,
+                    orientationMatrix,
+                    true
+            )
+        }
+        checkCancelled()
+        val orientedBitmap = requireNotNull(oriented)
+        val longestEdge = max(orientedBitmap.width, orientedBitmap.height)
+        val scale = THREAD_ATTACHMENT_IMAGE_MAX_EDGE_PX.toFloat() /
+                longestEdge.coerceAtLeast(1).toFloat()
+        resized =
+                if (scale < 1f) {
+                    Bitmap.createScaledBitmap(
+                            orientedBitmap,
+                            (orientedBitmap.width * scale).roundToInt().coerceAtLeast(1),
+                            (orientedBitmap.height * scale).roundToInt().coerceAtLeast(1),
+                            true
+                    )
+                } else {
+                    orientedBitmap
+                }
+        checkCancelled()
+        val resizedBitmap = requireNotNull(resized)
+        val parent = outputFile.parentFile
+        if (parent == null || (!parent.exists() && !parent.mkdirs()) || !parent.isDirectory) {
+            throw ThreadAttachmentImageCompressionException("Attachment cache unavailable")
+        }
+        FileOutputStream(partFile).use { stream ->
+            if (!resizedBitmap.compress(
+                            Bitmap.CompressFormat.JPEG,
+                            THREAD_ATTACHMENT_IMAGE_JPEG_QUALITY,
+                            stream
+                    )
+            ) {
+                throw ThreadAttachmentImageCompressionException("Unable to encode image attachment")
+            }
+        }
+        checkCancelled()
+        if (!partFile.isFile || partFile.length() <= 0L) {
+            throw ThreadAttachmentImageCompressionException("Unable to encode image attachment")
+        }
+        checkCancelled()
+        if (!partFile.renameTo(outputFile)) {
+            throw ThreadAttachmentImageCompressionException("Unable to commit image attachment")
+        }
+        committed = true
+        checkCancelled()
+        if (!outputFile.isFile || outputFile.length() <= 0L) {
+            throw ThreadAttachmentImageCompressionException("Unable to encode image attachment")
+        }
+    } catch (throwable: Throwable) {
+        if (throwable is ThreadImageCompressionCancelledException ||
+                        throwable is ThreadAttachmentImageCompressionException
+        ) {
+            throw throwable
+        }
+        throw ThreadAttachmentImageCompressionException(
+                throwable.message ?: "Unable to compress image attachment",
+                throwable
+        )
+    } finally {
+        if (!committed || isCancelled()) {
+            runCatching { partFile.delete() }
+            runCatching { outputFile.delete() }
+        }
+        if (resized !== oriented) resized?.recycleIfNeededForThreadImage()
+        if (oriented !== decoded) oriented?.recycleIfNeededForThreadImage()
+        decoded?.recycleIfNeededForThreadImage()
+    }
+}
+
+private fun imageCompressionSampleSizeForThreadImage(sourceWidth: Int, sourceHeight: Int): Int {
+    var sampleSize = 1
+    val sampledEdge = max(sourceWidth, sourceHeight).toLong()
+    while (
+            sampleSize <= Int.MAX_VALUE / 2 &&
+                    sampledEdge / (sampleSize.toLong() * 2L) >= THREAD_ATTACHMENT_IMAGE_MAX_EDGE_PX
+    ) {
+        sampleSize *= 2
+    }
+    return sampleSize
+}
+
+private fun threadImageOrientationMatrix(orientation: Int): Matrix =
+        Matrix().apply {
+            when (orientation) {
+                ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> postScale(-1f, 1f)
+                ExifInterface.ORIENTATION_ROTATE_180 -> postRotate(180f)
+                ExifInterface.ORIENTATION_FLIP_VERTICAL -> postScale(1f, -1f)
+                ExifInterface.ORIENTATION_TRANSPOSE -> {
+                    postRotate(90f)
+                    postScale(-1f, 1f)
+                }
+                ExifInterface.ORIENTATION_ROTATE_90 -> postRotate(90f)
+                ExifInterface.ORIENTATION_TRANSVERSE -> {
+                    postRotate(-90f)
+                    postScale(-1f, 1f)
+                }
+                ExifInterface.ORIENTATION_ROTATE_270 -> postRotate(-90f)
+            }
+        }
+
+private fun Bitmap.recycleIfNeededForThreadImage() {
+    runCatching {
+        if (!isRecycled) recycle()
+    }
+}
 
 internal fun formatMergedSettingsDiagnosticsExportText(
         about: Map<String, Any>,
@@ -1807,7 +2058,7 @@ open class SlockKuiklyActivity :
     ): PickedThreadAttachment {
         val fileName = queryPickedFileName(uri) ?: uri.lastPathSegment ?: "attachment"
         val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-        val shouldCompress = compressImages && isImageAttachment(fileName, mimeType, imageOnly)
+        val shouldCompress = compressImages && isImageAttachment(uri, fileName, mimeType, imageOnly)
         val cachedFile =
                 if (shouldCompress) {
                     cacheCompressedPickedImage(uri, fileName, mimeType)
@@ -1835,7 +2086,34 @@ open class SlockKuiklyActivity :
         )
     }
 
-    private fun isImageAttachment(fileName: String, mimeType: String, imageOnly: Boolean): Boolean {
+    private fun isImageAttachment(
+            uri: Uri,
+            fileName: String,
+            mimeType: String,
+            imageOnly: Boolean
+    ): Boolean {
+        // A provider can report image/jpeg while its display name or URI path still identifies a
+        // movie (for example, clip.mp4 + image/jpeg).  Extension/path evidence is authoritative
+        // for the picker admission and must be rejected before trusting the MIME type; otherwise
+        // generic attachFile would route the movie through the JPEG compressor.
+        val videoPathCandidates = sequenceOf(
+                fileName,
+                uri.path.orEmpty(),
+                uri.lastPathSegment.orEmpty()
+        )
+        if (videoPathCandidates.any { candidate ->
+                    val extension = candidate
+                            .substringBefore('?')
+                            .substringBefore('#')
+                            .substringAfterLast('/')
+                            .substringAfterLast('\\')
+                            .substringAfterLast('.', "")
+                            .lowercase(Locale.US)
+                    extension in THREAD_ATTACHMENT_VIDEO_EXTENSIONS
+                }
+        ) {
+            return false
+        }
         val normalizedMimeType = mimeType.substringBefore(';').trim().lowercase(Locale.US)
         if (normalizedMimeType.startsWith("video/")) return false
         if (normalizedMimeType.startsWith("image/")) return true
@@ -1848,7 +2126,6 @@ open class SlockKuiklyActivity :
         // action was requested with imageOnly=true.  Check video extensions before
         // the image-only/octet-stream fallback so an unavailable provider MIME type
         // never sends an MP4/MOV through the image decoder.
-        if (extension in THREAD_ATTACHMENT_VIDEO_EXTENSIONS) return false
         if (extension in THREAD_ATTACHMENT_IMAGE_EXTENSIONS) return true
         return imageOnly && normalizedMimeType == "application/octet-stream"
     }
@@ -2690,6 +2967,7 @@ internal object SlockKuiklyAdapters {
         installAndroidAppScopeSharedKeyValueStores(context)
         installAndroidAppScopePlatformFileResolver(context)
         installAndroidAppScopeEventBus(context)
+        installAndroidThreadComposerTemporaryFileRetirement(context)
         SlockAndroidSqlDatabaseContext.init(context)
         SlockAndroidAvatarCacheProcess.install(context.applicationContext)
         SharedBinaryDownloader.setDiagnosticsLogger { tag, message ->
@@ -3609,6 +3887,15 @@ internal class SlockKuiklyImageAdapter(
 internal class SlockKuiklyBridgeModule(
         private val appContext: Context,
 ) : KuiklyRenderBaseModule() {
+    private val threadImageCompressionOperations = ConcurrentHashMap<String, ThreadImageCompressionOperation>()
+    private val threadImageCompressionMainHandler = Handler(Looper.getMainLooper())
+    /**
+     * Native callbacks can already be queued on the main handler when the renderer tears down
+     * this module.  Keep a separate lifecycle fence for those preflight failures (which do not
+     * have an operation entry to cancel) as well as for worker completions.
+     */
+    private val threadImageCompressionDestroyed = AtomicBoolean(false)
+
     internal suspend fun submitNativeFeedback(request: JSONObject): Map<String, Any> =
             submitFeedbackToHands(request)
 
@@ -3645,10 +3932,10 @@ internal class SlockKuiklyBridgeModule(
                 null
             }
             "retireFilePreviewTemporaryFiles" -> {
-                SlockKuiklyThreadAdapter.execute("file-preview-temp-retire") {
-                    retireFilePreviewTemporaryFiles(params)
-                }
-                null
+                // BridgeModule uses a synchronous native call here.  The shared ownership lock
+                // remains held until this method returns, therefore quarantine (rename) must be
+                // complete before returning; only tombstone deletion may be deferred.
+                retireFilePreviewTemporaryFiles(params)
             }
             "attachmentDownloadControl" -> {
                 callback?.invoke(attachmentDownloadControl(params))
@@ -3739,6 +4026,14 @@ internal class SlockKuiklyBridgeModule(
                 )
                 null
             }
+            "compressThreadImage" -> {
+                compressThreadImage(params, callback)
+                null
+            }
+            "cancelCompressThreadImage" -> {
+                cancelCompressThreadImage(params)
+                null
+            }
             "socialAuth" -> {
                 socialAuth(params, callback)
                 null
@@ -3748,6 +4043,219 @@ internal class SlockKuiklyBridgeModule(
                 callback?.invoke(mapOf("code" to -1, "message" to "Method not implemented"))
                 null
             }
+        }
+    }
+
+    override fun onDestroy() {
+        threadImageCompressionDestroyed.set(true)
+        threadImageCompressionOperations.values.toList().forEach { operation ->
+            cancelThreadImageCompression(operation)
+            // A delivered operation may already have crossed the callback boundary and therefore
+            // refuse the normal ACTIVE/PENDING cancellation CAS.  Destruction still owns every
+            // generated cache object, including that terminal operation's .part sibling.
+            runCatching { operation.removeOutputs() }
+        }
+        threadImageCompressionOperations.clear()
+        super.onDestroy()
+    }
+
+    private fun compressThreadImage(params: String?, callback: KuiklyRenderCallback?) {
+        if (callback == null || threadImageCompressionDestroyed.get()) return
+        val request = runCatching { JSONObject(params ?: "{}") }.getOrNull()
+        val requestId = request?.optString("requestId")?.trim().orEmpty()
+        val fileName = request?.optString("fileName")?.trim().orEmpty()
+        val mimeType = normalizedThreadImageMimeType(request?.optString("mimeType").orEmpty())
+        val fileRef = request?.optString("fileRef")?.trim().orEmpty()
+        // Keep the bridge dispatch path free of filesystem probes.  In particular, canonicalPath,
+        // isFile and length can block on a provider-backed cache; perform all source admission on
+        // the worker after the request has been reserved in the operation map.
+        val validRequest =
+                request != null &&
+                        requestId.isNotBlank() &&
+                        requestId.length <= THREAD_IMAGE_COMPRESSION_MAX_REQUEST_ID_LENGTH &&
+                        requestId.none(Char::isISOControl) &&
+                        fileName.isNotBlank() &&
+                        fileName.length <= THREAD_IMAGE_COMPRESSION_MAX_FILE_NAME_LENGTH &&
+                        fileName.none { it == '/' || it == '\\' || it.isISOControl() } &&
+                        mimeType.isNotBlank() &&
+                        mimeType.startsWith("image/")
+        if (!validRequest) {
+            deliverThreadImageCompressionFailure(callback)
+            return
+        }
+        val outputRoot = File(appContext.cacheDir, THREAD_IMAGE_COMPRESSION_CACHE_DIR_NAME)
+        val outputFile =
+                File(outputRoot, "composer-image-${UUID.randomUUID()}.jpg")
+        val operation = ThreadImageCompressionOperation(requestId, callback, outputFile)
+        if (threadImageCompressionOperations.putIfAbsent(requestId, operation) != null) {
+            deliverThreadImageCompressionFailure(callback)
+            return
+        }
+        SlockKuiklyThreadAdapter.execute("thread-image-compress") {
+            var successful = false
+            try {
+                if (operation.isCancelled()) throw ThreadImageCompressionCancelledException()
+                val sourceRoots = listOfNotNull(appContext.cacheDir, appContext.externalCacheDir)
+                val sourceFile = parseThreadImageCompressionSource(fileRef, sourceRoots)
+                if (sourceFile == null || !isThreadImageCompressionInput(fileName, mimeType, sourceFile)) {
+                    throw ThreadAttachmentImageCompressionException("Unable to decode image attachment")
+                }
+                val canonicalRoot = outputRoot.canonicalFile
+                if (!canonicalRoot.exists() && !canonicalRoot.mkdirs()) {
+                    throw ThreadAttachmentImageCompressionException("Attachment cache unavailable")
+                }
+                if (!canonicalRoot.isDirectory || !threadImageCompressionPathInside(canonicalRoot, outputFile)) {
+                    throw ThreadAttachmentImageCompressionException("Attachment cache unavailable")
+                }
+                compressThreadImageFile(sourceFile, outputFile, operation::isCancelled)
+                if (operation.isCancelled()) throw ThreadImageCompressionCancelledException()
+                val outputRef = Uri.fromFile(outputFile).toString()
+                val file =
+                        JSONObject()
+                                .put("fileRef", outputRef)
+                                .put("fileName", threadImageCompressionFileName(fileName))
+                                .put("mimeType", "image/jpeg")
+                                .put("previewUri", outputRef)
+                                .put("sizeBytes", outputFile.length())
+                                .put("source", THREAD_IMAGE_COMPRESSION_SOURCE)
+                val bodyText = JSONObject().put("files", JSONArray().put(file)).toString()
+                successful = true
+                finishThreadImageCompression(operation, mapOf("code" to 200, "bodyText" to bodyText))
+            } catch (_: ThreadImageCompressionCancelledException) {
+                cancelThreadImageCompression(operation)
+            } catch (_: Throwable) {
+                finishThreadImageCompression(operation, threadImageCompressionFailurePayload())
+            } finally {
+                if (!successful || operation.isCancelled()) {
+                    runCatching { operation.removeOutputs() }
+                }
+                if (operation.isCancelled()) {
+                    threadImageCompressionOperations.remove(requestId, operation)
+                }
+            }
+        }
+    }
+
+    private fun cancelCompressThreadImage(params: String?) {
+        val requestId = runCatching { JSONObject(params ?: "{}").optString("requestId") }
+                .getOrNull()
+                ?.trim()
+                .orEmpty()
+        if (requestId.isBlank()) return
+        threadImageCompressionOperations[requestId]?.let(::cancelThreadImageCompression)
+    }
+
+    private fun cancelThreadImageCompression(operation: ThreadImageCompressionOperation) {
+        val cancelled = synchronized(operation) {
+            operation.state.compareAndSet(
+                    ThreadImageCompressionOperation.ACTIVE,
+                    ThreadImageCompressionOperation.CANCELLED
+            ) ||
+                    operation.state.compareAndSet(
+                            ThreadImageCompressionOperation.PENDING,
+                            ThreadImageCompressionOperation.CANCELLED
+                    )
+        }
+        if (cancelled) {
+            runCatching { operation.removeOutputs() }
+            threadImageCompressionOperations.remove(operation.requestId, operation)
+        }
+    }
+
+    private fun finishThreadImageCompression(
+            operation: ThreadImageCompressionOperation,
+            payload: Map<String, Any>
+    ) {
+        if (threadImageCompressionDestroyed.get() ||
+                        threadImageCompressionOperations[operation.requestId] !== operation
+        ) {
+            cancelThreadImageCompression(operation)
+            runCatching { operation.removeOutputs() }
+            return
+        }
+        val pending = synchronized(operation) {
+            operation.state.compareAndSet(
+                    ThreadImageCompressionOperation.ACTIVE,
+                    ThreadImageCompressionOperation.PENDING
+            )
+        }
+        if (!pending) {
+            runCatching { operation.outputFile.delete() }
+            return
+        }
+        if (!threadImageCompressionMainHandler.post {
+            var callbackFailed = false
+            var removeOutput = false
+            synchronized(operation) {
+                if (threadImageCompressionDestroyed.get() ||
+                                threadImageCompressionOperations[operation.requestId] !== operation ||
+                                !operation.state.compareAndSet(
+                                ThreadImageCompressionOperation.PENDING,
+                                ThreadImageCompressionOperation.DELIVERED
+                        )
+                ) {
+                    removeOutput = true
+                } else if (threadImageCompressionDestroyed.get()) {
+                    operation.state.compareAndSet(
+                            ThreadImageCompressionOperation.DELIVERED,
+                            ThreadImageCompressionOperation.CANCELLED
+                    )
+                    removeOutput = true
+                } else {
+                    // Hold the operation monitor across the final lifecycle check and callback.
+                    // cancel/onDestroy use the same monitor, so they cannot force-cancel between
+                    // this check and callback invocation and leave an unowned JPEG behind.
+                    try {
+                        operation.callback.invoke(payload)
+                    } catch (_: Throwable) {
+                        callbackFailed = true
+                        operation.state.compareAndSet(
+                                ThreadImageCompressionOperation.DELIVERED,
+                                ThreadImageCompressionOperation.CANCELLED
+                        )
+                        removeOutput = true
+                    }
+                }
+            }
+            if (removeOutput || callbackFailed) {
+                runCatching { operation.removeOutputs() }
+            }
+            threadImageCompressionOperations.remove(operation.requestId, operation)
+        }) {
+            cancelThreadImageCompression(operation)
+        }
+    }
+
+    private fun deliverThreadImageCompressionFailure(callback: KuiklyRenderCallback) {
+        if (threadImageCompressionDestroyed.get()) return
+        if (!threadImageCompressionMainHandler.post {
+            if (!threadImageCompressionDestroyed.get()) {
+                runCatching { callback.invoke(threadImageCompressionFailurePayload()) }
+            }
+        }) return
+    }
+
+    private data class ThreadImageCompressionOperation(
+            val requestId: String,
+            val callback: KuiklyRenderCallback,
+            val outputFile: File,
+            val state: AtomicInteger = AtomicInteger(ACTIVE)
+    ) {
+        val partFile: File
+            get() = File(outputFile.path + ".part")
+
+        fun removeOutputs() {
+            runCatching { partFile.delete() }
+            runCatching { outputFile.delete() }
+        }
+
+        fun isCancelled(): Boolean = state.get() == CANCELLED
+
+        companion object {
+            const val ACTIVE = 0
+            const val PENDING = 1
+            const val DELIVERED = 2
+            const val CANCELLED = 3
         }
     }
 
@@ -6841,8 +7349,13 @@ internal class SlockKuiklyBridgeModule(
                 }
     }
 
-    private fun retireFilePreviewTemporaryFiles(params: String?) {
-        val request = runCatching { JSONObject(params ?: "{}") }.getOrNull() ?: return
+    private fun retireFilePreviewTemporaryFiles(params: String?): String {
+        val request = runCatching { JSONObject(params ?: "{}") }.getOrNull()
+                ?: return "{\"status\":\"invalid\"}"
+        val sessionId = request.optString("sessionId").trim()
+        if (sessionId.isBlank() || sessionId.length > 256 || sessionId.any(Char::isISOControl)) {
+            return "{\"status\":\"invalid\"}"
+        }
         val refsJson = request.optJSONArray("fileRefs")
         val refs =
             buildList {
@@ -6852,16 +7365,32 @@ internal class SlockKuiklyBridgeModule(
                     }
                 }
             }
-        val result =
-            retireFilePreviewTemporaryFiles(
+        val quarantine =
+            quarantineFilePreviewTemporaryFiles(
                 cacheRoots = listOfNotNull(appContext.cacheDir, appContext.externalCacheDir),
                 fileRefs = refs
             )
+        // The original pathname is vacant at this point.  Deleting only the returned tombstones
+        // asynchronously is safe even if a later draft recreates that pathname.
+        if (quarantine.quarantineFiles.isNotEmpty()) {
+            SlockKuiklyThreadAdapter.execute("file-preview-temp-tombstone-delete") {
+                quarantine.quarantineFiles.forEach { tombstone ->
+                    runCatching { tombstone.delete() }
+                }
+            }
+        }
         SlockAppLog.record(
             "SlockFilePreviewCleanup",
-            "requested=${result.requestedCount} admitted=${result.admittedCount} " +
-                "deleted=${result.deletedCount} rejected=${result.rejectedCount}"
+            "session=$sessionId requested=${quarantine.requestedCount} admitted=${quarantine.admittedCount} " +
+                "quarantined=${quarantine.quarantinedCount} rejected=${quarantine.rejectedCount}"
         )
+        return JSONObject()
+                .put("status", "quarantined")
+                .put("requested", quarantine.requestedCount)
+                .put("admitted", quarantine.admittedCount)
+                .put("quarantined", quarantine.quarantinedCount)
+                .put("rejected", quarantine.rejectedCount)
+                .toString()
     }
 
     private fun attachmentDownloadControl(params: String?): Map<String, Any> {
