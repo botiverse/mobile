@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-28T22:44:20.061Z",
+  "generatedAt": "2026-08-29T21:58:39.100Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 86,
-    "pending": 6
+    "ready": 83,
+    "pending": 9
   },
   "cases": [
     {
@@ -552,7 +552,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41497942386831277
+      "metricMismatch": 0.41496209659952354
     },
     {
       "id": "components.ui.spinner.states",
@@ -1579,7 +1579,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2690359973535329
+      "metricMismatch": 0.26903430955563656
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1613,7 +1613,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2688935472110827
+      "metricMismatch": 0.2688965852472961
     },
     {
       "id": "components.home.saved.results",
@@ -1650,7 +1650,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1904320987654321
+      "metricMismatch": 0.19037707770022427
     },
     {
       "id": "components.home.activity.results",
@@ -1686,7 +1686,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18521033767213735
+      "metricMismatch": 0.18513907229243953
     },
     {
       "id": "components.tasks.panel.states",
@@ -1794,42 +1794,22 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83f7c3e4c20ec00cc37fc3ffc07fc3ffc3ffc39fc30fc1ffc3ffc1ffc0ffc3ffc3dfc2ffc3ffc03fc27fc3ffc2d9c3ffc3ffc3ff42ffc7ffc3ffc3ffc2ffc07fc3ffc3ffc3ffc3ffc3ffc07fc3ffc27fc2ffc3ffc3ff40ffc3ffc3ffc3ffc7ffc3d047f7c3804380000000000ffffffff",
-      "generatedAt": "2026-08-26T22:57:59.292Z",
-      "severity": "high",
-      "summary": [
-        "Android renders additional fields (Reasoning dropdown, Mode section, Model refresh icon) absent on React baseline",
-        "React shows a 'Could not load models…' error state under Model; Android instead displays a populated Reasoning dropdown with 'Medium' value",
-        "Form vertical density is tighter on Android: Computer, Name, and Description inputs are stacked with less vertical padding vs React",
-        "Agent-limit banner is taller on React (wraps to 2 centered lines with extra padding) vs Android (left-aligned, more compact 2-line wrap)",
-        "Close (X) button position differs: React has a visible offset/boxed styling; Android shows a plain X flush in top-right"
-      ],
-      "likelyCauses": [
-        "Android implementation renders a more complete form (Reasoning + Mode) while React was captured in a partial/error state",
-        "Inconsistent test fixtures between platforms: Model list failed to load on React baseline, succeeded on Android",
-        "Different copy/spacing tokens between React and Android design systems for dialog padding and field gap",
-        "Screenshot crop contract mismatch (modal-viewport vs viewport-bounds) makes the Android screenshot include surrounding chrome, shifting apparent bounds"
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Stabilize the test fixture: ensure both platforms use the same agent-limit-reached state and either both pre-load models or both show the error path",
-        "Align Android form to React baseline by hiding Reasoning/Mode fields (or moving them under '> MORE') and matching field vertical spacing",
-        "Normalize crop contract to modal-viewport on both sides so dialog bounds match in visual diffs",
-        "Update React baseline to match the richer Android form (add Reasoning, Mode) if those are the intended product fields",
-        "Tighten header banner padding and font weight so the limit-reached alert has identical height/alignment across platforms"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.20538745088508126
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003ffc3dfc2bf87df83ffc3e4c007c00cc20fc3ffc2ffc3ffc3cfc39fc3ffc1ffc3ffc1ffc3ffc3ffc3dfc3ffc3ffc03fc27fc3ffc3ffc3ffc3ffc3ff42ffc7ffc3ffc3ffc2ffc07fc3ffc3ffc3ffc3ffc3ffc07fc3ffc27fc2ffc3ffc3ff40ffc3ffc3ffc3ffc7ffc3f447f7c3804380000000000ffffffff",
+      "generatedAt": "2026-08-29T21:58:38.465Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.24379261689688225
     },
     {
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:44:19.297Z",
+      "generatedAt": "2026-08-29T21:58:38.357Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1842,7 +1822,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:44:19.297Z",
+      "generatedAt": "2026-08-29T21:58:38.357Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1853,74 +1833,29 @@
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83f7c3e4c20ec00cc37fc3ffc07fc3ffc3ffc39fc30fc1ffc3ffc1ffc0ffc3ffc3dfc2ffc3ffc03fc27fc3ffc2d9c3ffc3ffc3ff42ffc7ffc3ffc3ffc2ffc03fc3ffc2ffc3ffc3ffc3ffc0ffc3ffc7ffc2ffc7ffc3ff43ffc3ffc3ffc3ffc7ffc3d047f7c3804380000000000ffffffff",
-      "generatedAt": "2026-08-26T22:57:59.365Z",
-      "severity": "high",
-      "summary": [
-        "Android layout is more compact/condensed vertically vs React, resulting in fields rendered closer together",
-        "Android shows a Provider dropdown with helper text ('Default leaves Claude Code provider settings untouched...') which is absent on React",
-        "Android Model field includes a refresh/reload icon button on the right side that React lacks",
-        "React shows 'Could not load models from this Computer. Retry' error state under Model dropdown; Android does not show this error",
-        "React shows '> MORE' collapsible expander near the bottom; Android omits this control entirely"
-      ],
-      "likelyCauses": [
-        "Android Compose form uses a different vertical rhythm/spacing token than React web form",
-        "Android implementation renders additional Provider section that React either hides or conditionally renders",
-        "React is showing a network-error fallback state while Android is in a successful-loading state (timing/race difference)",
-        "Dialog bottom safe-area/padding not accounting for scrollable content height on Android",
-        "Missing 'More' section toggle suggests incomplete feature parity in Android component"
-      ],
-      "suggestedOwner": "android-eng",
-      "suggestedFixes": [
-        "Match vertical field spacing/insets in Android CreateAgentDialog to React baseline tokens",
-        "Add a 'MORE' expandable section (or hide Provider consistently across platforms)",
-        "Add the same model-load retry/error affordance with 'Retry' link on Android",
-        "Add refresh icon to Android Model dropdown header if parity is required",
-        "Ensure dialog content is scrollable or its height accounts for all fields to prevent bottom clipping"
-      ],
-      "intentional": [
-        "Provider dropdown and helper text on Android could be a deliberate extra feature",
-        "Refresh icon on Model field on Android could be an intentional enhancement"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2044757024614845
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83ffc3e4c007c00cc20fc3ffc2ffc3ffc3cfc39fc3ffc1ffc3ffc1ffc2ffc3ffc3dfc2ffc3ffc03fc27fc3ffc3ffc3ffc3ffc3ff42ffc7ffc3ffc3ffc2ffc03fc3ffc2ffc3ffc3ffc3ffc0ffc3ffc7ffc2ffc7ffc3ff43ffc3ffc3ffc3ffc7ffc3d047f7c3004380000000000ffffffff",
+      "generatedAt": "2026-08-29T21:58:38.468Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.24426283739079946
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
-      "status": "ready",
-      "imageHash": "p1:efffcfff000000003ffc3dfc2bf82df83f6c3e0c206c00cc37fc3ffc07fc1ffc3ffc39fc307c1ffc3ffc1ffc0ffc3ffc3dfc2ffc3ffc03fc27fc3ffc2d8c3ffc3ffc3ff427fc7ffc3ffc3ffc2ffc03fc3ffc2ffc3bfc3ffc3ffc0ffc2ffc3ffc27fc7ffc3ffc3ffc3ffc1ffc2ffc7ffc303c7f7c3ffc38003ffc0000ffffffff",
-      "generatedAt": "2026-08-26T22:58:02.264Z",
-      "severity": "medium",
-      "summary": [
-        "Android view shows significantly more vertical content packed into the same viewport — fields are tighter and lower-positioned, pushing Cancel/Create Agent buttons into view while React's view is scrolled near the API URL field",
-        "The Cancel and Create Agent buttons are visible only on the Android side (bottom-right) but absent from the React capture, indicating React's modal content extends beyond the captured viewport",
-        "Form field vertical spacing is noticeably compressed on Android — gaps between COMPUTER, NAME, DESCRIPTION, RUNTIME, PROVIDER and API URL labels/inputs are smaller than on React",
-        "Typography on Android appears slightly lighter/thinner for labels (COMPUTER, NAME, RUNTIME, PROVIDER, API URL) compared to React's bolder label weight",
-        "The pink/peach 'Agent limit reached' banner has visibly different padding on Android — more vertical padding, making it taller than the React version"
-      ],
-      "likelyCauses": [
-        "Android implementation uses tighter line-height / vertical rhythm for form fields",
-        "React modal has larger default margins between form sections (likely 16–24dp gap vs Android's ~12dp)",
-        "Scroll position differs between captures — React captured higher in the form, Android captured lower showing footer buttons",
-        "Possible font-weight token mismatch: React uses 600–700 for labels, Android uses 400–500",
-        "Banner component may use different padding tokens across platforms"
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Align form-field vertical spacing tokens between React and Android (e.g., sectionGap = 24dp on both)",
-        "Match label font-weight to React's bolder style (use semibold/600 instead of regular)",
-        "Standardize banner padding so both platforms render the 'Agent limit reached' notice at the same height",
-        "Ensure modal scroll position is reset or captured at the same offset for parity testing",
-        "Verify the modal viewport contract captures the full dialog including footer buttons consistently"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.22532878303020487
+      "status": "pending",
+      "imageHash": "p1:efffcfff000000003ffc3dfc2bf82df83ffc3e0c007c00cc27fc3ffc27fc1ffc3cfc39fc3ffc1ffc3ffc1ffc3ffc3ffc21fc2ffc3ffc03fc07fc3ffc3dec3ffc3ffc3ff43ffc7ffc3ffc3ffc2ffc03fc3bfc2ffc3ffc3ffc2ffc0ffc2ffc3ffc2ffc7ffc3ffc3ffc3ffc1ffc2ffc7ffc383c7f7c3ffc38002ffc0000ffffffff",
+      "generatedAt": "2026-08-29T21:58:38.490Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.261163095286318
     },
     {
       "id": "components.members.agent-detail.profile",
@@ -2199,7 +2134,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19858123708834607
+      "metricMismatch": 0.1985954145906752
     },
     {
       "id": "components.settings.notifications.page",
@@ -2306,7 +2241,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffdfff0c3f800f0c3f800f0c7f8fff00078fff000380ffffff807f97ff807f87fffffe1c02ffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e2817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffdfff0c3f800f0c3f800f0c7f8fff00078fff000380ffffff807f97ff807f87fffffe1c02ffffffff",
       "generatedAt": "2026-08-28T22:42:49.265Z",
       "severity": "high",
       "summary": [
@@ -2371,7 +2306,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06128225381779884
+      "metricMismatch": 0.06126132512388438
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2575,7 +2510,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23827351777588746
+      "metricMismatch": 0.23827284265672888
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2962,7 +2897,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:44:19.981Z",
+      "generatedAt": "2026-08-29T21:58:39.024Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2975,7 +2910,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:44:19.981Z",
+      "generatedAt": "2026-08-29T21:58:39.024Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2988,7 +2923,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:44:19.981Z",
+      "generatedAt": "2026-08-29T21:58:39.024Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3001,7 +2936,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-28T22:44:19.981Z",
+      "generatedAt": "2026-08-29T21:58:39.024Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
