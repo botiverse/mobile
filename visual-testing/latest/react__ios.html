@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>9710520d-20260830215948</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-30T22:02:00.973Z" data-timestamp="2026-08-30T22:02:00.973Z" title="2026-08-30T22:02:00.973Z">2026-08-30 22:02:00 UTC</time></p>
+    <p class="runMeta"><code>9710520d-20260830215948</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-30T22:05:43.531Z" data-timestamp="2026-08-30T22:05:43.531Z" title="2026-08-30T22:05:43.531Z">2026-08-30 22:05:43 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 92</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 13</span>
       <span class="pill">Different 57</span>
       <span class="pill">Missing 11</span>
-      <span class="pill">AI 80/92 ready</span>
+      <span class="pill">AI 81/92 ready</span>
       <span class="pill">Matrix 101/120 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -3021,7 +3021,12 @@
       <p><code>RGB 86.8%</code><br/><code>Pixel 62.65%</code><br/><code>Mismatch 37.35%</code><br/><code>Raw 1170×1488 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×496 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS visual-testing / component-bounds owner</summary>
+    <ul><li>React message body truncates with a 'Show more' control and shows a document preview attachment card and footer (reactions, replies, #42 @Cindy), while iOS renders the full unwrapped message including long inline code spans and commands without a preview/footer in this crop.</li><li>iOS long inline code paths wrap to multiple soft-wrapped lines with a subtle gray fill, whereas React's inline code (if present) is not visible in the cropped baseline.</li><li>iOS shows '#520' as a yellow task chip; React shows '#520' as plain text — this is the documented intentional platform-difference for bare-number task chips.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Re-crop the iOS baseline to the same component-bounds contract as React (MessageItem row including footer/actions) so only the message row is compared; the full device canvas inflates mismatch.</li><li>Ensure both baselines include the same inline-code wrap test content or align element bounds so the 'Show more' truncation point and the long code spans are both visible to the comparator.</li><li>Normalize timestamp format across platforms for visual comparison (or exclude timestamp from the snapshot).</li><li>If the bare-#number chip difference is truly intentional and final, add a snapshot mask/ignore region around '#520' so it does not degrade similarity scores.</li><li>Verify that iOS inline-code wrapping uses the same max-width / break strategy as React so soft-wrapped gray-fill spans line-break at comparable offsets.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.long-inline-code.png" data-current-src="ios/components.thread.message-row.long-inline-code.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">

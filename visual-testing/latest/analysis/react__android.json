@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-30T22:01:52.778Z",
+  "generatedAt": "2026-08-30T22:05:35.616Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 85,
-    "pending": 7
+    "ready": 86,
+    "pending": 6
   },
   "cases": [
     {
@@ -1830,7 +1830,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:01:52.001Z",
+      "generatedAt": "2026-08-30T22:05:34.890Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1843,7 +1843,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:01:52.001Z",
+      "generatedAt": "2026-08-30T22:05:34.890Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2679,15 +2679,38 @@
     },
     {
       "id": "components.thread.message-row.long-inline-code",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe07fc0ffe7ffe001f07ffe000801ec201e176c001e007e01ee0bfc000e00bc043e003c012e006e203e006e003e01ee07fe042ffffe00fe07fe033e07fe75fffffe3dfc002e00ec002e00effffe00fffffe0dfffffe003ffffe6b3ffffe003ffffe003ffffe083ffffe3aeffffe03fffffe00fffffe7ebffffc000ffff7fff",
-      "generatedAt": "2026-08-30T22:01:52.683Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-30T22:04:01.850Z",
+      "severity": "medium",
+      "summary": [
+        "React view is significantly shorter (496px) and ends with the file attachment card and reaction toolbar; Android view extends to 844px and includes additional long inline-code wrap-test content not present in the React snapshot.",
+        "Header layout differs: React shows avatar + bold 'Cindy' + truncated channel name 'Keeps vis…' + timestamp on one line; Android shows larger avatar block, bold 'Cindy', full channel text 'Keeps visual testing …', and timestamp pushed to its own line.",
+        "Android body wraps every paragraph/numbered line into its own line (single-line-per-paragraph wrap), while React keeps wider multi-word lines and only wraps at natural breaks, causing different line counts per paragraph (e.g. the 'Normal:' and 'Bold:' markdown samples).",
+        "Inline-code chip rendering on Android shows narrower/individual per-token code backgrounds with visible padding and monospace spacing (CODE_SPAN , raft.build.markdown.inlineCode , go test ./…, git commit -s, and the long alpha-beta path wrapped into many short code spans), whereas React's inline code appears merged into continuous text with no visible per-token grey fill in this crop.",
+        "Tag-chip spacing differs: Android separates '#42' and '#43' task chips with larger gaps and shows them on their own visual segments, while React renders '#42' and '#43' closer together with different vertical alignment relative to surrounding text."
+      ],
+      "likelyCauses": [
+        "React baseline crop was taken on the element-bounds contract at 496px height, truncating the message before the long-code/ellipsis sections; Android used a manual rect of full 844px including additional body content.",
+        "Different inline-code rendering between web (React) and native (Android) — Android draws each inline code token as a discrete styled span with background fill and padding, React may rely on browser default <code> styling without per-token background in this view.",
+        "Line-break/wrap algorithm differs between CSS flex/text layout in React and Android's TextView wrap strategy, producing one-line-per-sentence wrapping on Android.",
+        "Avatar and header row layout differs between the two component implementations (spacing, font sizes, ellipsis behavior)."
+      ],
+      "suggestedOwner": "android-thread-message-row",
+      "suggestedFixes": [
+        "Normalize crop rects so both baselines include the same body sections (long inline code, ellipsis test, gradle command) before comparing pixel-level.",
+        "Verify React inline-code span styling matches Android's per-token background fill, padding, and monospace font so visual chips are consistent across platforms.",
+        "Adjust React body text wrap (or container width) so paragraph wrapping line counts match Android's single-line-per-paragraph behavior, or align both to the same wrap policy.",
+        "Align header row metrics: avatar size, name font weight/size, channel-name ellipsis truncation, and timestamp placement so the top metadata row is identical.",
+        "Recapture React baseline at the larger height (matching Android's 844px) and re-run pixel comparison once crops are aligned."
+      ],
+      "intentional": [
+        "Bare '#520' rendered as plain text on React but as a task chip on Android is an accepted platform-difference per known intentional divergences (task #416 closed); not a defect.",
+        "Self-mention yellow chip for @artin and known/unknown mention styling rules are now shared across both platforms and are not reported as divergences."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.31393682234914466
     },
     {
@@ -2938,7 +2961,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:01:52.688Z",
+      "generatedAt": "2026-08-30T22:05:35.537Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2951,7 +2974,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:01:52.688Z",
+      "generatedAt": "2026-08-30T22:05:35.537Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2964,7 +2987,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:01:52.688Z",
+      "generatedAt": "2026-08-30T22:05:35.537Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2977,7 +3000,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:01:52.688Z",
+      "generatedAt": "2026-08-30T22:05:35.537Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

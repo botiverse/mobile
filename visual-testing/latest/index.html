@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>9710520d-20260830215948</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-30T22:02:00.973Z" data-timestamp="2026-08-30T22:02:00.973Z" title="2026-08-30T22:02:00.973Z">2026-08-30 22:02:00 UTC</time></p>
+    <p class="runMeta"><code>9710520d-20260830215948</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-30T22:05:43.531Z" data-timestamp="2026-08-30T22:05:43.531Z" title="2026-08-30T22:05:43.531Z">2026-08-30 22:05:43 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 92</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 86</span>
       <span class="pill">Missing 6</span>
-      <span class="pill">AI 85/92 ready</span>
+      <span class="pill">AI 86/92 ready</span>
       <span class="pill">Matrix 101/120 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -3021,7 +3021,12 @@
       <p><code>RGB 87.7%</code><br/><code>Pixel 68.61%</code><br/><code>Mismatch 31.39%</code><br/><code>Raw 1170×1488 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×496 / component-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-thread-message-row</summary>
+    <ul><li>React view is significantly shorter (496px) and ends with the file attachment card and reaction toolbar; Android view extends to 844px and includes additional long inline-code wrap-test content not present in the React snapshot.</li><li>Header layout differs: React shows avatar + bold 'Cindy' + truncated channel name 'Keeps vis…' + timestamp on one line; Android shows larger avatar block, bold 'Cindy', full channel text 'Keeps visual testing …', and timestamp pushed to its own line.</li><li>Android body wraps every paragraph/numbered line into its own line (single-line-per-paragraph wrap), while React keeps wider multi-word lines and only wraps at natural breaks, causing different line counts per paragraph (e.g. the 'Normal:' and 'Bold:' markdown samples).</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize crop rects so both baselines include the same body sections (long inline code, ellipsis test, gradle command) before comparing pixel-level.</li><li>Verify React inline-code span styling matches Android's per-token background fill, padding, and monospace font so visual chips are consistent across platforms.</li><li>Adjust React body text wrap (or container width) so paragraph wrapping line counts match Android's single-line-per-paragraph behavior, or align both to the same wrap policy.</li><li>Align header row metrics: avatar size, name font weight/size, channel-name ellipsis truncation, and timestamp placement so the top metadata row is identical.</li><li>Recapture React baseline at the larger height (matching Android's 844px) and re-run pixel comparison once crops are aligned.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.long-inline-code.png" data-current-src="android/components.thread.message-row.long-inline-code.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

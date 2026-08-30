@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-30T22:02:00.973Z",
+  "generatedAt": "2026-08-30T22:05:43.531Z",
   "runId": "9710520d-20260830215948",
   "cases": [
     {
@@ -5470,17 +5470,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.566Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-30T22:04:27.924Z",
+            "severity": "low",
+            "summary": [
+              "Status dot row and 'Waiting pulse' label render isomorphic between Android and iOS — colors (green/orange/gray/blue dots, pink pulse), shapes, counts, and horizontal alignment match.",
+              "Slight horizontal spacing: the gap between the four status dots and between the pink dot and the 'Waiting pulse' label appears marginally wider on iOS, consistent with iOS font metrics, not a real layout bug.",
+              "Typography weight of 'Raft UI Status Dot' title and 'Waiting pulse' label appears slightly heavier on iOS (San Francisco vs Roboto), expected platform behavior.",
+              "No missing, clipped, or misaligned elements; both ends are within the 1dp layout tolerance."
+            ],
+            "likelyCauses": [
+              "iOS uses San Francisco typeface vs Android Roboto, producing minor weight/kerning differences in the title and label.",
+              "Density-independent unit rounding can introduce sub-pixel horizontal offsets at the dot row."
+            ],
+            "suggestedOwner": "kuikly-ui",
+            "suggestedFixes": [
+              "No fix required — differences are within tolerance and are platform-intrinsic.",
+              "If exact dot spacing is desired, lock dot gaps with explicit dp values rather than relying on default layout.",
+              "Confirm the 'Waiting pulse' label font family is mapped to the Kuikly system font alias on both platforms."
+            ],
+            "intentional": [
+              "Typography font family swap (Roboto → San Francisco) on iOS.",
+              "Marginal horizontal spacing variance from font metric rounding."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -5553,17 +5568,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.566Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-30T22:04:27.924Z",
+            "severity": "low",
+            "summary": [
+              "Status dot row and 'Waiting pulse' label render isomorphic between Android and iOS — colors (green/orange/gray/blue dots, pink pulse), shapes, counts, and horizontal alignment match.",
+              "Slight horizontal spacing: the gap between the four status dots and between the pink dot and the 'Waiting pulse' label appears marginally wider on iOS, consistent with iOS font metrics, not a real layout bug.",
+              "Typography weight of 'Raft UI Status Dot' title and 'Waiting pulse' label appears slightly heavier on iOS (San Francisco vs Roboto), expected platform behavior.",
+              "No missing, clipped, or misaligned elements; both ends are within the 1dp layout tolerance."
+            ],
+            "likelyCauses": [
+              "iOS uses San Francisco typeface vs Android Roboto, producing minor weight/kerning differences in the title and label.",
+              "Density-independent unit rounding can introduce sub-pixel horizontal offsets at the dot row."
+            ],
+            "suggestedOwner": "kuikly-ui",
+            "suggestedFixes": [
+              "No fix required — differences are within tolerance and are platform-intrinsic.",
+              "If exact dot spacing is desired, lock dot gaps with explicit dp values rather than relying on default layout.",
+              "Confirm the 'Waiting pulse' label font family is mapped to the Kuikly system font alias on both platforms."
+            ],
+            "intentional": [
+              "Typography font family swap (Roboto → San Francisco) on iOS.",
+              "Marginal horizontal spacing variance from font metric rounding."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20545,7 +20575,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-30T22:01:52.785Z",
+        "generatedAt": "2026-08-30T22:05:35.622Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20606,7 +20636,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:52.785Z",
+            "generatedAt": "2026-08-30T22:05:35.622Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20628,7 +20658,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20650,7 +20680,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20675,7 +20705,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20698,7 +20728,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20738,7 +20768,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-30T22:01:52.785Z",
+        "generatedAt": "2026-08-30T22:05:35.622Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20799,7 +20829,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:52.785Z",
+            "generatedAt": "2026-08-30T22:05:35.622Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20821,7 +20851,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20843,7 +20873,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20868,7 +20898,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20891,7 +20921,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26099,7 +26129,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26121,7 +26151,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26146,7 +26176,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26169,7 +26199,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26369,7 +26399,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26391,7 +26421,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26416,7 +26446,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26439,7 +26469,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26639,7 +26669,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26661,7 +26691,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26686,7 +26716,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26709,7 +26739,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26905,7 +26935,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26927,7 +26957,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26952,7 +26982,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26975,7 +27005,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27171,7 +27201,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27193,7 +27223,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27218,7 +27248,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27241,7 +27271,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -29554,17 +29584,37 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-30T22:01:53.904Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-30T22:04:01.850Z",
+        "severity": "medium",
+        "summary": [
+          "React view is significantly shorter (496px) and ends with the file attachment card and reaction toolbar; Android view extends to 844px and includes additional long inline-code wrap-test content not present in the React snapshot.",
+          "Header layout differs: React shows avatar + bold 'Cindy' + truncated channel name 'Keeps vis…' + timestamp on one line; Android shows larger avatar block, bold 'Cindy', full channel text 'Keeps visual testing …', and timestamp pushed to its own line.",
+          "Android body wraps every paragraph/numbered line into its own line (single-line-per-paragraph wrap), while React keeps wider multi-word lines and only wraps at natural breaks, causing different line counts per paragraph (e.g. the 'Normal:' and 'Bold:' markdown samples).",
+          "Inline-code chip rendering on Android shows narrower/individual per-token code backgrounds with visible padding and monospace spacing (CODE_SPAN , raft.build.markdown.inlineCode , go test ./…, git commit -s, and the long alpha-beta path wrapped into many short code spans), whereas React's inline code appears merged into continuous text with no visible per-token grey fill in this crop.",
+          "Tag-chip spacing differs: Android separates '#42' and '#43' task chips with larger gaps and shows them on their own visual segments, while React renders '#42' and '#43' closer together with different vertical alignment relative to surrounding text."
+        ],
+        "likelyCauses": [
+          "React baseline crop was taken on the element-bounds contract at 496px height, truncating the message before the long-code/ellipsis sections; Android used a manual rect of full 844px including additional body content.",
+          "Different inline-code rendering between web (React) and native (Android) — Android draws each inline code token as a discrete styled span with background fill and padding, React may rely on browser default <code> styling without per-token background in this view.",
+          "Line-break/wrap algorithm differs between CSS flex/text layout in React and Android's TextView wrap strategy, producing one-line-per-sentence wrapping on Android.",
+          "Avatar and header row layout differs between the two component implementations (spacing, font sizes, ellipsis behavior)."
+        ],
+        "suggestedOwner": "android-thread-message-row",
+        "suggestedFixes": [
+          "Normalize crop rects so both baselines include the same body sections (long inline code, ellipsis test, gradle command) before comparing pixel-level.",
+          "Verify React inline-code span styling matches Android's per-token background fill, padding, and monospace font so visual chips are consistent across platforms.",
+          "Adjust React body text wrap (or container width) so paragraph wrapping line counts match Android's single-line-per-paragraph behavior, or align both to the same wrap policy.",
+          "Align header row metrics: avatar size, name font weight/size, channel-name ellipsis truncation, and timestamp placement so the top metadata row is identical.",
+          "Recapture React baseline at the larger height (matching Android's 844px) and re-run pixel comparison once crops are aligned."
+        ],
+        "intentional": [
+          "Bare '#520' rendered as plain text on React but as a task chip on Android is an accepted platform-difference per known intentional divergences (task #416 closed); not a defect.",
+          "Self-mention yellow chip for @artin and known/unknown mention styling rules are now shared across both platforms and are not reported as divergences."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -29656,17 +29706,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-30T22:01:53.904Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-30T22:04:01.850Z",
+            "severity": "medium",
+            "summary": [
+              "React view is significantly shorter (496px) and ends with the file attachment card and reaction toolbar; Android view extends to 844px and includes additional long inline-code wrap-test content not present in the React snapshot.",
+              "Header layout differs: React shows avatar + bold 'Cindy' + truncated channel name 'Keeps vis…' + timestamp on one line; Android shows larger avatar block, bold 'Cindy', full channel text 'Keeps visual testing …', and timestamp pushed to its own line.",
+              "Android body wraps every paragraph/numbered line into its own line (single-line-per-paragraph wrap), while React keeps wider multi-word lines and only wraps at natural breaks, causing different line counts per paragraph (e.g. the 'Normal:' and 'Bold:' markdown samples).",
+              "Inline-code chip rendering on Android shows narrower/individual per-token code backgrounds with visible padding and monospace spacing (CODE_SPAN , raft.build.markdown.inlineCode , go test ./…, git commit -s, and the long alpha-beta path wrapped into many short code spans), whereas React's inline code appears merged into continuous text with no visible per-token grey fill in this crop.",
+              "Tag-chip spacing differs: Android separates '#42' and '#43' task chips with larger gaps and shows them on their own visual segments, while React renders '#42' and '#43' closer together with different vertical alignment relative to surrounding text."
+            ],
+            "likelyCauses": [
+              "React baseline crop was taken on the element-bounds contract at 496px height, truncating the message before the long-code/ellipsis sections; Android used a manual rect of full 844px including additional body content.",
+              "Different inline-code rendering between web (React) and native (Android) — Android draws each inline code token as a discrete styled span with background fill and padding, React may rely on browser default <code> styling without per-token background in this view.",
+              "Line-break/wrap algorithm differs between CSS flex/text layout in React and Android's TextView wrap strategy, producing one-line-per-sentence wrapping on Android.",
+              "Avatar and header row layout differs between the two component implementations (spacing, font sizes, ellipsis behavior)."
+            ],
+            "suggestedOwner": "android-thread-message-row",
+            "suggestedFixes": [
+              "Normalize crop rects so both baselines include the same body sections (long inline code, ellipsis test, gradle command) before comparing pixel-level.",
+              "Verify React inline-code span styling matches Android's per-token background fill, padding, and monospace font so visual chips are consistent across platforms.",
+              "Adjust React body text wrap (or container width) so paragraph wrapping line counts match Android's single-line-per-paragraph behavior, or align both to the same wrap policy.",
+              "Align header row metrics: avatar size, name font weight/size, channel-name ellipsis truncation, and timestamp placement so the top metadata row is identical.",
+              "Recapture React baseline at the larger height (matching Android's 844px) and re-run pixel comparison once crops are aligned."
+            ],
+            "intentional": [
+              "Bare '#520' rendered as plain text on React but as a task chip on Android is an accepted platform-difference per known intentional divergences (task #416 closed); not a defect.",
+              "Self-mention yellow chip for @artin and known/unknown mention styling rules are now shared across both platforms and are not reported as divergences."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -29689,17 +29759,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-30T22:01:57.322Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-30T22:04:18.101Z",
+            "severity": "high",
+            "summary": [
+              "React message body truncates with a 'Show more' control and shows a document preview attachment card and footer (reactions, replies, #42 @Cindy), while iOS renders the full unwrapped message including long inline code spans and commands without a preview/footer in this crop.",
+              "iOS long inline code paths wrap to multiple soft-wrapped lines with a subtle gray fill, whereas React's inline code (if present) is not visible in the cropped baseline.",
+              "iOS shows '#520' as a yellow task chip; React shows '#520' as plain text — this is the documented intentional platform-difference for bare-number task chips.",
+              "Header metadata layout differs: React shows full timestamp '06/25 05:55 AM' and truncated subhead 'Keeps vis…'; iOS shows '06/25 05:55' with longer subhead 'Keeps visual testing…' that wraps.",
+              "iOS body uses tighter line-height and slightly larger body font, causing more line breaks for the same prose (e.g., the 'Ordinary mention regression' sentence wraps differently)."
+            ],
+            "likelyCauses": [
+              "Different render window / crop: iOS screenshot is not cropped to component bounds (currentRawSize is the full device 1170×2532 vs React's 390×496 element crop), exposing additional inline-code sections that React baseline does not include in its bounds.",
+              "React's component-bounds crop stops after 'Show more', omitting the inline-code wrap-test content that iOS exposes; this makes pixel-perfect comparison 62.65% with 37.35% mismatch even though the shared content is largely aligned.",
+              "Task chip rendering for bare numeric refs differs by platform per the known divergence (Android/iOS tag everything, React gates on known-set).",
+              "iOS timestamp format omits AM/PM suffix and renders a slightly different font/size in the metadata row."
+            ],
+            "suggestedOwner": "iOS visual-testing / component-bounds owner",
+            "suggestedFixes": [
+              "Re-crop the iOS baseline to the same component-bounds contract as React (MessageItem row including footer/actions) so only the message row is compared; the full device canvas inflates mismatch.",
+              "Ensure both baselines include the same inline-code wrap test content or align element bounds so the 'Show more' truncation point and the long code spans are both visible to the comparator.",
+              "Normalize timestamp format across platforms for visual comparison (or exclude timestamp from the snapshot).",
+              "If the bare-#number chip difference is truly intentional and final, add a snapshot mask/ignore region around '#520' so it does not degrade similarity scores.",
+              "Verify that iOS inline-code wrapping uses the same max-width / break strategy as React so soft-wrapped gray-fill spans line-break at comparable offsets."
+            ],
+            "intentional": [
+              "Bare '#520' rendered as a yellow task chip on iOS versus plain text on React is an accepted platform-difference (Android/iOS tag-everything behavior, React gates on known-set per task #416)."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -29776,17 +29865,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-30T22:01:57.322Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-30T22:04:18.101Z",
+            "severity": "high",
+            "summary": [
+              "React message body truncates with a 'Show more' control and shows a document preview attachment card and footer (reactions, replies, #42 @Cindy), while iOS renders the full unwrapped message including long inline code spans and commands without a preview/footer in this crop.",
+              "iOS long inline code paths wrap to multiple soft-wrapped lines with a subtle gray fill, whereas React's inline code (if present) is not visible in the cropped baseline.",
+              "iOS shows '#520' as a yellow task chip; React shows '#520' as plain text — this is the documented intentional platform-difference for bare-number task chips.",
+              "Header metadata layout differs: React shows full timestamp '06/25 05:55 AM' and truncated subhead 'Keeps vis…'; iOS shows '06/25 05:55' with longer subhead 'Keeps visual testing…' that wraps.",
+              "iOS body uses tighter line-height and slightly larger body font, causing more line breaks for the same prose (e.g., the 'Ordinary mention regression' sentence wraps differently)."
+            ],
+            "likelyCauses": [
+              "Different render window / crop: iOS screenshot is not cropped to component bounds (currentRawSize is the full device 1170×2532 vs React's 390×496 element crop), exposing additional inline-code sections that React baseline does not include in its bounds.",
+              "React's component-bounds crop stops after 'Show more', omitting the inline-code wrap-test content that iOS exposes; this makes pixel-perfect comparison 62.65% with 37.35% mismatch even though the shared content is largely aligned.",
+              "Task chip rendering for bare numeric refs differs by platform per the known divergence (Android/iOS tag everything, React gates on known-set).",
+              "iOS timestamp format omits AM/PM suffix and renders a slightly different font/size in the metadata row."
+            ],
+            "suggestedOwner": "iOS visual-testing / component-bounds owner",
+            "suggestedFixes": [
+              "Re-crop the iOS baseline to the same component-bounds contract as React (MessageItem row including footer/actions) so only the message row is compared; the full device canvas inflates mismatch.",
+              "Ensure both baselines include the same inline-code wrap test content or align element bounds so the 'Show more' truncation point and the long code spans are both visible to the comparator.",
+              "Normalize timestamp format across platforms for visual comparison (or exclude timestamp from the snapshot).",
+              "If the bare-#number chip difference is truly intentional and final, add a snapshot mask/ignore region around '#520' so it does not degrade similarity scores.",
+              "Verify that iOS inline-code wrapping uses the same max-width / break strategy as React so soft-wrapped gray-fill spans line-break at comparable offsets."
+            ],
+            "intentional": [
+              "Bare '#520' rendered as a yellow task chip on iOS versus plain text on React is an accepted platform-difference (Android/iOS tag-everything behavior, React gates on known-set per task #416)."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -32561,7 +32669,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-30T22:01:52.785Z",
+        "generatedAt": "2026-08-30T22:05:35.622Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32622,7 +32730,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:52.785Z",
+            "generatedAt": "2026-08-30T22:05:35.622Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32644,7 +32752,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32666,7 +32774,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32691,7 +32799,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32714,7 +32822,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32754,7 +32862,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-30T22:01:52.785Z",
+        "generatedAt": "2026-08-30T22:05:35.622Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32815,7 +32923,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:52.785Z",
+            "generatedAt": "2026-08-30T22:05:35.622Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32837,7 +32945,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32859,7 +32967,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32884,7 +32992,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32907,7 +33015,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32947,7 +33055,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-30T22:01:52.785Z",
+        "generatedAt": "2026-08-30T22:05:35.622Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -33008,7 +33116,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:52.785Z",
+            "generatedAt": "2026-08-30T22:05:35.622Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33030,7 +33138,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33052,7 +33160,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33077,7 +33185,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33100,7 +33208,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33140,7 +33248,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-30T22:01:52.785Z",
+        "generatedAt": "2026-08-30T22:05:35.622Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -33201,7 +33309,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:52.785Z",
+            "generatedAt": "2026-08-30T22:05:35.622Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33223,7 +33331,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33245,7 +33353,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33270,7 +33378,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:55.747Z",
+            "generatedAt": "2026-08-30T22:05:38.516Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33293,7 +33401,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-30T22:01:59.244Z",
+            "generatedAt": "2026-08-30T22:05:41.863Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

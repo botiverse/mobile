@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>9710520d-20260830215948</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-30T22:02:00.973Z" data-timestamp="2026-08-30T22:02:00.973Z" title="2026-08-30T22:02:00.973Z">2026-08-30 22:02:00 UTC</time></p>
+    <p class="runMeta"><code>9710520d-20260830215948</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-30T22:05:43.531Z" data-timestamp="2026-08-30T22:05:43.531Z" title="2026-08-30T22:05:43.531Z">2026-08-30 22:05:43 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <a href="react__ios.html">React vs iOS</a> · <strong>Android vs iOS</strong></p>
     <div class="summary">
       <span class="pill">Total 92</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 20</span>
       <span class="pill">Different 45</span>
       <span class="pill">Missing 11</span>
-      <span class="pill">AI 80/92 ready</span>
+      <span class="pill">AI 81/92 ready</span>
       <span class="pill">Matrix 101/120 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1028,7 +1028,12 @@
       <p><code>RGB 98.0%</code><br/><code>Pixel 99.70%</code><br/><code>Mismatch 0.30%</code><br/><code>Raw 1026×276 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.70% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×92 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · kuikly-ui</summary>
+    <ul><li>Status dot row and 'Waiting pulse' label render isomorphic between Android and iOS — colors (green/orange/gray/blue dots, pink pulse), shapes, counts, and horizontal alignment match.</li><li>Slight horizontal spacing: the gap between the four status dots and between the pink dot and the 'Waiting pulse' label appears marginally wider on iOS, consistent with iOS font metrics, not a real layout bug.</li><li>Typography weight of 'Raft UI Status Dot' title and 'Waiting pulse' label appears slightly heavier on iOS (San Francisco vs Roboto), expected platform behavior.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No fix required — differences are within tolerance and are platform-intrinsic.</li><li>If exact dot spacing is desired, lock dot gaps with explicit dp values rather than relying on default layout.</li><li>Confirm the 'Waiting pulse' label font family is mapped to the Kuikly system font alias on both platforms.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.ui.status-dot.states.png" data-current-src="ios/components.ui.status-dot.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">

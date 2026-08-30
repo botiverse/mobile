@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-30 22:02:00 UTC
+Generated: 2026-08-30 22:05:43 UTC
 Latest run: 9710520d-20260830215948
 Latest commit: 9710520d-20260830215948
 Commit subject: Correct iOS install identity comment
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 92, same 0, pass 0, basic-pass 0, different 86, missing 6
-AI analysis: ready 85 / total 92, pending 7
+AI analysis: ready 86 / total 92, pending 6
 Visual coverage matrix: active 101 / total 120, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
