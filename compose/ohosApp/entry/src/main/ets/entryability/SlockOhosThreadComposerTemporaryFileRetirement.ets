@@ -11,6 +11,31 @@ const RETIREMENT_HANDLER_FAILURE = 'temporary_file_retirement_handler_failed';
 const RETIREMENT_INVALID_SESSION = 'temporary_file_retirement_session_invalid';
 
 /**
+ * FileUri has two forms in this app: a host-less sandbox URI
+ * (`file:///data/...`) and the authority-bearing URI returned by
+ * `fileUri.getUriFromPath` (`file://<bundle>/data/...`).  The latter is only
+ * trusted when its authority is this application; a foreign authority must
+ * never become an owned raw pathname merely because it happens to resolve
+ * below one of our roots.
+ */
+export function isSlockOhosThreadComposerTemporaryFileRefAuthorityAllowed(
+  ref: string,
+  selfBundleAuthority: string
+): boolean {
+  if (ref.startsWith('/')) return true;
+  if (!ref.toLowerCase().startsWith('file://')) return false;
+  try {
+    const parsed = new fileUri.FileUri(ref);
+    const authority = parsed.authority.trim();
+    if (authority.length === 0) return true;
+    const expected = selfBundleAuthority.trim();
+    return expected.length > 0 && authority.toLowerCase() === expected.toLowerCase();
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
  * Physical owner for the shared composer temporary-file retirement contract.
  *
  * The common persistence lock calls this service synchronously.  We therefore
@@ -20,8 +45,10 @@ const RETIREMENT_INVALID_SESSION = 'temporary_file_retirement_session_invalid';
  */
 export class SlockOhosThreadComposerTemporaryFileRetirementProvider {
   private readonly context: common.ApplicationContext;
+  private readonly selfBundleAuthority: string;
 
   constructor(context: common.UIAbilityContext) {
+    this.selfBundleAuthority = context.abilityInfo.bundleName.trim();
     this.context = context.getApplicationContext();
   }
 
@@ -167,6 +194,9 @@ export class SlockOhosThreadComposerTemporaryFileRetirementProvider {
     }
     if (ref.startsWith('/')) return ref;
     if (!ref.toLowerCase().startsWith('file://')) return '';
+    if (!isSlockOhosThreadComposerTemporaryFileRefAuthorityAllowed(ref, this.selfBundleAuthority)) {
+      return '';
+    }
     try {
       return new fileUri.FileUri(ref).path;
     } catch (_) {
