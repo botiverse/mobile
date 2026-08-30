@@ -34,14 +34,13 @@ class SettingsHomeSearchEntityRankingTest {
         assertEquals(listOf("conversation:channel-pinyin"), keysFor("dh"))
         assertEquals(listOf("sender:server-1:Human:human-pinyin"), keysFor("zhaoziqi"))
         assertEquals(listOf("sender:server-1:Human:human-pinyin"), keysFor("zzq"))
-        assertEquals(
-            listOf("conversation:dm-agent", "sender:server-1:Agent:agent-pinyin"),
-            keysFor("xiaoming")
-        )
-        assertEquals(
-            listOf("conversation:dm-agent", "sender:server-1:Agent:agent-pinyin"),
-            keysFor("xmzs")
-        )
+        // task #238: `dm-agent` carries presenceMemberId "agent-pinyin" on server-1, i.e. it is the
+        // *same* entity as the sender row. These two assertions previously pinned the duplicate
+        // that was reported (one DM row + one member row for one principal). The member row is now
+        // the single surviving row and carries the DM's launch identity, so ranking is asserted
+        // over one key rather than two.
+        assertEquals(listOf("sender:server-1:Agent:agent-pinyin"), keysFor("xiaoming"))
+        assertEquals(listOf("sender:server-1:Agent:agent-pinyin"), keysFor("xmzs"))
 
         val fuzzy = resultsFor("gnrl")
         assertEquals("conversation:channel-prefix", fuzzy.first().key)
