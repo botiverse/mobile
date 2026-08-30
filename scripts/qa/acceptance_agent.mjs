@@ -831,12 +831,20 @@ async function main() {
     // two 8-minute runs uploaded evidence but died verdict-less). The prompt
     // forbids upgrading unverified requirements to pass; exit 2 stays
     // reserved for real infrastructure (emulator dead, model unreachable).
+    // ONE decision, two renderings. @JingKe asked whether the steps.jsonl cause and
+    // the verdict's terminated_by are the same computation or a second one — a fair
+    // question, because a reader using the log as a stand-in for the field needs them
+    // to agree. They were two ternaries over the same conditions, which can drift.
+    // Now the human-readable cause is derived FROM terminatedBy, so the log and the
+    // verdict cannot disagree.
     terminatedBy = noProgressTriggered
       ? "no_progress"
       : turns >= opts.maxTurns ? "max_turns" : "wall_clock";
-    const budgetCause = noProgressTriggered
-      ? `no-progress fuse (${opts.noProgressTurns} repeated actions)`
-      : turns >= opts.maxTurns ? `turn budget (${opts.maxTurns})` : `wall clock (${opts.maxMinutes}min)`;
+    const budgetCause = {
+      no_progress: `no-progress fuse (${opts.noProgressTurns} repeated actions)`,
+      max_turns: `turn budget (${opts.maxTurns})`,
+      wall_clock: `wall clock (${opts.maxMinutes}min)`,
+    }[terminatedBy];
     logStep({ turn: turns, event: "forced_verdict", cause: budgetCause });
     try {
       pruneImages(messages);
