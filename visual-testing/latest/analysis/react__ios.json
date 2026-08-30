@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-29T22:02:26.167Z",
+  "generatedAt": "2026-08-30T22:01:55.742Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 81,
-    "pending": 11
+    "ready": 80,
+    "pending": 12
   },
   "cases": [
     {
@@ -551,7 +551,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062097122642146285
+      "metricMismatch": 0.062095097284670775
     },
     {
       "id": "components.ui.spinner.states",
@@ -1348,7 +1348,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10176712439745617
+      "metricMismatch": 0.10176678683787688
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1553,7 +1553,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2690066296701368
+      "metricMismatch": 0.26897017323557604
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1586,7 +1586,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2692118658943303
+      "metricMismatch": 0.2691784474959831
     },
     {
       "id": "components.home.saved.results",
@@ -1622,7 +1622,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11139094800232241
+      "metricMismatch": 0.11119820148256165
     },
     {
       "id": "components.home.activity.results",
@@ -1657,7 +1657,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1066559997839619
+      "metricMismatch": 0.10662967013677915
     },
     {
       "id": "components.tasks.panel.states",
@@ -1798,7 +1798,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:25.525Z",
+      "generatedAt": "2026-08-30T22:01:55.042Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1811,7 +1811,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:25.525Z",
+      "generatedAt": "2026-08-30T22:01:55.042Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2272,7 +2272,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:25.789Z",
+      "generatedAt": "2026-08-30T22:01:55.319Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2285,7 +2285,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:25.789Z",
+      "generatedAt": "2026-08-30T22:01:55.319Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2298,7 +2298,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:25.789Z",
+      "generatedAt": "2026-08-30T22:01:55.319Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2311,7 +2311,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:25.789Z",
+      "generatedAt": "2026-08-30T22:01:55.319Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2324,7 +2324,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:25.789Z",
+      "generatedAt": "2026-08-30T22:01:55.319Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2433,7 +2433,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23925682883028854
+      "metricMismatch": 0.2392578415090263
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2500,7 +2500,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19331058181769079
+      "metricMismatch": 0.1933102442581116
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2538,36 +2538,16 @@
     },
     {
       "id": "components.thread.message-row.long-inline-code",
-      "status": "ready",
-      "imageHash": "p1:47fe07fe0fff7ffe001f07ffe000801fca01e177c001e007e01fe03fc000e00bc043e483c033e007e263e007e003e017e07fe043ffffe00bc002e3b3c002e15fffffe3ffffffe00fffffe007ffffe7ffffffe001ffffe001ffffe001ffffe001ffffe2dbffffe02fffffe03fffffe001ffffe001ffffe001ffffc002ffffffff",
-      "generatedAt": "2026-08-07T00:06:47.822Z",
-      "severity": "medium",
-      "summary": [
-        "iOS shows the full message content including the long inline code sections, while the React (baseline) image is cropped to only the top portion — missing the 'Short code should stay compact', 'Long path should wrap inline without ellipsis', and 'Command should wrap with the same neutral fill' sections and their inline code blocks entirely.",
-        "iOS inline code spans use a monospaced font with neutral gray fill that wraps across multiple lines and does not break out of the message bubble width; React appears to truncate or not render those code sections within the visible 390×412 frame.",
-        "Metadata crop rect is `null` for the current (iOS) side, while baseline uses a strict 390×412 component-bounds element crop — this asymmetric cropping explains a large portion of the pixel mismatch and is itself a likely source of false-positive divergence.",
-        "Footer reaction strip ('👁 #42 @Cindy', '💬 4 replies · 1 new', '👍 3', '🟩 1', '+') visible on React is not present in the iOS view (pushed below the visible region), which is consistent with iOS containing additional message body content below.",
-        "Tag-chip coverage row reads consistently on both sides (yellow @artin self-mention, pink #markdown专修 channel, blue #markdown专修:692d9e88 thread, yellow #42/#43 tasks), so chip styling is aligned; only the ordering/wrap point of '#520' vs subsequent text differs due to line wrap behavior (intentional platform difference per metadata)."
-      ],
-      "likelyCauses": [
-        "Asymmetric crop configuration: baseline cropped to a fixed element-bounds rect (390×412) while current has no crop, so React's longer content is hidden while iOS renders the full scroll area.",
-        "React MessageItem may be applying a max-height / overflow-hidden on the message body that clips the inline code sections, whereas iOS renders them with wrapping.",
-        "Possible difference in how each platform handles long inline-code wrapping: iOS uses monospaced wrapping within the bubble; React may render the same code block off-screen or behind a 'Show more' toggle (note React shows a 'Show more' affordance at the bottom of its visible region)."
-      ],
-      "suggestedOwner": "visual-testing / message-component owner (MessageItem.tsx on React, equivalent on iOS)",
-      "suggestedFixes": [
-        "Apply symmetric cropping in Slock: set the current-side crop to the same component-bounds element rect as the baseline, so both platforms are compared at equivalent bounds rather than full-canvas vs. element.",
-        "Verify React MessageItem does not apply unintended max-height/overflow that hides the 'Short code / Long path / Command' code-block sections; the iOS view confirms these sections are part of the message body and should render in the baseline too.",
-        "Confirm inline-code wrap behavior: long code paths must wrap inside the bubble width with no ellipsis on both platforms; if React truncates, fix wrap logic in the inline-code renderer.",
-        "Keep platform-difference handling for '#520' bare-number task chip tagging out of the visual diff (already intentional)."
-      ],
-      "intentional": [
-        "Bare #520 rendered as a yellow task chip on iOS but as plain text on React — intentional platform-difference per metadata (Android/iOS tag every bare #number; React gates on known-set)."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3806710009316644
+      "status": "pending",
+      "imageHash": "p1:47fe07fe0fff7ffe001f07ffe000801fca01e177c001e007e01fe03fc000e00bc043e483c033e007e263e007e003e017e07fe043ffffe00be07fe3b3e07fe15fffffe3ffc002e00fc002e007ffffe7ffffffe001ffffe001ffffe001ffffe001ffffe2dbffffe02fffffe03fffffe001ffffe001ffffe001ffffc002ffffffff",
+      "generatedAt": "2026-08-30T22:01:55.595Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.37351507541080997
     },
     {
       "id": "components.thread.message-row.md-link-ref",
@@ -2814,7 +2794,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:26.074Z",
+      "generatedAt": "2026-08-30T22:01:55.651Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2827,7 +2807,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:26.074Z",
+      "generatedAt": "2026-08-30T22:01:55.651Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2840,7 +2820,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:26.074Z",
+      "generatedAt": "2026-08-30T22:01:55.651Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2853,7 +2833,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:26.074Z",
+      "generatedAt": "2026-08-30T22:01:55.651Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-29T22:02:29.646Z",
+  "generatedAt": "2026-08-30T22:01:59.239Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 81,
-    "pending": 11
+    "ready": 80,
+    "pending": 12
   },
   "cases": [
     {
@@ -457,37 +457,16 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffebffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-26T22:58:14.899Z",
-      "severity": "low",
-      "summary": [
-        "Both sides render the same row of 4 status dots (green, orange, gray, blue) and a pink 'Waiting pulse' label with matching colors, shapes, and vertical positions.",
-        "'Waiting pulse' text and the pink dot appear slightly larger on the iOS (right) side; spacing between the pink dot and the text label is visibly wider on iOS.",
-        "Pink 'Waiting pulse' dot on iOS appears marginally lighter/more washed-out than the saturated pink on Android.",
-        "No missing elements or clipping; all components are present and aligned within the card bounds on both sides."
-      ],
-      "likelyCauses": [
-        "iOS renders text/dot at a different scale due to density bucket (1170×2532 vs Android's 1026×276 baseline frame).",
-        "Pink status-dot color token may resolve to a slightly different hex on iOS vs Android due to platform-specific color resource lookup.",
-        "Typography font metrics differ between Android and iOS font stacks, producing wider letter spacing on iOS."
-      ],
-      "suggestedOwner": "kuikly-ui",
-      "suggestedFixes": [
-        "Normalize status-dot pixel size and label gap to a token shared across platforms (e.g., dp-constant scaled by device density).",
-        "Align the pink dot color to a single cross-platform color token; verify the iOS resolves to the same hex as Android.",
-        "Use a platform-agnostic font/metrics policy for labels so 'Waiting pulse' spacing matches across Android and iOS.",
-        "If the differences are intentional platform tweaks, mark this case as known-acceptable in the test tolerance.",
-        "Re-crop both baselines to identical dp coordinates before comparison to reduce density-induced scale drift."
-      ],
-      "intentional": [
-        "Possible intentional iOS density-based enlargement of text and dot.",
-        "Possible intentional platform-specific pink shade."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.002998204183038311
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03f407fe43fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
+      "generatedAt": "2026-08-30T22:01:57.812Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.002999216861776066
     },
     {
       "id": "components.ui.progress-bar.states",
@@ -1144,7 +1123,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05948103590283682
+      "metricMismatch": 0.05948508661778806
     },
     {
       "id": "components.thread.header.states",
@@ -1732,7 +1711,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:28.900Z",
+      "generatedAt": "2026-08-30T22:01:58.577Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1745,7 +1724,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:28.900Z",
+      "generatedAt": "2026-08-30T22:01:58.577Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2161,7 +2140,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:29.193Z",
+      "generatedAt": "2026-08-30T22:01:58.868Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2174,7 +2153,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:29.193Z",
+      "generatedAt": "2026-08-30T22:01:58.868Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2187,7 +2166,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:29.193Z",
+      "generatedAt": "2026-08-30T22:01:58.868Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2200,7 +2179,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:29.193Z",
+      "generatedAt": "2026-08-30T22:01:58.868Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2213,7 +2192,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:29.193Z",
+      "generatedAt": "2026-08-30T22:01:58.868Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2287,7 +2266,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0986558377553638
+      "metricMismatch": 0.09865516263620533
     },
     {
       "id": "components.members.avatar-management",
@@ -2319,7 +2298,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09793481049405217
+      "metricMismatch": 0.09793548561321075
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2690,7 +2669,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:29.539Z",
+      "generatedAt": "2026-08-30T22:01:59.155Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2703,7 +2682,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:29.539Z",
+      "generatedAt": "2026-08-30T22:01:59.155Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2716,7 +2695,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:29.539Z",
+      "generatedAt": "2026-08-30T22:01:59.155Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2729,7 +2708,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-29T22:02:29.539Z",
+      "generatedAt": "2026-08-30T22:01:59.155Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
