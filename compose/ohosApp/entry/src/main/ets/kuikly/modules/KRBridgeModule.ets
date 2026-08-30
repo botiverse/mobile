@@ -14,7 +14,10 @@ import util from '@ohos.util';
 import fs from '@ohos.file.fs';
 import deviceInfo from '@ohos.deviceInfo';
 import { SlockOhosAppDiagnostics } from '../../entryability/SlockOhosAppDiagnostics';
-import { SlockOhosThreadComposerTemporaryFileRetirementProvider } from '../../entryability/SlockOhosThreadComposerTemporaryFileRetirement';
+import {
+  isSlockOhosThreadComposerTemporaryFileRefAuthorityAllowed,
+  SlockOhosThreadComposerTemporaryFileRetirementProvider,
+} from '../../entryability/SlockOhosThreadComposerTemporaryFileRetirement';
 import { HandsFeedbackClient } from '@botiverse/hands';
 import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
@@ -2197,6 +2200,13 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
   ): Promise<string> {
     let sourcePath = '';
+    const context = getContext(this) as common.UIAbilityContext;
+    if (!isSlockOhosThreadComposerTemporaryFileRefAuthorityAllowed(
+      fileRef,
+      context.abilityInfo.bundleName,
+    )) {
+      return '';
+    }
     try {
       sourcePath = fileRef.startsWith('/') ? fileRef : new fileUri.FileUri(fileRef).path;
     } catch (_) {

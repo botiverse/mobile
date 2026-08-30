@@ -141,9 +141,19 @@ private fun contractFailure(
         errorCode = ThreadComposerTemporaryFileRetirementResult.HandlerContractCode
     )
 
-private fun Map<String, Any?>.stringSet(key: String): Set<String>? {
+/**
+ * KNOI's dynamic Map return path may materialize a JavaScript Array as either
+ * Kotlin `Array` or `List` depending on the generated call site's erased
+ * return type.  Keep the boundary strict while accepting both legal shapes:
+ * every element must be a String, and blank values are discarded after trim.
+ */
+internal fun Map<String, Any?>.stringSet(key: String): Set<String>? {
     val value = this[key] ?: return null
-    val values = value as? List<*> ?: return null
+    val values: Iterable<*> = when (value) {
+        is Array<*> -> value.asIterable()
+        is List<*> -> value
+        else -> return null
+    }
     if (values.any { it !is String }) return null
     return values.map { (it as String).trim() }.filter(String::isNotBlank).toCollection(linkedSetOf())
 }
