@@ -137,6 +137,47 @@ class SettingsHomeSearchEntityDedupeTest {
     }
 
     /**
+     * The identity index is keyed on `presenceMemberId` alone, deliberately **without**
+     * `MemberKind`. That is a design decision, not an omission: a DM row's peer kind comes from
+     * the wire `peerType`, and `memberDetailIdentityFromWire()` returns null for any value it
+     * cannot strictly parse - so keying on kind would silently narrow the merge to DMs whose
+     * `peerType` happens to be well-formed.
+     *
+     * This case pins that decision. The DM below carries a usable `presenceMemberId` and a
+     * malformed `peerType`, so its own `dmPeerIdentity` is null while the index still resolves.
+     * It discriminates: against an implementation that required a parseable kind, the member and
+     * its DM would fall into different namespaces again and the row count would go back to two.
+     */
+    @Test
+    fun malformedPeerTypeStillCollapsesWithItsMemberRow() {
+        val candidates =
+            candidates(
+                directMessages =
+                    listOf(
+                        directMessageRow(
+                            threadId = "thread-dm-malformed-kind",
+                            // Same display name as the member, as production does - otherwise the
+                            // count assertion below passes for the wrong reason.
+                            name = "Artin Zaker",
+                            peerId = "member-artin",
+                            peerType = "HUMANOID"
+                        )
+                    ),
+                senderFilters = listOf(humanSender())
+            )
+
+        val rows = candidates.filter { it.result.title == "Artin Zaker" }
+        assertEquals(
+            1,
+            rows.size,
+            "a malformed peerType must not split an entity back into two rows"
+        )
+        // The surviving row still reaches the DM, which is what the kind-free key buys.
+        assertEquals("thread-dm-malformed-kind", rows.single().result.threadId)
+        assertNotNull(rows.single().result.conversationIdentity)
+    }
+
+    /**
      * The owner scope must be a typed key, not a concatenated `"$serverId:$memberId"` string.
      * With concatenation, server `"server-1:member"` + member `"artin"` and server `"server-1"` +
      * member `"member:artin"` both flatten to `"server-1:member:artin"` and merge two different
