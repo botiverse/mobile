@@ -199,6 +199,115 @@ jobs:
           fi
           exit "$status"
 
+      # task #239: publish the simulator .app this run just built.
+      #
+      # Until now nothing in the repo uploaded an installable iOS app — this job built one and
+      # installed it straight into the simulator, never exporting it — which left the
+      # `app_run_id` input below a dangling consumer: it downloads `ios-simulator-app-<run>`,
+      # a name no workflow produced. Publishing it here closes that loop, so a later run can
+      # pin an exact carrier, and a reviewer with a Simulator seat can install these bits.
+      #
+      # The emitted metadata.json is NOT a free-form record: it is the exact shape
+      # scripts/qa/prepare_pinned_ios_app.sh validates on the consuming side (platform
+      # "ios-simulator", artifact_sha256/artifact_size of the zip, 40-hex source_commit,
+      # github_run_id, bundle_id, version, version_code). Producer and consumer must move
+      # together or the pin fails closed.
+      - name: Export simulator .app as an installable artifact
+        if: ${{ inputs.app_run_id == '' }}
+        run: |
+          set -euo pipefail
+          products=compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator
+          app=$(find "$products" -maxdepth 1 -name '*.app' ! -name '*Runner*' | head -1)
+          test -n "$app"
+          # A device build cannot be installed on a Simulator seat, and the two are
+          # indistinguishable by filename — only DTPlatformName separates them. Refuse rather
+          # than publish an artifact whose consumer can only discover the mismatch at install.
+          platform=$(/usr/libexec/PlistBuddy -c 'Print DTPlatformName' "$app/Info.plist" 2>/dev/null || echo "")
+          if [ "$platform" != "iphonesimulator" ]; then
+            echo "refusing to publish a non-simulator slice: DTPlatformName=${platform:-<absent>}" >&2
+            exit 2
+          fi
+          mkdir -p ios-app-export
+          zip=ios-app-export/raft-ios-simulator.app.zip
+          # ditto, not `zip -r`: a .app is a bundle with symlinks and resource forks that
+          # plain zip flattens, producing an archive that unpacks into an uninstallable app.
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
+          sha=$(shasum -a 256 "$zip" | awk '{print $1}')
+          size=$(stat -f '%z' "$zip")
+          bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
+          version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Info.plist")
+          code=$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")
+          binary=$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$app/Info.plist")
+          binsha=$(shasum -a 256 "$app/$binary" | awk '{print $1}')
+          # Read back from the INSTALLED bundle, not from the build environment: this is the
+          # only field that is bound to the artifact rather than asserted about it.
+          hands=$(/usr/libexec/PlistBuddy -c 'Print :HandsBuildCommit' "$app/Info.plist" 2>/dev/null || echo "")
+          # Fail closed, same tier as DTPlatformName (@LiBai review, task #240). HandsBuildCommit
+          # is stamped by an UNCONDITIONAL Xcode build phase, so an empty value does not mean
+          # "this build has no commit" — it means the stamping phase did not run. Publishing it
+          # empty is worse than refusing: this field is the carrier's identity binding, it is NOT
+          # in the set prepare_pinned_ios_app.sh validates, so nothing downstream would catch it,
+          # and an empty string reads to a consumer as a normal value rather than a gap.
+          # Two ways the stamp can be absent, and only one of them looks absent.
+          # compose/iosApp/scripts/stamp_hands_build_metadata.sh:
+          #   - if the processed Info.plist isn't found it warns and `exit 0` — the build stays
+          #     green and no key is written  => PlistBuddy Print fails => hands is empty;
+          #   - if no commit can be resolved it writes the literal string "unknown"
+          #     => NON-EMPTY, so a bare -z test passes it and we would publish a carrier that
+          #        claims an identity it does not have.
+          # The sentinel is the more dangerous of the two precisely because it survives an
+          # emptiness check, so reject both. Anything downstream comparing this against an exact
+          # would otherwise be comparing against a placeholder.
+          # Allowlist, not blacklist (@LiBai review). Enumerating known-bad values fails OPEN: the
+          # sentinel today is "unknown", but if the stamping script ever emits "none", "N/A", or a
+          # literal variable name, a blacklist waves it through while it still reads as a bound
+          # identity. Asserting the required SHAPE fails CLOSED — an unanticipated bad value is
+          # refused, and the worst case is one visible false rejection instead of a silent bad one.
+          # Deliberate: a short SHA is REJECTED. Pinning a carrier is a full-SHA operation, so this
+          # is a stated policy, not a regex written too narrowly — do not "fix" it by loosening.
+          case "$hands" in
+            *[!0-9a-f]* | "") hands_ok=no ;;
+            ????????????????????????????????????????) hands_ok=yes ;;
+            *) hands_ok=no ;;
+          esac
+          if [ "$hands_ok" != "yes" ]; then
+            echo "refusing to publish a carrier without a real HandsBuildCommit (got: '${hands:-<empty>}')" >&2
+            echo "expected a full 40-character lowercase hex commit" >&2
+            echo "empty => the stamping build phase did not run; 'unknown' => it ran but could not resolve a commit; short SHA => rejected by policy" >&2
+            exit 2
+          fi
+          printf '{\n  "platform": "ios-simulator",\n  "artifact_sha256": "%s",\n  "artifact_size": %s,\n  "source_commit": "%s",\n  "github_run_id": "%s",\n  "bundle_id": "%s",\n  "version": "%s",\n  "version_code": "%s",\n  "hands_build_commit": "%s",\n  "binary_sha256": "%s",\n  "dt_platform_name": "%s"\n}\n' \
+            "$sha" "$size" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$bundle_id" "$version" "$code" \
+            "$hands" "$binsha" "$platform" > ios-app-export/metadata.json
+          # The metadata is hand-rendered with printf, so a format-string slip yields a file that
+          # looks fine here and only explodes inside the consumer's JSON.parse one run later.
+          # Parse it now, next to its cause.
+          python3 -c 'import json,sys; json.load(open(sys.argv[1]))' ios-app-export/metadata.json
+          cat ios-app-export/metadata.json
+          {
+            echo "## Installable iOS Simulator carrier"
+            echo '```json'
+            cat ios-app-export/metadata.json
+            echo '```'
+            echo "Pin it in a later run with: app_run_id=${GITHUB_RUN_ID} artifact_sha256=${sha}"
+            echo ""
+            echo "Verifying this carrier: compare artifact_sha256/artifact_size against the EXTRACTED"
+            echo "raft-ios-simulator.app.zip file itself. Do NOT compare them against the size GitHub"
+            echo "shows for the artifact - that is GitHub's own outer archive (this zip plus"
+            echo "metadata.json, re-packed), so it legitimately differs and comparing it would reject"
+            echo "a sound carrier. Measured example: outer 42,541,517 vs inner 43,545,457."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload installable simulator app
+        if: ${{ inputs.app_run_id == '' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-simulator-app-${{ github.run_id }}
+          path: ios-app-export
+          # error, not warn: an empty carrier artifact is worse than a failed step, because
+          # the consumer's download succeeds and the mismatch surfaces far from its cause.
+          if-no-files-found: error
+
       - name: Download frozen iOS Simulator app
         if: ${{ inputs.app_run_id != '' }}
         uses: actions/download-artifact@v7
