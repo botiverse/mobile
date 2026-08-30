@@ -258,9 +258,22 @@ jobs:
           # The sentinel is the more dangerous of the two precisely because it survives an
           # emptiness check, so reject both. Anything downstream comparing this against an exact
           # would otherwise be comparing against a placeholder.
-          if [ -z "$hands" ] || [ "$hands" = "unknown" ]; then
+          # Allowlist, not blacklist (@LiBai review). Enumerating known-bad values fails OPEN: the
+          # sentinel today is "unknown", but if the stamping script ever emits "none", "N/A", or a
+          # literal variable name, a blacklist waves it through while it still reads as a bound
+          # identity. Asserting the required SHAPE fails CLOSED — an unanticipated bad value is
+          # refused, and the worst case is one visible false rejection instead of a silent bad one.
+          # Deliberate: a short SHA is REJECTED. Pinning a carrier is a full-SHA operation, so this
+          # is a stated policy, not a regex written too narrowly — do not "fix" it by loosening.
+          case "$hands" in
+            *[!0-9a-f]* | "") hands_ok=no ;;
+            ????????????????????????????????????????) hands_ok=yes ;;
+            *) hands_ok=no ;;
+          esac
+          if [ "$hands_ok" != "yes" ]; then
             echo "refusing to publish a carrier without a real HandsBuildCommit (got: '${hands:-<empty>}')" >&2
-            echo "an empty value means the stamping build phase did not run; 'unknown' means it ran but could not resolve a commit" >&2
+            echo "expected a full 40-character lowercase hex commit" >&2
+            echo "empty => the stamping build phase did not run; 'unknown' => it ran but could not resolve a commit; short SHA => rejected by policy" >&2
             exit 2
           fi
           printf '{\n  "platform": "ios-simulator",\n  "artifact_sha256": "%s",\n  "artifact_size": %s,\n  "source_commit": "%s",\n  "github_run_id": "%s",\n  "bundle_id": "%s",\n  "version": "%s",\n  "version_code": "%s",\n  "hands_build_commit": "%s",\n  "binary_sha256": "%s",\n  "dt_platform_name": "%s"\n}\n' \
@@ -277,6 +290,12 @@ jobs:
             cat ios-app-export/metadata.json
             echo '```'
             echo "Pin it in a later run with: app_run_id=${GITHUB_RUN_ID} artifact_sha256=${sha}"
+            echo ""
+            echo "Verifying this carrier: compare artifact_sha256/artifact_size against the EXTRACTED"
+            echo "raft-ios-simulator.app.zip file itself. Do NOT compare them against the size GitHub"
+            echo "shows for the artifact - that is GitHub's own outer archive (this zip plus"
+            echo "metadata.json, re-packed), so it legitimately differs and comparing it would reject"
+            echo "a sound carrier. Measured example: outer 42,541,517 vs inner 43,545,457."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload installable simulator app
