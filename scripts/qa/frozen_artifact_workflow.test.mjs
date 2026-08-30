@@ -22,6 +22,11 @@ test("iOS frozen artifact inputs match Stamp dispatch and replacement is opt-in"
   assert.doesNotMatch(ios, /\n      app_url:/);
 });
 
+test("iOS agent login fallback targets the QA account's current server", () => {
+  assert.match(ios, /DEFAULT_GOAL:[\s\S]*?choose 'OranixSlockTest'/);
+  assert.doesNotMatch(ios, /DEFAULT_GOAL:[\s\S]*?choose 'Raft Android'/);
+});
+
 test("Android exposes the same frozen identity names for strict claim overrides", () => {
   for (const name of ["apk_run_id", "apk_artifact_id", "artifact_sha256", "artifact_source_commit", "artifact_version", "artifact_version_code", "artifact_package_id"]) {
     assert.match(android, new RegExp(`\\n      ${name}:`));
