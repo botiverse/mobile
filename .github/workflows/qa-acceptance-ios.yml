@@ -239,13 +239,18 @@ jobs:
           code=$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")
           binary=$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$app/Info.plist")
           binsha=$(shasum -a 256 "$app/$binary" | awk '{print $1}')
-          # Read back from the INSTALLED bundle, not from the build environment: this is the
-          # only field that is bound to the artifact rather than asserted about it.
+          # ⚠️ This reads the BUILD PRODUCT ("$app" is the DerivedData Products dir),
+          # not an installed bundle — this export step runs before any install exists.
+          # It is a build-time self-claim, NOT a read-back and NOT "bound to the
+          # artifact". The previous comment here asserted the opposite; it was cited
+          # downstream as proof of installed identity, which it cannot support.
+          # A genuine read-back must read a path that only resolves after install
+          # (xcrun simctl get_app_container), with a same-path positive control.
           hands=$(/usr/libexec/PlistBuddy -c 'Print :HandsBuildCommit' "$app/Info.plist" 2>/dev/null || echo "")
           # Fail closed, same tier as DTPlatformName (@LiBai review, task #240). HandsBuildCommit
           # is stamped by an UNCONDITIONAL Xcode build phase, so an empty value does not mean
           # "this build has no commit" — it means the stamping phase did not run. Publishing it
-          # empty is worse than refusing: this field is the carrier's identity binding, it is NOT
+          # empty is worse than refusing: this field is the carrier's stamped self-claim, it is NOT
           # in the set prepare_pinned_ios_app.sh validates, so nothing downstream would catch it,
           # and an empty string reads to a consumer as a normal value rather than a gap.
           # Two ways the stamp can be absent, and only one of them looks absent.
