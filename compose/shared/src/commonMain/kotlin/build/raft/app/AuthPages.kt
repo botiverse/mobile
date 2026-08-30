@@ -28,6 +28,7 @@ import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsEntry
 import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
@@ -2066,7 +2067,15 @@ internal fun postAuthRouteDestination(session: StoredAuthSession? = null): AuthR
     } else {
         AuthRouteDestination(
             pageName = AUTH_CHOOSE_SERVER_PAGE,
-            pageData = authChooseServerPageData(replaceCurrent = true)
+            // The chooser is the first mounted shell-owned page after a fresh login. Keep its
+            // auth/selection authority on the same default shell scope that AppShell will mount
+            // after the user picks a server; presentation remains the signed-out/fresh-auth
+            // variant (so this intentionally does not set fromShell).
+            pageData =
+                authChooseServerPageData(
+                    replaceCurrent = true,
+                    storeScope = SlockShellStoreScope.Legacy
+                )
         )
     }
 

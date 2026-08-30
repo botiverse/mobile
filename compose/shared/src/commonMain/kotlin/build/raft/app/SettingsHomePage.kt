@@ -15064,6 +15064,10 @@ internal fun authChooseServerPageData(
             }
         }
 
+internal fun authChooseServerUsesScopedStore(pageData: JSONObject): Boolean =
+    pageData.optBoolean(AUTH_CHOOSE_SERVER_FROM_SHELL, false) ||
+        pageData.slockShellStoreScopeOrNull() != null
+
 internal fun appShellPageDataForServerSelection(
     sourceStoreScope: SlockShellStoreScope,
     sourceDocumentShell: Boolean = false,
