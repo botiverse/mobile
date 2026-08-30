@@ -248,8 +248,19 @@ jobs:
           # empty is worse than refusing: this field is the carrier's identity binding, it is NOT
           # in the set prepare_pinned_ios_app.sh validates, so nothing downstream would catch it,
           # and an empty string reads to a consumer as a normal value rather than a gap.
-          if [ -z "$hands" ]; then
-            echo "refusing to publish a carrier with no HandsBuildCommit: the identity stamp is absent" >&2
+          # Two ways the stamp can be absent, and only one of them looks absent.
+          # compose/iosApp/scripts/stamp_hands_build_metadata.sh:
+          #   - if the processed Info.plist isn't found it warns and `exit 0` — the build stays
+          #     green and no key is written  => PlistBuddy Print fails => hands is empty;
+          #   - if no commit can be resolved it writes the literal string "unknown"
+          #     => NON-EMPTY, so a bare -z test passes it and we would publish a carrier that
+          #        claims an identity it does not have.
+          # The sentinel is the more dangerous of the two precisely because it survives an
+          # emptiness check, so reject both. Anything downstream comparing this against an exact
+          # would otherwise be comparing against a placeholder.
+          if [ -z "$hands" ] || [ "$hands" = "unknown" ]; then
+            echo "refusing to publish a carrier without a real HandsBuildCommit (got: '${hands:-<empty>}')" >&2
+            echo "an empty value means the stamping build phase did not run; 'unknown' means it ran but could not resolve a commit" >&2
             exit 2
           fi
           printf '{\n  "platform": "ios-simulator",\n  "artifact_sha256": "%s",\n  "artifact_size": %s,\n  "source_commit": "%s",\n  "github_run_id": "%s",\n  "bundle_id": "%s",\n  "version": "%s",\n  "version_code": "%s",\n  "hands_build_commit": "%s",\n  "binary_sha256": "%s",\n  "dt_platform_name": "%s"\n}\n' \
