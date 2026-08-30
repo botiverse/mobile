@@ -622,6 +622,14 @@ async function main() {
 
   let verdict = null, reason = "", turns = 0, executionDiagnosis = null;
   let noProgressTriggered = false, lastObservationFingerprint = "", sameObservationTurns = 0;
+  // Why this exists: "undecided" has several causes with OPPOSITE next actions —
+  // budget exhausted (raise the budget and rerun) vs the no-progress fuse (raise
+  // that threshold) vs the agent finishing without proving the goal (investigate
+  // the fixture/case). Those look identical in the verdict, and a reader who
+  // cannot tell them apart sends someone to fix a fixture that is not broken.
+  // The cause is already computed below for the forced-verdict prompt; it was
+  // only ever logged to steps.jsonl, so the verdict could not self-report it.
+  let terminatedBy = "goal_completed";
   const tapAnnotations = [];
   const assertionAnnotations = [];
   while (turns < opts.maxTurns && Date.now() < deadline) {
@@ -823,6 +831,9 @@ async function main() {
     // two 8-minute runs uploaded evidence but died verdict-less). The prompt
     // forbids upgrading unverified requirements to pass; exit 2 stays
     // reserved for real infrastructure (emulator dead, model unreachable).
+    terminatedBy = noProgressTriggered
+      ? "no_progress"
+      : turns >= opts.maxTurns ? "max_turns" : "wall_clock";
     const budgetCause = noProgressTriggered
       ? `no-progress fuse (${opts.noProgressTurns} repeated actions)`
       : turns >= opts.maxTurns ? `turn budget (${opts.maxTurns})` : `wall clock (${opts.maxMinutes}min)`;
@@ -896,6 +907,9 @@ async function main() {
     goal: redact(opts.goal), verdict, reason: redact(reason), turns,
     durationMs: Date.now() - started, model: "MiniMax-M3", screen: size,
     execution_diagnosis: executionDiagnosis,
+    // goal_completed here means the loop ended on its own terms, NOT that the goal
+    // passed — read `verdict` for that. It only rules out budget/fuse truncation.
+    terminated_by: terminatedBy,
     execution_budget: { max_turns: opts.maxTurns, max_minutes: opts.maxMinutes, no_progress_turns: opts.noProgressTurns },
     usage: { ...modelUsage, totalTokens: modelUsage.input + modelUsage.output },
     annotations: {
