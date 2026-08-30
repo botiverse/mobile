@@ -242,9 +242,23 @@ jobs:
           # Read back from the INSTALLED bundle, not from the build environment: this is the
           # only field that is bound to the artifact rather than asserted about it.
           hands=$(/usr/libexec/PlistBuddy -c 'Print :HandsBuildCommit' "$app/Info.plist" 2>/dev/null || echo "")
+          # Fail closed, same tier as DTPlatformName (@LiBai review, task #240). HandsBuildCommit
+          # is stamped by an UNCONDITIONAL Xcode build phase, so an empty value does not mean
+          # "this build has no commit" — it means the stamping phase did not run. Publishing it
+          # empty is worse than refusing: this field is the carrier's identity binding, it is NOT
+          # in the set prepare_pinned_ios_app.sh validates, so nothing downstream would catch it,
+          # and an empty string reads to a consumer as a normal value rather than a gap.
+          if [ -z "$hands" ]; then
+            echo "refusing to publish a carrier with no HandsBuildCommit: the identity stamp is absent" >&2
+            exit 2
+          fi
           printf '{\n  "platform": "ios-simulator",\n  "artifact_sha256": "%s",\n  "artifact_size": %s,\n  "source_commit": "%s",\n  "github_run_id": "%s",\n  "bundle_id": "%s",\n  "version": "%s",\n  "version_code": "%s",\n  "hands_build_commit": "%s",\n  "binary_sha256": "%s",\n  "dt_platform_name": "%s"\n}\n' \
             "$sha" "$size" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$bundle_id" "$version" "$code" \
             "$hands" "$binsha" "$platform" > ios-app-export/metadata.json
+          # The metadata is hand-rendered with printf, so a format-string slip yields a file that
+          # looks fine here and only explodes inside the consumer's JSON.parse one run later.
+          # Parse it now, next to its cause.
+          python3 -c 'import json,sys; json.load(open(sys.argv[1]))' ios-app-export/metadata.json
           cat ios-app-export/metadata.json
           {
             echo "## Installable iOS Simulator carrier"
