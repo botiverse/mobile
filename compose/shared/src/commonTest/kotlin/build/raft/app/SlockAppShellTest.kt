@@ -3799,8 +3799,17 @@ class SlockAppShellTest {
 
     @Test
     fun authChooseServerRouteCarriesShellChromeIntentOnlyWhenRequested() {
-        assertEquals(false, authChooseServerPageData().optBoolean("slockChooseServerFromShell", false))
-        assertEquals(true, authChooseServerPageData(fromShell = true).optBoolean("slockChooseServerFromShell", false))
+        val legacyPageData = authChooseServerPageData()
+        val shellPageData =
+            authChooseServerPageData(
+                fromShell = true,
+                storeScope = SlockShellStoreScope.create("shell-server-picker")
+            )
+
+        assertEquals(false, legacyPageData.optBoolean("slockChooseServerFromShell", false))
+        assertEquals(false, authChooseServerUsesScopedStore(legacyPageData))
+        assertEquals(true, shellPageData.optBoolean("slockChooseServerFromShell", false))
+        assertEquals(true, authChooseServerUsesScopedStore(shellPageData))
     }
 
     @Test
@@ -3926,6 +3935,9 @@ class SlockAppShellTest {
         assertEquals(AUTH_CHOOSE_SERVER_PAGE, destination.pageName)
         assertEquals(AUTH_CHOOSE_SERVER_PAGE, destination.pageData.optString("pageName"))
         assertEquals(true, destination.pageData.optBoolean("slockReplaceCurrentPage", false))
+        assertEquals(false, destination.pageData.optBoolean(AUTH_CHOOSE_SERVER_FROM_SHELL, false))
+        assertEquals(SlockShellStoreScope.Legacy.shellInstanceId, destination.pageData.optString(SLOCK_SHELL_INSTANCE_ID))
+        assertTrue(authChooseServerUsesScopedStore(destination.pageData))
         assertEquals(false, destination.pageData.optBoolean("slockSuppressRestoreLanding", false))
         assertEquals(false, destination.pageData.optBoolean("slockAuthChooseServerSkipInitialLoad", false))
     }
@@ -4011,6 +4023,9 @@ class SlockAppShellTest {
 
         assertEquals(AUTH_CHOOSE_SERVER_PAGE, destination.pageName)
         assertEquals(false, destination.pageData.optBoolean("slockSuppressRestoreLanding", false))
+        assertEquals(SlockShellStoreScope.Legacy.shellInstanceId, destination.pageData.optString(SLOCK_SHELL_INSTANCE_ID))
+        assertEquals(false, destination.pageData.optBoolean(AUTH_CHOOSE_SERVER_FROM_SHELL, false))
+        assertTrue(authChooseServerUsesScopedStore(destination.pageData))
     }
 
     @Test
