@@ -840,11 +840,18 @@ async function main() {
     terminatedBy = noProgressTriggered
       ? "no_progress"
       : turns >= opts.maxTurns ? "max_turns" : "wall_clock";
+    // @LiBai's blocker: a lookup replaces the ternary's else-branch fallback, so an
+    // unmapped terminatedBy yields undefined -- which then interpolates into the
+    // MODEL PROMPT below as the literal string "undefined". Silent, never red, and a
+    // corrupted instruction to boot. Unreachable today (the assignment above emits
+    // exactly these three), but it is the same shape this PR exists to remove: an
+    // unenumerated value quietly becoming a plausible-looking one. Keep the fallback,
+    // and make it self-report rather than blend in.
     const budgetCause = {
       no_progress: `no-progress fuse (${opts.noProgressTurns} repeated actions)`,
       max_turns: `turn budget (${opts.maxTurns})`,
       wall_clock: `wall clock (${opts.maxMinutes}min)`,
-    }[terminatedBy];
+    }[terminatedBy] ?? `UNMAPPED termination reason "${terminatedBy}" — add it to this table and to the gate's terminated_by mapping`;
     logStep({ turn: turns, event: "forced_verdict", cause: budgetCause });
     try {
       pruneImages(messages);
