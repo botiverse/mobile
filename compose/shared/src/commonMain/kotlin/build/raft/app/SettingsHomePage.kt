@@ -20080,11 +20080,19 @@ internal fun homeSearchEntityCandidates(
 ): List<HomeSearchEntityCandidate> {
     val snapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
     val conversations = snapshot.channels + snapshot.directMessages
+    val homeServerId = snapshot.server.id.value
+    // task #238: this map is an identity index, so it needs an owner scope and must reject blank
+    // ids. Keyed by a bare memberId, a joint-channel member carried in from another server could
+    // collide with a local DM peer; and a blank wire peerId (`MemberId("")`) survived the null
+    // check and sat in the map as a key that can only ever join unrelated rows. A missing scope
+    // dimension does not cost an extra row - it merges two identities into one.
     val byPresenceMemberId =
         snapshot.directMessages
             .mapNotNull { conversation ->
-                val memberId = conversation.presenceMemberId?.value ?: return@mapNotNull null
-                memberId to conversation.toThreadLaunchConversationIdentity()
+                val scope =
+                    homeSearchMemberScopeKey(homeServerId, conversation.presenceMemberId?.value.orEmpty())
+                        ?: return@mapNotNull null
+                scope to conversation.toThreadLaunchConversationIdentity()
             }
             .toMap()
     val conversationEntries =
@@ -20121,9 +20129,26 @@ internal fun homeSearchEntityCandidates(
                     )
             )
         }
+    val dmCandidatesByThreadId =
+        conversationEntries
+            .asSequence()
+            .filter { candidate -> candidate.result.type == SearchEntityType.DirectMessage }
+            .mapNotNull { candidate -> candidate.result.threadId?.let { threadId -> threadId to candidate } }
+            .toMap()
+    // task #238: a DM row and its member row are the same entity reached through two disjoint key
+    // namespaces ("conversation:<threadId>" vs "sender:<server>:<kind>:<memberId>"), so the
+    // trailing distinctBy() was structurally unable to collapse them. Merge from the member side:
+    // it is the richer row, and its `byPresenceMemberId` hit only needs presenceMemberId, whereas
+    // the conversation side's dmPeerIdentity additionally requires a parseable peer kind - i.e.
+    // strictly weaker coverage. The member row already carries the DM launch affordance via
+    // conversationIdentity, so it also absorbs the DM row's search fields before that row is
+    // dropped, keeping DM name/subtitle/threadId queryable.
+    val absorbedDmThreadIds = mutableSetOf<String>()
     val memberEntries =
         senderFilters.mapNotNull { sender ->
-            val conversation = byPresenceMemberId[sender.id]
+            val conversation =
+                homeSearchMemberScopeKey(sender.sourceServerId.value, sender.id)
+                    ?.let { scope -> byPresenceMemberId[scope] }
             val suggestion =
                 sender.toHomeSearchEntityResult(
                     conversationIdentity = conversation,
@@ -20131,6 +20156,9 @@ internal fun homeSearchEntityCandidates(
                     personLabel = personLabel,
                     membersLabel = membersLabel,
                 ) ?: return@mapNotNull null
+            val absorbedDm =
+                conversation?.threadId?.value?.let { threadId -> dmCandidatesByThreadId[threadId] }
+            absorbedDm?.result?.threadId?.let { threadId -> absorbedDmThreadIds += threadId }
             HomeSearchEntityCandidate(
                 result = suggestion,
                 searchFields =
@@ -20138,7 +20166,7 @@ internal fun homeSearchEntityCandidates(
                         HomeSearchEntitySearchField(sender.displayLabel, priority = 0),
                         HomeSearchEntitySearchField(sender.handle, priority = 1),
                         HomeSearchEntitySearchField(sender.id, priority = 5),
-                    )
+                    ) + absorbedDm?.searchFields.orEmpty()
             )
         }
     val computerEntries =
@@ -20177,7 +20205,33 @@ internal fun homeSearchEntityCandidates(
                 )
             }
             .toList()
-    return (conversationEntries + memberEntries + computerEntries).distinctBy { it.result.key }
+    val visibleConversationEntries =
+        conversationEntries.filterNot { candidate ->
+            candidate.result.type == SearchEntityType.DirectMessage &&
+                candidate.result.threadId?.let { threadId -> threadId in absorbedDmThreadIds } == true
+        }
+    return (visibleConversationEntries + memberEntries + computerEntries).distinctBy { it.result.key }
+}
+
+/**
+ * Owner scope for the DM-peer identity index used by [homeSearchEntityCandidates].
+ *
+ * A member id is only unique within its own server, so an identity key that omits the server can
+ * merge two distinct people. Callers pass the server the row was sourced from: DM rows come from
+ * the current Home snapshot, member rows carry their own `sourceServerId` (joint channels surface
+ * members from other servers).
+ *
+ * Deliberately a typed pair rather than a "$serverId:$memberId" string: a concatenated key is
+ * delimiter-ambiguous, so ("a:b", "c") and ("a", "b:c") would collide into one entry - the same
+ * wrong-merge failure this scope exists to prevent. Blank components yield no key at all, so a
+ * blank wire peer id can never become a merge key that joins unrelated rows.
+ */
+private data class HomeSearchMemberScope(val serverId: String, val memberId: String)
+
+private fun homeSearchMemberScopeKey(serverId: String, memberId: String): HomeSearchMemberScope? {
+    val scopedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return null
+    val scopedMemberId = memberId.trim().takeIf { it.isNotBlank() } ?: return null
+    return HomeSearchMemberScope(serverId = scopedServerId, memberId = scopedMemberId)
 }
 
 internal fun homeSearchFrequentEntityResults(
