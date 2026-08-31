@@ -12,6 +12,7 @@ import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
 import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
@@ -137,7 +138,15 @@ private fun SlockTabPagerProbeScreen() {
                 items(60) { row ->
                     Text(
                         text = "${TabPagerProbeLabels[page]} row $row",
-                        modifier = Modifier.fillMaxWidth().padding(16.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            // #2224 review blocker 2 carrier: rows are
+                            // clickable so acceptance can prove a stationary
+                            // tap inside the platform edge inset reaches the
+                            // content (the guard must only claim horizontal
+                            // drags). The event log line is the evidence.
+                            .clickable { logEvent("rowTap ${TabPagerProbeLabels[page]} $row") }
+                            .padding(16.dp)
                     )
                 }
             }

@@ -64,6 +64,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
@@ -127,10 +128,8 @@ internal fun SharedHomeActivityScreen(
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     storeScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
-    listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean = false,
     activitySenderAvatarsEnabled: Boolean = false,
-    onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -364,11 +363,9 @@ internal fun SharedHomeActivityScreen(
         bottomContentPadding = bottomContentPadding,
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         timeContext = timeContext,
-        listState = listState,
         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
         activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
         draftProjection = draftProjection,
-        onTitleClick = onTitleClick,
         stableOrderEnabled = stableOrderEnabledAtRouteEntry,
         stableOrderDecisionRevision = diagnosticOverrideRevision,
         presentationStore = activityStore.presentationStore,
@@ -532,11 +529,9 @@ internal fun SharedHomeActivityScreen(
     includeTopSafeArea: Boolean = true,
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
-    listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean = false,
     activitySenderAvatarsEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
-    onTitleClick: (() -> Unit)? = null,
     stableOrderEnabled: Boolean = true,
     stableOrderDecisionRevision: Long = 0L,
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
@@ -550,11 +545,9 @@ internal fun SharedHomeActivityScreen(
         bottomContentPadding = bottomContentPadding,
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         timeContext = timeContext,
-        listState = listState,
         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
         activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
         draftProjection = draftProjection,
-        onTitleClick = onTitleClick,
         stableOrderEnabled = stableOrderEnabled,
         stableOrderDecisionRevision = stableOrderDecisionRevision,
         presentationStore = presentationStore,
@@ -573,11 +566,9 @@ internal fun SharedHomeActivityPanel(
     pullRefreshing: Boolean = false,
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
-    listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean = false,
     activitySenderAvatarsEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
-    onTitleClick: (() -> Unit)? = null,
     stableOrderEnabled: Boolean = true,
     stableOrderDecisionRevision: Long = 0L,
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
@@ -602,11 +593,9 @@ internal fun SharedHomeActivityPanel(
             bottomContentPadding = bottomContentPadding,
             topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
             timeContext = timeContext,
-            listState = listState,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
             draftProjection = draftProjection,
-            onTitleClick = onTitleClick,
             stableOrderEnabled = stableOrderEnabled,
             stableOrderDecisionRevision = stableOrderDecisionRevision,
             presentationStore = presentationStore,
@@ -624,17 +613,32 @@ private fun SharedActivityPanelContent(
     bottomContentPadding: Dp,
     topSafeAreaPadding: Dp,
     timeContext: SlockTimeContext?,
-    listState: LazyListState,
     activityTaskStatusBadgesEnabled: Boolean,
     activitySenderAvatarsEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection,
-    onTitleClick: (() -> Unit)?,
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
     presentationStore: SharedActivityPresentationStore,
     modifier: Modifier = Modifier
 ) {
     val refreshPresentation = activityRefreshPresentation(state.refreshing, state.pullRefreshing)
+    // task #232 (#2224 review blocker 1): the panel owns per-page scroll
+    // states, so it must also own title-tap scroll-to-top — a caller-held
+    // LazyListState attaches to no list here and dies silently (the parameter
+    // was removed so that wiring cannot come back). The title tap targets the
+    // SAME state object the selected filter's page renders with, via
+    // [activityScrollToTopTarget] (mapping unit-tested).
+    val filters = InboxFilter.entries
+    // One retained scroll state per filter page. Explicit calls (not a
+    // loop over the experimental LazyListState constructor): the filter
+    // set is a closed enum of three, and this list is index-aligned with
+    // `filters` (All/Unread/Mentions entry order).
+    val pageListStates = listOf(
+        rememberLazyListState(),
+        rememberLazyListState(),
+        rememberLazyListState(),
+    )
+    val scrollToTopScope = rememberCoroutineScope()
     Column(
         modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
     ) {
@@ -644,26 +648,21 @@ private fun SharedActivityPanelContent(
             onClose = onClose,
             topSafeAreaPadding = topSafeAreaPadding,
             refreshing = refreshPresentation.headerRefreshing,
-            onTitleClick = onTitleClick
+            onTitleClick = {
+                scrollToTopScope.launch {
+                    activityScrollToTopTarget(state.selectedFilter, pageListStates)
+                        .animateScrollToTopExpressive()
+                }
+            }
         )
         SlockAppShellBodyTopBanner()
         // task #232: filter tabs are a TabPager — the filter bar stays the tap
         // surface (its SetFilter flows back in as selectedIndex and animates
         // the pager); a horizontal swipe settling on a page dispatches the
         // same SetFilter. The store keeps ONE snapshot (the selected
-        // filter's), so only the settled page renders real content; a
+        // filter's), so only the active page renders real content; a
         // neighbor glimpsed mid-drag shows that filter's loading skeleton
         // until the settle re-targets the store.
-        val filters = InboxFilter.entries
-        // One retained scroll state per filter page. Explicit calls (not a
-        // loop over the experimental LazyListState constructor): the filter
-        // set is a closed enum of three, and this list is index-aligned with
-        // `filters` (All/Unread/Mentions entry order).
-        val pageListStates = listOf(
-            rememberLazyListState(),
-            rememberLazyListState(),
-            rememberLazyListState(),
-        )
         TabPager(
             selectedIndex = filters.indexOf(state.selectedFilter).coerceAtLeast(0),
             onSelectedIndexChange = { index -> onIntent(SharedActivityIntent.SetFilter(filters[index])) },
@@ -680,8 +679,8 @@ private fun SharedActivityPanelContent(
                 )
             },
             modifier = Modifier.weight(1f).fillMaxWidth()
-        ) { page, settled ->
-            if (settled && filters[page] == state.selectedFilter) {
+        ) { page, active ->
+            if (active && filters[page] == state.selectedFilter) {
                 SharedActivityBodyContent(
                     state = state,
                     onOpenItem = onOpenItem,
@@ -709,6 +708,20 @@ private fun SharedActivityPanelContent(
         }
     }
 }
+
+/**
+ * The list the Activity title tap must scroll: the one the selected filter's
+ * page renders with. Index-aligned with [InboxFilter.entries] exactly like the
+ * pager's `selectedIndex` and its per-page `pageListStates` list — this seam
+ * exists so a unit test ([ActivityScrollToTopTargetTest]) pins the mapping;
+ * the tap→scroll wiring itself lives ten lines from the states it targets and
+ * cannot be re-cut from a call site (#2224 review blocker 1: the previous
+ * design had callers hand in a LazyListState that attached to nothing).
+ */
+internal fun <T> activityScrollToTopTarget(
+    selectedFilter: InboxFilter,
+    pageStates: List<T>,
+): T = pageStates[InboxFilter.entries.indexOf(selectedFilter).coerceAtLeast(0)]
 
 @Composable
 private fun SharedActivityBodyContent(

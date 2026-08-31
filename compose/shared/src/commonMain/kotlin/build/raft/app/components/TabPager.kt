@@ -19,8 +19,10 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
 import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
+import kotlin.math.abs
 
 /**
  * task #232: how a [TabPager] may claim horizontal drags.
@@ -50,7 +52,8 @@ data class TabPagerGesturePolicy(
  *
  * The pager's own gesture engine does the follow-finger tracking, threshold and
  * snap physics; [TabPagerGesturePolicy] only carves out edge regions where a
- * transparent guard claims the touch so platform edge gestures win. Each page
+ * transparent guard claims horizontal drags (taps and vertical scrolls fall
+ * through) so platform edge gestures win. Each page
  * keeps its own composition alive across swipes, so page-local state
  * (scroll position, focus) is retained by normal remember/state hoisting.
  */
@@ -69,7 +72,14 @@ fun TabPager(
      * callers leave it null — no strings are built when unset.
      */
     onDebugEvent: ((String) -> Unit)? = null,
-    pageContent: @Composable (page: Int, settled: Boolean) -> Unit,
+    /**
+     * `active` means "this page IS the pager's current page" — NOT "the settle
+     * animation finished". This component deliberately offers no settle-grade
+     * signal: the port's settledPage is frozen/regressing on iOS (task #233
+     * round-4/5 evidence), so a caller gating expensive work on it would never
+     * (or wrongly) see it fire.
+     */
+    pageContent: @Composable (page: Int, active: Boolean) -> Unit,
 ) {
     val pagerState = rememberPagerState(
         initialPage = selectedIndex.coerceIn(0, (pageCount - 1).coerceAtLeast(0)),
@@ -98,13 +108,26 @@ fun TabPager(
                 pagerState.animateScrollToPage(selectedIndex)
                 onDebugEvent?.invoke("animate ok -> $selectedIndex")
             } catch (cancelled: CancellationException) {
-                onDebugEvent?.invoke("animate cancelled -> $selectedIndex")
+                // The animation lost its mutex (a user gesture stole the
+                // scroll) or the effect is being torn down; either way the
+                // pager is no longer travelling to this target, and an armed
+                // gate whose arrival never comes suppresses every later swipe
+                // report (#2224 review). Clear it — but only our own value: on
+                // a selectedIndex restart the replacement effect may already
+                // have armed the gate for the new target.
+                if (programmaticTarget.value == selectedIndex) programmaticTarget.value = null
+                onDebugEvent?.invoke("animate cancelled -> $selectedIndex (gate cleared)")
                 throw cancelled
             } catch (failed: Throwable) {
                 onDebugEvent?.invoke("animate ERR ${failed::class.simpleName}")
                 runCatching { pagerState.scrollToPage(selectedIndex) }
                     .onSuccess { onDebugEvent?.invoke("scrollTo ok -> $selectedIndex") }
-                    .onFailure { onDebugEvent?.invoke("scrollTo ERR ${it::class.simpleName}") }
+                    .onFailure {
+                        // Both paths failed: the pager is not moving, so the
+                        // arrival that clears the gate never happens.
+                        if (programmaticTarget.value == selectedIndex) programmaticTarget.value = null
+                        onDebugEvent?.invoke("scrollTo ERR ${it::class.simpleName} (gate cleared)")
+                    }
             }
             // NOT cleared here: the port's animate returns early, so the
             // currentPage effect clears the target on arrival instead.
@@ -160,12 +183,13 @@ fun TabPager(
             ) { page ->
                 // currentPage, not settledPage: the latter is frozen on the
                 // iOS port (round-4 evidence), which would leave every
-                // swiped-to page permanently rendered as "not settled".
+                // swiped-to page permanently rendered as inactive.
                 pageContent(page, page == pagerState.currentPage)
             }
-            // Edge guards: claim touches born inside the injected insets so the
-            // pager never sees them and the platform edge gesture wins. The
-            // guard consumes nothing on its own — it only shadows the pager.
+            // Edge guards: claim horizontal drags born inside the injected
+            // insets so the pager never sees them and the platform edge
+            // gesture wins. Stationary taps and vertical scrolls fall through
+            // to the page content underneath.
             EdgeGuard(
                 inset = gesturePolicy.startEdgeInset,
                 alignment = Alignment.CenterStart,
@@ -178,9 +202,54 @@ fun TabPager(
     }
 }
 
+/**
+ * How far (in dp) a pointer born inside an edge inset must travel before the
+ * guard claims the gesture as a horizontal drag. Below this, nothing is
+ * consumed, so a stationary tap (or tap with natural jitter) reaches the row
+ * underneath (#2224 review blocker 2: the previous guard consumed from
+ * `awaitFirstDown`, making the leftmost 24dp of every row dead to taps on
+ * iOS). Deliberately smaller than a typical pager claim slop (~8dp) so the
+ * guard decides first; the pager never moving on edge-born drags is
+ * runtime-verified by the G-edge acceptance case, not assumed.
+ */
+private const val EdgeGuardClaimSlopDp = 6f
+
+internal enum class EdgeGuardGestureDecision {
+    /** Not enough movement yet — consume nothing, keep watching. */
+    Undecided,
+
+    /** Horizontal-dominant drag — consume everything until release. */
+    Claim,
+
+    /** Vertical-dominant drag — hand the whole gesture to the content below. */
+    Release,
+}
+
+/**
+ * Pure claim policy for [EdgeGuard], extracted so the tap/scroll/drag
+ * classification is unit-testable ([TabPagerEdgeGuardDecisionTest]) — the
+ * consumption loop around it is port behaviour only runtime acceptance can
+ * verify. Ties go to Claim: the guard exists exactly for horizontal edge
+ * gestures.
+ */
+internal fun edgeGuardGestureDecision(
+    horizontalDragDp: Float,
+    verticalDragDp: Float,
+    claimSlopDp: Float = EdgeGuardClaimSlopDp,
+): EdgeGuardGestureDecision {
+    val dx = abs(horizontalDragDp)
+    val dy = abs(verticalDragDp)
+    return when {
+        dx >= claimSlopDp && dx >= dy -> EdgeGuardGestureDecision.Claim
+        dy >= claimSlopDp && dy > dx -> EdgeGuardGestureDecision.Release
+        else -> EdgeGuardGestureDecision.Undecided
+    }
+}
+
 @Composable
 private fun BoxScope.EdgeGuard(inset: Dp, alignment: Alignment) {
     if (inset <= 0.dp) return
+    val density = LocalDensity.current
     // Direct strip in the parent stacking Box — no full-size wrapper layer
     // that could shadow hit testing over the whole pager (task #233 hygiene).
     Box(
@@ -189,19 +258,36 @@ private fun BoxScope.EdgeGuard(inset: Dp, alignment: Alignment) {
             .width(inset)
             .fillMaxHeight()
             // Round-5 evidence (group 3): an EMPTY pointerInput does NOT keep
-            // the pager from receiving edge-born drags on this port — the
-            // pager paged and bounced on a drag starting at x=10pt. Actively
-            // consume every change of a touch born in the inset instead, so
-            // the pager never sees it and the platform edge gesture stays
-            // free to win (same awaitEachGesture pattern as the AppShell
-            // drawer's admission logic).
+            // the pager from receiving edge-born drags on this port — active
+            // consumption is what blocks it. But consumption must start only
+            // once the pointer proves it is a horizontal drag: consuming from
+            // the first down swallowed stationary taps and vertical list
+            // scrolls in the strip too (#2224 review blocker 2). Until the
+            // claim, events flow unconsumed to the content below — the pager
+            // needs more travel than our slop before it would claim, and the
+            // platform edge gesture lives above this whole view anyway.
             .pointerInput(Unit) {
                 awaitEachGesture {
-                    awaitFirstDown()
-                    do {
+                    val origin = awaitFirstDown().position
+                    var claimed = false
+                    while (true) {
                         val event = awaitPointerEvent()
-                        event.changes.forEach { it.consume() }
-                    } while (event.changes.any { it.pressed })
+                        val change = event.changes.firstOrNull()
+                        if (!claimed && change != null) {
+                            when (
+                                edgeGuardGestureDecision(
+                                    horizontalDragDp = (change.position.x - origin.x) / density.density,
+                                    verticalDragDp = (change.position.y - origin.y) / density.density,
+                                )
+                            ) {
+                                EdgeGuardGestureDecision.Claim -> claimed = true
+                                EdgeGuardGestureDecision.Release -> return@awaitEachGesture
+                                EdgeGuardGestureDecision.Undecided -> Unit
+                            }
+                        }
+                        if (claimed) event.changes.forEach { it.consume() }
+                        if (event.changes.none { it.pressed }) return@awaitEachGesture
+                    }
                 }
             },
     )
