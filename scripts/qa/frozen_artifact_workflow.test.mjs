@@ -62,6 +62,36 @@ test("the Android acceptance goal names its target server and forbids production
   assert.match(goal, /never\s+substitute the closest-looking name/, "goal must forbid nearest-match substitution");
 });
 
+test("neither goal can offer the production server as a selectable target", () => {
+  // The guards above are ADJACENCY-based: iOS asserts the goal lacks the literal
+  // `choose 'Raft Android'`. That shape misses the way this would realistically come
+  // back (@LiBai, 2026-08-31) — production added as an *alternative*:
+  //
+  //     "If a server picker appears choose 'OranixSlockTest' or 'Raft Android'."
+  //
+  // never produces the literal `choose 'Raft Android'`, so it passes every existing
+  // assertion. Line wrapping defeats adjacency too: the Android goal already wraps
+  // between `choose` and `'OranixSlockTest'`, so the same evasion happens by accident.
+  //
+  // Pinned by COUNT instead of adjacency. After #2282/#2283 the production name appears
+  // legitimately exactly once per goal — inside the prohibition. A second occurrence is,
+  // by construction, somewhere that is not the prohibition, whatever words surround it.
+  //
+  // Both platforms in one loop deliberately: the original hole existed because the goal
+  // assertions only ever read `ios`, so Android drifted looser unnoticed. A per-platform
+  // test would let that happen again; this one cannot pass for one platform and skip the
+  // other.
+  for (const [platform, yml] of [["iOS", ios], ["Android", android]]) {
+    const goal = yml.match(/DEFAULT_GOAL: >-\n([\s\S]*?)\n\njobs:/)?.[1] || "";
+    assert.notStrictEqual(goal, "", `${platform} DEFAULT_GOAL block not found — the count below would be vacuous`);
+    // Normalised so a re-wrap of the YAML block cannot change the verdict.
+    const flat = goal.replace(/\s+/g, " ");
+    const mentions = flat.match(/'Raft Android'/g) || [];
+    assert.strictEqual(mentions.length, 1, `${platform} goal must name the production server exactly once, and only to forbid it — found ${mentions.length}`);
+    assert.match(flat, /'Raft Android' appears, do NOT choose it/, `${platform} goal's single mention of the production server must be the prohibition itself`);
+  }
+});
+
 test("Android exposes the same frozen identity names for strict claim overrides", () => {
   for (const name of ["apk_run_id", "apk_artifact_id", "artifact_sha256", "artifact_source_commit", "artifact_version", "artifact_version_code", "artifact_package_id"]) {
     assert.match(android, new RegExp(`\\n      ${name}:`));
