@@ -465,7 +465,8 @@ jobs:
             echo "PROBE NOT RUN - this run carries no evidence about production visibility" >> qa-evidence/visible-servers-probe.txt
             case "$reason" in
               credential) echo "::error::visible-servers probe: credentials rejected - rerunning will NOT help, fix the QA credential" ;;
-              infra)      echo "::error::visible-servers probe: transport/rate-limit failure - a rerun is reasonable" ;;
+              ratelimit)  echo "::error::visible-servers probe: rate-limited (429) - rerun is right but NOT immediately; an instant retry is what caused this" ;;
+              infra)      echo "::error::visible-servers probe: transport failure - a rerun is reasonable" ;;
               contract)   echo "::error::visible-servers probe: endpoint or response contract changed - A PASSING RERUN DOES NOT MEAN FIXED; check the probe against the live endpoint"
                           echo "rerun-does-not-mean-fixed" >> qa-evidence/visible-servers-probe.txt ;;
               *)          echo "::error::visible-servers probe unjudgeable with no reason code (rc=$rc) - treat as contract until diagnosed" ;;

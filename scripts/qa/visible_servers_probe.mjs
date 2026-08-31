@@ -99,16 +99,25 @@ export function judgeVisibleServers(servers, identity) {
 // goes green by accident. So an unjudgeable result must say WHICH KIND it is.
 //
 //   credential  401/403, or no credentials at all  -> rerunning cannot help
+//   ratelimit   429                                -> rerunning is right, but NOT immediately
 //   infra       timeout, DNS, transport failure    -> rerunning is reasonable
 //   contract    404, non-JSON, missing accessToken -> MOST DANGEROUS: a passing rerun does
 //               NOT mean fixed; someone has to check the probe against the live endpoint
 //
-// All three still block. The reason only tells the reader what to do next.
-export const UNJUDGEABLE_REASONS = ["credential", "infra", "contract"];
+// 429 is its own class rather than infra (@LiBai). Both say "try again", but infra means
+// "try again" and 429 means "wait, then try again" — an immediate rerun makes 429 worse, and
+// @HuaTuo hit it live by re-issuing logins in quick succession. That half-sentence decides
+// whether whoever is on call reruns now or stops for a minute, so it cannot be folded in.
+//
+// All four still block. The reason only tells the reader what to do next.
+export const UNJUDGEABLE_REASONS = ["credential", "ratelimit", "infra", "contract"];
 
 function unjudgeable(reason, detail) {
   console.error(`visible-servers probe: UNJUDGEABLE [${reason}] ${detail}`);
   console.error(`reason=${reason}`);
+  if (reason === "ratelimit") {
+    console.error("visible-servers probe: do NOT rerun immediately — that is what caused this");
+  }
   if (reason === "contract") {
     console.error("visible-servers probe: a passing rerun does NOT mean this is fixed — check the probe against the live endpoint");
   }
@@ -133,7 +142,7 @@ async function main() {
   }
   if (login.status === 401 || login.status === 403) unjudgeable("credential", `login rejected HTTP ${login.status}`);
   if (login.status === 404) unjudgeable("contract", "login endpoint returned 404 — the API shape may have moved");
-  if (login.status === 429) unjudgeable("infra", "login rate-limited HTTP 429 — log in once per run and reuse the token");
+  if (login.status === 429) unjudgeable("ratelimit", "login rate-limited HTTP 429 — wait before retrying; log in once per run and reuse the token");
   if (!login.ok) unjudgeable("infra", `login failed HTTP ${login.status}`);
 
   let session;
@@ -157,7 +166,7 @@ async function main() {
   }
   if (res.status === 401 || res.status === 403) unjudgeable("credential", `servers rejected HTTP ${res.status}`);
   if (res.status === 404) unjudgeable("contract", "GET servers returned 404 — the endpoint may have moved");
-  if (res.status === 429) unjudgeable("infra", "servers rate-limited HTTP 429");
+  if (res.status === 429) unjudgeable("ratelimit", "servers rate-limited HTTP 429 — wait before retrying");
   if (!res.ok) unjudgeable("infra", `GET servers failed HTTP ${res.status}`);
 
   let body;

@@ -173,7 +173,7 @@ test("the visible-servers preflight runs on both platforms, before anything driv
     // The reason must survive to the reader, and the unknown case must not default to the
     // cheap one: "no reason code" is treated as contract, the class where a green rerun is
     // most misleading. Without this, "fix or rerun" decays into "always rerun" (@HuaTuo).
-    for (const reason of ["credential", "infra", "contract"]) {
+    for (const reason of ["credential", "ratelimit", "infra", "contract"]) {
       // Anchored to line start and required to emit an ::error::. A bare /credential\)/ also
       // matches `# credential) echo ...`, so commenting a branch out would have kept the
       // assertion green — found by mutating the branch rather than trusting the pattern.
@@ -185,5 +185,9 @@ test("the visible-servers preflight runs on both platforms, before anything driv
     }
     assert.match(unjudged, /A PASSING RERUN DOES NOT MEAN FIXED/, `${platform}: a contract failure must say a green rerun proves nothing`);
     assert.match(unjudged, /treat as contract until diagnosed/, `${platform}: an unknown reason must not default to the cheap class`);
+    // 429 is its own class, not infra (@LiBai): both say "try again", but one means "wait
+    // first", and an immediate retry is what produces 429 in the first place. Folding them
+    // together loses the only part that changes what the on-call person does.
+    assert.match(unjudged, /NOT immediately/, `${platform}: the rate-limit receipt must say not to rerun straight away`);
   }
 });
