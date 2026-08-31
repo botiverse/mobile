@@ -180,6 +180,7 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskStatus
+import build.raft.app.components.SlockAnchorPlacement
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
@@ -26806,16 +26807,15 @@ private fun ThreadTaskDetailDialog(
 ) {
     val statusLabel = stringResource(MR.strings.tasks_label_status)
     val assigneeLabel = stringResource(MR.strings.tasks_chip_assignee)
+    val creatorLabel = stringResource(MR.strings.tasks_chip_creator)
     val unassignedLabel = stringResource(MR.strings.tasks_assignee_unassigned)
     val searchPlaceholder = stringResource(MR.strings.tasks_search_assignees)
     val filterAssigneeTitle = stringResource(MR.strings.tasks_filter_assignee)
-    // Task #258 (artin msg=6f430fed): the status and assignee pills in the detail
-    // modal are tap-to-open-menu controls — the status pill opens the exact same
-    // menu as the thread inline chip (SlockTaskStatusMenuOverlay), and the
-    // assignee pill opens the Tasks-page-style filter popover with search.
-    val menuIdentity = remember(task.id) { threadTaskDetailMenuOwnerIdentity(task.id) }
-    val statusAnchorRef = remember(menuIdentity) { SlockLiveRootAnchorRef(identity = menuIdentity) }
-    val assigneeAnchorRef = remember(menuIdentity) { SlockLiveRootAnchorRef(identity = menuIdentity) }
+    // Task #258 (artin msg=6f430fed/9c943070/909777d9): status and assignee pills
+    // reuse the task-card SlockAnchoredMetaChip (i18n, vertical centering) and are
+    // tap-to-open-menu controls — the status pill opens the exact same menu as the
+    // thread inline chip (SlockTaskStatusMenuOverlay), and the assignee pill opens
+    // the Tasks-page-style filter popover with search. Creator shows read-only.
     var statusMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     var assigneeMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     var assigneeMenuSearch by remember { mutableStateOf(TextFieldValue("")) }
@@ -26830,60 +26830,77 @@ private fun ThreadTaskDetailDialog(
     ) {
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text(
-                text = statusLabel,
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                color = SlockColor.TextBlack.copy(alpha = 0.65f)
-            )
-            Row(
-                modifier = Modifier
-                    .slockCaptureLiveRootAnchor(statusAnchorRef)
-                    .background(statusMeta.color)
-                    .border(width = SlockStroke.Thin, color = SlockColor.BorderBlack)
-                    .clickable {
-                        statusMenuAnchor = statusAnchorRef.resolve(SlockPopoverLocalPoint.BottomStart)
-                    }
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
+            // Task #258 (artin msg=9c943070/909777d9): reuse the exact task-card
+            // status/assignee chips (SlockAnchoredMetaChip, i18n labels) with the
+            // label outside the pill, each pair as one wrap unit so labels stay
+            // vertically centered with their chip.
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = statusMeta.label,
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1
+                    text = statusLabel,
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray
                 )
-                SlockLucideIcon(SlockLucideIconName.ChevronDown, modifier = Modifier.size(11.dp), color = "#FF000000")
+                SlockAnchoredMetaChip(
+                    label = task.status.localizedLabel(),
+                    iconName = null,
+                    color = task.status.sharedTaskStatusChipMeta().color,
+                    onClick = { anchor -> statusMenuAnchor = anchor },
+                    anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "status"),
+                    modifier = Modifier.padding(start = 6.dp),
+                    trailingIconName = SlockLucideIconName.Pencil,
+                    minHeight = 24.dp,
+                    horizontalPadding = 8.dp,
+                    labelFontSize = 12.sp,
+                    labelLineHeight = 16.sp,
+                    borderWidth = SlockStroke.Default,
+                    anchorPlacement = SlockAnchorPlacement.BottomEnd
+                )
             }
-            Text(
-                text = assigneeLabel,
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                color = SlockColor.TextBlack.copy(alpha = 0.65f)
-            )
-            Row(
-                modifier = Modifier
-                    .slockCaptureLiveRootAnchor(assigneeAnchorRef)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(width = SlockStroke.Thin, color = SlockColor.BorderBlack)
-                    .clickable {
-                        assigneeMenuAnchor = assigneeAnchorRef.resolve(SlockPopoverLocalPoint.BottomStart)
-                    }
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = task.assignee?.displayName ?: unassignedLabel,
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    text = assigneeLabel,
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray
                 )
-                SlockLucideIcon(SlockLucideIconName.ChevronDown, modifier = Modifier.size(11.dp), color = "#FF000000")
+                SlockAnchoredMetaChip(
+                    label = task.assignee?.displayName?.let { "@$it" }
+                        ?: unassignedLabel,
+                    iconName = null,
+                    color = SlockColor.SurfaceWhite,
+                    onClick = { anchor -> assigneeMenuAnchor = anchor },
+                    anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "assignee"),
+                    modifier = Modifier
+                        .padding(start = 6.dp)
+                        .widthIn(max = 160.dp),
+                    trailingIconName = SlockLucideIconName.Pencil,
+                    minHeight = 24.dp,
+                    horizontalPadding = 8.dp,
+                    labelFontSize = 12.sp,
+                    labelLineHeight = 16.sp,
+                    borderWidth = SlockStroke.Default,
+                    anchorPlacement = SlockAnchorPlacement.BottomEnd
+                )
+            }
+            task.creator?.let { creator ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = creatorLabel,
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextMutedGray
+                    )
+                    Text(
+                        text = creator.displayName,
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
+                            .withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                }
             }
         }
         task.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
@@ -26950,5 +26967,6 @@ private fun ThreadTaskDetailDialog(
     }
 }
 
-internal fun threadTaskDetailMenuOwnerIdentity(taskId: TaskId): String = "thread_task_detail:${taskId.value}"
+internal fun threadTaskDetailMenuOwnerIdentity(taskId: TaskId, slot: String): String =
+    "thread_task_detail:${taskId.value}:$slot"
 
