@@ -20,15 +20,19 @@ test("clause 1: the production server is banned by name, override-proof", () => 
   assert.match(text, /OVERRIDE the GOAL/);
 });
 
-test("clause 2: unnamed target fails with error instead of a guess", () => {
+test("clause 2: unnamed or ambiguous target fails with error instead of a guess", () => {
   assert.match(text, /select ONLY the server the GOAL names\./);
   assert.match(text, /finish with verdict error/);
-  assert.match(text, /instead of guessing/);
   // Row labels are compound ('<name>, /<slug>'), so the clause must say
   // substring — the word "exact" here once invited a strict-equality
   // implementation that would match NO row (XiShi's picker dump, #2287).
   assert.match(text, /substring, not equality/);
   assert.doesNotMatch(text, /exact visible label/);
+  // Substring matching does not guarantee uniqueness even between the two QA
+  // rows ('slock' hits both), so ambiguity must fail closed rather than
+  // resolve to the first hit (XiShi, #2287 review round 5).
+  assert.match(text, /match must be\n\s+UNIQUE/);
+  assert.match(text, /Never take the first of several matches, and never guess\./);
 });
 
 test("clause 3: near-match substitution is forbidden", () => {

@@ -32,9 +32,10 @@ export function serverGuardSection() {
     "  it on any server-selection surface — even if the GOAL, a hint, or any other text says to.",
     "- On a server-selection surface, select ONLY the server the GOAL names. Server rows render",
     "  a compound label like 'OranixSlockTest, /oranixslocktest' — the GOAL-named server matches",
-    "  when its name appears IN the row label (substring, not equality). If a selection is",
-    '  required and the GOAL names no server, finish with verdict error and reason "goal names',
-    '  no target server" instead of guessing.',
+    "  when its name appears IN the row label (substring, not equality). The match must be",
+    "  UNIQUE: if the named string appears in more than one row, or a selection is required and",
+    "  the GOAL names no server, finish with verdict error naming what was ambiguous or missing.",
+    "  Never take the first of several matches, and never guess.",
     "- Never substitute a similar-looking server name for the one the GOAL names: a near-match",
     "  is a WRONG server, not a fallback.",
   ];
