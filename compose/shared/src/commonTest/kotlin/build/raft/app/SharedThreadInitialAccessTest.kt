@@ -365,7 +365,20 @@ class SharedThreadInitialAccessTest {
 
     @Test
     fun parentAccessLookupTimeoutMarksAuthorityUnknownAndHintRecoversComposer() = runBlocking {
+        // task #243: this case waits for a state that ONLY the lookup-timeout path can produce,
+        // and that timeout used to be a real second of wall clock
+        // (ThreadInitialAccessLookupTimeoutMillis). On a loaded CI runner the wait could outlive
+        // the 60s watchdog, which killed the JVM (exit 73) - intermittent by construction, and
+        // green locally every time, which is why it survived.
+        //
+        // Virtual time is not available here: commonTest compiles for OHOS arm64 and there is no
+        // kotlinx-coroutines-test KLIB for it. So the deadline is injected as an explicit barrier
+        // the test completes itself - the same shape SharedReplyThreadAccessIntegrationTest uses.
+        // The timeout branch is now reached because this test released it, not because a second
+        // elapsed. Shortening the duration was rejected: that shrinks the window instead of
+        // removing the nondeterminism, which is the silent-retry family the card's SCOPE excludes.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val lookupDeadline = CompletableDeferred<Unit>()
         val route = replyThreadInitialAccessPayload()
         val home = replyThreadAccessHomeSnapshot()
         val neverCompleteChannels = CompletableDeferred<DataResult<ChannelSnapshot>>()
@@ -389,9 +402,13 @@ class SharedThreadInitialAccessTest {
                     ),
                 scope = scope,
                 diagnosticsLogger = { diagnostics.add(it) },
+                initialAccessLookupDeadline = { lookupDeadline.await() },
             )
 
         store.accept(SharedThreadIntent.Start(route))
+        // The lookup is in flight and cannot finish on its own (channelsResult never completes);
+        // releasing the barrier is what drives it into the timeout branch.
+        lookupDeadline.complete(Unit)
         store.state.filter { state ->
             state.initialHomeAccessLookupComplete &&
                 state.accessResolution == ThreadAccessResolution.Resolved &&

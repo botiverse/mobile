@@ -127,6 +127,7 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
@@ -5392,6 +5393,14 @@ internal class SharedThreadStore(
     private val beforeFocusedOriginCommit: (suspend (KuiklyThreadScreenPayload) -> Unit)? = null,
     private val afterRefreshLoadingStateApplied: (suspend (KuiklyThreadScreenPayload) -> Unit)? = null,
     private val threadRepliesSyncHost: ThreadRepliesSyncHost = ThreadRepliesSyncHost(),
+    // task #243: the initial-access lookup deadline as an injectable SIGNAL rather than a bare
+    // duration. Production keeps the wall clock; a test can hand in a barrier it completes
+    // itself, so the timeout branch is reached because the test said so - not because a second
+    // of real time happened to elapse on a loaded runner. A shorter duration was deliberately
+    // NOT used: that shrinks the flake window instead of removing the nondeterminism.
+    private val initialAccessLookupDeadline: suspend () -> Unit = {
+        delay(ThreadInitialAccessLookupTimeoutMillis)
+    },
 ) {
     private val _state = MutableStateFlow(SharedThreadState(payload = initialPayload))
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
@@ -6480,6 +6489,36 @@ internal class SharedThreadStore(
             }
     }
 
+    /**
+     * task #243: race the lookup against an injectable deadline SIGNAL.
+     *
+     * `withTimeoutOrNull(1_000L)` tied the timeout branch to a real second of wall clock, which is
+     * unreachable deterministically from a test - `commonTest` compiles for OHOS arm64, where no
+     * `kotlinx-coroutines-test` KLIB exists, so virtual time is not available here. Handing the
+     * deadline in as a suspend function lets a test complete it explicitly (the same explicit-barrier
+     * shape already used in SharedReplyThreadAccessIntegrationTest) while production keeps `delay`.
+     *
+     * The block still runs, so callers that count downstream requests keep observing them.
+     */
+    private suspend fun <T> raceInitialAccessLookupDeadline(block: suspend () -> T?): T? =
+        coroutineScope {
+            val outcome = CompletableDeferred<T?>()
+            val work = launch {
+                val value = block()
+                outcome.complete(value)
+            }
+            val deadline = launch {
+                initialAccessLookupDeadline()
+                outcome.complete(null)
+            }
+            try {
+                outcome.await()
+            } finally {
+                work.cancel()
+                deadline.cancel()
+            }
+        }
+
     private fun launchInitialAccessResolution(
         routePayload: KuiklyThreadScreenPayload,
         staleToken: MviStaleToken
@@ -6488,7 +6527,7 @@ internal class SharedThreadStore(
         initialAccessResolutionJob =
             scope.launch {
                 val homeResolution =
-                    withTimeoutOrNull(ThreadInitialAccessLookupTimeoutMillis) {
+                    raceInitialAccessLookupDeadline {
                         try {
                             dataSource.initialConversationAccessResolution(routePayload)
                         } catch (cancellation: CancellationException) {
