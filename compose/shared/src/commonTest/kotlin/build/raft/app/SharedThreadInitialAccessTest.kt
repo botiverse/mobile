@@ -11,7 +11,9 @@ import build.raft.app.data.authSessionFixture
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -360,6 +362,62 @@ class SharedThreadInitialAccessTest {
         assertEquals(beforeStaleAccess.writeActionsEnabled, frame.writeActionsEnabled)
         assertEquals(1, channelRepository.channelsCalls)
         assertEquals(0, channelRepository.homeCalls)
+        scope.cancel()
+    }
+
+
+    /**
+     * task #243, found by @LiBai in review of the first fix: the lookup body contains two
+     * deliberate `throw cancellation` statements. Under `withTimeoutOrNull` they escaped the
+     * enclosing `scope.launch`, so the whole projection was abandoned. Racing the body inside a
+     * child coroutine swallowed them - a cancelled child does not fail its parent, so nothing
+     * completed the outcome and the resolution sat waiting for the deadline, then ran the entire
+     * projection with `candidate = null`. That turned "give up" into "wait, then take the timeout
+     * branch", which is a path the original code never wrote a byte on.
+     *
+     * The barrier here is never released, so the only way to leave the lookup is the cancellation
+     * escaping. If it is swallowed again, the resolution job stays alive and this fails.
+     */
+    @Test
+    fun cancellationInsideTheLookupAbortsInsteadOfFallingIntoTheTimeoutBranch() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val route = replyThreadInitialAccessPayload()
+        val home = replyThreadAccessHomeSnapshot()
+        val neverReleasedDeadline = CompletableDeferred<Unit>()
+        val channelRepository =
+            FakeChannelRepository(
+                channelsResult = { _ -> throw CancellationException("lookup cancelled below the store") },
+                homeResult = { _ -> DataResult.Content(home) },
+            )
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = ReplyThreadAccessNetworkApi,
+                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        conversationRepository =
+                            ReplyThreadAccessConversationRepositoryRecorder(
+                                replyResult = DataResult.Content(replyThreadAccessSnapshot())
+                            ),
+                        channelRepository = channelRepository,
+                    ),
+                scope = scope,
+                diagnosticsLogger = {},
+                initialAccessLookupDeadline = { neverReleasedDeadline.await() },
+            )
+
+        store.accept(SharedThreadIntent.Start(route))
+
+        // Unconfined runs the launch inline, so by the time accept() returns the job has either
+        // aborted (correct) or parked on the deadline (the regression).
+        val liveChildren = scope.coroutineContext[Job]!!.children.count { child -> child.isActive }
+        assertEquals(
+            0,
+            liveChildren,
+            "cancellation inside the lookup must abort the resolution, not park it on the deadline"
+        )
+        // and the projection must not have run: no timeout-branch state was written.
+        assertFalse(store.state.value.initialHomeAccessLookupComplete)
         scope.cancel()
     }
 

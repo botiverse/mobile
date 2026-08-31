@@ -5398,6 +5398,9 @@ internal class SharedThreadStore(
     // itself, so the timeout branch is reached because the test said so - not because a second
     // of real time happened to elapse on a loaded runner. A shorter duration was deliberately
     // NOT used: that shrinks the flake window instead of removing the nondeterminism.
+    // ⚠️ Invoked once per resolution attempt (launchInitialAccessResolution cancels and relaunches),
+    // so an injected implementation must be safe to call repeatedly. A one-shot CompletableDeferred
+    // parks the first attempt and then completes instantly for every attempt after it.
     private val initialAccessLookupDeadline: suspend () -> Unit = {
         delay(ThreadInitialAccessLookupTimeoutMillis)
     },
@@ -6504,8 +6507,19 @@ internal class SharedThreadStore(
         coroutineScope {
             val outcome = CompletableDeferred<T?>()
             val work = launch {
-                val value = block()
-                outcome.complete(value)
+                try {
+                    outcome.complete(block())
+                } catch (cancellation: CancellationException) {
+                    // The body rethrows CancellationException on purpose (see the call site and
+                    // initialConversationAccessResolution). A cancelled child does NOT fail its
+                    // parent, so without this the exception would be swallowed, nothing would
+                    // complete `outcome`, and the resolution would sit here until the deadline
+                    // fired - turning "abandon the lookup" into "wait, then take the timeout
+                    // branch" and running the whole projection with a null candidate. Hand it to
+                    // the awaiter so it keeps escaping exactly as it did under withTimeoutOrNull.
+                    outcome.completeExceptionally(cancellation)
+                    throw cancellation
+                }
             }
             val deadline = launch {
                 initialAccessLookupDeadline()
