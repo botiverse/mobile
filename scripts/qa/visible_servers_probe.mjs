@@ -93,48 +93,90 @@ export function judgeVisibleServers(servers, identity) {
   };
 }
 
+// rc=2 alone degrades in practice (@HuaTuo, adopted by @Argus): if every unjudgeable run
+// looks the same, "fix or rerun" quietly becomes "always rerun", and the most dangerous class
+// — the endpoint changed or the probe itself broke — is the one where a rerun most easily
+// goes green by accident. So an unjudgeable result must say WHICH KIND it is.
+//
+//   credential  401/403, or no credentials at all  -> rerunning cannot help
+//   infra       timeout, DNS, transport failure    -> rerunning is reasonable
+//   contract    404, non-JSON, missing accessToken -> MOST DANGEROUS: a passing rerun does
+//               NOT mean fixed; someone has to check the probe against the live endpoint
+//
+// All three still block. The reason only tells the reader what to do next.
+export const UNJUDGEABLE_REASONS = ["credential", "infra", "contract"];
+
+function unjudgeable(reason, detail) {
+  console.error(`visible-servers probe: UNJUDGEABLE [${reason}] ${detail}`);
+  console.error(`reason=${reason}`);
+  if (reason === "contract") {
+    console.error("visible-servers probe: a passing rerun does NOT mean this is fixed — check the probe against the live endpoint");
+  }
+  process.exit(2); // 2 = could not judge, distinct from 1 = judged and failed
+}
+
 async function main() {
   const base = (process.env.QA_API_BASE || "https://api.raft.build/api/").replace(/\/?$/, "/");
   const email = process.env.QA_TEST_EMAIL;
   const password = process.env.QA_TEST_PASSWORD;
-  if (!email || !password) {
-    console.error("visible-servers probe: QA_TEST_EMAIL / QA_TEST_PASSWORD not set");
-    process.exit(2); // 2 = could not run, distinct from 1 = judged and failed
-  }
+  if (!email || !password) unjudgeable("credential", "QA_TEST_EMAIL / QA_TEST_PASSWORD not set");
 
-  const login = await fetch(`${base}auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!login.ok) {
-    console.error(`visible-servers probe: login failed HTTP ${login.status}`);
-    process.exit(2);
+  let login;
+  try {
+    login = await fetch(`${base}auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch (err) {
+    unjudgeable("infra", `login request did not complete: ${err?.message ?? err}`);
   }
-  const session = await login.json();
+  if (login.status === 401 || login.status === 403) unjudgeable("credential", `login rejected HTTP ${login.status}`);
+  if (login.status === 404) unjudgeable("contract", "login endpoint returned 404 — the API shape may have moved");
+  if (login.status === 429) unjudgeable("infra", "login rate-limited HTTP 429 — log in once per run and reuse the token");
+  if (!login.ok) unjudgeable("infra", `login failed HTTP ${login.status}`);
+
+  let session;
+  try {
+    session = await login.json();
+  } catch {
+    unjudgeable("contract", "login response was not JSON");
+  }
   const token = session?.accessToken;
-  if (!token) {
-    console.error("visible-servers probe: no accessToken in the login response");
-    process.exit(2);
-  }
+  if (!token) unjudgeable("contract", "no accessToken in the login response — the contract changed");
   // Identity from the RESPONSE, never from the email we sent. See judgeVisibleServers.
   const identity = session?.user ? { id: session.user.id, email: session.user.email, name: session.user.name } : null;
 
   // GET servers is the one call that needs no X-Server-Id header (@HuaTuo, live 2026-08-31);
   // sub-resources like /channels do, and answer 400 Missing X-Server-Id without it.
-  const res = await fetch(`${base}servers`, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) {
-    console.error(`visible-servers probe: GET servers failed HTTP ${res.status}`);
-    process.exit(2);
+  let res;
+  try {
+    res = await fetch(`${base}servers`, { headers: { Authorization: `Bearer ${token}` } });
+  } catch (err) {
+    unjudgeable("infra", `servers request did not complete: ${err?.message ?? err}`);
   }
-  const body = await res.json();
+  if (res.status === 401 || res.status === 403) unjudgeable("credential", `servers rejected HTTP ${res.status}`);
+  if (res.status === 404) unjudgeable("contract", "GET servers returned 404 — the endpoint may have moved");
+  if (res.status === 429) unjudgeable("infra", "servers rate-limited HTTP 429");
+  if (!res.ok) unjudgeable("infra", `GET servers failed HTTP ${res.status}`);
+
+  let body;
+  try {
+    body = await res.json();
+  } catch {
+    unjudgeable("contract", "servers response was not JSON");
+  }
   const list = Array.isArray(body) ? body : body?.servers;
 
   const verdict = judgeVisibleServers(list, identity);
+  // A shape the judgement cannot read is a contract problem, not a product finding: it must not
+  // be reported as "the account's visibility is wrong".
+  if (verdict.code === "not_a_list") unjudgeable("contract", verdict.detail);
   // Names only. Never print ids, tokens, or the raw body — this runs in CI logs.
   console.log(`visible-servers probe: ${verdict.ok ? "PASS" : "FAIL"} [${verdict.code}] ${verdict.detail}`);
   process.exit(verdict.ok ? 0 : 1);
 }
+
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((err) => {

@@ -153,8 +153,37 @@ test("the visible-servers preflight runs on both platforms, before anything driv
     // because warn-only is the tempting shape: under it the probe's infrastructure could break
     // and the pipeline would silently downgrade to the pre-probe world while staying green.
     const step = yml.slice(probeAt, agentAt);
-    assert.match(step, /if \[ "\$rc" = "1" \][\s\S]{0,200}exit 1/, `${platform}: a failed judgement must block the run`);
-    assert.match(step, /if \[ "\$rc" != "0" \][\s\S]{0,300}exit 1/, `${platform}: an unjudgeable probe must block too, not warn`);
+    // Slice each `if ...; then ... fi` to its own `fi`, rather than allowing N characters.
+    // I used a character budget here twice and it broke both times — the second time within
+    // the same file, when adding the reason-code `case` pushed `exit 1` past the budget and
+    // the assertion went red against correct input. A budget encodes today's body length as
+    // if it were the property under test.
+    const branch = (cond) => {
+      const at = step.indexOf(cond);
+      if (at === -1) return null;
+      const end = step.indexOf("\n          fi", at);
+      return end === -1 ? step.slice(at) : step.slice(at, end);
+    };
+    const failed = branch('if [ "$rc" = "1" ]');
+    const unjudged = branch('if [ "$rc" != "0" ]');
+    assert.ok(failed && /exit 1/.test(failed), `${platform}: a failed judgement must block the run`);
+    assert.ok(unjudged && /exit 1/.test(unjudged), `${platform}: an unjudgeable probe must block too, not warn`);
     assert.doesNotMatch(step, /::warning::/, `${platform}: no warn-only path — a broken guard must behave like a broken guard`);
+
+    // The reason must survive to the reader, and the unknown case must not default to the
+    // cheap one: "no reason code" is treated as contract, the class where a green rerun is
+    // most misleading. Without this, "fix or rerun" decays into "always rerun" (@HuaTuo).
+    for (const reason of ["credential", "infra", "contract"]) {
+      // Anchored to line start and required to emit an ::error::. A bare /credential\)/ also
+      // matches `# credential) echo ...`, so commenting a branch out would have kept the
+      // assertion green — found by mutating the branch rather than trusting the pattern.
+      assert.match(
+        unjudged,
+        new RegExp(`^\\s*${reason}\\)\\s+echo "::error::`, "m"),
+        `${platform}: the ${reason} class must be a live case arm that reports, not a commented one`,
+      );
+    }
+    assert.match(unjudged, /A PASSING RERUN DOES NOT MEAN FIXED/, `${platform}: a contract failure must say a green rerun proves nothing`);
+    assert.match(unjudged, /treat as contract until diagnosed/, `${platform}: an unknown reason must not default to the cheap class`);
   }
 });

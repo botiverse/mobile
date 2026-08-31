@@ -436,6 +436,13 @@ jobs:
         #      Accepted cost, stated: this probe depends on an external surface, so blocking on
         #      rc=2 adds a new flaky-red source. The remedy is fix-or-rerun, never downgrade.
         #      An explicit per-run waiver channel is deliberately NOT pre-built.
+        #
+        # rc=2 therefore carries a REASON (@HuaTuo, adopted by @Argus). Without one, "fix or
+        # rerun" decays into "always rerun" — and the class where a rerun most easily goes green
+        # by accident (the endpoint moved, or the probe broke) is exactly the one where a green
+        # rerun means nothing. credential -> rerun cannot help. infra -> rerun is reasonable.
+        # contract -> a passing rerun does NOT mean fixed. A missing reason is treated as
+        # contract, because the unknown case must not default to the cheap one.
         if: ${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true' }}
         env:
           QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
@@ -452,8 +459,17 @@ jobs:
             exit 1
           fi
           if [ "$rc" != "0" ]; then
-            echo "::error::visible-servers probe could not be judged (rc=$rc) - refusing to run"
+            reason="$(grep -oE '^reason=[a-z]+' qa-evidence/visible-servers-probe.txt | tail -1 | cut -d= -f2)"
+            reason="${reason:-unknown}"
+            echo "reason=$reason" >> qa-evidence/visible-servers-probe.txt
             echo "PROBE NOT RUN - this run carries no evidence about production visibility" >> qa-evidence/visible-servers-probe.txt
+            case "$reason" in
+              credential) echo "::error::visible-servers probe: credentials rejected - rerunning will NOT help, fix the QA credential" ;;
+              infra)      echo "::error::visible-servers probe: transport/rate-limit failure - a rerun is reasonable" ;;
+              contract)   echo "::error::visible-servers probe: endpoint or response contract changed - A PASSING RERUN DOES NOT MEAN FIXED; check the probe against the live endpoint"
+                          echo "rerun-does-not-mean-fixed" >> qa-evidence/visible-servers-probe.txt ;;
+              *)          echo "::error::visible-servers probe unjudgeable with no reason code (rc=$rc) - treat as contract until diagnosed" ;;
+            esac
             exit 1
           fi
 
