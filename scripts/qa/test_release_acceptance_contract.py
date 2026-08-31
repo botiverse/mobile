@@ -81,6 +81,18 @@ class ReleaseAcceptanceContractTest(unittest.TestCase):
         with self.assertRaisesRegex(ContractError, "must name 'OranixSlockTest'"):
             load_contract(self.case_dir)
 
+    def test_server_switch_case_must_name_both_qa_servers(self) -> None:
+        # The one case whose subject IS server selection: stripping either
+        # exact label reverts it to abstract A/B goals, which the runtime
+        # guard answers with verdict error by design (task #171).
+        path = self.case_dir / "26-server-switch.yaml"
+        path.write_text(
+            path.read_text(encoding="utf-8").replace("qa-server-b-slock", "server B"),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ContractError, "must name 'qa-server-b-slock'"):
+            load_contract(self.case_dir)
+
     def test_duplicate_manifest_key_is_rejected(self) -> None:
         path = self.case_dir / "release-1.7.0-android.json"
         value = json.loads(path.read_text(encoding="utf-8"))

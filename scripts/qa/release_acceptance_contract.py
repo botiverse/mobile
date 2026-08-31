@@ -29,6 +29,14 @@ PRODUCTION_SERVER_NAME = "Raft Android"
 # never leaves the choice to the model.
 LOGIN_CASE_ID = "login-email-password"
 QA_SERVER_NAME = "OranixSlockTest"
+# server-switch is the one case whose SUBJECT is server selection; its steps
+# must name both QA servers by exact visible label, or the runtime guard's
+# "goal names no server -> error" clause fires by design (task #171; XiShi's
+# fourth-source finding). NOTE: these two teeth pin the known selection cases
+# only — "a case requiring selection of a server it never names" has no
+# general detector here.
+SERVER_SWITCH_CASE_ID = "server-switch"
+QA_SERVER_B_NAME = "qa-server-b-slock"
 
 
 class ContractError(ValueError):
@@ -190,6 +198,15 @@ def load_contract(case_dir: Path = DEFAULT_CASE_DIR) -> ReleaseAcceptanceContrac
             f"{login_path.name}: the login case must name {QA_SERVER_NAME!r} "
             f"for its server-picker branch",
         )
+    switch_path, _switch = sources[SERVER_SWITCH_CASE_ID]
+    switch_text = switch_path.read_text(encoding="utf-8")
+    for name in (QA_SERVER_NAME, QA_SERVER_B_NAME):
+        if name not in switch_text:
+            raise ContractError(
+                f"{switch_path.name}: the server-switch case must name {name!r} "
+                f"by exact visible label — abstract A/B goals trip the runtime "
+                f"guard's no-name clause by design",
+            )
 
     path, server_create = sources["server-create"]
     if server_create.get("auth_fixture") != "none":
