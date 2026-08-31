@@ -7,6 +7,8 @@ import { judgeVisibleServers, PRODUCTION_SERVER_NAME, REQUIRED_QA_SERVER } from 
 // whose failure modes never get tested.
 
 const qa = (name) => ({ id: `id-${name}`, name, slug: name.toLowerCase() });
+// Identity as the login response supplies it — never as the request supplied it.
+const who = { id: "b8b3f81d", email: "slock-test@oranix.io", name: "SlockTestOranix" };
 
 test("the constants are the ones the rest of the fleet uses", () => {
   assert.equal(PRODUCTION_SERVER_NAME, "Raft Android");
@@ -15,14 +17,14 @@ test("the constants are the ones the rest of the fleet uses", () => {
 
 test("clean case: the two QA servers and nothing else", () => {
   // The real observed list, from the 2026-08-30 07:13 picker dump.
-  const v = judgeVisibleServers([qa("OranixSlockTest"), qa("qa-server-b-slock")]);
+  const v = judgeVisibleServers([qa("OranixSlockTest"), qa("qa-server-b-slock")], who);
   assert.equal(v.ok, true, v.detail);
   assert.equal(v.code, "clean");
 });
 
 // ---- half 1: production must not be visible -------------------------------------------
 test("RED when the production server appears in the list", () => {
-  const v = judgeVisibleServers([qa("OranixSlockTest"), qa("Raft Android")]);
+  const v = judgeVisibleServers([qa("OranixSlockTest"), qa("Raft Android")], who);
   assert.equal(v.ok, false);
   assert.equal(v.code, "production_visible");
 });
@@ -30,7 +32,7 @@ test("RED when the production server appears in the list", () => {
 test("RED when production appears under a composite label", () => {
   // The picker renders "<name>, /<slug>"; if the API ever hands back that composite form,
   // an equality check would miss it. Containment must catch it.
-  const v = judgeVisibleServers([qa("OranixSlockTest"), qa("Raft Android, /slock-android")]);
+  const v = judgeVisibleServers([qa("OranixSlockTest"), qa("Raft Android, /slock-android")], who);
   assert.equal(v.ok, false);
   assert.equal(v.code, "production_visible");
 });
@@ -39,20 +41,20 @@ test("RED when production appears under a composite label", () => {
 // Each of these is a case where half 1 alone would report success while having observed
 // nothing at all. They are asserted separately because they fail for different reasons.
 test("RED on an empty list — 'could not read' must not pass as 'production absent'", () => {
-  const v = judgeVisibleServers([]);
+  const v = judgeVisibleServers([], who);
   assert.equal(v.ok, false);
   assert.equal(v.code, "empty_list");
 });
 
 test("RED when the expected QA server is missing — we are not reading the list we think", () => {
-  const v = judgeVisibleServers([qa("some-other-workspace")]);
+  const v = judgeVisibleServers([qa("some-other-workspace")], who);
   assert.equal(v.ok, false);
   assert.equal(v.code, "expected_server_missing");
 });
 
 test("RED when the response is not a list at all (shape change / error envelope)", () => {
   for (const shape of [null, undefined, { error: "unauthorized" }, "nope"]) {
-    const v = judgeVisibleServers(shape);
+    const v = judgeVisibleServers(shape, who);
     assert.equal(v.ok, false);
     assert.equal(v.code, "not_a_list", `shape ${JSON.stringify(shape)} must not pass`);
   }
@@ -72,6 +74,24 @@ test("half 2 is load-bearing: dropping it would let three failures read as PASS"
     ["error envelope", []],
   ]) {
     assert.equal(productionCheckOnly(input), true, `${label}: the single-assertion version passes it`);
-    assert.equal(judgeVisibleServers(input).ok, false, `${label}: the dual assertion must reject it`);
+    assert.equal(judgeVisibleServers(input, who).ok, false, `${label}: the dual assertion must reject it`);
   }
+});
+
+// ---- identity: a verdict that cannot name whose visibility it measured is not a verdict ----
+test("RED when there is no authenticated identity to bind the reading to", () => {
+  for (const bad of [null, undefined, {}, { email: "slock-test@oranix.io" }]) {
+    const v = judgeVisibleServers([qa(REQUIRED_QA_SERVER)], bad);
+    assert.equal(v.ok, false, `identity ${JSON.stringify(bad)} must not yield a verdict`);
+    assert.equal(v.code, "unattributable");
+  }
+});
+
+test("the clean verdict names the account it measured", () => {
+  // @HuaTuo, live 2026-08-31: the QA pool's `label=alpha-qa` is an LRU selector, so consecutive
+  // requests return DIFFERENT accounts — they had used three separately-issued tokens as one
+  // identity. "2 servers, no production" is therefore meaningless unless it says whose.
+  const v = judgeVisibleServers([qa("OranixSlockTest"), qa("qa-server-b-slock")], who);
+  assert.equal(v.ok, true);
+  assert.match(v.detail, /slock-test@oranix\.io/, "the reading must carry the identity that produced it");
 });

@@ -31,7 +31,18 @@ export const REQUIRED_QA_SERVER = "OranixSlockTest";
 
 // Pure. No network, no environment. This is the whole judgement, so it is the whole test
 // surface too — the fetching below is deliberately kept dumb enough to need no assertions.
-export function judgeVisibleServers(servers) {
+//
+// `identity` is required, not decorative. @HuaTuo found (2026-08-31, live) that the QA account
+// pool's `label=alpha-qa` is an LRU selector: consecutive requests hand back DIFFERENT accounts,
+// and they had already used three separately-issued tokens as if they were one identity. So a
+// verdict like "2 servers visible, no production" is unattributable on its own — it does not say
+// WHOSE visibility produced it. The identity has to come from the login response body
+// (user.id/email), never from the username we asked with: what we sent is what we wanted, what
+// came back is what we got.
+export function judgeVisibleServers(servers, identity) {
+  if (!identity || !identity.id) {
+    return { ok: false, code: "unattributable", detail: "no authenticated identity — the reading cannot be bound to an account" };
+  }
   if (!Array.isArray(servers)) {
     return { ok: false, code: "not_a_list", detail: `expected a list, got ${typeof servers}` };
   }
@@ -64,7 +75,11 @@ export function judgeVisibleServers(servers) {
       detail: `QA account can see the production server: [${production.join(", ")}] — out of bounds (artin, 2026-08-31)`,
     };
   }
-  return { ok: true, code: "clean", detail: `${names.length} visible: ${names.join(", ")}` };
+  return {
+    ok: true,
+    code: "clean",
+    detail: `${identity.email || identity.id} sees ${names.length}: ${names.join(", ")}`,
+  };
 }
 
 async function main() {
@@ -86,12 +101,16 @@ async function main() {
     process.exit(2);
   }
   const session = await login.json();
-  const token = session?.accessToken ?? session?.access_token ?? session?.session?.accessToken;
+  const token = session?.accessToken;
   if (!token) {
-    console.error("visible-servers probe: no access token in the login response");
+    console.error("visible-servers probe: no accessToken in the login response");
     process.exit(2);
   }
+  // Identity from the RESPONSE, never from the email we sent. See judgeVisibleServers.
+  const identity = session?.user ? { id: session.user.id, email: session.user.email, name: session.user.name } : null;
 
+  // GET servers is the one call that needs no X-Server-Id header (@HuaTuo, live 2026-08-31);
+  // sub-resources like /channels do, and answer 400 Missing X-Server-Id without it.
   const res = await fetch(`${base}servers`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) {
     console.error(`visible-servers probe: GET servers failed HTTP ${res.status}`);
@@ -100,7 +119,7 @@ async function main() {
   const body = await res.json();
   const list = Array.isArray(body) ? body : body?.servers;
 
-  const verdict = judgeVisibleServers(list);
+  const verdict = judgeVisibleServers(list, identity);
   // Names only. Never print ids, tokens, or the raw body — this runs in CI logs.
   console.log(`visible-servers probe: ${verdict.ok ? "PASS" : "FAIL"} [${verdict.code}] ${verdict.detail}`);
   process.exit(verdict.ok ? 0 : 1);
