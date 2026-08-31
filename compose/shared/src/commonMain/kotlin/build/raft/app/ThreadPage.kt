@@ -26832,6 +26832,11 @@ private fun ThreadTaskDetailDialog(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            Text(
+                text = statusLabel,
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.65f)
+            )
             Row(
                 modifier = Modifier
                     .slockCaptureLiveRootAnchor(statusAnchorRef)
@@ -26845,11 +26850,6 @@ private fun ThreadTaskDetailDialog(
                 horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 Text(
-                    text = statusLabel,
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.65f)
-                )
-                Text(
                     text = statusMeta.label,
                     style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
                         .withSlockFontWeight(FontWeight.Bold),
@@ -26858,6 +26858,11 @@ private fun ThreadTaskDetailDialog(
                 )
                 SlockLucideIcon(SlockLucideIconName.ChevronDown, modifier = Modifier.size(11.dp), color = "#FF000000")
             }
+            Text(
+                text = assigneeLabel,
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.65f)
+            )
             Row(
                 modifier = Modifier
                     .slockCaptureLiveRootAnchor(assigneeAnchorRef)
@@ -26870,11 +26875,6 @@ private fun ThreadTaskDetailDialog(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                Text(
-                    text = assigneeLabel,
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.65f)
-                )
                 Text(
                     text = task.assignee?.displayName ?: unassignedLabel,
                     style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
