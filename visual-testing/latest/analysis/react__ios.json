@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-30T22:05:38.512Z",
+  "generatedAt": "2026-08-31T22:01:19.957Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -1348,7 +1348,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10176678683787688
+      "metricMismatch": 0.10176712439745617
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1553,7 +1553,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26897017323557604
+      "metricMismatch": 0.26895228257787496
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1586,12 +1586,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2691784474959831
+      "metricMismatch": 0.26916190707659904
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:1ff83ffc87fc0ffe81fc07fe0000000681f106c680310046800d00fec3fdfffefc31b3ce80310046801d00468ffd1ffefcf1fffe81f1c3ce801103c6801d00c6e3f1003e8031fffe8001f07e80fdf07ebef1fffedc71fffe0001fffedefffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
+      "imageHash": "p1:1ff83ffc87fc0ffe81fc07fe0000000683f106c680310046800d00fec3fdfffefc31b3ce80310046801d00468ffd1ffefcf1fffe81f1c3ce801103c6801d00c6e3f1003e8031fffe8001f07e80fdf07ebef1fffedc71fffe0001fffedefffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
       "generatedAt": "2026-08-02T22:44:22.784Z",
       "severity": "medium",
       "summary": [
@@ -1622,7 +1622,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11119820148256165
+      "metricMismatch": 0.11110638527700134
     },
     {
       "id": "components.home.activity.results",
@@ -1657,7 +1657,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10662967013677915
+      "metricMismatch": 0.1066036780491757
     },
     {
       "id": "components.tasks.panel.states",
@@ -1798,7 +1798,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:37.852Z",
+      "generatedAt": "2026-08-31T22:01:19.222Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1811,7 +1811,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:37.852Z",
+      "generatedAt": "2026-08-31T22:01:19.222Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2166,7 +2166,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19632971469464355
+      "metricMismatch": 0.19633646588622888
     },
     {
       "id": "components.settings.notifications.page",
@@ -2272,7 +2272,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:38.126Z",
+      "generatedAt": "2026-08-31T22:01:19.480Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2285,7 +2285,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:38.126Z",
+      "generatedAt": "2026-08-31T22:01:19.480Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2298,7 +2298,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:38.126Z",
+      "generatedAt": "2026-08-31T22:01:19.480Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2311,7 +2311,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:38.126Z",
+      "generatedAt": "2026-08-31T22:01:19.480Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2324,7 +2324,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:38.126Z",
+      "generatedAt": "2026-08-31T22:01:19.480Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2500,7 +2500,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1933102442581116
+      "metricMismatch": 0.19329100336209337
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2816,7 +2816,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:38.424Z",
+      "generatedAt": "2026-08-31T22:01:19.846Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2829,7 +2829,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:38.424Z",
+      "generatedAt": "2026-08-31T22:01:19.846Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2842,7 +2842,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:38.424Z",
+      "generatedAt": "2026-08-31T22:01:19.846Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2855,7 +2855,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:38.424Z",
+      "generatedAt": "2026-08-31T22:01:19.846Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

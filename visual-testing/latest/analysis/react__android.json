@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-30T22:05:35.616Z",
+  "generatedAt": "2026-08-31T22:01:16.579Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -460,7 +460,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe1ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe0ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-10T22:11:45.609Z",
       "severity": "low",
       "summary": [
@@ -488,7 +488,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04020820973528827
+      "metricMismatch": 0.04021174110800352
     },
     {
       "id": "components.ui.progress-bar.states",
@@ -1579,7 +1579,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26900494187224044
+      "metricMismatch": 0.2689782746654784
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1613,12 +1613,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2688813950662292
+      "metricMismatch": 0.2688523649424124
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fcfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa3fff",
+      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fcfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa7fff",
       "generatedAt": "2026-07-30T04:34:27.469Z",
       "severity": "medium",
       "summary": [
@@ -1650,7 +1650,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1900747238466537
+      "metricMismatch": 0.1899211888742166
     },
     {
       "id": "components.home.activity.results",
@@ -1686,7 +1686,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18510815569389427
+      "metricMismatch": 0.18505313462868644
     },
     {
       "id": "components.tasks.panel.states",
@@ -1830,7 +1830,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:34.890Z",
+      "generatedAt": "2026-08-31T22:01:15.698Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1843,7 +1843,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:34.890Z",
+      "generatedAt": "2026-08-31T22:01:15.698Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2197,7 +2197,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1985954145906752
+      "metricMismatch": 0.1986176935229068
     },
     {
       "id": "components.settings.notifications.page",
@@ -2304,7 +2304,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e2817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffdfff0c3f800f0c3f800f0c7f8fff00078fff000380ffffff807f97ff807f87fffffe1c02ffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffdfff0c3f800f0c3f800f0c7f8fff00078fff000380ffffff807f97ff807f87fffffe1c02ffffffff",
       "generatedAt": "2026-08-28T22:42:49.265Z",
       "severity": "high",
       "summary": [
@@ -2369,7 +2369,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.061255586611036805
+      "metricMismatch": 0.0612606500047258
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2641,7 +2641,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.16914941737216616
+      "metricMismatch": 0.16915043005090402
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2961,7 +2961,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:35.537Z",
+      "generatedAt": "2026-08-31T22:01:16.491Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2974,7 +2974,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:35.537Z",
+      "generatedAt": "2026-08-31T22:01:16.491Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2987,7 +2987,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:35.537Z",
+      "generatedAt": "2026-08-31T22:01:16.491Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3000,7 +3000,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-30T22:05:35.537Z",
+      "generatedAt": "2026-08-31T22:01:16.491Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

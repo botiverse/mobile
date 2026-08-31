@@ -1,9 +1,9 @@
 # Raft Visual Testing
 
-Generated: 2026-08-30 22:05:43 UTC
-Latest run: 9710520d-20260830215948
-Latest commit: 9710520d-20260830215948
-Commit subject: Correct iOS install identity comment
+Generated: 2026-08-31 22:01:25 UTC
+Latest run: d30188a0-20260831215858
+Latest commit: d30188a0-20260831215858
+Commit subject: test(qa-ios): port the task #246 gesture round onto main (task #250) (#2296)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 92, same 0, pass 0, basic-pass 0, different 86, missing 6
 AI analysis: ready 86 / total 92, pending 6
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- d30188a0-20260831215858: react vs android, total 92, pass 0, basic-pass 0, different 86, matrix runs/d30188a0-20260831215858/component-matrix.json, page runs/d30188a0-20260831215858/
 - 9710520d-20260830215948: react vs android, total 92, pass 0, basic-pass 0, different 86, matrix runs/9710520d-20260830215948/component-matrix.json, page runs/9710520d-20260830215948/
 - 98ec5ddf-20260829215639: react vs android, total 92, pass 0, basic-pass 0, different 86, matrix runs/98ec5ddf-20260829215639/component-matrix.json, page runs/98ec5ddf-20260829215639/
 - 98ec5ddf-20260828223831: react vs android, total 92, pass 0, basic-pass 0, different 86, matrix runs/98ec5ddf-20260828223831/component-matrix.json, page runs/98ec5ddf-20260828223831/
