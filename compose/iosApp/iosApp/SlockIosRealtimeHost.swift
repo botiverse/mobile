@@ -586,6 +586,7 @@ final class SlockIosRealtimeHost: NSObject {
             }
             self.foregroundEpoch += 1
             SlockHostVisibilityKt.updateSlockHostVisibility(shellInstanceId: "legacy-app-shell", visible: true)
+            NSLog("thread_lifecycle_host_show epoch=\\(self.foregroundEpoch) runtimes=\\(self.runtimes.count)")
             self.sendAppLifecycle(event: "show")
         }
     }

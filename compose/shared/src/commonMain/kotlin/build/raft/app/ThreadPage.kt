@@ -5193,24 +5193,37 @@ internal fun SharedThreadRouteContent(
                     }
                     val event = lifecycleData.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
                     val pageName = lifecycleData.optString(SlockRealtimeNotifyContract.KeyPageName)
+                    bridge.log(
+                        "thread_lifecycle_received event=$event page=$pageName " +
+                            "routeActive=$latestRouteActive shell=${storeScope.shellInstanceId}"
+                    )
                     if (!threadLifecycleEventTargetsThread(pageName)) {
+                        bridge.log("thread_lifecycle_drop reason=page_target")
                         return@launch
                     }
                     if (!appLifecycleEventTargetsShell(
                             eventShellInstanceId = lifecycleData.optString(SlockRealtimeNotifyContract.KeyShellInstanceId),
                             routeShellInstanceId = storeScope.shellInstanceId
-                        )
+                    )
                     ) {
+                        bridge.log("thread_lifecycle_drop reason=shell_target")
                         return@launch
                     }
                     threadHostForeground = isSlockHostVisible(storeScope.shellInstanceId)
+                    bridge.log("thread_lifecycle_visibility hostForeground=$threadHostForeground routeActive=$latestRouteActive")
                     if (
                         event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
                         event == SlockRealtimeNotifyContract.LifecycleVisibleShow
                     ) {
                         threadVisibleResumeGate
                             .onLifecycleVisibleResume(latestRouteActive)
-                            ?.let(::applyThreadVisibleResumePlan)
+                            ?.let {
+                                bridge.log(
+                                    "thread_lifecycle_refresh_dispatch refresh=${it.refreshVisibleConversation} " +
+                                        "rejoin=${it.rejoinVisibleRooms}"
+                                )
+                                applyThreadVisibleResumePlan(it)
+                            }
                     }
                 }
             }
