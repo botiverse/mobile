@@ -6026,9 +6026,11 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     // A missing resolver value means presence is still Unknown/not ready.
                     // Do not manufacture Offline: that falsely renders a gray dot while the
                     // authoritative member/presence projection is loading or recovering.
-                    resolveHomeAgentStatusIndicatorState(
-                        rememberSlockAgentStatusIndicatorState(agentStatusResolver, it)
-                    )?.let(::DirectMessageStatusDot)
+                    projectHomeAgentStatusIndicatorState(
+                        showPresence = true,
+                        memberId = it,
+                        canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, it)
+                    )?.let { state -> DirectMessageStatusDot(state) }
                 }
             }
             if (hasDraft) {

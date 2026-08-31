@@ -819,8 +819,10 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                             result.memberId
                                 ?.takeIf { it.isNotBlank() }
                                 ?.let {
-                                    resolveHomeAgentStatusIndicatorState(
-                                        rememberSlockAgentStatusIndicatorState(agentStatusResolver, it)
+                                    projectHomeAgentStatusIndicatorState(
+                                        showPresence = true,
+                                        memberId = it,
+                                        canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, it)
                                     )
                                 }
                         } else {

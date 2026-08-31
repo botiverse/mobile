@@ -106,3 +106,19 @@ internal fun slockAgentStatusIndicatorState(
 internal fun resolveHomeAgentStatusIndicatorState(
     canonicalState: SlockAgentStatusIndicatorState?
 ): SlockAgentStatusIndicatorState? = canonicalState
+
+/**
+ * Shared projection used by Home DM and Settings search consumers.  A missing
+ * member id, disabled presence, or unresolved resolver value must stay absent;
+ * consumers must never manufacture an Offline indicator while loading.
+ */
+internal fun projectHomeAgentStatusIndicatorState(
+    showPresence: Boolean,
+    memberId: String?,
+    canonicalState: SlockAgentStatusIndicatorState?
+): SlockAgentStatusIndicatorState? =
+    if (showPresence && !memberId.isNullOrBlank()) {
+        resolveHomeAgentStatusIndicatorState(canonicalState)
+    } else {
+        null
+    }
