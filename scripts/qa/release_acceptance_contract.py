@@ -15,6 +15,21 @@ DEFAULT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CASE_DIR = DEFAULT_ROOT / "docs" / "qa-acceptance" / "cases"
 MANIFEST_NAME = "release-1.7.0-android.json"
 
+# "Raft Android" is the production Raft SERVER (artin, 2026-08-30: QA runs may
+# only use test/qa servers) — the name collides with the Android app's own
+# title, which is why this ban applies to case sources, not to prose docs.
+# Case text never needs to mention production: the runtime prohibition is
+# injected by scripts/qa/server_guard.mjs at the agent-preamble choke point,
+# so ANY occurrence here is either a leftover instruction from the July
+# incident era or a future edit that should be a conscious decision, not a
+# silent one (task #171).
+PRODUCTION_SERVER_NAME = "Raft Android"
+# The login case is the entry gate every automated run passes through; its
+# server-picker branch must keep naming the QA server explicitly so a picker
+# never leaves the choice to the model.
+LOGIN_CASE_ID = "login-email-password"
+QA_SERVER_NAME = "OranixSlockTest"
+
 
 class ContractError(ValueError):
     pass
@@ -127,6 +142,16 @@ def load_contract(case_dir: Path = DEFAULT_CASE_DIR) -> ReleaseAcceptanceContrac
             raise ContractError(f"{path.name}: missing non-empty top-level id")
         if case_id in sources:
             raise ContractError(f"duplicate case id {case_id}: {sources[case_id][0].name}, {path.name}")
+        # Polarity pair, absence half: no case source may reference the
+        # production server at all — raw text, so goals, hints, notes, and
+        # any future field are all covered.
+        raw_text = path.read_text(encoding="utf-8")
+        if PRODUCTION_SERVER_NAME.lower() in raw_text.lower():
+            raise ContractError(
+                f"{path.name}: references the production server "
+                f"{PRODUCTION_SERVER_NAME!r}; QA case sources may only name "
+                f"test/qa servers (the runtime ban lives in server_guard.mjs)",
+            )
         sources[case_id] = (path, source)
 
     actual = set(sources)
@@ -155,6 +180,16 @@ def load_contract(case_dir: Path = DEFAULT_CASE_DIR) -> ReleaseAcceptanceContrac
             raise ContractError(
                 f"{path.name}: automated case must preserve the unified Android/iOS contract",
             )
+
+    # Polarity pair, presence half: the login case's picker branch must keep
+    # naming the QA server. Deleting that line would leave picker choice to
+    # the model — exactly what the July incident runs did.
+    login_path, _login = sources[LOGIN_CASE_ID]
+    if QA_SERVER_NAME not in login_path.read_text(encoding="utf-8"):
+        raise ContractError(
+            f"{login_path.name}: the login case must name {QA_SERVER_NAME!r} "
+            f"for its server-picker branch",
+        )
 
     path, server_create = sources["server-create"]
     if server_create.get("auth_fixture") != "none":
