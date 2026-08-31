@@ -22,7 +22,7 @@
 //
 // Usage:
 //   node scripts/qa/ios_tabpager_probe.mjs --ios-io-dir "$QA_LOOP_IO_DIR" \
-//     --ios-udid "$UDID" --package build.raft.app --out qa-evidence [--groups 1,2,3,4,5]
+//     --ios-udid "$UDID" --package build.raft.app --out qa-evidence [--groups 1,2,3,4,5,6,7,8]
 
 import fs from "node:fs";
 import path from "node:path";
@@ -34,7 +34,7 @@ const ioDir = arg("--ios-io-dir", process.env.QA_LOOP_IO_DIR || "");
 const udid = arg("--ios-udid", "booted");
 const bundle = arg("--package", "build.raft.app");
 const outDir = arg("--out", "qa-evidence");
-const groups = arg("--groups", "1,2,3,4,5").split(",").map((s) => s.trim()).filter(Boolean);
+const groups = arg("--groups", "1,2,3,4,5,6,7,8").split(",").map((s) => s.trim()).filter(Boolean);
 if (!ioDir) { console.error("--ios-io-dir / QA_LOOP_IO_DIR required"); process.exit(2); }
 
 fs.mkdirSync(outDir, { recursive: true });
@@ -57,6 +57,55 @@ const write = (v, reason) => {
 // a recorded number rather than an impression from looking at a picture.
 const seqNumbers = (dump) => (dump.match(/#(\d+)/g) || []).map((s) => Number(s.slice(1)));
 const maxSeq = (dump) => { const n = seqNumbers(dump); return n.length ? Math.max(...n) : null; };
+// Hoisted out of group 7 so group 5 can record the same quantity. Group 5's retention
+// criterion is about row positions, and it had no way to state one.
+const lowestRow = (dump) => {
+  const ns = (dump.match(/row (\d+)/g) || []).map((s) => Number(s.slice(4)));
+  return ns.length ? Math.min(...ns) : null;
+};
+
+// Which row does a y (in PIXELS) fall on, read from the dump's own bounds? Recording
+// this at tap time is what makes `rowTap Alpha <n>` self-attributing without any
+// inference about row height, visible-row count, or scroll state between groups
+// (@LiBai: an arithmetic attribution rests on premises nobody verified; a recorded
+// expectation is a lookup). Returns null when no row's bounds contain y — which is
+// itself worth recording, because it means the tap was not aimed at a row at all.
+const rowBoundsFromDump = (dump) => {
+  const out = [];
+  for (const line of dump.split("\n")) {
+    const m = /Alpha row (\d+)"?.*\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(line);
+    if (m) out.push({ row: Number(m[1]), y1: Number(m[3]), y2: Number(m[5]) });
+  }
+  return out.sort((a, b) => a.y1 - b.y1);
+};
+// Tab-agnostic sibling of rowBoundsFromDump. That one hardcodes "Alpha row", which is right
+// for group 6 (pinned to Alpha) and wrong for group 4, which runs on whatever tab the earlier
+// groups left selected — Gamma, in run 33385954957. Kept separate rather than generalising the
+// original: a HorizontalPager can render an adjacent page, so a tab-agnostic match could mix
+// two tabs' rows together and perturb group 6, which currently passes.
+const anyRowBounds = (dump) => {
+  const out = [];
+  for (const line of dump.split("\n")) {
+    const m = /"(\w+) row (\d+)"?.*\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(line);
+    if (m) out.push({ tab: m[1], row: Number(m[2]), y1: Number(m[4]), y2: Number(m[6]) });
+  }
+  return out.sort((a, b) => a.y1 - b.y1);
+};
+
+const rowAtY = (dump, yPx) => {
+  const rows = rowBoundsFromDump(dump);
+  const exact = rows.find((r) => yPx >= r.y1 && yPx <= r.y2);
+  if (exact) return { row: exact.row, containment: "inside-text-bounds" };
+  // Text bounds are inset by the row's padding, so a y can fall in a row's clickable
+  // area yet outside its text. Attribute to the nearest row and SAY it was nearest,
+  // so the distinction survives into the evidence instead of being smoothed over.
+  let best = null;
+  for (const r of rows) {
+    const d = yPx < r.y1 ? r.y1 - yPx : yPx > r.y2 ? yPx - r.y2 : 0;
+    if (!best || d < best.d) best = { row: r.row, d };
+  }
+  return best ? { row: best.row, containment: `nearest(+${best.d}px)` } : { row: null, containment: "no-rows-in-dump" };
+};
 
 let lastMaxSeq = null;
 const capture = async (label) => {
@@ -127,12 +176,76 @@ try {
   // NOT move. Substituting the gesture would have produced a product "failure"
   // manufactured by the harness.
   if (groups.includes("3")) {
-    // Left-edge yield: start at x=10pt (absolute), i.e. the interactive-pop zone.
+    // Left-edge yield: start hard against the left edge, i.e. the interactive-pop zone.
+    // ⚠️ `w` is PIXELS (drv.screenSize()), so this is 10 px — about 3.3 pt on a 3x
+    // device, NOT the "10pt" this line used to claim. The behaviour is unchanged and
+    // the intent still holds (10 px is well inside the pop zone), but the number is
+    // now described in the unit it is actually in, and the point value is recorded.
     const edgeX = 10 / w;
-    rec("group 3: left-edge yield", { fromNormX: edgeX, note: "x=10pt absolute" });
+    const edgePt = drv.screenSizePt();
+    rec("group 3: left-edge yield", {
+      fromNormX: edgeX, fromPx: 10,
+      fromPt: edgePt ? Number((10 / edgePt.scale).toFixed(2)) : null,
+      pointScale: edgePt ? edgePt.scale : null,
+    });
+    const beforeDump = await drv.dumpUi();
+    const seqBefore = maxSeq(beforeDump);
+    const selBefore = (/selected=(\d+)/.exec(beforeDump) || [])[1] ?? null;
     await drv.drag({ from: { x: edgeX, y: 0.60 }, to: { x: 0.60, y: 0.60 }, durationSeconds: 0.35 });
     await wait(1000);
-    await capture("step-03-after-edge-yield");
+    const afterDump = await capture("step-03-after-edge-yield");
+    const seqAfter = maxSeq(afterDump);
+    const selAfter = (/selected=(\d+)/.exec(afterDump) || [])[1] ?? null;
+
+    // ⚠️ IN-INTERVAL liveness. This group's criterion is "nothing happened", and run
+    // 33369432716 showed why that is not self-supporting: step-02 and step-03 came
+    // back byte-identical in BOTH channels (dump diff empty, screenshot md5 equal,
+    // maxSeq 13->13). "the guard correctly claimed the drag so the pager did not
+    // move" and "the gesture was never delivered at all" produce exactly that data.
+    // Liveness of the ADJACENT steps does not cover this window — the element has to
+    // sit INSIDE the interval whose conclusion is "no change". The usual fallback
+    // anchor (status-bar clock) is unavailable: the fixture mechanism hides it.
+    //
+    // So: after the drag, issue an action that is KNOWN to leave a trace (a row tap —
+    // group 6 established it writes `rowTap` and advances #N). If that trace appears,
+    // the app was processing input during this window and "no change from the drag"
+    // is a reading. If it does not, the whole window is unjudgeable and is reported
+    // as such — NOT as a negative, and NOT as a pass.
+    let liveness = { probe: "row-tap-after-drag", performed: false, seqBeforeProbe: seqAfter, seqAfterProbe: null, advanced: null };
+    // Same inset point as group 6, derived here from points (edgePt.w is the width in
+    // POINTS) — never `24 / w`, which is 24 pixels.
+    const inset24Ready = edgePt ? 12 / edgePt.w : null;
+    if (inset24Ready !== null) {
+      const rowTapsPre = (afterDump.match(/rowTap [A-Za-z]+ \d+/g) || []).length;
+      await drv.tap(Math.round(inset24Ready * w), Math.round(0.60 * h));
+      await wait(1000);
+      const probeDump = await drv.dumpUi();
+      const seqAfterProbe = maxSeq(probeDump);
+      const rowTapsPost = (probeDump.match(/rowTap [A-Za-z]+ \d+/g) || []).length;
+      liveness = {
+        probe: "row-tap-after-drag", performed: true,
+        seqBeforeProbe: seqAfter, seqAfterProbe,
+        advanced: seqAfter !== null && seqAfterProbe !== null ? seqAfterProbe > seqAfter : null,
+        freshRowTaps: rowTapsPost - rowTapsPre,
+      };
+      fs.writeFileSync(path.join(outDir, "step-03b-liveness-probe-dump.txt"), redactEditableValues(probeDump));
+    }
+    const alive = liveness.advanced === true || (liveness.freshRowTaps ?? 0) > 0;
+    verdict.g3 = {
+      fromPt: edgePt ? Number((10 / edgePt.scale).toFixed(2)) : null,
+      selBefore, selAfter,
+      pagerMoved: selBefore !== null && selAfter !== null ? selBefore !== selAfter : null,
+      seqBefore, seqAfter, seqAdvancedDuringDrag: seqBefore !== null && seqAfter !== null ? seqAfter > seqBefore : null,
+      liveness,
+      judgeable: alive,
+      reading: !alive
+        ? "UNJUDGEABLE — nothing in this window proves the app was processing input, so " +
+          "'pager did not move' cannot be distinguished from 'the gesture never arrived'"
+        : (selBefore === selAfter
+            ? "pager did NOT move, and the window is proven live"
+            : "pager MOVED (selected changed) — the guard did not claim the edge drag"),
+    };
+    rec("group 3: result", verdict.g3);
     verdict.performed.push(3);
   }
 
@@ -142,11 +255,64 @@ try {
     // The whole point of this group is SLOWNESS: a fast short drag is a flick and
     // a flick turning the page is correct behaviour, so the speed must be in the
     // record, not assumed. drv.drag returns the velocity it actually used.
+    // ⚠️ Group 4's criterion is "nothing changes" — the same NULL-RESULT shape that made
+    // group 3 unjudgeable, and it was carrying no in-interval liveness of its own. Run
+    // 33379004411 looked live (maxSeq 13 -> 16 across this step), but all three lines were
+    // `#14 rowTap Gamma 5` plus its settle bookkeeping — i.e. GROUP 3's liveness probe,
+    // whose trace lands inside step-04's capture. The group-4 drag itself logs nothing.
+    // Adjacent-step liveness does not cover this interval; "sel unchanged" was byte-identical
+    // to "the drag was never delivered".
+    //
+    // It went unnoticed because nobody treated G4 as load-bearing until round-8. When a cell's
+    // weight changes, instrumentation that was good enough stops being good enough.
+    const selBefore4 = (/selected=(\d+)/.exec(await drv.dumpUi()) || [])[1] ?? null;
     const g4 = await drv.drag({ from: { x: 0.45, y: 0.60 }, to: { x: 0.55, y: 0.60 }, durationSeconds: 1.0 });
     rec("group 4: slow short drag (0.45,0.60) -> (0.55,0.60)", g4);
     verdict.gestureG4 = g4;
     await wait(1000);
+    const afterDrag4 = await drv.dumpUi();
+    const selAfter4 = (/selected=(\d+)/.exec(afterDrag4) || [])[1] ?? null;
+    const seqAfter4 = maxSeq(afterDrag4);
+    const rowTapsPre4 = (afterDrag4.match(/rowTap [A-Za-z]+ \d+/g) || []).length;
     await capture("step-04-after-short-drag");
+
+    // In-interval, attributable liveness. The point is DERIVED from the dump, not guessed:
+    // run 33385954957 tapped a hardcoded y=0.28 -> 709px, while the topmost row began at
+    // 765px, so the tap landed in the header and produced no rowTap at all. The cell reported
+    // UNJUDGEABLE, which is the design working — but the probe still needs to hit a row.
+    // Aim at the middle of a row whose bounds are read from this dump, and record which row,
+    // so the resulting `rowTap <tab> <n>` names its own producer.
+    const rows4 = anyRowBounds(afterDrag4);
+    const target4 = rows4.length ? rows4[Math.min(1, rows4.length - 1)] : null;
+    const probeY4 = target4 ? Math.round((target4.y1 + target4.y2) / 2) : Math.round(0.28 * h);
+    rec("group 4: liveness probe aim", { target: target4, yPx: probeY4, rowsSeen: rows4.length });
+    await drv.tap(Math.round(0.50 * w), probeY4);
+    await wait(1000);
+    const probe4 = await drv.dumpUi();
+    const seqAfterProbe4 = maxSeq(probe4);
+    const rowTapsPost4 = (probe4.match(/rowTap [A-Za-z]+ \d+/g) || []).length;
+    fs.writeFileSync(path.join(outDir, "step-04b-liveness-probe-dump.txt"), redactEditableValues(probe4));
+    const liveness4 = {
+      probe: "row-tap-after-slow-drag-derived-row", performed: true,
+      probeExpectedRow: target4, probeYPx: probeY4, rowsVisible: rows4.length,
+      seqBeforeProbe: seqAfter4, seqAfterProbe: seqAfterProbe4,
+      advanced: seqAfter4 !== null && seqAfterProbe4 !== null ? seqAfterProbe4 > seqAfter4 : null,
+      freshRowTaps: rowTapsPost4 - rowTapsPre4,
+    };
+    const alive4 = liveness4.advanced === true || (liveness4.freshRowTaps ?? 0) > 0;
+    verdict.g4 = {
+      selBefore: selBefore4, selAfter: selAfter4,
+      pagerMoved: selBefore4 !== null && selAfter4 !== null ? selBefore4 !== selAfter4 : null,
+      gesture: g4, liveness: liveness4, judgeable: alive4,
+      reading: !alive4
+        ? "UNJUDGEABLE — nothing in this window proves the app was processing input, so " +
+          "'the slow short drag did not turn the page' cannot be distinguished from " +
+          "'the drag never arrived'"
+        : (selBefore4 === selAfter4
+            ? "slow short drag did NOT turn the page, and the window is proven live"
+            : "page TURNED on a slow short drag — below-threshold drag was treated as a page change"),
+    };
+    rec("group 4: result", verdict.g4);
     verdict.performed.push(4);
   }
 
@@ -171,19 +337,293 @@ try {
     const startSel = (/selected=(\d+)/.exec(startDump) || [])[1];
     verdict.g5StartTab = startSel ?? null;
     rec("group 5: scroll retention — two upward drags, leave tab, return", { startTab: startSel });
+    // ⚠️ Group 5 recorded NOTHING except the starting tab — three screenshots and a human.
+    // @LiBai: it is the same null-result class as group 4 and weaker, because half of it is
+    // self-evidencing and half is not. The scroll half shows up in row numbers; the
+    // load-bearing half (leave the tab, come back, position kept) had nothing proving the
+    // LEAVE happened. If both horizontal drags failed to dispatch, the run never leaves the
+    // tab, 05c is naturally identical to 05a, and "scroll position retained" reads as PASS.
+    // "Position was kept" and "we never left" are identical in the evidence.
+    // A half-self-evidencing criterion is worse than none: the visible half lends the whole
+    // cell an air of positive evidence.
+    const rowStart5 = lowestRow(startDump);
     for (const n of [1, 2]) {
       await drv.drag({ from: { x: 0.5, y: 0.75 }, to: { x: 0.5, y: 0.30 }, durationSeconds: 0.3 });
       rec(`group 5: scroll drag ${n}/2`);
       await wait(500);
     }
+    const dumpA = await drv.dumpUi();
     await capture("step-05a-after-scroll");
+    const rowA = lowestRow(dumpA);
+
     await drv.drag({ from: { x: 0.80, y: 0.60 }, to: { x: 0.20, y: 0.60 }, durationSeconds: 0.3 });
     await wait(1000);
+    const dumpB = await drv.dumpUi();
     await capture("step-05b-next-tab");
+    const selB = (/selected=(\d+)/.exec(dumpB) || [])[1] ?? null;
+
     await drv.drag({ from: { x: 0.20, y: 0.60 }, to: { x: 0.80, y: 0.60 }, durationSeconds: 0.3 });
     await wait(1000);
+    const dumpC = await drv.dumpUi();
     await capture("step-05c-returned");
+    const rowC = lowestRow(dumpC);
+    const selC = (/selected=(\d+)/.exec(dumpC) || [])[1] ?? null;
+
+    const scrolled5 = rowStart5 !== null && rowA !== null ? rowA !== rowStart5 : null;
+    const left5 = selB !== null && startSel !== undefined ? selB !== startSel : null;
+    const returned5 = selC !== null && startSel !== undefined ? selC === startSel : null;
+    // `left5` is the one that turns "we came back to the same place" from an assumption into
+    // a reading. Without it the cell asserts "nothing changed across two drags", which is
+    // trivially true whenever the drags do nothing.
+    verdict.g5 = {
+      startTab: startSel ?? null,
+      lowestRowStart: rowStart5, lowestRowAfterScroll: rowA, lowestRowOnReturn: rowC,
+      selectedAtOtherTab: selB, selectedOnReturn: selC,
+      scrolled: scrolled5, leftTheTab: left5, returnedToStartTab: returned5,
+      retained: rowA !== null && rowC !== null ? rowA === rowC : null,
+      judgeable: scrolled5 === true && left5 === true && returned5 === true,
+      reading: scrolled5 !== true
+        ? "UNJUDGEABLE — the list never scrolled, so there is no position to retain"
+        : left5 !== true
+          ? "UNJUDGEABLE — the pager never left the starting tab, so 'position retained' cannot " +
+            "be distinguished from 'we never went anywhere'"
+          : returned5 !== true
+            ? "UNJUDGEABLE — did not return to the starting tab, so the comparison is against a different tab"
+            : (rowA === rowC
+                ? "scroll position retained across leaving and returning, and the round trip is proven"
+                : `scroll position LOST — row ${rowA} before leaving, row ${rowC} on return`),
+    };
+    rec("group 5: result", verdict.g5);
     verdict.performed.push(5);
+  }
+
+  // Groups 6-7 (task #246 / PR #2224 review): the edge guard must claim ONLY
+  // horizontal drags. Group 3 proves it yields to an edge drag; these two prove
+  // it does not swallow the other two things that start in the same inset — a
+  // stationary tap, and a vertical drag.
+  //
+  // ⚠️ UNITS. These are specified in POINTS, and drv.screenSize() is PIXELS.
+  // `24 / screenSize().w` would ask for 24 px = 8 pt on a 3x device, i.e. a
+  // different inset than the one the case is named after. inset24 is derived
+  // from screenSizePt() and the resulting point/pixel/normalized values are all
+  // recorded, so where it actually touched is readable from the evidence rather
+  // than inferred from the case name.
+  const pt = drv.screenSizePt();
+  // ⚠️ NOT 24. The iOS start inset IS 24dp (slockPlatformTabPagerStartEdgeInsetDp)
+  // and EdgeGuard renders it as Box(Modifier.width(24.dp)) — a region of [0,24),
+  // i.e. pixels 0..71 at 3x. Touching at exactly 24pt lands on pixel 72, the first
+  // pixel OUTSIDE the guard, so run 33369432716's groups 6/7 proved only that a
+  // touch beside the guard reaches the row — which was never in question.
+  // 12pt (pixel 36) is the midpoint of the strip: unambiguously inside, and far
+  // enough from both ends that ±1px rounding and the half-open bound cannot move
+  // it out. The case name must never be the same number as the region width.
+  const insetPt = 12;
+  const inset24 = pt ? insetPt / pt.w : null;
+
+  if (groups.includes("6") && inset24 !== null) {
+    // A stationary tap at x=24pt must reach the row underneath and emit
+    // `rowTap <Label> <row>`. Rows are fillMaxWidth().clickable, so the only
+    // thing that can eat this tap is the guard.
+    const before = await drv.dumpUi();
+    const rowTapsBefore = (before.match(/rowTap [A-Za-z]+ \d+/g) || []);
+    const seqBefore = maxSeq(before);
+    rec("group 6: stationary tap inside the edge inset", {
+      insetPt, normX: inset24, pxX: Math.round(inset24 * w), pointScale: pt.scale,
+      rowTapsBefore: rowTapsBefore.length,
+    });
+    const insideYPx = Math.round(0.60 * h);
+    const insideExpected = rowAtY(before, insideYPx);
+    rec("group 6: inside tap aim", { xPx: Math.round(inset24 * w), yPx: insideYPx, expected: insideExpected });
+    await drv.tap(Math.round(inset24 * w), insideYPx);
+    await wait(1200);
+    const after = await drv.dumpUi();
+    const rowTapsAfter = (after.match(/rowTap [A-Za-z]+ \d+/g) || []);
+    const seqAfter = maxSeq(after);
+    // Report the DELTA, not the presence: earlier groups may already have left
+    // rowTap lines in the log, and "a rowTap line exists" would then be true
+    // regardless of whether this tap did anything.
+    const fresh = rowTapsAfter.slice(rowTapsBefore.length);
+    // Liveness control for the absence half: if the log did not advance at all,
+    // "no rowTap" is indistinguishable from a stale capture and is NOT evidence.
+    const advanced = seqBefore !== null && seqAfter !== null ? seqAfter > seqBefore : null;
+    // ⚠️ IN-INTERVAL liveness, added after run 33372287234. That run showed the
+    // 12pt tap leaving NO trace at all (no rowTap, seq 30->30, dump byte-identical
+    // to the previous step) — which is what a guard swallowing the down event looks
+    // like AND what a tap that never arrived looks like. Reporting "no rowTap" as a
+    // product failure on that evidence would convict the product on an ambiguity;
+    // reporting it as a pass would hide a real one.
+    //
+    // So probe with a tap OUTSIDE the strip (36pt, px 108 — group 8's arm), which is
+    // not the thing under test and is expected to reach a row. If the outside tap
+    // registers while the inside tap did not, input was being delivered and the
+    // difference is the guard: that is a real finding. If the outside tap also
+    // leaves nothing, the whole window is unjudgeable and the product is not blamed.
+    let g6Liveness = { probe: "outside-arm-tap-36pt", performed: false, advanced: null, freshRowTaps: null };
+    const outsideN = 36 / pt.w;
+    {
+      // ⚠️ DIFFERENT ROW, deliberately. Run 33374638591 put both taps at y=0.60, so both
+      // would emit `rowTap Alpha 41` and the only way to attribute the single line that
+      // appeared was WHICH SAMPLE FIRST SAW IT — i.e. timing. That is not attribution:
+      // an inside tap whose log lands later than its own 1200ms sample is indistinguishable
+      // from an outside tap producing it, and the verdict string claimed the guard had
+      // swallowed the tap on exactly that ambiguity. Probing a different row makes the
+      // label itself say who produced it.
+      const probeY = 0.35;
+      const preDump = await drv.dumpUi();
+      fs.writeFileSync(path.join(outDir, "step-06a-after-inside-tap-dump.txt"), redactEditableValues(preDump));
+      const preTaps = (preDump.match(/rowTap [A-Za-z]+ \d+/g) || []).length;
+      const preSeq = maxSeq(preDump);
+      const probeYPx = Math.round(probeY * h);
+      const probeExpected = rowAtY(preDump, probeYPx);
+      rec("group 6: probe aim", { xPx: Math.round(outsideN * w), yPx: probeYPx, expected: probeExpected });
+      g6Liveness.probeExpectedRow = probeExpected;
+      await drv.tap(Math.round(outsideN * w), probeYPx);
+      await wait(1200);
+      const postDump = await drv.dumpUi();
+      const postTaps = (postDump.match(/rowTap [A-Za-z]+ \d+/g) || []).length;
+      const postSeq = maxSeq(postDump);
+      // ⚠️ REPLACES the object, so anything assigned onto g6Liveness above this point is
+      // destroyed. `probeExpectedRow` was set ~6 lines up and silently lost that way in run
+      // 33379004411: the attribution below reads it, so `prR` was always null, `hitProbe`
+      // always false, and the `both` / `probe only` branches were UNREACHABLE — the whole
+      // point of the round-7 attribution fix had never executed once. It still printed a
+      // plausible, favourable verdict ("inside only — the guard let the tap through"), which
+      // is why nothing flagged it. Carry the field through explicitly; do not re-introduce
+      // an assign-then-replace pair here.
+      g6Liveness = {
+        probe: "outside-arm-tap-36pt-different-row", performed: true,
+        probeExpectedRow: probeExpected,
+        outsidePt: 36, outsidePx: Math.round(outsideN * w), probeY: 0.35,
+        insideRowsAtProbeTime: (preDump.match(/rowTap [A-Za-z]+ \d+/g) || []),
+        rowsAfterProbe: (postDump.match(/rowTap [A-Za-z]+ \d+/g) || []),
+        seqBefore: preSeq, seqAfter: postSeq,
+        advanced: preSeq !== null && postSeq !== null ? postSeq > preSeq : null,
+        freshRowTaps: postTaps - preTaps,
+      };
+      fs.writeFileSync(path.join(outDir, "step-06b-outside-arm-dump.txt"), redactEditableValues(postDump));
+    }
+    // Attribution by LABEL, not by which sample first saw a line. The inside tap is at
+    // y=0.60 and the probe at y=0.35, so they hit different rows and emit different
+    // `rowTap Alpha <n>` lines. A line that appears late is still attributable, because
+    // its row number says who produced it — which is exactly what the previous design
+    // could not do.
+    const rowsAll = (g6Liveness.rowsAfterProbe || []);
+    const rowNums = rowsAll.map((l) => Number(l.split(" ")[2]));
+    const insideRowGuess = fresh.map((l) => Number(l.split(" ")[2]));
+    // Everything visible by the end, minus what was already there before the inside tap.
+    const beforeCount = (before.match(/rowTap [A-Za-z]+ \d+/g) || []).length;
+    const producedThisGroup = rowsAll.slice(beforeCount);
+    g6Liveness.producedThisGroup = producedThisGroup;
+    g6Liveness.distinctRows = [...new Set(producedThisGroup.map((l) => l.split(" ")[2]))];
+    // Two distinct rows => both taps landed. One row => whichever row it is tells us which
+    // tap landed. Zero => nothing landed at all and the window is unjudgeable.
+    const outsideWorked = producedThisGroup.length > 0;
+    verdict.g6 = {
+      insetPt, normX: inset24, pointScale: pt.scale,
+      insideExpectedRow: insideExpected,
+      freshRowTaps: fresh, freshCount: fresh.length,
+      seqBefore, seqAfter, logAdvanced: advanced,
+      liveness: g6Liveness,
+      judgeable: g6Liveness.distinctRows ? g6Liveness.distinctRows.length > 0 : false,
+      // Attribution is now a LOOKUP against the row each tap was aimed at, recorded from
+      // the dump at tap time. No inference about row height, visible-row count, or
+      // whether anything scrolled between groups.
+      attribution: (() => {
+        const rows = (g6Liveness.distinctRows || []).map(Number);
+        const inR = insideExpected?.row, prR = g6Liveness.probeExpectedRow?.row;
+        if (!rows.length) return "none — no rowTap at all";
+        // A missing aim record must not degrade into a confident label. Previously prR was
+        // silently null (see the object-replacement note above) and every run fell through
+        // to "inside only", which reads as a finding rather than as a broken instrument.
+        // Name the missing input instead: an unmeasured cell is not a measured negative.
+        if (inR == null || prR == null) {
+          return `INSTRUMENT INCOMPLETE — cannot attribute: ${inR == null ? "insideExpectedRow" : ""}` +
+            `${inR == null && prR == null ? " and " : ""}${prR == null ? "probeExpectedRow" : ""}` +
+            ` missing. Saw rows ${rows.join(",")}; judge from distinctRows, not from this field.`;
+        }
+        const hitInside = rows.includes(inR);
+        const hitProbe = rows.includes(prR);
+        if (hitInside && hitProbe) return `both (inside=${inR}, probe=${prR})`;
+        if (hitInside) return `inside only (row ${inR}) — the guard let the tap through`;
+        if (hitProbe) return `probe only (row ${prR}) — input was live, the inside tap was swallowed`;
+        return `unattributable — saw ${rows.join(",")}, expected inside=${inR} probe=${prR}`;
+      })(),
+      reading: !g6Liveness.distinctRows || g6Liveness.distinctRows.length === 0
+        ? "UNJUDGEABLE — neither tap produced a rowTap line, so 'the guard swallowed it' " +
+          "cannot be separated from 'no touch was delivered at all'"
+        : g6Liveness.distinctRows.length >= 2
+          ? "BOTH taps landed (two distinct rows) => the guard does not swallow a stationary " +
+            "tap inside the inset"
+          : "ONLY ONE tap landed — row " + g6Liveness.distinctRows[0] + ". Attribute it by row: " +
+            "the inside tap was at y=0.60, the probe at y=0.35. If the single row is the PROBE's, " +
+            "input was being delivered and the inside tap was swallowed (blocker 2 NOT fixed); " +
+            "if it is the INSIDE tap's, the guard is fine and the probe is what failed to land. " +
+            "Do not infer from timing.",
+    };
+    rec("group 6: result", verdict.g6);
+    await capture("step-06-after-inset-tap");
+    verdict.performed.push(6);
+  }
+
+  if (groups.includes("7") && inset24 !== null) {
+    // A vertical drag starting in the same inset must scroll the list. Read the
+    // lowest visible row index before/after: the rows render "<Label> row N", so
+    // the scroll is a number, not an impression from the screenshot.
+    const before = await drv.dumpUi();
+    const rowBefore = lowestRow(before);
+    const g7 = await drv.drag({ from: { x: inset24, y: 0.75 }, to: { x: inset24, y: 0.30 }, durationSeconds: 0.5 });
+    await wait(1200);
+    const after = await drv.dumpUi();
+    const rowAfter = lowestRow(after);
+    verdict.g7 = {
+      insetPt, normX: inset24, pointScale: pt.scale,
+      lowestRowBefore: rowBefore, lowestRowAfter: rowAfter,
+      scrolled: rowBefore !== null && rowAfter !== null ? rowAfter > rowBefore : null,
+      gesture: g7,
+    };
+    rec("group 7: vertical drag inside the edge inset", verdict.g7);
+    await capture("step-07-after-inset-vdrag");
+    verdict.performed.push(7);
+  }
+  if (groups.includes("8") && pt) {
+    // Outside arm for group 6. A two-armed comparison needs BOTH arms' side to be
+    // known, and both far enough from the boundary that neither rounding nor the
+    // half-open bound can move them: 12pt (px 36) sits mid-strip, 36pt (px 108) is
+    // a full 36px clear of it. Run 33369432716's 24pt touch is not reusable as this
+    // arm — it aimed at exactly px 72, the boundary, so which side it hit is
+    // unmeasured (@LiBai). An arm of unknown side cannot serve as either arm.
+    // ⚠️ Under the CURRENT implementation both arms are expected to reach the row,
+    // so this pair does NOT discriminate a working guard from a neutered one — it
+    // discriminates the OLD bug, where the strip was dead to taps. Recorded as such,
+    // not as evidence that the guard behaves correctly.
+    const outsidePt = 36;
+    const outsideN = outsidePt / pt.w;
+    const before = await drv.dumpUi();
+    const tapsBefore = (before.match(/rowTap [A-Za-z]+ \d+/g) || []).length;
+    const seqB = maxSeq(before);
+    await drv.tap(Math.round(outsideN * w), Math.round(0.60 * h));
+    await wait(1200);
+    const after = await drv.dumpUi();
+    const tapsAfter = (after.match(/rowTap [A-Za-z]+ \d+/g) || []).length;
+    const seqA = maxSeq(after);
+    verdict.g8 = {
+      arm: "outside-the-inset", outsidePt, normX: outsideN,
+      pxX: Math.round(outsideN * w), insetPx: Math.round(24 * pt.scale),
+      freshCount: tapsAfter - tapsBefore,
+      seqBefore: seqB, seqAfter: seqA,
+      logAdvanced: seqB !== null && seqA !== null ? seqA > seqB : null,
+      judgeable: (tapsAfter - tapsBefore) > 0 || (seqB !== null && seqA !== null && seqA > seqB),
+      note: "pairs with group 6 (12pt, inside). Both arms are expected to pass under the " +
+            "current implementation; the pair only discriminates the pre-fix guard.",
+    };
+    rec("group 8: outside-arm tap", verdict.g8);
+    await capture("step-08-after-outside-tap");
+    verdict.performed.push(8);
+  }
+
+  if ((groups.includes("6") || groups.includes("7")) && inset24 === null) {
+    rec("groups 6/7 SKIPPED: point scale unknown (no describe yet) — refusing to " +
+        "guess a pixel inset for a case specified in points");
   }
 
   // Liveness verdict, computed rather than eyeballed.
