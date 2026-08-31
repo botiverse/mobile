@@ -30,7 +30,7 @@ fixture:
       goal: "The QA principal is authenticated and is a member of both QA servers: A = OranixSlockTest and B = qa-server-b-slock."
     - id: distinguishable-content
       goal: "OranixSlockTest (A) and qa-server-b-slock (B) expose visibly distinct names and channel directories."
-  notes: "Do not run with a single-server account. A and B are exact visible labels: A = OranixSlockTest, B = qa-server-b-slock; never substitute another server. Record non-secret A/B identities before switching. Automated coordinates are Android emulator and iOS simulator; release packages replay the same contract on physical devices."
+  notes: "Do not run with a single-server account. A and B are the server display names: A = OranixSlockTest, B = qa-server-b-slock; never substitute another server. Record non-secret A/B identities before switching. Automated coordinates are Android emulator and iOS simulator; release packages replay the same contract on physical devices."
 
 preconditions:
   - type: app_installed

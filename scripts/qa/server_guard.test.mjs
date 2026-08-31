@@ -21,9 +21,14 @@ test("clause 1: the production server is banned by name, override-proof", () => 
 });
 
 test("clause 2: unnamed target fails with error instead of a guess", () => {
-  assert.match(text, /select ONLY the server the GOAL names by exact visible/);
+  assert.match(text, /select ONLY the server the GOAL names\./);
   assert.match(text, /finish with verdict error/);
-  assert.match(text, /"goal names no target server" instead of guessing/);
+  assert.match(text, /instead of guessing/);
+  // Row labels are compound ('<name>, /<slug>'), so the clause must say
+  // substring — the word "exact" here once invited a strict-equality
+  // implementation that would match NO row (XiShi's picker dump, #2287).
+  assert.match(text, /substring, not equality/);
+  assert.doesNotMatch(text, /exact visible label/);
 });
 
 test("clause 3: near-match substitution is forbidden", () => {

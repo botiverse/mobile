@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -30,13 +32,36 @@ PRODUCTION_SERVER_NAME = "Raft Android"
 LOGIN_CASE_ID = "login-email-password"
 QA_SERVER_NAME = "OranixSlockTest"
 # server-switch is the one case whose SUBJECT is server selection; its steps
-# must name both QA servers by exact visible label, or the runtime guard's
+# must name both QA servers by display name, or the runtime guard's
 # "goal names no server -> error" clause fires by design (task #171; XiShi's
 # fourth-source finding). NOTE: these two teeth pin the known selection cases
 # only — "a case requiring selection of a server it never names" has no
 # general detector here.
 SERVER_SWITCH_CASE_ID = "server-switch"
 QA_SERVER_B_NAME = "qa-server-b-slock"
+ALLOWED_QA_SERVER_NAMES = (QA_SERVER_NAME, QA_SERVER_B_NAME)
+# Structural rule (XiShi, #2287 review): a goal that drives server SELECTION
+# in a case that never names an allowed server is exactly the shape the
+# runtime guard answers with verdict error — catch it at contract time, for
+# future cases, not just the two pinned above. Matches selection verbs near
+# "server" within one clause; verified against the pre-fix 26-server-switch
+# ("Tap server B exactly once") as the known positive.
+SELECTION_GOAL_RE = re.compile(
+    r"\b(tap|select|choose|switch(?:es|ing)?\s+to)\b[^.\n]{0,60}\bserver\b",
+    re.IGNORECASE,
+)
+
+
+def _iter_goals(node: Any) -> Iterator[str]:
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "goal" and isinstance(value, str):
+                yield value
+            else:
+                yield from _iter_goals(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _iter_goals(item)
 
 
 class ContractError(ValueError):
@@ -160,6 +185,13 @@ def load_contract(case_dir: Path = DEFAULT_CASE_DIR) -> ReleaseAcceptanceContrac
                 f"{PRODUCTION_SERVER_NAME!r}; QA case sources may only name "
                 f"test/qa servers (the runtime ban lives in server_guard.mjs)",
             )
+        selection_goal = next((g for g in _iter_goals(source) if SELECTION_GOAL_RE.search(g)), None)
+        if selection_goal is not None and not any(n in raw_text for n in ALLOWED_QA_SERVER_NAMES):
+            raise ContractError(
+                f"{path.name}: goal {selection_goal!r} drives server selection but the "
+                f"case names no QA server ({', '.join(ALLOWED_QA_SERVER_NAMES)}) — the "
+                f"runtime guard answers unnamed selection with verdict error by design",
+            )
         sources[case_id] = (path, source)
 
     actual = set(sources)
@@ -204,7 +236,7 @@ def load_contract(case_dir: Path = DEFAULT_CASE_DIR) -> ReleaseAcceptanceContrac
         if name not in switch_text:
             raise ContractError(
                 f"{switch_path.name}: the server-switch case must name {name!r} "
-                f"by exact visible label — abstract A/B goals trip the runtime "
+                f"by display name — abstract A/B goals trip the runtime "
                 f"guard's no-name clause by design",
             )
 

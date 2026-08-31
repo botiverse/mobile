@@ -93,6 +93,21 @@ class ReleaseAcceptanceContractTest(unittest.TestCase):
         with self.assertRaisesRegex(ContractError, "must name 'qa-server-b-slock'"):
             load_contract(self.case_dir)
 
+    def test_selection_goal_without_named_server_is_rejected_anywhere(self) -> None:
+        # Structural tooth positive control: a case not otherwise pinned gains
+        # a selection-driving goal with no named server — the literal pre-fix
+        # 26-server-switch shape ("Tap server B exactly once") on a file that
+        # never names a QA server. This is the axis the absence/presence teeth
+        # don't cover: guarding FUTURE cases, not the known three.
+        path = self.case_dir / "07-thread-reply.yaml"
+        path.write_text(
+            path.read_text(encoding="utf-8")
+            + "\nextra_steps:\n  - goal: \"Tap server B exactly once.\"\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ContractError, "drives server selection but the case names no QA server"):
+            load_contract(self.case_dir)
+
     def test_duplicate_manifest_key_is_rejected(self) -> None:
         path = self.case_dir / "release-1.7.0-android.json"
         value = json.loads(path.read_text(encoding="utf-8"))
