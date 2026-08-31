@@ -43,6 +43,13 @@ export function verifyTierResults(needs) {
     // iOS included deliberately: test.yml runs kuikly-artifacts for iOS too (since #2095),
     // and the ios job `needs:` it — dropping iOS here would cascade-skip the iOS compile.
     // The producer is correct; this expectation had been left behind at #2090.
+    //
+    // PREMISE this line hangs on (@LiBai): `ios` still declares
+    //   test.yml  ios:  needs: [plan, kuikly-artifacts]
+    // If that dependency is ever removed, the correct fix flips sides — the PRODUCER should
+    // drop run_ios from the kuikly-artifacts `if:`, and this expectation should go back to
+    // runAndroid || runOhos. Re-derive before editing either side; do not read this line as
+    // "iOS always needs kuikly artifacts".
     ["kuikly-artifacts", runAndroid || runOhos || runIos],
     ["fork-deps", runOhos],
     ["android", runAndroid],
