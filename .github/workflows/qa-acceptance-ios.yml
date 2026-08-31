@@ -78,6 +78,9 @@ env:
   DEFAULT_GOAL: >-
     Log into the app with the provided test account: if a login/welcome screen shows,
     enter the email and password and submit. If a server picker appears choose 'OranixSlockTest'.
+    If a server named 'Raft Android' appears, do NOT choose it under any circumstances -- it is
+    the production server. If 'OranixSlockTest' is not present, fail and report it; never
+    substitute the closest-looking name.
     Declare pass once the home channel list is visible with at least one channel row,
     fail otherwise. Do not open any channel.
 
