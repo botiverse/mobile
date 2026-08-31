@@ -406,6 +406,42 @@ jobs:
                   out.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
           PY
 
+      - name: Preflight — QA account must not see the production server
+        # Layer 2 of three, wired here because this is the first point where the QA
+        # credentials exist (the step above puts them in the environment) and the last point
+        # before anything drives the app. Same `if:` as that step on purpose: without it this
+        # would run credential-less on the bootstrap path, exit 2 every time, and quietly
+        # become a step that never actually checks anything.
+        #
+        # rc semantics are deliberate and are the reviewable decision in this PR:
+        #   1  judged, and the judgement FAILED  -> block. Production reachable by the QA
+        #      account is out of bounds (artin, 2026-08-31); no run should proceed on it.
+        #   2  could not be judged at all (429, network, shape change) -> do NOT block, but
+        #      say so loudly and leave a receipt. "Could not measure" is not "measured clean",
+        #      so it must never read as a pass; equally it must not turn an infra flake into a
+        #      red acceptance run, because the four goal-text layers still apply when this
+        #      probe cannot run. The receipt is what stops a permanently-broken probe from
+        #      passing as coverage.
+        if: ${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true' }}
+        env:
+          QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD: ${{ env.QA_TEST_PASSWORD }}
+        run: |
+          mkdir -p qa-evidence
+          set +e
+          node scripts/qa/visible_servers_probe.mjs | tee qa-evidence/visible-servers-probe.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "rc=$rc" >> qa-evidence/visible-servers-probe.txt
+          if [ "$rc" = "1" ]; then
+            echo "::error::QA account can see the production server - refusing to run"
+            exit 1
+          fi
+          if [ "$rc" != "0" ]; then
+            echo "::warning::visible-servers probe could not run (rc=$rc) - NOT a clean result; the goal-text guards still apply"
+            echo "PROBE NOT RUN - this run carries no evidence about production visibility" >> qa-evidence/visible-servers-probe.txt
+          fi
+
       - name: Freeze legacy credential identity receipt
         if: ${{ inputs.stamp_run_case_id != '' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}
         env:
