@@ -30,6 +30,8 @@ import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.TextUnit
+import build.raft.app.components.SlockBrutalInputField
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -223,7 +225,7 @@ private fun slockBaseMenuWidth(items: List<SlockBaseMenuItem>, uppercaseLabels: 
 }
 
 @Composable
-private fun SlockBaseMenuRow(
+internal fun SlockBaseMenuRow(
     item: SlockBaseMenuItem,
     selected: Boolean,
     selectedRowColor: Color,
@@ -274,6 +276,121 @@ private fun SlockBaseMenuRow(
                     SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(SlockBaseMenuIconSize), color = SlockColor.TextBlackArgb)
                 } else {
                     Spacer(modifier = Modifier.width(SlockBaseMenuIconSize))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Task #258 successor (artin msg=0a490371): the thread detail dialog's assignee
+ * selector now uses the exact status-menu style — same SlockModalAnchoredPopover
+ * shell, brutal-square surface, native Button rows (rows win native dispatch
+ * inside the detail dialog, unlike the old plain-clickable Filter Popover),
+ * trailing check, SurfaceWhite selected row, non-uppercase labels. Adds a search
+ * row above the members to keep the board popover's search parity (contract
+ * msg=a493a371). Row-content contract (unassigned sentinel first, humans before
+ * agents) stays with the caller.
+ */
+@Composable
+internal fun SlockTaskAssigneeMenuOverlay(
+    anchor: SlockPopoverAnchor,
+    items: List<SlockBaseMenuItem>,
+    selectedId: String,
+    searchValue: TextFieldValue,
+    onSearchValueChange: (TextFieldValue) -> Unit,
+    searchPlaceholder: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (items.isEmpty()) return
+    val density = LocalDensity.current
+    val shadowOffset = SlockBaseMenuShadowOffset
+    val menuWidth = 160.dp
+    val menuSize = with(density) {
+        Size(
+            width = (menuWidth + shadowOffset).toPx(),
+            height =
+                36.dp.toPx() * items.size +
+                    SlockStroke.Default.toPx() * 2 +
+                    SlockStroke.Default.toPx() * items.count { it.dividerBefore } +
+                    // Search row: 36dp field + 8dp/8dp row padding + divider stroke.
+                    36.dp.toPx() + 16.dp.toPx() + SlockStroke.Default.toPx() +
+                    shadowOffset.toPx()
+        )
+    }
+    SlockModalAnchoredPopover(
+        anchor = anchor,
+        contentSize = menuSize,
+        viewportGap = with(density) { SlockBaseMenuViewportGap.toPx() },
+        verticalPlacement = SlockTaskStatusMenuVerticalPlacement,
+        horizontalAutoFlip = true,
+        onDismiss = onDismiss,
+        modifier = modifier
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(end = shadowOffset, bottom = shadowOffset)
+        ) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .offset(x = shadowOffset, y = shadowOffset)
+                    .background(SlockBaseMenuForegroundColor)
+            )
+            Column(
+                modifier = Modifier
+                    .width(menuWidth)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockBaseMenuForegroundColor)
+                    // Blank menu space must stay out of the sibling dismiss
+                    // barrier (same contract as SlockBaseMenuOverlay).
+                    .clickable(onClick = {})
+                    .padding(SlockStroke.Default)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                ) {
+                    SlockBrutalInputField(
+                        value = searchValue,
+                        onValueChange = onSearchValueChange,
+                        placeholder = searchPlaceholder,
+                        autoFocus = false,
+                        maxLines = 1,
+                        fieldMinHeight = 36.dp,
+                        showShadow = false,
+                        showClearWhenNotEmpty = true,
+                        onClear = { onSearchValueChange(TextFieldValue("")) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(SlockStroke.Default)
+                        .background(SlockBaseMenuForegroundColor)
+                )
+                items.forEach { item ->
+                    if (item.dividerBefore) {
+                        Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockBaseMenuForegroundColor))
+                    }
+                    val selected = item.id == selectedId
+                    SlockBaseMenuRow(
+                        item = item,
+                        selected = selected,
+                        selectedRowColor = SlockColor.SurfaceWhite,
+                        uppercaseLabel = false,
+                        rowHeight = 36.dp,
+                        labelFontSize = 14.sp,
+                        labelLineHeight = 20.sp,
+                        labelFontWeight = FontWeight.Normal,
+                        labelLetterSpacing = 0.sp,
+                        selectedIndicatorPlacement = SlockMenuSelectedIndicatorPlacement.Trailing,
+                        onClick = { onSelect(item.id) }
+                    )
                 }
             }
         }

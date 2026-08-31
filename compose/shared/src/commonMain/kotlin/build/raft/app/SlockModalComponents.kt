@@ -327,6 +327,10 @@ internal fun SlockModalLayer(
 internal fun SlockUnifiedDialog(
     title: String,
     onDismiss: () -> Unit,
+    // Task #258 successor (artin msg=a493a371/7cfc6fb7): small muted identifier
+    // line rendered above the title (e.g. "#all · 任务 #5") so the channel/task
+    // label never renders as the oversized title. Null/blank = no overline.
+    overline: String? = null,
     modifier: Modifier = Modifier,
     dismissEnabled: Boolean = true,
     overlayAlpha: Float = 0.60f,
@@ -356,6 +360,7 @@ internal fun SlockUnifiedDialog(
         Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
             SlockUnifiedDialogSurface(
                 title = title,
+                overline = overline,
                 onDismiss = onDismiss,
                 modifier = modifier,
                 dismissEnabled = dismissEnabled,
@@ -389,6 +394,7 @@ internal fun SlockUnifiedDialog(
             Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
                 SlockUnifiedDialogSurface(
                     title = title,
+                    overline = overline,
                     onDismiss = onDismiss,
                     modifier = modifier,
                     dismissEnabled = dismissEnabled,
@@ -424,6 +430,7 @@ internal fun SlockUnifiedDialog(
 @Composable
 private fun SlockUnifiedDialogSurface(
     title: String,
+    overline: String?,
     onDismiss: () -> Unit,
     modifier: Modifier,
     dismissEnabled: Boolean,
@@ -515,19 +522,35 @@ private fun SlockUnifiedDialogSurface(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = title,
-                        style =
-                            SlockType.PageTitle.copy(
-                                fontSize = titleFontSize.sp,
-                                lineHeight = titleLineHeight.sp,
-                                color = SlockColor.TextBlack
-                            ),
-                        color = SlockColor.TextBlack,
-                        modifier = Modifier.weight(1f),
-                        maxLines = titleMaxLines,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        overline?.takeIf { it.isNotBlank() }?.let { overlineText ->
+                            Text(
+                                text = overlineText,
+                                style = SlockType.Caption.copy(
+                                    fontSize = 11.sp,
+                                    lineHeight = 14.sp,
+                                    letterSpacing = 0.6.sp
+                                ),
+                                color = SlockColor.TextMutedGray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(bottom = 4.dp).fillMaxWidth()
+                            )
+                        }
+                        Text(
+                            text = title,
+                            style =
+                                SlockType.PageTitle.copy(
+                                    fontSize = titleFontSize.sp,
+                                    lineHeight = titleLineHeight.sp,
+                                    color = SlockColor.TextBlack
+                                ),
+                            color = SlockColor.TextBlack,
+                            modifier = Modifier.fillMaxWidth(),
+                            maxLines = titleMaxLines,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     SlockBrutalIconButton(
                         enabled = dismissEnabled,
                         iconName = SlockLucideIconName.X,

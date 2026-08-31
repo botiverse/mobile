@@ -1163,6 +1163,7 @@
     <string name="tasks_search_creators">Search creators</string>
     <string name="tasks_search_assignees">Search assignees</string>
     <string name="tasks_assignee_unassigned">Unassigned</string>
+    <string name="tasks_detail_task_identifier">Task #%1$d</string>
     <string name="tasks_state_updating">Updating</string>
     <string name="tasks_status_todo">Todo</string>
     <string name="tasks_status_in_progress">In Progress</string>

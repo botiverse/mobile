@@ -1161,6 +1161,7 @@
     <string name="tasks_search_creators">搜索创建者</string>
     <string name="tasks_search_assignees">搜索负责人</string>
     <string name="tasks_assignee_unassigned">未分配</string>
+    <string name="tasks_detail_task_identifier">任务 #%1$d</string>
     <string name="tasks_state_updating">更新中</string>
     <string name="tasks_status_todo">待办</string>
     <string name="tasks_status_in_progress">进行中</string>

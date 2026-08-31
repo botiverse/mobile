@@ -117,3 +117,35 @@ class ThreadTaskDetailPanelTest {
         assertNull(projection.assignUpdateIntent("task-unknown", null))
     }
 }
+
+class ThreadTaskDetailOverlineTest {
+
+    @Test
+    fun overlineJoinsChannelAndLocalizedTaskNumber() {
+        assertEquals(
+            "#all · 任务 #5",
+            threadTaskDetailOverline(
+                channelName = "all",
+                taskNumber = 5,
+                taskNumberLabel = "任务 #5"
+            )
+        )
+    }
+
+    @Test
+    fun overlineDropsMissingChannelOrNumber() {
+        assertEquals("任务 #5", threadTaskDetailOverline(null, 5, "任务 #5"))
+        assertEquals("#all", threadTaskDetailOverline("all", null, "任务 #5"))
+    }
+
+    @Test
+    fun overlineBlankChannelBehavesLikeAbsent() {
+        assertEquals("任务 #7", threadTaskDetailOverline("  ", 7, "任务 #7"))
+    }
+
+    @Test
+    fun overlineAbsentWithoutAnyIdentifier() {
+        assertNull(threadTaskDetailOverline(null, null, null))
+        assertNull(threadTaskDetailOverline(null, null, "任务 #5"))
+    }
+}
