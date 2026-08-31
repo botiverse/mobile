@@ -818,7 +818,11 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                         if (result.showPresence) {
                             result.memberId
                                 ?.takeIf { it.isNotBlank() }
-                                ?.let { rememberSlockAgentStatusIndicatorState(agentStatusResolver, it) }
+                                ?.let {
+                                    resolveHomeAgentStatusIndicatorState(
+                                        rememberSlockAgentStatusIndicatorState(agentStatusResolver, it)
+                                    )
+                                }
                         } else {
                             null
                         }

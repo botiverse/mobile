@@ -97,3 +97,12 @@ internal fun slockAgentStatusIndicatorState(
         // resolveAgentDisplayState parity, #198/#73).
         label = statusLabel?.takeIf { it.isNotBlank() } ?: status?.label ?: presence.name
     )
+
+/**
+ * Home consumers must render an indicator only from the authoritative resolver.
+ * A null value is Unknown/not-ready; manufacturing Offline here would show a
+ * misleading gray dot while the member projection is loading or recovering.
+ */
+internal fun resolveHomeAgentStatusIndicatorState(
+    canonicalState: SlockAgentStatusIndicatorState?
+): SlockAgentStatusIndicatorState? = canonicalState

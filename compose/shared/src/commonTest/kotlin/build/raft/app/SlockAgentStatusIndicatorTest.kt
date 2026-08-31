@@ -41,4 +41,12 @@ class SlockAgentStatusIndicatorTest {
         assertEquals(null, slockAgentStatusResolver(null, null)("agent-1").first())
         assertEquals(null, slockScopedAgentStatusResolver(null, "")("agent-1").first())
     }
+
+    @Test
+    fun homeConsumerKeepsUnknownAbsentUntilAuthoritativeResolverValueExists() {
+        assertEquals(null, resolveHomeAgentStatusIndicatorState(null))
+
+        val ready = slockAgentStatusIndicatorState(AgentStatus.Offline, Presence.Offline)
+        assertEquals(ready, resolveHomeAgentStatusIndicatorState(ready))
+    }
 }
