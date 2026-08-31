@@ -26814,10 +26814,18 @@ private fun ThreadTaskDetailDialog(
     // Task #258 (artin msg=6f430fed/9c943070/909777d9): status and assignee pills
     // reuse the task-card SlockAnchoredMetaChip (i18n, vertical centering) and are
     // tap-to-open-menu controls — the status pill opens the exact same menu as the
-    // thread inline chip (SlockTaskStatusMenuOverlay), and the assignee pill opens
-    // the Tasks-page-style filter popover with search. Creator shows read-only.
+    // thread inline chip (SlockTaskStatusMenuOverlay). Creator shows read-only.
+    // Task #258 successor (artin "修窄一点", Mahua/Nathan ruling msg=a2232561/ed8b7d79):
+    // the assignee pill toggles an IN-DIALOG expanding section instead of the
+    // Tasks-page SlockFilterPopover. The popover opens a second Kuikly native Modal
+    // window stacked on the dialog window, and its plain-`clickable` rows are
+    // swallowed by the outer dismiss barrier (row taps dismissed the whole stack
+    // without selecting; the Tasks page main window is unaffected). Keeping the
+    // picker inside the dialog's own window avoids nested-Modal dispatch entirely;
+    // the status menu stays on the shared overlay because its Button rows win
+    // native dispatch (SlockMenu.kt contract) and already work.
     var statusMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
-    var assigneeMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var assigneeSectionOpen by remember { mutableStateOf(false) }
     var assigneeMenuSearch by remember { mutableStateOf(TextFieldValue("")) }
     val assigneeRows = threadTaskAssigneeRows(assigneeOptions, assigneeMenuSearch.text)
     val selectedAssigneeId = task.assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
@@ -26870,7 +26878,7 @@ private fun ThreadTaskDetailDialog(
                         ?: unassignedLabel,
                     iconName = null,
                     color = SlockColor.SurfaceWhite,
-                    onClick = { anchor -> assigneeMenuAnchor = anchor },
+                    onClick = { assigneeSectionOpen = !assigneeSectionOpen },
                     anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "assignee"),
                     modifier = Modifier
                         .padding(start = 6.dp)
@@ -26903,6 +26911,99 @@ private fun ThreadTaskDetailDialog(
                 }
             }
         }
+        // Task #258 successor: in-dialog assignee picker (narrow fix for the
+        // nested-Modal row-tap swallow above). Same option contract as the board
+        // popover: unassigned sentinel first and never filtered, humans before
+        // agents, search matches the visible display name, i18n via MR keys.
+        if (assigneeSectionOpen) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.1f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(SlockColor.SurfaceWhite)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = filterAssigneeTitle.uppercase(),
+                        style = SlockType.Caption.copy(
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp,
+                            letterSpacing = 0.9.sp
+                        ).withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.1f))
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                ) {
+                    SlockBrutalInputField(
+                        value = assigneeMenuSearch,
+                        onValueChange = { assigneeMenuSearch = it },
+                        placeholder = searchPlaceholder,
+                        autoFocus = false,
+                        maxLines = 1,
+                        showClearWhenNotEmpty = true,
+                        onClear = { assigneeMenuSearch = TextFieldValue("") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                val pickerOptions =
+                    listOf(
+                        TasksUnassignedAssigneeFilterId to unassignedLabel
+                    ) + assigneeRows.mapNotNull { member ->
+                        member?.let { it.tasksIdentityFilterId() to it.displayName }
+                    }
+                pickerOptions.forEach { option ->
+                    val optionSelected = option.first == selectedAssigneeId
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                            .background(
+                                if (optionSelected) SlockColor.AppBgLightBlue.copy(alpha = 0.28f)
+                                else SlockColor.SurfaceWhite
+                            )
+                            .clickable {
+                                assigneeSectionOpen = false
+                                assigneeMenuSearch = TextFieldValue("")
+                                if (!optionSelected) {
+                                    val member = assigneeOptions.firstOrNull {
+                                        it.tasksIdentityFilterId() == option.first
+                                    }
+                                    onAssigneeSelect(member)
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = option.second,
+                            style = SlockType.Caption,
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (optionSelected) {
+                            SlockLucideIcon(
+                                SlockLucideIconName.Check,
+                                modifier = Modifier.size(12.dp),
+                                color = "#FF000000"
+                            )
+                        }
+                    }
+                }
+            }
+        }
         task.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
             Text(
                 text = description,
@@ -26923,46 +27024,6 @@ private fun ThreadTaskDetailDialog(
                 statusMenuAnchor = null
                 onStatusSelect(selectedId)
             }
-        )
-    }
-    assigneeMenuAnchor?.let { anchor ->
-        SlockFilterPopover(
-            anchor = anchor,
-            title = filterAssigneeTitle,
-            searchPlaceholder = searchPlaceholder,
-            searchText = assigneeMenuSearch.text,
-            onSearchChange = { assigneeMenuSearch = TextFieldValue(it) },
-            options =
-                listOf(
-                    SlockFilterOption(
-                        id = TasksUnassignedAssigneeFilterId,
-                        label = unassignedLabel
-                    )
-                ) +
-                    assigneeRows.mapNotNull { row ->
-                        row?.let { member ->
-                            SlockFilterOption(
-                                id = member.tasksIdentityFilterId(),
-                                label = member.displayName
-                            )
-                        }
-                    },
-            selectedIds = setOf(selectedAssigneeId),
-            onToggle = { id ->
-                assigneeMenuAnchor = null
-                assigneeMenuSearch = TextFieldValue("")
-                if (id != selectedAssigneeId) {
-                    val member = assigneeOptions.firstOrNull { it.tasksIdentityFilterId() == id }
-                    onAssigneeSelect(member)
-                }
-            },
-            onClear = { assigneeMenuSearch = TextFieldValue("") },
-            onDismiss = {
-                assigneeMenuAnchor = null
-                assigneeMenuSearch = TextFieldValue("")
-            },
-            multiSelect = false,
-            showClearWhenSelected = false
         )
     }
 }
