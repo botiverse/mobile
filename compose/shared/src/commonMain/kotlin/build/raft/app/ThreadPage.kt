@@ -180,6 +180,7 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskStatus
+import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.formatSlockTimestampEpochMillis
@@ -26807,46 +26808,82 @@ private fun ThreadTaskDetailDialog(
     val assigneeLabel = stringResource(MR.strings.tasks_chip_assignee)
     val unassignedLabel = stringResource(MR.strings.tasks_assignee_unassigned)
     val searchPlaceholder = stringResource(MR.strings.tasks_search_assignees)
-    var assigneeSearch by remember { mutableStateOf(TextFieldValue("")) }
-    val assigneeRows = threadTaskAssigneeRows(assigneeOptions, assigneeSearch.text)
+    val filterAssigneeTitle = stringResource(MR.strings.tasks_filter_assignee)
+    // Task #258 (artin msg=6f430fed): the status and assignee pills in the detail
+    // modal are tap-to-open-menu controls — the status pill opens the exact same
+    // menu as the thread inline chip (SlockTaskStatusMenuOverlay), and the
+    // assignee pill opens the Tasks-page-style filter popover with search.
+    val menuIdentity = remember(task.id) { threadTaskDetailMenuOwnerIdentity(task.id) }
+    val statusAnchorRef = remember(menuIdentity) { SlockLiveRootAnchorRef(identity = menuIdentity) }
+    val assigneeAnchorRef = remember(menuIdentity) { SlockLiveRootAnchorRef(identity = menuIdentity) }
+    var statusMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var assigneeMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var assigneeMenuSearch by remember { mutableStateOf(TextFieldValue("")) }
+    val assigneeRows = threadTaskAssigneeRows(assigneeOptions, assigneeMenuSearch.text)
     val selectedAssigneeId = task.assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
+    val statusMeta = task.status.sharedTaskStatusChipMeta()
     SlockUnifiedDialog(
         title = task.tasksMeaningfulDisplayTitle(),
         titleMaxLines = 2,
         onDismiss = onDismiss,
         contentSpacing = SlockSpacing.Sm
     ) {
-        // Task #258 (artin msg=bc69cc50): web-aligned detail hierarchy —
-        // title → current status as a horizontal wrap of chips → body content.
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            TaskStatus.entries.forEach { status ->
-                val selected = status == task.status
-                Row(
-                    modifier = Modifier
-                        .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                        .border(
-                            width = SlockStroke.Thin,
-                            color = SlockColor.BorderBlack
-                        )
-                        .clickable(enabled = !selected) { onStatusSelect(status.name) }
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (selected) {
-                        SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(11.dp), color = "#FF000000")
+            Row(
+                modifier = Modifier
+                    .slockCaptureLiveRootAnchor(statusAnchorRef)
+                    .background(statusMeta.color)
+                    .border(width = SlockStroke.Thin, color = SlockColor.BorderBlack)
+                    .clickable {
+                        statusMenuAnchor = statusAnchorRef.resolve(SlockPopoverLocalPoint.BottomStart)
                     }
-                    Text(
-                        text = status.localizedLabel(),
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
-                            .withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1
-                    )
-                }
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Text(
+                    text = statusLabel,
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.65f)
+                )
+                Text(
+                    text = statusMeta.label,
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
+                        .withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1
+                )
+                SlockLucideIcon(SlockLucideIconName.ChevronDown, modifier = Modifier.size(11.dp), color = "#FF000000")
+            }
+            Row(
+                modifier = Modifier
+                    .slockCaptureLiveRootAnchor(assigneeAnchorRef)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(width = SlockStroke.Thin, color = SlockColor.BorderBlack)
+                    .clickable {
+                        assigneeMenuAnchor = assigneeAnchorRef.resolve(SlockPopoverLocalPoint.BottomStart)
+                    }
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Text(
+                    text = assigneeLabel,
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.65f)
+                )
+                Text(
+                    text = task.assignee?.displayName ?: unassignedLabel,
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
+                        .withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                SlockLucideIcon(SlockLucideIconName.ChevronDown, modifier = Modifier.size(11.dp), color = "#FF000000")
             }
         }
         task.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
@@ -26858,78 +26895,60 @@ private fun ThreadTaskDetailDialog(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = SlockStroke.Thin)
-                .background(SlockColor.BorderBlack.copy(alpha = 0.1f))
-        )
-        Text(
-            text = assigneeLabel.uppercase(),
-            style = SlockType.Caption.copy(
-                fontSize = 10.sp,
-                lineHeight = 12.sp,
-                letterSpacing = 0.9.sp
-            ).withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextMutedGray
-        )
-        SlockBrutalInputField(
-            value = assigneeSearch,
-            onValueChange = { assigneeSearch = it },
-            placeholder = searchPlaceholder,
-            autoFocus = false,
-            maxLines = 1,
-            containerTapRequestsFocus = true,
-            showClearWhenNotEmpty = true,
-            onClear = { assigneeSearch = TextFieldValue("") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        val visibleRows = assigneeRows
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 256.dp)
-        ) {
-            LazyColumn {
-                items(visibleRows.size, key = { index -> threadTaskAssigneeRowId(visibleRows[index]) }) { index ->
-                    val row = visibleRows[index]
-                    val rowId = threadTaskAssigneeRowId(row)
-                    val selected = rowId == selectedAssigneeId
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(36.dp)
-                                .background(if (selected) SlockColor.AppBgLightBlue.copy(alpha = 0.28f) else SlockColor.SurfaceWhite)
-                                .clickable { onAssigneeSelect(row) }
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = row?.displayName ?: unassignedLabel,
-                                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
-                                    .withSlockFontWeight(FontWeight.Bold),
-                                color = SlockColor.TextBlack,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (selected) {
-                                SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(12.dp), color = "#FF000000")
-                            }
-                        }
-                        if (index < visibleRows.lastIndex) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = SlockStroke.Thin)
-                                    .background(SlockColor.BorderBlack.copy(alpha = 0.1f))
-                            )
-                        }
-                    }
-                }
+    }
+    statusMenuAnchor?.let { anchor ->
+        SlockTaskStatusMenuOverlay(
+            anchor = anchor,
+            items = ThreadTaskStatusMenuItems,
+            selectedId = statusMeta.key,
+            onDismiss = { statusMenuAnchor = null },
+            onSelect = { selectedId ->
+                statusMenuAnchor = null
+                onStatusSelect(selectedId)
             }
-        }
+        )
+    }
+    assigneeMenuAnchor?.let { anchor ->
+        SlockFilterPopover(
+            anchor = anchor,
+            title = filterAssigneeTitle,
+            searchPlaceholder = searchPlaceholder,
+            searchText = assigneeMenuSearch.text,
+            onSearchChange = { assigneeMenuSearch = TextFieldValue(it) },
+            options =
+                listOf(
+                    SlockFilterOption(
+                        id = TasksUnassignedAssigneeFilterId,
+                        label = unassignedLabel
+                    )
+                ) +
+                    assigneeRows.mapNotNull { row ->
+                        row?.let { member ->
+                            SlockFilterOption(
+                                id = member.tasksIdentityFilterId(),
+                                label = member.displayName
+                            )
+                        }
+                    },
+            selectedIds = setOf(selectedAssigneeId),
+            onToggle = { id ->
+                assigneeMenuAnchor = null
+                assigneeMenuSearch = TextFieldValue("")
+                if (id != selectedAssigneeId) {
+                    val member = assigneeOptions.firstOrNull { it.tasksIdentityFilterId() == id }
+                    onAssigneeSelect(member)
+                }
+            },
+            onClear = { assigneeMenuSearch = TextFieldValue("") },
+            onDismiss = {
+                assigneeMenuAnchor = null
+                assigneeMenuSearch = TextFieldValue("")
+            },
+            multiSelect = false,
+            showClearWhenSelected = false
+        )
     }
 }
+
+internal fun threadTaskDetailMenuOwnerIdentity(taskId: TaskId): String = "thread_task_detail:${taskId.value}"
+
