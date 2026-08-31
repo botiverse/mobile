@@ -5,6 +5,7 @@ import fs from "node:fs";
 const ios = fs.readFileSync(new URL("../../.github/workflows/qa-acceptance-ios.yml", import.meta.url), "utf8");
 const android = fs.readFileSync(new URL("../../.github/workflows/qa-acceptance.yml", import.meta.url), "utf8");
 const infra = fs.readFileSync(new URL("../../.github/workflows/qa-infra-test.yml", import.meta.url), "utf8");
+const probeSource = fs.readFileSync(new URL("./visible_servers_probe.mjs", import.meta.url), "utf8");
 
 test("iOS frozen artifact inputs match Stamp dispatch and replacement is opt-in", () => {
   for (const name of ["app_run_id", "artifact_sha256", "artifact_source_commit", "artifact_version", "artifact_version_code", "artifact_package_id"]) {
@@ -113,4 +114,90 @@ test("QA infrastructure contract tests run on relevant pull requests", () => {
   }
   assert.match(infra, /pull_request:/);
   assert.match(infra, /node --test scripts\/qa\/\*\.test\.mjs/);
+});
+
+test("the visible-servers preflight runs on both platforms, before anything drives the app", () => {
+  // Wiring assertions, not logic assertions — the probe's own judgement is covered by
+  // visible_servers_probe.test.mjs. What can silently rot here is the wiring: a preflight
+  // placed after the agent, or dropped from one platform, guards nothing while every other
+  // test stays green. Android drifted looser than iOS exactly once already this way (#2283),
+  // so both are checked in one loop rather than one test each.
+  for (const [platform, yml] of [["iOS", ios], ["Android", android]]) {
+    const probeAt = yml.indexOf("Preflight — QA account must not see the production server");
+    assert.notStrictEqual(probeAt, -1, `${platform}: the preflight step is missing entirely`);
+    assert.match(yml.slice(probeAt), /node scripts\/qa\/visible_servers_probe\.mjs/, `${platform}: the step must invoke the probe`);
+
+    // Order is the whole point of a PREflight.
+    const agentAt = yml.indexOf("- name: Run acceptance agent");
+    assert.notStrictEqual(agentAt, -1, `${platform}: could not locate the agent step — this check would be vacuous`);
+    assert.ok(probeAt < agentAt, `${platform}: the preflight must precede the acceptance agent, not follow it`);
+
+    // Credentials come from the step above it; if the two conditions ever diverge, the probe
+    // runs without them, exits 2 every time, and becomes a step that checks nothing while
+    // still appearing in the log.
+    const exposeAt = yml.indexOf("- name: Expose legacy UI-login credentials");
+    assert.ok(exposeAt !== -1 && exposeAt < probeAt, `${platform}: the probe must follow the credential exposure step`);
+    // Slice each step to its own boundary rather than guessing a character window. A fixed
+    // window silently misses the target once a comment grows: my first attempt used 900
+    // chars and the probe's `if:` sits 1260 in, so the assertion was red against correct
+    // input — a scope error, not a real finding. Anchor on structure, never on distance.
+    const firstIf = (step) => step.match(/^\s*if: \$\{\{ (.+?) \}\}\s*$/m)?.[1]?.trim();
+    const stepAfter = (from) => yml.slice(from, yml.indexOf("\n      - name:", from + 10));
+    const exposeIf = firstIf(stepAfter(exposeAt));
+    const probeIf = firstIf(stepAfter(probeAt));
+    assert.ok(exposeIf && probeIf, `${platform}: expected an if: on both the exposure step and the probe`);
+    assert.strictEqual(probeIf, exposeIf, `${platform}: the probe's if: must match the credential step's`);
+
+    // BOTH non-zero outcomes must stop the run (@Argus's ruling, overriding the warn-only form
+    // I first proposed): rc=1 is a violation, rc=2 means the reading is unavailable — which
+    // returns the run to "believed but not tested", the state this probe exists to end. Pinned
+    // because warn-only is the tempting shape: under it the probe's infrastructure could break
+    // and the pipeline would silently downgrade to the pre-probe world while staying green.
+    const step = yml.slice(probeAt, agentAt);
+    // Slice each `if ...; then ... fi` to its own `fi`, rather than allowing N characters.
+    // I used a character budget here twice and it broke both times — the second time within
+    // the same file, when adding the reason-code `case` pushed `exit 1` past the budget and
+    // the assertion went red against correct input. A budget encodes today's body length as
+    // if it were the property under test.
+    const branch = (cond) => {
+      const at = step.indexOf(cond);
+      if (at === -1) return null;
+      const end = step.indexOf("\n          fi", at);
+      return end === -1 ? step.slice(at) : step.slice(at, end);
+    };
+    const failed = branch('if [ "$rc" = "1" ]');
+    const unjudged = branch('if [ "$rc" != "0" ]');
+    assert.ok(failed && /exit 1/.test(failed), `${platform}: a failed judgement must block the run`);
+    assert.ok(unjudged && /exit 1/.test(unjudged), `${platform}: an unjudgeable probe must block too, not warn`);
+    assert.doesNotMatch(step, /::warning::/, `${platform}: no warn-only path — a broken guard must behave like a broken guard`);
+
+    // The reason must survive to the reader, and the unknown case must not default to the
+    // cheap one: "no reason code" is treated as contract, the class where a green rerun is
+    // most misleading. Without this, "fix or rerun" decays into "always rerun" (@HuaTuo).
+    for (const reason of ["credential", "ratelimit", "infra", "contract"]) {
+      // Anchored to line start and required to emit an ::error::. A bare /credential\)/ also
+      // matches `# credential) echo ...`, so commenting a branch out would have kept the
+      // assertion green — found by mutating the branch rather than trusting the pattern.
+      assert.match(
+        unjudged,
+        new RegExp(`^\\s*${reason}\\)\\s+echo "::error::`, "m"),
+        `${platform}: the ${reason} class must be a live case arm that reports, not a commented one`,
+      );
+    }
+    assert.match(unjudged, /A PASSING RERUN DOES NOT MEAN FIXED/, `${platform}: a contract failure must say a green rerun proves nothing`);
+    assert.match(unjudged, /treat as contract until diagnosed/, `${platform}: an unknown reason must not default to the cheap class`);
+    // 429 is its own class, not infra (@LiBai): both say "try again", but one means "wait
+    // first", and an immediate retry is what produces 429 in the first place. Folding them
+    // together loses the only part that changes what the on-call person does.
+    assert.match(unjudged, /NOT immediately/, `${platform}: the rate-limit receipt must say not to rerun straight away`);
+
+    // Cross-file invariant: the stream the probe writes `reason=` on must be the stream this
+    // step captures. The probe uses console.error (stderr); `| tee` alone takes only stdout,
+    // so without 2>&1 the grep finds nothing, `reason` falls back to unknown, and the
+    // credential/ratelimit/infra arms become unreachable — reason codes present in form while
+    // every failure reports as contract (@LiBai). Each half is correct read alone, which is
+    // exactly why this needs asserting: nothing else goes red when they drift apart.
+    assert.match(step, /visible_servers_probe\.mjs 2>&1 \| tee/, `${platform}: stderr must be captured, or the reason code never reaches the receipt`);
+    assert.match(probeSource, /console\.error\(`reason=/, "the probe must emit reason= on the stream the step captures");
+  }
 });
