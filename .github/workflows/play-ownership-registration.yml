@@ -23,6 +23,8 @@ jobs:
         working-directory: compose/androidApp
         run: |
           set -euo pipefail
+          cleanup() { rm -f "${ks:-}" "${aligned:-}" "${signed:-}"; }
+          trap cleanup EXIT
           mkdir -p src/main/assets
           printf '%s\n' "$REGISTRATION_CODE" > src/main/assets/adi-registration.properties
 
@@ -53,13 +55,13 @@ jobs:
             --v2-signing-enabled true --v3-signing-enabled true --v4-signing-enabled false \
             --out "$signed" "$aligned"
           "$bt/apksigner" verify --verbose --print-certs "$signed" | tee "$RUNNER_TEMP/apksigner.txt"
-          grep -qi "Signer certificate SHA-256 digest: ${EXPECTED_CERT_SHA256}" "$RUNNER_TEMP/apksigner.txt"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump packagename "$signed" | grep -Fxq 'package: name="build.raft.app"'
+          grep -Eqi "Signer #[0-9]+ certificate SHA-256 digest: ${EXPECTED_CERT_SHA256}" "$RUNNER_TEMP/apksigner.txt"
+          test "$("$ANDROID_HOME/build-tools/36.0.0/aapt2" dump packagename "$signed")" = 'build.raft.app'
+          unzip -p "$signed" assets/adi-registration.properties | tr -d '\r\n' | grep -Fxq "$REGISTRATION_CODE"
           sha256sum "$signed" | tee "$RUNNER_TEMP/apk.sha256"
           cp "$signed" "$GITHUB_WORKSPACE/raft-play-ownership-registration.apk"
           cp "$RUNNER_TEMP/apk.sha256" "$GITHUB_WORKSPACE/raft-play-ownership-registration.apk.sha256"
           cp "$RUNNER_TEMP/apksigner.txt" "$GITHUB_WORKSPACE/raft-play-ownership-registration.apksigner.txt"
-          rm -f "$ks" "$aligned" "$signed"
 
       - name: Upload private registration artifact
         uses: actions/upload-artifact@v4
