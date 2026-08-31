@@ -416,12 +416,16 @@ jobs:
         # rc semantics are deliberate and are the reviewable decision in this PR:
         #   1  judged, and the judgement FAILED  -> block. Production reachable by the QA
         #      account is out of bounds (artin, 2026-08-31); no run should proceed on it.
-        #   2  could not be judged at all (429, network, shape change) -> do NOT block, but
-        #      say so loudly and leave a receipt. "Could not measure" is not "measured clean",
-        #      so it must never read as a pass; equally it must not turn an infra flake into a
-        #      red acceptance run, because the four goal-text layers still apply when this
-        #      probe cannot run. The receipt is what stops a permanently-broken probe from
-        #      passing as coverage.
+        #   2  could not be judged at all (429, network, shape change) -> ALSO block.
+        #      Ruled by @Argus, overriding the warn-only form I first proposed. rc=2 means the
+        #      visibility reading is unavailable, which returns the run to "we believe it but
+        #      are not testing it" — the exact state this probe exists to end. Under warn-only,
+        #      the probe's infrastructure breaking would silently downgrade the pipeline back
+        #      to the pre-probe world while staying green: no reading read as a good reading.
+        #      A broken guard has to behave like a broken guard, not like a pass.
+        #      Accepted cost, stated: this probe depends on an external surface, so blocking on
+        #      rc=2 adds a new flaky-red source. The remedy is fix-or-rerun, never downgrade.
+        #      An explicit per-run waiver channel is deliberately NOT pre-built.
         if: ${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true' }}
         env:
           QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
@@ -438,8 +442,9 @@ jobs:
             exit 1
           fi
           if [ "$rc" != "0" ]; then
-            echo "::warning::visible-servers probe could not run (rc=$rc) - NOT a clean result; the goal-text guards still apply"
+            echo "::error::visible-servers probe could not be judged (rc=$rc) - refusing to run"
             echo "PROBE NOT RUN - this run carries no evidence about production visibility" >> qa-evidence/visible-servers-probe.txt
+            exit 1
           fi
 
       - name: Freeze legacy credential identity receipt

@@ -147,8 +147,14 @@ test("the visible-servers preflight runs on both platforms, before anything driv
     assert.ok(exposeIf && probeIf, `${platform}: expected an if: on both the exposure step and the probe`);
     assert.strictEqual(probeIf, exposeIf, `${platform}: the probe's if: must match the credential step's`);
 
-    // rc=1 (judged and failed) must stop the run. rc=2 (could not judge) deliberately does not.
+    // BOTH non-zero outcomes must stop the run (@Argus's ruling, overriding the warn-only form
+    // I first proposed): rc=1 is a violation, rc=2 means the reading is unavailable — which
+    // returns the run to "believed but not tested", the state this probe exists to end. Pinned
+    // because warn-only is the tempting shape: under it the probe's infrastructure could break
+    // and the pipeline would silently downgrade to the pre-probe world while staying green.
     const step = yml.slice(probeAt, agentAt);
     assert.match(step, /if \[ "\$rc" = "1" \][\s\S]{0,200}exit 1/, `${platform}: a failed judgement must block the run`);
+    assert.match(step, /if \[ "\$rc" != "0" \][\s\S]{0,300}exit 1/, `${platform}: an unjudgeable probe must block too, not warn`);
+    assert.doesNotMatch(step, /::warning::/, `${platform}: no warn-only path — a broken guard must behave like a broken guard`);
   }
 });
