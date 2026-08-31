@@ -83,6 +83,13 @@ export function createIosDriver({ ioDir, udid = "booted", bundle = "build.raft.a
     },
 
     screenSize: () => screenSizePx(),
+    // ⚠️ screenSize() is PIXELS. A case written as `24 / screenSize().w` therefore
+    // asks for 24 *pixels*, which on a 3x device is 8 points — and a case whose
+    // whole subject is "inside the platform edge inset" then measures a different
+    // inset than the one it names. Cases specified in points must convert here.
+    // Returns null until the first describe/dumpUi has established pointScale, so
+    // a caller cannot silently get a 1:1 answer before the scale is known.
+    screenSizePt: () => (pointScale ? { w: screenSizePx().w / pointScale, h: screenSizePx().h / pointScale, scale: pointScale } : null),
     screenshotPng,
 
     async tap(x, y) {
