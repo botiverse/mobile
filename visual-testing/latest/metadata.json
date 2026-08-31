@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31T22:01:25.701Z",
+  "generatedAt": "2026-08-31T22:05:14.115Z",
   "runId": "d30188a0-20260831215858",
   "commit": "d30188a0-20260831215858",
   "commitSubject": "test(qa-ios): port the task #246 gesture round onto main (task #250) (#2296)",
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 92,
-        "ready": 80,
-        "pending": 12
+        "ready": 81,
+        "pending": 11
       }
     }
   ],

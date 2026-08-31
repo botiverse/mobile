@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31T22:01:25.701Z",
+  "generatedAt": "2026-08-31T22:05:14.115Z",
   "runId": "d30188a0-20260831215858",
   "cases": [
     {
@@ -5470,17 +5470,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-31T22:01:24.069Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-31T22:03:44.870Z",
+            "severity": "low",
+            "summary": [
+              "Status dot row (green, orange, gray, blue) and pink 'Waiting pulse' indicator render identically in color, shape, and vertical position on both Android and iOS.",
+              "Heading 'Raft UI Status Dot', breadcrumb 'COMPONENTS.UI.STATUS-DOT.STATES', and 'Waiting pulse' label appear at the same size, weight, and baseline alignment on both platforms.",
+              "Right-side iOS canvas extends much taller than the component area (1170×2532 with content confined to top-left), but the actual rendered UI region is isomorphic to the Android crop.",
+              "No missing elements, clipping, or state-indicator differences observed within the rendered region."
+            ],
+            "likelyCauses": [
+              "Differences are within the configured pixelRatio tolerance (0.02) and layoutDp tolerance (1); the 0.30% pixel mismatch is attributable to font hinting and antialiasing variation between Android and iOS text rasterizers.",
+              "Android crop is bounded to component bounds (342×92) while iOS uses the full canvas, which is a test harness configuration artifact rather than a UI divergence."
+            ],
+            "suggestedOwner": "ui-platform",
+            "suggestedFixes": [
+              "No fix required — diffs are within tolerance and visually isomorphic.",
+              "If a stricter match is desired, unify the iOS crop to component bounds before diffing.",
+              "Optionally align font rendering by using a shared webfont or platform-specific font metrics shim to reduce sub-pixel variation."
+            ],
+            "intentional": [
+              "Different canvas/crop sizes between baseline and current are an artifact of the comparison harness, not an intentional UI divergence.",
+              "Sub-pixel antialiasing differences in text rendering are expected across Android and iOS engines."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -5553,17 +5568,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-31T22:01:24.069Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-31T22:03:44.870Z",
+            "severity": "low",
+            "summary": [
+              "Status dot row (green, orange, gray, blue) and pink 'Waiting pulse' indicator render identically in color, shape, and vertical position on both Android and iOS.",
+              "Heading 'Raft UI Status Dot', breadcrumb 'COMPONENTS.UI.STATUS-DOT.STATES', and 'Waiting pulse' label appear at the same size, weight, and baseline alignment on both platforms.",
+              "Right-side iOS canvas extends much taller than the component area (1170×2532 with content confined to top-left), but the actual rendered UI region is isomorphic to the Android crop.",
+              "No missing elements, clipping, or state-indicator differences observed within the rendered region."
+            ],
+            "likelyCauses": [
+              "Differences are within the configured pixelRatio tolerance (0.02) and layoutDp tolerance (1); the 0.30% pixel mismatch is attributable to font hinting and antialiasing variation between Android and iOS text rasterizers.",
+              "Android crop is bounded to component bounds (342×92) while iOS uses the full canvas, which is a test harness configuration artifact rather than a UI divergence."
+            ],
+            "suggestedOwner": "ui-platform",
+            "suggestedFixes": [
+              "No fix required — diffs are within tolerance and visually isomorphic.",
+              "If a stricter match is desired, unify the iOS crop to component bounds before diffing.",
+              "Optionally align font rendering by using a shared webfont or platform-specific font metrics shim to reduce sub-pixel variation."
+            ],
+            "intentional": [
+              "Different canvas/crop sizes between baseline and current are an artifact of the comparison harness, not an intentional UI divergence.",
+              "Sub-pixel antialiasing differences in text rendering are expected across Android and iOS engines."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20545,7 +20575,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-31T22:01:16.586Z",
+        "generatedAt": "2026-08-31T22:05:05.202Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20606,7 +20636,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:16.586Z",
+            "generatedAt": "2026-08-31T22:05:05.202Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20628,7 +20658,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20650,7 +20680,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20675,7 +20705,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20698,7 +20728,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20738,7 +20768,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-31T22:01:16.586Z",
+        "generatedAt": "2026-08-31T22:05:05.202Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20799,7 +20829,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:16.586Z",
+            "generatedAt": "2026-08-31T22:05:05.202Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20821,7 +20851,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20843,7 +20873,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20868,7 +20898,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20891,7 +20921,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26099,7 +26129,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26121,7 +26151,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26146,7 +26176,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26169,7 +26199,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26369,7 +26399,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26391,7 +26421,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26416,7 +26446,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26439,7 +26469,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26639,7 +26669,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26661,7 +26691,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26686,7 +26716,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26709,7 +26739,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26905,7 +26935,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26927,7 +26957,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26952,7 +26982,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26975,7 +27005,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27171,7 +27201,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27193,7 +27223,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27218,7 +27248,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27241,7 +27271,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32639,7 +32669,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-31T22:01:16.586Z",
+        "generatedAt": "2026-08-31T22:05:05.202Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32700,7 +32730,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:16.586Z",
+            "generatedAt": "2026-08-31T22:05:05.202Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32722,7 +32752,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32744,7 +32774,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32769,7 +32799,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32792,7 +32822,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32832,7 +32862,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-31T22:01:16.586Z",
+        "generatedAt": "2026-08-31T22:05:05.202Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32893,7 +32923,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:16.586Z",
+            "generatedAt": "2026-08-31T22:05:05.202Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32915,7 +32945,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32937,7 +32967,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32962,7 +32992,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32985,7 +33015,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33025,7 +33055,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-31T22:01:16.586Z",
+        "generatedAt": "2026-08-31T22:05:05.202Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -33086,7 +33116,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:16.586Z",
+            "generatedAt": "2026-08-31T22:05:05.202Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33108,7 +33138,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33130,7 +33160,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33155,7 +33185,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33178,7 +33208,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33218,7 +33248,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-31T22:01:16.586Z",
+        "generatedAt": "2026-08-31T22:05:05.202Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -33279,7 +33309,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:16.586Z",
+            "generatedAt": "2026-08-31T22:05:05.202Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33301,7 +33331,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33323,7 +33353,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33348,7 +33378,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:19.964Z",
+            "generatedAt": "2026-08-31T22:05:08.470Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33371,7 +33401,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-31T22:01:23.688Z",
+            "generatedAt": "2026-08-31T22:05:12.177Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
