@@ -622,6 +622,14 @@ async function main() {
 
   let verdict = null, reason = "", turns = 0, executionDiagnosis = null;
   let noProgressTriggered = false, lastObservationFingerprint = "", sameObservationTurns = 0;
+  // Why this exists: "undecided" has several causes with OPPOSITE next actions —
+  // budget exhausted (raise the budget and rerun) vs the no-progress fuse (raise
+  // that threshold) vs the agent finishing without proving the goal (investigate
+  // the fixture/case). Those look identical in the verdict, and a reader who
+  // cannot tell them apart sends someone to fix a fixture that is not broken.
+  // The cause is already computed below for the forced-verdict prompt; it was
+  // only ever logged to steps.jsonl, so the verdict could not self-report it.
+  let terminatedBy = "goal_completed";
   const tapAnnotations = [];
   const assertionAnnotations = [];
   while (turns < opts.maxTurns && Date.now() < deadline) {
@@ -823,9 +831,27 @@ async function main() {
     // two 8-minute runs uploaded evidence but died verdict-less). The prompt
     // forbids upgrading unverified requirements to pass; exit 2 stays
     // reserved for real infrastructure (emulator dead, model unreachable).
-    const budgetCause = noProgressTriggered
-      ? `no-progress fuse (${opts.noProgressTurns} repeated actions)`
-      : turns >= opts.maxTurns ? `turn budget (${opts.maxTurns})` : `wall clock (${opts.maxMinutes}min)`;
+    // ONE decision, two renderings. @JingKe asked whether the steps.jsonl cause and
+    // the verdict's terminated_by are the same computation or a second one — a fair
+    // question, because a reader using the log as a stand-in for the field needs them
+    // to agree. They were two ternaries over the same conditions, which can drift.
+    // Now the human-readable cause is derived FROM terminatedBy, so the log and the
+    // verdict cannot disagree.
+    terminatedBy = noProgressTriggered
+      ? "no_progress"
+      : turns >= opts.maxTurns ? "max_turns" : "wall_clock";
+    // @LiBai's blocker: a lookup replaces the ternary's else-branch fallback, so an
+    // unmapped terminatedBy yields undefined -- which then interpolates into the
+    // MODEL PROMPT below as the literal string "undefined". Silent, never red, and a
+    // corrupted instruction to boot. Unreachable today (the assignment above emits
+    // exactly these three), but it is the same shape this PR exists to remove: an
+    // unenumerated value quietly becoming a plausible-looking one. Keep the fallback,
+    // and make it self-report rather than blend in.
+    const budgetCause = {
+      no_progress: `no-progress fuse (${opts.noProgressTurns} repeated actions)`,
+      max_turns: `turn budget (${opts.maxTurns})`,
+      wall_clock: `wall clock (${opts.maxMinutes}min)`,
+    }[terminatedBy] ?? `UNMAPPED termination reason "${terminatedBy}" — add it to this table and to the gate's terminated_by mapping`;
     logStep({ turn: turns, event: "forced_verdict", cause: budgetCause });
     try {
       pruneImages(messages);
@@ -896,6 +922,9 @@ async function main() {
     goal: redact(opts.goal), verdict, reason: redact(reason), turns,
     durationMs: Date.now() - started, model: "MiniMax-M3", screen: size,
     execution_diagnosis: executionDiagnosis,
+    // goal_completed here means the loop ended on its own terms, NOT that the goal
+    // passed — read `verdict` for that. It only rules out budget/fuse truncation.
+    terminated_by: terminatedBy,
     execution_budget: { max_turns: opts.maxTurns, max_minutes: opts.maxMinutes, no_progress_turns: opts.noProgressTurns },
     usage: { ...modelUsage, totalTokens: modelUsage.input + modelUsage.output },
     annotations: {
