@@ -27,6 +27,24 @@ test("iOS agent login fallback targets the QA account's current server", () => {
   assert.doesNotMatch(ios, /DEFAULT_GOAL:[\s\S]*?choose 'Raft Android'/);
 });
 
+test("the acceptance goal forbids the production server by name, not just by omission", () => {
+  // Removing the production server from the goal is necessary but not sufficient.
+  // The goal is a prompt: given only "choose 'OranixSlockTest'", a model that cannot
+  // find that entry will reach for the nearest-looking name, and 'Raft Android' is
+  // the production server (artin, 2026-08-31). The prohibition therefore has to be
+  // stated, and stated here — a positive instruction alone leaves the failure mode open.
+  //
+  // Asserted separately from the line above because the two can fail independently:
+  // that one dies if the production name is re-introduced as the target, this one dies
+  // if the prohibition is dropped. Without this assertion the clause could be deleted
+  // and every existing test would stay green.
+  const goal = ios.match(/DEFAULT_GOAL: >-\n([\s\S]*?)\n\njobs:/)?.[1] || "";
+  assert.notStrictEqual(goal, "", "DEFAULT_GOAL block not found — the assertions below would pass vacuously");
+  assert.match(goal, /do NOT choose it/, "goal must explicitly forbid the production server");
+  assert.match(goal, /'Raft Android'/, "the prohibition must name the server it forbids");
+  assert.match(goal, /never\s+substitute the closest-looking name/, "goal must forbid nearest-match substitution");
+});
+
 test("Android exposes the same frozen identity names for strict claim overrides", () => {
   for (const name of ["apk_run_id", "apk_artifact_id", "artifact_sha256", "artifact_source_commit", "artifact_version", "artifact_version_code", "artifact_package_id"]) {
     assert.match(android, new RegExp(`\\n      ${name}:`));
