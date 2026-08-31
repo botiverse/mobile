@@ -1577,6 +1577,16 @@ jobs:
       - name: Checkout aggregate verifier
         uses: actions/checkout@v5
 
+      # Runs in the SAME job as the gate on purpose. The verifier carries a selfTest behind
+      # `--self-test`, and nothing invoked it — so the expectation table could drift from
+      # test.yml and no CI job would go red. That is exactly how the kuikly-artifacts/iOS
+      # mismatch survived 18 days (#2294). Every other scripts/ci self-test in this repo is
+      # called by CI; this one was the sole omission (@LiBai). Putting it beside the gate,
+      # rather than in a paths-filtered lint workflow, means it cannot fall out of coverage
+      # when someone edits the verifier without touching whatever paths that lint watches.
+      - name: Self-test the tier verifier
+        run: node scripts/ci/verify_test_tier_results.mjs --self-test
+
       - name: Verify exact selected tier results
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
