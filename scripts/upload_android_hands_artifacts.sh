@@ -43,7 +43,12 @@ upload_asset() {
   complete=$(jq -er --arg k "$kind" '.assets[] | select(.kind==$k) | .complete_url' <<<"$created")
   header_args=(); while read -r k v; do header_args+=( -H "$k: $v" ); done < <(jq -r '.[] | @tsv' <<<"$headers")
   curl --fail-with-body --silent --show-error -X PUT "${header_args[@]}" --upload-file "$path" "$url" >/dev/null
-  curl --fail-with-body --silent --show-error "${auth[@]}" -X POST "${HANDS_API%/}${complete}" >/dev/null
+  case "$complete" in
+    http://*|https://*) complete_target="$complete" ;;
+    /*) complete_target="${HANDS_API%/}$complete" ;;
+    *) complete_target="${HANDS_API%/}/$complete" ;;
+  esac
+  curl --fail-with-body --silent --show-error "${auth[@]}" -X POST "$complete_target" >/dev/null
 }
 upload_asset aab "$AAB_PATH"
 upload_asset apk "$APK_PATH"
