@@ -2,8 +2,8 @@
 set -euo pipefail
 
 : "${HANDS_API:?HANDS_API is required}"
-: "${HANDS_ANDROID_APP_ID:?HANDS_ANDROID_APP_ID is required}"
 : "${HANDS_BEARER_TOKEN:?HANDS_BEARER_TOKEN is required}"
+: "${HANDS_APP_SLUG:=raft-android}"
 : "${SOURCE_REPOSITORY:?SOURCE_REPOSITORY is required}"
 : "${SOURCE_COMMIT_SHA:?SOURCE_COMMIT_SHA is required}"
 : "${CI_RUN_ID:?CI_RUN_ID is required}"
@@ -19,6 +19,10 @@ for f in "$AAB_PATH" "$APK_PATH"; do [[ -f "$f" ]] || { echo "missing artifact: 
 
 sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
 size() { stat -f %z "$1" 2>/dev/null || stat -c %s "$1"; }
+if [[ -z "${HANDS_ANDROID_APP_ID:-}" ]]; then
+  HANDS_ANDROID_APP_ID="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $HANDS_BEARER_TOKEN" "${HANDS_API%/}/api/apps" | jq -er --arg slug "$HANDS_APP_SLUG" '.apps[] | select(.slug==$slug) | .id' | head -n1)"
+fi
+[[ -n "$HANDS_ANDROID_APP_ID" ]] || { echo 'unable to resolve Hands app id' >&2; exit 2; }
 json=$(jq -n \
   --arg repo "$SOURCE_REPOSITORY" --arg commit "$SOURCE_COMMIT_SHA" --arg run "$CI_RUN_ID" \
   --arg pkg "$PACKAGE_NAME" --arg vn "$VERSION_NAME" --argjson vc "$VERSION_CODE" \

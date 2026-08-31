@@ -600,7 +600,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [ -n "${HANDS_ANDROID_APP_ID}" ] || { echo "HANDS_ANDROID_APP_ID secret is required" >&2; exit 1; }
           scripts/upload_android_hands_artifacts.sh | tee hands-artifacts-upload.log
           awk -F= '/^build_id=/{print "build_id=" $2}' hands-artifacts-upload.log >> "$GITHUB_OUTPUT"
 
