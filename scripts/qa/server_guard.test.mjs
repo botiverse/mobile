@@ -55,3 +55,16 @@ test("enforcement point: preamble() actually splices the guard after the goal", 
   // rule text can drift between two contexts.
   assert.equal(src.match(/serverGuardSection\(\)/g)?.length, 1);
 });
+
+test("survival: the text-prune loop can never reach the preamble message", () => {
+  // The guard lives in messages[0]; pruneImages trims long TEXT blocks only
+  // from i >= 1, which is the entire reason the ban survives a long run. If
+  // someone "unifies" that start to i >= 0, the ban gets trimmed to a stub in
+  // exactly the runs long enough to need it — while every other test here
+  // stays green (XiShi, #2287 review). Only the TEXT loop start is
+  // load-bearing: the image loop legitimately visits messages[0].
+  const src = fs.readFileSync(new URL("./acceptance_agent.mjs", import.meta.url), "utf8");
+  const textPrune = src.match(/The preamble \(first message\) is never trimmed\.[\s\S]{0,200}?for \(let i = messages\.length - 1; i >= (\d+); i--\)/);
+  assert.ok(textPrune, "text-prune loop (with its never-trimmed comment) must exist");
+  assert.equal(textPrune[1], "1", "text-prune loop must start at i >= 1 so messages[0] is untouchable");
+});
