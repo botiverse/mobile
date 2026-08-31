@@ -65,6 +65,24 @@ test("enforcement point: preamble() actually splices the guard after the goal", 
   assert.equal(src.match(/serverGuardSection\(\)/g)?.length, 1);
 });
 
+test("deterministic repro path only ever selects a QA server", () => {
+  // ios_deterministic_repro.mjs is the scripted no-model path: it reads no
+  // goal, so NONE of the goal/preamble layers can see it. Today it is safe
+  // because it hardcodes the QA server — but nothing pinned that literal,
+  // so rewriting it would turn every guard green while pointing the
+  // deterministic path at production (XiShi, fifth surface, 2026-08-31).
+  const src = fs.readFileSync(new URL("./ios_deterministic_repro.mjs", import.meta.url), "utf8");
+  assert.ok(!src.toLowerCase().includes(PRODUCTION_SERVER_NAME.toLowerCase()),
+    "the deterministic path must never reference the production server");
+  // Pin the SELECTION expression itself — the line that decides which row
+  // gets tapped — not just any mention of the name (a partial swap left
+  // other mentions matching a looser assertion during mutation testing).
+  // Changing the target to the other QA server is legitimate — via a
+  // conscious edit here.
+  assert.match(src, /\.find\(\(l\) => \/OranixSlockTest\/\.test\(l\)\)/,
+    "the picker row-selection expression must target the QA server literal");
+});
+
 test("survival: the text-prune loop can never reach the preamble message", () => {
   // The guard lives in messages[0]; pruneImages trims long TEXT blocks only
   // from i >= 1, which is the entire reason the ban survives a long run. If
