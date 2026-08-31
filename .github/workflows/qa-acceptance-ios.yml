@@ -440,7 +440,12 @@ jobs:
         run: |
           mkdir -p qa-evidence
           set +e
-          node scripts/qa/visible_servers_probe.mjs | tee qa-evidence/visible-servers-probe.txt
+          # 2>&1 so the reason code reaches the receipt: the probe writes `reason=` on
+          # STDERR, and `| tee` alone captures only stdout (@LiBai). Without this the grep
+          # below found nothing every time, `reason` fell back to unknown, and the
+          # credential/ratelimit/infra arms were UNREACHABLE — the reason codes existed in
+          # form while every failure reported as contract. PIPESTATUS[0] is still node's.
+          node scripts/qa/visible_servers_probe.mjs 2>&1 | tee qa-evidence/visible-servers-probe.txt
           rc=${PIPESTATUS[0]}
           set -e
           echo "rc=$rc" >> qa-evidence/visible-servers-probe.txt

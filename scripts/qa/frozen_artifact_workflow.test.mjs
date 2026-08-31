@@ -5,6 +5,7 @@ import fs from "node:fs";
 const ios = fs.readFileSync(new URL("../../.github/workflows/qa-acceptance-ios.yml", import.meta.url), "utf8");
 const android = fs.readFileSync(new URL("../../.github/workflows/qa-acceptance.yml", import.meta.url), "utf8");
 const infra = fs.readFileSync(new URL("../../.github/workflows/qa-infra-test.yml", import.meta.url), "utf8");
+const probeSource = fs.readFileSync(new URL("./visible_servers_probe.mjs", import.meta.url), "utf8");
 
 test("iOS frozen artifact inputs match Stamp dispatch and replacement is opt-in", () => {
   for (const name of ["app_run_id", "artifact_sha256", "artifact_source_commit", "artifact_version", "artifact_version_code", "artifact_package_id"]) {
@@ -189,5 +190,14 @@ test("the visible-servers preflight runs on both platforms, before anything driv
     // first", and an immediate retry is what produces 429 in the first place. Folding them
     // together loses the only part that changes what the on-call person does.
     assert.match(unjudged, /NOT immediately/, `${platform}: the rate-limit receipt must say not to rerun straight away`);
+
+    // Cross-file invariant: the stream the probe writes `reason=` on must be the stream this
+    // step captures. The probe uses console.error (stderr); `| tee` alone takes only stdout,
+    // so without 2>&1 the grep finds nothing, `reason` falls back to unknown, and the
+    // credential/ratelimit/infra arms become unreachable — reason codes present in form while
+    // every failure reports as contract (@LiBai). Each half is correct read alone, which is
+    // exactly why this needs asserting: nothing else goes red when they drift apart.
+    assert.match(step, /visible_servers_probe\.mjs 2>&1 \| tee/, `${platform}: stderr must be captured, or the reason code never reaches the receipt`);
+    assert.match(probeSource, /console\.error\(`reason=/, "the probe must emit reason= on the stream the step captures");
   }
 });
