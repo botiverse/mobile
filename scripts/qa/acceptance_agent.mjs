@@ -39,6 +39,7 @@ import { captureAndroidScreenshotWithPostProof } from "./android_capture_proof.m
 import { buildEvidenceOverlays, screenshotPixelTap } from "./evidence_annotations.mjs";
 import { capacityClientFromEnv, runWithModelRetries } from "./model_capacity.mjs";
 import { detectForeignAndroidSystemBlocker } from "./system_blocker.mjs";
+import { serverGuardSection } from "./server_guard.mjs";
 import { adbRunAsShellArgs } from "./mobile_login_bootstrap_lib.mjs";
 
 const argv = process.argv.slice(2);
@@ -289,6 +290,10 @@ function preamble(size) {
     "",
     `Screen: ${size.w}x${size.h} px. GOAL:`,
     opts.goal,
+    // Spliced directly after the goal so the ban is adjacent to whatever text
+    // it may need to override — every goal source passes through here, so no
+    // caller-supplied goal can route around it (task #171).
+    ...serverGuardSection(),
     "",
     "Respond with EXACTLY ONE action as strict JSON (no prose, no markdown):",
     '  {"action":"tap","x":<px>,"y":<px>}            tap a point',

@@ -3,7 +3,7 @@ title: "Server switch changes the active workspace and survives relaunch"
 app: mobile
 tier: L1
 version: "1.0"
-description: "One logical acceptance contract for Android and iOS: switch between two authenticated servers and prove selected identity, content authority, and persistence change together."
+description: "One logical acceptance contract for Android and iOS: switch between the two QA servers — A = OranixSlockTest, B = qa-server-b-slock — and prove selected identity, content authority, and persistence change together."
 tags: [release, navigation, multi-server, regression]
 platforms: [android, ios]
 timeout_seconds: 300
@@ -27,10 +27,10 @@ environment:
 fixture:
   readiness:
     - id: two-server-membership
-      goal: "The QA principal is authenticated and is a member of two distinct servers A and B."
+      goal: "The QA principal is authenticated and is a member of both QA servers: A = OranixSlockTest and B = qa-server-b-slock."
     - id: distinguishable-content
-      goal: "Servers A and B expose visibly distinct names and channel directories."
-  notes: "Do not run with a single-server account. Record non-secret A/B identities before switching. Automated coordinates are Android emulator and iOS simulator; release packages replay the same contract on physical devices."
+      goal: "OranixSlockTest (A) and qa-server-b-slock (B) expose visibly distinct names and channel directories."
+  notes: "Do not run with a single-server account. A and B are the server display names: A = OranixSlockTest, B = qa-server-b-slock; never substitute another server. Record non-secret A/B identities before switching. Automated coordinates are Android emulator and iOS simulator; release packages replay the same contract on physical devices."
 
 preconditions:
   - type: app_installed
@@ -45,17 +45,17 @@ cleanup:
 
 steps:
   - id: record-server-a
-    goal: "Open Home and record current server A identity, header, and visible directory."
+    goal: "Open Home and record current server A (OranixSlockTest) identity, header, and visible directory."
     action_category: verify
     capture: [screenshot, logs]
 
   - id: open-server-switcher-a
-    goal: "Open the server switcher and verify distinct A and B rows are selectable."
+    goal: "Open the server switcher and verify the OranixSlockTest (A) and qa-server-b-slock (B) rows are both selectable."
     action_category: interact
     capture: [screenshot]
 
   - id: select-server-b
-    goal: "Tap server B exactly once."
+    goal: "Tap the server row labeled qa-server-b-slock (B) exactly once."
     action_category: interact
     capture: [screenshot, logs]
 
@@ -71,14 +71,14 @@ steps:
     capture: [screenshot, logs]
 
   - id: switch-back-to-a
-    goal: "Select A and prove identity/content return to A without stale B projection."
+    goal: "Select the server row labeled OranixSlockTest (A) and prove identity/content return to A without stale B projection."
     action_category: verify
     params: { timeout_ms: 15000 }
     capture: [screenshot, logs]
 
 assertions:
   - id: two-servers-selectable
-    goal: "Distinct A and B server rows are selectable."
+    goal: "The OranixSlockTest (A) and qa-server-b-slock (B) server rows are both selectable."
     type: visual_check
     after_step: open-server-switcher-a
     severity: critical
