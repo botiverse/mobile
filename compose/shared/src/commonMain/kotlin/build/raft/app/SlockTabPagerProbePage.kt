@@ -145,6 +145,14 @@ private fun SlockTabPagerProbeScreen() {
                             // tap inside the platform edge inset reaches the
                             // content (the guard must only claim horizontal
                             // drags). The event log line is the evidence.
+                            // ORDER IS PART OF THE ACCEPTANCE CONTRACT:
+                            // clickable BEFORE padding makes the hit band the
+                            // full row (text + 16dp padding, bands tile with
+                            // no dead gap) — task #246 tap-attribution math
+                            // maps y-coordinates to rows assuming exactly
+                            // this. Swapping to .padding().clickable() would
+                            // shrink the band and silently change the
+                            // acceptance criteria.
                             .clickable { logEvent("rowTap ${TabPagerProbeLabels[page]} $row") }
                             .padding(16.dp)
                     )

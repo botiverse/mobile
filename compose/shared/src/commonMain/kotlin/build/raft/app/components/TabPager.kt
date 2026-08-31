@@ -8,17 +8,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.pager.HorizontalPager
 import com.tencent.kuikly.compose.foundation.pager.rememberPagerState
-import com.tencent.kuikly.compose.foundation.layout.BoxScope
-import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
-import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.input.pointer.PointerEventPass
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -52,8 +50,8 @@ data class TabPagerGesturePolicy(
  *
  * The pager's own gesture engine does the follow-finger tracking, threshold and
  * snap physics; [TabPagerGesturePolicy] only carves out edge regions where a
- * transparent guard claims horizontal drags (taps and vertical scrolls fall
- * through) so platform edge gestures win. Each page
+ * parent-modifier guard claims horizontal drags (taps and vertical scrolls
+ * pass to the content untouched) so platform edge gestures win. Each page
  * keeps its own composition alive across swipes, so page-local state
  * (scroll position, focus) is retained by normal remember/state hoisting.
  */
@@ -172,9 +170,65 @@ fun TabPager(
         onDebugEvent?.invoke("settled=$settledPage sel=$selectedIndex")
     }
 
+    // Round-8 (task #246 G6, run 33376167427): the edge guard is a PARENT
+    // modifier, not an overlay sibling. Round-7's transparent overlay strip
+    // blocked tap delivery to the rows beneath it on this port EVEN WHEN IT
+    // CONSUMED NOTHING — a stationary in-band tap produced no row click while
+    // the same window's out-of-band probe proved the input path alive. The
+    // port routes a gesture to the topmost hit sibling regardless of
+    // consumption, so pass-through cannot be had from an overlay. A parent
+    // modifier sits in the child's own hit path (the AppShell drawer's
+    // admission logic is the in-repo, port-proven precedent), so undecided
+    // gestures reach the rows untouched; claimed horizontal drags are
+    // consumed in the Initial pass, which descendants (the pager) observe.
+    val density = LocalDensity.current
+    val guardWidthPx = remember { mutableStateOf(0) }
     Column(modifier = modifier) {
         tabBar()
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { guardWidthPx.value = it.size.width }
+                .pointerInput(gesturePolicy) {
+                    if (!gesturePolicy.swipeEnabled) return@pointerInput
+                    val startPx = gesturePolicy.startEdgeInset.value * density.density
+                    val endPx = gesturePolicy.endEdgeInset.value * density.density
+                    if (startPx <= 0f && endPx <= 0f) return@pointerInput
+                    awaitEachGesture {
+                        var origin: Offset? = null
+                        var watching = true
+                        var claimed = false
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull()
+                            if (change != null) {
+                                if (origin == null && change.pressed && !change.previousPressed) {
+                                    val width = guardWidthPx.value
+                                    val inStart = startPx > 0f && change.position.x < startPx
+                                    val inEnd = endPx > 0f && width > 0 &&
+                                        change.position.x > width - endPx
+                                    if (inStart || inEnd) origin = change.position else watching = false
+                                }
+                                val o = origin
+                                if (watching && !claimed && o != null) {
+                                    when (
+                                        edgeGuardGestureDecision(
+                                            horizontalDragDp = (change.position.x - o.x) / density.density,
+                                            verticalDragDp = (change.position.y - o.y) / density.density,
+                                        )
+                                    ) {
+                                        EdgeGuardGestureDecision.Claim -> claimed = true
+                                        EdgeGuardGestureDecision.Release -> watching = false
+                                        EdgeGuardGestureDecision.Undecided -> Unit
+                                    }
+                                }
+                                if (claimed) event.changes.forEach { it.consume() }
+                            }
+                            if (event.changes.none { it.pressed }) return@awaitEachGesture
+                        }
+                    }
+                }
+        ) {
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
@@ -186,18 +240,6 @@ fun TabPager(
                 // swiped-to page permanently rendered as inactive.
                 pageContent(page, page == pagerState.currentPage)
             }
-            // Edge guards: claim horizontal drags born inside the injected
-            // insets so the pager never sees them and the platform edge
-            // gesture wins. Stationary taps and vertical scrolls fall through
-            // to the page content underneath.
-            EdgeGuard(
-                inset = gesturePolicy.startEdgeInset,
-                alignment = Alignment.CenterStart,
-            )
-            EdgeGuard(
-                inset = gesturePolicy.endEdgeInset,
-                alignment = Alignment.CenterEnd,
-            )
         }
     }
 }
@@ -206,10 +248,8 @@ fun TabPager(
  * How far (in dp) a pointer born inside an edge inset must travel before the
  * guard claims the gesture as a horizontal drag. Below this, nothing is
  * consumed, so a stationary tap (or tap with natural jitter) reaches the row
- * underneath (#2224 review blocker 2: the previous guard consumed from
- * `awaitFirstDown`, making the leftmost 24dp of every row dead to taps on
- * iOS). Deliberately smaller than a typical pager claim slop (~8dp) so the
- * guard decides first; the pager never moving on edge-born drags is
+ * underneath. Deliberately smaller than a typical pager claim slop (~8dp) so
+ * the guard decides first; the pager never moving on edge-born drags is
  * runtime-verified by the G-edge acceptance case, not assumed.
  */
 private const val EdgeGuardClaimSlopDp = 6f
@@ -226,9 +266,9 @@ internal enum class EdgeGuardGestureDecision {
 }
 
 /**
- * Pure claim policy for [EdgeGuard], extracted so the tap/scroll/drag
+ * Pure claim policy for the edge guard, extracted so the tap/scroll/drag
  * classification is unit-testable ([TabPagerEdgeGuardDecisionTest]) — the
- * consumption loop around it is port behaviour only runtime acceptance can
+ * interception around it is port behaviour only runtime acceptance can
  * verify. Ties go to Claim: the guard exists exactly for horizontal edge
  * gestures.
  */
@@ -244,53 +284,6 @@ internal fun edgeGuardGestureDecision(
         dy >= claimSlopDp && dy > dx -> EdgeGuardGestureDecision.Release
         else -> EdgeGuardGestureDecision.Undecided
     }
-}
-
-@Composable
-private fun BoxScope.EdgeGuard(inset: Dp, alignment: Alignment) {
-    if (inset <= 0.dp) return
-    val density = LocalDensity.current
-    // Direct strip in the parent stacking Box — no full-size wrapper layer
-    // that could shadow hit testing over the whole pager (task #233 hygiene).
-    Box(
-        modifier = Modifier
-            .align(alignment)
-            .width(inset)
-            .fillMaxHeight()
-            // Round-5 evidence (group 3): an EMPTY pointerInput does NOT keep
-            // the pager from receiving edge-born drags on this port — active
-            // consumption is what blocks it. But consumption must start only
-            // once the pointer proves it is a horizontal drag: consuming from
-            // the first down swallowed stationary taps and vertical list
-            // scrolls in the strip too (#2224 review blocker 2). Until the
-            // claim, events flow unconsumed to the content below — the pager
-            // needs more travel than our slop before it would claim, and the
-            // platform edge gesture lives above this whole view anyway.
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val origin = awaitFirstDown().position
-                    var claimed = false
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull()
-                        if (!claimed && change != null) {
-                            when (
-                                edgeGuardGestureDecision(
-                                    horizontalDragDp = (change.position.x - origin.x) / density.density,
-                                    verticalDragDp = (change.position.y - origin.y) / density.density,
-                                )
-                            ) {
-                                EdgeGuardGestureDecision.Claim -> claimed = true
-                                EdgeGuardGestureDecision.Release -> return@awaitEachGesture
-                                EdgeGuardGestureDecision.Undecided -> Unit
-                            }
-                        }
-                        if (claimed) event.changes.forEach { it.consume() }
-                        if (event.changes.none { it.pressed }) return@awaitEachGesture
-                    }
-                }
-            },
-    )
 }
 
 /** Stable per-page identity helper for callers keying retained page state. */

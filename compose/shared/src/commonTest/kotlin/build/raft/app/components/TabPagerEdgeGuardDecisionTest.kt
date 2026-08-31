@@ -60,6 +60,24 @@ class TabPagerEdgeGuardDecisionTest {
     }
 
     @Test
+    fun `claim slop boundary pins the constant to exactly six dp`() {
+        // These two assertions pin EdgeGuardClaimSlopDp to the single value
+        // 6.0 (verified by mutation: 4/5/5.999 and 6.5/7 all go red). The
+        // literals are DELIBERATELY hardcoded: rewriting them in terms of the
+        // constant ("clean up the magic number") turns both into tautologies
+        // that stay green for ANY slop value — they would then test the
+        // function's shape at its own threshold, not the threshold's value.
+        assertEquals(
+            EdgeGuardGestureDecision.Undecided,
+            edgeGuardGestureDecision(horizontalDragDp = 5.999f, verticalDragDp = 0f),
+        )
+        assertEquals(
+            EdgeGuardGestureDecision.Claim,
+            edgeGuardGestureDecision(horizontalDragDp = 6.0f, verticalDragDp = 0f),
+        )
+    }
+
+    @Test
     fun `diagonal tie goes to the horizontal claim`() {
         // The guard exists exactly for horizontal edge gestures, so an
         // ambiguous 45-degree drag is claimed rather than leaked to the pager.
