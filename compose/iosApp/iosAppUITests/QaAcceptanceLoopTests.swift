@@ -29,6 +29,20 @@ final class QaAcceptanceLoopTests: XCTestCase {
         let direction: String?
         let seconds: Double?
         let count: Int?
+        // task #232/#233: press-and-drag needs an END point and a hold duration.
+        // Whole-screen swipeLeft/Right cannot express "start at the screen edge"
+        // (edge-back) or "drag a short distance and expect nothing to happen" —
+        // substituting one for the other tests a different gesture than the case
+        // specifies, which is worst when the criterion is an absence.
+        let x2: Double?
+        let y2: Double?
+        let durationSeconds: Double?
+        // Speed of the drag segment, in points per second. Without this the
+        // segment always runs at XCUITest's default (fast) speed and a case that
+        // specifies a SLOW drag silently becomes a flick.
+        let velocityPointsPerSecond: Double?
+        let holdSeconds: Double?
+        let releaseHoldSeconds: Double?
     }
 
     override func setUpWithError() throws {
@@ -52,6 +66,17 @@ final class QaAcceptanceLoopTests: XCTestCase {
         let idleTimeout = Double(env["QA_LOOP_IDLE_TIMEOUT"] ?? "300") ?? 300
 
         var app = XCUIApplication(bundleIdentifier: bundleIdentifier)
+        // task #232/#233: let a scripted case drive a fixture page DIRECTLY, with no
+        // login. iosApp/ContentView.swift renders whatever SLOCK_VISUAL_FIXTURE_PAGE
+        // names, but that variable has to reach the APP — the runner's own
+        // environment is a different process, so SIMCTL_CHILD_* never arrives here.
+        // Absent the variable this is a no-op and the normal login path is unchanged.
+        if let fixturePage = env["QA_LOOP_FIXTURE_PAGE"], !fixturePage.isEmpty {
+            app.launchEnvironment["SLOCK_VISUAL_FIXTURE_PAGE"] = fixturePage
+            if let fixtureData = env["QA_LOOP_FIXTURE_PAGE_DATA"], !fixtureData.isEmpty {
+                app.launchEnvironment["SLOCK_VISUAL_FIXTURE_PAGE_DATA"] = fixtureData
+            }
+        }
         app.launch()
         writeReady(ioDir)
 
@@ -117,6 +142,35 @@ final class QaAcceptanceLoopTests: XCTestCase {
         case "long_press":
             let c = try normalized(action, in: app)
             c.press(forDuration: 0.8)
+        case "drag":
+            // Normalized start -> normalized end, with an explicit hold duration.
+            // A longer duration is a slower drag, which is what distinguishes an
+            // interactive-pop edge gesture and a short rebound from a flick.
+            guard let x = action.x, let y = action.y, x >= 0, x <= 1, y >= 0, y <= 1 else {
+                throw HarnessError.bad("drag requires normalized x/y in 0..1")
+            }
+            guard let x2 = action.x2, let y2 = action.y2, x2 >= 0, x2 <= 1, y2 >= 0, y2 <= 1 else {
+                throw HarnessError.bad("drag requires normalized x2/y2 in 0..1")
+            }
+            let from = app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
+            let to = app.coordinate(withNormalizedOffset: CGVector(dx: x2, dy: y2))
+            let hold = min(max(action.holdSeconds ?? 0.05, 0.0), 10.0)
+            // ⚠️ press(forDuration:thenDragTo:) holds, then drags at XCUITest's
+            // DEFAULT speed. Run 33161205106 group 4 asked for a slow 10%-width
+            // drag and got "long-press 1s, then flick" — and a flick turning the
+            // page is correct pager physics, so the harness manufactured a
+            // product FAIL. @CC-Cata caught it. Speed is the parameter that case
+            // turns on, so it has to be expressed, not implied by a hold.
+            if let velocity = action.velocityPointsPerSecond, velocity > 0 {
+                from.press(forDuration: hold,
+                           thenDragTo: to,
+                           withVelocity: XCUIGestureVelocity(rawValue: velocity),
+                           thenHoldForDuration: min(max(action.releaseHoldSeconds ?? 0.1, 0.0), 5.0))
+                return ["from": [x, y], "to": [x2, y2],
+                        "holdSeconds": hold, "velocityPointsPerSecond": velocity]
+            }
+            from.press(forDuration: hold, thenDragTo: to)
+            return ["from": [x, y], "to": [x2, y2], "holdSeconds": hold, "velocity": "default"]
         case "swipe":
             switch action.direction {
             case "up": app.swipeUp()

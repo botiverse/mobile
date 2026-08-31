@@ -96,6 +96,31 @@ export function createIosDriver({ ioDir, udid = "booted", bundle = "build.raft.a
     async swipe(direction) {
       await send({ type: "swipe", direction });
     },
+    // task #232/#233: normalized press-and-drag. swipe() is a whole-screen flick
+    // and cannot express a start point, so it can neither reach the screen edge
+    // (interactive-pop) nor make a deliberately short movement. Fractions are
+    // 0..1 of the screen; durationSeconds is the press hold, so a larger value is
+    // a slower drag.
+    // ⚠️ durationSeconds is the DRAG duration, not a press hold. It is converted
+    // to a velocity here because XCUITest expresses drag speed as points/second:
+    // press(forDuration:thenDragTo:) alone holds and then flicks at the default
+    // speed, which silently turns "slow short drag" into "flick" (run
+    // 33161205106 group 4). Pass holdSeconds separately if a press is wanted.
+    async drag({ from, to, durationSeconds = 0.3, holdSeconds = 0.05 }) {
+      const { w, h } = screenSizePx();
+      const dxPt = (to.x - from.x) * w / pointScale;
+      const dyPt = (to.y - from.y) * h / pointScale;
+      const distancePt = Math.sqrt(dxPt * dxPt + dyPt * dyPt);
+      const velocity = Math.max(1, Math.round(distancePt / Math.max(durationSeconds, 0.01)));
+      await send({
+        type: "drag",
+        x: from.x, y: from.y,
+        x2: to.x, y2: to.y,
+        holdSeconds,
+        velocityPointsPerSecond: velocity,
+      });
+      return { distancePt: Math.round(distancePt), velocityPointsPerSecond: velocity };
+    },
     async text(value) {
       await send({ type: "text", text: value });
     },

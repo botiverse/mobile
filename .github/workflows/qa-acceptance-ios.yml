@@ -39,9 +39,17 @@ on:
       # drive (ios_deterministic_repro.mjs) for precise crash-repro where agent
       # navigation keeps getting lost.
       mode:
-        description: "Execution mode: agent (M3) or deterministic (scripted, no model)"
+        description: "Execution mode: agent (M3) | deterministic (#1096) | tabpager-probe (#232/#233)"
         required: false
         default: "agent"
+      fixture_page:
+        description: "Launch this @Page route directly instead of logging in (e.g. compose_tab_pager_probe)"
+        required: false
+        default: ""
+      probe_groups:
+        description: "Which gesture groups to run for tabpager-probe (e.g. 1,2)"
+        required: false
+        default: "1,2"
       app_run_id:
         description: "Download ios-simulator-app-<run> and replace the app product after building the UITest runner"
         required: false
@@ -484,9 +492,17 @@ jobs:
           mkdir -p "$RUNNER_TEMP/qa-loop"
           echo "QA_LOOP_IO_DIR=$RUNNER_TEMP/qa-loop" >> "$GITHUB_ENV"
           # TEST_RUNNER_* env vars are forwarded into the XCUITest runner.
+          # ⚠️ The env has to be set HERE, on the xcodebuild that starts the runner.
+          # Run 33155331720 failed because I set QA_LOOP_FIXTURE_PAGE on the probe
+          # step instead — that step runs AFTER this background harness has already
+          # launched the app, so the variable arrived too late and the app came up on
+          # the normal login screen. Same process-boundary mistake I had just fixed
+          # one layer down (SIMCTL_CHILD_* not reaching the app), made again on the
+          # step boundary. TEST_RUNNER_* is the only channel into the XCUITest runner.
           TEST_RUNNER_QA_LOOP_IO_DIR="$RUNNER_TEMP/qa-loop" \
           TEST_RUNNER_QA_LOOP_BUNDLE="$BUNDLE_ID" \
           TEST_RUNNER_QA_LOOP_IDLE_TIMEOUT="300" \
+          TEST_RUNNER_QA_LOOP_FIXTURE_PAGE="${{ inputs.fixture_page }}" \
             xcodebuild \
               -workspace iosApp.xcworkspace \
               -scheme iosAppUITests \
@@ -499,7 +515,7 @@ jobs:
           echo "loop harness started (pid $!)"
 
       - name: Run acceptance agent
-        if: ${{ inputs.mode != 'deterministic' }}
+        if: ${{ inputs.mode == 'agent' || inputs.mode == '' }}
         env:
           PI_API_KEY: ${{ secrets.PI_API_KEY }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
@@ -533,6 +549,36 @@ jobs:
       - name: Test deterministic navigation matcher
         if: ${{ inputs.mode == 'deterministic' }}
         run: node --test scripts/qa/ios_navigation_matcher.test.mjs
+
+      # task #232/#233 — TabPager probe. Launches the @Page route DIRECTLY via
+      # QA_LOOP_FIXTURE_PAGE (QaAcceptanceLoopTests forwards it into the app's
+      # launchEnvironment), so it never touches login and is unaffected by the
+      # auth-restore blocker in task #1101.
+      - name: Run TabPager probe (task #232/#233)
+        if: ${{ inputs.mode == 'tabpager-probe' }}
+        run: |
+          mkdir -p qa-evidence
+          cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
+          date -u +"%Y-%m-%d %H:%M:%S" > qa-evidence/run-start.txt
+          node --check scripts/qa/ios_tabpager_probe.mjs
+          # Record the whole sequence. @Jony asked for simctl recordVideo; it runs in
+          # the background and is stopped with SIGINT so the .mp4 is finalised —
+          # SIGKILL leaves an unplayable file.
+          xcrun simctl io "$UDID" recordVideo --codec h264 --force qa-evidence/tabpager-probe.mp4 &
+          REC_PID=$!
+          echo "recording pid=$REC_PID"
+          set +e
+          node scripts/qa/ios_tabpager_probe.mjs \
+            --ios-io-dir "$QA_LOOP_IO_DIR" --ios-udid "$UDID" --package "$BUNDLE_ID" \
+            --out qa-evidence --groups "${{ inputs.probe_groups }}"
+          rc=$?
+          set -e
+          sleep 2
+          kill -INT "$REC_PID" 2>/dev/null || true
+          wait "$REC_PID" 2>/dev/null || true
+          ls -la qa-evidence/tabpager-probe.mp4 2>/dev/null || echo "::warning::no video file produced"
+          echo "$rc" > qa-evidence/agent-rc.txt
+          echo "tabpager probe exit code $rc"
 
       - name: Run deterministic repro
         if: ${{ inputs.mode == 'deterministic' }}
