@@ -11,7 +11,9 @@ import build.raft.app.data.authSessionFixture
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -363,9 +365,78 @@ class SharedThreadInitialAccessTest {
         scope.cancel()
     }
 
+
+    /**
+     * task #243, found by @LiBai in review of the first fix: the lookup body contains two
+     * deliberate `throw cancellation` statements. Under `withTimeoutOrNull` they escaped the
+     * enclosing `scope.launch`, so the whole projection was abandoned. Racing the body inside a
+     * child coroutine swallowed them - a cancelled child does not fail its parent, so nothing
+     * completed the outcome and the resolution sat waiting for the deadline, then ran the entire
+     * projection with `candidate = null`. That turned "give up" into "wait, then take the timeout
+     * branch", which is a path the original code never wrote a byte on.
+     *
+     * The barrier here is never released, so the only way to leave the lookup is the cancellation
+     * escaping. If it is swallowed again, the resolution job stays alive and this fails.
+     */
+    @Test
+    fun cancellationInsideTheLookupAbortsInsteadOfFallingIntoTheTimeoutBranch() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val route = replyThreadInitialAccessPayload()
+        val home = replyThreadAccessHomeSnapshot()
+        val neverReleasedDeadline = CompletableDeferred<Unit>()
+        val channelRepository =
+            FakeChannelRepository(
+                channelsResult = { _ -> throw CancellationException("lookup cancelled below the store") },
+                homeResult = { _ -> DataResult.Content(home) },
+            )
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = ReplyThreadAccessNetworkApi,
+                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        conversationRepository =
+                            ReplyThreadAccessConversationRepositoryRecorder(
+                                replyResult = DataResult.Content(replyThreadAccessSnapshot())
+                            ),
+                        channelRepository = channelRepository,
+                    ),
+                scope = scope,
+                diagnosticsLogger = {},
+                initialAccessLookupDeadline = { neverReleasedDeadline.await() },
+            )
+
+        store.accept(SharedThreadIntent.Start(route))
+
+        // Unconfined runs the launch inline, so by the time accept() returns the job has either
+        // aborted (correct) or parked on the deadline (the regression).
+        val liveChildren = scope.coroutineContext[Job]!!.children.count { child -> child.isActive }
+        assertEquals(
+            0,
+            liveChildren,
+            "cancellation inside the lookup must abort the resolution, not park it on the deadline"
+        )
+        // and the projection must not have run: no timeout-branch state was written.
+        assertFalse(store.state.value.initialHomeAccessLookupComplete)
+        scope.cancel()
+    }
+
     @Test
     fun parentAccessLookupTimeoutMarksAuthorityUnknownAndHintRecoversComposer() = runBlocking {
+        // task #243: this case waits for a state that ONLY the lookup-timeout path can produce,
+        // and that timeout used to be a real second of wall clock
+        // (ThreadInitialAccessLookupTimeoutMillis). On a loaded CI runner the wait could outlive
+        // the 60s watchdog, which killed the JVM (exit 73) - intermittent by construction, and
+        // green locally every time, which is why it survived.
+        //
+        // Virtual time is not available here: commonTest compiles for OHOS arm64 and there is no
+        // kotlinx-coroutines-test KLIB for it. So the deadline is injected as an explicit barrier
+        // the test completes itself - the same shape SharedReplyThreadAccessIntegrationTest uses.
+        // The timeout branch is now reached because this test released it, not because a second
+        // elapsed. Shortening the duration was rejected: that shrinks the window instead of
+        // removing the nondeterminism, which is the silent-retry family the card's SCOPE excludes.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val lookupDeadline = CompletableDeferred<Unit>()
         val route = replyThreadInitialAccessPayload()
         val home = replyThreadAccessHomeSnapshot()
         val neverCompleteChannels = CompletableDeferred<DataResult<ChannelSnapshot>>()
@@ -389,9 +460,13 @@ class SharedThreadInitialAccessTest {
                     ),
                 scope = scope,
                 diagnosticsLogger = { diagnostics.add(it) },
+                initialAccessLookupDeadline = { lookupDeadline.await() },
             )
 
         store.accept(SharedThreadIntent.Start(route))
+        // The lookup is in flight and cannot finish on its own (channelsResult never completes);
+        // releasing the barrier is what drives it into the timeout branch.
+        lookupDeadline.complete(Unit)
         store.state.filter { state ->
             state.initialHomeAccessLookupComplete &&
                 state.accessResolution == ThreadAccessResolution.Resolved &&
