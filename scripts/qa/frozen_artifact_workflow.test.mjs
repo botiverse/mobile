@@ -45,6 +45,23 @@ test("the acceptance goal forbids the production server by name, not just by omi
   assert.match(goal, /never\s+substitute the closest-looking name/, "goal must forbid nearest-match substitution");
 });
 
+test("the Android acceptance goal names its target server and forbids production", () => {
+  // The iOS goal was hardened (PR #2277 removed the production target, PR #2282 added
+  // the prohibition). The Android goal had NEITHER: no target server, no prohibition,
+  // and no assertion — looser than iOS ever was, because without a named target there
+  // is not even a "closest-looking name" to reason about. Same instruction from artin
+  // (2026-08-31), same exposure, so the same three properties are pinned here.
+  //
+  // Asserted against `android`, not `ios`: the existing goal assertions only ever
+  // looked at the iOS workflow, which is why this gap survived the iOS hardening.
+  const goal = android.match(/DEFAULT_GOAL: >-\n([\s\S]*?)\n\njobs:/)?.[1] || "";
+  assert.notStrictEqual(goal, "", "Android DEFAULT_GOAL block not found — the checks below would pass vacuously");
+  assert.match(goal, /choose\s+'OranixSlockTest'/, "goal must name the server to select");
+  assert.match(goal, /do NOT choose it/, "goal must explicitly forbid the production server");
+  assert.match(goal, /'Raft Android'/, "the prohibition must name the server it forbids");
+  assert.match(goal, /never\s+substitute the closest-looking name/, "goal must forbid nearest-match substitution");
+});
+
 test("Android exposes the same frozen identity names for strict claim overrides", () => {
   for (const name of ["apk_run_id", "apk_artifact_id", "artifact_sha256", "artifact_source_commit", "artifact_version", "artifact_version_code", "artifact_package_id"]) {
     assert.match(android, new RegExp(`\\n      ${name}:`));
