@@ -26795,6 +26795,7 @@ private fun ThreadStateActionMessage(
 // "unassigned" sentinel always first and never filtered, humans before agents,
 // search matches the visible display name.
 @Composable
+@OptIn(com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun ThreadTaskDetailDialog(
     task: TaskSummary,
     assigneeOptions: List<MemberProfile>,
@@ -26815,6 +26816,39 @@ private fun ThreadTaskDetailDialog(
         onDismiss = onDismiss,
         contentSpacing = SlockSpacing.Sm
     ) {
+        // Task #258 (artin msg=bc69cc50): web-aligned detail hierarchy —
+        // title → current status as a horizontal wrap of chips → body content.
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            TaskStatus.entries.forEach { status ->
+                val selected = status == task.status
+                Row(
+                    modifier = Modifier
+                        .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                        .border(
+                            width = SlockStroke.Thin,
+                            color = SlockColor.BorderBlack
+                        )
+                        .clickable(enabled = !selected) { onStatusSelect(status.name) }
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (selected) {
+                        SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(11.dp), color = "#FF000000")
+                    }
+                    Text(
+                        text = status.localizedLabel(),
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
+                            .withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
         task.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
             Text(
                 text = description,
@@ -26822,21 +26856,6 @@ private fun ThreadTaskDetailDialog(
                 color = SlockColor.TextBlack.copy(alpha = 0.65f),
                 maxLines = 6,
                 overflow = TextOverflow.Ellipsis
-            )
-        }
-        Text(
-            text = "$statusLabel: ${task.status.localizedLabel()}",
-            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-            color = SlockColor.TextBlack.copy(alpha = 0.65f)
-        )
-        TaskStatus.entries.forEach { status ->
-            val selected = status == task.status
-            SlockModalFullWidthActionButton(
-                label = status.localizedLabel(),
-                icon = if (selected) SlockLucideIconName.Check else SlockLucideIconName.Circle,
-                color = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
-                enabled = !selected,
-                onClick = { onStatusSelect(status.name) }
             )
         }
         Box(
