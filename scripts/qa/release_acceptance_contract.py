@@ -42,12 +42,16 @@ QA_SERVER_B_NAME = "qa-server-b-slock"
 ALLOWED_QA_SERVER_NAMES = (QA_SERVER_NAME, QA_SERVER_B_NAME)
 # Structural rule (XiShi, #2287 review): a goal that drives server SELECTION
 # in a case that never names an allowed server is exactly the shape the
-# runtime guard answers with verdict error — catch it at contract time, for
-# future cases, not just the two pinned above. Matches selection verbs near
-# "server" within one clause; verified against the pre-fix 26-server-switch
-# ("Tap server B exactly once") as the known positive.
+# runtime guard answers with verdict error — catch it at contract time.
+# SCOPE, stated honestly (LiBai, #2287 review): this catches known selection
+# phrasings and near-kin ONLY — a selection verb followed by "server" within
+# one clause. Verb-first order is required, so "On the server picker, tap the
+# second row" and similar inversions escape; the runtime guard remains the
+# fail-closed layer for those. Known positive: the pre-fix 26-server-switch
+# goal "Tap server B exactly once".
 SELECTION_GOAL_RE = re.compile(
-    r"\b(tap|select|choose|switch(?:es|ing)?\s+to)\b[^.\n]{0,60}\bserver\b",
+    r"\b(tap|select|choose|pick|join|open|log\s+in(?:to)?|switch(?:es|ing)?\s+to)\b"
+    r"[^.\n]{0,60}\bserver\b",
     re.IGNORECASE,
 )
 

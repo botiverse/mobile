@@ -15,8 +15,15 @@
 export const PRODUCTION_SERVER_NAME = "Raft Android";
 
 // Three clauses, deliberately separable so each carries its own test tooth:
-// ① ban the production server by name, ② require an exact goal-named target
+// ① ban the production server by name, ② require the goal-named target
 // or fail with error (never guess), ③ forbid near-match substitution.
+//
+// LOAD-BEARING NOTE: clause 2 matches by SUBSTRING of the compound row label
+// ('<name>, /<slug>'), so a free-text goal naming e.g. 'slock' substring-hits
+// every server INCLUDING production (slug /slock-android). Clause 1's
+// absolute ban is what stops that — it is a load-bearing guard, not
+// defense-in-depth. Do not remove it as "redundant with clause 2"
+// (PR #2287 review, LiBai).
 export function serverGuardSection() {
   return [
     "",
