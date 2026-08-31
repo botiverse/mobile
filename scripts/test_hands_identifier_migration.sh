@@ -37,7 +37,7 @@ if [[ "${unexpected}" == "1" ]]; then
   exit 1
 fi
 
-[[ "$(grep -Fc "secrets.${old_upper}_BEARER_TOKEN" .github/workflows/android-release.yml)" == "2" ]] || {
+[[ "$(grep -Fc "secrets.${old_upper}_BEARER_TOKEN" .github/workflows/android-release.yml)" == "3" ]] || {
   echo "FAIL: Android external secret allowlist drifted" >&2
   exit 1
 }
