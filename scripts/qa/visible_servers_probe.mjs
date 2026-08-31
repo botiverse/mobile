@@ -48,12 +48,34 @@ export function judgeVisibleServers(servers, identity) {
   }
   const names = servers.map((s) => (s && typeof s.name === "string" ? s.name : "")).filter(Boolean);
 
-  // BOTH halves are required, and the second is the one that is easy to omit.
-  // With only the production check, a request that returned nothing — expired token, wrong
-  // base URL, an outage, a shape change — yields an empty list, finds no production server,
-  // and reports success. "I could not read the list" would be indistinguishable from
-  // "production is not visible". The non-empty + known-member check is what makes the
-  // absence result mean anything at all.
+  // Production first, and the order is load-bearing (@LiBai, reviewing this file). It is an
+  // UNCONDITIONAL violation: it does not matter whether the rest of the list is the one we
+  // expected. Checking readability first mislabels the worst case as the mildest — a single
+  // membership change that adds the account to production and drops it from OranixSlockTest
+  // yields ["Raft Android", "qa-server-b-slock"], which the readability branch reports as
+  // `expected_server_missing`: a complaint about list shape that never mentions that
+  // production is visible. Still fail-closed, but whoever reads the receipt sees a shape
+  // grumble instead of the alarm this file exists to raise.
+  //
+  // Containment, not equality: the picker renders rows as "<name>, /<slug>" and the API's
+  // `name` is bare, so containment keeps this agreeing with how ios_deterministic_repro.mjs:144
+  // selects a row. Unambiguous here — unlike `slock` in #2287, which matches all three servers,
+  // `OranixSlockTest` and `Raft Android` are not substrings of one another. Same matching mode,
+  // safe here and unsafe there; the difference is in the literals, not the method.
+  const production = names.filter((n) => n.toLowerCase().includes(PRODUCTION_SERVER_NAME.toLowerCase()));
+  if (production.length > 0) {
+    return {
+      ok: false,
+      code: "production_visible",
+      detail: `QA account ${identity.email || identity.id} can see the production server: [${production.join(", ")}] — out of bounds (artin, 2026-08-31)`,
+    };
+  }
+
+  // Only now: is the absence above worth anything? BOTH halves are required, and this is the
+  // one that is easy to omit. With the production check alone, anything that returns nothing —
+  // expired token, wrong base URL, an outage, a shape change — yields an empty list, finds no
+  // production server, and reports success. "I could not read the list" would be
+  // byte-identical to "production is not visible".
   if (names.length === 0) {
     return { ok: false, code: "empty_list", detail: "no servers returned — cannot conclude anything about production visibility" };
   }
@@ -62,17 +84,6 @@ export function judgeVisibleServers(servers, identity) {
       ok: false,
       code: "expected_server_missing",
       detail: `${REQUIRED_QA_SERVER} not among [${names.join(", ")}] — the list is not the one we think we are reading`,
-    };
-  }
-  // Containment, not equality: the picker renders rows as "<name>, /<slug>", and the API's
-  // `name` is the bare name. Matching by containment in both directions keeps this agreeing
-  // with how ios_deterministic_repro.mjs:144 selects a row.
-  const production = names.filter((n) => n.toLowerCase().includes(PRODUCTION_SERVER_NAME.toLowerCase()));
-  if (production.length > 0) {
-    return {
-      ok: false,
-      code: "production_visible",
-      detail: `QA account can see the production server: [${production.join(", ")}] — out of bounds (artin, 2026-08-31)`,
     };
   }
   return {

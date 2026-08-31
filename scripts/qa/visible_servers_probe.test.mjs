@@ -37,6 +37,17 @@ test("RED when production appears under a composite label", () => {
   assert.equal(v.code, "production_visible");
 });
 
+test("production wins over readability: the severe case must not report as the mild one", () => {
+  // @LiBai, reviewing this file. One membership change can add the account to production AND
+  // drop it from OranixSlockTest at the same time. Readability-first reported that as
+  // `expected_server_missing` — a complaint about list shape that never mentions production is
+  // visible. Fail-closed either way, but the receipt shows a grumble instead of the alarm.
+  const v = judgeVisibleServers([qa("Raft Android"), qa("qa-server-b-slock")], who);
+  assert.equal(v.ok, false);
+  assert.equal(v.code, "production_visible", "an unconditional violation outranks a shape complaint");
+  assert.match(v.detail, /Raft Android/, "the receipt must name what was seen");
+});
+
 // ---- half 2: the list must be READABLE, or half 1 means nothing ------------------------
 // Each of these is a case where half 1 alone would report success while having observed
 // nothing at all. They are asserted separately because they fail for different reasons.
