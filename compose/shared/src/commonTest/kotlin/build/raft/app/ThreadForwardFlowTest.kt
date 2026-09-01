@@ -17,7 +17,14 @@ import build.raft.app.data.ScreenError
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.Message
+import build.raft.app.model.MessageId
+import build.raft.app.model.MessageType
+import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
+import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.runBlocking
@@ -101,6 +108,44 @@ class ThreadForwardFlowTest {
         assertEquals(listOf(ChannelId("channel-first"), ChannelId("channel-second")), request.destinations.map { it.channelId })
         assertEquals(listOf("message-1", "message-2"), request.messageIds)
         assertEquals("Batch note", request.note)
+    }
+
+    @Test
+    fun returnedDeliveriesPopulateScopedMessageStoreAndRefreshHome() {
+        val messageStore = SharedThreadMessageStore()
+        var refreshCount = 0
+        val destination = ForwardMessageDestination(
+            serverId = sourceServerId,
+            channelId = ChannelId("channel-target"),
+            channelKind = ConversationKind.Channel
+        )
+        val message = Message(
+            id = MessageId("forwarded-message"),
+            threadId = ThreadId("channel-target"),
+            channelId = destination.channelId,
+            author = MemberProfile(
+                id = MemberId("user-1"),
+                displayName = "User",
+                handle = "user-1",
+                kind = MemberKind.Human,
+                presence = Presence.Offline
+            ),
+            timestampLabel = "2026-09-02T00:00:00.000Z",
+            body = "forwarded note",
+            messageType = MessageType.Chat
+        )
+
+        applyForwardMessageDeliveries(
+            result = ForwardMessageBatchResult(
+                deliveries = listOf(ForwardMessageBatchDelivery(destination, message)),
+                failures = emptyList()
+            ),
+            messageStore = messageStore,
+            onHomeRefresh = { refreshCount += 1 }
+        )
+
+        assertEquals(message, messageStore.get(sourceServerId, destination.channelId, message.id))
+        assertEquals(1, refreshCount)
     }
 
     @Test

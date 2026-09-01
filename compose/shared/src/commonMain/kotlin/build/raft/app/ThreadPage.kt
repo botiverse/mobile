@@ -8160,14 +8160,11 @@ internal fun SharedThreadRouteContent(
                 threadViewModel.dispatch(SharedThreadIntent.ClearChannelProfileUpdateStatus)
             },
             onForwardMessagesDelivered = { result ->
-                result.deliveries.forEach { delivery ->
-                    sharedStores.threadMessageStore.upsert(
-                        serverId = delivery.destination.serverId,
-                        channelId = delivery.destination.channelId,
-                        message = delivery.message
-                    )
-                }
-                sharedHomeStore?.dispatch(SharedHomeIntent.ForegroundRefresh)
+                applyForwardMessageDeliveries(
+                    result = result,
+                    messageStore = sharedStores.threadMessageStore,
+                    onHomeRefresh = { sharedHomeStore?.dispatch(SharedHomeIntent.ForegroundRefresh) }
+                )
             },
             onThreadEvent = ThreadEventHandler(dispatch = ThreadPageContent@{ action, itemId, attachmentId, tab, markdownActionId ->
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
@@ -24730,6 +24727,21 @@ internal data class ThreadForwardBatchOutcome(
     val result: ForwardMessageBatchResult? = null,
     val failedReceipts: List<ThreadForwardDestinationReceipt> = emptyList()
 )
+
+internal fun applyForwardMessageDeliveries(
+    result: ForwardMessageBatchResult,
+    messageStore: SharedThreadMessageStore,
+    onHomeRefresh: () -> Unit
+) {
+    result.deliveries.forEach { delivery ->
+        messageStore.upsert(
+            serverId = delivery.destination.serverId,
+            channelId = delivery.destination.channelId,
+            message = delivery.message
+        )
+    }
+    if (result.deliveries.isNotEmpty()) onHomeRefresh()
+}
 
 @OptIn(ExperimentalUuidApi::class)
 private fun newThreadForwardRequestId(): String = Uuid.random().toString()
