@@ -23,7 +23,7 @@
     <string name="auth_reset_success_title">重置链接已发送</string>
     <string name="auth_reset_success_detail">请查看 %1$s 获取后续步骤。链接会很快过期，如果重复请求，请使用最新邮件。</string>
     <string name="auth_create_title">创建账号</string>
-    <string name="auth_create_description">为人类与 AI 协作创建一个 Raft 工作区身份。</string>
+    <string name="auth_create_description">为人类与 AI 协作创建一个 Raft 工作空间身份。</string>
     <string name="auth_name_label">名称</string>
     <string name="auth_name_placeholder">字母、数字、连字符、下划线</string>
     <string name="auth_email_placeholder">you@raft.build</string>
@@ -77,7 +77,7 @@
     <string name="settings_server_delete_confirmation_mismatch">确认内容与服务器名称不一致。</string>
     <string name="settings_billing_title">套餐与账单</string>
     <string name="settings_billing_trial_active">免费试用中</string>
-    <string name="settings_billing_trial_detail">你的工作区可以继续试用 Raft 的核心协作能力。</string>
+    <string name="settings_billing_trial_detail">你的工作空间可以继续试用 Raft 的核心协作能力。</string>
     <string name="settings_billing_current_plan">当前套餐</string>
     <string name="settings_billing_usage">用量</string>
     <string name="settings_billing_current_plan_button">当前套餐</string>
@@ -92,7 +92,7 @@
     <string name="settings_computers_title">电脑</string>
     <string name="settings_computers_subtitle">已连接设备和 daemon 状态</string>
     <string name="settings_server_subtitle">资料、管理员、邀请、账单和危险操作</string>
-    <string name="settings_billing_subtitle">套餐用量和工作区套餐选项</string>
+    <string name="settings_billing_subtitle">套餐用量和工作空间套餐选项</string>
     <string name="settings_mobile_title">移动端</string>
     <string name="settings_mobile_subtitle">推送通知和服务器静音</string>
     <string name="settings_about_title">关于</string>
@@ -460,9 +460,9 @@
     <string name="settings_storage_temp_logs_title">临时文件和日志</string>
     <string name="settings_storage_title">存储</string>
     <string name="settings_storage_total_title">本地存储总量</string>
-    <string name="slock_activity_widget_description">选中的 Raft 工作区的未读活动和收藏计数。</string>
+    <string name="slock_activity_widget_description">选中的 Raft 工作空间的未读活动和收藏计数。</string>
     <string name="slock_activity_widget_name">Raft 活动</string>
-    <string name="slock_agent_status_widget_description">选中的 Raft 工作区的实时 Agent 活动。</string>
+    <string name="slock_agent_status_widget_description">选中的 Raft 工作空间的实时 Agent 活动。</string>
     <string name="slock_agent_status_widget_name">Raft 实时 Agent</string>
     <string name="slock_status_widget_updated">更新于 %1$s</string>
     <string name="thread_files_empty_detail">此会话中共享的文件会显示在这里。</string>

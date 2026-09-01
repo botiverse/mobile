@@ -73,6 +73,28 @@ class WorkspaceTerminologyResourceTest {
             "member_error_workspace_hidden"
         )
 
+    // Android native catalog (compose/androidApp values-zh-rCN): server/scope keys that must
+    // read 工作空间. The native catalog is a SEPARATE copy from the shared MR catalog and was
+    // caught by review (task #267) — both copies must stay aligned.
+    private val nativeServerScopeKeys =
+        listOf(
+            "auth_create_description",
+            "settings_billing_trial_detail",
+            "settings_billing_subtitle",
+            "slock_activity_widget_description",
+            "slock_agent_status_widget_description"
+        )
+
+    // Android native catalog keys whose workspaces are the agent-local directories on a
+    // computer; they keep 工作区.
+    private val nativeAgentFilesystemKeys =
+        listOf(
+            "settings_computer_detail_workspaces_section",
+            "settings_computer_detail_no_workspaces",
+            "settings_computer_detail_no_workspaces_detail",
+            "settings_computer_detail_workspaces_error_title"
+        )
+
     @Test
     fun zhServerScopeKeysUseWorkspaceConceptTerm() {
         val zh = readStrings("zh-rCN")
@@ -90,6 +112,26 @@ class WorkspaceTerminologyResourceTest {
             val value = zh.getValue(key)
             assertTrue(value.contains("工作区"), "zh-rCN $key (agent filesystem) must keep 工作区, got: $value")
             assertTrue(!value.contains("工作空间"), "zh-rCN $key (agent filesystem) must not become 工作空间, got: $value")
+        }
+    }
+
+    @Test
+    fun androidNativeServerScopeKeysUseWorkspaceConceptTerm() {
+        val zh = readAndroidNativeStrings()
+        nativeServerScopeKeys.forEach { key ->
+            val value = zh.getValue(key)
+            assertTrue(value.contains("工作空间"), "androidApp zh-rCN $key (server/scope) must use 工作空间, got: $value")
+            assertTrue(!value.contains("工作区"), "androidApp zh-rCN $key (server/scope) must not contain 工作区, got: $value")
+        }
+    }
+
+    @Test
+    fun androidNativeAgentFilesystemKeysKeepWorkspaceDirTerm() {
+        val zh = readAndroidNativeStrings()
+        nativeAgentFilesystemKeys.forEach { key ->
+            val value = zh.getValue(key)
+            assertTrue(value.contains("工作区"), "androidApp zh-rCN $key (agent filesystem) must keep 工作区, got: $value")
+            assertTrue(!value.contains("工作空间"), "androidApp zh-rCN $key (agent filesystem) must not become 工作空间, got: $value")
         }
     }
 
@@ -146,6 +188,21 @@ class WorkspaceTerminologyResourceTest {
         STRING_ENTRY.findAll(
             String(Files.readAllBytes(resourcesRoot().resolve(locale).resolve("strings.xml")), Charsets.UTF_8)
         ).associate { it.groupValues[1] to it.groupValues[2] }
+
+    private fun readAndroidNativeStrings(): Map<String, String> {
+        val workingDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
+        val candidates =
+            listOf(
+                workingDirectory.resolve("../androidApp/src/main/res/values-zh-rCN/strings.xml"),
+                workingDirectory.resolve("androidApp/src/main/res/values-zh-rCN/strings.xml"),
+                workingDirectory.resolve("compose/androidApp/src/main/res/values-zh-rCN/strings.xml")
+            )
+        val path =
+            candidates.firstOrNull(Files::isRegularFile)
+                ?: error("Unable to locate androidApp values-zh-rCN/strings.xml from $workingDirectory")
+        return STRING_ENTRY.findAll(String(Files.readAllBytes(path), Charsets.UTF_8))
+            .associate { it.groupValues[1] to it.groupValues[2] }
+    }
 
     private fun resourcesRoot(): Path {
         val workingDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
