@@ -77,6 +77,24 @@ class SlockSlackNavTabsTest {
     }
 
     @Test
+    fun blankPreferenceIsAbsentAndFollowsTheFlagSeededDefault() {
+        // A blank/whitespace-only stored value is not a real setting: it must NOT count as
+        // "user touched the setting" — it follows the flag-seeded default like null does.
+        assertEquals(
+            listOf("home", "tasks", "members", "settings"),
+            SlockSlackNavTabs.resolveAppShellTabKeys(slackNavEnabled = false, persistedRawOrder = "")
+        )
+        assertEquals(
+            listOf("home", "tasks", "members", "settings"),
+            SlockSlackNavTabs.resolveAppShellTabKeys(slackNavEnabled = false, persistedRawOrder = "   ")
+        )
+        assertEquals(
+            SlockSlackNavTabs.DefaultOrder,
+            SlockSlackNavTabs.resolveAppShellTabKeys(slackNavEnabled = true, persistedRawOrder = "")
+        )
+    }
+
+    @Test
     fun persistedSettingWinsOverTheFlag() {
         // A persisted order means the user touched the setting: it is the final value even
         // when the flag is off (or later turned off).

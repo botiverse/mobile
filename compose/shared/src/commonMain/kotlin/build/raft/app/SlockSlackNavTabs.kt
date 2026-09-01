@@ -49,11 +49,16 @@ internal object SlockSlackNavTabs {
      * always comes from the setting. A persisted order means the user has touched the setting —
      * it wins regardless of the flag (including the flag later being turned off). With no
      * persisted setting, the flag picks the factory default: on -> Slack order, off -> legacy.
+     *
+     * A blank/whitespace-only stored value is NOT a setting (nothing was meaningfully chosen);
+     * it is treated as absent and follows the flag-seeded default.
      */
-    fun resolveAppShellTabKeys(slackNavEnabled: Boolean, persistedRawOrder: String?): List<String> =
-        when {
-            persistedRawOrder != null -> parseTabOrder(persistedRawOrder)
+    fun resolveAppShellTabKeys(slackNavEnabled: Boolean, persistedRawOrder: String?): List<String> {
+        val persisted = persistedRawOrder?.takeIf { it.isNotBlank() }
+        return when {
+            persisted != null -> parseTabOrder(persisted)
             slackNavEnabled -> DefaultOrder
             else -> LegacyOrder
         }
+    }
 }
