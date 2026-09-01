@@ -470,8 +470,12 @@ private fun SlockTaskAssigneeMemberButton(
                 if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite
             )
     ) {
+        // Task #258 (artin msg=be381a13): same 12dp horizontal inset as the
+        // channel SlockModalCompactMemberRow shell so member rows indent alike.
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {

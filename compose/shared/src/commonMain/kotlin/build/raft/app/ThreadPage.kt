@@ -26974,7 +26974,7 @@ private fun ThreadTaskDetailDialog(
             searchValue = assigneeMenuSearch,
             onSearchValueChange = { assigneeMenuSearch = it },
             searchPlaceholder = searchPlaceholder,
-            modalTitle = stringResource(MR.strings.thread_action_add_member),
+            modalTitle = stringResource(MR.strings.tasks_assignee_picker_title),
             unassignedLabel = unassignedLabel,
             humansHeaderLabel = stringResource(MR.strings.thread_members_humans),
             agentsHeaderLabel = stringResource(MR.strings.thread_members_agents),

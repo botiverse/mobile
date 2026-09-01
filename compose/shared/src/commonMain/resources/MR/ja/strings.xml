@@ -1161,7 +1161,8 @@
     <string name="tasks_filter_assignee">担当者で絞り込み</string>
     <string name="tasks_search_channels">チャンネルを検索</string>
     <string name="tasks_search_creators">作成者を検索</string>
-    <string name="tasks_search_assignees">担当者を検索</string>
+        <string name="tasks_assignee_picker_title">担当者を設定</string>
+<string name="tasks_search_assignees">担当者を検索</string>
     <string name="tasks_assignee_unassigned">未割り当て</string>
     <string name="tasks_detail_task_identifier">タスク #%1$d</string>
     <string name="tasks_state_updating">更新中</string>

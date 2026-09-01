@@ -1159,7 +1159,8 @@
     <string name="tasks_filter_assignee">按负责人筛选</string>
     <string name="tasks_search_channels">搜索频道</string>
     <string name="tasks_search_creators">搜索创建者</string>
-    <string name="tasks_search_assignees">搜索负责人</string>
+        <string name="tasks_assignee_picker_title">设置负责人</string>
+<string name="tasks_search_assignees">搜索负责人</string>
     <string name="tasks_assignee_unassigned">未分配</string>
     <string name="tasks_detail_task_identifier">任务 #%1$d</string>
     <string name="tasks_state_updating">更新中</string>
