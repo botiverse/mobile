@@ -41,4 +41,14 @@ class SlockAgentStatusIndicatorTest {
         assertEquals(null, slockAgentStatusResolver(null, null)("agent-1").first())
         assertEquals(null, slockScopedAgentStatusResolver(null, "")("agent-1").first())
     }
+
+    @Test
+    fun homeDmAndSearchConsumersKeepUnknownAbsentUntilAuthoritativeResolverValueExists() {
+        assertEquals(null, projectHomeAgentStatusIndicatorState(true, "agent-1", null))
+
+        val ready = slockAgentStatusIndicatorState(AgentStatus.Offline, Presence.Offline)
+        assertEquals(ready, projectHomeAgentStatusIndicatorState(true, "agent-1", ready))
+        assertEquals(null, projectHomeAgentStatusIndicatorState(false, "agent-1", ready))
+        assertEquals(null, projectHomeAgentStatusIndicatorState(true, "", ready))
+    }
 }

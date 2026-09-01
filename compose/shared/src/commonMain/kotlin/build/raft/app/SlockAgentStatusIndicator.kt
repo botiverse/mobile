@@ -97,3 +97,28 @@ internal fun slockAgentStatusIndicatorState(
         // resolveAgentDisplayState parity, #198/#73).
         label = statusLabel?.takeIf { it.isNotBlank() } ?: status?.label ?: presence.name
     )
+
+/**
+ * Home consumers must render an indicator only from the authoritative resolver.
+ * A null value is Unknown/not-ready; manufacturing Offline here would show a
+ * misleading gray dot while the member projection is loading or recovering.
+ */
+internal fun resolveHomeAgentStatusIndicatorState(
+    canonicalState: SlockAgentStatusIndicatorState?
+): SlockAgentStatusIndicatorState? = canonicalState
+
+/**
+ * Shared projection used by Home DM and Settings search consumers.  A missing
+ * member id, disabled presence, or unresolved resolver value must stay absent;
+ * consumers must never manufacture an Offline indicator while loading.
+ */
+internal fun projectHomeAgentStatusIndicatorState(
+    showPresence: Boolean,
+    memberId: String?,
+    canonicalState: SlockAgentStatusIndicatorState?
+): SlockAgentStatusIndicatorState? =
+    if (showPresence && !memberId.isNullOrBlank()) {
+        resolveHomeAgentStatusIndicatorState(canonicalState)
+    } else {
+        null
+    }
