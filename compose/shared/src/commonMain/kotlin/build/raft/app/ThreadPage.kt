@@ -12313,6 +12313,11 @@ private fun ThreadPageContent(
                                         )
                                     )
                                 val sourceServerId = forwardSourceServerId
+                                forwardRequestId = forwardRequestIdAfterSelectionChange(
+                                    previousKeys = forwardPickerFlow.selectedKeys,
+                                    nextKeys = nextFlow.selectedKeys,
+                                    currentRequestId = forwardRequestId
+                                )
                                 if (
                                     sourceServerId != null &&
                                     nextFlow.selectedKeys.contains(intent.item.stableKey)
@@ -12384,8 +12389,10 @@ private fun ThreadPageContent(
                                                 note = forwardNote.text,
                                                 requestId = forwardRequestId ?: newThreadForwardRequestId()
                                             )
+                                        outcome.result
+                                            ?.takeIf { it.deliveries.isNotEmpty() }
+                                            ?.let(onForwardMessagesDelivered)
                                         if (outcome.failureCode == null && outcome.result != null && outcome.result.failures.isEmpty()) {
-                                            outcome.result?.let(onForwardMessagesDelivered)
                                             activeModal = null
                                             forwardPickerFlow.sessionKey?.let { session ->
                                                 forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
@@ -12404,6 +12411,20 @@ private fun ThreadPageContent(
                                                 activeForwardSelectionMode.wireValue
                                             )
                                         } else {
+                                            outcome.result?.let { result ->
+                                                if (outcome.failedReceipts.isNotEmpty()) {
+                                                    val failedKeys = outcome.failedReceipts
+                                                        .map { it.target.threadForwardSelectionKey() }
+                                                        .toSet()
+                                                    forwardPickerFlow = forwardPickerFlow.reduce(
+                                                        SlockForwardPickerFlowEvent.ClearSelected(
+                                                            stableKeys = forwardPickerFlow.selectedKeys - failedKeys
+                                                        )
+                                                    )
+                                                    forwardSelectedReceipts = outcome.failedReceipts
+                                                    forwardRequestId = null
+                                                }
+                                            }
                                             onThreadEvent(
                                                 "forwardMessagesFailed",
                                                 (outcome.failureCode ?: "forward_partial_failure").threadForwardErrorMessage(),
@@ -24728,6 +24749,13 @@ internal data class ThreadForwardBatchOutcome(
     val result: ForwardMessageBatchResult? = null,
     val failedReceipts: List<ThreadForwardDestinationReceipt> = emptyList()
 )
+
+internal fun forwardRequestIdAfterSelectionChange(
+    previousKeys: Set<String>,
+    nextKeys: Set<String>,
+    currentRequestId: String?
+): String? =
+    currentRequestId.takeIf { previousKeys == nextKeys }
 
 internal fun applyForwardMessageDeliveries(
     result: ForwardMessageBatchResult,

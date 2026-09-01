@@ -111,6 +111,13 @@ class ThreadForwardFlowTest {
     }
 
     @Test
+    fun targetSetChangeClearsForwardRequestId() {
+        assertEquals("request-r", forwardRequestIdAfterSelectionChange(setOf("a"), setOf("a"), "request-r"))
+        assertEquals(null, forwardRequestIdAfterSelectionChange(setOf("a"), setOf("a", "b"), "request-r"))
+        assertEquals(null, forwardRequestIdAfterSelectionChange(setOf("a", "b"), setOf("a"), "request-r"))
+    }
+
+    @Test
     fun returnedDeliveriesPopulateScopedMessageStoreAndRefreshHome() {
         val messageStore = SharedThreadMessageStore()
         var refreshCount = 0
