@@ -1,7 +1,17 @@
 package build.raft.app
 
+import build.raft.app.data.MOBILE_SLACK_NAV_FEATURE_FLAG_KEY
+import build.raft.app.data.REGISTERED_SERVER_FEATURE_FLAG_KEYS
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMode
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMutationResult
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
+import build.raft.app.network.sync.DiagnosticFeatureFlagScope
+import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideController
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 /**
  * Locks the #94 Slack-aligned tab model semantics (task #94, gated by mobile_slack_nav_v0):
@@ -9,6 +19,57 @@ import kotlin.test.assertEquals
  * and gate-off legacy fallback.
  */
 class SlockSlackNavTabsTest {
+
+    @Test
+    fun slackNavFlagWireKeyIsPinnedAndRegisteredForServerEvaluation() {
+        // Non-mirror teeth: pin the literal wire key so a rename or a dropped registration both
+        // go RED (review #269: deleting the list entry previously left the suite green).
+        assertEquals("mobile_slack_nav_v0", MOBILE_SLACK_NAV_FEATURE_FLAG_KEY)
+        assertTrue(
+            "mobile_slack_nav_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS,
+            "mobile_slack_nav_v0 must stay registered in REGISTERED_SERVER_FEATURE_FLAG_KEYS"
+        )
+    }
+
+    @Test
+    fun slackNavFlagIsOverridableViaLocalFeatureOverrides() {
+        // The PR claims diagnostics "Local Feature Overrides" can A/B the flag locally — this
+        // proves the registry actually honors ForceOn/ForceOff/Server for the key.
+        val registry =
+            DiagnosticFeatureFlagOverrideRegistry(
+                nowMillis = { 1_000L },
+                readStateController = ReadStateV1DiagnosticOverrideController { 1_000L },
+            )
+        registry.configureEntitlement(true)
+        val scope =
+            DiagnosticFeatureFlagScope(
+                environmentId = "https://api.example/",
+                accountId = "account-a",
+                serverId = "server-a",
+            )
+
+        assertTrue(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY in registry.supportedKeys)
+
+        val applied =
+            registry.setMode(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+        assertIs<DiagnosticFeatureFlagOverrideMutationResult.Applied>(applied)
+        assertTrue(
+            registry.decide(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY, serverEffective = false, scope = scope).finalEffective
+        )
+
+        registry.setMode(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOff)
+        assertFalse(
+            registry.decide(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY, serverEffective = true, scope = scope).finalEffective
+        )
+
+        registry.setMode(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.Server)
+        assertTrue(
+            registry.decide(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY, serverEffective = true, scope = scope).finalEffective
+        )
+        assertFalse(
+            registry.decide(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY, serverEffective = false, scope = scope).finalEffective
+        )
+    }
 
     @Test
     fun defaultOrderIsSlackAligned() {
