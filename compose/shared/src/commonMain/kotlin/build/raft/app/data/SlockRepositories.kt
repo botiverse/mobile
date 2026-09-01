@@ -219,6 +219,55 @@ interface ConversationRepository {
     suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult>
     suspend fun getAttachmentUploadCapabilities(): DataResult<AttachmentUploadCapabilities> =
         DataResult.Error(ScreenError(code = "attachment_upload_capabilities_unavailable", retryable = true))
+
+    /**
+     * Typed direct-session attachment operations.  These defaults deliberately fail closed so
+     * legacy/test repositories cannot accidentally be treated as an atomic Gallery uploader.
+     * The presigned URL carried by [AttachmentUploadSessionCreateResult] is process-local and
+     * must never be copied into a durable snapshot or diagnostic string.
+     */
+    suspend fun createAttachmentUploadSession(
+        request: AttachmentUploadSessionCreateRequest
+    ): DataResult<AttachmentUploadSessionCreateResult> =
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false))
+
+    suspend fun putAttachmentUploadBytes(
+        upload: AttachmentUploadSessionPut,
+        bytes: ByteArray
+    ): DataResult<Unit> =
+        DataResult.Error(ScreenError("attachment_upload_session_put_unavailable", retryable = false))
+
+    suspend fun putAttachmentUploadFile(
+        upload: AttachmentUploadSessionPut,
+        file: PlatformFile
+    ): DataResult<Unit> =
+        DataResult.Error(ScreenError("attachment_upload_session_put_unavailable", retryable = false))
+
+    /**
+     * Resolve a platform file's authoritative length before a direct-session create request.
+     * Implementations must reject ambiguous `fileRef` + in-memory byte inputs rather than silently
+     * choosing one source.
+     */
+    suspend fun prepareAttachmentUploadFile(
+        file: PlatformFile,
+    ): DataResult<PlatformFile> =
+        DataResult.Error(ScreenError("attachment_upload_file_prepare_unavailable", retryable = false))
+
+    suspend fun completeAttachmentUploadSession(
+        uploadId: String
+    ): DataResult<AttachmentUploadSessionCompleteResult> =
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false))
+
+    suspend fun cancelAttachmentUploadSession(
+        uploadId: String
+    ): DataResult<AttachmentUploadSessionView> =
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false))
+
+    suspend fun statusAttachmentUploadSession(
+        uploadId: String
+    ): DataResult<AttachmentUploadSessionView> =
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false))
+
     suspend fun uploadAttachments(request: AttachmentUploadRequest): DataResult<AttachmentUploadResult>
     suspend fun getAttachmentOpenTarget(
         attachmentId: AttachmentId

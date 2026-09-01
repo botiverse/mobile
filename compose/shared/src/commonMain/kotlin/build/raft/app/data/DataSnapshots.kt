@@ -535,7 +535,66 @@ data class AttachmentUploadResult(
 }
 
 data class AttachmentUploadCapabilities(
-    val maxBytes: Long
+    val maxBytes: Long,
+    /** Server-authoritative direct-session availability.  Never infer this from the route. */
+    val directUploadEnabled: Boolean = false,
+    /** Optional threshold advertised by the server; null means no threshold contract. */
+    val directUploadThresholdBytes: Long? = null,
+    /** Optional session lifetime hint, in seconds. */
+    val sessionExpiresInSeconds: Int? = null,
+)
+
+/** Input for the authenticated direct attachment-session create operation. */
+data class AttachmentUploadSessionCreateRequest(
+    val channelId: ChannelId,
+    val filename: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val clientRequestId: String,
+)
+
+/** Presigned PUT instructions returned by the server.  [url] is never persisted or logged. */
+data class AttachmentUploadSessionPut(
+    val method: String,
+    val url: String,
+    val headers: Map<String, String>,
+)
+
+data class AttachmentUploadSessionCreateResult(
+    val uploadId: String,
+    val attachmentId: AttachmentId,
+    val state: String,
+    val expiresAt: String,
+    val upload: AttachmentUploadSessionPut,
+)
+
+data class AttachmentUploadSessionView(
+    val uploadId: String,
+    val state: String,
+    val expiresAt: String,
+    val attachment: Attachment? = null,
+    val terminalReason: String? = null,
+    val reservationState: String? = null,
+)
+
+data class AttachmentUploadSessionCompleteResult(
+    val uploadId: String,
+    val state: String,
+    val attachment: Attachment,
+)
+
+/** One completed direct upload kept private until the enclosing Gallery batch commits. */
+data class DirectAttachmentUpload(
+    val localId: String,
+    val uploadId: String,
+    val attachment: Attachment,
+)
+
+internal data class DirectAttachmentUploadBatch(
+    val uploads: List<DirectAttachmentUpload>,
+    val sessionIds: List<String>,
+    /** Process-local compensation handle; never persisted or sent over the wire. */
+    internal val compensationHandle: DirectAttachmentUploadCompensationHandle? = null,
 )
 
 data class AttachmentOpenTarget(
