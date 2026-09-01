@@ -65,6 +65,33 @@ class ComputerTerminologyResourceTest {
             "settings_computers_create_agent_error_load_computers"
         )
 
+    // Android native catalog (compose/androidApp values-zh-rCN) Computer-concept keys; the
+    // native catalog is a SEPARATE copy from the shared MR catalog and carried residue of the
+    // merged Computer batch (caught by the #267 review census).
+    private val nativeComputerConceptKeys =
+        listOf(
+            "settings_computers_title",
+            "settings_computers_add",
+            "settings_computers_empty_title",
+            "settings_computers_empty_detail",
+            "settings_computers_subtitle",
+            "settings_computer_detail_title",
+            "settings_computer_detail_empty",
+            "settings_computer_detail_info_section",
+            "settings_computer_detail_no_workspaces_detail",
+            "settings_computer_detail_no_agents_detail"
+        )
+
+    // Android native genuine physical-device keys that must keep 设备.
+    private val nativePhysicalDeviceKeys =
+        listOf(
+            "auth_reset_description",
+            "settings_about_device",
+            "settings_language_restart_hint",
+            "settings_account_chat_layout_detail",
+            "settings_account_logout_detail"
+        )
+
     @Test
     fun zhCatalogHasNoLegacyComputerTermResidue() {
         val zh = readStrings("zh-rCN")
@@ -134,6 +161,42 @@ class ComputerTerminologyResourceTest {
         )
     }
 
+    @Test
+    fun androidNativeCatalogHasNoLegacyComputerTermResidue() {
+        val zh = readAndroidNativeStrings()
+        val residue = zh.filterValues { it.contains("电脑") }
+        assertTrue(
+            residue.isEmpty(),
+            "androidApp zh-rCN must not contain 「电脑」 for the Raft Computer concept; found: ${residue.keys}"
+        )
+    }
+
+    @Test
+    fun androidNativeComputerConceptKeysUseComputerTerm() {
+        val zh = readAndroidNativeStrings()
+        nativeComputerConceptKeys.forEach { key ->
+            val value = zh.getValue(key)
+            assertTrue(value.contains("计算机"), "androidApp zh-rCN $key must use 计算机, got: $value")
+            assertTrue(!value.contains("电脑"), "androidApp zh-rCN $key must not contain 电脑, got: $value")
+        }
+        // The subtitle also carried a double miss: misused 设备 for machines + untranslated daemon.
+        val subtitle = zh.getValue("settings_computers_subtitle")
+        assertTrue(subtitle.contains("守护进程"), "androidApp zh-rCN settings_computers_subtitle must use 守护进程, got: $subtitle")
+        assertTrue(!subtitle.contains("设备"), "androidApp zh-rCN settings_computers_subtitle must not misuse 设备, got: $subtitle")
+        assertTrue(!subtitle.contains("daemon"), "androidApp zh-rCN settings_computers_subtitle must not keep daemon untranslated, got: $subtitle")
+    }
+
+    @Test
+    fun androidNativePhysicalDeviceKeysKeepDeviceTerm() {
+        val zh = readAndroidNativeStrings()
+        nativePhysicalDeviceKeys.forEach { key ->
+            val value = zh.getValue(key)
+            assertTrue(value.contains("设备"), "androidApp zh-rCN $key (physical device) must keep 设备, got: $value")
+            assertTrue(!value.contains("计算机"), "androidApp zh-rCN $key (physical device) must not become 计算机, got: $value")
+            assertTrue(!value.contains("电脑"), "androidApp zh-rCN $key (physical device) must not contain 电脑, got: $value")
+        }
+    }
+
     private fun computerPlaceholderMismatches(
         base: Map<String, String>,
         zh: Map<String, String>,
@@ -150,6 +213,21 @@ class ComputerTerminologyResourceTest {
         STRING_ENTRY.findAll(
             String(Files.readAllBytes(resourcesRoot().resolve(locale).resolve("strings.xml")), Charsets.UTF_8)
         ).associate { it.groupValues[1] to it.groupValues[2] }
+
+    private fun readAndroidNativeStrings(): Map<String, String> {
+        val workingDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
+        val candidates =
+            listOf(
+                workingDirectory.resolve("../androidApp/src/main/res/values-zh-rCN/strings.xml"),
+                workingDirectory.resolve("androidApp/src/main/res/values-zh-rCN/strings.xml"),
+                workingDirectory.resolve("compose/androidApp/src/main/res/values-zh-rCN/strings.xml")
+            )
+        val path =
+            candidates.firstOrNull(Files::isRegularFile)
+                ?: error("Unable to locate androidApp values-zh-rCN/strings.xml from $workingDirectory")
+        return STRING_ENTRY.findAll(String(Files.readAllBytes(path), Charsets.UTF_8))
+            .associate { it.groupValues[1] to it.groupValues[2] }
+    }
 
     private fun resourcesRoot(): Path {
         val workingDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
