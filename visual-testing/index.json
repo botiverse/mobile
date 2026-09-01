@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-09-01T22:03:10.647Z",
+  "generatedAt": "2026-09-01T22:07:10.440Z",
   "latestRunId": "e17abec9-20260901220040",
   "latest": {
     "runId": "e17abec9-20260901220040",
     "commit": "e17abec9-20260901220040",
     "commitSubject": "feat(nav): mobile_slack_nav_v0 gate + Slack-aligned tab model (task #94 P0/P1) (#2300)",
-    "generatedAt": "2026-09-01T22:03:10.647Z",
+    "generatedAt": "2026-09-01T22:07:10.440Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -129,7 +129,7 @@
       "runId": "e17abec9-20260901220040",
       "commit": "e17abec9-20260901220040",
       "commitSubject": "feat(nav): mobile_slack_nav_v0 gate + Slack-aligned tab model (task #94 P0/P1) (#2300)",
-      "generatedAt": "2026-09-01T22:03:10.647Z",
+      "generatedAt": "2026-09-01T22:07:10.440Z",
       "baseline": "react",
       "current": "android",
       "summary": {

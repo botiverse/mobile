@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-01T22:03:10.647Z",
+  "generatedAt": "2026-09-01T22:07:10.440Z",
   "runId": "e17abec9-20260901220040",
   "cases": [
     {
@@ -5424,17 +5424,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.421Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-01T22:05:30.622Z",
+            "severity": "low",
+            "summary": [
+              "Both renders show identical status dot states (green, orange, gray, blue, pink) and 'Waiting pulse' label with matching colors, shape, and stroke.",
+              "Component appears properly cropped to element bounds on both sides with no clipping or missing elements.",
+              "Pixel-perfect similarity is 99.77% with only 0.23% mismatch, well within the 2% tolerance."
+            ],
+            "likelyCauses": [
+              "Minor antialiasing differences in text rendering and dot edge antialiasing between the two platforms.",
+              "Possible sub-pixel font hinting variation on the iOS render vs the React baseline.",
+              "No meaningful layout, color, or content divergence detected."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "No action required; comparison passes within tolerance.",
+              "If tighter parity is desired, align font smoothing/hinting settings and confirm dot stroke is implemented via shared token on both platforms.",
+              "Confirm the iOS StatusDot uses the same fill colors and stroke width as the React token."
+            ],
+            "intentional": [
+              "Different canvas sizes (342×92 baseline vs 1170×2532 current) are due to platform viewport scaling, not a defect.",
+              "Header badge label changes from 'REACT' to 'IOS' and dimensions update accordingly—this is expected metadata rendering."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -5457,17 +5472,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-01T22:03:09.055Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-09-01T22:05:34.961Z",
+            "severity": "low",
+            "summary": [
+              "Android renders content within a compact framed card (342×92); iOS renders the same content at the top of a tall 1170×2532 viewport with no visible surrounding card/border context",
+              "Both sides show the same five colored dots (green, orange, gray, blue) and a pink 'Waiting pulse' dot with label; color, count, and order are isomorphic",
+              "'Waiting pulse' label and the pink dot appear at matching relative positions in both renders; no missing or extra elements",
+              "Minor typographic weight difference: iOS 'Waiting pulse' label renders with slightly heavier/heftier strokes than Android's slightly lighter weight"
+            ],
+            "likelyCauses": [
+              "Different viewport/canvas dimensions between the two comparison frames (Android baseline cropped to 342×92; iOS shown at full 1170×2532)",
+              "Platform default font rendering: iOS uses San Francisco, Android uses Roboto — slight stroke/weight variance is expected",
+              "iOS comparison frame lacks the same framed container chrome that appears on the Android baseline, making the crop context different"
+            ],
+            "suggestedOwner": "ui-engineering",
+            "suggestedFixes": [
+              "Normalize the comparison canvas/frame so both sides use the same logical size or crop to the component bounds on both ends",
+              "Confirm 'Waiting pulse' typography is using the same token (size/weight) on both platforms via Kuikly's design system",
+              "Accept minor font-rendering differences as platform-intentional if the design tokens resolve to the same values",
+              "Re-run the comparison with a matching crop mode (`component-bounds`) on the iOS side for an apples-to-apples diff"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -5493,17 +5522,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.421Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-01T22:05:30.622Z",
+            "severity": "low",
+            "summary": [
+              "Both renders show identical status dot states (green, orange, gray, blue, pink) and 'Waiting pulse' label with matching colors, shape, and stroke.",
+              "Component appears properly cropped to element bounds on both sides with no clipping or missing elements.",
+              "Pixel-perfect similarity is 99.77% with only 0.23% mismatch, well within the 2% tolerance."
+            ],
+            "likelyCauses": [
+              "Minor antialiasing differences in text rendering and dot edge antialiasing between the two platforms.",
+              "Possible sub-pixel font hinting variation on the iOS render vs the React baseline.",
+              "No meaningful layout, color, or content divergence detected."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "No action required; comparison passes within tolerance.",
+              "If tighter parity is desired, align font smoothing/hinting settings and confirm dot stroke is implemented via shared token on both platforms.",
+              "Confirm the iOS StatusDot uses the same fill colors and stroke width as the React token."
+            ],
+            "intentional": [
+              "Different canvas sizes (342×92 baseline vs 1170×2532 current) are due to platform viewport scaling, not a defect.",
+              "Header badge label changes from 'REACT' to 'IOS' and dimensions update accordingly—this is expected metadata rendering."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -5527,17 +5571,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-01T22:03:09.055Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-09-01T22:05:34.961Z",
+            "severity": "low",
+            "summary": [
+              "Android renders content within a compact framed card (342×92); iOS renders the same content at the top of a tall 1170×2532 viewport with no visible surrounding card/border context",
+              "Both sides show the same five colored dots (green, orange, gray, blue) and a pink 'Waiting pulse' dot with label; color, count, and order are isomorphic",
+              "'Waiting pulse' label and the pink dot appear at matching relative positions in both renders; no missing or extra elements",
+              "Minor typographic weight difference: iOS 'Waiting pulse' label renders with slightly heavier/heftier strokes than Android's slightly lighter weight"
+            ],
+            "likelyCauses": [
+              "Different viewport/canvas dimensions between the two comparison frames (Android baseline cropped to 342×92; iOS shown at full 1170×2532)",
+              "Platform default font rendering: iOS uses San Francisco, Android uses Roboto — slight stroke/weight variance is expected",
+              "iOS comparison frame lacks the same framed container chrome that appears on the Android baseline, making the crop context different"
+            ],
+            "suggestedOwner": "ui-engineering",
+            "suggestedFixes": [
+              "Normalize the comparison canvas/frame so both sides use the same logical size or crop to the component bounds on both ends",
+              "Confirm 'Waiting pulse' typography is using the same token (size/weight) on both platforms via Kuikly's design system",
+              "Accept minor font-rendering differences as platform-intentional if the design tokens resolve to the same values",
+              "Re-run the comparison with a matching crop mode (`component-bounds`) on the iOS side for an apples-to-apples diff"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -17635,17 +17693,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-01T22:03:09.792Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-01T22:05:35.868Z",
+            "severity": "low",
+            "summary": [
+              "Filter chip count and wrapping differ between platforms (iOS shows 3 chips in a single row matching Android baseline, no sort/Recent chip visible on either side in this capture).",
+              "Avatar tile sizes and channel/DM card paddings are visually similar but the iOS cards appear very slightly taller and the avatar glyph tiles marginally larger.",
+              "Highlight marker chip behind the word 'Android' in the #android-artifacts preview line is wider on iOS, extending further to the right of the word.",
+              "'Load more results' button on iOS is right-aligned while Android version appears centered.",
+              "Minor vertical spacing differences between message card rows and section headers (MESSAGES / CHANNELS, PEOPLE & COMPUTERS) between the two renders."
+            ],
+            "likelyCauses": [
+              "Platform-specific default spacing tokens (margin/padding) not unified across Kuikly Android and iOS adapters.",
+              "Avatar/icon component using different intrinsic sizes or container constraints per platform.",
+              "Highlight/pill background component sizing to its text content inconsistently between renderers.",
+              "Button component defaulting to different alignment (center vs. end) on iOS."
+            ],
+            "suggestedOwner": "kuikly-platform-ui",
+            "suggestedFixes": [
+              "Unify spacing/typography token mapping (dp/pt) so margins, paddings, and avatar tile sizes match across Android and iOS.",
+              "Ensure the highlight background width matches the highlighted word width on both platforms (use measured text run width).",
+              "Force 'Load more results' button to a consistent alignment (e.g., centered or stretch) via shared style.",
+              "Audit filter chip row component so chip count and wrapping behavior are either identical or gated by an explicit platform-difference flag.",
+              "Rebaseline iOS screenshot after fixes and re-run Slock visual diff to confirm pixel mismatch drops below tolerance."
+            ],
+            "intentional": [
+              "Filter chip row differences are tracked as an intentional platform-difference and are not reported as defects in this case."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -17725,17 +17802,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-01T22:03:09.792Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-01T22:05:35.868Z",
+            "severity": "low",
+            "summary": [
+              "Filter chip count and wrapping differ between platforms (iOS shows 3 chips in a single row matching Android baseline, no sort/Recent chip visible on either side in this capture).",
+              "Avatar tile sizes and channel/DM card paddings are visually similar but the iOS cards appear very slightly taller and the avatar glyph tiles marginally larger.",
+              "Highlight marker chip behind the word 'Android' in the #android-artifacts preview line is wider on iOS, extending further to the right of the word.",
+              "'Load more results' button on iOS is right-aligned while Android version appears centered.",
+              "Minor vertical spacing differences between message card rows and section headers (MESSAGES / CHANNELS, PEOPLE & COMPUTERS) between the two renders."
+            ],
+            "likelyCauses": [
+              "Platform-specific default spacing tokens (margin/padding) not unified across Kuikly Android and iOS adapters.",
+              "Avatar/icon component using different intrinsic sizes or container constraints per platform.",
+              "Highlight/pill background component sizing to its text content inconsistently between renderers.",
+              "Button component defaulting to different alignment (center vs. end) on iOS."
+            ],
+            "suggestedOwner": "kuikly-platform-ui",
+            "suggestedFixes": [
+              "Unify spacing/typography token mapping (dp/pt) so margins, paddings, and avatar tile sizes match across Android and iOS.",
+              "Ensure the highlight background width matches the highlighted word width on both platforms (use measured text run width).",
+              "Force 'Load more results' button to a consistent alignment (e.g., centered or stretch) via shared style.",
+              "Audit filter chip row component so chip count and wrapping behavior are either identical or gated by an explicit platform-difference flag.",
+              "Rebaseline iOS screenshot after fixes and re-run Slock visual diff to confirm pixel mismatch drops below tolerance."
+            ],
+            "intentional": [
+              "Filter chip row differences are tracked as an intentional platform-difference and are not reported as defects in this case."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20489,7 +20585,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-01T22:03:01.803Z",
+        "generatedAt": "2026-09-01T22:07:00.952Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20550,7 +20646,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:01.803Z",
+            "generatedAt": "2026-09-01T22:07:00.952Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20572,7 +20668,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20594,7 +20690,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20619,7 +20715,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20642,7 +20738,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20682,7 +20778,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-01T22:03:01.803Z",
+        "generatedAt": "2026-09-01T22:07:00.952Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20743,7 +20839,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:01.803Z",
+            "generatedAt": "2026-09-01T22:07:00.952Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20765,7 +20861,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20787,7 +20883,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20812,7 +20908,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20835,7 +20931,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -22436,7 +22532,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-01T22:03:01.803Z",
+        "generatedAt": "2026-09-01T22:07:00.952Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -22497,7 +22593,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:01.803Z",
+            "generatedAt": "2026-09-01T22:07:00.952Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -22519,7 +22615,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -22591,7 +22687,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25900,7 +25996,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25922,7 +26018,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25947,7 +26043,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25970,7 +26066,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26170,7 +26266,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26192,7 +26288,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26217,7 +26313,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26240,7 +26336,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26440,7 +26536,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26462,7 +26558,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26487,7 +26583,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26510,7 +26606,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26706,7 +26802,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26728,7 +26824,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26753,7 +26849,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26776,7 +26872,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26972,7 +27068,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26994,7 +27090,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27019,7 +27115,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27042,7 +27138,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32440,7 +32536,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-01T22:03:01.803Z",
+        "generatedAt": "2026-09-01T22:07:00.952Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32501,7 +32597,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:01.803Z",
+            "generatedAt": "2026-09-01T22:07:00.952Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32523,7 +32619,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32545,7 +32641,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32570,7 +32666,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32593,7 +32689,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32633,7 +32729,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-01T22:03:01.803Z",
+        "generatedAt": "2026-09-01T22:07:00.952Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32694,7 +32790,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:01.803Z",
+            "generatedAt": "2026-09-01T22:07:00.952Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32716,7 +32812,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32738,7 +32834,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32763,7 +32859,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32786,7 +32882,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32826,7 +32922,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-01T22:03:01.803Z",
+        "generatedAt": "2026-09-01T22:07:00.952Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32887,7 +32983,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:01.803Z",
+            "generatedAt": "2026-09-01T22:07:00.952Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32909,7 +33005,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32931,7 +33027,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32956,7 +33052,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32979,7 +33075,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33019,7 +33115,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-01T22:03:01.803Z",
+        "generatedAt": "2026-09-01T22:07:00.952Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -33080,7 +33176,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:01.803Z",
+            "generatedAt": "2026-09-01T22:07:00.952Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33102,7 +33198,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33124,7 +33220,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33149,7 +33245,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:05.049Z",
+            "generatedAt": "2026-09-01T22:07:04.718Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -33172,7 +33268,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-01T22:03:08.712Z",
+            "generatedAt": "2026-09-01T22:07:08.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

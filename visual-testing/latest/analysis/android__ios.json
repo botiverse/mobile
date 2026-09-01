@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-01T22:03:08.706Z",
+  "generatedAt": "2026-09-01T22:07:08.503Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 79,
-    "pending": 13
+    "ready": 81,
+    "pending": 11
   },
   "cases": [
     {
@@ -457,15 +457,32 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03f407fe43fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-09-01T22:03:07.254Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-01T22:05:34.961Z",
+      "severity": "low",
+      "summary": [
+        "Android renders content within a compact framed card (342×92); iOS renders the same content at the top of a tall 1170×2532 viewport with no visible surrounding card/border context",
+        "Both sides show the same five colored dots (green, orange, gray, blue) and a pink 'Waiting pulse' dot with label; color, count, and order are isomorphic",
+        "'Waiting pulse' label and the pink dot appear at matching relative positions in both renders; no missing or extra elements",
+        "Minor typographic weight difference: iOS 'Waiting pulse' label renders with slightly heavier/heftier strokes than Android's slightly lighter weight"
+      ],
+      "likelyCauses": [
+        "Different viewport/canvas dimensions between the two comparison frames (Android baseline cropped to 342×92; iOS shown at full 1170×2532)",
+        "Platform default font rendering: iOS uses San Francisco, Android uses Roboto — slight stroke/weight variance is expected",
+        "iOS comparison frame lacks the same framed container chrome that appears on the Android baseline, making the crop context different"
+      ],
+      "suggestedOwner": "ui-engineering",
+      "suggestedFixes": [
+        "Normalize the comparison canvas/frame so both sides use the same logical size or crop to the component bounds on both ends",
+        "Confirm 'Waiting pulse' typography is using the same token (size/weight) on both platforms via Kuikly's design system",
+        "Accept minor font-rendering differences as platform-intentional if the design tokens resolve to the same values",
+        "Re-run the comparison with a matching crop mode (`component-bounds`) on the iOS side for an apples-to-apples diff"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.002999216861776066
     },
     {
@@ -1453,15 +1470,37 @@
     },
     {
       "id": "components.home.search.results",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffe97fc07fc8000000080000000800000009f321f12ffffffffffffffff80fe80ff9ffe9fff80ff80ff80fe80ffdfffdfffffffffff800280038002800383fe83ff87fe87ffc9fec9ff9ffe9fff827ec27fffffdbffd03fc03f81fe83effffffc3ff81ff81ffc3ffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-09-01T22:03:07.933Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-01T22:05:35.868Z",
+      "severity": "low",
+      "summary": [
+        "Filter chip count and wrapping differ between platforms (iOS shows 3 chips in a single row matching Android baseline, no sort/Recent chip visible on either side in this capture).",
+        "Avatar tile sizes and channel/DM card paddings are visually similar but the iOS cards appear very slightly taller and the avatar glyph tiles marginally larger.",
+        "Highlight marker chip behind the word 'Android' in the #android-artifacts preview line is wider on iOS, extending further to the right of the word.",
+        "'Load more results' button on iOS is right-aligned while Android version appears centered.",
+        "Minor vertical spacing differences between message card rows and section headers (MESSAGES / CHANNELS, PEOPLE & COMPUTERS) between the two renders."
+      ],
+      "likelyCauses": [
+        "Platform-specific default spacing tokens (margin/padding) not unified across Kuikly Android and iOS adapters.",
+        "Avatar/icon component using different intrinsic sizes or container constraints per platform.",
+        "Highlight/pill background component sizing to its text content inconsistently between renderers.",
+        "Button component defaulting to different alignment (center vs. end) on iOS."
+      ],
+      "suggestedOwner": "kuikly-platform-ui",
+      "suggestedFixes": [
+        "Unify spacing/typography token mapping (dp/pt) so margins, paddings, and avatar tile sizes match across Android and iOS.",
+        "Ensure the highlight background width matches the highlighted word width on both platforms (use measured text run width).",
+        "Force 'Load more results' button to a consistent alignment (e.g., centered or stretch) via shared style.",
+        "Audit filter chip row component so chip count and wrapping behavior are either identical or gated by an explicit platform-difference flag.",
+        "Rebaseline iOS screenshot after fixes and re-run Slock visual diff to confirm pixel mismatch drops below tolerance."
+      ],
+      "intentional": [
+        "Filter chip row differences are tracked as an intentional platform-difference and are not reported as defects in this case."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.08820161758550382
     },
     {
@@ -1693,7 +1732,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:03:08.006Z",
+      "generatedAt": "2026-09-01T22:07:07.796Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1706,7 +1745,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:03:08.006Z",
+      "generatedAt": "2026-09-01T22:07:07.796Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2122,7 +2161,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:03:08.300Z",
+      "generatedAt": "2026-09-01T22:07:08.077Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2135,7 +2174,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:03:08.300Z",
+      "generatedAt": "2026-09-01T22:07:08.077Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2148,7 +2187,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:03:08.300Z",
+      "generatedAt": "2026-09-01T22:07:08.077Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2161,7 +2200,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:03:08.300Z",
+      "generatedAt": "2026-09-01T22:07:08.077Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2174,7 +2213,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:03:08.300Z",
+      "generatedAt": "2026-09-01T22:07:08.077Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2651,7 +2690,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:03:08.592Z",
+      "generatedAt": "2026-09-01T22:07:08.377Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2664,7 +2703,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:03:08.592Z",
+      "generatedAt": "2026-09-01T22:07:08.377Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2677,7 +2716,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:03:08.592Z",
+      "generatedAt": "2026-09-01T22:07:08.377Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2690,7 +2729,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:03:08.592Z",
+      "generatedAt": "2026-09-01T22:07:08.377Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
