@@ -30,6 +30,9 @@ import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentSkillsSnapshot
 import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.AuthLossSignal
+import build.raft.app.data.ForwardMessageBatchExecuteRequest
+import build.raft.app.data.ForwardMessageBatchResult
+import build.raft.app.data.ForwardMessageDestination
 import build.raft.app.data.ForwardMessageExecuteRequest
 import build.raft.app.data.ForwardMessageSendMode
 import build.raft.app.data.ForwardMessageTarget
@@ -342,6 +345,8 @@ import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.random.Random
 import kotlin.time.TimeMark
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlin.time.TimeSource
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
@@ -8154,6 +8159,16 @@ internal fun SharedThreadRouteContent(
             onClearChannelProfileUpdateStatus = {
                 threadViewModel.dispatch(SharedThreadIntent.ClearChannelProfileUpdateStatus)
             },
+            onForwardMessagesDelivered = { result ->
+                result.deliveries.forEach { delivery ->
+                    sharedStores.threadMessageStore.upsert(
+                        serverId = delivery.destination.serverId,
+                        channelId = delivery.destination.channelId,
+                        message = delivery.message
+                    )
+                }
+                sharedHomeStore?.dispatch(SharedHomeIntent.ForegroundRefresh)
+            },
             onThreadEvent = ThreadEventHandler(dispatch = ThreadPageContent@{ action, itemId, attachmentId, tab, markdownActionId ->
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
                     return@ThreadPageContent
@@ -11166,6 +11181,7 @@ private fun ThreadPageContent(
     onBack: () -> Unit,
     onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onClearChannelProfileUpdateStatus: () -> Unit = {},
+    onForwardMessagesDelivered: (ForwardMessageBatchResult) -> Unit = {},
     onThreadEvent: ThreadEventHandler,
     onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
@@ -11267,7 +11283,10 @@ private fun ThreadPageContent(
     var forwardPickerFlow by remember(threadInstanceKey) { mutableStateOf(SlockForwardPickerFlowState()) }
     var forwardSending by remember(threadInstanceKey) { mutableStateOf(false) }
     var forwardSourceServerId by remember(threadInstanceKey) { mutableStateOf<ServerId?>(null) }
-    var forwardSelectedReceipt by remember(threadInstanceKey) { mutableStateOf<ThreadForwardDestinationReceipt?>(null) }
+    var forwardSelectedReceipts by remember(threadInstanceKey) {
+        mutableStateOf<List<ThreadForwardDestinationReceipt>>(emptyList())
+    }
+    var forwardRequestId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var forwardDirectoryGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     var forwardDirectoryNextCursor by remember(threadInstanceKey) { mutableStateOf<ForwardMessageTargetDirectoryCursor?>(null) }
     var forwardOperationNonce by remember(threadInstanceKey) { mutableStateOf(0) }
@@ -11488,7 +11507,7 @@ private fun ThreadPageContent(
             )
         forwardTargets = emptyList()
         forwardDirectoryNextCursor = null
-        forwardSelectedReceipt = null
+        forwardSelectedReceipts = emptyList()
         forwardNote = TextFieldValue()
         activeModal = "forwardTargets"
     }
@@ -12222,6 +12241,7 @@ private fun ThreadPageContent(
                             query = forwardPickerFlow.query,
                             items = forwardTargetItems,
                             selectedKey = forwardPickerFlow.selectedKey,
+                            selectedItems = forwardSelectedReceipts.map { it.target.toSlockForwardTargetPickerItem() },
                             loadState = forwardPickerFlow.loadState,
                             errorCode = forwardPickerFlow.errorCode,
                             canLoadMore = forwardDirectoryNextCursor != null,
@@ -12264,8 +12284,28 @@ private fun ThreadPageContent(
                                 forwardMessageIds = emptySet()
                                 activeModal = null
                             }
-                            SlockForwardTargetPickerIntent.Continue,
-                            is SlockForwardTargetPickerIntent.RemoveSelection -> Unit
+                            SlockForwardTargetPickerIntent.Continue -> {
+                                val nextFlow = forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Continue)
+                                forwardPickerFlow = nextFlow
+                                if (nextFlow.step == SlockForwardPickerStep.Note) {
+                                    if (forwardRequestId == null) {
+                                        forwardRequestId = newThreadForwardRequestId()
+                                    }
+                                    activeModal = "forwardNote"
+                                }
+                            }
+                            is SlockForwardTargetPickerIntent.RemoveSelection -> {
+                                forwardPickerFlow =
+                                    forwardPickerFlow.reduce(
+                                        SlockForwardPickerFlowEvent.TargetSelected(
+                                            stableKey = intent.stableKey,
+                                            renderGeneration = forwardPickerFlow.requestGeneration
+                                        )
+                                    )
+                                forwardSelectedReceipts = forwardSelectedReceipts.filterNot {
+                                    it.target.threadForwardSelectionKey() == intent.stableKey
+                                }
+                            }
                             is SlockForwardTargetPickerIntent.TargetSelected -> {
                                 val nextFlow =
                                     forwardPickerFlow.reduce(
@@ -12274,22 +12314,28 @@ private fun ThreadPageContent(
                                             renderGeneration = intent.renderGeneration
                                         )
                                     )
-                                val selectionAccepted =
-                                    forwardPickerFlow.step == SlockForwardPickerStep.Targets &&
-                                        nextFlow.step == SlockForwardPickerStep.Note &&
-                                        nextFlow.selectedKey == intent.item.stableKey
                                 val sourceServerId = forwardSourceServerId
-                                if (selectionAccepted && sourceServerId != null) {
+                                if (
+                                    sourceServerId != null &&
+                                    nextFlow.selectedKeys.contains(intent.item.stableKey)
+                                ) {
                                     forwardPickerFlow = nextFlow
-                                    val selected = intent.item.payload
                                     forwardOperationNonce += 1
-                                    forwardSelectedReceipt =
-                                        selected.toThreadForwardDestinationReceipt(
+                                    val receipt =
+                                        intent.item.payload.toThreadForwardDestinationReceipt(
                                             operationId = "$threadInstanceKey-fwd-$forwardOperationNonce",
                                             sourceServerId = sourceServerId,
                                             directoryGeneration = forwardDirectoryGeneration
                                         )
-                                    activeModal = "forwardNote"
+                                    forwardSelectedReceipts =
+                                        (forwardSelectedReceipts + receipt).distinctBy {
+                                            it.target.threadForwardSelectionKey()
+                                        }
+                                } else {
+                                    forwardPickerFlow = nextFlow
+                                    forwardSelectedReceipts = forwardSelectedReceipts.filterNot {
+                                        it.target.threadForwardSelectionKey() == intent.item.stableKey
+                                    }
                                 }
                             }
                         }
@@ -12299,7 +12345,7 @@ private fun ThreadPageContent(
         if (activeModal == "forwardNote") {
                 ThreadForwardNoteDialog(
                     messageCount = forwardMessageSelection.forwardableMessages.size,
-                    selectedTarget = forwardSelectedReceipt?.target,
+                    selectedTargetLabel = forwardSelectedReceipts.joinToString(", ") { it.displayedTitle },
                     note = forwardNote,
                     sending = forwardSending,
                     onNoteChange = { forwardNote = it },
@@ -12316,50 +12362,53 @@ private fun ThreadPageContent(
                         // already inside the receipt.
                         val liveServerId = forwardServerId
                         val sourceChannelId = forwardSourceChannelId
-                        val selectedReceipt = forwardSelectedReceipt
+                        val selectedReceipts = forwardSelectedReceipts
                         when {
                             repository == null ->
                                 onThreadEvent("forwardMessagesFailed", "Forward API unavailable", null, null)
                             sourceChannelId == null ->
                                 onThreadEvent("forwardMessagesFailed", "Source conversation unavailable", null, null)
-                            selectedReceipt == null ->
+                            selectedReceipts.isEmpty() ->
                                 onThreadEvent("forwardMessagesFailed", "Forward target unavailable", null, null)
                             !forwardSending -> {
                                 forwardSending = true
                                 shareExportScope.launch {
                                     try {
                                         val outcome =
-                                            executeThreadForward(
+                                            executeThreadForwardBatch(
                                                 repository = repository,
                                                 liveSourceServerId = liveServerId,
                                                 sourceChannelId = sourceChannelId,
-                                                receipt = selectedReceipt,
+                                                receipts = selectedReceipts,
                                                 currentDirectoryGeneration = forwardDirectoryGeneration,
                                                 messageIds = forwardMessageSelection.forwardableMessages.map { it.id },
                                                 mode = activeForwardSelectionMode.toForwardMessageSendMode(),
-                                                note = forwardNote.text
+                                                note = forwardNote.text,
+                                                requestId = forwardRequestId ?: newThreadForwardRequestId()
                                             )
-                                        if (outcome.failureCode == null) {
+                                        if (outcome.failureCode == null && outcome.result != null && outcome.result.failures.isEmpty()) {
+                                            outcome.result?.let(onForwardMessagesDelivered)
                                             activeModal = null
                                             forwardPickerFlow.sessionKey?.let { session ->
                                                 forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
                                             }
                                             forwardPickerFlow =
                                                 forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Dismiss)
-                                            forwardSelectedReceipt = null
+                                            forwardSelectedReceipts = emptyList()
+                                            forwardRequestId = null
                                             forwardMessageIds = emptySet()
                                             forwardNote = TextFieldValue()
                                             clearShareSelection()
                                             onThreadEvent(
                                                 "forwardMessagesSent",
-                                                selectedReceipt.displayedTitle,
+                                                selectedReceipts.joinToString(", ") { it.displayedTitle },
                                                 null,
                                                 activeForwardSelectionMode.wireValue
                                             )
                                         } else {
                                             onThreadEvent(
                                                 "forwardMessagesFailed",
-                                                outcome.failureCode.threadForwardErrorMessage(),
+                                                (outcome.failureCode ?: "forward_partial_failure").threadForwardErrorMessage(),
                                                 null,
                                                 null
                                             )
@@ -17083,6 +17132,7 @@ internal fun String.threadForwardErrorMessage(): String =
         "unsupported_source_message" -> ThreadUnsupportedSourceMessage
         "forward_source_target_forbidden" -> ThreadForwardSourceTargetForbiddenMessage
         "forward_cross_server_target_unsupported",
+        "forward_cross_server_batch_unsupported",
         "forward_joint_projection_unavailable" -> ThreadForwardCrossServerUnavailableMessage
         "forward_source_server_unauthorized",
         "forward_target_server_unauthorized",
@@ -24675,6 +24725,74 @@ internal data class ThreadForwardOutcome(
     val failureCode: String? = null
 )
 
+internal data class ThreadForwardBatchOutcome(
+    val failureCode: String? = null,
+    val result: ForwardMessageBatchResult? = null
+)
+
+@OptIn(ExperimentalUuidApi::class)
+private fun newThreadForwardRequestId(): String = Uuid.random().toString()
+
+internal suspend fun executeThreadForwardBatch(
+    repository: ForwardMessageTargetRepository,
+    liveSourceServerId: ServerId?,
+    sourceChannelId: ChannelId,
+    receipts: List<ThreadForwardDestinationReceipt>,
+    currentDirectoryGeneration: Int,
+    messageIds: List<String>,
+    mode: ForwardMessageSendMode,
+    note: String,
+    requestId: String
+): ThreadForwardBatchOutcome {
+    if (receipts.isEmpty()) return ThreadForwardBatchOutcome(failureCode = "forward_target_unavailable")
+    val preResolveFailure = receipts
+        .mapNotNull {
+            it.preResolveFailureCode(
+                liveSourceServerId = liveSourceServerId,
+                currentDirectoryGeneration = currentDirectoryGeneration
+            )
+        }
+        .firstOrNull()
+    if (preResolveFailure != null) return ThreadForwardBatchOutcome(failureCode = preResolveFailure)
+    val frozenSourceServerId = receipts.first().sourceServerId
+    val resolved = receipts.map { receipt ->
+        receipt to repository.resolveTargetChannel(frozenSourceServerId, receipt.target)
+    }
+    val destinations = mutableListOf<ForwardMessageDestination>()
+    resolved.forEach { (receipt, result) ->
+        val destination = (result as? DataResult.Content)?.data
+            ?: return ThreadForwardBatchOutcome(
+                failureCode = result.threadForwardFailureCode("forward_target_unavailable")
+            )
+        receipt.postResolveFailureCode(destination)?.let {
+            return ThreadForwardBatchOutcome(failureCode = it)
+        }
+        if (destination.channelId == sourceChannelId && destination.serverId == frozenSourceServerId) {
+            return ThreadForwardBatchOutcome(failureCode = "forward_source_target_forbidden")
+        }
+        destinations += destination
+    }
+    val destinationServer = destinations.first().serverId
+    if (destinations.any { it.serverId != destinationServer }) {
+        return ThreadForwardBatchOutcome(failureCode = "forward_cross_server_batch_unsupported")
+    }
+    if (messageIds.isEmpty()) return ThreadForwardBatchOutcome(failureCode = "forward_no_selected_messages")
+    return when (val result = repository.forwardMessagesBatch(
+        ForwardMessageBatchExecuteRequest(
+            sourceServerId = frozenSourceServerId,
+            sourceChannelId = sourceChannelId,
+            destinations = destinations,
+            messageIds = messageIds,
+            mode = mode,
+            note = note,
+            requestId = requestId
+        )
+    )) {
+        is DataResult.Content -> ThreadForwardBatchOutcome(result = result.data)
+        else -> ThreadForwardBatchOutcome(failureCode = result.threadForwardFailureCode("forward_failed"))
+    }
+}
+
 internal fun ForwardMessageTarget.threadForwardSelectionKey(): String = "${serverId.value}:${kind.name}:$id"
 
 internal fun List<ForwardMessageTarget>.threadForwardPickerTargets(
@@ -25413,7 +25531,7 @@ internal fun <T> SlockForwardTargetPicker(
 @Composable
 internal fun ThreadForwardNoteDialog(
     messageCount: Int,
-    selectedTarget: ForwardMessageTarget?,
+    selectedTargetLabel: String,
     note: TextFieldValue,
     sending: Boolean,
     onNoteChange: (TextFieldValue) -> Unit,
@@ -25433,7 +25551,7 @@ internal fun ThreadForwardNoteDialog(
             color = SlockColor.TextMutedGray
         )
         Text(
-            text = selectedTarget?.title.orEmpty(),
+            text = selectedTargetLabel,
             style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 19.sp),
             color = SlockColor.TextBlack,
             maxLines = 2,
@@ -25474,7 +25592,7 @@ internal fun ThreadForwardNoteDialog(
                 icon = if (sending) SlockLucideIconName.RefreshCw else SlockLucideIconName.Send,
                 onClick = onSend,
                 color = SlockColor.AccentPink,
-                enabled = selectedTarget != null && !sending
+                enabled = selectedTargetLabel.isNotBlank() && !sending
             )
         }
     }

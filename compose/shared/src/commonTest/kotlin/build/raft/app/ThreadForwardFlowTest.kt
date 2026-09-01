@@ -2,9 +2,13 @@ package build.raft.app
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
+import build.raft.app.data.ForwardMessageBatchDelivery
+import build.raft.app.data.ForwardMessageBatchExecuteRequest
+import build.raft.app.data.ForwardMessageBatchResult
 import build.raft.app.data.ForwardMessageDestination
 import build.raft.app.data.ForwardMessageExecuteRequest
 import build.raft.app.data.ForwardMessageSendMode
+import build.raft.app.data.ForwardMessageSendResult
 import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRepository
@@ -70,6 +74,55 @@ class ThreadForwardFlowTest {
         assertEquals(listOf("message-1", "message-2"), request.messageIds)
         assertEquals(ForwardMessageSendMode.Merged, request.mode)
         assertEquals("Selected note", request.note)
+    }
+
+    @Test
+    fun multiTargetForwardResolvesAllReceiptsAndSendsOneBatch() = runBlocking {
+        val first = target("first", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-first"))
+        val second = target("second", ForwardMessageTargetKind.RecentDirectMessage, ChannelId("channel-second"))
+        val repository = RecordingForwardRepository()
+
+        val outcome = executeThreadForwardBatch(
+            repository = repository,
+            liveSourceServerId = sourceServerId,
+            sourceChannelId = ChannelId("source"),
+            receipts = listOf(first.receiptAt(4), second.receiptAt(4)),
+            currentDirectoryGeneration = 4,
+            messageIds = listOf("message-1", "message-2"),
+            mode = ForwardMessageSendMode.Merged,
+            note = "Batch note",
+            requestId = "11111111-2222-4333-8444-555555555555"
+        )
+
+        assertEquals(null, outcome.failureCode)
+        assertEquals(2, repository.resolveCalls)
+        assertEquals(1, repository.batchRequests.size)
+        val request = repository.batchRequests.single()
+        assertEquals(listOf(ChannelId("channel-first"), ChannelId("channel-second")), request.destinations.map { it.channelId })
+        assertEquals(listOf("message-1", "message-2"), request.messageIds)
+        assertEquals("Batch note", request.note)
+    }
+
+    @Test
+    fun multiTargetForwardFailsClosedBeforeBatchWhenAnyReceiptDrifts() = runBlocking {
+        val first = target("first", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-first"))
+        val second = target("second", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-second"))
+        val repository = RecordingForwardRepository()
+
+        val outcome = executeThreadForwardBatch(
+            repository = repository,
+            liveSourceServerId = sourceServerId,
+            sourceChannelId = ChannelId("source"),
+            receipts = listOf(first.receiptAt(4), second.receiptAt(3)),
+            currentDirectoryGeneration = 4,
+            messageIds = listOf("message-1"),
+            mode = ForwardMessageSendMode.Merged,
+            note = ""
+        )
+
+        assertEquals("forward_directory_refreshed", outcome.failureCode)
+        assertEquals(0, repository.resolveCalls)
+        assertEquals(emptyList(), repository.batchRequests)
     }
 
     @Test
@@ -536,9 +589,10 @@ class ThreadForwardFlowTest {
 private class RecordingForwardRepository(
     private val resolvedChannels: Map<String, ChannelId> = emptyMap(),
     private val resolvedDestinations: Map<String, ForwardMessageDestination> = emptyMap(),
-    private val forwardResults: Map<ChannelId, DataResult<Unit>> = emptyMap()
+    private val forwardResults: Map<ChannelId, DataResult<ForwardMessageSendResult>> = emptyMap()
 ) : ForwardMessageTargetRepository {
     val requests = mutableListOf<ForwardMessageExecuteRequest>()
+    val batchRequests = mutableListOf<ForwardMessageBatchExecuteRequest>()
     var resolveCalls = 0
 
     override suspend fun recentTargets(serverId: ServerId, limit: Int): DataResult<List<ForwardMessageTarget>> =
@@ -583,8 +637,13 @@ private class RecordingForwardRepository(
             ?: DataResult.Error(ScreenError(code = "missing_channel", retryable = false))
     }
 
-    override suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<Unit> {
+    override suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<ForwardMessageSendResult> {
         requests += request
-        return forwardResults[request.targetChannelId] ?: DataResult.Content(Unit)
+        return forwardResults[request.targetChannelId] ?: DataResult.Content(ForwardMessageSendResult(message = null))
+    }
+
+    override suspend fun forwardMessagesBatch(request: ForwardMessageBatchExecuteRequest): DataResult<ForwardMessageBatchResult> {
+        batchRequests += request
+        return DataResult.Content(ForwardMessageBatchResult(deliveries = emptyList(), failures = emptyList()))
     }
 }

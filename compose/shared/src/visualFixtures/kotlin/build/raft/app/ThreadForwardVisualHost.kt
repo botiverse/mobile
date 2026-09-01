@@ -133,7 +133,7 @@ internal fun ThreadForwardNoteVisualScreen() {
         }
     ThreadForwardNoteDialog(
         messageCount = 2,
-        selectedTarget = target,
+        selectedTargetLabel = target.title,
         note = note,
         sending = false,
         onNoteChange = { note = it },
