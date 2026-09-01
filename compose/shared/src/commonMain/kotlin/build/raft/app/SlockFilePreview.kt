@@ -1441,6 +1441,11 @@ internal data class SlockFilePreviewGalleryImage(
     val composerImagePreviewUri: String = "",
     val composerImageSizeBytes: Long? = null,
     val composerImageOwnedTemporary: Boolean = false,
+    /**
+     * Exact existing composer slot targeted by this editor item. Blank means a fresh picker
+     * item, whose consumer should replace its synthetic local admission id.
+     */
+    val composerImageReplaceAttachmentId: String = "",
     /** Explicit process-local finalization state; do not infer this from MIME type. */
     val composerImageEditCompleted: Boolean = false,
     /** True only for a successful composer-image JPEG compression result. */
@@ -3045,7 +3050,11 @@ private fun SlockFilePreviewStandalonePageContent() {
                     compressed = image.composerImageCompressed,
                     source = slockFilePreviewComposerImageEventSource(image.composerImageCompressed),
                     sizeBytes = image.composerImageSizeBytes,
-                    replaceAttachmentId = "",
+                    // Fresh picker galleries use a blank target so Settings/Thread consumers
+                    // receive the legacy `complete` action.  A Thread editor gallery records an
+                    // explicit remote slot in composerImageReplaceAttachmentId; carry that
+                    // witness instead of deriving it from the synthetic local id.
+                    replaceAttachmentId = image.composerImageReplaceAttachmentId,
                     threadKey = eventPayload.composerImageThreadKey,
                     groupId = groupId,
                     groupIndex = index,
@@ -7668,6 +7677,7 @@ private fun SlockFilePreviewGalleryImage.toPreviewPayload(
             externalMimeType = mimeType,
             source = "",
             attachmentId = "",
+            composerImageReplaceAttachmentId = composerImageReplaceAttachmentId,
             composerImageFileRef = composerImageFileRef,
             composerImageFileName = title,
             composerImageMimeType = mimeType,

@@ -61,6 +61,53 @@ interface SlockNetworkClient {
     ): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
 
+    /** Server-authoritative direct attachment-session operations. */
+    suspend fun createAttachmentUploadSession(
+        priority: DataRequestPriority,
+        request: AttachmentUploadSessionCreateRequest,
+        serverIdOverride: ServerId? = null,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    suspend fun completeAttachmentUploadSession(
+        priority: DataRequestPriority,
+        uploadId: String,
+        serverIdOverride: ServerId? = null,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    suspend fun cancelAttachmentUploadSession(
+        priority: DataRequestPriority,
+        uploadId: String,
+        serverIdOverride: ServerId? = null,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    suspend fun statusAttachmentUploadSession(
+        priority: DataRequestPriority,
+        uploadId: String,
+        serverIdOverride: ServerId? = null,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    suspend fun putAttachmentUploadBytes(
+        priority: DataRequestPriority,
+        upload: AttachmentUploadSessionPut,
+        bytes: ByteArray,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    suspend fun putAttachmentUploadFile(
+        priority: DataRequestPriority,
+        upload: AttachmentUploadSessionPut,
+        file: PlatformFile,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    /**
+     * Resolve the authoritative local length before a direct-session create request.  This is a
+     * local platform operation, but it remains on the same bound network-client seam so a route
+     * or account transition cannot race file admission.
+     */
+    suspend fun prepareAttachmentUploadFile(
+        file: PlatformFile,
+    ): SlockPlatformFilePreparationResult =
+        SlockPlatformFilePreparationResult.Rejected("auth_authority_binding_required")
+
     suspend fun uploadAttachments(
         priority: DataRequestPriority,
         channelId: ChannelId,
@@ -115,6 +162,51 @@ internal interface AuthorityBoundSlockNetworkClient {
         files: List<MultipartFile>,
         expectedAuthority: SlockExpectedAuthBinding
     ): HomeNetworkResponse
+
+    suspend fun createAttachmentUploadSessionBound(
+        priority: DataRequestPriority,
+        request: AttachmentUploadSessionCreateRequest,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun completeAttachmentUploadSessionBound(
+        priority: DataRequestPriority,
+        uploadId: String,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun cancelAttachmentUploadSessionBound(
+        priority: DataRequestPriority,
+        uploadId: String,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun statusAttachmentUploadSessionBound(
+        priority: DataRequestPriority,
+        uploadId: String,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+
+    /** Presigned PUTs carry no bearer token, but are still fenced to the captured route authority. */
+    suspend fun putAttachmentUploadBytesBound(
+        priority: DataRequestPriority,
+        upload: AttachmentUploadSessionPut,
+        bytes: ByteArray,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun putAttachmentUploadFileBound(
+        priority: DataRequestPriority,
+        upload: AttachmentUploadSessionPut,
+        file: PlatformFile,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun prepareAttachmentUploadFileBound(
+        file: PlatformFile,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): SlockPlatformFilePreparationResult =
+        SlockPlatformFilePreparationResult.Rejected("auth_authority_binding_unsupported")
 }
 
 /**
@@ -154,14 +246,77 @@ internal fun SlockNetworkClient.boundTo(expectedAuthority: SlockExpectedAuthBind
                 files = files,
                 expectedAuthority = expectedAuthority
             ) ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun createAttachmentUploadSession(
+            priority: DataRequestPriority,
+            request: AttachmentUploadSessionCreateRequest,
+            serverIdOverride: ServerId?,
+        ): HomeNetworkResponse =
+            bound?.createAttachmentUploadSessionBound(priority, request, expectedAuthority)
+                ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun completeAttachmentUploadSession(
+            priority: DataRequestPriority,
+            uploadId: String,
+            serverIdOverride: ServerId?,
+        ): HomeNetworkResponse =
+            bound?.completeAttachmentUploadSessionBound(priority, uploadId, expectedAuthority)
+                ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun cancelAttachmentUploadSession(
+            priority: DataRequestPriority,
+            uploadId: String,
+            serverIdOverride: ServerId?,
+        ): HomeNetworkResponse =
+            bound?.cancelAttachmentUploadSessionBound(priority, uploadId, expectedAuthority)
+                ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun statusAttachmentUploadSession(
+            priority: DataRequestPriority,
+            uploadId: String,
+            serverIdOverride: ServerId?,
+        ): HomeNetworkResponse =
+            bound?.statusAttachmentUploadSessionBound(priority, uploadId, expectedAuthority)
+                ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun putAttachmentUploadBytes(
+            priority: DataRequestPriority,
+            upload: AttachmentUploadSessionPut,
+            bytes: ByteArray,
+        ): HomeNetworkResponse =
+            bound?.putAttachmentUploadBytesBound(priority, upload, bytes, expectedAuthority)
+                ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun putAttachmentUploadFile(
+            priority: DataRequestPriority,
+            upload: AttachmentUploadSessionPut,
+            file: PlatformFile,
+        ): HomeNetworkResponse =
+            bound?.putAttachmentUploadFileBound(priority, upload, file, expectedAuthority)
+                ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun prepareAttachmentUploadFile(
+            file: PlatformFile,
+        ): SlockPlatformFilePreparationResult =
+            bound?.prepareAttachmentUploadFileBound(file, expectedAuthority)
+                ?: SlockPlatformFilePreparationResult.Rejected("auth_authority_binding_unsupported")
     }
 }
 
-private fun authorityBindingUnsupportedResponse(): HomeNetworkResponse =
+internal fun authorityBindingUnsupportedResponse(): HomeNetworkResponse =
     HomeNetworkResponse(
         code = 409,
         bodyText = null,
         errorBodyText = """{"error":"auth_authority_binding_unsupported"}"""
+    )
+
+/** Direct upload sessions are reservation-bearing mutations and must never use a live route
+ * selector without the captured account/server/environment witness. */
+internal fun authorityBindingRequiredResponse(): HomeNetworkResponse =
+    HomeNetworkResponse(
+        code = 409,
+        bodyText = null,
+        errorBodyText = """{"error":"auth_authority_binding_required"}"""
     )
 
 private suspend fun SlockNetworkClient.serverMembers(priority: DataRequestPriority, serverId: ServerId): HomeNetworkResponse =
@@ -1020,7 +1175,10 @@ private data class MemberErrorBody(val error: String? = null)
 
 private fun StoredAuthSession.toNetworkServerContext(serverId: ServerId): SharedNetworkServerContext? {
     val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
-    val server = servers.firstOrNull { it.id == requestedId }?.toServerSummary() ?: return null
+    val server = servers.firstOrNull { it.id.trim() == requestedId }
+        ?.toServerSummary()
+        ?.let { summary -> summary.copy(id = ServerId(summary.id.value.trim())) }
+        ?: return null
     return SharedNetworkServerContext(session = this, server = server)
 }
 

@@ -166,7 +166,11 @@ internal class NetworkKmmSlockHttpExecutor(
                     "priority=$priority jsonBody=$jsonBody requestBytes=$requestBytes " +
                     "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} ${error.safeDiagnosticsSummary()}"
             )
-            SlockHttpExecutorResponse(code = 0, bodyText = null, errorBodyText = error.message)
+            SlockHttpExecutorResponse(
+                code = 0,
+                bodyText = null,
+                errorBodyText = error.message?.redactNetworkErrorText()
+            )
         }
     }
 
@@ -257,14 +261,123 @@ internal class NetworkKmmSlockHttpExecutor(
                     "fields=${fields.size} files=${files.size} requestBytes=$requestBytes " +
                     "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} ${error.safeDiagnosticsSummary()}"
             )
-            SlockHttpExecutorResponse(code = 0, bodyText = null, errorBodyText = error.message)
+            SlockHttpExecutorResponse(
+                code = 0,
+                bodyText = null,
+                errorBodyText = error.message?.redactNetworkErrorText()
+            )
+        }
+    }
+
+    override suspend fun executeBytes(
+        priority: SlockRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        bodyBytes: ByteArray,
+    ): SlockHttpExecutorResponse =
+        executeBinary(
+            priority = priority,
+            url = url,
+            method = method,
+            headers = headers,
+            body = NetworkBody.Bytes(bodyBytes),
+            requestBytes = bodyBytes.size.toLong(),
+            totalTimeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS,
+            bodyKind = "bytes",
+        )
+
+    override suspend fun executeFile(
+        priority: SlockRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        body: SlockHttpFileBody,
+    ): SlockHttpExecutorResponse =
+        executeBinary(
+            priority = priority,
+            url = url,
+            method = method,
+            headers = headers,
+            body = NetworkBody.FileRef(
+                path = body.path,
+                contentType = body.contentType,
+                contentLength = body.contentLength,
+                openStreamBlock = { _ -> body.openStream() },
+            ),
+            requestBytes = body.contentLength,
+            totalTimeoutMillis = SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS,
+            bodyKind = "file",
+        )
+
+    private suspend fun executeBinary(
+        priority: SlockRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        body: NetworkBody,
+        requestBytes: Long,
+        totalTimeoutMillis: Long,
+        bodyKind: String,
+    ): SlockHttpExecutorResponse {
+        val startedAt = TimeSource.Monotonic.markNow()
+        // Presigned URLs are bearer capabilities.  Never include the URL (or its query) in
+        // diagnostics; only a fixed category and safe header names are emitted.
+        val traceHeaders = networkKmmTraceHeaders(headers)
+        val clientRequestId = traceHeaders.getValue(NETWORK_KMM_REQUEST_ID_HEADER)
+        warningLogger(
+            "slock_networkkmm_binary_start category=presigned_upload bodyKind=$bodyKind " +
+                "method=${method.uppercase()} priority=$priority requestBytes=$requestBytes " +
+                "clientRequestId=$clientRequestId headers=${traceHeaders.toSafeHeaderDiagnostics()}"
+        )
+        return try {
+            val request = NetworkRequest(
+                method = method.toTransportMethod(),
+                url = url,
+                body = body,
+                policy = NetworkRequestPolicy(
+                    timeoutMillis = totalTimeoutMillis,
+                    priority = priority.toNetworkKmmPriority()
+                )
+            )
+            traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
+            val response = executeNetworkRequest(
+                request = request,
+                methodClass = SlockNetworkMethodClass.ProcessMutation,
+                timeoutMillis = totalTimeoutMillis,
+                redactSensitiveResponse = true
+            )
+            warningLogger(
+                "slock_networkkmm_binary_finish category=presigned_upload bodyKind=$bodyKind " +
+                    "method=${method.uppercase()} priority=$priority requestBytes=$requestBytes " +
+                    "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "code=${response.code} clientRequestId=$clientRequestId " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                    (response.transportDiagnostics ?: "engine=networkkmm status=none kind=none rawCode=none detail=none")
+            )
+            response
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            warningLogger(
+                "slock_networkkmm_binary_failed category=presigned_upload bodyKind=$bodyKind " +
+                    "method=${method.uppercase()} priority=$priority requestBytes=$requestBytes " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} ${error.safeDiagnosticsSummary()}"
+            )
+            SlockHttpExecutorResponse(
+                code = 0,
+                bodyText = null,
+                errorBodyText = "attachment_presigned_upload_transport_failed"
+            )
         }
     }
 
     private suspend fun executeNetworkRequest(
         request: NetworkRequest,
         methodClass: SlockNetworkMethodClass,
-        timeoutMillis: Long
+        timeoutMillis: Long,
+        redactSensitiveResponse: Boolean = false
     ): SlockHttpExecutorResponse {
         val outcome =
             requestLifetimeCoordinator.execute<NetworkResponse>(
@@ -277,7 +390,8 @@ internal class NetworkKmmSlockHttpExecutor(
                     }
             }
         return when (outcome) {
-            is SlockNetworkRequestLifetimeOutcome.Completed -> outcome.value.toExecutorResponse()
+            is SlockNetworkRequestLifetimeOutcome.Completed ->
+                outcome.value.toExecutorResponse(redactSensitive = redactSensitiveResponse)
             is SlockNetworkRequestLifetimeOutcome.Retired -> outcome.toExecutorResponse()
         }
     }
@@ -390,34 +504,44 @@ private fun SlockRequestPriority.toNetworkKmmPriority(): NetworkPriority =
         SlockRequestPriority.Background -> NetworkPriority.LOW
     }
 
-private fun NetworkResponse.toExecutorResponse(): SlockHttpExecutorResponse {
+private fun NetworkResponse.toExecutorResponse(redactSensitive: Boolean = false): SlockHttpExecutorResponse {
     val status = statusCode
-    val diagnostics = networkKmmDiagnostics()
+    val diagnostics = networkKmmDiagnostics(redactSensitive = redactSensitive)
     if (status == null) {
         return SlockHttpExecutorResponse(
             code = 0,
             bodyText = null,
-            errorBodyText = error?.message ?: "network_kmm_no_status",
+            errorBodyText =
+                if (redactSensitive) {
+                    "attachment_presigned_upload_transport_failed"
+                } else {
+                    error?.message?.redactNetworkErrorText() ?: "network_kmm_no_status"
+                },
             transportDiagnostics = diagnostics,
-            responseHeaders = headers
+            responseHeaders = if (redactSensitive) emptyMap() else headers
         )
     }
     val text = body.text()
     return if (status in 200..299) {
         SlockHttpExecutorResponse(
             code = status,
-            bodyText = text,
+            bodyText = if (redactSensitive) null else text,
             errorBodyText = null,
             transportDiagnostics = diagnostics,
-            responseHeaders = headers
+            responseHeaders = if (redactSensitive) emptyMap() else headers
         )
     } else {
         SlockHttpExecutorResponse(
             code = status,
             bodyText = null,
-            errorBodyText = text ?: error?.message,
+            errorBodyText =
+                if (redactSensitive) {
+                    "attachment_presigned_upload_http_$status"
+                } else {
+                    (text ?: error?.message)?.redactNetworkErrorText()
+                },
             transportDiagnostics = diagnostics,
-            responseHeaders = headers
+            responseHeaders = if (redactSensitive) emptyMap() else headers
         )
     }
 }
@@ -438,7 +562,7 @@ private fun SlockNetworkRequestLifetimeOutcome.Retired.toExecutorResponse(): Slo
     )
 }
 
-internal fun NetworkResponse.networkKmmDiagnostics(): String {
+internal fun NetworkResponse.networkKmmDiagnostics(redactSensitive: Boolean = false): String {
     val rawCode = error?.rawCode ?: rawResponse?.errorCode
     val rawCodeLabel =
         when (rawCode) {
@@ -450,9 +574,15 @@ internal fun NetworkResponse.networkKmmDiagnostics(): String {
             else -> rawCode.toString()
         }
     val detail =
-        listOfNotNull(error?.message, rawResponse?.errorMessage)
+        if (redactSensitive) {
+            listOfNotNull(error?.kind?.toString(), rawCodeLabel)
+                .firstOrNull { it.isNotBlank() }
+                ?.toSafeDiagnosticsToken()
+        } else {
+            listOfNotNull(error?.message, rawResponse?.errorMessage)
             .firstOrNull { it.isNotBlank() }
             ?.toSafeDiagnosticsToken()
+        }
             ?: "none"
     return "engine=networkkmm status=${statusCode ?: "none"} " +
         "kind=${error?.kind ?: "none"} rawCode=$rawCodeLabel detail=$detail " +

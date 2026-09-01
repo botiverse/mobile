@@ -192,6 +192,9 @@ internal fun SharedHomeActivityScreen(
                 cacheEnvironmentIdProvider = {
                     sharedStores.apiEnvironmentStore.current().apiBaseUrl
                 },
+                apiEnvironmentIdProvider = {
+                    sharedStores.apiEnvironmentStore.current().apiBaseUrl
+                },
                 replyCacheIdentityAuthority = {
                     sharedStores.captureThreadReplyCacheIdentity(storeScope)
                 },

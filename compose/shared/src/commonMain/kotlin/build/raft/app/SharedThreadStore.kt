@@ -23,8 +23,12 @@ import build.raft.app.data.buildMarkChannelMembersActionExecutedBody
 import build.raft.app.data.ChannelFilesSnapshot
 import build.raft.app.data.ChannelMemberActionResult
 import build.raft.app.data.ConversationRepository
+import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.ProgressiveConversationAttachmentUploader
+import build.raft.app.data.DirectAttachmentUploadOperation
 import build.raft.app.data.SlockExpectedAuthBinding
+import build.raft.app.data.matchesExpectedAuthority
+import build.raft.app.data.normalizedEnvironmentId
 import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.ChannelProfileUpdateRequest
@@ -1333,6 +1337,8 @@ internal class SharedThreadDataSource(
     private val channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
     private val messageStore: SharedThreadMessageStore? = null,
     private val cacheEnvironmentIdProvider: () -> String = { "" },
+    /** Current API environment used to bind direct-session uploads to one route authority. */
+    private val apiEnvironmentIdProvider: () -> String = { cacheEnvironmentIdProvider() },
     private val replyCacheIdentityAuthority: (suspend () -> ThreadReplyCacheIdentitySnapshot?)? = null,
     private val replyCacheIdentityTransitionWaiter:
         (suspend (ThreadReplyCacheIdentityTransitionAnchor?) -> Boolean)? = null,
@@ -1429,6 +1435,7 @@ internal class SharedThreadDataSource(
         channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
         messageStore: SharedThreadMessageStore? = null,
         cacheEnvironmentIdProvider: () -> String = { "" },
+        apiEnvironmentIdProvider: () -> String = cacheEnvironmentIdProvider,
         replyCacheIdentityAuthority: (suspend () -> ThreadReplyCacheIdentitySnapshot?)? = null,
         replyCacheIdentityTransitionWaiter:
             (suspend (ThreadReplyCacheIdentityTransitionAnchor?) -> Boolean)? = null,
@@ -1457,6 +1464,7 @@ internal class SharedThreadDataSource(
         channelProfileUpdateSink = channelProfileUpdateSink,
         messageStore = messageStore,
         cacheEnvironmentIdProvider = cacheEnvironmentIdProvider,
+        apiEnvironmentIdProvider = apiEnvironmentIdProvider,
         replyCacheIdentityAuthority = replyCacheIdentityAuthority,
         replyCacheIdentityTransitionWaiter = replyCacheIdentityTransitionWaiter,
         payloadStore = payloadStore,
@@ -3754,34 +3762,72 @@ internal class SharedThreadDataSource(
         }
     }
 
-    suspend fun attachmentUploadMaxBytes(): DataResult<Long> {
+    /**
+     * Capture one complete authority witness and bind it to one direct-session coordinator.  The
+     * returned operation must be reused for capability admission, every upload mutation and all
+     * later compensation; this data source intentionally exposes no reconstruct-on-cleanup seam.
+     */
+    suspend fun captureDirectAttachmentUploadOperation(
+        diagnosticsLogger: (String) -> Unit = {},
+    ): DirectAttachmentUploadOperation? {
+        val repository =
+            conversationRepository
+                ?: return null
+        val authority = captureExternalShareSendAuthority() ?: return null
+        return (repository as? RealConversationRepository)
+            ?.directAttachmentUploadOperation(authority, diagnosticsLogger)
+    }
+
+    suspend fun attachmentUploadMaxBytes(
+        expectedAuthority: SlockExpectedAuthBinding? = null,
+    ): DataResult<Long> {
         val repository =
             conversationRepository
                 ?: return DataResult.Error(
                     ScreenError(code = "attachment_upload_capabilities_unavailable", retryable = true)
                 )
-        return repository.getAttachmentUploadCapabilities().map { capabilities -> capabilities.maxBytes }
+        val boundRepository =
+            expectedAuthority?.let { authority ->
+                (repository as? RealConversationRepository)?.boundTo(authority)
+                    ?: return DataResult.Error(
+                        ScreenError(
+                            code = "attachment_upload_authority_binding_unsupported",
+                            retryable = false,
+                        )
+                    )
+            } ?: repository
+        return boundRepository.getAttachmentUploadCapabilities().map { capabilities -> capabilities.maxBytes }
     }
 
     suspend fun captureExternalShareSendAuthority(): SlockExpectedAuthBinding? {
         val session = sessionStore.readSession() ?: return null
-        val serverId = session.currentServerId?.takeIf(String::isNotBlank) ?: return null
-        if (session.servers.none { server -> server.id == serverId }) return null
+        val environmentId = apiEnvironmentIdProvider().normalizedEnvironmentId().takeIf { it.isNotBlank() } ?: return null
+        val accountId = session.user.id.trim().takeIf { it.isNotBlank() } ?: return null
+        val accessToken = session.accessToken.takeIf { it.isNotBlank() } ?: return null
+        val refreshToken = session.refreshToken.takeIf { it.isNotBlank() } ?: return null
+        val serverId = session.currentServerId?.trim()?.takeIf(String::isNotBlank) ?: return null
+        if (session.servers.none { server -> server.id.trim() == serverId }) return null
         return SlockExpectedAuthBinding(
-            accountId = session.user.id,
-            accessToken = session.accessToken,
-            refreshToken = session.refreshToken,
-            serverId = serverId
+            accountId = accountId,
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            serverId = serverId,
+            environmentId = environmentId,
         )
     }
 
     suspend fun matchesExternalShareSendAuthority(expected: SlockExpectedAuthBinding): Boolean {
         val session = sessionStore.readSession() ?: return false
-        return session.user.id == expected.accountId &&
-            session.accessToken == expected.accessToken &&
-            session.refreshToken == expected.refreshToken &&
-            session.currentServerId == expected.serverId &&
-            session.servers.any { server -> server.id == expected.serverId }
+        val environmentId = apiEnvironmentIdProvider().normalizedEnvironmentId()
+        val expectedEnvironment = expected.environmentId.normalizedEnvironmentId()
+        return expectedEnvironment.isNotBlank() &&
+            environmentId == expectedEnvironment &&
+            session.matchesExpectedAuthority(
+                expected = expected,
+                effectiveServerId = expected.serverId,
+                effectiveEnvironmentId = environmentId,
+            ) &&
+            session.servers.any { server -> server.id.trim() == expected.serverId.trim() }
     }
 
     suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): ThreadApiResult<ThreadAttachmentOpenTarget> =
