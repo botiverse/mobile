@@ -12302,6 +12302,7 @@ private fun ThreadPageContent(
                                 forwardSelectedReceipts = forwardSelectedReceipts.filterNot {
                                     it.target.threadForwardSelectionKey() == intent.stableKey
                                 }
+                                forwardRequestId = null
                             }
                             is SlockForwardTargetPickerIntent.TargetSelected -> {
                                 val nextFlow =
