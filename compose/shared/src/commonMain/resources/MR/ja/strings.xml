@@ -361,6 +361,7 @@
     <string name="thread_error_copy_link">リンクをコピーできませんでした</string>
     <string name="thread_error_no_text_select">選択できるテキストがありません</string>
     <string name="thread_feedback_followed">スレッドをフォローしました</string>
+    <string name="thread_row_unfollowed">フォロー解除済み</string>
     <string name="thread_error_follow">スレッドをフォローできませんでした</string>
     <string name="thread_feedback_unfollowed">スレッドのフォローを解除しました</string>
     <string name="thread_error_unfollow">スレッドのフォローを解除できませんでした</string>

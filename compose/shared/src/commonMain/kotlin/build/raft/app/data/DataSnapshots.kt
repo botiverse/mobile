@@ -46,9 +46,110 @@ data class InboxItem(
     val taskNumber: Int? = null,
     val taskStatus: TaskStatus? = null,
     val taskClaimedByName: String? = null,
+    /**
+     * Server-owned follow state for thread Activity rows. Older payloads that
+     * predate this projection remain unknown; only an explicit server `false`
+     * is Unfollowed. We deliberately do not model a separate history source
+     * on Mobile.
+     */
+    val isFollowing: Boolean? = null,
     val mentionActionId: String? = null,
     val pendingMentionActions: List<PendingMentionAction> = emptyList()
 )
+
+/** True only for an explicitly server-projected, unfollowed thread row. */
+internal val InboxItem.isUnfollowedActivityThread: Boolean
+    get() = kind == InboxItemKind.Thread && isFollowing == false
+
+/** Legacy payloads omit the optional field; keep their existing followed-row controls. */
+internal val InboxItem.isFollowedActivityThread: Boolean
+    get() = kind == InboxItemKind.Thread && isFollowing != false
+
+/**
+ * Activity attention is derived from the follow-state projection.  A stale or
+ * over-eager server/client payload must not make an Unfollowed row re-enter
+ * ordinary unread/mention attention.
+ */
+internal fun InboxItem.withActivityFollowStateProjection(): InboxItem =
+    if (isUnfollowedActivityThread) {
+        copy(
+            unreadCount = 0,
+            firstUnreadMessageId = null,
+            hasMention = false
+        )
+    } else {
+        this
+    }
+
+/**
+ * The Activity All projection may retain unfollowed rows, while attention
+ * filters must never surface them.  Keep this rule next to the model so every
+ * repository/fixture consumer applies the same membership contract.
+ */
+internal fun InboxSnapshot.projectActivityFilter(filter: InboxFilter): InboxSnapshot {
+    val rawUnread = items.sumOf(InboxItem::unreadCount)
+    val normalizedItems = items.map { item -> item.withActivityFollowStateProjection() }
+    val normalizedUnread = normalizedItems.sumOf(InboxItem::unreadCount)
+    val suppressedUnfollowedUnread = (rawUnread - normalizedUnread).coerceAtLeast(0)
+    val projectedTotalUnread =
+        if (totalUnreadCount >= rawUnread) {
+            (totalUnreadCount - suppressedUnfollowedUnread).coerceAtLeast(0)
+        } else {
+            maxOf(totalUnreadCount, normalizedUnread)
+        }
+    val visibleItems =
+        if (filter == InboxFilter.All) {
+            normalizedItems
+        } else {
+            normalizedItems.filterNot { item -> item.isUnfollowedActivityThread }
+        }
+    val removedCount = normalizedItems.size - visibleItems.size
+    if (removedCount == 0 && normalizedItems == items && projectedTotalUnread == totalUnreadCount) return this
+    return copy(
+        items = visibleItems,
+        totalCount = (totalCount - removedCount).coerceAtLeast(0),
+        totalUnreadCount = projectedTotalUnread
+    )
+}
+
+/**
+ * Applies the local, reversible projection for a Follow/Unfollow mutation.
+ * The network mutation remains authoritative; this helper only makes the
+ * visible row respond immediately while preserving the server aggregate and
+ * the All-vs-attention-filter membership contract.
+ */
+internal fun InboxSnapshot.projectActivityFollowMutation(
+    itemKey: String,
+    following: Boolean,
+    filter: InboxFilter
+): InboxSnapshot {
+    val previousItem = items.firstOrNull { item -> item.key == itemKey }
+    val mutated = items.map { item ->
+        if (item.key != itemKey) {
+            item
+        } else {
+            item.copy(
+                isFollowing = following,
+                unreadCount = 0,
+                firstUnreadMessageId = null,
+                hasMention = false
+            )
+        }
+    }
+    val projected =
+        copy(
+            items = mutated,
+            totalUnreadCount =
+                (totalUnreadCount - (previousItem?.unreadCount ?: 0)).coerceAtLeast(0)
+        ).projectActivityFilter(filter)
+    if (filter == InboxFilter.All) return projected
+    val targetPresent = projected.items.any { it.key == itemKey }
+    if (!targetPresent) return projected
+    return projected.copy(
+        items = projected.items.filterNot { it.key == itemKey },
+        totalCount = (projected.totalCount - 1).coerceAtLeast(0)
+    )
+}
 
 internal fun InboxItem.hasUnopenableInternalJointParentSource(): Boolean =
     kind == InboxItemKind.Thread &&

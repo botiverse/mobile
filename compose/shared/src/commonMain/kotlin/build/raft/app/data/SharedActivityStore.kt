@@ -111,6 +111,12 @@ class SharedActivityStore internal constructor(
     private var onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = onSummaryInvalidated
     private var unreadClearOverrides: Map<String, ActivityUnreadClearOverride> = emptyMap()
     private var doneOverrides: Map<String, ActivityDoneOverride> = emptyMap()
+    /**
+     * Local duplicate-request fence for Activity Follow/Unfollow actions.
+     * The server remains the authority for the eventual boolean; this set only
+     * prevents two taps from dispatching the same mutation concurrently.
+     */
+    private var pendingThreadFollowMutations: Set<String> = emptySet()
     private var readPredictionRevisions: Map<ChannelId, Long> = emptyMap()
     private var readPredictionItemKeys: Map<ChannelId, Set<String>> = emptyMap()
     private val replyPrewarmSemaphore = Semaphore(SharedActivityReplyPrewarmConcurrency)
@@ -195,6 +201,8 @@ class SharedActivityStore internal constructor(
             SharedActivityIntent.MarkAllRead -> markAllRead()
             is SharedActivityIntent.SetFilter -> setFilter(intent.filter)
             is SharedActivityIntent.MarkDone -> markDone(intent.item)
+            is SharedActivityIntent.UnfollowThread -> unfollowThread(intent.item)
+            is SharedActivityIntent.FollowThread -> followThread(intent.item)
             is SharedActivityIntent.MarkRead -> markRead(intent.item)
             is SharedActivityIntent.MarkUnread -> markUnread(intent.item)
             is SharedActivityIntent.ApplyReadReceiptPrediction -> applyReadReceiptPrediction(intent.prediction)
@@ -237,6 +245,7 @@ class SharedActivityStore internal constructor(
             realtimeBackgroundReconcileJob = null
             realtimeBackgroundReconcileDirty = false
             realtimeHighWater.clear()
+            pendingThreadFollowMutations = emptySet()
             owner
         }
         ownerServerId?.let(replyThreadFreshnessLedger::invalidateServer)
@@ -251,6 +260,7 @@ class SharedActivityStore internal constructor(
             doneOverrides = emptyMap()
             readPredictionRevisions = emptyMap()
             readPredictionItemKeys = emptyMap()
+            pendingThreadFollowMutations = emptySet()
             _state.value = SharedActivityState()
         }
     }
@@ -676,7 +686,9 @@ class SharedActivityStore internal constructor(
         val existing = snapshot.items[existingIndex]
         if (existing.lastMessageId == message.id || existing.latestActivityMessageId == message.id) return true
         val unreadIncrement =
-            if (message.author.id.value != current.ownerUserId) {
+            if (existing.isUnfollowedActivityThread) {
+                0
+            } else if (message.author.id.value != current.ownerUserId) {
                 1
             } else {
                 0
@@ -697,7 +709,7 @@ class SharedActivityStore internal constructor(
                 firstUnreadMessageId =
                     existing.firstUnreadMessageId
                         ?: message.id.takeIf { unreadIncrement > 0 }
-            )
+            ).withActivityFollowStateProjection()
         advanceReplyThreadContent(existing, patched)
         rememberRealtimeHighWater(patched)
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
@@ -718,7 +730,12 @@ class SharedActivityStore internal constructor(
         if (existingIndex < 0) return false
         val existing = snapshot.items[existingIndex]
         if (event.replyCount < existing.replyCount) return true
-        val nextUnreadCount = event.unreadCount ?: existing.unreadCount
+        val nextUnreadCount =
+            if (existing.isUnfollowedActivityThread) {
+                0
+            } else {
+                event.unreadCount ?: existing.unreadCount
+            }
         val patched =
             existing.copy(
                 replyCount = event.replyCount,
@@ -735,7 +752,7 @@ class SharedActivityStore internal constructor(
                     } else {
                         null
                     }
-            )
+            ).withActivityFollowStateProjection()
         if (patched == existing) return true
         advanceReplyThreadContent(existing, patched)
         rememberRealtimeHighWater(patched)
@@ -751,14 +768,16 @@ class SharedActivityStore internal constructor(
         intent: SharedActivityIntent.ApplyRealtimeEvent
     ) {
         val previous = snapshot.items[existingIndex]
-        val items = listOf(patched) + snapshot.items.filterIndexed { index, _ -> index != existingIndex }
+        val projected = patched.withActivityFollowStateProjection()
+        val items = listOf(projected) + snapshot.items.filterIndexed { index, _ -> index != existingIndex }
         reduceState(
             intent,
             current.copy(
                 snapshot =
                     snapshot.copy(
                         items = items,
-                        totalUnreadCount = maxOf(0, snapshot.totalUnreadCount + patched.unreadCount - previous.unreadCount)
+                        totalUnreadCount =
+                            maxOf(0, snapshot.totalUnreadCount + projected.unreadCount - previous.unreadCount)
                     ),
                 errorCode = null
             )
@@ -1238,15 +1257,22 @@ class SharedActivityStore internal constructor(
                     val inferredNextOffset = offset.toLong() + page.data.items.size.toLong()
                     val nextOffset = page.data.nextOffset ?: inferredNextOffset.takeIf { it <= Int.MAX_VALUE }?.toInt()
                     val mergedItems = (combined.items + page.data.items).dedupeActivityItems()
+                    // A page can be empty after the repository projects an
+                    // unfollowed row out of an attention filter.  The raw
+                    // server cursor still advanced, so that page is real
+                    // pagination progress even though no visible item was
+                    // appended.
+                    val rawPageAdvancedWithNoVisibleRows =
+                        page.data.items.isEmpty() && nextOffset != null && nextOffset > offset
                     consecutiveNoProgressPages =
-                        if (mergedItems.size == combined.items.size) {
+                        if (mergedItems.size == combined.items.size && !rawPageAdvancedWithNoVisibleRows) {
                             consecutiveNoProgressPages + 1
                         } else {
                             0
                         }
                     val invalidNonTerminalPage =
                         page.data.hasMore &&
-                            (page.data.items.isEmpty() || nextOffset == null || nextOffset <= offset)
+                            (nextOffset == null || nextOffset <= offset)
                     val exhaustedNoProgressBudget =
                         page.data.hasMore &&
                             mergedItems.size < targetDepth &&
@@ -1339,11 +1365,15 @@ class SharedActivityStore internal constructor(
         backgroundRefresh: Boolean = false
     ) {
         val current = _state.value
+        val projectedContentData =
+            (result as? DataResult.Content)?.data?.projectActivityFilter(current.selectedFilter)
         val nextState =
             when (result) {
                 is DataResult.Content -> {
+                    val projectedData = projectedContentData
+                        ?: error("content projection missing")
                     val pageItems =
-                        result.data.items
+                        projectedData.items
                             .withActivityThreadTaskProjection(result.data.server.id.value, tasksDataStore)
                             .reconcileLocallyClearedUnreadItems(current.selectedFilter)
                             .reconcileLocallyDoneItems()
@@ -1363,7 +1393,7 @@ class SharedActivityStore internal constructor(
                     val adjustedCanonicalUnreadCount =
                         maxOf(
                             0,
-                            result.data.totalUnreadCount -
+                            projectedData.totalUnreadCount -
                                 pageItems.suppressedUnreadCount -
                                 pageItems.suppressedDoneUnreadCount
                         )
@@ -1380,9 +1410,9 @@ class SharedActivityStore internal constructor(
                                     items = items,
                                     totalCount =
                                         if (current.selectedFilter == InboxFilter.Unread) {
-                                            maxOf(0, result.data.totalCount - pageItems.removedUnreadRows - pageItems.removedDoneRows)
+                                            maxOf(0, projectedData.totalCount - pageItems.removedUnreadRows - pageItems.removedDoneRows)
                                         } else {
-                                            maxOf(0, result.data.totalCount - pageItems.removedDoneRows)
+                                            maxOf(0, projectedData.totalCount - pageItems.removedDoneRows)
                                         },
                                     totalUnreadCount =
                                         canonicalUnreadCount,
@@ -1493,7 +1523,8 @@ class SharedActivityStore internal constructor(
             summaryFactCounts =
                 if (!append && current.selectedFilter == InboxFilter.All) {
                     when (result) {
-                        is DataResult.Content -> result.data.totalUnreadCount to result.data.totalCount
+                        is DataResult.Content ->
+                            (projectedContentData ?: result.data).let { it.totalUnreadCount to it.totalCount }
                         is DataResult.Empty -> 0 to 0
                         is DataResult.Error,
                         is DataResult.NoPermission -> null
@@ -1606,13 +1637,13 @@ class SharedActivityStore internal constructor(
             replyCount = current.replyCount,
             unreadCount = current.unreadCount,
             firstUnreadMessageId = current.firstUnreadMessageId
-        )
+        ).withActivityFollowStateProjection()
 
     private fun InboxItem.withRealtimeUnreadProjection(current: InboxItem): InboxItem =
         copy(
             unreadCount = current.unreadCount,
             firstUnreadMessageId = current.firstUnreadMessageId
-        )
+        ).withActivityFollowStateProjection()
 
     private fun markAllRead() {
         val previous = _state.value
@@ -1665,6 +1696,7 @@ class SharedActivityStore internal constructor(
     }
 
     private fun markDone(item: InboxItem) {
+        if (item.isUnfollowedActivityThread) return
         val previous = _state.value
         if (previous.snapshot == null) return
         rememberDone(item)
@@ -1695,8 +1727,142 @@ class SharedActivityStore internal constructor(
         }
     }
 
+    /**
+     * Apply an Activity thread follow mutation through the existing shared
+     * thread transport.  The optimistic projection is intentionally limited
+     * to the server-owned boolean and attention clearing; it never invents
+     * unread/mention state when a row is followed again.
+     */
+    private fun unfollowThread(item: InboxItem) {
+        if (!item.isThreadActivityItem() || item.isUnfollowedActivityThread) return
+        val currentItem = _state.value.items.firstOrNull { it.key == item.key } ?: return
+        if (currentItem.isUnfollowedActivityThread) return
+        if (!beginThreadFollowMutation(item.key)) return
+        val previous = _state.value
+        updateThreadFollowProjection(item.key, following = false)
+        scope.launch {
+            val threadChannelId = currentItem.threadChannelId
+            val result = try {
+                if (threadChannelId == null) {
+                    DataResult.Error(ScreenError("activity_thread_channel_missing"))
+                } else {
+                    conversationRepository.unfollowThread(threadChannelId)
+                }
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                DataResult.Error(ScreenError("activity_unfollow_failed", serverMessage = error.message))
+            } finally {
+                // A cancelled request must release the duplicate-request fence;
+                // otherwise a transient scope cancellation disables the row's
+                // next explicit action until the store is reset.
+                finishThreadFollowMutation(item.key)
+            }
+            if (result.isAcceptedThreadFollowMutation()) {
+                onUnreadCountsChanged()
+                // The mutation response is the server acknowledgement for
+                // this explicit user action.  A later Activity refresh (or
+                // re-entry) remains the canonical reconciliation point; do
+                // not issue a second request here that could race the action
+                // and briefly resurrect a stale follow state.
+            } else {
+                refreshAfterFailure(previous, result.failureCodeOr("activity_unfollow_failed"))
+            }
+        }
+    }
+
+    private fun followThread(item: InboxItem) {
+        if (!item.isThreadActivityItem() || !item.isUnfollowedActivityThread) return
+        val currentItem = _state.value.items.firstOrNull { it.key == item.key } ?: return
+        if (!currentItem.isUnfollowedActivityThread) return
+        if (!beginThreadFollowMutation(item.key)) return
+        val previous = _state.value
+        updateThreadFollowProjection(item.key, following = true)
+        scope.launch {
+            val parentMessageId = currentItem.parentMessageId
+            val result = try {
+                if (parentMessageId == null) {
+                    DataResult.Error(ScreenError("activity_parent_message_missing"))
+                } else {
+                    conversationRepository.followThread(parentMessageId)
+                }
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                DataResult.Error(ScreenError("activity_follow_failed", serverMessage = error.message))
+            } finally {
+                finishThreadFollowMutation(item.key)
+            }
+            if (result.isAcceptedThreadFollowMutation()) {
+                onUnreadCountsChanged()
+            } else {
+                refreshAfterFailure(previous, result.failureCodeOr("activity_follow_failed"))
+            }
+        }
+    }
+
+    private fun DataResult<ThreadActionResult>.failureCodeOr(fallback: String): String =
+        when (this) {
+            is DataResult.Error -> error.code.ifBlank { fallback }
+            is DataResult.NoPermission -> blocker.code.ifBlank { fallback }
+            is DataResult.Content,
+            is DataResult.Empty -> fallback
+        }
+
+    /** A successful response with `ok=false` did not acknowledge the mutation. */
+    private fun DataResult<ThreadActionResult>.isAcceptedThreadFollowMutation(): Boolean =
+        when (this) {
+            is DataResult.Content -> data.changed
+            // Empty is the deployed legacy success shape for an idempotent
+            // action; retain the optimistic state until the next refresh.
+            is DataResult.Empty -> true
+            is DataResult.Error,
+            is DataResult.NoPermission -> false
+        }
+
+    private fun InboxItem.isThreadActivityItem(): Boolean =
+        kind == InboxItemKind.Thread
+
+    private fun beginThreadFollowMutation(key: String): Boolean =
+        synchronized(realtimeOwnerLock) {
+            if (key in pendingThreadFollowMutations) {
+                false
+            } else {
+                pendingThreadFollowMutations += key
+                true
+            }
+        }
+
+    private fun finishThreadFollowMutation(key: String) {
+        synchronized(realtimeOwnerLock) {
+            pendingThreadFollowMutations -= key
+        }
+    }
+
+    private fun updateThreadFollowProjection(key: String, following: Boolean) {
+        synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            val snapshot = current.snapshot ?: return@synchronized
+            val updatedSnapshot =
+                snapshot.projectActivityFollowMutation(
+                    itemKey = key,
+                    following = following,
+                    filter = current.selectedFilter
+                )
+            reduceState(
+                if (following) {
+                    SharedActivityIntent.FollowThread(snapshot.items.firstOrNull { it.key == key } ?: return@synchronized)
+                } else {
+                    SharedActivityIntent.UnfollowThread(snapshot.items.firstOrNull { it.key == key } ?: return@synchronized)
+                },
+                current.copy(
+                    snapshot = updatedSnapshot,
+                    errorCode = null
+                )
+            )
+        }
+    }
+
     private fun markRead(item: InboxItem) {
-        if (item.unreadCount <= 0) return
+        if (item.isUnfollowedActivityThread || item.unreadCount <= 0) return
         val previous = _state.value
         val snapshot = previous.snapshot ?: return
         val targetChannelId = item.readReceiptChannelId()
@@ -1829,6 +1995,7 @@ class SharedActivityStore internal constructor(
     }
 
     private fun markUnread(item: InboxItem) {
+        if (item.isUnfollowedActivityThread) return
         val previous = _state.value
         val snapshot = previous.snapshot ?: return
         val targetChannelId = item.readReceiptChannelId()
@@ -2256,6 +2423,8 @@ sealed interface SharedActivityIntent {
     data object MarkAllRead : SharedActivityIntent
     data class SetFilter(val filter: InboxFilter) : SharedActivityIntent
     data class MarkDone(val item: InboxItem) : SharedActivityIntent
+    data class UnfollowThread(val item: InboxItem) : SharedActivityIntent
+    data class FollowThread(val item: InboxItem) : SharedActivityIntent
     data class MarkRead(val item: InboxItem) : SharedActivityIntent
     data class MarkUnread(val item: InboxItem) : SharedActivityIntent
     data class ApplyReadReceiptPrediction(val prediction: ReadReceiptPrediction) : SharedActivityIntent
@@ -2287,6 +2456,8 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         SharedActivityIntent.MarkAllRead -> "mark_all_read"
         is SharedActivityIntent.SetFilter -> "set_filter:${filter.wireValue}"
         is SharedActivityIntent.MarkDone -> "mark_done"
+        is SharedActivityIntent.UnfollowThread -> "unfollow_thread"
+        is SharedActivityIntent.FollowThread -> "follow_thread"
         is SharedActivityIntent.MarkRead -> "mark_read"
         is SharedActivityIntent.MarkUnread -> "mark_unread"
         is SharedActivityIntent.ApplyReadReceiptPrediction -> "read_prediction"
@@ -2302,6 +2473,8 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
     when (this) {
         SharedActivityIntent.MarkAllRead,
         is SharedActivityIntent.MarkDone,
+        is SharedActivityIntent.UnfollowThread,
+        is SharedActivityIntent.FollowThread,
         is SharedActivityIntent.MarkRead,
         is SharedActivityIntent.MarkUnread,
         is SharedActivityIntent.ApplyReadReceiptPrediction,
@@ -2447,7 +2620,14 @@ private fun RealtimeEvent.activitySummaryUnreadIncrement(
                 .sumOf { message -> snapshot.unreadIncrementForMessage(message, activeConversationId, currentUserId) }
         is ThreadUpdated ->
             unreadCount
-                ?.takeIf { it > 0 && !isActiveActivityConversation(threadChannelId.value, activeConversationId, snapshot) }
+                ?.takeIf {
+                    it > 0 &&
+                        !isActiveActivityConversation(threadChannelId.value, activeConversationId, snapshot) &&
+                        snapshot.items.none {
+                            it.isUnfollowedActivityThread &&
+                                (it.threadChannelId == threadChannelId || it.channelId == threadChannelId)
+                        }
+                }
                 ?: 0
         else -> 0
     }
@@ -2460,6 +2640,10 @@ private fun InboxSnapshot.unreadIncrementForMessage(
     val channelId = message.channelId ?: message.threadChannelId ?: return 0
     if (message.author.id.value == currentUserId) return 0
     if (isActiveActivityConversation(channelId.value, activeConversationId, this)) return 0
+    if (items.any { item ->
+            item.isUnfollowedActivityThread &&
+                (item.threadChannelId == channelId || item.channelId == channelId)
+        }) return 0
     if (items.any { item -> item.latestActivityMessageId == message.id || item.lastMessageId == message.id }) return 0
     return 1
 }

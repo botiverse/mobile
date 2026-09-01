@@ -361,6 +361,7 @@
     <string name="thread_error_copy_link">Unable to copy link</string>
     <string name="thread_error_no_text_select">No text to select</string>
     <string name="thread_feedback_followed">Followed thread</string>
+    <string name="thread_row_unfollowed">Unfollowed</string>
     <string name="thread_error_follow">Unable to follow thread</string>
     <string name="thread_feedback_unfollowed">Unfollowed thread</string>
     <string name="thread_error_unfollow">Unable to unfollow thread</string>
