@@ -291,186 +291,160 @@ internal fun SlockBaseMenuRow(
 }
 
 /*
- * Task #258 successor (artin msgs ed597ee6/478e8978): the thread detail dialog's
- * assignee selector REUSES the channel add-member interaction code verbatim —
- * SlockBrutalSearchField with the Search leading icon, SlockModalListShell +
- * SlockModalSectionHeader sections (AGENTS first, then HUMANS), and the row
- * visuals of SlockModalCompactMemberRow (SlockModalCompactMemberRowContent).
- * Two adaptations, everything else identical to the channel picker:
- *  1. Rows are wrapped in a native Button because plain-`clickable` rows lose to
- *     the outer dismiss barrier inside the detail dialog (SlockMenu dispatch
- *     contract); the Button shell carries the exact same selected/unabled
- *     background mapping (BrandYellow selected) as SlockModalCompactMemberRow.
- *  2. A single-select unassigned sentinel row is kept (the task domain needs it).
- * The anchored in-dialog popover shell is retained — a second stacked Modal
- * window is what swallowed row taps before (commit 5989e833).
+ * Task #258 successor (artin msg=f65282d2 via Mahua msg=cf4c6b0a): the assignee
+ * selector is a STANDALONE CENTERED modal (SlockUnifiedDialog, same shell family
+ * as the channel add-member dialog), not an anchored expansion. It reuses the
+ * channel add-user interaction verbatim: SlockBrutalSearchField with the Search
+ * leading icon, SlockModalListShell + SlockModalSectionHeader (AGENTS then
+ * HUMANS), and the exact SlockModalCompactMemberRow visuals extracted into
+ * RowScope.SlockModalCompactMemberRowContent. One adaptation: rows are wrapped
+ * in a native Button shell (same disabled/selected/idle background mapping incl.
+ * BrandYellow selection) because plain-`clickable` rows inside a dialog stacked
+ * on the task detail dialog lose to the outer dismiss barrier. Single-select
+ * semantics: tapping a row applies it immediately and closes (matching the
+ * add-member row contract), with the unassigned sentinel kept first.
  */
 @Composable
 internal fun SlockTaskAssigneeMenuOverlay(
-    anchor: SlockPopoverAnchor,
+    open: Boolean,
+    onDismiss: () -> Unit,
     rows: List<MemberProfile?>,
     selectedId: String,
     agentStatusResolver: SlockAgentStatusResolver,
     searchValue: TextFieldValue,
     onSearchValueChange: (TextFieldValue) -> Unit,
     searchPlaceholder: String,
+    modalTitle: String,
     unassignedLabel: String,
     humansHeaderLabel: String,
     agentsHeaderLabel: String,
-    onDismiss: () -> Unit,
-    onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier
+    onSelect: (String) -> Unit
 ) {
-    if (rows.isEmpty()) return
-    val density = LocalDensity.current
-    val shadowOffset = SlockBaseMenuShadowOffset
-    // Same width as the channel add-member dialog.
-    val menuWidth = 356.dp
+    if (!open || rows.isEmpty()) return
     val memberRows = rows.filterNotNull()
     val agentCount = memberRows.count { it.kind == MemberKind.Agent }
     val humanCount = memberRows.count { it.kind == MemberKind.Human }
     // Same list height formula as the channel add-member dialog.
     val listHeight = threadMemberListHeight(agentCount = agentCount, humanCount = humanCount).dp
-    val searchRowHeight = 46.dp
-    val menuSize = with(density) {
-        Size(
-            width = (menuWidth + shadowOffset).toPx(),
-            height =
-                listHeight.toPx() +
-                    searchRowHeight.toPx() +
-                    SlockStroke.Default.toPx() * 2 +
-                    shadowOffset.toPx()
-        )
-    }
-    SlockModalAnchoredPopover(
-        anchor = anchor,
-        contentSize = menuSize,
-        viewportGap = with(density) { SlockBaseMenuViewportGap.toPx() },
-        verticalPlacement = SlockTaskStatusMenuVerticalPlacement,
-        horizontalAutoFlip = true,
+    SlockUnifiedDialog(
+        title = modalTitle,
         onDismiss = onDismiss,
-        modifier = modifier
+        minWidth = 356.dp,
+        maxWidth = 356.dp,
+        contentPadding = 24.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22
     ) {
-        Box(
-            modifier = Modifier
-                .padding(end = shadowOffset, bottom = shadowOffset)
-        ) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .background(SlockBaseMenuForegroundColor)
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Same search field as the channel add-member dialog.
+            SlockBrutalSearchField(
+                value = searchValue,
+                placeholder = searchPlaceholder,
+                leadingIcon = SlockLucideIconName.Search,
+                enabled = true,
+                onValueChange = onSearchValueChange
             )
-            Column(
-                modifier = Modifier
-                    .width(menuWidth)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockBaseMenuForegroundColor)
-                    // Blank menu space must stay out of the sibling dismiss
-                    // barrier (same contract as SlockBaseMenuOverlay); the empty
-                    // clickable also keeps the nested LazyColumn scrollable.
-                    .clickable(onClick = {})
-                    .padding(SlockStroke.Default)
-            ) {
-                // Same search field as the channel add-member dialog.
-                SlockBrutalSearchField(
-                    value = searchValue,
-                    placeholder = searchPlaceholder,
-                    leadingIcon = SlockLucideIconName.Search,
-                    enabled = true,
-                    onValueChange = onSearchValueChange,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
-                )
-                SlockModalListShell(height = listHeight) {
-                    rows.forEach { row ->
-                        if (row == null) {
-                            item(key = TasksUnassignedAssigneeFilterId) {
-                                SlockTaskAssigneeMemberButton(
-                                    selected = selectedId == TasksUnassignedAssigneeFilterId,
-                                    onClick = { onSelect(TasksUnassignedAssigneeFilterId) }
+            SlockModalListShell(height = listHeight) {
+                if (memberRows.isEmpty()) {
+                    item(key = "no-match") {
+                        Text(
+                            text = searchPlaceholder,
+                            style = SlockType.Caption,
+                            color = SlockColor.TextMutedGray,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 18.dp)
+                        )
+                    }
+                }
+                rows.forEach { row ->
+                    if (row == null) {
+                        item(key = TasksUnassignedAssigneeFilterId) {
+                            SlockTaskAssigneeMemberButton(
+                                selected = selectedId == TasksUnassignedAssigneeFilterId,
+                                onClick = { onSelect(TasksUnassignedAssigneeFilterId) }
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(26.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Box(
-                                        modifier = Modifier.size(26.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        SlockLucideIcon(
-                                            SlockLucideIconName.UserMinus,
-                                            modifier = Modifier.size(15.dp),
-                                            color = "#FF000000"
-                                        )
-                                    }
-                                    Text(
-                                        text = unassignedLabel,
-                                        style = SlockType.Body.withSlockFontWeight(FontWeight.Medium)
-                                            .copy(fontSize = 14.sp, lineHeight = 18.sp),
-                                        color = SlockColor.TextBlack,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false)
+                                    SlockLucideIcon(
+                                        SlockLucideIconName.UserMinus,
+                                        modifier = Modifier.size(15.dp),
+                                        color = "#FF000000"
                                     )
-                                    if (selectedId == TasksUnassignedAssigneeFilterId) {
-                                        SlockLucideIcon(
-                                            SlockLucideIconName.Check,
-                                            modifier = Modifier.size(15.dp),
-                                            color = "#FF000000"
-                                        )
-                                    } else {
-                                        Spacer(modifier = Modifier.size(15.dp))
-                                    }
+                                }
+                                Text(
+                                    text = unassignedLabel,
+                                    style = SlockType.Body.withSlockFontWeight(FontWeight.Medium)
+                                        .copy(fontSize = 14.sp, lineHeight = 18.sp),
+                                    color = SlockColor.TextBlack,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                if (selectedId == TasksUnassignedAssigneeFilterId) {
+                                    SlockLucideIcon(
+                                        SlockLucideIconName.Check,
+                                        modifier = Modifier.size(15.dp),
+                                        color = "#FF000000"
+                                    )
+                                } else {
+                                    Spacer(modifier = Modifier.size(15.dp))
                                 }
                             }
                         }
                     }
-                    var lastKind: MemberKind? = null
-                    rows.forEach { row ->
-                        val member = row ?: return@forEach
-                        if (lastKind != member.kind) {
-                            lastKind = member.kind
-                            item(key = "header-${member.kind.name.lowercase()}") {
-                                // Same section header as the channel add-member dialog.
-                                SlockModalSectionHeader(
-                                    label = if (member.kind == MemberKind.Human) humansHeaderLabel else agentsHeaderLabel
-                                )
-                            }
+                }
+                var lastKind: MemberKind? = null
+                rows.forEach { row ->
+                    val member = row ?: return@forEach
+                    if (lastKind != member.kind) {
+                        lastKind = member.kind
+                        item(key = "header-${member.kind.name.lowercase()}") {
+                            // Same section header as the channel add-member dialog.
+                            SlockModalSectionHeader(
+                                label = if (member.kind == MemberKind.Human) humansHeaderLabel else agentsHeaderLabel
+                            )
                         }
-                        item(key = member.tasksIdentityFilterId()) {
-                            val selected = member.tasksIdentityFilterId() == selectedId
-                            val statusIndicatorState =
-                                if (member.kind == MemberKind.Agent) {
-                                    resolveThreadMemberAgentStatusIndicatorState(
-                                        memberKind = member.kind.name.lowercase(),
-                                        canonicalState = rememberSlockAgentStatusIndicatorState(
-                                            agentStatusResolver,
-                                            member.id.value
-                                        )
+                    }
+                    item(key = member.tasksIdentityFilterId()) {
+                        val selected = member.tasksIdentityFilterId() == selectedId
+                        val statusIndicatorState =
+                            if (member.kind == MemberKind.Agent) {
+                                resolveThreadMemberAgentStatusIndicatorState(
+                                    memberKind = member.kind.name.lowercase(),
+                                    canonicalState = rememberSlockAgentStatusIndicatorState(
+                                        agentStatusResolver,
+                                        member.id.value
                                     )
-                                } else {
-                                    null
-                                }
-                            SlockTaskAssigneeMemberButton(
-                                selected = selected,
-                                onClick = { onSelect(member.tasksIdentityFilterId()) }
-                            ) {
-                                SlockModalCompactMemberRowContent(
-                                    title = member.displayName,
-                                    subtitle = member.roleDescription
-                                        ?.takeIf { it.isNotBlank() }
-                                        ?: "${member.kind.name.lowercase()} · @${member.handle}",
-                                    avatarWireValue = member.avatarWireValueForAvatarSlot(),
-                                    avatarLabel = member.avatarLabel.ifBlank { member.displayName },
-                                    statusColor = statusIndicatorState?.color,
-                                    statusPulsing = statusIndicatorState?.pulsing == true,
-                                    avatarSize = 26.dp,
-                                    sourceBadgeLabel = null,
-                                    enabled = true,
-                                    selected = selected,
-                                    trailingText = "",
-                                    trailingIcon = if (selected) SlockLucideIconName.Check else null,
-                                    onTrailingClick = null,
-                                    cacheSubject = member.slockAvatarCacheSubject(),
-                                    cacheServerId = member.serverId?.value
                                 )
+                            } else {
+                                null
                             }
+                        SlockTaskAssigneeMemberButton(
+                            selected = selected,
+                            onClick = { onSelect(member.tasksIdentityFilterId()) }
+                        ) {
+                            SlockModalCompactMemberRowContent(
+                                title = member.displayName,
+                                subtitle = member.roleDescription
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?: "${member.kind.name.lowercase()} · @${member.handle}",
+                                avatarWireValue = member.avatarWireValueForAvatarSlot(),
+                                avatarLabel = member.avatarLabel.ifBlank { member.displayName },
+                                statusColor = statusIndicatorState?.color,
+                                statusPulsing = statusIndicatorState?.pulsing == true,
+                                avatarSize = 26.dp,
+                                sourceBadgeLabel = null,
+                                enabled = true,
+                                selected = selected,
+                                trailingText = "",
+                                trailingIcon = if (selected) SlockLucideIconName.Check else null,
+                                onTrailingClick = null,
+                                cacheSubject = member.slockAvatarCacheSubject(),
+                                cacheServerId = member.serverId?.value
+                            )
                         }
                     }
                 }
@@ -479,12 +453,7 @@ internal fun SlockTaskAssigneeMenuOverlay(
     }
 }
 
-/**
- * Native-Button row shell carrying SlockModalCompactMemberRow's exact
- * background mapping (SurfaceCream disabled / BrandYellow selected /
- * SurfaceWhite idle). Button rows win native dispatch inside the detail dialog
- * where plain-`clickable` rows lose to the outer dismiss barrier.
- */
+
 @Composable
 private fun SlockTaskAssigneeMemberButton(
     selected: Boolean,

@@ -26826,7 +26826,9 @@ private fun ThreadTaskDetailDialog(
     // the status menu stays on the shared overlay because its Button rows win
     // native dispatch (SlockMenu.kt contract) and already work.
     var statusMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
-    var assigneeMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    // Task #258 successor (artin msg=f65282d2): assignee picker is a standalone
+    // centered modal, so the flag only tracks open/closed (no popover anchor).
+    var assigneeMenuOpen by remember { mutableStateOf<Boolean?>(null) }
     var assigneeMenuSearch by remember { mutableStateOf(TextFieldValue("")) }
     val assigneeRows = threadTaskAssigneeRows(assigneeOptions, assigneeMenuSearch.text)
     val selectedAssigneeId = task.assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
@@ -26898,7 +26900,7 @@ private fun ThreadTaskDetailDialog(
                         ?: unassignedLabel,
                     iconName = null,
                     color = SlockColor.SurfaceWhite,
-                    onClick = { anchor -> assigneeMenuAnchor = anchor },
+                    onClick = { _ -> assigneeMenuOpen = true },
                     anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "assignee"),
                     modifier = Modifier
                         .padding(start = 6.dp)
@@ -26958,25 +26960,26 @@ private fun ThreadTaskDetailDialog(
             }
         )
     }
-    assigneeMenuAnchor?.let { anchor ->
-        // Task #258 successor (artin msg=ed597ee6): reuse the channel add-member
-        // interaction code verbatim (search field, section headers, member row
-        // visuals) — see SlockTaskAssigneeMenuOverlay. Row shaping (unassigned
-        // sentinel first, then agents/humans sections) stays here.
+    assigneeMenuOpen?.let { open ->
+        // Task #258 successor (artin msg=ed597ee6/f65282d2): standalone centered
+        // assignee modal reusing the channel add-member interaction code. Row
+        // shaping (unassigned sentinel first, then agents/humans sections) stays
+        // here; search value resets when the modal closes or a row applies.
         SlockTaskAssigneeMenuOverlay(
-            anchor = anchor,
+            open = open,
+            onDismiss = { assigneeMenuOpen = null },
             rows = assigneeRows,
             selectedId = selectedAssigneeId,
             agentStatusResolver = agentStatusResolver,
             searchValue = assigneeMenuSearch,
             onSearchValueChange = { assigneeMenuSearch = it },
             searchPlaceholder = searchPlaceholder,
+            modalTitle = stringResource(MR.strings.thread_action_add_member),
             unassignedLabel = unassignedLabel,
             humansHeaderLabel = stringResource(MR.strings.thread_members_humans),
             agentsHeaderLabel = stringResource(MR.strings.thread_members_agents),
-            onDismiss = { assigneeMenuAnchor = null },
             onSelect = { selectedId ->
-                assigneeMenuAnchor = null
+                assigneeMenuOpen = null
                 assigneeMenuSearch = TextFieldValue("")
                 if (selectedId != selectedAssigneeId) {
                     // No member matches the unassigned sentinel → onAssigneeSelect(null).
