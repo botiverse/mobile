@@ -784,6 +784,13 @@ internal fun threadEventRequiresWriteAccess(action: String): Boolean =
 // search) are unit-testable without a Composable host.
 internal fun threadTaskDetailPanelUseLegacy(linkedTask: TaskSummary?): Boolean = linkedTask == null
 
+/** artin 2026-09-01: task assignee picker scope = current channel, not server. */
+internal fun taskAssigneeIdentityOptions(
+    channelMembers: List<MemberProfile>,
+    channelMembersLoaded: Boolean,
+    serverMembers: List<MemberProfile>
+): List<MemberProfile> = if (channelMembersLoaded) channelMembers else serverMembers
+
 internal fun threadTaskAssigneeRows(
     assigneeOptions: List<MemberProfile>,
     search: String
@@ -7970,7 +7977,15 @@ internal fun SharedThreadRouteContent(
             resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
             tasksViewModel = tasksViewModel,
             taskChannelId = taskChannelId,
-            taskIdentityOptions = threadServerMembersEntry.members,
+            // artin 2026-09-01: the task assignee picker must list CURRENT CHANNEL
+            // members, not the whole server. Channel-scoped slice once loaded;
+            // fall back to the server roster only while the slice hasn't loaded.
+            taskIdentityOptions = taskAssigneeIdentityOptions(
+                channelMembers = threadChannelMembersSlice.members,
+                channelMembersLoaded =
+                    threadChannelMembersSlice.status == SharedServerMembersLoadStatus.Loaded,
+                serverMembers = threadServerMembersEntry.members
+            ),
             linkedTasksProjection = linkedTasksProjection,
             filesViewModel = filesViewModel,
             memberSuggestionsFlow = memberSuggestionsFlow,

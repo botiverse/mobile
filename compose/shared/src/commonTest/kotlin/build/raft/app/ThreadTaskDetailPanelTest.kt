@@ -116,6 +116,34 @@ class ThreadTaskDetailPanelTest {
         val projection = ThreadLinkedTasksProjection(authoritative = true, lookup = emptyMap())
         assertNull(projection.assignUpdateIntent("task-unknown", null))
     }
+
+    // artin 2026-09-01: the task assignee picker lists CURRENT CHANNEL members
+    // once the channel roster has loaded, and only falls back to the server
+    // roster while the channel slice is still loading.
+    @Test
+    fun assigneeOptionsUseChannelScopeOnceLoaded() {
+        val channelMembers = listOf(member("alex-jc-qa1", MemberKind.Human), member("artin", MemberKind.Human))
+        assertEquals(
+            channelMembers,
+            taskAssigneeIdentityOptions(
+                channelMembers = channelMembers,
+                channelMembersLoaded = true,
+                serverMembers = directory
+            )
+        )
+    }
+
+    @Test
+    fun assigneeOptionsFallBackToServerWhileChannelRosterLoading() {
+        assertEquals(
+            directory,
+            taskAssigneeIdentityOptions(
+                channelMembers = emptyList(),
+                channelMembersLoaded = false,
+                serverMembers = directory
+            )
+        )
+    }
 }
 
 class ThreadTaskDetailOverlineTest {
