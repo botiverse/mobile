@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-31T22:05:05.193Z",
+  "generatedAt": "2026-09-01T22:03:01.796Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 86,
-    "pending": 6
+    "ready": 85,
+    "pending": 7
   },
   "cases": [
     {
@@ -460,7 +460,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe0ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe1ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-10T22:11:45.609Z",
       "severity": "low",
       "summary": [
@@ -1333,7 +1333,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4141069523770946
+      "metricMismatch": 0.41410323922172265
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1579,7 +1579,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2689782746654784
+      "metricMismatch": 0.26896781031852124
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1613,7 +1613,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2688523649424124
+      "metricMismatch": 0.2688337991655527
     },
     {
       "id": "components.home.saved.results",
@@ -1650,7 +1650,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1899211888742166
+      "metricMismatch": 0.18999926638579723
     },
     {
       "id": "components.home.activity.results",
@@ -1686,7 +1686,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18505313462868644
+      "metricMismatch": 0.18503689031419646
     },
     {
       "id": "components.tasks.panel.states",
@@ -1830,7 +1830,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:04.357Z",
+      "generatedAt": "2026-09-01T22:03:01.096Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1843,7 +1843,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:04.357Z",
+      "generatedAt": "2026-09-01T22:03:01.096Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1992,39 +1992,16 @@
     },
     {
       "id": "components.channel.members.add-panel",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000080010000800100008001000080010000800100008001000080010000fffd7ffeffff7ffeffff7ffefffe7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff3ffcffff0000800100008001000080010000800100008001000080010000800180018001ffffffff",
-      "generatedAt": "2026-07-18T07:39:43.546Z",
-      "severity": "medium",
-      "summary": [
-        "Header title styling differs: React uses uppercase 'ADD MEMBER' (heavier/uppercase) while Android uses normal-case 'Add Member' (lighter weight).",
-        "Modal is vertically centered on Android but anchored lower (closer to bottom half) on React.",
-        "Selection highlight color differs: React shows a muted/desaturated yellow-orange on 'artin', Android shows a brighter saturated yellow on 'Designer' (selection appears on a different row).",
-        "Typography appears lighter and slightly smaller on Android for section headers ('Agents', 'Humans') and body text.",
-        "Avatar/badge styling differs: React avatar for Product UX Designer is a plain teal square; Android shows a teal avatar with a distinct patterned/badge look."
-      ],
-      "likelyCauses": [
-        "Platform-specific typography implementation (uppercase transform, font weight) not shared across React/Android.",
-        "Missing text-transform / letter-spacing token in Android theme.",
-        "Different selection/highlight color tokens between platforms.",
-        "Online-status indicator (presence dot) not implemented on Android.",
-        "Avatar component rendering differs (teal square vs. patterned badge)."
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Apply consistent text casing and weight: title should be sentence case 'Add Member' matching design token, or update baseline to uppercase intentionally and align Android.",
-        "Align modal vertical centering so panel sits in the same Y position on both platforms.",
-        "Use shared selection/highlight color token for the active row.",
-        "Add the online presence indicator (green dot) on Android member rows.",
-        "Match avatar component to the React baseline (teal square) or update both to the patterned badge deliberately."
-      ],
-      "intentional": [
-        "Different selected row ('artin' on React vs 'Designer' on Android) may reflect a different test state rather than a UI defect."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.715311702515494
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-09-01T22:03:01.181Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
     },
     {
       "id": "components.settings.root.page",
@@ -2197,7 +2174,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1986176935229068
+      "metricMismatch": 0.19862714519112623
     },
     {
       "id": "components.settings.notifications.page",
@@ -2369,7 +2346,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0612606500047258
+      "metricMismatch": 0.06127516506663422
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2641,7 +2618,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.16915043005090402
+      "metricMismatch": 0.16914941737216616
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2961,7 +2938,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:05.097Z",
+      "generatedAt": "2026-09-01T22:03:01.714Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2974,7 +2951,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:05.097Z",
+      "generatedAt": "2026-09-01T22:03:01.714Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2987,7 +2964,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:05.097Z",
+      "generatedAt": "2026-09-01T22:03:01.714Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3000,7 +2977,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:05.097Z",
+      "generatedAt": "2026-09-01T22:03:01.714Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

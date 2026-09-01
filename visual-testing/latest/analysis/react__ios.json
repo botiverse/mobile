@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-31T22:05:08.464Z",
+  "generatedAt": "2026-09-01T22:03:05.042Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 81,
-    "pending": 11
+    "ready": 79,
+    "pending": 13
   },
   "cases": [
     {
@@ -467,31 +467,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-28T00:59:28.882Z",
-      "severity": "low",
-      "summary": [
-        "Status dot colors and 'Waiting pulse' label appear visually consistent between React and iOS renders.",
-        "Typography weight, size, and color of the 'Waiting pulse' label match between platforms.",
-        "No missing or extra elements detected in the iOS render compared to the React baseline.",
-        "Dot sizing, spacing, and circular shape appear equivalent across both platforms.",
-        "Pixel mismatch ratio of 0.23% is within tolerance and reflects only minor anti-aliasing differences."
-      ],
-      "likelyCauses": [
-        "Minor anti-aliasing variation between web (React) and native (iOS) rasterization pipelines.",
-        "Subpixel rendering differences in font hinting between the two platforms."
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "No action required; current visual diff is within acceptable tolerance.",
-        "If stricter parity is desired, consider aligning dot border/stroke width to a shared design token.",
-        "Optional: tune ignoreAntialiasing tolerance if false positives persist."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
+      "generatedAt": "2026-09-01T22:03:03.543Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -1553,7 +1537,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26895228257787496
+      "metricMismatch": 0.2689364172776495
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1586,12 +1570,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26916190707659904
+      "metricMismatch": 0.26913186427404434
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:1ff83ffc87fc0ffe81fc07fe0000000683f106c680310046800d00fec3fdfffefc31b3ce80310046801d00468ffd1ffefcf1fffe81f1c3ce801103c6801d00c6e3f1003e8031fffe8001f07e80fdf07ebef1fffedc71fffe0001fffedefffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
+      "imageHash": "p1:1ff83ffc87fc0ffe81fc07fe0000000681f106c680310046800d00fec3fdfffefc31b3ce80310046801d00468ffd1ffefcf1fffe81f1c3ce801103c6801d00c6e3f1003e8031fffe8001f07e80fdf07ebef1fffedc71fffe0001fffedefffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
       "generatedAt": "2026-08-02T22:44:22.784Z",
       "severity": "medium",
       "summary": [
@@ -1622,7 +1606,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11110638527700134
+      "metricMismatch": 0.11115769433304978
     },
     {
       "id": "components.home.activity.results",
@@ -1657,7 +1641,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1066036780491757
+      "metricMismatch": 0.10659051322558433
     },
     {
       "id": "components.tasks.panel.states",
@@ -1798,7 +1782,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:07.731Z",
+      "generatedAt": "2026-09-01T22:03:04.312Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1811,7 +1795,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:07.731Z",
+      "generatedAt": "2026-09-01T22:03:04.312Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1966,36 +1950,16 @@
     },
     {
       "id": "components.channel.members.add-panel",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000080010000800100008001000080010000800100008001000080010000fffd7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff3ffcffff0000800100008001000080010000800100008001000080010000800180018001ffffffff",
-      "generatedAt": "2026-08-02T22:44:32.485Z",
-      "severity": "medium",
-      "summary": [
-        "Title typography differs: React uses uppercase 'ADD MEMBER' (tracked-out), iOS uses mixed-case 'Add Member' in heavier weight",
-        "Section labels 'AGENTS' and 'HUMANS' are uppercase on React but mixed-case 'Agents' / 'Humans' on iOS",
-        "Avatar indicator beside 'Product UX Designer' renders as a solid cyan square on React, but a small mosaic/emoji-style icon on iOS",
-        "Status dot color differs: React shows a green circle next to Product UX Designer; iOS shows a yellow/orange dot",
-        "Selected row highlight placement differs: React highlights 'artin (Owner)'; iOS highlights 'Designer (Product design)' — different default selection state"
-      ],
-      "likelyCauses": [
-        "Platform-specific typography stack (uppercase styling applied via CSS on React but not ported to iOS)",
-        "Different default selection/hover state between web and iOS rendering",
-        "Unaligned avatar/asset library between web and native implementations",
-        "Independent theming tokens for background surface between platforms"
-      ],
-      "suggestedOwner": "design-systems",
-      "suggestedFixes": [
-        "Unify the 'Add Member' title casing and weight across React and iOS via shared design tokens",
-        "Normalize AGENTS/HUMANS labels to the same casing on both platforms",
-        "Align the Product UX Designer avatar and presence dot assets between web and iOS",
-        "Match the panel background color and surface elevation tokens across platforms",
-        "Confirm whether the highlighted row difference reflects an intentional state or a default-selection bug"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.709325083377216
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-09-01T22:03:04.407Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
     },
     {
       "id": "components.settings.root.page",
@@ -2137,7 +2101,7 @@
     {
       "id": "components.settings.appearance.page",
       "status": "ready",
-      "imageHash": "p1:0ffe0ffe8fff1ffe81fe01fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c07fc81fc3d0cbffc007c9ffc007c807400008004007cb3fc0004800020008000000081f0ffffbfdcffffa3fcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffffffff",
+      "imageHash": "p1:0ffe0ffe8fff1ffe81fe01fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c07fc81fc3d0cbffc007c9ffc007c807400008004007cb3fc0004800020008000000081f0ffffbfdcffffa3fcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffff7fff",
       "generatedAt": "2026-08-14T22:11:36.163Z",
       "severity": "high",
       "summary": [
@@ -2166,7 +2130,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19633646588622888
+      "metricMismatch": 0.1963533438651922
     },
     {
       "id": "components.settings.notifications.page",
@@ -2272,7 +2236,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:08.057Z",
+      "generatedAt": "2026-09-01T22:03:04.588Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2285,7 +2249,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:08.057Z",
+      "generatedAt": "2026-09-01T22:03:04.588Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2298,7 +2262,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:08.057Z",
+      "generatedAt": "2026-09-01T22:03:04.588Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2311,7 +2275,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:08.057Z",
+      "generatedAt": "2026-09-01T22:03:04.588Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2324,7 +2288,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:08.057Z",
+      "generatedAt": "2026-09-01T22:03:04.588Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2500,7 +2464,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19329100336209337
+      "metricMismatch": 0.19331058181769079
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2816,7 +2780,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:08.345Z",
+      "generatedAt": "2026-09-01T22:03:04.921Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2829,7 +2793,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:08.345Z",
+      "generatedAt": "2026-09-01T22:03:04.921Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2842,7 +2806,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:08.345Z",
+      "generatedAt": "2026-09-01T22:03:04.921Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2855,7 +2819,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:08.345Z",
+      "generatedAt": "2026-09-01T22:03:04.921Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

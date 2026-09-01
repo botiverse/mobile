@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-31T22:05:12.172Z",
+  "generatedAt": "2026-09-01T22:03:08.706Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 81,
-    "pending": 11
+    "ready": 79,
+    "pending": 13
   },
   "cases": [
     {
@@ -457,33 +457,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffebffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-31T22:03:44.870Z",
-      "severity": "low",
-      "summary": [
-        "Status dot row (green, orange, gray, blue) and pink 'Waiting pulse' indicator render identically in color, shape, and vertical position on both Android and iOS.",
-        "Heading 'Raft UI Status Dot', breadcrumb 'COMPONENTS.UI.STATUS-DOT.STATES', and 'Waiting pulse' label appear at the same size, weight, and baseline alignment on both platforms.",
-        "Right-side iOS canvas extends much taller than the component area (1170×2532 with content confined to top-left), but the actual rendered UI region is isomorphic to the Android crop.",
-        "No missing elements, clipping, or state-indicator differences observed within the rendered region."
-      ],
-      "likelyCauses": [
-        "Differences are within the configured pixelRatio tolerance (0.02) and layoutDp tolerance (1); the 0.30% pixel mismatch is attributable to font hinting and antialiasing variation between Android and iOS text rasterizers.",
-        "Android crop is bounded to component bounds (342×92) while iOS uses the full canvas, which is a test harness configuration artifact rather than a UI divergence."
-      ],
-      "suggestedOwner": "ui-platform",
-      "suggestedFixes": [
-        "No fix required — diffs are within tolerance and visually isomorphic.",
-        "If a stricter match is desired, unify the iOS crop to component bounds before diffing.",
-        "Optionally align font rendering by using a shared webfont or platform-specific font metrics shim to reduce sub-pixel variation."
-      ],
-      "intentional": [
-        "Different canvas/crop sizes between baseline and current are an artifact of the comparison harness, not an intentional UI divergence.",
-        "Sub-pixel antialiasing differences in text rendering are expected across Android and iOS engines."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03f407fe43fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
+      "generatedAt": "2026-09-01T22:03:07.254Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.002999216861776066
     },
     {
@@ -1141,7 +1123,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0594840739390502
+      "metricMismatch": 0.05947901054536131
     },
     {
       "id": "components.thread.header.states",
@@ -1274,7 +1256,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3693445268089818
+      "metricMismatch": 0.3693418263323477
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1307,7 +1289,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3719265200307854
+      "metricMismatch": 0.3719268575903647
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1471,39 +1453,21 @@
     },
     {
       "id": "components.home.search.results",
-      "status": "ready",
-      "imageHash": "p1:1ffe1ffe97fc07fc8000000080000000800000009ff61f76ffffffffffffffff80ff80ff9fff9fff80ff80ff80fe80ffdfffdfffffffffff800380038003800383ff83ff87ff87ffc9ffd9ff9fff9fff827fc27ffffffffff83ff03f81ff83effffffc3ff81ff81ffc3ffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-08-14T22:12:25.749Z",
-      "severity": "low",
-      "summary": [
-        "Image dimension/scale causes minor proportional differences: iOS render is 1170×2532 vs Android 390×844 (3x scale), but visual layout appears consistent after normalization",
-        "Highlight color (yellow) coverage on matched terms like 'android', 'Android', '#android-artifacts' appears slightly wider/larger on iOS, possibly due to font-rendering metrics",
-        "Search input field, filter chips, result cards, and thread/message items are structurally isomorphic with no missing or clipped elements"
-      ],
-      "likelyCauses": [
-        "Platform font rendering differences (San Francisco on iOS vs Roboto on Android) leading to minor glyph-width and highlight-box differences",
-        "Screenshot scale factor (3x vs 1x) not normalized before pixel comparison, inflating the pixelMismatchRatio",
-        "iOS Kuikly runtime may use slightly different default text-measurement or highlight-paint padding for matched search terms"
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Normalize both screenshots to the same pixel ratio before diffing to reduce false-positive mismatch from scale",
-        "Tighten highlight-paint padding to a consistent dp on both Kuikly targets so the yellow span matches the text metrics exactly",
-        "Cross-check default font + line-height tokens for matched-term highlighting on iOS vs Android Kuikly runtimes",
-        "Verify search-result card vertical rhythm (title, subtitle, meta) matches the Android reference within 1dp layout tolerance"
-      ],
-      "intentional": [
-        "Filter chip row count and wrap behavior differ between Android (single row, fewer chips) and iOS (more chips, wraps) — declared platform-difference and not a defect"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.08825799003524126
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffe97fc07fc8000000080000000800000009f321f12ffffffffffffffff80fe80ff9ffe9fff80ff80ff80fe80ffdfffdfffffffffff800280038002800383fe83ff87fe87ffc9fec9ff9ffe9fff827ec27fffffdbffd03fc03f81fe83effffffc3ff81ff81ffc3ffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "generatedAt": "2026-09-01T22:03:07.933Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.08820161758550382
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:0ffe0ffe87fe07fc8000000080000000800000019c3cdc78fcfcfcfcfc00fc04817c813c9d3c9d7c81fc81fe80008000de00dc00ffffffff800380038003800387ff87ff8fff87ffdfffdfffbfff9fff967fc67ffffffffff83ff03fc3ffc3fffffffffff81ff81ffc3ffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:0ffe0ffe87fe07fc8000000080000000800000019c3cdc78fcfcfcfcfc00fc04817c813c9d3c9d7c81fc81fe80008000fe00fc00ffffffff800380038003800387ff87ff8fff87ffdfffdfffbfff9fff967fc67ffffffffff83ff03fc3ffc3fffffffffff81ff81ffc3ffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-13T22:15:18.489Z",
       "severity": "medium",
       "summary": [
@@ -1531,7 +1495,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10367129798409425
+      "metricMismatch": 0.1036149255343568
     },
     {
       "id": "components.home.saved.results",
@@ -1729,7 +1693,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:11.423Z",
+      "generatedAt": "2026-09-01T22:03:08.006Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1742,7 +1706,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:11.423Z",
+      "generatedAt": "2026-09-01T22:03:08.006Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2158,7 +2122,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:11.743Z",
+      "generatedAt": "2026-09-01T22:03:08.300Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2171,7 +2135,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:11.743Z",
+      "generatedAt": "2026-09-01T22:03:08.300Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2184,7 +2148,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:11.743Z",
+      "generatedAt": "2026-09-01T22:03:08.300Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2197,7 +2161,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:11.743Z",
+      "generatedAt": "2026-09-01T22:03:08.300Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2210,7 +2174,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:11.743Z",
+      "generatedAt": "2026-09-01T22:03:08.300Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2284,7 +2248,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09865516263620533
+      "metricMismatch": 0.0986558377553638
     },
     {
       "id": "components.members.avatar-management",
@@ -2687,7 +2651,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:12.075Z",
+      "generatedAt": "2026-09-01T22:03:08.592Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2700,7 +2664,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:12.075Z",
+      "generatedAt": "2026-09-01T22:03:08.592Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2713,7 +2677,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:12.075Z",
+      "generatedAt": "2026-09-01T22:03:08.592Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2726,7 +2690,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-31T22:05:12.075Z",
+      "generatedAt": "2026-09-01T22:03:08.592Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
