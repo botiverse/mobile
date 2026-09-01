@@ -31,6 +31,13 @@ const val READ_RECEIPTS_FEATURE_FLAG_KEY: String = "read_receipts_v0"
 const val MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY: String = "mobile_thread_page_size_v0"
 const val MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY: String = "mobile_activity_stable_order_v1"
 /**
+ * #94 Slack-aligned bottom navigation (home channels-only / dms / activity / more, order
+ * user-configurable, floating Search). Default OFF everywhere (server-unresolved evaluates
+ * false); local A/B goes through the diagnostics "Local Feature Overrides" latch. Flag off
+ * keeps the legacy home/tasks/members/settings tab model untouched.
+ */
+const val MOBILE_SLACK_NAV_FEATURE_FLAG_KEY: String = "mobile_slack_nav_v0"
+/**
  * #367 Thread first-frame render: single-paragraph light markdown path.
  * Default OFF everywhere (server-unresolved evaluates false); local A/B goes
  * through the diagnostics "Local Feature Overrides" ForceOn/ForceOff latch.
@@ -55,6 +62,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     READ_RECEIPTS_FEATURE_FLAG_KEY,
     MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY,
     MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
+    MOBILE_SLACK_NAV_FEATURE_FLAG_KEY,
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
     ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY,
     MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY,
