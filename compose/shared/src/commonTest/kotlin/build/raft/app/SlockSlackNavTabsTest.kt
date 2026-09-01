@@ -64,26 +64,33 @@ class SlockSlackNavTabsTest {
     }
 
     @Test
-    fun gateOffAlwaysResolvesLegacyOrder() {
+    fun untouchedSettingFollowsTheFlagSeededDefault() {
+        // No persisted setting: the flag seeds the default (artin's rule).
         assertEquals(
             listOf("home", "tasks", "members", "settings"),
             SlockSlackNavTabs.resolveAppShellTabKeys(slackNavEnabled = false, persistedRawOrder = null)
         )
         assertEquals(
-            listOf("home", "tasks", "members", "settings"),
-            SlockSlackNavTabs.resolveAppShellTabKeys(slackNavEnabled = false, persistedRawOrder = "more,dms,activity,home")
+            SlockSlackNavTabs.DefaultOrder,
+            SlockSlackNavTabs.resolveAppShellTabKeys(slackNavEnabled = true, persistedRawOrder = null)
         )
     }
 
     @Test
-    fun gateOnResolvesSanitizedSlackOrder() {
-        assertEquals(
-            SlockSlackNavTabs.DefaultOrder,
-            SlockSlackNavTabs.resolveAppShellTabKeys(slackNavEnabled = true, persistedRawOrder = null)
-        )
+    fun persistedSettingWinsOverTheFlag() {
+        // A persisted order means the user touched the setting: it is the final value even
+        // when the flag is off (or later turned off).
         assertEquals(
             listOf("more", "home", "dms", "activity"),
             SlockSlackNavTabs.resolveAppShellTabKeys(slackNavEnabled = true, persistedRawOrder = "more,home")
+        )
+        assertEquals(
+            listOf("more", "home", "dms", "activity"),
+            SlockSlackNavTabs.resolveAppShellTabKeys(slackNavEnabled = false, persistedRawOrder = "more,home")
+        )
+        assertEquals(
+            SlockSlackNavTabs.DefaultOrder,
+            SlockSlackNavTabs.resolveAppShellTabKeys(slackNavEnabled = false, persistedRawOrder = "home,dms,activity,more")
         )
     }
 }

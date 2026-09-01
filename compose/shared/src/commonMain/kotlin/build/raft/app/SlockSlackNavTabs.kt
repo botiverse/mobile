@@ -44,9 +44,16 @@ internal object SlockSlackNavTabs {
         sanitizeTabOrder(raw?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList())
 
     /**
-     * Gate-aware resolution of the ordered app-shell tab keys. Flag off -> the legacy tab
-     * model regardless of any persisted Slack order; flag on -> the sanitized Slack order.
+     * Gate-aware resolution of the ordered app-shell tab keys, per artin's locked rule
+     * (2026-09-01, #proj-mobile:5a279be4): the flag only seeds the DEFAULT; the final value
+     * always comes from the setting. A persisted order means the user has touched the setting —
+     * it wins regardless of the flag (including the flag later being turned off). With no
+     * persisted setting, the flag picks the factory default: on -> Slack order, off -> legacy.
      */
     fun resolveAppShellTabKeys(slackNavEnabled: Boolean, persistedRawOrder: String?): List<String> =
-        if (slackNavEnabled) parseTabOrder(persistedRawOrder) else LegacyOrder
+        when {
+            persistedRawOrder != null -> parseTabOrder(persistedRawOrder)
+            slackNavEnabled -> DefaultOrder
+            else -> LegacyOrder
+        }
 }
