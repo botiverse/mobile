@@ -16884,6 +16884,7 @@ private fun ThreadMessagesList(
                     ThreadTaskDetailDialog(
                         task = linkedTask,
                         assigneeOptions = taskAssigneeOptions,
+                        agentStatusResolver = agentStatusResolver,
                         onDismiss = { taskStatusMenuMessageId = null },
                         onStatusSelect = { selectedId ->
                             taskStatusMenuMessageId = null
@@ -26059,7 +26060,7 @@ private fun ThreadAddMemberModal(
     }
 }
 
-private fun threadMemberListHeight(agentCount: Int, humanCount: Int, maxHeight: Int = 288): Int {
+internal fun threadMemberListHeight(agentCount: Int, humanCount: Int, maxHeight: Int = 288): Int {
     val sectionCount = listOf(agentCount, humanCount).count { it > 0 }
     val rowCount = agentCount + humanCount
     return (sectionCount * 30 + rowCount * 58 + 8).coerceIn(108, maxHeight)
@@ -26801,6 +26802,7 @@ private fun ThreadStateActionMessage(
 private fun ThreadTaskDetailDialog(
     task: TaskSummary,
     assigneeOptions: List<MemberProfile>,
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     onDismiss: () -> Unit,
     onStatusSelect: (String) -> Unit,
     onAssigneeSelect: (MemberProfile?) -> Unit
@@ -26829,23 +26831,31 @@ private fun ThreadTaskDetailDialog(
     val assigneeRows = threadTaskAssigneeRows(assigneeOptions, assigneeMenuSearch.text)
     val selectedAssigneeId = task.assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
     val statusMeta = task.status.sharedTaskStatusChipMeta()
-    // Task #258 successor (artin msg=a493a371/7cfc6fb7): channel + task number
-    // render as a small muted overline above the title so the identifier never
-    // becomes the oversized title.
+    // Task #258 successor (artin msg=478e8978, web ref): the header shows only
+    // the channel identifier (small muted line) and the localized task number —
+    // never the task title, which can be too long for the header. The task title
+    // and description render inside the body instead.
     val taskNumberLabel = task.taskNumber?.let { number ->
         stringResource(MR.strings.tasks_detail_task_identifier, number)
     }
+    val headerOverline = task.taskNumber?.let { task.channelName?.takeIf { name -> name.isNotBlank() }?.let { "#$it" } }
     SlockUnifiedDialog(
-        title = task.tasksMeaningfulDisplayTitle(),
-        overline = threadTaskDetailOverline(
-            channelName = task.channelName,
-            taskNumber = task.taskNumber,
-            taskNumberLabel = taskNumberLabel
-        ),
-        titleMaxLines = 2,
+        title = taskNumberLabel ?: task.channelName.orEmpty(),
+        overline = headerOverline,
+        titleFontSize = 14,
+        titleLineHeight = 18,
+        titleMaxLines = 1,
         onDismiss = onDismiss,
         contentSpacing = SlockSpacing.Sm
     ) {
+        // Task title now lives in the body (header is identifier-only).
+        Text(
+            text = task.tasksMeaningfulDisplayTitle(),
+            style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis
+        )
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -26903,7 +26913,12 @@ private fun ThreadTaskDetailDialog(
                 )
             }
             task.creator?.let { creator ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Same 24dp chip height as the status/assignee rows above so all
+                // three wrap units center-align on a shared FlowRow line.
+                Row(
+                    modifier = Modifier.height(24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         text = creatorLabel,
                         style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
@@ -26944,54 +26959,21 @@ private fun ThreadTaskDetailDialog(
         )
     }
     assigneeMenuAnchor?.let { anchor ->
-        // Task #258 successor (artin msg d37a0750): channel add-member style —
-        // search stays in the overlay; here we only shape rows: unassigned
-        // sentinel first, then HUMANS / AGENTS section headers with avatar rows.
-        val humansHeaderLabel = stringResource(MR.strings.thread_members_humans)
-        val agentsHeaderLabel = stringResource(MR.strings.thread_members_agents)
-        val pickerItems = buildList {
-            add(
-                SlockBaseMenuItem(
-                    id = TasksUnassignedAssigneeFilterId,
-                    label = unassignedLabel,
-                    icon = SlockLucideIconName.UserMinus
-                )
-            )
-            var lastKind: MemberKind? = null
-            assigneeRows.forEach { member ->
-                member ?: return@forEach
-                if (lastKind != member.kind) {
-                    add(
-                        SlockBaseMenuItem(
-                            id = "header-${member.kind.name.lowercase()}",
-                            label = if (member.kind == MemberKind.Human) humansHeaderLabel else agentsHeaderLabel,
-                            sectionHeader = true
-                        )
-                    )
-                    lastKind = member.kind
-                }
-                add(
-                    SlockBaseMenuItem(
-                        id = member.tasksIdentityFilterId(),
-                        label = member.displayName,
-                        subtitle = member.roleDescription
-                            ?.takeIf { it.isNotBlank() }
-                            ?: "${member.kind.name.lowercase()} · @${member.handle}",
-                        avatarWireValue = member.avatarWireValueForAvatarSlot(),
-                        avatarLabel = member.avatarLabel.ifBlank { member.displayName.take(1) },
-                        avatarCacheSubject = member.slockAvatarCacheSubject(),
-                        avatarCacheServerId = member.serverId?.value
-                    )
-                )
-            }
-        }
+        // Task #258 successor (artin msg=ed597ee6): reuse the channel add-member
+        // interaction code verbatim (search field, section headers, member row
+        // visuals) — see SlockTaskAssigneeMenuOverlay. Row shaping (unassigned
+        // sentinel first, then agents/humans sections) stays here.
         SlockTaskAssigneeMenuOverlay(
             anchor = anchor,
-            items = pickerItems,
+            rows = assigneeRows,
             selectedId = selectedAssigneeId,
+            agentStatusResolver = agentStatusResolver,
             searchValue = assigneeMenuSearch,
             onSearchValueChange = { assigneeMenuSearch = it },
             searchPlaceholder = searchPlaceholder,
+            unassignedLabel = unassignedLabel,
+            humansHeaderLabel = stringResource(MR.strings.thread_members_humans),
+            agentsHeaderLabel = stringResource(MR.strings.thread_members_agents),
             onDismiss = { assigneeMenuAnchor = null },
             onSelect = { selectedId ->
                 assigneeMenuAnchor = null
@@ -27011,18 +26993,6 @@ internal fun threadTaskDetailMenuOwnerIdentity(taskId: TaskId, slot: String): St
     "thread_task_detail:${taskId.value}:$slot"
 
 /**
- * Task #258 successor (artin msg=a493a371): "#channel · <localized task #N>"
- * identifier line for the detail dialog overline. Channel blank/absent and
- * taskNumber absent are each dropped; the line disappears entirely when both
- * are missing. Pre-localized `taskNumberLabel` comes from stringResource.
+ * Stable anchor-owner identity for the task detail dialog's status/assignee
+ * popover anchors, so multiple concurrent overlays stay scoped per task slot.
  */
-internal fun threadTaskDetailOverline(
-    channelName: String?,
-    taskNumber: Int?,
-    taskNumberLabel: String?
-): String? =
-    listOfNotNull(
-        channelName?.takeIf { it.isNotBlank() }?.let { "#$it" },
-        if (taskNumber != null) taskNumberLabel else null
-    ).joinToString(" · ").takeIf { it.isNotBlank() }
-

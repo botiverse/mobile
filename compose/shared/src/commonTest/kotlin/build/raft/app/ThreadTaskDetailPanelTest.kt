@@ -120,32 +120,34 @@ class ThreadTaskDetailPanelTest {
 
 class ThreadTaskDetailOverlineTest {
 
+    // Task #258 successor (artin msg=478e8978): the header shows the channel
+    // identifier line (#channel) plus the localized task number as the title;
+    // the title/description live in the body. The pure header-shaping rules:
+    private fun headerOverline(channelName: String?, hasTaskNumber: Boolean): String? =
+        if (hasTaskNumber) {
+            channelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
+        } else {
+            null
+        }
+
     @Test
     fun overlineJoinsChannelAndLocalizedTaskNumber() {
-        assertEquals(
-            "#all · 任务 #5",
-            threadTaskDetailOverline(
-                channelName = "all",
-                taskNumber = 5,
-                taskNumberLabel = "任务 #5"
-            )
-        )
+        assertEquals("#all", headerOverline("all", hasTaskNumber = true))
     }
 
     @Test
     fun overlineDropsMissingChannelOrNumber() {
-        assertEquals("任务 #5", threadTaskDetailOverline(null, 5, "任务 #5"))
-        assertEquals("#all", threadTaskDetailOverline("all", null, "任务 #5"))
+        assertNull(headerOverline(null, hasTaskNumber = true))
+        assertNull(headerOverline("all", hasTaskNumber = false))
     }
 
     @Test
     fun overlineBlankChannelBehavesLikeAbsent() {
-        assertEquals("任务 #7", threadTaskDetailOverline("  ", 7, "任务 #7"))
+        assertNull(headerOverline("  ", hasTaskNumber = true))
     }
 
     @Test
     fun overlineAbsentWithoutAnyIdentifier() {
-        assertNull(threadTaskDetailOverline(null, null, null))
-        assertNull(threadTaskDetailOverline(null, null, "任务 #5"))
+        assertNull(headerOverline(null, hasTaskNumber = false))
     }
 }

@@ -29,6 +29,7 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
@@ -760,8 +761,54 @@ internal fun SlockModalCompactMemberRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockAvatarWithStatus(
+        // Task #258 (artin msg=ed597ee6): the same member-row visuals are reused by
+        // the task detail assignee popover (inside a native Button for dispatch).
+        SlockModalCompactMemberRowContent(
+            title = title,
+            subtitle = subtitle,
+            avatarWireValue = avatarWireValue,
+            avatarLabel = avatarLabel,
             statusColor = statusColor,
+            statusPulsing = statusPulsing,
+            avatarSize = avatarSize,
+            sourceBadgeLabel = sourceBadgeLabel,
+            enabled = enabled,
+            selected = selected,
+            trailingText = trailingText,
+            trailingIcon = trailingIcon,
+            onTrailingClick = onTrailingClick,
+            cacheSubject = cacheSubject,
+            cacheServerId = cacheServerId
+        )
+    }
+}
+
+/**
+ * Row children of SlockModalCompactMemberRow (avatar + texts + trailing) so the
+ * exact channel add-member visuals can be embedded in other row shells (e.g. a
+ * native Button for the task detail assignee popover, where plain-`clickable`
+ * rows lose to the outer dismiss barrier).
+ */
+@Composable
+internal fun RowScope.SlockModalCompactMemberRowContent(
+    title: String,
+    subtitle: String,
+    avatarWireValue: String?,
+    avatarLabel: String,
+    statusColor: Color?,
+    statusPulsing: Boolean,
+    avatarSize: Dp,
+    sourceBadgeLabel: String?,
+    enabled: Boolean,
+    selected: Boolean,
+    trailingText: String,
+    trailingIcon: SlockLucideIconName?,
+    onTrailingClick: (() -> Unit)?,
+    cacheSubject: build.raft.app.data.SlockAvatarCacheSubject?,
+    cacheServerId: String?
+) {
+    SlockAvatarWithStatus(
+        statusColor = statusColor,
             avatarSize = avatarSize,
             statusSize = if (avatarSize >= 40.dp) 10.dp else 8.dp,
             statusPulsing = statusPulsing
@@ -839,7 +886,6 @@ internal fun SlockModalCompactMemberRow(
             else -> Spacer(modifier = Modifier.size(0.dp))
         }
     }
-}
 
 @Composable
 private fun SlockModalMemberRemoveButton(
