@@ -92,6 +92,8 @@ import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.CREATE_AGENT_BUILTIN_RUNTIME_ID
+import build.raft.app.data.CREATE_AGENT_KIMI_SDK_RUNTIME_ID
+import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.buildBuiltInRuntimeConfig
 import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_FAILED
 import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
@@ -7832,7 +7834,8 @@ private fun MembersAgentProfileTab(
     fun saveRuntimeConfig(
         nextConfig: RuntimeConfig,
         openedCatalogGeneration: Long,
-        retainBuiltInProviderSecret: Boolean
+        retainBuiltInProviderSecret: Boolean,
+        kimiSdkFormDefinitionRef: SharedRuntimeFormDefinitionRef? = null
     ) {
         val callback = onUpdateAgentProfile
         if (
@@ -7886,7 +7889,8 @@ private fun MembersAgentProfileTab(
                         runtimeConfig = nextConfig,
                         includeRuntimeConfig = true,
                         retainOmittedBuiltInProviderSecret = retainBuiltInProviderSecret,
-                        runtimeResetMode = restartMode
+                        runtimeResetMode = restartMode,
+                        formDefinitionRef = kimiSdkFormDefinitionRef
                     )
                     if (agentDetailActions != null) {
                         agentDetailActions.updateAgentProfile(request)
@@ -8438,8 +8442,13 @@ private fun MembersAgentProfileTab(
                         runtimeConfigError = null
                     }
                 },
-                onSave = { nextConfig, catalogGeneration, retainBuiltInProviderSecret ->
-                    saveRuntimeConfig(nextConfig, catalogGeneration, retainBuiltInProviderSecret)
+                onSave = { nextConfig, catalogGeneration, retainBuiltInProviderSecret, kimiSdkFormDefinitionRef ->
+                    saveRuntimeConfig(
+                        nextConfig,
+                        catalogGeneration,
+                        retainBuiltInProviderSecret,
+                        kimiSdkFormDefinitionRef
+                    )
                 }
             )
         }
@@ -8611,7 +8620,17 @@ private fun MembersAgentRuntimeConfigRows(
                 )
             }
         }
-        if (supportsRuntimeReasoningEffort(runtimeId)) {
+        // kimi-sdk (task #275): the chip is gated on the selected model's LIVE
+        // catalog capability (never the static runtime set); submit-time
+        // authority additionally requires the resolved kimi-sdk form ref.
+        if (
+            supportsRuntimeReasoningEffort(runtimeId) ||
+            kimiSdkLiveReasoningCapability(
+                runtime = runtimeId,
+                model = runtimeConfig.toMembersRuntimeModelValue(),
+                runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
+            ) != null
+        ) {
             MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_reasoning)) {
                 MembersAgentRuntimeChip(
                     label = runtimeConfig.reasoningEffort?.toMembersDisplayLabel() ?: stringResource(MR.strings.member_label_default),
@@ -8814,7 +8833,12 @@ private fun MembersAgentRuntimeConfigDialog(
     saving: Boolean,
     error: String?,
     onDismiss: () -> Unit,
-    onSave: (RuntimeConfig, catalogGeneration: Long, retainBuiltInProviderSecret: Boolean) -> Unit
+    onSave: (
+        RuntimeConfig,
+        catalogGeneration: Long,
+        retainBuiltInProviderSecret: Boolean,
+        kimiSdkFormDefinitionRef: SharedRuntimeFormDefinitionRef?
+    ) -> Unit
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val stableInitialConfig = remember(memberId.value, initialConfig) { initialConfig }
@@ -8865,12 +8889,21 @@ private fun MembersAgentRuntimeConfigDialog(
     }
     var fastMode by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.mode is RuntimeModeConfig.Fast) }
     var reasoningEffort by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.reasoningEffort) }
+    // kimi-sdk (task #275): only an explicit selector pick counts as "changed";
+    // reconciles from model switches or capability arrivals never set this.
+    var reasoningEffortTouched by remember(stableInitialConfig) { mutableStateOf(false) }
+    // Tracks whether the kimi capability was ever live in this editing session,
+    // so "never had it" (still loading) is not treated as "lost mid-edit".
+    var kimiSdkCapabilitySeen by remember(stableInitialConfig) { mutableStateOf(false) }
     var command by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.command.orEmpty()) }
     var envVarEntries by remember(stableInitialConfig) {
         mutableStateOf(stableInitialConfig.envVars.orEmpty().entries.map { it.key to it.value })
     }
     var pendingRuntimeSwitchConfig by remember(stableInitialConfig) { mutableStateOf<RuntimeConfig?>(null) }
     var pendingRetainBuiltInProviderSecret by remember(stableInitialConfig) { mutableStateOf(false) }
+    var pendingKimiSdkFormDefinitionRef by remember(stableInitialConfig) {
+        mutableStateOf<SharedRuntimeFormDefinitionRef?>(null)
+    }
     var awaitingServerModelForRuntime by remember(stableInitialConfig) { mutableStateOf(false) }
     var acceptedCatalogGeneration by remember(stableInitialConfig) {
         mutableStateOf(runtimeModelGenerationsByRuntime[stableInitialConfig.runtime] ?: 0L)
@@ -8897,6 +8930,18 @@ private fun MembersAgentRuntimeConfigDialog(
             key.machineId == cleanMachineId &&
             key.ref.runtimeId == CREATE_AGENT_BUILTIN_RUNTIME_ID
     } == true
+    // kimi-sdk (task #275): resolved exact form for the current agent's
+    // computer. The store's owner/generation fencing keeps a stale or
+    // out-of-order form from replacing a newer resolution.
+    val kimiSdkForm = formStoreState?.resolvedForms?.entries
+        ?.singleOrNull { (key, _) ->
+            key.serverId == cleanServerId &&
+                key.machineId == cleanMachineId &&
+                key.ref.runtimeId == CREATE_AGENT_KIMI_SDK_RUNTIME_ID
+        }
+        ?.value
+        ?.takeIf { it.definition.ref.isSupportedKimiSdk }
+    val kimiSdkFormRef = kimiSdkReasoningFormRef(kimiSdkForm)
     var builtInFormError by remember(stableInitialConfig) { mutableStateOf<String?>(null) }
     var builtInFormReloadGeneration by remember(stableInitialConfig) { mutableStateOf(0) }
     val customModelMissing = customModelMode && customModelName.trim().isBlank()
@@ -8914,6 +8959,10 @@ private fun MembersAgentRuntimeConfigDialog(
     val runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
     val runtimeModelsLoading = runtime in runtimeModelLoadsInFlight
     val runtimeModelsError = runtimeModelErrorsByRuntime[runtime]
+    // kimi-sdk (task #275): selector/save capability = selected model's LIVE
+    // catalog entry + the resolved exact form ref. No static fallback.
+    val kimiSdkCatalogCapability = kimiSdkLiveReasoningCapability(runtime, model, runtimeModelsOverride)
+    val kimiSdkEditCapability = kimiSdkCatalogCapability.takeIf { kimiSdkFormRef != null }
     val catalogValidationInFlight = pendingCatalogValidatedSave != null
     val retainBuiltInProviderSecret =
         membersCanRetainBuiltInProviderSecret(
@@ -8981,6 +9030,36 @@ private fun MembersAgentRuntimeConfigDialog(
                 is DataResult.Error -> builtInFormError = result.error.userFacingMessage(errorStrings)
                 is DataResult.NoPermission -> builtInFormError = result.blocker.userFacingMessage(errorStrings)
             }
+        }
+    }
+    // kimi-sdk (task #275): parallel form load with the same store-level
+    // generation fencing. Fail-closed: a missing/failed form just keeps the
+    // reasoning selector hidden (it is optional, unlike Built-in's apiKey).
+    LaunchedEffect(runtime, createAgentFormStore, cleanServerId, cleanMachineId) {
+        if (
+            runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID &&
+            createAgentFormStore != null &&
+            cleanServerId.isNotBlank() &&
+            cleanMachineId.isNotBlank()
+        ) {
+            createAgentFormStore.loadSupportedKimiSdkFormForEdit(cleanServerId, cleanMachineId)
+        }
+    }
+    // kimi-sdk: reconcile the draft effort against the live capability once it
+    // arrives; if it is lost mid-edit (catalog refreshed empty, form dropped),
+    // fail closed back to Default with no explicit selection left to submit.
+    LaunchedEffect(runtime, kimiSdkEditCapability) {
+        if (runtime != CREATE_AGENT_KIMI_SDK_RUNTIME_ID) return@LaunchedEffect
+        val capability = kimiSdkEditCapability
+        if (capability != null) {
+            kimiSdkCapabilitySeen = true
+            val reconciled = reconcileKimiSdkReasoningEffort(capability, reasoningEffort)
+            if (reconciled != reasoningEffort) {
+                reasoningEffort = reconciled
+            }
+        } else if (kimiSdkCapabilitySeen) {
+            reasoningEffort = null
+            reasoningEffortTouched = false
         }
     }
     LaunchedEffect(runtime, builtInForm) {
@@ -9078,11 +9157,39 @@ private fun MembersAgentRuntimeConfigDialog(
         }
         acceptedCatalogGeneration = currentGeneration
         pendingCatalogValidatedSave = null
-        if (membersRuntimeConfigSwitchConfirmation(stableInitialConfig, pending.config, activeAgent) != null) {
-            pendingRuntimeSwitchConfig = pending.config
+        // kimi-sdk: recompute the effort/ref decision against the catalog that
+        // was just validated, so the save never targets a stale capability.
+        val completedKimiSdkDecision =
+            if (pending.runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && runtime == pending.runtime) {
+                membersKimiSdkReasoningSaveDecision(
+                    capability =
+                        kimiSdkLiveReasoningCapability(pending.runtime, pending.model, catalog.models)
+                            .takeIf { kimiSdkFormRef != null },
+                    formRef = kimiSdkFormRef,
+                    effortTouched = reasoningEffortTouched,
+                    modelChanged = pending.model != stableInitialConfig.toMembersRuntimeModelValue(),
+                    currentEffort = reasoningEffort
+                )
+            } else {
+                null
+            }
+        val completedConfig =
+            if (completedKimiSdkDecision != null) {
+                pending.config.copy(reasoningEffort = completedKimiSdkDecision.reasoningEffort)
+            } else {
+                pending.config
+            }
+        if (membersRuntimeConfigSwitchConfirmation(stableInitialConfig, completedConfig, activeAgent) != null) {
+            pendingRuntimeSwitchConfig = completedConfig
             pendingRetainBuiltInProviderSecret = pending.retainBuiltInProviderSecret
+            pendingKimiSdkFormDefinitionRef = completedKimiSdkDecision?.formDefinitionRef
         } else {
-            onSave(pending.config, currentGeneration, pending.retainBuiltInProviderSecret)
+            onSave(
+                completedConfig,
+                currentGeneration,
+                pending.retainBuiltInProviderSecret,
+                completedKimiSdkDecision?.formDefinitionRef
+            )
         }
     }
     val runtimeEditorProfileAuthorityCurrent =
@@ -9268,7 +9375,17 @@ private fun MembersAgentRuntimeConfigDialog(
                         model = model,
                         onModelSelectionChange = { selection ->
                             model = selection.model
-                            reasoningEffort = selection.reasoningEffort
+                            // kimi-sdk: reconcile against the NEW model's live
+                            // catalog entry; never leak the old model's effort.
+                            reasoningEffort =
+                                if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID) {
+                                    reconcileKimiSdkReasoningEffort(
+                                        kimiSdkLiveReasoningCapability(runtime, selection.model, runtimeModelsOverride),
+                                        reasoningEffort
+                                    )
+                                } else {
+                                    selection.reasoningEffort
+                                }
                             customModelName = selection.model
                         },
                         customModelMode = customModelMode,
@@ -9319,7 +9436,13 @@ private fun MembersAgentRuntimeConfigDialog(
                         fastMode = fastMode,
                         onFastModeChange = { fastMode = it },
                         reasoningEffort = reasoningEffort,
-                        onReasoningEffortChange = { reasoningEffort = it },
+                        onReasoningEffortChange = { nextEffort ->
+                            reasoningEffort = nextEffort
+                            if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID) {
+                                reasoningEffortTouched = true
+                            }
+                        },
+                        kimiSdkReasoningCapability = kimiSdkEditCapability,
                         envVarEntries = envVarEntries,
                         onEnvVarEntriesChange = { envVarEntries = it },
                         command = command,
@@ -9409,6 +9532,30 @@ private fun MembersAgentRuntimeConfigDialog(
                                 envVars = envVarEntries.toMembersRuntimeEnvVars(),
                                 command = command
                             )
+                        // kimi-sdk (task #275): buildRuntimeConfig keeps kimi
+                        // efforts null (static gate); the live-capability save
+                        // decision is the only channel for an explicit effort
+                        // and for the exact form ref.
+                        val kimiSdkSaveDecision =
+                            if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID) {
+                                membersKimiSdkReasoningSaveDecision(
+                                    capability = kimiSdkEditCapability,
+                                    formRef = kimiSdkFormRef,
+                                    effortTouched = reasoningEffortTouched,
+                                    modelChanged =
+                                        effectiveModel != stableInitialConfig.toMembersRuntimeModelValue(),
+                                    currentEffort = reasoningEffort
+                                )
+                            } else {
+                                null
+                            }
+                        val saveConfig =
+                            if (kimiSdkSaveDecision != null) {
+                                nextConfig.copy(reasoningEffort = kimiSdkSaveDecision.reasoningEffort)
+                            } else {
+                                nextConfig
+                            }
+                        val saveFormDefinitionRef = kimiSdkSaveDecision?.formDefinitionRef
                         if (runtime != CREATE_AGENT_BUILTIN_RUNTIME_ID &&
                             !membersAgentRuntimeConfigSaveEnabled(
                                 runtime = runtime,
@@ -9426,7 +9573,7 @@ private fun MembersAgentRuntimeConfigDialog(
                                 (runtimeModelGenerationsByRuntime[runtime] ?: 0L) + 1L
                             pendingCatalogValidatedSave =
                                 MembersPendingRuntimeConfigSave(
-                                    config = nextConfig,
+                                    config = saveConfig,
                                     runtime = runtime,
                                     model = model,
                                     customModelMode = customModelMode,
@@ -9440,11 +9587,12 @@ private fun MembersAgentRuntimeConfigDialog(
                         val validatedCatalogGeneration =
                             runtimeModelGenerationsByRuntime[runtime] ?: 0L
                         acceptedCatalogGeneration = validatedCatalogGeneration
-                        if (membersRuntimeConfigSwitchConfirmation(stableInitialConfig, nextConfig, activeAgent) != null) {
-                            pendingRuntimeSwitchConfig = nextConfig
+                        if (membersRuntimeConfigSwitchConfirmation(stableInitialConfig, saveConfig, activeAgent) != null) {
+                            pendingRuntimeSwitchConfig = saveConfig
                             pendingRetainBuiltInProviderSecret = retainBuiltInProviderSecret
+                            pendingKimiSdkFormDefinitionRef = saveFormDefinitionRef
                         } else {
-                            onSave(nextConfig, validatedCatalogGeneration, retainBuiltInProviderSecret)
+                            onSave(saveConfig, validatedCatalogGeneration, retainBuiltInProviderSecret, saveFormDefinitionRef)
                         }
                     }
                 )
@@ -9462,14 +9610,17 @@ private fun MembersAgentRuntimeConfigDialog(
                     onSave(
                         pendingConfig,
                         acceptedCatalogGeneration,
-                        pendingRetainBuiltInProviderSecret
+                        pendingRetainBuiltInProviderSecret,
+                        pendingKimiSdkFormDefinitionRef
                     )
                     pendingRetainBuiltInProviderSecret = false
+                    pendingKimiSdkFormDefinitionRef = null
                 },
                 onCancel = {
                     if (!saving) {
                         pendingRuntimeSwitchConfig = null
                         pendingRetainBuiltInProviderSecret = false
+                        pendingKimiSdkFormDefinitionRef = null
                     }
                 }
             )
@@ -9510,6 +9661,41 @@ internal fun membersRuntimeConfigResetMode(
         activeAgent -> AgentResetMode.Restart
         else -> null
     }
+
+internal data class MembersKimiSdkReasoningSaveDecision(
+    val reasoningEffort: String?,
+    val formDefinitionRef: SharedRuntimeFormDefinitionRef?
+)
+
+/**
+ * kimi-sdk edit-save wire split (task #275), driven ONLY by live capability:
+ * - effort untouched AND model unchanged → null effort and NO formDefinitionRef:
+ *   the server's legacy same-model retention preserves any stored effort.
+ * - effort explicitly picked, or model switched → explicit effort (reconciled
+ *   against the selected model's live catalog entry, so an old model's value
+ *   can never leak) plus the current exact kimi-sdk form ref.
+ * - any capability gap (no resolved form ref, empty live efforts, invalid
+ *   default) fails closed: null effort, no ref.
+ */
+internal fun membersKimiSdkReasoningSaveDecision(
+    capability: KimiSdkLiveReasoningCapability?,
+    formRef: SharedRuntimeFormDefinitionRef?,
+    effortTouched: Boolean,
+    modelChanged: Boolean,
+    currentEffort: String?
+): MembersKimiSdkReasoningSaveDecision {
+    val ref = formRef?.takeIf { it.isSupportedKimiSdk }
+    if (!effortTouched && !modelChanged) {
+        return MembersKimiSdkReasoningSaveDecision(reasoningEffort = null, formDefinitionRef = null)
+    }
+    if (capability == null || ref == null) {
+        return MembersKimiSdkReasoningSaveDecision(reasoningEffort = null, formDefinitionRef = null)
+    }
+    return MembersKimiSdkReasoningSaveDecision(
+        reasoningEffort = currentEffort?.takeIf { it in capability.supportedReasoningEfforts },
+        formDefinitionRef = ref
+    )
+}
 
 internal fun membersRuntimeConfigSwitchConfirmation(
     currentConfig: RuntimeConfig,
