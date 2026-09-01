@@ -24727,7 +24727,8 @@ internal data class ThreadForwardOutcome(
 
 internal data class ThreadForwardBatchOutcome(
     val failureCode: String? = null,
-    val result: ForwardMessageBatchResult? = null
+    val result: ForwardMessageBatchResult? = null,
+    val failedReceipts: List<ThreadForwardDestinationReceipt> = emptyList()
 )
 
 @OptIn(ExperimentalUuidApi::class)
@@ -24788,7 +24789,16 @@ internal suspend fun executeThreadForwardBatch(
             requestId = requestId
         )
     )) {
-        is DataResult.Content -> ThreadForwardBatchOutcome(result = result.data)
+        is DataResult.Content -> {
+            val batch = result.data
+            val failedKeys = batch.failures.map { it.destination.channelId }.toSet()
+            ThreadForwardBatchOutcome(
+                result = batch,
+                failedReceipts = receipts.zip(destinations).mapNotNull { (receipt, destination) ->
+                    receipt.takeIf { destination.channelId in failedKeys }
+                }
+            )
+        }
         else -> ThreadForwardBatchOutcome(failureCode = result.threadForwardFailureCode("forward_failed"))
     }
 }

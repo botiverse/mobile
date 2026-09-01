@@ -117,7 +117,8 @@ class ThreadForwardFlowTest {
             currentDirectoryGeneration = 4,
             messageIds = listOf("message-1"),
             mode = ForwardMessageSendMode.Merged,
-            note = ""
+            note = "",
+            requestId = "11111111-2222-4333-8444-555555555555"
         )
 
         assertEquals("forward_directory_refreshed", outcome.failureCode)
