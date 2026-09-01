@@ -26944,16 +26944,50 @@ private fun ThreadTaskDetailDialog(
         )
     }
     assigneeMenuAnchor?.let { anchor ->
-        val pickerOptions =
-            listOf(TasksUnassignedAssigneeFilterId to unassignedLabel) +
-                assigneeRows.mapNotNull { member ->
-                    member?.let { it.tasksIdentityFilterId() to it.displayName }
+        // Task #258 successor (artin msg d37a0750): channel add-member style —
+        // search stays in the overlay; here we only shape rows: unassigned
+        // sentinel first, then HUMANS / AGENTS section headers with avatar rows.
+        val humansHeaderLabel = stringResource(MR.strings.thread_members_humans)
+        val agentsHeaderLabel = stringResource(MR.strings.thread_members_agents)
+        val pickerItems = buildList {
+            add(
+                SlockBaseMenuItem(
+                    id = TasksUnassignedAssigneeFilterId,
+                    label = unassignedLabel,
+                    icon = SlockLucideIconName.UserMinus
+                )
+            )
+            var lastKind: MemberKind? = null
+            assigneeRows.forEach { member ->
+                member ?: return@forEach
+                if (lastKind != member.kind) {
+                    add(
+                        SlockBaseMenuItem(
+                            id = "header-${member.kind.name.lowercase()}",
+                            label = if (member.kind == MemberKind.Human) humansHeaderLabel else agentsHeaderLabel,
+                            sectionHeader = true
+                        )
+                    )
+                    lastKind = member.kind
                 }
+                add(
+                    SlockBaseMenuItem(
+                        id = member.tasksIdentityFilterId(),
+                        label = member.displayName,
+                        subtitle = member.roleDescription
+                            ?.takeIf { it.isNotBlank() }
+                            ?: "${member.kind.name.lowercase()} · @${member.handle}",
+                        avatarWireValue = member.avatarWireValueForAvatarSlot(),
+                        avatarLabel = member.avatarLabel.ifBlank { member.displayName.take(1) },
+                        avatarCacheSubject = member.slockAvatarCacheSubject(),
+                        avatarCacheServerId = member.serverId?.value
+                    )
+                )
+            }
+        }
         SlockTaskAssigneeMenuOverlay(
             anchor = anchor,
-            items = pickerOptions.map { (optionId, label) ->
-                SlockBaseMenuItem(id = optionId, label = label)
-            },
+            items = pickerItems,
             selectedId = selectedAssigneeId,
             searchValue = assigneeMenuSearch,
             onSearchValueChange = { assigneeMenuSearch = it },
