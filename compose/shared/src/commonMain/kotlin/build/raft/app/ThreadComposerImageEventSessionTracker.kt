@@ -20,6 +20,8 @@ internal data class ThreadComposerImageEventSessionCloseResult(
 internal class ThreadComposerImageEventSessionTracker {
     private val lock = SynchronizedObject()
     private val sessions = linkedMapOf<String, Boolean>()
+    /** Retain the handoff bit after close until the uploader's finally path releases it. */
+    private val closedInFlightSessionIds = linkedSetOf<String>()
     private var closed = false
 
     fun track(sessionId: String): Boolean {
@@ -29,7 +31,9 @@ internal class ThreadComposerImageEventSessionTracker {
             if (closed) {
                 false
             } else {
-                sessions.putIfAbsent(normalized, false)
+                if (normalized !in sessions) {
+                    sessions[normalized] = false
+                }
                 true
             }
         }
@@ -48,11 +52,21 @@ internal class ThreadComposerImageEventSessionTracker {
     }
 
     fun release(sessionId: String) {
-        synchronized(lock) { sessions.remove(sessionId.trim()) }
+        synchronized(lock) {
+            val normalized = sessionId.trim()
+            sessions.remove(normalized)
+            closedInFlightSessionIds.remove(normalized)
+        }
     }
 
     fun owns(sessionId: String): Boolean = synchronized(lock) {
         !closed && sessionId.trim() in sessions
+    }
+
+    /** True while the complete N/N batch is owned by the process uploader. */
+    fun isHandoffStarted(sessionId: String): Boolean = synchronized(lock) {
+        val normalized = sessionId.trim()
+        sessions[normalized] == true || normalized in closedInFlightSessionIds
     }
 
     /** Close admission for this page and return every session captured before disposal. */
@@ -60,11 +74,23 @@ internal class ThreadComposerImageEventSessionTracker {
         closed = true
         val abort = sessions.filterValues { started -> !started }.keys.toSet()
         val inFlight = sessions.filterValues { started -> started }.keys.toSet()
+        closedInFlightSessionIds += inFlight
         sessions.clear()
         ThreadComposerImageEventSessionCloseResult(abort, inFlight)
     }
 
     fun isClosed(): Boolean = synchronized(lock) { closed }
+}
+
+/** Register a preview owner or synchronously retire the already-admitted process session. */
+internal fun registerThreadComposerImagePreviewSession(
+    sessionId: String,
+    tracker: ThreadComposerImageEventSessionTracker,
+    abort: (String) -> Unit,
+): Boolean {
+    val accepted = tracker.track(sessionId)
+    if (!accepted) abort(sessionId.trim())
+    return accepted
 }
 
 /**

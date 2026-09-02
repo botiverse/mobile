@@ -9,6 +9,12 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 internal data class SettingsHandsFeedbackImageEditRequest(
     val session: SettingsHandsFeedbackImageEditSession,
@@ -22,6 +28,7 @@ internal data class SettingsHandsFeedbackImageEditSession(
     val accountId: String,
     val pageGeneration: String,
     val expectedCount: Int,
+    val previewSessionId: String = "",
     val groupState: SlockImageEditGroupState =
         SlockImageEditGroupState(
             expectedGroupId = groupId,
@@ -77,39 +84,227 @@ internal class SettingsHandsFeedbackImageEditCommitGate {
     private data class Claim(
         val groupId: String,
         val accountId: String,
-        val pageGeneration: String
+        val pageGeneration: String,
+        val previewSessionId: String
     )
 
+    private val lock = SynchronizedObject()
     private var activeClaim: Claim? = null
 
-    fun tryClaim(session: SettingsHandsFeedbackImageEditSession): Boolean {
-        if (activeClaim != null) return false
+    fun tryClaim(session: SettingsHandsFeedbackImageEditSession): Boolean = synchronized(lock) {
+        if (activeClaim != null) return@synchronized false
         activeClaim = session.toClaim()
-        return true
+        true
     }
 
     fun isCurrent(
         session: SettingsHandsFeedbackImageEditSession,
         currentAccountId: String,
         currentPageGeneration: String
-    ): Boolean =
+    ): Boolean = synchronized(lock) {
         activeClaim == session.toClaim() &&
             currentAccountId == session.accountId &&
             currentPageGeneration == session.pageGeneration
+    }
 
     fun release(session: SettingsHandsFeedbackImageEditSession) {
-        if (activeClaim == session.toClaim()) {
-            activeClaim = null
+        synchronized(lock) {
+            if (activeClaim == session.toClaim()) {
+                activeClaim = null
+            }
         }
+    }
+
+    /** Clear a page-owned claim during disposal, including after its pending UI state was nulled. */
+    fun clear() {
+        synchronized(lock) { activeClaim = null }
     }
 
     private fun SettingsHandsFeedbackImageEditSession.toClaim(): Claim =
         Claim(
             groupId = groupId,
             accountId = accountId,
-            pageGeneration = pageGeneration
+            pageGeneration = pageGeneration,
+            previewSessionId = previewSessionId.trim()
         )
 }
+
+/** Page-owned fence for sessions that may outlive the pending UI state during async commit. */
+internal class SettingsHandsFeedbackImageEditSessionTracker {
+    private val lock = SynchronizedObject()
+    /** False means a partial group is still collecting; true means promotion is in flight. */
+    private val owned = linkedMapOf<String, Boolean>()
+
+    /** Once disposed, a late event cannot re-admit a session into this page. */
+    private var disposed = false
+
+    fun track(sessionId: String): Boolean {
+        val normalized = sessionId.trim()
+        if (normalized.isBlank()) return false
+        return synchronized(lock) {
+            if (disposed) {
+                false
+            } else {
+                if (normalized !in owned) {
+                    owned[normalized] = false
+                }
+                true
+            }
+        }
+    }
+
+    fun owns(sessionId: String): Boolean = synchronized(lock) {
+        !disposed && sessionId.trim() in owned
+    }
+
+    /** Run a final durable write only while this page still owns the session. */
+    fun runIfOwned(sessionId: String, block: () -> Unit): Boolean = synchronized(lock) {
+        val normalized = sessionId.trim()
+        if (disposed || normalized !in owned) {
+            false
+        } else {
+            block()
+            true
+        }
+    }
+
+    fun release(sessionId: String) {
+        synchronized(lock) { owned.remove(sessionId.trim()) }
+    }
+
+    /** Atomically transfer a complete group into the page-independent promotion handoff. */
+    fun markHandoffStarted(sessionId: String): Boolean {
+        val normalized = sessionId.trim()
+        if (normalized.isBlank()) return false
+        return synchronized(lock) {
+            if (disposed || !owned.containsKey(normalized) || owned[normalized] == true) {
+                false
+            } else {
+                owned[normalized] = true
+                true
+            }
+        }
+    }
+
+    /** Snapshot current ownership without closing the page; used when a new picker replaces it. */
+    fun snapshot(): SettingsHandsFeedbackImageEditSessionCloseResult = synchronized(lock) {
+        SettingsHandsFeedbackImageEditSessionCloseResult(
+            abortSessionIds = owned.filterValues { started -> !started }.keys.toSet(),
+            inFlightSessionIds = owned.filterValues { started -> started }.keys.toSet()
+        )
+    }
+
+    /** Atomically closes this page's admission and separates partial/in-flight sessions. */
+    fun closeAndSnapshot(): SettingsHandsFeedbackImageEditSessionCloseResult = synchronized(lock) {
+        disposed = true
+        val partial = owned.filterValues { started -> !started }.keys.toSet()
+        val inFlight = owned.filterValues { started -> started }.keys.toSet()
+        owned.clear()
+        SettingsHandsFeedbackImageEditSessionCloseResult(partial, inFlight)
+    }
+
+    fun isDisposed(): Boolean = synchronized(lock) { disposed }
+}
+
+internal data class SettingsHandsFeedbackImageEditSessionCloseResult(
+    val abortSessionIds: Set<String>,
+    val inFlightSessionIds: Set<String>
+) {
+    val allSessionIds: Set<String>
+        get() = abortSessionIds + inFlightSessionIds
+}
+
+/**
+ * Tracks event jobs on a detached page scope so disposal can cancel and join them before retiring
+ * their preview sessions. The tracker itself is closed before the join is scheduled, which rejects
+ * any callback racing with composition teardown.
+ */
+internal class SettingsHandsFeedbackImageEditEventJobTracker {
+    private val lock = SynchronizedObject()
+    private val jobs = linkedSetOf<Job>()
+    private var closed = false
+
+    fun launch(scope: CoroutineScope, block: suspend () -> Unit): Job? {
+        lateinit var job: Job
+        synchronized(lock) {
+            if (closed) return null
+            job = scope.launch(start = CoroutineStart.LAZY) { block() }
+            jobs += job
+        }
+        job.invokeOnCompletion { synchronized(lock) { jobs.remove(job) } }
+        job.start()
+        return job
+    }
+
+    fun closeAndSnapshot(): Set<Job> = synchronized(lock) {
+        closed = true
+        jobs.toSet().also { jobs.clear() }
+    }
+}
+
+/**
+ * A Settings event is consumable only by the page instance which opened its preview session.
+ * Keeping this predicate outside the composable makes the two-instance isolation contract
+ * executable without requiring a Compose host in common tests.
+ */
+internal fun settingsHandsFeedbackImageEditEventMatchesSession(
+    session: SettingsHandsFeedbackImageEditSession?,
+    tracker: SettingsHandsFeedbackImageEditSessionTracker,
+    eventSessionId: String,
+    eventThreadKey: String
+): Boolean {
+    val current = session ?: return false
+    val normalizedSessionId = eventSessionId.trim()
+    return normalizedSessionId.isNotBlank() &&
+        normalizedSessionId == current.previewSessionId &&
+        eventThreadKey.trim() == current.threadKey &&
+        tracker.owns(normalizedSessionId)
+}
+
+/**
+ * A rejected action is terminal only after the process registry no longer owns its session.
+ * Duplicate delivery of one member in a partial N/N group is a non-terminal rejection: releasing
+ * the page tracker there would strand the still-valid sibling actions.
+ */
+internal fun settingsHandsFeedbackRejectedAdmissionIsTerminal(
+    admission: SlockFilePreviewComposerImageEventAdmission.Rejected,
+    registry: SlockFilePreviewEphemeralActionRegistry = slockFilePreviewEphemeralActionRegistry()
+): Boolean =
+    admission.orphanedTemporaryFileRefs.isNotEmpty() ||
+        admission.sessionId.isBlank() ||
+        !registry.hasSession(admission.sessionId)
+
+/**
+ * Synchronously abort all sessions still owned by one Settings page.
+ *
+ * Registry/ledger transitions are deliberately synchronous: native retirement must quarantine
+ * every admitted ref before the page can disappear.  The callback is injected for tests and is
+ * the same bridge operation used by production.
+ */
+internal fun abortSettingsHandsFeedbackImageEditSessions(
+    sessionIds: Collection<String>,
+    registry: SlockFilePreviewEphemeralActionRegistry = slockFilePreviewEphemeralActionRegistry(),
+    cleanupLedger: SlockFilePreviewEphemeralCleanupLedger = slockFilePreviewEphemeralCleanupLedger(),
+    retire: (sessionId: String, fileRefs: Set<String>) -> Unit = { id, refs ->
+        ThreadComposerTemporaryFileRetirement.retire(id, refs)
+    }
+): Set<String> {
+    val normalizedIds = sessionIds.map(String::trim).filter(String::isNotBlank).toSet()
+    val cleanupRefs = linkedSetOf<String>()
+    normalizedIds.forEach { sessionId ->
+        val refs = slockFilePreviewAbortComposerImageEventSession(
+            sessionId = sessionId,
+            registry = registry,
+            cleanupLedger = cleanupLedger
+        )
+        if (refs.isNotEmpty()) {
+            cleanupRefs += refs
+            retire(sessionId, refs)
+        }
+    }
+    return cleanupRefs
+}
+
 
 internal fun newSettingsHandsFeedbackImageEditId(
     randomLong: () -> Long = { Random.nextLong() }

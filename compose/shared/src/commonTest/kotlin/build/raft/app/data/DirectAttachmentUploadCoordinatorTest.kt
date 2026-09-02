@@ -3,13 +3,14 @@ package build.raft.app.data
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -17,7 +18,7 @@ import kotlin.test.assertTrue
 
 class DirectAttachmentUploadCoordinatorTest {
     @Test
-    fun explicitCreateCancellationIsUnknownAndFailsClosed() = runBlocking {
+    fun explicitCreateCancellationIsUnknownAndFailsClosed() = runTest {
         val gateway = FakeGateway().apply { throwCreateCancellation = true }
         val diagnostics = mutableListOf<String>()
         var propagated = false
@@ -32,13 +33,35 @@ class DirectAttachmentUploadCoordinatorTest {
     }
 
     @Test
-    fun cancellationAfterServerAcceptWaitsForCreateThenCompensatesWithoutPutOrComplete() = runBlocking {
+    fun createCancellationReplaysSameIdempotencyKeyAndCompensates() = runTest {
+        val gateway = FakeGateway().apply { throwCreateCancellationOnce = true }
+        var propagated = false
+        try {
+            coordinator(gateway).upload(ChannelId("channel-1"), listOf(file("local-1")))
+        } catch (_: CancellationException) {
+            propagated = true
+        }
+        assertTrue(propagated)
+        assertEquals(2, gateway.createRequests.size)
+        assertEquals(
+            gateway.createRequests[0].clientRequestId,
+            gateway.createRequests[1].clientRequestId,
+            "recovery must replay the exact idempotency key"
+        )
+        assertEquals(gateway.createRequests[0].clientRequestId, gateway.acceptedCreateRequestId)
+        assertEquals(setOf(gateway.uploadId(1)), gateway.cancelledIds.toSet())
+        assertEquals(0, gateway.putCalls)
+        assertEquals(0, gateway.completeCalls)
+    }
+
+    @Test
+    fun cancellationAfterServerAcceptWaitsForCreateThenCompensatesWithoutPutOrComplete() = runTest {
         val gateway = FakeGateway()
         val accepted = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         gateway.createAccepted = accepted
         gateway.createRelease = release
-        val job: Job = launch {
+        val job: Job = launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 coordinator(gateway).upload(ChannelId("channel-1"), listOf(file("local-1")))
                 error("canceled upload unexpectedly completed")
@@ -46,11 +69,11 @@ class DirectAttachmentUploadCoordinatorTest {
                 // expected: cancellation is rethrown after create is observed and compensated
             }
         }
-        withTimeout(5_000) { accepted.await() }
+        accepted.await()
         job.cancel()
         // NonCancellable create must be allowed to return so its reservation enters the ledger.
         release.complete(Unit)
-        withTimeout(5_000) { job.cancelAndJoin() }
+        job.cancelAndJoin()
 
         assertEquals(setOf(gateway.uploadId(1)), gateway.cancelledIds.toSet())
         assertEquals(emptySet(), gateway.statusIds.toSet())
@@ -448,6 +471,9 @@ class DirectAttachmentUploadCoordinatorTest {
         var createAccepted: CompletableDeferred<Unit>? = null
         var createRelease: CompletableDeferred<Unit>? = null
         var throwCreateCancellation: Boolean = false
+        var throwCreateCancellationOnce: Boolean = false
+        var acceptedCreateRequestId: String? = null
+        private val acceptedCreateIdsByRequest = mutableMapOf<String, String>()
         val putFailureOrdinals = mutableSetOf<Int>()
         val cancelFailureOrdinals = mutableSetOf<Int>()
         val statusFailureOrdinals = mutableSetOf<Int>()
@@ -465,16 +491,28 @@ class DirectAttachmentUploadCoordinatorTest {
             request: AttachmentUploadSessionCreateRequest
         ): DataResult<AttachmentUploadSessionCreateResult> {
             createRequests += request
-            if (throwCreateCancellation) throw CancellationException("create canceled after server acceptance")
+            if (throwCreateCancellation || throwCreateCancellationOnce) {
+                throwCreateCancellationOnce = false
+                if (request.clientRequestId !in acceptedCreateIdsByRequest) {
+                    val index = createdIds.size + 1
+                    val uploadId = uploadId(index)
+                    createdIds += uploadId
+                    acceptedCreateIdsByRequest[request.clientRequestId] = uploadId
+                }
+                acceptedCreateRequestId = request.clientRequestId
+                throw CancellationException("create canceled after server acceptance")
+            }
+            acceptedCreateIdsByRequest[request.clientRequestId]?.let { uploadId ->
+                return DataResult.Content(createResult(uploadId, attachmentId(ordinal(uploadId))))
+            }
             val queued = createResults.removeFirstOrNull()
             if (queued != null) return queued
             val index = createdIds.size + 1
-            val uploadId = "00000000-0000-4000-8000-${index.toString().padStart(12, '0')}"
-            val attachmentId = "00000000-0000-4000-8000-${(100 + index).toString().padStart(12, '0')}"
+            val uploadId = uploadId(index)
             createdIds += uploadId
             createAccepted?.complete(Unit)
             createRelease?.await()
-            return DataResult.Content(createResult(uploadId, attachmentId))
+            return DataResult.Content(createResult(uploadId, attachmentId(index)))
         }
 
         override suspend fun prepare(file: PlatformFile): DataResult<PlatformFile> {

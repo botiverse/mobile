@@ -325,6 +325,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.Mutex
@@ -5984,11 +5985,67 @@ internal fun SharedThreadRouteContent(
     // Cross-process editor callbacks may arrive out of order and on separate event-bus turns.
     // Keep one process-local accumulator per mounted Thread and serialize offers/claims so a
     // duplicate cannot race the complete N/N handoff.
-    val composerImageEventBatchMutex = remember(threadInstanceKey) { Mutex() }
+    val composerImageEventBatchMutex = remember(threadInstanceKey, eventBus) { Mutex() }
     val composerImageEventBatches =
-        remember(threadInstanceKey) {
+        remember(threadInstanceKey, eventBus) {
             mutableMapOf<ThreadComposerImageEventBatchKey, ThreadComposerImageEventBatchAccumulator>()
         }
+    val composerImageEventSessionTracker = remember(threadInstanceKey, eventBus) {
+        ThreadComposerImageEventSessionTracker()
+    }
+    fun openTrackedComposerImagePreview(payload: SlockFilePreviewPayload): Boolean {
+        var registeredSessionId = ""
+        var registrationRejected = false
+        val opened =
+            pager.openSlockFilePreviewPage(
+                payload,
+                onEphemeralSessionRegistered = { sessionId ->
+                    registeredSessionId = sessionId
+                    val accepted = registerThreadComposerImagePreviewSession(
+                        sessionId = sessionId,
+                        tracker = composerImageEventSessionTracker,
+                        abort = { rejectedSessionId ->
+                            registrationRejected = true
+                            // The preview opener may race page disposal between registry admission
+                            // and its callback. Retire the process-owned row immediately; returning
+                            // false alone is not enough if the opener has already crossed its open
+                            // boundary.
+                            val cleanupRefs = slockFilePreviewAbortComposerImageEventSession(rejectedSessionId)
+                            if (cleanupRefs.isNotEmpty()) {
+                                bridge.retireFilePreviewTemporaryFiles(
+                                    sessionId = rejectedSessionId,
+                                    fileRefs = cleanupRefs.toList()
+                                )
+                            }
+                        }
+                    )
+                    accepted
+                }
+            )
+        if ((registrationRejected || !opened) && registeredSessionId.isNotBlank()) {
+            // The preview opener retires its registry/ledger on a failed route open; this page
+            // still owns the local tracker witness and must release it as well.
+            composerImageEventSessionTracker.release(registeredSessionId)
+        }
+        if (opened && registeredSessionId.isNotBlank() &&
+            composerImageEventSessionTracker.isClosed() &&
+            !composerImageEventSessionTracker.owns(registeredSessionId)
+        ) {
+            // Disposal can close the tracker immediately after the opener callback returns but
+            // before the router reports success. Do a second ownership check after the boundary
+            // so a successfully opened preview can never retain an ownerless registry row.
+            val cleanupRefs = slockFilePreviewAbortComposerImageEventSession(registeredSessionId)
+            if (cleanupRefs.isNotEmpty()) {
+                bridge.retireFilePreviewTemporaryFiles(
+                    sessionId = registeredSessionId,
+                    fileRefs = cleanupRefs.toList()
+                )
+            }
+            composerImageEventSessionTracker.release(registeredSessionId)
+            return false
+        }
+        return opened
+    }
     val chatLayoutPreferenceStore =
         remember(pager) {
             KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
@@ -7440,7 +7497,7 @@ internal fun SharedThreadRouteContent(
                             composerImageGroup.images.getOrNull(index)?.id.orEmpty()
                     )
                 }
-            pager.openSlockFilePreviewPage(
+            openTrackedComposerImagePreview(
                 threadAttachment.toThreadAttachmentLazyPreviewPayload(
                     kind = "image",
                     imageGallery = composerImageGroup.images,
@@ -7482,7 +7539,7 @@ internal fun SharedThreadRouteContent(
                 )
                 return
             }
-            pager.openSlockFilePreviewPage(
+            openTrackedComposerImagePreview(
                 threadAttachment.toThreadAttachmentLazyPreviewPayload(kind = "image").copy(
                     imageUrl = composerImageFile.composerLocalPreviewUri()?.takeIf { it.isNotBlank() },
                     externalFileName = composerImageFile.fileName.ifBlank { name },
@@ -8047,6 +8104,13 @@ internal fun SharedThreadRouteContent(
                             uploadBytesTotal = file.sizeBytes?.takeIf { it > 0L }
                         )
                 }
+        if (requireAllFiles && localAttachments.size != acceptedFiles.size) {
+            bridge.logWarn(
+                "thread_composer_attachment_batch_rejected reason=local_projection " +
+                    "expected=${acceptedFiles.size} actual=${localAttachments.size}"
+            )
+            return false
+        }
         val replacementSlotsByLocalId =
             acceptedFiles.associate { file ->
                 file.id to
@@ -8092,8 +8156,13 @@ internal fun SharedThreadRouteContent(
             val admitted =
                 admissionReceipt?.accepted == true &&
                     normalizeThreadAttachmentUploadDraftKey(admissionReceipt.state.draftKey) == draftKey &&
-                    admissionReceipt.state.attachmentAdmissionsByLocalId.keys.containsAll(
-                        localAttachments.map { attachment -> attachment.id }
+                    threadComposerAttachmentAdmissionReceiptIsValid(
+                        accepted = admissionReceipt.accepted,
+                        before = admissionReceipt.previousState,
+                        after = admissionReceipt.state,
+                        expectedDraftKey = draftKey,
+                        localAttachments = localAttachments,
+                        replacementAttachmentIdsByLocalId = replacementSlotsByLocalId
                     ) &&
                     localAttachments.all { expected ->
                         admissionReceipt.state.attachmentAdmissionsByLocalId[expected.id]
@@ -8250,6 +8319,9 @@ internal fun SharedThreadRouteContent(
                         }
                     }
                 } catch (cancelled: CancellationException) {
+                    withContext(NonCancellable) {
+                        markGalleryBatchFailed("attachment_upload_batch_cancelled")
+                    }
                     throw cancelled
                 } catch (error: Throwable) {
                     bridge.logWarn(
@@ -8837,7 +8909,7 @@ internal fun SharedThreadRouteContent(
         composerImageActionCounter += 1
         val actionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${firstFile.id.take(12)}"
         val previewUri = firstFile.composerLocalPreviewUri().orEmpty()
-        pager.openSlockFilePreviewPage(
+        openTrackedComposerImagePreview(
             SlockFilePreviewPayload(
                 kind = "image",
                 title = "Image preview",
@@ -8885,6 +8957,13 @@ internal fun SharedThreadRouteContent(
          */
         fun abortBatchSessionLocked(sessionId: String): Set<String> {
             val normalizedSessionId = sessionId.trim()
+            // Once the complete batch has crossed into the process-owned uploader, a late
+            // malformed/conflicting replay must not tear down the refs that uploader is reading.
+            // Its NonCancellable handoff owns the terminal finish path instead.
+            if (composerImageEventSessionTracker.isHandoffStarted(normalizedSessionId)) {
+                return emptySet()
+            }
+            composerImageEventSessionTracker.release(normalizedSessionId)
             composerImageEventBatches.keys
                 .filter { key ->
                     key.sessionId == normalizedSessionId && key.threadKey == threadInstanceKey
@@ -8931,12 +9010,22 @@ internal fun SharedThreadRouteContent(
                         // Event-bus delivery is process-wide.  Only retire an invalid event's
                         // session when its raw thread key identifies this page; an unrelated
                         // page must not abort a live session before its owner can consume it.
-                        if (rawThreadKey != threadInstanceKey) return
                         val previewSessionId = eventData.optString("previewSessionId").trim()
+                        if (
+                            rawThreadKey != threadInstanceKey ||
+                                !composerImageEventSessionTracker.owns(previewSessionId)
+                        ) {
+                            return
+                        }
                         abortBatchSession(previewSessionId, reason = "malformed")
                         return
                     }
-                    if (parsed.threadKey != threadInstanceKey) return
+                    if (
+                        parsed.threadKey != threadInstanceKey ||
+                            !composerImageEventSessionTracker.owns(parsed.previewSessionId)
+                    ) {
+                        return
+                    }
                     val previewSessionId = parsed.previewSessionId.trim()
                     val groupId = parsed.groupId.orEmpty().trim()
                     val expectedCount = parsed.groupTotal ?: 1
@@ -8956,13 +9045,25 @@ internal fun SharedThreadRouteContent(
                                     threadKey = threadInstanceKey,
                                     groupId = groupId
                                 )
-                            val accumulator =
-                                composerImageEventBatches.getOrPut(key) {
-                                    ThreadComposerImageEventBatchAccumulator(
-                                        key = key,
-                                        expectedCount = expectedCount
-                                    )
-                                }
+                            // A page can be disposed after an event has entered the mailbox but
+                            // before this serialized offer runs.  Do not create a fresh
+                            // accumulator after the tracker has closed; otherwise a late event
+                            // could still claim a registry row from a page which no longer owns
+                            // it.
+                            if (!composerImageEventSessionTracker.owns(previewSessionId)) {
+                                // This session belongs to another mounted page (or has already
+                                // been disposed).  Ignore the process-wide replay; aborting by
+                                // thread key alone could retire that other page's registry/ref.
+                                ComposerImageBatchHandoff()
+                            } else {
+                                val accumulator =
+                                    composerImageEventBatches[key]
+                                        ?: ThreadComposerImageEventBatchAccumulator(
+                                            key = key,
+                                            expectedCount = expectedCount
+                                        ).also { created ->
+                                            composerImageEventBatches[key] = created
+                                        }
                             when (val offer = accumulator.offer(item)) {
                                 ThreadComposerImageEventBatchOffer.Added,
                                 ThreadComposerImageEventBatchOffer.Duplicate ->
@@ -9025,7 +9126,15 @@ internal fun SharedThreadRouteContent(
                                             ComposerImageBatchHandoff(
                                                 cleanupRefs = abortBatchSessionLocked(previewSessionId)
                                             )
+                                        } else if (!composerImageEventSessionTracker.markHandoffStarted(previewSessionId)) {
+                                            ComposerImageBatchHandoff(
+                                                cleanupRefs = abortBatchSessionLocked(previewSessionId)
+                                            )
                                         } else {
+                                            // Keep the started session in the tracker until the
+                                            // upload handoff's finally block.  Disposal needs to
+                                            // distinguish this in-flight owner from a partial
+                                            // accumulator and perform a post-join sweep.
                                             ComposerImageBatchHandoff(
                                                 items = items,
                                                 admissions = acceptedAdmissions,
@@ -9036,6 +9145,7 @@ internal fun SharedThreadRouteContent(
                                 }
                             }
                         }
+                    }
                     if (handoff.cleanupRefs.isNotEmpty()) {
                         bridge.retireFilePreviewTemporaryFiles(
                             sessionId = previewSessionId,
@@ -9110,6 +9220,7 @@ internal fun SharedThreadRouteContent(
                                     transferred = transferred
                                 )
                                 }
+                            composerImageEventSessionTracker.release(previewSessionId)
                             if (cleanupRefs.isNotEmpty()) {
                                 bridge.retireFilePreviewTemporaryFiles(
                                     sessionId = previewSessionId,
@@ -9150,6 +9261,40 @@ internal fun SharedThreadRouteContent(
             subscription.close()
             eventMailbox.close()
             consumerJob.cancel()
+            val closeResult = composerImageEventSessionTracker.close()
+            threadSendScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                withContext(NonCancellable) {
+                    // The consumer may already be inside the process-owned NonCancellable upload
+                    // handoff.  Wait for that handoff's finally block before sweeping its refs;
+                    // aborting it first could delete a file while the uploader still reads it.
+                    try {
+                        consumerJob.cancelAndJoin()
+                    } catch (_: CancellationException) {
+                        // The enclosing NonCancellable cleanup remains authoritative even if the
+                        // child reports its own cancellation while joining.
+                    } catch (_: Throwable) {
+                        // A failed join must not suppress the final registry/ledger sweep below.
+                    }
+                    val sessionIds = closeResult.abortSessionIds + closeResult.inFlightSessionIds
+                    try {
+                        composerImageEventBatchMutex.withLock {
+                            abortThreadComposerImageEventSessions(
+                                sessionIds = sessionIds,
+                                threadKey = threadInstanceKey,
+                                batches = composerImageEventBatches,
+                                retire = { sessionId, refs ->
+                                    bridge.retireFilePreviewTemporaryFiles(
+                                        sessionId = sessionId,
+                                        fileRefs = refs.toList()
+                                    )
+                                }
+                            )
+                        }
+                    } finally {
+                        sessionIds.forEach(composerImageEventSessionTracker::release)
+                    }
+                }
+            }
         }
     }
     suspend fun refreshComposerMemberSuggestions(reason: String) {

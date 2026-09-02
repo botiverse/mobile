@@ -16,8 +16,147 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 
 class SettingsHandsFeedbackImageEditTest {
+    @Test
+    fun settingsEventRequiresTheOwningPreviewSessionAndPageInstance() {
+        val ownerA = SettingsHandsFeedbackImageEditSessionTracker()
+        val ownerB = SettingsHandsFeedbackImageEditSessionTracker()
+        val sessionA = session(expectedCount = 1).copy(previewSessionId = "preview-a")
+        val sessionB = session(expectedCount = 1).copy(previewSessionId = "preview-b")
+
+        ownerA.track("preview-a")
+        ownerB.track("preview-b")
+
+        assertTrue(
+            settingsHandsFeedbackImageEditEventMatchesSession(
+                session = sessionA,
+                tracker = ownerA,
+                eventSessionId = "preview-a",
+                eventThreadKey = sessionA.threadKey
+            )
+        )
+        assertFalse(
+            settingsHandsFeedbackImageEditEventMatchesSession(
+                session = sessionA,
+                tracker = ownerB,
+                eventSessionId = "preview-a",
+                eventThreadKey = sessionA.threadKey
+            )
+        )
+        assertFalse(
+            settingsHandsFeedbackImageEditEventMatchesSession(
+                session = sessionA,
+                tracker = ownerA,
+                eventSessionId = sessionB.previewSessionId,
+                eventThreadKey = sessionA.threadKey
+            )
+        )
+        assertFalse(
+            settingsHandsFeedbackImageEditEventMatchesSession(
+                session = null,
+                tracker = ownerA,
+                eventSessionId = "preview-a",
+                eventThreadKey = sessionA.threadKey
+            )
+        )
+
+        val closed = ownerA.closeAndSnapshot()
+        assertEquals(setOf("preview-a"), closed.abortSessionIds)
+        assertTrue(closed.inFlightSessionIds.isEmpty())
+        assertFalse(
+            settingsHandsFeedbackImageEditEventMatchesSession(
+                session = sessionA,
+                tracker = ownerA,
+                eventSessionId = "preview-a",
+                eventThreadKey = sessionA.threadKey
+            )
+        )
+    }
+
+    @Test
+    fun settingsDisposeAbortsClaimedAndPartialSessionsAndRetiresRefs() {
+        val registry = SlockFilePreviewEphemeralActionRegistry()
+        val ledger = SlockFilePreviewEphemeralCleanupLedger(InMemorySlockKeyValueStore())
+        val tracker = SettingsHandsFeedbackImageEditSessionTracker()
+        val sessionId = "settings-preview-a"
+        val threadKey = "feedback-group-a"
+        val refs =
+            mapOf(
+                "action-0" to "file:///cache/settings-zero.jpg",
+                "action-1" to "file:///cache/settings-one.jpg"
+            )
+
+        registry.register(
+            sessionId = sessionId,
+            threadKey = threadKey,
+            actionIds = refs.keys,
+            ownedTemporaryFileRefs = refs.values.toSet()
+        )
+        val pending = requireNotNull(
+            registry.prepareDeliveryBatch(
+                sessionId = sessionId,
+                threadKey = threadKey,
+                fileRefByActionId = refs
+            )
+        )
+        ledger.replace(sessionId, pending.pendingFileRefs)
+        assertIs<SlockFilePreviewEphemeralActionClaim.Accepted>(
+            registry.claim(sessionId, threadKey, "action-0", refs.getValue("action-0"))
+        )
+        tracker.track(sessionId)
+
+        val retired = mutableMapOf<String, Set<String>>()
+        val ownedAtDispose = tracker.closeAndSnapshot()
+        assertEquals(setOf(sessionId), ownedAtDispose.abortSessionIds)
+        assertTrue(ownedAtDispose.inFlightSessionIds.isEmpty())
+        assertTrue(tracker.isDisposed())
+        abortSettingsHandsFeedbackImageEditSessions(
+            sessionIds = ownedAtDispose.abortSessionIds + ownedAtDispose.inFlightSessionIds,
+            registry = registry,
+            cleanupLedger = ledger,
+            retire = { id, fileRefs -> retired[id] = fileRefs }
+        )
+
+        assertEquals(refs.values.toSet(), retired.getValue(sessionId))
+        assertTrue(registry.activeSessionIds().isEmpty())
+        assertTrue(ledger.take(sessionId).isEmpty())
+        assertFalse(tracker.owns(sessionId))
+    }
+
+    @Test
+    fun settingsHandoffIsDeferredUntilEventJobFinally() {
+        val tracker = SettingsHandsFeedbackImageEditSessionTracker()
+        assertTrue(tracker.track("in-flight"))
+        assertTrue(tracker.markHandoffStarted("in-flight"))
+        val closed = tracker.closeAndSnapshot()
+        assertTrue(closed.abortSessionIds.isEmpty())
+        assertEquals(setOf("in-flight"), closed.inFlightSessionIds)
+        assertFalse(tracker.owns("in-flight"))
+    }
+
+    @Test
+    fun settingsEventJobsCloseAdmissionAndExposeActiveJobsForJoin() = runTest {
+        val tracker = SettingsHandsFeedbackImageEditEventJobTracker()
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val job =
+            requireNotNull(
+                tracker.launch(backgroundScope) {
+                    started.complete(Unit)
+                    release.await()
+                }
+            )
+        started.await()
+        val snapshot = tracker.closeAndSnapshot()
+        assertTrue(job in snapshot)
+        assertNull(tracker.launch(backgroundScope) {})
+        release.complete(Unit)
+        job.join()
+        assertTrue(job.isCompleted)
+    }
+
     @Test
     fun durableEditedImageBuildsPreviewableLocalFilePayload() {
         val payload =
