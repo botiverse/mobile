@@ -242,7 +242,7 @@ data class ChatLayoutPreferenceSnapshot(
     val compactConsecutiveMessages: Boolean = true,
     val longMessageCollapseEnabled: Boolean = false,
     val singleTapOpensThreadEnabled: Boolean = false,
-    val threadUnreadJumpEnabled: Boolean = true,
+    val threadUnreadJumpEnabled: Boolean = false,
     val newMessageMenuEnabled: Boolean = false,
     val conversationForwardGestureEnabled: Boolean = false,
     val foregroundMessageBannersEnabled: Boolean = false,
@@ -374,7 +374,7 @@ class KeyValueChatLayoutPreferenceStore(
     }
 
     override fun readThreadUnreadJumpEnabledSync(): Boolean =
-        store.getBoolean(KEY_THREAD_UNREAD_JUMP_ENABLED, true)
+        store.getBoolean(KEY_THREAD_UNREAD_JUMP_ENABLED, false)
 
     override suspend fun readThreadUnreadJumpEnabled(): Boolean =
         readThreadUnreadJumpEnabledSync()
