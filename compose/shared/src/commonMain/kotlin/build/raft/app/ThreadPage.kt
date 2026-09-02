@@ -19727,7 +19727,7 @@ private fun ThreadUnreadJumpButton(
         // artin visual ruling (task #232): neutral white pill, bottom placement.
         backgroundColor = SlockColor.SurfaceWhite,
         minWidth = 0.dp,
-        minHeight = ThreadUnreadJumpPillMinHeight,
+        minHeight = ThreadFloatingPillButtonMinHeight,
         shadowOffset = 4.dp,
         textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
     )
@@ -19785,13 +19785,10 @@ private const val ThreadBackToBottomReleaseGuardMillis = 64L
 private const val ThreadUnreadJumpButtonZIndex = 5f
 
 /**
- * Task #232 a11y contract: floating thread pill buttons must meet the project
- * action-button touch-target norm (40-44dp, see MembersPage/SettingsAccountPage);
- * the previous 30dp was below standard.
+ * Compact floating thread pills (back-to-bottom and unread-jump).
+ * artin 2026-09-02: nothing in this family needs the 42.dp action-button target.
  */
-internal val ThreadFloatingPillButtonMinHeight = 42.dp
-/** Compact unread-jump chip. artin: the 42.dp action-button target was visually too tall. */
-internal val ThreadUnreadJumpPillMinHeight = 28.dp
+internal val ThreadFloatingPillButtonMinHeight = 28.dp
 private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
