@@ -56,17 +56,25 @@ class SlockForwardTargetPickerTest {
         assertFalse(appending.rowsInteractive)
         assertTrue(appending.dismissEnabled)
         val appended = appending.reduce(SlockForwardPickerFlowEvent.LoadSucceeded(appending.requestGeneration))
-        val note =
+        val selected =
             appended.reduce(
                 SlockForwardPickerFlowEvent.TargetSelected(
                     stableKey = "target-a",
                     renderGeneration = appended.requestGeneration
                 )
             )
+        assertEquals(SlockForwardPickerStep.Targets, selected.step)
+        assertEquals("target-a", selected.selectedKey)
+        assertEquals(setOf("target-a"), selected.selectedKeys)
+        assertEquals(ready.sessionKey, selected.sessionKey)
+        assertEquals("release", selected.query)
+        assertTrue(selected.rowsInteractive)
+        assertTrue(selected.dismissEnabled)
+
+        val note = selected.reduce(SlockForwardPickerFlowEvent.Continue)
         assertEquals(SlockForwardPickerStep.Note, note.step)
         assertEquals("target-a", note.selectedKey)
-        assertEquals(ready.sessionKey, note.sessionKey)
-        assertEquals("release", note.query)
+        assertEquals(setOf("target-a"), note.selectedKeys)
         assertFalse(note.rowsInteractive)
         assertFalse(note.dismissEnabled)
 
@@ -110,13 +118,14 @@ class SlockForwardTargetPickerTest {
         assertEquals(SlockForwardPickerStep.Targets, afterQueuedTap.step)
         assertTrue(afterQueuedTap.rowsInteractive)
 
-        val note =
+        val selected =
             newResults.reduce(
                 SlockForwardPickerFlowEvent.TargetSelected(
                     stableKey = "current-target",
                     renderGeneration = newResults.requestGeneration
                 )
             )
+        val note = selected.reduce(SlockForwardPickerFlowEvent.Continue)
         assertEquals(
             note,
             note.reduce(

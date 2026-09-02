@@ -288,7 +288,7 @@ class ExternalShareStoreTest {
             )
         }
 
-        override suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<Unit> =
+        override suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<ForwardMessageSendResult> =
             error("External Share handoff must not forward messages")
     }
 }
