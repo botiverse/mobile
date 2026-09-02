@@ -4,12 +4,45 @@ import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class DirectAttachmentUploadCoordinatorTest {
+    @Test
+    fun cancellationAfterServerAcceptWaitsForCreateThenCompensatesWithoutPutOrComplete() = runBlocking {
+        val gateway = FakeGateway()
+        val accepted = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        gateway.createAccepted = accepted
+        gateway.createRelease = release
+        val job: Job = launch {
+            try {
+                coordinator(gateway).upload(ChannelId("channel-1"), listOf(file("local-1")))
+                error("canceled upload unexpectedly completed")
+            } catch (_: CancellationException) {
+                // expected: cancellation is rethrown after create is observed and compensated
+            }
+        }
+        withTimeout(5_000) { accepted.await() }
+        job.cancel()
+        // NonCancellable create must be allowed to return so its reservation enters the ledger.
+        release.complete(Unit)
+        withTimeout(5_000) { job.cancelAndJoin() }
+
+        assertEquals(setOf(gateway.uploadId(1)), gateway.cancelledIds.toSet())
+        assertEquals(emptySet(), gateway.statusIds.toSet())
+        assertEquals(0, gateway.putCalls)
+        assertEquals(0, gateway.completeCalls)
+    }
+
     @Test
     fun completeRetriesExactlyOnceForWhitelistedServerCode() = runBlocking {
         val gateway = FakeGateway()
@@ -394,6 +427,8 @@ class DirectAttachmentUploadCoordinatorTest {
         val createResults = ArrayDeque<DataResult<AttachmentUploadSessionCreateResult>>()
         val prepareResults = ArrayDeque<DataResult<PlatformFile>>()
         val completeResults = ArrayDeque<DataResult<AttachmentUploadSessionCompleteResult>>()
+        var createAccepted: CompletableDeferred<Unit>? = null
+        var createRelease: CompletableDeferred<Unit>? = null
         val putFailureOrdinals = mutableSetOf<Int>()
         val cancelFailureOrdinals = mutableSetOf<Int>()
         val statusFailureOrdinals = mutableSetOf<Int>()
@@ -417,6 +452,8 @@ class DirectAttachmentUploadCoordinatorTest {
             val uploadId = "00000000-0000-4000-8000-${index.toString().padStart(12, '0')}"
             val attachmentId = "00000000-0000-4000-8000-${(100 + index).toString().padStart(12, '0')}"
             createdIds += uploadId
+            createAccepted?.complete(Unit)
+            createRelease?.await()
             return DataResult.Content(createResult(uploadId, attachmentId))
         }
 
