@@ -104,6 +104,16 @@ class ServerSetupOnboardingContractTest {
     }
 
     @Test
+    fun malformedPercentEncodingFailsClosedWithoutEscapingDecoderException() {
+        val malformed = "$SERVER_SETUP_BRIDGE_SCHEME://emit?kind=$SERVER_SETUP_COMPLETION_KIND&payload=%"
+        assertNull(
+            decodeServerSetupHostBridgeNavigation(malformed) { value ->
+                if (value == "%") error("malformed percent encoding") else value
+            }
+        )
+    }
+
+    @Test
     fun switchIntentRequiresExactSourceTargetGenerationAndSlug() {
         val payload = JSONObject()
             .put("contractVersion", SERVER_SETUP_CONTRACT_VERSION)

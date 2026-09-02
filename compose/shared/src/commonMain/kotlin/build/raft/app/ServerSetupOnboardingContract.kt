@@ -193,7 +193,11 @@ internal fun decodeServerSetupHostBridgeNavigation(
     if (!url.startsWith(prefix)) return null
     val parameters = url.removePrefix(prefix).split('&').mapNotNull { part ->
         val separator = part.indexOf('=')
-        if (separator <= 0) null else part.substring(0, separator) to decode(part.substring(separator + 1))
+        if (separator <= 0) {
+            null
+        } else {
+            runCatching { part.substring(0, separator) to decode(part.substring(separator + 1)) }.getOrNull()
+        }
     }.toMap()
     if (parameters.keys != setOf("kind", "payload")) return null
     val payload = runCatching { JSONObject(parameters.getValue("payload")) }.getOrNull() ?: return null
