@@ -390,7 +390,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
 
                 @Suppress("OVERRIDE_DEPRECATION")
                 override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean =
-                    if (destroyed) true else shouldSilentlyBlockSubframeNavigation(url)
+                    if (destroyed) true
+                    else if (url?.startsWith("raft-onboarding-wake:") == true) shouldBlockMainFrameNavigation(url)
+                    else shouldSilentlyBlockSubframeNavigation(url)
 
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                     if (destroyed) return true

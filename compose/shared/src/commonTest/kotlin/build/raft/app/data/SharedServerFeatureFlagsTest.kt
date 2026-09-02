@@ -61,6 +61,25 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
+    fun webviewOnboardingIsRegisteredAndRequiresExplicitResolvedEnablement() = runBlocking {
+        val enabled = SharedServerFeatureFlags(
+            FakeApi(ok("""{"evaluations":[{"key":"$WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY","enabled":true}]}"""))
+        )
+        assertFalse(enabled.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+        enabled.prefetch(server)
+        assertTrue(enabled.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+        assertTrue(WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+
+        val missing = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
+        missing.prefetch(server)
+        assertFalse(missing.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+
+        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
+        assertFalse(failed.prefetch(server).resolved)
+        assertFalse(failed.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+    }
+
+    @Test
     fun enabledThreadPageSizeFlagPreservesItsVariant() = runBlocking {
         val api =
             FakeApi(
