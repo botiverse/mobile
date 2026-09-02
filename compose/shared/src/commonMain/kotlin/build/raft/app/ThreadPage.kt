@@ -819,6 +819,12 @@ internal fun threadTaskAssigneeRows(
 internal fun threadTaskAssigneeRowId(row: MemberProfile?): String =
     row?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
 
+internal fun resolveThreadTaskAssignee(
+    selectionId: String,
+    options: List<MemberProfile>
+): MemberProfile? =
+    options.firstOrNull { it.tasksIdentityFilterId() == selectionId }
+
 internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
     action in
         setOf(
@@ -6058,6 +6064,13 @@ internal fun SharedThreadRouteContent(
                 references = taskProjectionReferences
             )
         }
+    val taskAssigneeOptions =
+        taskAssigneeIdentityOptions(
+            channelMembers = threadChannelMembersSlice.members,
+            channelMembersLoaded =
+                threadChannelMembersSlice.status == SharedServerMembersLoadStatus.Loaded,
+            payloadMembers = threadMembersProjection.members.mapNotNull { it.toMemberProfile() }
+        )
     val renderedPayload =
         remember(baseRenderedPayload, threadMembersProjection) {
             baseRenderedPayload.withThreadMembersProjection(threadMembersProjection)
@@ -7984,12 +7997,7 @@ internal fun SharedThreadRouteContent(
             // before that, reuse the channel roster the thread payload already
             // carries (baseRenderedPayload.members via threadMembersProjection)
             // — synchronous, so the picker never flashes server-wide names.
-            taskIdentityOptions = taskAssigneeIdentityOptions(
-                channelMembers = threadChannelMembersSlice.members,
-                channelMembersLoaded =
-                    threadChannelMembersSlice.status == SharedServerMembersLoadStatus.Loaded,
-                payloadMembers = threadMembersProjection.members.mapNotNull { it.toMemberProfile() }
-            ),
+            taskIdentityOptions = taskAssigneeOptions,
             linkedTasksProjection = linkedTasksProjection,
             filesViewModel = filesViewModel,
             memberSuggestionsFlow = memberSuggestionsFlow,
@@ -9097,13 +9105,13 @@ internal fun SharedThreadRouteContent(
                 }
                 // Task #258: inline task detail panel assignee row. tab carries the
                 // assignee filter id ("unassigned" sentinel or member filter id);
-                // resolve through the same server-scoped directory the board uses.
+                // resolve against the same current-channel options rendered by the picker.
                 action == "setTaskAssignee" && !itemId.isNullOrBlank() && !tab.isNullOrBlank() -> {
                     val assignee =
                         if (tab == TasksUnassignedAssigneeFilterId) {
                             null
                         } else {
-                            threadServerMembersEntry.members.firstOrNull { it.tasksIdentityFilterId() == tab }
+                            resolveThreadTaskAssignee(tab, taskAssigneeOptions)
                         }
                     if (assignee == null && tab != TasksUnassignedAssigneeFilterId) {
                         bridge.toast(unableToUpdateTaskLabel)

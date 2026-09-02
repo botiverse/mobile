@@ -117,6 +117,15 @@ class ThreadTaskDetailPanelTest {
         assertNull(projection.assignUpdateIntent("task-unknown", null))
     }
 
+    @Test
+    fun assigneeSelectionResolvesAgainstChannelOptionsNotServerDirectory() {
+        val channelOnlyMember = member("channel-only", MemberKind.Human)
+        val serverDirectory = listOf(member("server-only", MemberKind.Human))
+        assertEquals(channelOnlyMember, resolveThreadTaskAssignee("user:channel-only", listOf(channelOnlyMember)))
+        assertNull(resolveThreadTaskAssignee("user:channel-only", serverDirectory))
+        assertNull(resolveThreadTaskAssignee("user:unknown", listOf(channelOnlyMember)))
+    }
+
     // artin 2026-09-01/02: the task assignee picker lists CURRENT CHANNEL members
     // once the channel roster slice has loaded; before that it reuses the
     // synchronous channel roster from the thread payload — never the server roster.
