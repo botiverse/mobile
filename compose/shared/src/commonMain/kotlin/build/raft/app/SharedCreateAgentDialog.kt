@@ -36,6 +36,7 @@ import build.raft.app.data.SharedCreateAgentExactFormKey
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedCreateAgentFormStoreState
 import build.raft.app.data.SharedCreateAgentMachineFormKey
+import build.raft.app.data.CREATE_AGENT_KIMI_SDK_RUNTIME_ID
 import build.raft.app.data.SharedResolvedAgentCreateForm
 import build.raft.app.data.buildBuiltInRuntimeConfig
 import build.raft.app.data.shouldClearBuiltInWriteOnlySecret
@@ -221,11 +222,26 @@ internal fun buildSharedCreateAgentDialogSubmit(
     builtInBaseUrl: String = "",
     builtInSupportsImageInput: Boolean = false,
     builtInModel: String = "",
-    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList()
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList(),
+    kimiSdkForm: SharedResolvedAgentCreateForm? = null
 ): SharedCreateAgentDialogSubmit {
     val finalMachineId =
         if (external) null
         else (requiredComputer?.takeIf { it.isNotBlank() } ?: selectedMachineId)
+    // kimi-sdk (task #275): the wire decision is proven by live capability + exact ref.
+    // Without either, both the effort and the ref are stripped (fail closed) — even if a
+    // stale draft value is still present.
+    val kimiSdkWireSelection =
+        if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID) {
+            val effectiveModel = if (customModelMode) customModelName.trim() else model
+            kimiSdkCreateReasoningWireSelection(
+                capability = kimiSdkLiveReasoningCapability(runtime, effectiveModel, runtimeModelsOverride),
+                formRef = kimiSdkReasoningFormRef(kimiSdkForm),
+                chosenEffort = reasoningEffort
+            )
+        } else {
+            null
+        }
     val runtimeConfig =
         if (external) {
             null
@@ -258,14 +274,24 @@ internal fun buildSharedCreateAgentDialogSubmit(
                 reasoningDefaultEffort = reasoningMetadata.defaultReasoningEffort,
                 envVars = createAgentRuntimeEnvVars(envVarEntries),
                 command = command.takeIf { supportsRuntimeCommand(runtime) }
-            )
+            ).let { config ->
+                if (kimiSdkWireSelection != null) {
+                    // buildRuntimeConfig nulls kimi effort via the static gate; the proven live
+                    // capability decision re-applies it (null = Default/unmanaged, omitted on wire).
+                    config.copy(reasoningEffort = kimiSdkWireSelection.reasoningEffort)
+                } else {
+                    config
+                }
+            }
         }
     return SharedCreateAgentDialogSubmit(
         name = name.trim().removePrefix("@"),
         description = description.trim().takeIf { it.isNotBlank() },
         machineId = finalMachineId,
         runtimeConfig = runtimeConfig,
-        formDefinitionRef = builtInForm?.definition?.ref.takeIf { runtime == "builtin" },
+        formDefinitionRef =
+            builtInForm?.definition?.ref.takeIf { runtime == "builtin" }
+                ?: kimiSdkWireSelection?.formDefinitionRef,
         external = external
     )
 }
@@ -689,6 +715,83 @@ internal fun createAgentRuntimeModelReasoningSelection(
 private fun List<CreateAgentDropdownItem>.toBrutalSelectOptions(): List<SlockBrutalSelectOption> =
     map { item -> SlockBrutalSelectOption(id = item.id, label = item.label, enabled = item.enabled) }
 
+// ── kimi-sdk reasoning effort (task #275) ────────────────────────────────────
+// kimi-sdk stays OUT of the static REASONING_EFFORT_RUNTIMES set: its selector is
+// offered only from LIVE server capability — the selected computer+model catalog
+// carrying non-empty supportedReasoningEfforts with a valid default, plus the exact
+// kimi-sdk form ref. No static fallback, no version inference.
+
+/** Live reasoning capability for kimi-sdk, proven only by the live per-model catalog. */
+internal data class KimiSdkLiveReasoningCapability(
+    val supportedReasoningEfforts: List<String>,
+    val defaultReasoningEffort: String
+)
+
+internal fun kimiSdkLiveReasoningCapability(
+    runtime: String,
+    model: String,
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption>
+): KimiSdkLiveReasoningCapability? {
+    if (runtime != CREATE_AGENT_KIMI_SDK_RUNTIME_ID) return null
+    val cleanModel = model.trim()
+    if (cleanModel.isEmpty()) return null
+    val live = runtimeModelsOverride.firstOrNull { it.id == cleanModel } ?: return null
+    val efforts = live.supportedReasoningEfforts
+    val default = live.defaultReasoningEffort
+    if (efforts.isEmpty() || default.isNullOrBlank() || default !in efforts) return null
+    return KimiSdkLiveReasoningCapability(supportedReasoningEfforts = efforts, defaultReasoningEffort = default)
+}
+
+/** The resolved kimi-sdk form's exact ref, or null when absent/unsupported. */
+internal fun kimiSdkReasoningFormRef(
+    form: SharedResolvedAgentCreateForm?
+): build.raft.app.data.SharedRuntimeFormDefinitionRef? =
+    form?.definition?.ref?.takeIf { it.isSupportedKimiSdk }
+
+/** Selector items for kimi-sdk: the live efforts ONLY, plus the Default entry. */
+internal fun createAgentKimiSdkReasoningDropdownItems(
+    capability: KimiSdkLiveReasoningCapability,
+    defaultLabel: String = "Default"
+): List<CreateAgentDropdownItem> {
+    val labelsById = REASONING_EFFORTS.toMap()
+    return listOf(CreateAgentDropdownItem(id = CREATE_AGENT_DEFAULT_REASONING_ID, label = defaultLabel)) +
+        capability.supportedReasoningEfforts.map { id ->
+            CreateAgentDropdownItem(id = id, label = labelsById[id] ?: id)
+        }
+}
+
+/**
+ * Reconcile a draft effort against live capability: keep a still-valid choice,
+ * anything else (or no capability) drops to Default (null = unmanaged), never
+ * inventing a value from a static table.
+ */
+internal fun reconcileKimiSdkReasoningEffort(
+    capability: KimiSdkLiveReasoningCapability?,
+    current: String?
+): String? {
+    if (capability == null) return null
+    return current?.takeIf { it in capability.supportedReasoningEfforts }
+}
+
+/** What the kimi create wire actually carries once capability + ref are proven. */
+internal data class KimiSdkReasoningWireSelection(
+    val reasoningEffort: String?,
+    val formDefinitionRef: build.raft.app.data.SharedRuntimeFormDefinitionRef
+)
+
+internal fun kimiSdkCreateReasoningWireSelection(
+    capability: KimiSdkLiveReasoningCapability?,
+    formRef: build.raft.app.data.SharedRuntimeFormDefinitionRef?,
+    chosenEffort: String?
+): KimiSdkReasoningWireSelection? {
+    val ref = formRef?.takeIf { it.isSupportedKimiSdk } ?: return null
+    if (capability == null) return null
+    return KimiSdkReasoningWireSelection(
+        reasoningEffort = chosenEffort?.takeIf { it in capability.supportedReasoningEfforts },
+        formDefinitionRef = ref
+    )
+}
+
 @Composable
 internal fun SharedCreateAgentDialog(
     submitting: Boolean,
@@ -717,6 +820,7 @@ internal fun SharedCreateAgentDialog(
     createAgentFormStore: SharedCreateAgentFormStore? = null,
     createAgentServerId: String? = null,
     builtInFormOverride: SharedResolvedAgentCreateForm? = null,
+    kimiSdkForm: SharedResolvedAgentCreateForm? = null,
     currentAgentCount: Int = 0,
     maxAgents: Int = -1,
     limitPlanLabel: String? = null,
@@ -797,6 +901,26 @@ internal fun SharedCreateAgentDialog(
         availableSelectedMachineId?.let { machineId -> SharedCreateAgentExactFormKey(cleanCreateAgentServerId, machineId, ref) }
     }
     val builtInForm = builtInFormOverride ?: builtInExactKey?.let(createAgentFormState.resolvedForms::get)
+    // kimi-sdk (task #275): the exact form ref comes from the live runtime catalog (or an
+    // explicit override in fixtures); the resolved form proves the server speaks the schema.
+    val kimiSdkCatalogRef =
+        if (runtime != CREATE_AGENT_KIMI_SDK_RUNTIME_ID) {
+            null
+        } else {
+            createAgentMachineKey?.let { key ->
+                createAgentFormState.runtimeCatalogs[key]?.options
+                    ?.singleOrNull { it.runtimeId == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && it.selectable }
+                    ?.formDefinitionRef
+                    ?.takeIf { it.isSupportedKimiSdk }
+            }
+        }
+    val kimiSdkRef = kimiSdkCatalogRef ?: kimiSdkReasoningFormRef(kimiSdkForm)
+    val kimiSdkExactKey = kimiSdkRef?.let { ref ->
+        availableSelectedMachineId?.let { machineId ->
+            SharedCreateAgentExactFormKey(cleanCreateAgentServerId, machineId, ref)
+        }
+    }
+    val resolvedKimiSdkForm = kimiSdkForm ?: kimiSdkExactKey?.let(createAgentFormState.resolvedForms::get)
     val shouldRefreshDialogBuiltInForm =
         createAgentFormStore != null &&
             cleanCreateAgentServerId.isNotBlank() &&
@@ -929,6 +1053,42 @@ internal fun SharedCreateAgentDialog(
             )
         if (result != null) {
             dialogBuiltInFormRefreshState = createAgentDialogFormRefreshCompleted(result)
+        }
+    }
+
+    // kimi-sdk (task #275): load the exact form through the shared runtime-form chain when the
+    // kimi runtime is selected. Silent fail-closed — no capability evidence, no selector.
+    LaunchedEffect(
+        createAgentFormStore,
+        cleanCreateAgentServerId,
+        availableSelectedMachineId,
+        runtime,
+        external,
+        kimiSdkRef
+    ) {
+        if (runtime != CREATE_AGENT_KIMI_SDK_RUNTIME_ID || external) return@LaunchedEffect
+        val formStore = createAgentFormStore ?: return@LaunchedEffect
+        val serverId = cleanCreateAgentServerId.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val machineId = availableSelectedMachineId ?: return@LaunchedEffect
+        kimiSdkRef ?: return@LaunchedEffect
+        formStore.loadSupportedKimiSdkForm(serverId, machineId)
+    }
+
+    val kimiSdkReasoningModel = if (customModelMode) customModelName.trim() else model
+    val kimiSdkReasoningCapability =
+        if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && kimiSdkReasoningFormRef(resolvedKimiSdkForm) != null) {
+            kimiSdkLiveReasoningCapability(runtime, kimiSdkReasoningModel, runtimeModelsOverride)
+        } else {
+            null
+        }
+
+    // kimi-sdk: reconcile the draft effort when live capability arrives; if it is lost
+    // mid-edit, fail closed back to Default with no explicit value left to submit.
+    LaunchedEffect(runtime, kimiSdkReasoningCapability) {
+        if (runtime != CREATE_AGENT_KIMI_SDK_RUNTIME_ID) return@LaunchedEffect
+        val reconciled = reconcileKimiSdkReasoningEffort(kimiSdkReasoningCapability, reasoningEffort)
+        if (reconciled != reasoningEffort) {
+            reasoningEffort = reconciled
         }
     }
 
@@ -1281,6 +1441,7 @@ internal fun SharedCreateAgentDialog(
                         } else {
                             AdvancedRuntimeSection(
                             runtime = runtime,
+                            kimiSdkReasoningCapability = kimiSdkReasoningCapability,
                             onRuntimeChange = { newRuntime ->
                                 val nextCatalog =
                                     availableSelectedMachineId?.let { machineId ->
@@ -1422,7 +1583,8 @@ internal fun SharedCreateAgentDialog(
                                 builtInBaseUrl = builtInBaseUrl,
                                 builtInSupportsImageInput = builtInSupportsImageInput,
                                 builtInModel = builtInModel,
-                                runtimeModelsOverride = runtimeModelsOverride
+                                runtimeModelsOverride = runtimeModelsOverride,
+                                kimiSdkForm = resolvedKimiSdkForm
                             )
                         )
                     }
@@ -1769,6 +1931,7 @@ internal fun AdvancedRuntimeSection(
     customModelMode: Boolean,
     onCustomModelModeChange: (Boolean) -> Unit,
     customModelName: String,
+    kimiSdkReasoningCapability: KimiSdkLiveReasoningCapability? = null,
     onCustomModelNameChange: (String) -> Unit,
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption>,
     runtimeModelsLoading: Boolean = false,
@@ -2038,6 +2201,33 @@ internal fun AdvancedRuntimeSection(
                 selectedId = reasoningSelectedId,
                 selectedLabel =
                     reasoningOptions.firstOrNull { it.id == reasoningSelectedId }?.label
+                        ?: stringResource(MR.strings.agent_create_action_default),
+                placeholder = stringResource(MR.strings.agent_create_action_default),
+                enabled = enabled,
+                rowHeight = 36.dp,
+                onSelect = { option ->
+                    focusManager.clearFocus(force = true)
+                    onReasoningEffortChange(
+                        if (option.id == CREATE_AGENT_DEFAULT_REASONING_ID) null else option.id
+                    )
+                }
+            )
+        }
+        // kimi-sdk (task #275): separate gate — live catalog + resolved form ref only,
+        // never the static REASONING_EFFORT_RUNTIMES/BASE fallbacks above.
+        if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && kimiSdkReasoningCapability != null) {
+            SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_reasoning))
+            val kimiReasoningOptions =
+                createAgentKimiSdkReasoningDropdownItems(
+                    capability = kimiSdkReasoningCapability,
+                    defaultLabel = stringResource(MR.strings.agent_create_action_default)
+                )
+            val kimiReasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
+            SlockBrutalSelectField(
+                options = kimiReasoningOptions.toBrutalSelectOptions(),
+                selectedId = kimiReasoningSelectedId,
+                selectedLabel =
+                    kimiReasoningOptions.firstOrNull { it.id == kimiReasoningSelectedId }?.label
                         ?: stringResource(MR.strings.agent_create_action_default),
                 placeholder = stringResource(MR.strings.agent_create_action_default),
                 enabled = enabled,

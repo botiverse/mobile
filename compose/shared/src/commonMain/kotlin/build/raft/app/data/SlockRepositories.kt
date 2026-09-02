@@ -779,7 +779,14 @@ data class AgentProfileUpdateRequest(
      * matches. This never recovers or serializes the existing write-only value.
      */
     val retainOmittedBuiltInProviderSecret: Boolean = false,
-    val runtimeResetMode: AgentResetMode? = null
+    val runtimeResetMode: AgentResetMode? = null,
+    /**
+     * kimi-sdk (task #275): the exact runtime-form ref validated against the
+     * live catalog at save time. Emitted on the wire only together with a
+     * non-null runtimeConfig (see buildSharedAgentProfileUpdateBody); a null
+     * value keeps the legacy no-ref retention path.
+     */
+    val formDefinitionRef: SharedRuntimeFormDefinitionRef? = null
 )
 
 data class AgentAvatarUploadRequest(

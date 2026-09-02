@@ -968,6 +968,11 @@ fun buildSharedAgentProfileUpdateBody(request: AgentProfileUpdateRequest): Strin
                     } else {
                         put("envVars", memberRepositoryJson.encodeToJsonElement(envVars))
                     }
+                    // kimi-sdk (task #275): top-level exact form ref, mirroring
+                    // the create wire. Never emitted without a runtimeConfig.
+                    request.formDefinitionRef?.let { ref ->
+                        put("formDefinitionRef", memberRepositoryJson.encodeToJsonElement(ref))
+                    }
                 }
                 request.runtimeResetMode?.let { put("restartMode", it.wireValue) }
             }

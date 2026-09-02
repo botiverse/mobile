@@ -101,7 +101,7 @@ internal class SharedCreateAgentFormStore(
             ?: return clearForMissingOwner("runtime_form_owner_required")
         val machineKey = normalizedMachineKey(serverId, machineId)
             ?: return DataResult.Error(ScreenError("runtime_form_identity_required", retryable = false))
-        if (!ref.isSupportedBuiltInPi) {
+        if (!ref.isSupportedRuntimeForm) {
             return DataResult.Error(ScreenError("runtime_form_ref_unsupported", retryable = false))
         }
         val key = SharedCreateAgentExactFormKey(machineKey.serverId, machineKey.machineId, ref)
@@ -166,6 +166,50 @@ internal class SharedCreateAgentFormStore(
         return loadExactForm(serverId, machineId, ref, force)
     }
 
+    /**
+     * Kimi SDK twin of [loadSupportedBuiltInForm]: the form is admitted only
+     * when the live catalog offers a selectable kimi-sdk option whose exact ref
+     * we support. Fail-closed on every other shape.
+     */
+    suspend fun loadSupportedKimiSdkForm(
+        serverId: String,
+        machineId: String,
+        force: Boolean = false
+    ): DataResult<SharedResolvedAgentCreateForm> {
+        val catalog = loadRuntimeCatalog(serverId, machineId, force)
+        if (catalog !is DataResult.Content) return catalog.asResolvedFormResult()
+        val option = catalog.data.options.singleOrNull { it.runtimeId == CREATE_AGENT_KIMI_SDK_RUNTIME_ID }
+            ?: return unavailableBuiltInForm("runtime_missing")
+        val ref = option.formDefinitionRef
+            ?: return unavailableBuiltInForm("form_ref_missing")
+        if (!option.selectable || !ref.isSupportedKimiSdk) {
+            return unavailableBuiltInForm("runtime_not_selectable")
+        }
+        return loadExactForm(serverId, machineId, ref, force)
+    }
+
+    /**
+     * Edit admission twin of [loadSupportedKimiSdkForm]: the machine's current
+     * kimi-sdk runtime may be managed when the server projects
+     * manageable-for-current-agent.
+     */
+    suspend fun loadSupportedKimiSdkFormForEdit(
+        serverId: String,
+        machineId: String,
+        force: Boolean = false
+    ): DataResult<SharedResolvedAgentCreateForm> {
+        val catalog = loadRuntimeCatalog(serverId, machineId, force)
+        if (catalog !is DataResult.Content) return catalog.asResolvedFormResult()
+        val option = catalog.data.options.singleOrNull { it.runtimeId == CREATE_AGENT_KIMI_SDK_RUNTIME_ID }
+            ?: return unavailableBuiltInForm("runtime_missing")
+        val ref = option.formDefinitionRef
+            ?: return unavailableBuiltInForm("form_ref_missing")
+        if ((!option.selectable && !option.manageableForCurrentAgent) || !ref.isSupportedKimiSdk) {
+            return unavailableBuiltInForm("runtime_not_manageable")
+        }
+        return loadExactForm(serverId, machineId, ref, force)
+    }
+
     private suspend fun resolveExactForm(
         key: SharedCreateAgentExactFormKey
     ): DataResult<SharedResolvedAgentCreateForm> {
@@ -183,7 +227,13 @@ internal class SharedCreateAgentFormStore(
             resolvedSources[sourceId] = sourceResult.data
         }
         val resolved = SharedResolvedAgentCreateForm(definitionResult.data, resolvedSources)
-        return if (resolved.hasConsistentBuiltInSources()) {
+        val consistent =
+            when {
+                resolved.definition.ref.isSupportedBuiltInPi -> resolved.hasConsistentBuiltInSources()
+                resolved.definition.ref.isSupportedKimiSdk -> resolved.hasConsistentKimiSdkSources()
+                else -> false
+            }
+        return if (consistent) {
             DataResult.Content(resolved)
         } else {
             DataResult.Error(ScreenError("runtime_form_sources_contract_mismatch", retryable = false))
