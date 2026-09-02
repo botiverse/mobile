@@ -5546,6 +5546,13 @@ internal fun Pager.openSlockFilePreviewPage(
             retireEphemeralRegistration()
             return false
         }
+        // A concurrent preview registration may evict this bounded process-local row after the
+        // owner callback returns. Recheck immediately before opening the route so no page is
+        // launched with a session that cannot produce an admissible Done event.
+        if (!ephemeralActionRegistry.hasSession(sessionId)) {
+            retireEphemeralRegistration()
+            return false
+        }
     }
     val launchPageData = slockFilePreviewLaunchPageData(launch, storeScope, targetServerId)
     val opened =

@@ -9261,8 +9261,12 @@ internal fun SharedThreadRouteContent(
         onDispose {
             subscription.close()
             eventMailbox.close()
-            consumerJob.cancel()
+            // Close admission before requesting consumer cancellation.  Cancellation is
+            // cooperative; if the consumer is in a non-suspending reducer step, it can still
+            // finish that step after `cancel()` returns.  The closed tracker makes such a late
+            // step fail its ownership check instead of admitting a new batch during teardown.
             val closeResult = composerImageEventSessionTracker.close()
+            consumerJob.cancel()
             threadSendScope.launch(start = CoroutineStart.UNDISPATCHED) {
                 withContext(NonCancellable) {
                     // The consumer may already be inside the process-owned NonCancellable upload

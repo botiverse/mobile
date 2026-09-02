@@ -11587,6 +11587,12 @@ internal fun SharedHandsFeedbackContent(
                         return@launch
                     }
                     admission as SlockFilePreviewComposerImageEventAdmission.Accepted
+                    fun eventSessionStillOwned(sessionId: String): Boolean {
+                        val normalized = sessionId.trim()
+                        return normalized.isNotBlank() &&
+                            imageEditSessionTracker.owns(normalized) &&
+                            latestPendingImageEditSession?.previewSessionId?.trim() == normalized
+                    }
                     fun finishEventSession(transferred: Boolean) {
                         try {
                             val cleanupRefs =
@@ -11610,6 +11616,13 @@ internal fun SharedHandsFeedbackContent(
                         finishEventSession(transferred = false)
                         return@launch
                     }
+                    // Replacement/disposal can revoke the page witness while this callback is
+                    // waiting behind another event. Do not fold or mutate Compose state after the
+                    // session has lost ownership, even if the process registry accepted the row.
+                    if (!eventSessionStillOwned(admission.sessionId)) {
+                        finishEventSession(transferred = false)
+                        return@launch
+                    }
                     when (
                         val result =
                             foldSettingsHandsFeedbackImageEditEvent(
@@ -11620,28 +11633,49 @@ internal fun SharedHandsFeedbackContent(
                             )
                     ) {
                         is SettingsHandsFeedbackImageEditFoldResult.Ignored -> {
-                            pendingImageEditSession = null
+                            if (eventSessionStillOwned(admission.sessionId)) {
+                                pendingImageEditSession = null
+                            }
                             finishEventSession(transferred = false)
                         }
                         is SettingsHandsFeedbackImageEditFoldResult.Pending -> {
                             if (admission.sessionComplete) {
-                                pendingImageEditSession = null
+                                val stillOwned = eventSessionStillOwned(admission.sessionId)
+                                if (stillOwned) {
+                                    pendingImageEditSession = null
+                                }
                                 finishEventSession(transferred = false)
-                                error = copy.attachmentPickerFailed
+                                if (stillOwned) {
+                                    error = copy.attachmentPickerFailed
+                                }
                             } else {
-                                pendingImageEditSession = result.session
+                                if (eventSessionStillOwned(admission.sessionId)) {
+                                    pendingImageEditSession = result.session
+                                } else {
+                                    finishEventSession(transferred = false)
+                                }
                             }
                         }
                         is SettingsHandsFeedbackImageEditFoldResult.Failed -> {
-                            pendingImageEditSession = null
+                            val stillOwned = eventSessionStillOwned(admission.sessionId)
+                            if (stillOwned) {
+                                pendingImageEditSession = null
+                            }
                             finishEventSession(transferred = false)
-                            error = copy.attachmentPickerFailed
+                            if (stillOwned) {
+                                error = copy.attachmentPickerFailed
+                            }
                         }
                         is SettingsHandsFeedbackImageEditFoldResult.Complete -> {
                             if (!admission.sessionComplete) {
-                                pendingImageEditSession = null
+                                val stillOwned = eventSessionStillOwned(admission.sessionId)
+                                if (stillOwned) {
+                                    pendingImageEditSession = null
+                                }
                                 finishEventSession(transferred = false)
-                                error = copy.attachmentPickerFailed
+                                if (stillOwned) {
+                                    error = copy.attachmentPickerFailed
+                                }
                                 return@launch
                             }
                             if (!imageEditCommitGate.tryClaim(session)) {
@@ -11653,7 +11687,9 @@ internal fun SharedHandsFeedbackContent(
                                 finishEventSession(transferred = false)
                                 return@launch
                             }
-                            pendingImageEditSession = null
+                            if (pendingImageEditSession?.previewSessionId?.trim() == admission.sessionId.trim()) {
+                                pendingImageEditSession = null
+                            }
                             val initialDraftResetGeneration = feedbackDraftResetGenerationState.value
                             var transferred = false
                             try {
