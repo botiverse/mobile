@@ -175,13 +175,26 @@ internal fun rememberServerSetupAdmissionHost(
                                         generationKey = generation,
                                         onNavigationBlocked = { blockedUrl ->
                                             val event = decodeServerSetupHostBridgeNavigation(blockedUrl, bridge::urlDecode)
+                                            bridge.log(
+                                                "server_setup_navigation_blocked scheme=${blockedUrl.substringBefore(':')} " +
+                                                    "event=${when (event) {
+                                                        is ServerSetupHostEvent.StateMayHaveChanged -> "completion"
+                                                        is ServerSetupHostEvent.SwitchServer -> "server_switch"
+                                                        null -> "unknown"
+                                                    }}"
+                                            )
                                             when (event) {
-                                                is ServerSetupHostEvent.StateMayHaveChanged ->
-                                                    if (
-                                                        serverSetupControlledDocumentMatchesOrigin(currentDocumentUrl, webBaseUrl) &&
-                                                        event.wake.matches(identity, serverSlug) &&
-                                                        controllerState.acceptsWake(identity)
-                                                    ) refreshEpoch += 1
+                                                is ServerSetupHostEvent.StateMayHaveChanged -> {
+                                                    val controlledDocument =
+                                                        serverSetupControlledDocumentMatchesOrigin(currentDocumentUrl, webBaseUrl)
+                                                    val wakeMatches = event.wake.matches(identity, serverSlug)
+                                                    val accepted = controlledDocument && wakeMatches && controllerState.acceptsWake(identity)
+                                                    bridge.log(
+                                                        "server_setup_completion_wake accepted=$accepted " +
+                                                            "controlledDocument=$controlledDocument wakeMatches=$wakeMatches"
+                                                    )
+                                                    if (accepted) refreshEpoch += 1
+                                                }
                                                 is ServerSetupHostEvent.SwitchServer -> {
                                                     val targetId = serverSetupSwitchTargetId(
                                                         session = session,

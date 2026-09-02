@@ -36,6 +36,14 @@ class ServerSetupAdmissionProductionWiringTest {
     }
 
     @Test
+    fun onboardingBridgeNavigationUsesMainFrameBlockedCallback() {
+        val webView = repositoryFile("compose/androidApp/src/main/java/build/raft/app/shared/SlockSandboxWebViewRenderView.kt").readText()
+        assertTrue(webView.contains("url?.startsWith(\"raft-onboarding-wake:\") == true"))
+        val host = repositoryFile("compose/shared/src/commonMain/kotlin/build/raft/app/ServerSetupAdmissionHost.kt").readText()
+        assertTrue(host.contains("server_setup_completion_wake accepted=\$accepted"))
+    }
+
+    @Test
     fun hostedSwitchUsesCanonicalShellSelectionAndOriginGenerationFences() {
         val host = repositoryFile("compose/shared/src/commonMain/kotlin/build/raft/app/ServerSetupAdmissionHost.kt").readText()
         assertTrue(host.contains("serverSetupControlledDocumentMatchesOrigin(currentDocumentUrl, webBaseUrl)"))
