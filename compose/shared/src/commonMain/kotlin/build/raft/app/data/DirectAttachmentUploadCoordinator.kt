@@ -3,6 +3,8 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
@@ -275,19 +277,27 @@ internal class DirectAttachmentUploadCoordinator(
         return try {
             for (file in normalizedFiles) {
                 val createResult =
-                    safeCall("create") {
-                        gateway.create(
-                            AttachmentUploadSessionCreateRequest(
-                                channelId = channelId,
-                                filename = file.fileName,
-                                mimeType = file.mimeType.orEmpty().ifBlank { "application/octet-stream" },
-                                // [prepareFiles] guarantees this is a positive, resolver-verified
-                                // value for refs or the exact byte-array length for in-memory files.
-                                sizeBytes = file.sizeBytes
-                                    ?: error("prepared direct upload file has no verified size"),
-                                clientRequestId = newAttachmentUploadClientRequestId(),
+                    // A server may accept/create the reservation before the caller is canceled.
+                    // Keep this one request alive long enough to observe its response and record
+                    // the upload id; otherwise cancellation can strand an unaddressable
+                    // reservation.  Once the response is back, the active cancellation is
+                    // re-checked before PUT so a canceled caller performs compensation without
+                    // starting a body transfer.
+                    withContext(NonCancellable) {
+                        safeCall("create") {
+                            gateway.create(
+                                AttachmentUploadSessionCreateRequest(
+                                    channelId = channelId,
+                                    filename = file.fileName,
+                                    mimeType = file.mimeType.orEmpty().ifBlank { "application/octet-stream" },
+                                    // [prepareFiles] guarantees this is a positive, resolver-verified
+                                    // value for refs or the exact byte-array length for in-memory files.
+                                    sizeBytes = file.sizeBytes
+                                        ?: error("prepared direct upload file has no verified size"),
+                                    clientRequestId = newAttachmentUploadClientRequestId(),
+                                )
                             )
-                        )
+                        }
                     }
                 val session =
                     when (createResult) {
@@ -343,6 +353,7 @@ internal class DirectAttachmentUploadCoordinator(
                         }
                     }
 
+                currentCoroutineContext().ensureActive()
                 val putResult = safeCall("put") { gateway.put(session.result.upload, file) }
                 if (putResult !is DataResult.Content) {
                     return failAfterCreated(
