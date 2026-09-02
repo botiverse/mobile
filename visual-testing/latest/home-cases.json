@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T22:05:31.919Z",
+  "generatedAt": "2026-09-02T22:09:51.015Z",
   "runId": "91cbf42a-20260902220309",
   "cases": [
     {
@@ -5472,17 +5472,33 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.481Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:08:18.843Z",
+            "severity": "low",
+            "summary": [
+              "Status dot color and shape are visually equivalent between Android and iOS renders — green/orange/gray/cyan/pink dots render consistently in size, stroke and fill.",
+              "Text label \"Waiting pulse\" matches in weight, size, vertical alignment and color across both platforms.",
+              "Spacing between the four small dots and the gap to the label is consistent across platforms.",
+              "Top metadata chrome (title, subtitle, platform badge) is isomorphic aside from the platform label text.",
+              "No missing, clipped, or misaligned elements detected in the component region."
+            ],
+            "likelyCauses": [
+              "Rendering differences are within the 0.3% pixel mismatch tolerance and attributable to native antialiasing/font hinting, not a layout bug.",
+              "Component crop on baseline and full canvas on current are expected and not a defect."
+            ],
+            "suggestedOwner": "ui-platform",
+            "suggestedFixes": [
+              "No action required; similarity (98.0% RGB, 99.7% pixel-perfect) is within tolerance.",
+              "If sub-pixel anti-aliasing artifacts are undesirable later, consider normalizing border/stroke rendering between Kuikly Android and iOS backends.",
+              "Keep tolerance settings (pixelRatio 0.02, layoutDp 1, ignoreAntialiasing true) as-is for this component."
+            ],
+            "intentional": [
+              "Platform badge label intentionally differs (\"ANDROID\" vs \"IOS\").",
+              "Canvas dimensions intentionally differ between baseline (342×92 cropped) and current (1170×2532 full) as part of the test harness setup."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -5557,17 +5573,33 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.481Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:08:18.843Z",
+            "severity": "low",
+            "summary": [
+              "Status dot color and shape are visually equivalent between Android and iOS renders — green/orange/gray/cyan/pink dots render consistently in size, stroke and fill.",
+              "Text label \"Waiting pulse\" matches in weight, size, vertical alignment and color across both platforms.",
+              "Spacing between the four small dots and the gap to the label is consistent across platforms.",
+              "Top metadata chrome (title, subtitle, platform badge) is isomorphic aside from the platform label text.",
+              "No missing, clipped, or misaligned elements detected in the component region."
+            ],
+            "likelyCauses": [
+              "Rendering differences are within the 0.3% pixel mismatch tolerance and attributable to native antialiasing/font hinting, not a layout bug.",
+              "Component crop on baseline and full canvas on current are expected and not a defect."
+            ],
+            "suggestedOwner": "ui-platform",
+            "suggestedFixes": [
+              "No action required; similarity (98.0% RGB, 99.7% pixel-perfect) is within tolerance.",
+              "If sub-pixel anti-aliasing artifacts are undesirable later, consider normalizing border/stroke rendering between Kuikly Android and iOS backends.",
+              "Keep tolerance settings (pixelRatio 0.02, layoutDp 1, ignoreAntialiasing true) as-is for this component."
+            ],
+            "intentional": [
+              "Platform badge label intentionally differs (\"ANDROID\" vs \"IOS\").",
+              "Canvas dimensions intentionally differ between baseline (342×92 cropped) and current (1170×2532 full) as part of the test harness setup."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -10435,17 +10467,37 @@
         "currentHeight": 300
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-09-02T22:05:23.978Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-09-02T22:07:54.308Z",
+        "severity": "medium",
+        "summary": [
+          "Android renders an extra icon button (camera) between the image and attachment icons, which is absent in React baseline",
+          "Android adds an 'Original image' checkbox/label that is missing from the React baseline",
+          "React shows only two left-side icons (image-add and paperclip); Android shows three (image-add, camera, paperclip)",
+          "Both versions share the 'As Task' checkbox and send icon, but Android layout is more crowded horizontally",
+          "Cropping offset (x=24 on Android) suggests the Android component was captured with extra left padding, not a true visual offset"
+        ],
+        "likelyCauses": [
+          "Android implementation includes additional action buttons (camera capture, original image toggle) not part of the current empty-composer spec",
+          "Component-bound contract may have been redefined on Android to expose a wider feature set",
+          "Test crop on Android used a manual rect with x=24, introducing artificial horizontal shift in comparison",
+          "Feature parity gap between React and Android thread composer variants"
+        ],
+        "suggestedOwner": "android-chat",
+        "suggestedFixes": [
+          "Confirm whether the camera icon and 'Original image' checkbox are intentional for Android; if not, remove them to match React baseline",
+          "Re-capture Android screenshot using element-bounds crop (x=0) instead of manual-rect to eliminate the 24px offset",
+          "Verify composer empty-state spec is shared and align React variant if Android extras are product-requirements",
+          "Check checkbox sizing/spacing — Android 'As Task' and 'Original image' labels appear closer together than React's single label",
+          "Align icon button dimensions and spacing between platforms for visual consistency"
+        ],
+        "intentional": [
+          "Camera icon button may be a platform-specific quick action",
+          "'Original image' toggle may be an Android-only feature for attachment provenance"
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -10532,17 +10584,37 @@
             "currentHeight": 300
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:23.978Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:07:54.308Z",
+            "severity": "medium",
+            "summary": [
+              "Android renders an extra icon button (camera) between the image and attachment icons, which is absent in React baseline",
+              "Android adds an 'Original image' checkbox/label that is missing from the React baseline",
+              "React shows only two left-side icons (image-add and paperclip); Android shows three (image-add, camera, paperclip)",
+              "Both versions share the 'As Task' checkbox and send icon, but Android layout is more crowded horizontally",
+              "Cropping offset (x=24 on Android) suggests the Android component was captured with extra left padding, not a true visual offset"
+            ],
+            "likelyCauses": [
+              "Android implementation includes additional action buttons (camera capture, original image toggle) not part of the current empty-composer spec",
+              "Component-bound contract may have been redefined on Android to expose a wider feature set",
+              "Test crop on Android used a manual rect with x=24, introducing artificial horizontal shift in comparison",
+              "Feature parity gap between React and Android thread composer variants"
+            ],
+            "suggestedOwner": "android-chat",
+            "suggestedFixes": [
+              "Confirm whether the camera icon and 'Original image' checkbox are intentional for Android; if not, remove them to match React baseline",
+              "Re-capture Android screenshot using element-bounds crop (x=0) instead of manual-rect to eliminate the 24px offset",
+              "Verify composer empty-state spec is shared and align React variant if Android extras are product-requirements",
+              "Check checkbox sizing/spacing — Android 'As Task' and 'Original image' labels appear closer together than React's single label",
+              "Align icon button dimensions and spacing between platforms for visual consistency"
+            ],
+            "intentional": [
+              "Camera icon button may be a platform-specific quick action",
+              "'Original image' toggle may be an Android-only feature for attachment provenance"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -10615,17 +10687,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.778Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:08:19.150Z",
+            "severity": "low",
+            "summary": [
+              "Toolbar component appears isomorphic between Android and iOS renders with only minor visual differences within tolerance thresholds.",
+              "Send button (paper airplane icon) shows a slight pink/highlight overlay on Android that is less pronounced or absent on iOS.",
+              "Checkbox squares before 'As Task' and 'Original image' labels appear with slightly different border thickness/weight between platforms.",
+              "Icon button borders (gallery, camera, paperclip) have marginally different stroke weights between Android and iOS."
+            ],
+            "likelyCauses": [
+              "Platform-default rendering of checkbox and button border strokes (Android Material vs iOS Cupertino).",
+              "Slight differences in Kuikly's cross-platform theme tokens for component borders and icon button backgrounds.",
+              "Scale-related anti-aliasing artifacts since baseline is cropped to 342×100 component bounds while current is full 1170×2532 canvas."
+            ],
+            "suggestedOwner": "ui-engineering",
+            "suggestedFixes": [
+              "Normalize checkbox and icon button border stroke weights via shared Kuikly theme tokens to ensure parity.",
+              "Verify the send button (paper airplane) highlight/active state styling is consistent across Android and iOS themes.",
+              "Re-run comparison with matched crop rect on the iOS side (current is null) to reduce scale-induced pixel mismatch.",
+              "Tighten tolerance for component-bounds crops to within 1dp layout difference for better cross-platform parity."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -10702,17 +10788,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.778Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:08:19.150Z",
+            "severity": "low",
+            "summary": [
+              "Toolbar component appears isomorphic between Android and iOS renders with only minor visual differences within tolerance thresholds.",
+              "Send button (paper airplane icon) shows a slight pink/highlight overlay on Android that is less pronounced or absent on iOS.",
+              "Checkbox squares before 'As Task' and 'Original image' labels appear with slightly different border thickness/weight between platforms.",
+              "Icon button borders (gallery, camera, paperclip) have marginally different stroke weights between Android and iOS."
+            ],
+            "likelyCauses": [
+              "Platform-default rendering of checkbox and button border strokes (Android Material vs iOS Cupertino).",
+              "Slight differences in Kuikly's cross-platform theme tokens for component borders and icon button backgrounds.",
+              "Scale-related anti-aliasing artifacts since baseline is cropped to 342×100 component bounds while current is full 1170×2532 canvas."
+            ],
+            "suggestedOwner": "ui-engineering",
+            "suggestedFixes": [
+              "Normalize checkbox and icon button border stroke weights via shared Kuikly theme tokens to ensure parity.",
+              "Verify the send button (paper airplane) highlight/active state styling is consistent across Android and iOS themes.",
+              "Re-run comparison with matched crop rect on the iOS side (current is null) to reduce scale-induced pixel mismatch.",
+              "Tighten tolerance for component-bounds crops to within 1dp layout difference for better cross-platform parity."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -10752,17 +10852,33 @@
         "currentHeight": 300
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-09-02T22:05:23.978Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-09-02T22:07:54.395Z",
+        "severity": "high",
+        "summary": [
+          "Android has an extra camera icon button between the gallery and paperclip icons that is absent in React",
+          "Android includes an additional 'Original image' checkbox/label that does not exist in the React baseline",
+          "Icon row spacing is tighter on Android; the three icons appear closer together than React's two icons",
+          "React uses a checkbox glyph (square outline) next to 'As Task' while Android appears to use a different or missing checkbox indicator",
+          "Overall row width is larger on Android due to the extra controls, pushing the send button (pink paper airplane) further right and reducing right padding"
+        ],
+        "likelyCauses": [
+          "Android implementation added a camera attachment action and an 'Original image' toggle not in the React design",
+          "Design spec divergence between Android and React thread composer states",
+          "Icon set/control inventory not synchronized across platforms"
+        ],
+        "suggestedOwner": "android-design",
+        "suggestedFixes": [
+          "Confirm with design whether the camera icon and 'Original image' toggle are intentional additions on Android",
+          "If unintentional, remove the extra camera button and 'Original image' control to match React baseline",
+          "Align checkbox glyph style and spacing between the 'As Task' controls across platforms",
+          "Re-capture the Android screenshot after fixes to verify pixel and RGB similarity recover above tolerance",
+          "Sync the thread composer state component contract between Android and React implementations"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -10849,17 +10965,33 @@
             "currentHeight": 300
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:23.978Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:07:54.395Z",
+            "severity": "high",
+            "summary": [
+              "Android has an extra camera icon button between the gallery and paperclip icons that is absent in React",
+              "Android includes an additional 'Original image' checkbox/label that does not exist in the React baseline",
+              "Icon row spacing is tighter on Android; the three icons appear closer together than React's two icons",
+              "React uses a checkbox glyph (square outline) next to 'As Task' while Android appears to use a different or missing checkbox indicator",
+              "Overall row width is larger on Android due to the extra controls, pushing the send button (pink paper airplane) further right and reducing right padding"
+            ],
+            "likelyCauses": [
+              "Android implementation added a camera attachment action and an 'Original image' toggle not in the React design",
+              "Design spec divergence between Android and React thread composer states",
+              "Icon set/control inventory not synchronized across platforms"
+            ],
+            "suggestedOwner": "android-design",
+            "suggestedFixes": [
+              "Confirm with design whether the camera icon and 'Original image' toggle are intentional additions on Android",
+              "If unintentional, remove the extra camera button and 'Original image' control to match React baseline",
+              "Align checkbox glyph style and spacing between the 'As Task' controls across platforms",
+              "Re-capture the Android screenshot after fixes to verify pixel and RGB similarity recover above tolerance",
+              "Sync the thread composer state component contract between Android and React implementations"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -11085,17 +11217,37 @@
         "currentHeight": 870
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-09-02T22:05:24.000Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-09-02T22:07:54.397Z",
+        "severity": "medium",
+        "summary": [
+          "Mention card body text differs: React shows '@Android-Developer-4 was not notified because they are not in #design' on two lines; Android shows '@Android-Developer-4 isn't in #design. Add them to #design or send a one-time notification.' on three lines, occupying more vertical space.",
+          "Tertiary action label changed: React uses 'Ignore' (text-only, right-aligned); Android uses 'Dismiss' with a darker/bolder weight, shifting the button row layout and spacing.",
+          "Avatar/icon spacing on mention card differs: React has tighter gap between person-add icon and avatar; Android has a noticeably larger gap, pushing avatar further right.",
+          "Composer toolbar contains extra controls on Android: a camera (image capture) icon and an 'Original image' checkbox appear between the attachment icon and 'As Task'; React has only the image-with-plus and paperclip icons then 'As Task'.",
+          "Send icon on the right of the composer is clipped in both, but the surrounding whitespace/alignment of the 'As Task' row differs between platforms due to the added items."
+        ],
+        "likelyCauses": [
+          "Copy/string divergence between platforms — the explanatory sentence was reworded for Android.",
+          "Android implementation renders an extra 'camera' compose action and 'Original image' toggle that the React version omits from this state.",
+          "Independent label choice: Android picked 'Dismiss' while React kept 'Ignore'.",
+          "Avatar/icon spacing tokens not shared across platforms.",
+          "Outset/crop offset on the Android side (manual-rect with x=24) may slightly shift alignment compared with the React element-bounds crop."
+        ],
+        "suggestedOwner": "mobile-composer",
+        "suggestedFixes": [
+          "Unify the mention-not-notified message across platforms or, if intentional, update the React copy to match.",
+          "Align the tertiary action label (use 'Dismiss' or 'Ignore' consistently) and share the design token.",
+          "Decide whether the camera action and 'Original image' toggle belong in the empty composer state on both platforms; align toolbar composition.",
+          "Share avatar-to-icon spacing tokens between React and Android implementations.",
+          "Re-run the comparison with matching crop contracts (both 'element' / 'component-bounds') to avoid the 24px x-offset."
+        ],
+        "intentional": [
+          "The 'Original image' toggle may intentionally only appear on Android when an image attachment exists, but here it appears with no image present, which suggests a rendering-state mismatch."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -11182,17 +11334,37 @@
             "currentHeight": 870
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:24.000Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:07:54.397Z",
+            "severity": "medium",
+            "summary": [
+              "Mention card body text differs: React shows '@Android-Developer-4 was not notified because they are not in #design' on two lines; Android shows '@Android-Developer-4 isn't in #design. Add them to #design or send a one-time notification.' on three lines, occupying more vertical space.",
+              "Tertiary action label changed: React uses 'Ignore' (text-only, right-aligned); Android uses 'Dismiss' with a darker/bolder weight, shifting the button row layout and spacing.",
+              "Avatar/icon spacing on mention card differs: React has tighter gap between person-add icon and avatar; Android has a noticeably larger gap, pushing avatar further right.",
+              "Composer toolbar contains extra controls on Android: a camera (image capture) icon and an 'Original image' checkbox appear between the attachment icon and 'As Task'; React has only the image-with-plus and paperclip icons then 'As Task'.",
+              "Send icon on the right of the composer is clipped in both, but the surrounding whitespace/alignment of the 'As Task' row differs between platforms due to the added items."
+            ],
+            "likelyCauses": [
+              "Copy/string divergence between platforms — the explanatory sentence was reworded for Android.",
+              "Android implementation renders an extra 'camera' compose action and 'Original image' toggle that the React version omits from this state.",
+              "Independent label choice: Android picked 'Dismiss' while React kept 'Ignore'.",
+              "Avatar/icon spacing tokens not shared across platforms.",
+              "Outset/crop offset on the Android side (manual-rect with x=24) may slightly shift alignment compared with the React element-bounds crop."
+            ],
+            "suggestedOwner": "mobile-composer",
+            "suggestedFixes": [
+              "Unify the mention-not-notified message across platforms or, if intentional, update the React copy to match.",
+              "Align the tertiary action label (use 'Dismiss' or 'Ignore' consistently) and share the design token.",
+              "Decide whether the camera action and 'Original image' toggle belong in the empty composer state on both platforms; align toolbar composition.",
+              "Share avatar-to-icon spacing tokens between React and Android implementations.",
+              "Re-run the comparison with matching crop contracts (both 'element' / 'component-bounds') to avoid the 24px x-offset."
+            ],
+            "intentional": [
+              "The 'Original image' toggle may intentionally only appear on Android when an image attachment exists, but here it appears with no image present, which suggests a rendering-state mismatch."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -11262,17 +11434,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.824Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:08:19.176Z",
+            "severity": "low",
+            "summary": [
+              "Typography in the mention header and body text appears slightly larger on iOS (right) compared to Android (left), consistent with platform-native scaling.",
+              "The iOS canvas extends much further below the Message design card, indicating a much taller viewport/content area vs. the cropped Android baseline (1026×870 vs 1170×2532 raw).",
+              "All structural elements (avatar placeholder, Add/Notify/Dismiss buttons, checkboxes, paperclip icon, send arrow) are present and aligned on both sides with no missing components.",
+              "Button styling, pink fill on Add button, and checkbox strokes look visually equivalent between platforms."
+            ],
+            "likelyCauses": [
+              "Different default font scales between Android and iOS Kuikly renders",
+              "Viewport height difference due to device-class crop on Android baseline",
+              "Minor antialiasing and sub-pixel rendering differences between Skia/Android and CoreGraphics/iOS"
+            ],
+            "suggestedOwner": "ui-engineering",
+            "suggestedFixes": [
+              "Normalize text sizes via shared dp/sp tokens in Kuikly Compose so header and body render at equivalent metrics on both platforms.",
+              "Verify the Android baseline crop rect to match the iOS component region, or render both at a common reference height for fair comparison.",
+              "Tighten button/icon stroke and corner-radius tokens if any subtle weight drift is observed in the Add/Notify buttons.",
+              "Confirm avatar placeholder and send-arrow glyphs use a shared icon asset rather than platform-resolved variants."
+            ],
+            "intentional": [
+              "The viewport height difference (Android cropped at 342×290 vs iOS full 1170×2532) is an artifact of baseline cropping, not a real UI divergence.",
+              "Pink 'Add' button color and filled vs outline styling match intentionally across platforms."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -11346,17 +11535,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.824Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:08:19.176Z",
+            "severity": "low",
+            "summary": [
+              "Typography in the mention header and body text appears slightly larger on iOS (right) compared to Android (left), consistent with platform-native scaling.",
+              "The iOS canvas extends much further below the Message design card, indicating a much taller viewport/content area vs. the cropped Android baseline (1026×870 vs 1170×2532 raw).",
+              "All structural elements (avatar placeholder, Add/Notify/Dismiss buttons, checkboxes, paperclip icon, send arrow) are present and aligned on both sides with no missing components.",
+              "Button styling, pink fill on Add button, and checkbox strokes look visually equivalent between platforms."
+            ],
+            "likelyCauses": [
+              "Different default font scales between Android and iOS Kuikly renders",
+              "Viewport height difference due to device-class crop on Android baseline",
+              "Minor antialiasing and sub-pixel rendering differences between Skia/Android and CoreGraphics/iOS"
+            ],
+            "suggestedOwner": "ui-engineering",
+            "suggestedFixes": [
+              "Normalize text sizes via shared dp/sp tokens in Kuikly Compose so header and body render at equivalent metrics on both platforms.",
+              "Verify the Android baseline crop rect to match the iOS component region, or render both at a common reference height for fair comparison.",
+              "Tighten button/icon stroke and corner-radius tokens if any subtle weight drift is observed in the Add/Notify buttons.",
+              "Confirm avatar placeholder and send-arrow glyphs use a shared icon asset rather than platform-resolved variants."
+            ],
+            "intentional": [
+              "The viewport height difference (Android cropped at 342×290 vs iOS full 1170×2532) is an artifact of baseline cropping, not a real UI divergence.",
+              "Pink 'Add' button color and filled vs outline styling match intentionally across platforms."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -11396,17 +11602,37 @@
         "currentHeight": 300
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-09-02T22:05:24.010Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-09-02T22:07:54.399Z",
+        "severity": "high",
+        "summary": [
+          "Android composer shows three icon buttons (plus, camera, paperclip) while React shows two (plus, paperclip); camera button is missing on React",
+          "Android has an unchecked 'Original image' checkbox to the right of 'As Task' that is absent on the React baseline",
+          "'As Task' label appears with reduced spacing on Android due to inserted checkbox and extra button group",
+          "Same composer text typography is preserved across both implementations",
+          "As-Task selection state appears unchecked in the Android capture while React shows it unchecked as well; verify whether selected state styling (filled checkbox) renders correctly on Android"
+        ],
+        "likelyCauses": [
+          "Android composer tool renders an additional camera/image attachment button that React omits or vice versa",
+          "Mismatch between React and Android prop/state bindings for the 'Original image' option in As-Task mode",
+          "Selected-state indicator (filled checkbox, color background) may not be applied on Android",
+          "Different horizontal overflow handling caused the Android crop rect to be offset (crop x=24) indicating the component bounds differ between platforms"
+        ],
+        "suggestedOwner": "android-eng",
+        "suggestedFixes": [
+          "Audit React vs Android attachment tool set parity and align which buttons render in As-Task composer mode",
+          "Verify the 'Original image' checkbox is conditionally rendered on Android based on the same feature flag/state used in React",
+          "Ensure selected-state visual treatment (filled checkbox background, accent color) is applied consistently on Android",
+          "Re-capture Android screenshot using element crop mode (matching React's 342x100 bounds) instead of manual rect to avoid x-offset misregistration",
+          "Review composer action row flex layout so extra controls don't compress 'As Task' label spacing"
+        ],
+        "intentional": [
+          "The camera attachment button presence may be intentional Android-only behavior requiring product confirmation",
+          "'Original image' option may be a deliberate Android-only affordance for image-attached threads"
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -11493,17 +11719,37 @@
             "currentHeight": 300
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:24.010Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:07:54.399Z",
+            "severity": "high",
+            "summary": [
+              "Android composer shows three icon buttons (plus, camera, paperclip) while React shows two (plus, paperclip); camera button is missing on React",
+              "Android has an unchecked 'Original image' checkbox to the right of 'As Task' that is absent on the React baseline",
+              "'As Task' label appears with reduced spacing on Android due to inserted checkbox and extra button group",
+              "Same composer text typography is preserved across both implementations",
+              "As-Task selection state appears unchecked in the Android capture while React shows it unchecked as well; verify whether selected state styling (filled checkbox) renders correctly on Android"
+            ],
+            "likelyCauses": [
+              "Android composer tool renders an additional camera/image attachment button that React omits or vice versa",
+              "Mismatch between React and Android prop/state bindings for the 'Original image' option in As-Task mode",
+              "Selected-state indicator (filled checkbox, color background) may not be applied on Android",
+              "Different horizontal overflow handling caused the Android crop rect to be offset (crop x=24) indicating the component bounds differ between platforms"
+            ],
+            "suggestedOwner": "android-eng",
+            "suggestedFixes": [
+              "Audit React vs Android attachment tool set parity and align which buttons render in As-Task composer mode",
+              "Verify the 'Original image' checkbox is conditionally rendered on Android based on the same feature flag/state used in React",
+              "Ensure selected-state visual treatment (filled checkbox background, accent color) is applied consistently on Android",
+              "Re-capture Android screenshot using element crop mode (matching React's 342x100 bounds) instead of manual rect to avoid x-offset misregistration",
+              "Review composer action row flex layout so extra controls don't compress 'As Task' label spacing"
+            ],
+            "intentional": [
+              "The camera attachment button presence may be intentional Android-only behavior requiring product confirmation",
+              "'Original image' option may be a deliberate Android-only affordance for image-attached threads"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -11748,17 +11994,34 @@
         "currentHeight": 960
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-09-02T22:05:24.019Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-09-02T22:07:54.401Z",
+        "severity": "high",
+        "summary": [
+          "Android renders the 'IN THIS CHANNEL' highlighted/selected row as 'Cindy' with description and @Cindy handle, while React shows 'artin / HUMAN / Owner / @artin' in the highlighted row — different selected user and missing HUMAN/Owner badges on Android.",
+          "Android shows only one user in 'IN THIS CHANNEL' section (Cindy + Product UX …) whereas React shows two entries (artin highlighted + Cindy unhighlighted) — section content/count differs.",
+          "Android 'NOT IN THIS CHANNEL' lists 'Android Dev…' instead of React's 'artin / HUMAN' and 'Product UX De… / AGENT' — different member list rendered.",
+          "Android adds a 'Original image' checkbox and a camera icon in the bottom composer action row; React only shows image+ and attach icons plus 'As Task' and send — extra controls present on Android.",
+          "Android typography is noticeably larger/bolter for member names (e.g., 'Cindy', 'Product UX …') than React, increasing row height and causing more aggressive text truncation of descriptions and handles ('Tur…', '@Product-UX-Desi…', '@Android-Develop…')."
+        ],
+        "likelyCauses": [
+          "Android composer is wired to a different member/suggestion dataset (or different ordering/filter) than React, surfacing Cindy's row as the highlighted suggestion.",
+          "Android thread composer renders an additional 'Original image' action (camera + checkbox) not implemented in the web React composer.",
+          "Android applies a larger text style/line height to suggestion rows, causing different truncation thresholds than React.",
+          "HUMAN/AGENT role pills are not being rendered on Android suggestion rows."
+        ],
+        "suggestedOwner": "android-eng",
+        "suggestedFixes": [
+          "Align Android member-suggestion source data with the web spec so the first 'IN THIS CHANNEL' row matches (artin / HUMAN / Owner) and subsequent rows match React's order.",
+          "Render HUMAN/AGENT role badges on each Android suggestion row to match React.",
+          "Match Android row typography (name, description, handle) size and weight to React, then re-tune TextView maxLines/ellipsize so truncation ('Tur…', '@Product-UX-Desi…') matches.",
+          "Remove or gate the Android-only 'Original image' checkbox and camera icon, or add equivalent UI to React if the feature is intentional.",
+          "Verify the highlighted row selection state — Android appears to highlight 'Cindy' while React highlights 'artin'; confirm which user should be the focused suggestion."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -11845,17 +12108,34 @@
             "currentHeight": 960
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:24.019Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:07:54.401Z",
+            "severity": "high",
+            "summary": [
+              "Android renders the 'IN THIS CHANNEL' highlighted/selected row as 'Cindy' with description and @Cindy handle, while React shows 'artin / HUMAN / Owner / @artin' in the highlighted row — different selected user and missing HUMAN/Owner badges on Android.",
+              "Android shows only one user in 'IN THIS CHANNEL' section (Cindy + Product UX …) whereas React shows two entries (artin highlighted + Cindy unhighlighted) — section content/count differs.",
+              "Android 'NOT IN THIS CHANNEL' lists 'Android Dev…' instead of React's 'artin / HUMAN' and 'Product UX De… / AGENT' — different member list rendered.",
+              "Android adds a 'Original image' checkbox and a camera icon in the bottom composer action row; React only shows image+ and attach icons plus 'As Task' and send — extra controls present on Android.",
+              "Android typography is noticeably larger/bolter for member names (e.g., 'Cindy', 'Product UX …') than React, increasing row height and causing more aggressive text truncation of descriptions and handles ('Tur…', '@Product-UX-Desi…', '@Android-Develop…')."
+            ],
+            "likelyCauses": [
+              "Android composer is wired to a different member/suggestion dataset (or different ordering/filter) than React, surfacing Cindy's row as the highlighted suggestion.",
+              "Android thread composer renders an additional 'Original image' action (camera + checkbox) not implemented in the web React composer.",
+              "Android applies a larger text style/line height to suggestion rows, causing different truncation thresholds than React.",
+              "HUMAN/AGENT role pills are not being rendered on Android suggestion rows."
+            ],
+            "suggestedOwner": "android-eng",
+            "suggestedFixes": [
+              "Align Android member-suggestion source data with the web spec so the first 'IN THIS CHANNEL' row matches (artin / HUMAN / Owner) and subsequent rows match React's order.",
+              "Render HUMAN/AGENT role badges on each Android suggestion row to match React.",
+              "Match Android row typography (name, description, handle) size and weight to React, then re-tune TextView maxLines/ellipsize so truncation ('Tur…', '@Product-UX-Desi…') matches.",
+              "Remove or gate the Android-only 'Original image' checkbox and camera icon, or add equivalent UI to React if the feature is intentional.",
+              "Verify the highlighted row selection state — Android appears to highlight 'Cindy' while React highlights 'artin'; confirm which user should be the focused suggestion."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -11928,17 +12208,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.859Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:08:19.234Z",
+            "severity": "low",
+            "summary": [
+              "Avatar icons are smaller on iOS than Android across all suggestion rows",
+              "iOS suggestion list rows have tighter vertical padding, making rows visually shorter than Android",
+              "iOS header section text labels ('IN THIS CHANNEL', 'NOT IN THIS CHANNEL') appear at slightly different vertical position relative to row content",
+              "iOS action toolbar (As Task, Original image) shows tighter spacing between checkbox and label, and between labels",
+              "Suggestion text truncation differs slightly: iOS shows 'Turns...' whereas Android shows 'Tur...' for Product UX subtitle"
+            ],
+            "likelyCauses": [
+              "Different default font metrics (line-height, glyph width) between Android (Roboto) and iOS (SF) rendering on Kuikly",
+              "Avatar size token not normalized across platforms — likely a dp/pt conversion drift",
+              "List row min-height using platform-default line-height instead of explicit tokenized value",
+              "Toolbar gap/margin tokens not using shared cross-platform spacing constants"
+            ],
+            "suggestedOwner": "mobile-platform / Kuikly UI kit owner",
+            "suggestedFixes": [
+              "Normalize avatar size to a shared token (e.g. 32dp on both platforms) and verify in member-suggestion component",
+              "Pin suggestion row min-height to an explicit design token rather than relying on font line-height",
+              "Align checkbox-to-label and label-to-label spacing in the composer toolbar to shared spacing tokens",
+              "Verify 'IN THIS CHANNEL' / 'NOT IN THIS CHANNEL' section header uses the same vertical padding token on both platforms",
+              "Re-run Slock visual diff after token fixes to confirm pixelMismatchRatio drops below tolerance (2%)"
+            ],
+            "intentional": [
+              "Avatar emoji glyph differences (👤 vs platform fallback) may be intentional platform-native rendering"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -12015,17 +12314,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.859Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:08:19.234Z",
+            "severity": "low",
+            "summary": [
+              "Avatar icons are smaller on iOS than Android across all suggestion rows",
+              "iOS suggestion list rows have tighter vertical padding, making rows visually shorter than Android",
+              "iOS header section text labels ('IN THIS CHANNEL', 'NOT IN THIS CHANNEL') appear at slightly different vertical position relative to row content",
+              "iOS action toolbar (As Task, Original image) shows tighter spacing between checkbox and label, and between labels",
+              "Suggestion text truncation differs slightly: iOS shows 'Turns...' whereas Android shows 'Tur...' for Product UX subtitle"
+            ],
+            "likelyCauses": [
+              "Different default font metrics (line-height, glyph width) between Android (Roboto) and iOS (SF) rendering on Kuikly",
+              "Avatar size token not normalized across platforms — likely a dp/pt conversion drift",
+              "List row min-height using platform-default line-height instead of explicit tokenized value",
+              "Toolbar gap/margin tokens not using shared cross-platform spacing constants"
+            ],
+            "suggestedOwner": "mobile-platform / Kuikly UI kit owner",
+            "suggestedFixes": [
+              "Normalize avatar size to a shared token (e.g. 32dp on both platforms) and verify in member-suggestion component",
+              "Pin suggestion row min-height to an explicit design token rather than relying on font line-height",
+              "Align checkbox-to-label and label-to-label spacing in the composer toolbar to shared spacing tokens",
+              "Verify 'IN THIS CHANNEL' / 'NOT IN THIS CHANNEL' section header uses the same vertical padding token on both platforms",
+              "Re-run Slock visual diff after token fixes to confirm pixelMismatchRatio drops below tolerance (2%)"
+            ],
+            "intentional": [
+              "Avatar emoji glyph differences (👤 vs platform fallback) may be intentional platform-native rendering"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -12065,17 +12383,36 @@
         "currentHeight": 960
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-09-02T22:05:24.032Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-09-02T22:07:54.440Z",
+        "severity": "high",
+        "summary": [
+          "Android toolbar shows three icon buttons (image-add, camera, attach) vs React's two (image-add, attach); Android adds a camera icon not present on React",
+          "Android toolbar includes an additional 'Original image' checkbox option that React does not render",
+          "Android suggestions container is horizontally narrower with less internal padding, causing tighter spacing between # icon, channel name, and description",
+          "Android's selected row (design) highlight bar appears shorter in height compared to React's taller selected row",
+          "Vertical gap between the suggestions list and the toolbar is smaller on Android, compressing the overall layout"
+        ],
+        "likelyCauses": [
+          "Feature drift in Android composer toolbar exposing camera capture and 'Original image' toggle that React lacks",
+          "Different container widths/padding between the two implementations causing reflow",
+          "Android applying different list-item heights and selected-state row metrics than the React design tokens",
+          "Inconsistent design-token parity between React (web) and Android (native) composer components"
+        ],
+        "suggestedOwner": "android-thread-composer",
+        "suggestedFixes": [
+          "Hide camera icon and 'Original image' checkbox on Android to match React toolbar, or intentionally document them as Android-only features",
+          "Align suggestion container width and internal padding to React's spacing tokens",
+          "Match selected-row height and highlight bar height to React baseline",
+          "Increase vertical spacing between suggestions list and toolbar to match React",
+          "Audit shared design tokens for list-item and toolbar dimensions across platforms"
+        ],
+        "intentional": [
+          "If camera capture and 'Original image' are intentional Android-only composer affordances, mark them as expected divergence in the test contract"
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -12162,17 +12499,36 @@
             "currentHeight": 960
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:24.032Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:07:54.440Z",
+            "severity": "high",
+            "summary": [
+              "Android toolbar shows three icon buttons (image-add, camera, attach) vs React's two (image-add, attach); Android adds a camera icon not present on React",
+              "Android toolbar includes an additional 'Original image' checkbox option that React does not render",
+              "Android suggestions container is horizontally narrower with less internal padding, causing tighter spacing between # icon, channel name, and description",
+              "Android's selected row (design) highlight bar appears shorter in height compared to React's taller selected row",
+              "Vertical gap between the suggestions list and the toolbar is smaller on Android, compressing the overall layout"
+            ],
+            "likelyCauses": [
+              "Feature drift in Android composer toolbar exposing camera capture and 'Original image' toggle that React lacks",
+              "Different container widths/padding between the two implementations causing reflow",
+              "Android applying different list-item heights and selected-state row metrics than the React design tokens",
+              "Inconsistent design-token parity between React (web) and Android (native) composer components"
+            ],
+            "suggestedOwner": "android-thread-composer",
+            "suggestedFixes": [
+              "Hide camera icon and 'Original image' checkbox on Android to match React toolbar, or intentionally document them as Android-only features",
+              "Align suggestion container width and internal padding to React's spacing tokens",
+              "Match selected-row height and highlight bar height to React baseline",
+              "Increase vertical spacing between suggestions list and toolbar to match React",
+              "Audit shared design tokens for list-item and toolbar dimensions across platforms"
+            ],
+            "intentional": [
+              "If camera capture and 'Original image' are intentional Android-only composer affordances, mark them as expected divergence in the test contract"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -12250,17 +12606,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.864Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:08:19.254Z",
+            "severity": "low",
+            "summary": [
+              "Channel suggestion rows (design/product/android-artifacts) are visually isomorphic between Android and iOS ends with consistent typography, weights, and highlight color on the selected row.",
+              "Bottom composer toolbar (gallery/camera/attach icons, 'As Task' and 'Original image' checkboxes, and send icon) matches in layout and components on both ends.",
+              "The lower toolbar on iOS appears slightly narrower in proportional width vs Android, and the iOS viewport is taller (1170x2532) than Android's crop region (342x320), indicating the iOS render uses the full device canvas rather than a component-bounds crop, which can exaggerate minor scale differences after normalization.",
+              "No missing elements, clipping, color mismatches, or state-indicator divergences are visible between the two renders."
+            ],
+            "likelyCauses": [
+              "Comparison canvas on iOS is the full device viewport (1170x2532) while Android was cropped to component bounds (342x320), so rescaling introduces minor proportional drift.",
+              "Possible platform-default differences in font metrics or icon scaling between Kuikly Android and iOS renderers are small enough to fall within tolerance."
+            ],
+            "suggestedOwner": "mobile-platform",
+            "suggestedFixes": [
+              "Re-run the iOS capture with the same component-bounds crop/contract used on Android so both ends are compared at identical bounding boxes.",
+              "If intentional, document that composer renders are normalized to full-device viewport on iOS; otherwise align the crop contract in the Slock harness.",
+              "Spot-check the toolbar width and icon padding on iOS to confirm no horizontal padding regression vs Android."
+            ],
+            "intentional": [
+              "Full-viewport iOS canvas vs component-cropped Android canvas is a capture-pipeline difference, not necessarily a product divergence.",
+              "Minor typographic metric variation across platforms may be acceptable per design system."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -12342,17 +12713,32 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.864Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:08:19.254Z",
+            "severity": "low",
+            "summary": [
+              "Channel suggestion rows (design/product/android-artifacts) are visually isomorphic between Android and iOS ends with consistent typography, weights, and highlight color on the selected row.",
+              "Bottom composer toolbar (gallery/camera/attach icons, 'As Task' and 'Original image' checkboxes, and send icon) matches in layout and components on both ends.",
+              "The lower toolbar on iOS appears slightly narrower in proportional width vs Android, and the iOS viewport is taller (1170x2532) than Android's crop region (342x320), indicating the iOS render uses the full device canvas rather than a component-bounds crop, which can exaggerate minor scale differences after normalization.",
+              "No missing elements, clipping, color mismatches, or state-indicator divergences are visible between the two renders."
+            ],
+            "likelyCauses": [
+              "Comparison canvas on iOS is the full device viewport (1170x2532) while Android was cropped to component bounds (342x320), so rescaling introduces minor proportional drift.",
+              "Possible platform-default differences in font metrics or icon scaling between Kuikly Android and iOS renderers are small enough to fall within tolerance."
+            ],
+            "suggestedOwner": "mobile-platform",
+            "suggestedFixes": [
+              "Re-run the iOS capture with the same component-bounds crop/contract used on Android so both ends are compared at identical bounding boxes.",
+              "If intentional, document that composer renders are normalized to full-device viewport on iOS; otherwise align the crop contract in the Slock harness.",
+              "Spot-check the toolbar width and icon padding on iOS to confirm no horizontal padding regression vs Android."
+            ],
+            "intentional": [
+              "Full-viewport iOS canvas vs component-cropped Android canvas is a capture-pipeline difference, not necessarily a product divergence.",
+              "Minor typographic metric variation across platforms may be acceptable per design system."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -12392,17 +12778,36 @@
         "currentHeight": 810
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-09-02T22:05:24.034Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-09-02T22:07:58.684Z",
+        "severity": "high",
+        "summary": [
+          "Android version includes an attached image preview thumbnail (yellow with pink circle and black mountains) with a remove (X) button at top; React version shows no attached image.",
+          "React version displays a pink/peach error banner reading 'The upload size limit could not be checked. Try again in a moment.'; Android version does not render this error state.",
+          "Android toolbar row contains an extra camera icon between the image and paperclip icons that React does not have.",
+          "Android adds a second checkbox 'Original image' next to 'As Task'; React only shows 'As Task'.",
+          "Android's 'As Task' and 'Original image' labels are rendered in lighter/grey weight, while React's 'As Task' uses a darker weight closer to the body text."
+        ],
+        "likelyCauses": [
+          "Android composer is rendering a different state (image already attached) versus React which is showing a pre-upload error state.",
+          "State-driven rendering mismatch: error banner is gated by a flag not surfaced on Android, or image+remove UI is missing on React.",
+          "Feature gap: 'Original image' toggle and camera attachment shortcut not implemented in the React composer.",
+          "Possible duplication of toolbar actions between platform implementations causing divergent button order/contents."
+        ],
+        "suggestedOwner": "mobile-eng",
+        "suggestedFixes": [
+          "Align composer state machine so React and Android show the same combination of attached image, error banner, and toolbar options.",
+          "Port the 'Original image' checkbox and camera icon to React, or hide them on Android if out of scope.",
+          "Ensure the upload-size-check error banner renders identically (same copy, pink/peach fill, border) on both platforms.",
+          "Verify toolbar order and spacing tokens match across platforms; audit the send-button right padding.",
+          "Update Slock baselines to capture the image-attached state separately from the error state to avoid false mismatches."
+        ],
+        "intentional": [
+          "Android preview shows the image-attached state while React shows error state — could be intentional scenario coverage."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -12489,17 +12894,36 @@
             "currentHeight": 810
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:24.034Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:07:58.684Z",
+            "severity": "high",
+            "summary": [
+              "Android version includes an attached image preview thumbnail (yellow with pink circle and black mountains) with a remove (X) button at top; React version shows no attached image.",
+              "React version displays a pink/peach error banner reading 'The upload size limit could not be checked. Try again in a moment.'; Android version does not render this error state.",
+              "Android toolbar row contains an extra camera icon between the image and paperclip icons that React does not have.",
+              "Android adds a second checkbox 'Original image' next to 'As Task'; React only shows 'As Task'.",
+              "Android's 'As Task' and 'Original image' labels are rendered in lighter/grey weight, while React's 'As Task' uses a darker weight closer to the body text."
+            ],
+            "likelyCauses": [
+              "Android composer is rendering a different state (image already attached) versus React which is showing a pre-upload error state.",
+              "State-driven rendering mismatch: error banner is gated by a flag not surfaced on Android, or image+remove UI is missing on React.",
+              "Feature gap: 'Original image' toggle and camera attachment shortcut not implemented in the React composer.",
+              "Possible duplication of toolbar actions between platform implementations causing divergent button order/contents."
+            ],
+            "suggestedOwner": "mobile-eng",
+            "suggestedFixes": [
+              "Align composer state machine so React and Android show the same combination of attached image, error banner, and toolbar options.",
+              "Port the 'Original image' checkbox and camera icon to React, or hide them on Android if out of scope.",
+              "Ensure the upload-size-check error banner renders identically (same copy, pink/peach fill, border) on both platforms.",
+              "Verify toolbar order and spacing tokens match across platforms; audit the send-button right padding.",
+              "Update Slock baselines to capture the image-attached state separately from the error state to avoid false mismatches."
+            ],
+            "intentional": [
+              "Android preview shows the image-attached state while React shows error state — could be intentional scenario coverage."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -12522,17 +12946,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:27.483Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:08:11.664Z",
+            "severity": "high",
+            "summary": [
+              "React baseline shows an error banner 'The upload size limit could not be checked. Try again in a moment.' that is missing entirely on iOS",
+              "iOS renders an empty image preview thumbnail box with a circular close (X) button overlay in the top-right; React shows no thumbnail or close button",
+              "iOS toolbar contains three icon buttons plus 'As Task' and 'Original image' checkboxes; React toolbar has only two icon buttons plus a single 'As Task' checkbox (missing 'Original image' and the camera icon)",
+              "React error banner uses a peach/light-orange fill color; iOS has no equivalent error state visual",
+              "iOS action button (paper plane icon) is positioned at the far-right with consistent spacing; React action button sits closer to the 'As Task' checkbox with less trailing space"
+            ],
+            "likelyCauses": [
+              "iOS composer is not surfacing the upload size check error state that React shows",
+              "iOS preview is rendering an additional 'Original image' toggle and camera icon that are absent in the React component",
+              "iOS thumbnail close button has no React counterpart, or React close button is hidden by another state",
+              "Toolbar layout/spacing differs because iOS uses extra controls and different padding between icons and labels"
+            ],
+            "suggestedOwner": "mobile-ios",
+            "suggestedFixes": [
+              "Add the 'Original image' checkbox and camera icon to the React composer image-preview toolbar to match iOS parity",
+              "Ensure iOS renders the same error banner styling (peach fill, border) and message when upload size check fails",
+              "Remove or hide the iOS thumbnail close (X) button if it is not part of the intended shared spec, or add it to React",
+              "Align icon count and ordering between React and iOS toolbars (3 icons: image-plus, camera, attachment)",
+              "Match trailing padding around the send (paper-plane) button so spacing is consistent across platforms"
+            ],
+            "intentional": [
+              "iOS-specific thumbnail close affordance may be platform-intentional and should be confirmed with design"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -12555,17 +12998,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.907Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:08:19.266Z",
+            "severity": "medium",
+            "summary": [
+              "Image preview thumbnail is missing on the iOS render — the Android side shows a yellow placeholder image with mountain/pink-circle glyph, while the iOS side renders an empty white box with only the close (X) button.",
+              "Toolbar/composer bounds: the composer container on iOS appears slightly wider/taller than on Android relative to the preview, altering internal spacing between the toolbar row and the preview thumbnail.",
+              "Close (X) button position: on iOS the X button sits flush against the top-right corner of the empty preview, whereas on Android it overlaps the image content area more centrally.",
+              "Typography weight in the heading 'Uploading the design crop for review.' appears slightly heavier/larger on iOS compared to Android.",
+              "Toolbar icon buttons (add, camera, attach) and checkboxes ('As Task', 'Original image') render at a marginally larger size on iOS, with wider gaps between the attach icon and the 'As Task' label."
+            ],
+            "likelyCauses": [
+              "Kuikly iOS image loader failed to bind/resolve the preview image source, resulting in a blank Image view while the rest of the composer renders.",
+              "iOS and Android using different default fonts (San Francisco vs Roboto) causing apparent weight/size delta in the same token.",
+              "DP-to-pt scaling or container width differs between Kuikly iOS and Android, inflating toolbar component bounds."
+            ],
+            "suggestedOwner": "mobile-composer",
+            "suggestedFixes": [
+              "Verify the preview image binding pipeline on iOS: ensure the Kuikly Image component resolves the same source URI/asset as Android and handles loading/error states identically.",
+              "Audit font/typography token mapping between Android (Roboto) and iOS (SF) to ensure rendered weight/size match within tolerance.",
+              "Normalize composer container width and toolbar icon spacing via shared dp tokens so iOS and Android resolve the same layout metrics.",
+              "Add a placeholder/empty-state styling that matches the Android yellow image-placeholder instead of rendering a bare white box when the image is missing."
+            ],
+            "intentional": [
+              "Color/material differences on the iOS toolbar action button (pink/magenta arrow vs Android pink) are platform-default tint and likely intentional.",
+              "Platform-default checkbox and icon shapes are acceptable as platform conventions."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -12591,17 +13052,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:27.483Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:08:11.664Z",
+            "severity": "high",
+            "summary": [
+              "React baseline shows an error banner 'The upload size limit could not be checked. Try again in a moment.' that is missing entirely on iOS",
+              "iOS renders an empty image preview thumbnail box with a circular close (X) button overlay in the top-right; React shows no thumbnail or close button",
+              "iOS toolbar contains three icon buttons plus 'As Task' and 'Original image' checkboxes; React toolbar has only two icon buttons plus a single 'As Task' checkbox (missing 'Original image' and the camera icon)",
+              "React error banner uses a peach/light-orange fill color; iOS has no equivalent error state visual",
+              "iOS action button (paper plane icon) is positioned at the far-right with consistent spacing; React action button sits closer to the 'As Task' checkbox with less trailing space"
+            ],
+            "likelyCauses": [
+              "iOS composer is not surfacing the upload size check error state that React shows",
+              "iOS preview is rendering an additional 'Original image' toggle and camera icon that are absent in the React component",
+              "iOS thumbnail close button has no React counterpart, or React close button is hidden by another state",
+              "Toolbar layout/spacing differs because iOS uses extra controls and different padding between icons and labels"
+            ],
+            "suggestedOwner": "mobile-ios",
+            "suggestedFixes": [
+              "Add the 'Original image' checkbox and camera icon to the React composer image-preview toolbar to match iOS parity",
+              "Ensure iOS renders the same error banner styling (peach fill, border) and message when upload size check fails",
+              "Remove or hide the iOS thumbnail close (X) button if it is not part of the intended shared spec, or add it to React",
+              "Align icon count and ordering between React and iOS toolbars (3 icons: image-plus, camera, attachment)",
+              "Match trailing padding around the send (paper-plane) button so spacing is consistent across platforms"
+            ],
+            "intentional": [
+              "iOS-specific thumbnail close affordance may be platform-intentional and should be confirmed with design"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -12625,17 +13105,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.907Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-02T22:08:19.266Z",
+            "severity": "medium",
+            "summary": [
+              "Image preview thumbnail is missing on the iOS render — the Android side shows a yellow placeholder image with mountain/pink-circle glyph, while the iOS side renders an empty white box with only the close (X) button.",
+              "Toolbar/composer bounds: the composer container on iOS appears slightly wider/taller than on Android relative to the preview, altering internal spacing between the toolbar row and the preview thumbnail.",
+              "Close (X) button position: on iOS the X button sits flush against the top-right corner of the empty preview, whereas on Android it overlaps the image content area more centrally.",
+              "Typography weight in the heading 'Uploading the design crop for review.' appears slightly heavier/larger on iOS compared to Android.",
+              "Toolbar icon buttons (add, camera, attach) and checkboxes ('As Task', 'Original image') render at a marginally larger size on iOS, with wider gaps between the attach icon and the 'As Task' label."
+            ],
+            "likelyCauses": [
+              "Kuikly iOS image loader failed to bind/resolve the preview image source, resulting in a blank Image view while the rest of the composer renders.",
+              "iOS and Android using different default fonts (San Francisco vs Roboto) causing apparent weight/size delta in the same token.",
+              "DP-to-pt scaling or container width differs between Kuikly iOS and Android, inflating toolbar component bounds."
+            ],
+            "suggestedOwner": "mobile-composer",
+            "suggestedFixes": [
+              "Verify the preview image binding pipeline on iOS: ensure the Kuikly Image component resolves the same source URI/asset as Android and handles loading/error states identically.",
+              "Audit font/typography token mapping between Android (Roboto) and iOS (SF) to ensure rendered weight/size match within tolerance.",
+              "Normalize composer container width and toolbar icon spacing via shared dp tokens so iOS and Android resolve the same layout metrics.",
+              "Add a placeholder/empty-state styling that matches the Android yellow image-placeholder instead of rendering a bare white box when the image is missing."
+            ],
+            "intentional": [
+              "Color/material differences on the iOS toolbar action button (pink/magenta arrow vs Android pink) are platform-default tint and likely intentional.",
+              "Platform-default checkbox and icon shapes are acceptable as platform conventions."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20087,7 +20585,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-02T22:05:23.788Z",
+        "generatedAt": "2026-09-02T22:09:41.782Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20148,7 +20646,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:23.788Z",
+            "generatedAt": "2026-09-02T22:09:41.782Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20170,7 +20668,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20192,7 +20690,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20217,7 +20715,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20240,7 +20738,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20280,7 +20778,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-02T22:05:23.788Z",
+        "generatedAt": "2026-09-02T22:09:41.782Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20341,7 +20839,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:23.788Z",
+            "generatedAt": "2026-09-02T22:09:41.782Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20363,7 +20861,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20385,7 +20883,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20410,7 +20908,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20433,7 +20931,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -22034,7 +22532,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-02T22:05:23.788Z",
+        "generatedAt": "2026-09-02T22:09:41.782Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -22095,7 +22593,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:23.788Z",
+            "generatedAt": "2026-09-02T22:09:41.782Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -22117,7 +22615,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -22189,7 +22687,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25498,7 +25996,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25520,7 +26018,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25545,7 +26043,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25568,7 +26066,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25768,7 +26266,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25790,7 +26288,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25815,7 +26313,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25838,7 +26336,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26038,7 +26536,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26060,7 +26558,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26085,7 +26583,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26108,7 +26606,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26304,7 +26802,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26326,7 +26824,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26351,7 +26849,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26374,7 +26872,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26570,7 +27068,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26592,7 +27090,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26617,7 +27115,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26640,7 +27138,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32038,7 +32536,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-02T22:05:23.788Z",
+        "generatedAt": "2026-09-02T22:09:41.782Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32099,7 +32597,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:23.788Z",
+            "generatedAt": "2026-09-02T22:09:41.782Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32121,7 +32619,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32143,7 +32641,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32168,7 +32666,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32191,7 +32689,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32231,7 +32729,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-02T22:05:23.788Z",
+        "generatedAt": "2026-09-02T22:09:41.782Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32292,7 +32790,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:23.788Z",
+            "generatedAt": "2026-09-02T22:09:41.782Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32314,7 +32812,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32336,7 +32834,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32361,7 +32859,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32384,7 +32882,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32424,7 +32922,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-02T22:05:23.788Z",
+        "generatedAt": "2026-09-02T22:09:41.782Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32485,7 +32983,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:23.788Z",
+            "generatedAt": "2026-09-02T22:09:41.782Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32507,7 +33005,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32529,7 +33027,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32554,7 +33052,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32577,7 +33075,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32617,7 +33115,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-02T22:05:23.789Z",
+        "generatedAt": "2026-09-02T22:09:41.782Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -32678,7 +33176,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:23.789Z",
+            "generatedAt": "2026-09-02T22:09:41.782Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32700,7 +33198,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32722,7 +33220,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32747,7 +33245,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:26.749Z",
+            "generatedAt": "2026-09-02T22:09:45.007Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32770,7 +33268,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-02T22:05:30.161Z",
+            "generatedAt": "2026-09-02T22:09:48.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-09-02 22:05:31 UTC
+Generated: 2026-09-02 22:09:51 UTC
 Latest run: 91cbf42a-20260902220309
 Latest commit: 91cbf42a-20260902220309
 Commit subject: fix(thread): preserve multi-image editor group identity
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 92, same 0, pass 0, basic-pass 0, different 85, missing 7
-AI analysis: ready 78 / total 92, pending 14
+AI analysis: ready 85 / total 92, pending 7
 Visual coverage matrix: active 101 / total 120, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

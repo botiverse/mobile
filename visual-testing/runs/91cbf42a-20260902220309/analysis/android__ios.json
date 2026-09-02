@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-02T22:05:30.157Z",
+  "generatedAt": "2026-09-02T22:09:48.837Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 75,
-    "pending": 17
+    "ready": 81,
+    "pending": 11
   },
   "cases": [
     {
@@ -457,15 +457,34 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffebffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-09-02T22:05:28.749Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-02T22:08:18.843Z",
+      "severity": "low",
+      "summary": [
+        "Status dot color and shape are visually equivalent between Android and iOS renders — green/orange/gray/cyan/pink dots render consistently in size, stroke and fill.",
+        "Text label \"Waiting pulse\" matches in weight, size, vertical alignment and color across both platforms.",
+        "Spacing between the four small dots and the gap to the label is consistent across platforms.",
+        "Top metadata chrome (title, subtitle, platform badge) is isomorphic aside from the platform label text.",
+        "No missing, clipped, or misaligned elements detected in the component region."
+      ],
+      "likelyCauses": [
+        "Rendering differences are within the 0.3% pixel mismatch tolerance and attributable to native antialiasing/font hinting, not a layout bug.",
+        "Component crop on baseline and full canvas on current are expected and not a defect."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "No action required; similarity (98.0% RGB, 99.7% pixel-perfect) is within tolerance.",
+        "If sub-pixel anti-aliasing artifacts are undesirable later, consider normalizing border/stroke rendering between Kuikly Android and iOS backends.",
+        "Keep tolerance settings (pixelRatio 0.02, layoutDp 1, ignoreAntialiasing true) as-is for this component."
+      ],
+      "intentional": [
+        "Platform badge label intentionally differs (\"ANDROID\" vs \"IOS\").",
+        "Canvas dimensions intentionally differ between baseline (342×92 cropped) and current (1170×2532 full) as part of the test harness setup."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.002999216861776066
     },
     {
@@ -872,15 +891,32 @@
     },
     {
       "id": "components.thread.composer.empty",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:000000000001000203f903f20001000200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-09-02T22:05:29.075Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-02T22:08:19.150Z",
+      "severity": "low",
+      "summary": [
+        "Toolbar component appears isomorphic between Android and iOS renders with only minor visual differences within tolerance thresholds.",
+        "Send button (paper airplane icon) shows a slight pink/highlight overlay on Android that is less pronounced or absent on iOS.",
+        "Checkbox squares before 'As Task' and 'Original image' labels appear with slightly different border thickness/weight between platforms.",
+        "Icon button borders (gallery, camera, paperclip) have marginally different stroke weights between Android and iOS."
+      ],
+      "likelyCauses": [
+        "Platform-default rendering of checkbox and button border strokes (Android Material vs iOS Cupertino).",
+        "Slight differences in Kuikly's cross-platform theme tokens for component borders and icon button backgrounds.",
+        "Scale-related anti-aliasing artifacts since baseline is cropped to 342×100 component bounds while current is full 1170×2532 canvas."
+      ],
+      "suggestedOwner": "ui-engineering",
+      "suggestedFixes": [
+        "Normalize checkbox and icon button border stroke weights via shared Kuikly theme tokens to ensure parity.",
+        "Verify the send button (paper airplane) highlight/active state styling is consistent across Android and iOS themes.",
+        "Re-run comparison with matched crop rect on the iOS side (current is null) to reduce scale-induced pixel mismatch.",
+        "Tighten tolerance for component-bounds crops to within 1dp layout difference for better cross-platform parity."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0176472772444336
     },
     {
@@ -911,15 +947,35 @@
     },
     {
       "id": "components.thread.composer.pending-mention-actions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:01f803fc0001000200010002660166827019701a00010002000100020379037200010002fffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-09-02T22:05:29.103Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-02T22:08:19.176Z",
+      "severity": "low",
+      "summary": [
+        "Typography in the mention header and body text appears slightly larger on iOS (right) compared to Android (left), consistent with platform-native scaling.",
+        "The iOS canvas extends much further below the Message design card, indicating a much taller viewport/content area vs. the cropped Android baseline (1026×870 vs 1170×2532 raw).",
+        "All structural elements (avatar placeholder, Add/Notify/Dismiss buttons, checkboxes, paperclip icon, send arrow) are present and aligned on both sides with no missing components.",
+        "Button styling, pink fill on Add button, and checkbox strokes look visually equivalent between platforms."
+      ],
+      "likelyCauses": [
+        "Different default font scales between Android and iOS Kuikly renders",
+        "Viewport height difference due to device-class crop on Android baseline",
+        "Minor antialiasing and sub-pixel rendering differences between Skia/Android and CoreGraphics/iOS"
+      ],
+      "suggestedOwner": "ui-engineering",
+      "suggestedFixes": [
+        "Normalize text sizes via shared dp/sp tokens in Kuikly Compose so header and body render at equivalent metrics on both platforms.",
+        "Verify the Android baseline crop rect to match the iOS component region, or render both at a common reference height for fair comparison.",
+        "Tighten button/icon stroke and corner-radius tokens if any subtle weight drift is observed in the Add/Notify buttons.",
+        "Confirm avatar placeholder and send-arrow glyphs use a shared icon asset rather than platform-resolved variants."
+      ],
+      "intentional": [
+        "The viewport height difference (Android cropped at 342×290 vs iOS full 1170×2532) is an artifact of baseline cropping, not a real UI divergence.",
+        "Pink 'Add' button color and filled vs outline styling match intentionally across platforms."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.07389516749706326
     },
     {
@@ -955,41 +1011,102 @@
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03f807fcfffdfffe00010002000100020001000202010002000100023ff93ffa000100022001000202710272000100020805fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-09-02T22:05:29.156Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-02T22:08:19.234Z",
+      "severity": "low",
+      "summary": [
+        "Avatar icons are smaller on iOS than Android across all suggestion rows",
+        "iOS suggestion list rows have tighter vertical padding, making rows visually shorter than Android",
+        "iOS header section text labels ('IN THIS CHANNEL', 'NOT IN THIS CHANNEL') appear at slightly different vertical position relative to row content",
+        "iOS action toolbar (As Task, Original image) shows tighter spacing between checkbox and label, and between labels",
+        "Suggestion text truncation differs slightly: iOS shows 'Turns...' whereas Android shows 'Tur...' for Product UX subtitle"
+      ],
+      "likelyCauses": [
+        "Different default font metrics (line-height, glyph width) between Android (Roboto) and iOS (SF) rendering on Kuikly",
+        "Avatar size token not normalized across platforms — likely a dp/pt conversion drift",
+        "List row min-height using platform-default line-height instead of explicit tokenized value",
+        "Toolbar gap/margin tokens not using shared cross-platform spacing constants"
+      ],
+      "suggestedOwner": "mobile-platform / Kuikly UI kit owner",
+      "suggestedFixes": [
+        "Normalize avatar size to a shared token (e.g. 32dp on both platforms) and verify in member-suggestion component",
+        "Pin suggestion row min-height to an explicit design token rather than relying on font line-height",
+        "Align checkbox-to-label and label-to-label spacing in the composer toolbar to shared spacing tokens",
+        "Verify 'IN THIS CHANNEL' / 'NOT IN THIS CHANNEL' section header uses the same vertical padding token on both platforms",
+        "Re-run Slock visual diff after token fixes to confirm pixelMismatchRatio drops below tolerance (2%)"
+      ],
+      "intentional": [
+        "Avatar emoji glyph differences (👤 vs platform fallback) may be intentional platform-native rendering"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.05977201226016393
     },
     {
       "id": "components.thread.composer.channel-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03f807fc7ffdfffefffdfffefffdfffefffdfffe00010002000100020ff92ffa000100020001000202710272000100024805fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-09-02T22:05:29.163Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-02T22:08:19.254Z",
+      "severity": "low",
+      "summary": [
+        "Channel suggestion rows (design/product/android-artifacts) are visually isomorphic between Android and iOS ends with consistent typography, weights, and highlight color on the selected row.",
+        "Bottom composer toolbar (gallery/camera/attach icons, 'As Task' and 'Original image' checkboxes, and send icon) matches in layout and components on both ends.",
+        "The lower toolbar on iOS appears slightly narrower in proportional width vs Android, and the iOS viewport is taller (1170x2532) than Android's crop region (342x320), indicating the iOS render uses the full device canvas rather than a component-bounds crop, which can exaggerate minor scale differences after normalization.",
+        "No missing elements, clipping, color mismatches, or state-indicator divergences are visible between the two renders."
+      ],
+      "likelyCauses": [
+        "Comparison canvas on iOS is the full device viewport (1170x2532) while Android was cropped to component bounds (342x320), so rescaling introduces minor proportional drift.",
+        "Possible platform-default differences in font metrics or icon scaling between Kuikly Android and iOS renderers are small enough to fall within tolerance."
+      ],
+      "suggestedOwner": "mobile-platform",
+      "suggestedFixes": [
+        "Re-run the iOS capture with the same component-bounds crop/contract used on Android so both ends are compared at identical bounding boxes.",
+        "If intentional, document that composer renders are normalized to full-device viewport on iOS; otherwise align the crop contract in the Slock harness.",
+        "Spot-check the toolbar width and icon padding on iOS to confirm no horizontal padding regression vs Android."
+      ],
+      "intentional": [
+        "Full-viewport iOS canvas vs component-cropped Android canvas is a capture-pipeline difference, not necessarily a product divergence.",
+        "Minor typographic metric variation across platforms may be acceptable per design system."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0535369492715464
     },
     {
       "id": "components.thread.composer.image-preview",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:00000000000100020ffd4ffe0ff50ff20001000200110012000100027ffdfffe7ffdfffe7ffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-09-02T22:05:29.188Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-02T22:08:19.266Z",
+      "severity": "medium",
+      "summary": [
+        "Image preview thumbnail is missing on the iOS render — the Android side shows a yellow placeholder image with mountain/pink-circle glyph, while the iOS side renders an empty white box with only the close (X) button.",
+        "Toolbar/composer bounds: the composer container on iOS appears slightly wider/taller than on Android relative to the preview, altering internal spacing between the toolbar row and the preview thumbnail.",
+        "Close (X) button position: on iOS the X button sits flush against the top-right corner of the empty preview, whereas on Android it overlaps the image content area more centrally.",
+        "Typography weight in the heading 'Uploading the design crop for review.' appears slightly heavier/larger on iOS compared to Android.",
+        "Toolbar icon buttons (add, camera, attach) and checkboxes ('As Task', 'Original image') render at a marginally larger size on iOS, with wider gaps between the attach icon and the 'As Task' label."
+      ],
+      "likelyCauses": [
+        "Kuikly iOS image loader failed to bind/resolve the preview image source, resulting in a blank Image view while the rest of the composer renders.",
+        "iOS and Android using different default fonts (San Francisco vs Roboto) causing apparent weight/size delta in the same token.",
+        "DP-to-pt scaling or container width differs between Kuikly iOS and Android, inflating toolbar component bounds."
+      ],
+      "suggestedOwner": "mobile-composer",
+      "suggestedFixes": [
+        "Verify the preview image binding pipeline on iOS: ensure the Kuikly Image component resolves the same source URI/asset as Android and handles loading/error states identically.",
+        "Audit font/typography token mapping between Android (Roboto) and iOS (SF) to ensure rendered weight/size match within tolerance.",
+        "Normalize composer container width and toolbar icon spacing via shared dp tokens so iOS and Android resolve the same layout metrics.",
+        "Add a placeholder/empty-state styling that matches the Android yellow image-placeholder instead of rendering a bare white box when the image is missing."
+      ],
+      "intentional": [
+        "Color/material differences on the iOS toolbar action button (pink/magenta arrow vs Android pink) are platform-default tint and likely intentional.",
+        "Platform-default checkbox and icon shapes are acceptable as platform conventions."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.03572831854822378
     },
     {
@@ -1616,7 +1733,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:29.498Z",
+      "generatedAt": "2026-09-02T22:09:48.021Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1629,7 +1746,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:29.498Z",
+      "generatedAt": "2026-09-02T22:09:48.021Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2045,7 +2162,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:29.754Z",
+      "generatedAt": "2026-09-02T22:09:48.357Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2058,7 +2175,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:29.754Z",
+      "generatedAt": "2026-09-02T22:09:48.357Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2071,7 +2188,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:29.754Z",
+      "generatedAt": "2026-09-02T22:09:48.357Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2084,7 +2201,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:29.754Z",
+      "generatedAt": "2026-09-02T22:09:48.357Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2097,7 +2214,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:29.754Z",
+      "generatedAt": "2026-09-02T22:09:48.357Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2574,7 +2691,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:30.047Z",
+      "generatedAt": "2026-09-02T22:09:48.711Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2587,7 +2704,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:30.047Z",
+      "generatedAt": "2026-09-02T22:09:48.711Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2600,7 +2717,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:30.047Z",
+      "generatedAt": "2026-09-02T22:09:48.711Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2613,7 +2730,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:30.047Z",
+      "generatedAt": "2026-09-02T22:09:48.711Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

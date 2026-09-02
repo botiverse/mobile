@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>91cbf42a-20260902220309</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-09-02T22:05:31.919Z" data-timestamp="2026-09-02T22:05:31.919Z" title="2026-09-02T22:05:31.919Z">2026-09-02 22:05:31 UTC</time></p>
+    <p class="runMeta"><code>91cbf42a-20260902220309</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-09-02T22:09:51.015Z" data-timestamp="2026-09-02T22:09:51.015Z" title="2026-09-02T22:09:51.015Z">2026-09-02 22:09:51 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <a href="react__ios.html">React vs iOS</a> · <strong>Android vs iOS</strong></p>
     <div class="summary">
       <span class="pill">Total 92</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 20</span>
       <span class="pill">Different 45</span>
       <span class="pill">Missing 11</span>
-      <span class="pill">AI 75/92 ready</span>
+      <span class="pill">AI 81/92 ready</span>
       <span class="pill">Matrix 101/120 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1028,7 +1028,12 @@
       <p><code>RGB 98.0%</code><br/><code>Pixel 99.70%</code><br/><code>Mismatch 0.30%</code><br/><code>Raw 1026×276 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.70% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×92 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · ui-platform</summary>
+    <ul><li>Status dot color and shape are visually equivalent between Android and iOS renders — green/orange/gray/cyan/pink dots render consistently in size, stroke and fill.</li><li>Text label &quot;Waiting pulse&quot; matches in weight, size, vertical alignment and color across both platforms.</li><li>Spacing between the four small dots and the gap to the label is consistent across platforms.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No action required; similarity (98.0% RGB, 99.7% pixel-perfect) is within tolerance.</li><li>If sub-pixel anti-aliasing artifacts are undesirable later, consider normalizing border/stroke rendering between Kuikly Android and iOS backends.</li><li>Keep tolerance settings (pixelRatio 0.02, layoutDp 1, ignoreAntialiasing true) as-is for this component.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.ui.status-dot.states.png" data-current-src="ios/components.ui.status-dot.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -1928,7 +1933,12 @@
       <p><code>RGB 85.5%</code><br/><code>Pixel 98.24%</code><br/><code>Mismatch 1.76%</code><br/><code>Raw 1026×300 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">basic pass: pixel perfect 98.24% &gt; 96% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×100 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · ui-engineering</summary>
+    <ul><li>Toolbar component appears isomorphic between Android and iOS renders with only minor visual differences within tolerance thresholds.</li><li>Send button (paper airplane icon) shows a slight pink/highlight overlay on Android that is less pronounced or absent on iOS.</li><li>Checkbox squares before 'As Task' and 'Original image' labels appear with slightly different border thickness/weight between platforms.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize checkbox and icon button border stroke weights via shared Kuikly theme tokens to ensure parity.</li><li>Verify the send button (paper airplane) highlight/active state styling is consistent across Android and iOS themes.</li><li>Re-run comparison with matched crop rect on the iOS side (current is null) to reduce scale-induced pixel mismatch.</li><li>Tighten tolerance for component-bounds crops to within 1dp layout difference for better cross-platform parity.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.thread.composer.empty.png" data-current-src="ios/components.thread.composer.empty.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -2051,7 +2061,12 @@
       <p><code>RGB 86.3%</code><br/><code>Pixel 92.61%</code><br/><code>Mismatch 7.39%</code><br/><code>Raw 1026×870 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×290 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · ui-engineering</summary>
+    <ul><li>Typography in the mention header and body text appears slightly larger on iOS (right) compared to Android (left), consistent with platform-native scaling.</li><li>The iOS canvas extends much further below the Message design card, indicating a much taller viewport/content area vs. the cropped Android baseline (1026×870 vs 1170×2532 raw).</li><li>All structural elements (avatar placeholder, Add/Notify/Dismiss buttons, checkboxes, paperclip icon, send arrow) are present and aligned on both sides with no missing components.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize text sizes via shared dp/sp tokens in Kuikly Compose so header and body render at equivalent metrics on both platforms.</li><li>Verify the Android baseline crop rect to match the iOS component region, or render both at a common reference height for fair comparison.</li><li>Tighten button/icon stroke and corner-radius tokens if any subtle weight drift is observed in the Add/Notify buttons.</li><li>Confirm avatar placeholder and send-arrow glyphs use a shared icon asset rather than platform-resolved variants.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.thread.composer.pending-mention-actions.png" data-current-src="ios/components.thread.composer.pending-mention-actions.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -2174,7 +2189,12 @@
       <p><code>RGB 85.6%</code><br/><code>Pixel 94.02%</code><br/><code>Mismatch 5.98%</code><br/><code>Raw 1026×960 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×320 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · mobile-platform / Kuikly UI kit owner</summary>
+    <ul><li>Avatar icons are smaller on iOS than Android across all suggestion rows</li><li>iOS suggestion list rows have tighter vertical padding, making rows visually shorter than Android</li><li>iOS header section text labels ('IN THIS CHANNEL', 'NOT IN THIS CHANNEL') appear at slightly different vertical position relative to row content</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize avatar size to a shared token (e.g. 32dp on both platforms) and verify in member-suggestion component</li><li>Pin suggestion row min-height to an explicit design token rather than relying on font line-height</li><li>Align checkbox-to-label and label-to-label spacing in the composer toolbar to shared spacing tokens</li><li>Verify 'IN THIS CHANNEL' / 'NOT IN THIS CHANNEL' section header uses the same vertical padding token on both platforms</li><li>Re-run Slock visual diff after token fixes to confirm pixelMismatchRatio drops below tolerance (2%)</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.thread.composer.member-suggestions.png" data-current-src="ios/components.thread.composer.member-suggestions.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -2233,7 +2253,12 @@
       <p><code>RGB 87.8%</code><br/><code>Pixel 94.65%</code><br/><code>Mismatch 5.35%</code><br/><code>Raw 1026×960 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×320 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · mobile-platform</summary>
+    <ul><li>Channel suggestion rows (design/product/android-artifacts) are visually isomorphic between Android and iOS ends with consistent typography, weights, and highlight color on the selected row.</li><li>Bottom composer toolbar (gallery/camera/attach icons, 'As Task' and 'Original image' checkboxes, and send icon) matches in layout and components on both ends.</li><li>The lower toolbar on iOS appears slightly narrower in proportional width vs Android, and the iOS viewport is taller (1170x2532) than Android's crop region (342x320), indicating the iOS render uses the full device canvas rather than a component-bounds crop, which can exaggerate minor scale differences after normalization.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Re-run the iOS capture with the same component-bounds crop/contract used on Android so both ends are compared at identical bounding boxes.</li><li>If intentional, document that composer renders are normalized to full-device viewport on iOS; otherwise align the crop contract in the Slock harness.</li><li>Spot-check the toolbar width and icon padding on iOS to confirm no horizontal padding regression vs Android.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.thread.composer.channel-suggestions.png" data-current-src="ios/components.thread.composer.channel-suggestions.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -2292,7 +2317,12 @@
       <p><code>RGB 90.6%</code><br/><code>Pixel 96.43%</code><br/><code>Mismatch 3.57%</code><br/><code>Raw 1026×810 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">basic pass: pixel perfect 96.43% &gt; 96% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×270 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · mobile-composer</summary>
+    <ul><li>Image preview thumbnail is missing on the iOS render — the Android side shows a yellow placeholder image with mountain/pink-circle glyph, while the iOS side renders an empty white box with only the close (X) button.</li><li>Toolbar/composer bounds: the composer container on iOS appears slightly wider/taller than on Android relative to the preview, altering internal spacing between the toolbar row and the preview thumbnail.</li><li>Close (X) button position: on iOS the X button sits flush against the top-right corner of the empty preview, whereas on Android it overlaps the image content area more centrally.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Verify the preview image binding pipeline on iOS: ensure the Kuikly Image component resolves the same source URI/asset as Android and handles loading/error states identically.</li><li>Audit font/typography token mapping between Android (Roboto) and iOS (SF) to ensure rendered weight/size match within tolerance.</li><li>Normalize composer container width and toolbar icon spacing via shared dp tokens so iOS and Android resolve the same layout metrics.</li><li>Add a placeholder/empty-state styling that matches the Android yellow image-placeholder instead of rendering a bare white box when the image is missing.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.thread.composer.image-preview.png" data-current-src="ios/components.thread.composer.image-preview.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">

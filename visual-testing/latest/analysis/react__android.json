@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-02T22:05:23.782Z",
+  "generatedAt": "2026-09-02T22:09:41.776Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 78,
-    "pending": 14
+    "ready": 85,
+    "pending": 7
   },
   "cases": [
     {
@@ -915,93 +915,245 @@
     },
     {
       "id": "components.thread.composer.empty",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffffffffffefffffffcfffc0ffc0ffc0fff0fff0000000000000000ffffffff80010001bffc7ffdfffefffdbffe3ffd81fe03fdfffe7ffdfffefffd8ffc07fd87fc03f987dc033987c4000187dc037987f807f98ffe0001800000018000ffffffffffff0000000080008001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-09-02T22:05:22.715Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-02T22:07:54.308Z",
+      "severity": "medium",
+      "summary": [
+        "Android renders an extra icon button (camera) between the image and attachment icons, which is absent in React baseline",
+        "Android adds an 'Original image' checkbox/label that is missing from the React baseline",
+        "React shows only two left-side icons (image-add and paperclip); Android shows three (image-add, camera, paperclip)",
+        "Both versions share the 'As Task' checkbox and send icon, but Android layout is more crowded horizontally",
+        "Cropping offset (x=24 on Android) suggests the Android component was captured with extra left padding, not a true visual offset"
+      ],
+      "likelyCauses": [
+        "Android implementation includes additional action buttons (camera capture, original image toggle) not part of the current empty-composer spec",
+        "Component-bound contract may have been redefined on Android to expose a wider feature set",
+        "Test crop on Android used a manual rect with x=24, introducing artificial horizontal shift in comparison",
+        "Feature parity gap between React and Android thread composer variants"
+      ],
+      "suggestedOwner": "android-chat",
+      "suggestedFixes": [
+        "Confirm whether the camera icon and 'Original image' checkbox are intentional for Android; if not, remove them to match React baseline",
+        "Re-capture Android screenshot using element-bounds crop (x=0) instead of manual-rect to eliminate the 24px offset",
+        "Verify composer empty-state spec is shared and align React variant if Android extras are product-requirements",
+        "Check checkbox sizing/spacing — Android 'As Task' and 'Original image' labels appear closer together than React's single label",
+        "Align icon button dimensions and spacing between platforms for visual consistency"
+      ],
+      "intentional": [
+        "Camera icon button may be a platform-specific quick action",
+        "'Original image' toggle may be an Android-only feature for attachment provenance"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.20619883040935671
     },
     {
       "id": "components.thread.composer.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffffffffffffffffffefffc0ffc0ffc8fff0fff0000000000000000ffffffff80010001fffefffdfffefffd80b6000d80060005fffefffdfffefffd8ff807f987f803f987d8033987c0000187d8037987f807f98ff80001800000018000ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-09-02T22:05:22.733Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-02T22:07:54.395Z",
+      "severity": "high",
+      "summary": [
+        "Android has an extra camera icon button between the gallery and paperclip icons that is absent in React",
+        "Android includes an additional 'Original image' checkbox/label that does not exist in the React baseline",
+        "Icon row spacing is tighter on Android; the three icons appear closer together than React's two icons",
+        "React uses a checkbox glyph (square outline) next to 'As Task' while Android appears to use a different or missing checkbox indicator",
+        "Overall row width is larger on Android due to the extra controls, pushing the send button (pink paper airplane) further right and reducing right padding"
+      ],
+      "likelyCauses": [
+        "Android implementation added a camera attachment action and an 'Original image' toggle not in the React design",
+        "Design spec divergence between Android and React thread composer states",
+        "Icon set/control inventory not synchronized across platforms"
+      ],
+      "suggestedOwner": "android-design",
+      "suggestedFixes": [
+        "Confirm with design whether the camera icon and 'Original image' toggle are intentional additions on Android",
+        "If unintentional, remove the extra camera button and 'Original image' control to match React baseline",
+        "Align checkbox glyph style and spacing between the 'As Task' controls across platforms",
+        "Re-capture the Android screenshot after fixes to verify pixel and RGB similarity recover above tolerance",
+        "Sync the thread composer state component contract between Android and React implementations"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2209291747888239
     },
     {
       "id": "components.thread.composer.pending-mention-actions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff03fe03fc000000008001000380000001f03e407dc07e4ffdcffe77f5f7de7e79fc0e7ffdfc047ffdfc06701d800070098001700d80010001bffe000183fe7ffdbffe03fd87dc7ffd87cc03798418020180000209ffff0001fffffffffffffffffffffffffffffffffffffffffffeffff80018001ffffffffffffffff",
-      "generatedAt": "2026-09-02T22:05:22.768Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-02T22:07:54.397Z",
+      "severity": "medium",
+      "summary": [
+        "Mention card body text differs: React shows '@Android-Developer-4 was not notified because they are not in #design' on two lines; Android shows '@Android-Developer-4 isn't in #design. Add them to #design or send a one-time notification.' on three lines, occupying more vertical space.",
+        "Tertiary action label changed: React uses 'Ignore' (text-only, right-aligned); Android uses 'Dismiss' with a darker/bolder weight, shifting the button row layout and spacing.",
+        "Avatar/icon spacing on mention card differs: React has tighter gap between person-add icon and avatar; Android has a noticeably larger gap, pushing avatar further right.",
+        "Composer toolbar contains extra controls on Android: a camera (image capture) icon and an 'Original image' checkbox appear between the attachment icon and 'As Task'; React has only the image-with-plus and paperclip icons then 'As Task'.",
+        "Send icon on the right of the composer is clipped in both, but the surrounding whitespace/alignment of the 'As Task' row differs between platforms due to the added items."
+      ],
+      "likelyCauses": [
+        "Copy/string divergence between platforms — the explanatory sentence was reworded for Android.",
+        "Android implementation renders an extra 'camera' compose action and 'Original image' toggle that the React version omits from this state.",
+        "Independent label choice: Android picked 'Dismiss' while React kept 'Ignore'.",
+        "Avatar/icon spacing tokens not shared across platforms.",
+        "Outset/crop offset on the Android side (manual-rect with x=24) may slightly shift alignment compared with the React element-bounds crop."
+      ],
+      "suggestedOwner": "mobile-composer",
+      "suggestedFixes": [
+        "Unify the mention-not-notified message across platforms or, if intentional, update the React copy to match.",
+        "Align the tertiary action label (use 'Dismiss' or 'Ignore' consistently) and share the design token.",
+        "Decide whether the camera action and 'Original image' toggle belong in the empty composer state on both platforms; align toolbar composition.",
+        "Share avatar-to-icon spacing tokens between React and Android implementations.",
+        "Re-run the comparison with matching crop contracts (both 'element' / 'component-bounds') to avoid the 24px x-offset."
+      ],
+      "intentional": [
+        "The 'Original image' toggle may intentionally only appear on Android when an image attachment exists, but here it appears with no image present, which suggests a rendering-state mismatch."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.27875243664717353
     },
     {
       "id": "components.thread.composer.as-task-selected",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffffffffffffffffffefffc03fc03fc97ff17ff0000000000000000ffffffff80010001fffefffdfffefffd80b6000d80060005fffefffdfffefffd8ff807f987f803f987d8033987c0000187d8037987f807f98ff80009800000018001ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-09-02T22:05:22.740Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-02T22:07:54.399Z",
+      "severity": "high",
+      "summary": [
+        "Android composer shows three icon buttons (plus, camera, paperclip) while React shows two (plus, paperclip); camera button is missing on React",
+        "Android has an unchecked 'Original image' checkbox to the right of 'As Task' that is absent on the React baseline",
+        "'As Task' label appears with reduced spacing on Android due to inserted checkbox and extra button group",
+        "Same composer text typography is preserved across both implementations",
+        "As-Task selection state appears unchecked in the Android capture while React shows it unchecked as well; verify whether selected state styling (filled checkbox) renders correctly on Android"
+      ],
+      "likelyCauses": [
+        "Android composer tool renders an additional camera/image attachment button that React omits or vice versa",
+        "Mismatch between React and Android prop/state bindings for the 'Original image' option in As-Task mode",
+        "Selected-state indicator (filled checkbox, color background) may not be applied on Android",
+        "Different horizontal overflow handling caused the Android crop rect to be offset (crop x=24) indicating the component bounds differ between platforms"
+      ],
+      "suggestedOwner": "android-eng",
+      "suggestedFixes": [
+        "Audit React vs Android attachment tool set parity and align which buttons render in As-Task composer mode",
+        "Verify the 'Original image' checkbox is conditionally rendered on Android based on the same feature flag/state used in React",
+        "Ensure selected-state visual treatment (filled checkbox background, accent color) is applied consistently on Android",
+        "Re-capture Android screenshot using element crop mode (matching React's 342x100 bounds) instead of manual rect to avoid x-offset misregistration",
+        "Review composer action row flex layout so extra controls don't compress 'As Task' label spacing"
+      ],
+      "intentional": [
+        "The camera attachment button presence may be intentional Android-only behavior requiring product confirmation",
+        "'Original image' option may be a deliberate Android-only affordance for image-attached threads"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2247888239116309
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffeffff03fe03fcfffffffffc01ffff81fcffffbbfeffffbf8400018000f7ff80003dabbffc000181fc000183fc7fff800003ff80fe07fffffe0001bffe01ff9dfcfffffffe3fffbffc23ff80003fff80000000bffc0001bffe3ffdbffc3ffd87d807f987c80009841803f980000001ffffffff80008000ffffffffffffffff",
-      "generatedAt": "2026-09-02T22:05:22.786Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-02T22:07:54.401Z",
+      "severity": "high",
+      "summary": [
+        "Android renders the 'IN THIS CHANNEL' highlighted/selected row as 'Cindy' with description and @Cindy handle, while React shows 'artin / HUMAN / Owner / @artin' in the highlighted row — different selected user and missing HUMAN/Owner badges on Android.",
+        "Android shows only one user in 'IN THIS CHANNEL' section (Cindy + Product UX …) whereas React shows two entries (artin highlighted + Cindy unhighlighted) — section content/count differs.",
+        "Android 'NOT IN THIS CHANNEL' lists 'Android Dev…' instead of React's 'artin / HUMAN' and 'Product UX De… / AGENT' — different member list rendered.",
+        "Android adds a 'Original image' checkbox and a camera icon in the bottom composer action row; React only shows image+ and attach icons plus 'As Task' and send — extra controls present on Android.",
+        "Android typography is noticeably larger/bolter for member names (e.g., 'Cindy', 'Product UX …') than React, increasing row height and causing more aggressive text truncation of descriptions and handles ('Tur…', '@Product-UX-Desi…', '@Android-Develop…')."
+      ],
+      "likelyCauses": [
+        "Android composer is wired to a different member/suggestion dataset (or different ordering/filter) than React, surfacing Cindy's row as the highlighted suggestion.",
+        "Android thread composer renders an additional 'Original image' action (camera + checkbox) not implemented in the web React composer.",
+        "Android applies a larger text style/line height to suggestion rows, causing different truncation thresholds than React.",
+        "HUMAN/AGENT role pills are not being rendered on Android suggestion rows."
+      ],
+      "suggestedOwner": "android-eng",
+      "suggestedFixes": [
+        "Align Android member-suggestion source data with the web spec so the first 'IN THIS CHANNEL' row matches (artin / HUMAN / Owner) and subsequent rows match React's order.",
+        "Render HUMAN/AGENT role badges on each Android suggestion row to match React.",
+        "Match Android row typography (name, description, handle) size and weight to React, then re-tune TextView maxLines/ellipsize so truncation ('Tur…', '@Product-UX-Desi…') matches.",
+        "Remove or gate the Android-only 'Original image' checkbox and camera icon, or add equivalent UI to React if the feature is intentional.",
+        "Verify the highlighted row selection state — Android appears to highlight 'Cindy' while React highlights 'artin'; confirm which user should be the focused suggestion."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.32413397498375573
     },
     {
       "id": "components.thread.composer.channel-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffeffff03fe03fcffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8000ffff8000ffff80000001800000019ffc000187fc3ffbfffe0fff80fc3fff80fc3fff800001ff80000000bffc0001bffc7ffdfffc7ffd87d807f987c80009841803f980000001ffffffff80008000ffffffffffffffff",
-      "generatedAt": "2026-09-02T22:05:22.781Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-02T22:07:54.440Z",
+      "severity": "high",
+      "summary": [
+        "Android toolbar shows three icon buttons (image-add, camera, attach) vs React's two (image-add, attach); Android adds a camera icon not present on React",
+        "Android toolbar includes an additional 'Original image' checkbox option that React does not render",
+        "Android suggestions container is horizontally narrower with less internal padding, causing tighter spacing between # icon, channel name, and description",
+        "Android's selected row (design) highlight bar appears shorter in height compared to React's taller selected row",
+        "Vertical gap between the suggestions list and the toolbar is smaller on Android, compressing the overall layout"
+      ],
+      "likelyCauses": [
+        "Feature drift in Android composer toolbar exposing camera capture and 'Original image' toggle that React lacks",
+        "Different container widths/padding between the two implementations causing reflow",
+        "Android applying different list-item heights and selected-state row metrics than the React design tokens",
+        "Inconsistent design-token parity between React (web) and Android (native) composer components"
+      ],
+      "suggestedOwner": "android-thread-composer",
+      "suggestedFixes": [
+        "Hide camera icon and 'Original image' checkbox on Android to match React toolbar, or intentionally document them as Android-only features",
+        "Align suggestion container width and internal padding to React's spacing tokens",
+        "Match selected-row height and highlight bar height to React baseline",
+        "Increase vertical spacing between suggestions list and toolbar to match React",
+        "Audit shared design tokens for list-item and toolbar dimensions across platforms"
+      ],
+      "intentional": [
+        "If camera capture and 'Original image' are intentional Android-only composer affordances, mark them as expected divergence in the test contract"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2692221003898635
     },
     {
       "id": "components.thread.composer.image-preview",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffeffff07fc07fc020000000000000080000fff80000fff80000fff83fc0fff80001fff80010fffa004000380022009801200018ff83efd87c007f987d800018000037980010001fffff807fffffffffffffffffffffffffffeffff0000fffffffffffffffffffffffffffffffffffffffffffeffff8001fff81fffffffffff",
-      "generatedAt": "2026-09-02T22:05:22.823Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-02T22:07:58.684Z",
+      "severity": "high",
+      "summary": [
+        "Android version includes an attached image preview thumbnail (yellow with pink circle and black mountains) with a remove (X) button at top; React version shows no attached image.",
+        "React version displays a pink/peach error banner reading 'The upload size limit could not be checked. Try again in a moment.'; Android version does not render this error state.",
+        "Android toolbar row contains an extra camera icon between the image and paperclip icons that React does not have.",
+        "Android adds a second checkbox 'Original image' next to 'As Task'; React only shows 'As Task'.",
+        "Android's 'As Task' and 'Original image' labels are rendered in lighter/grey weight, while React's 'As Task' uses a darker weight closer to the body text."
+      ],
+      "likelyCauses": [
+        "Android composer is rendering a different state (image already attached) versus React which is showing a pre-upload error state.",
+        "State-driven rendering mismatch: error banner is gated by a flag not surfaced on Android, or image+remove UI is missing on React.",
+        "Feature gap: 'Original image' toggle and camera attachment shortcut not implemented in the React composer.",
+        "Possible duplication of toolbar actions between platform implementations causing divergent button order/contents."
+      ],
+      "suggestedOwner": "mobile-eng",
+      "suggestedFixes": [
+        "Align composer state machine so React and Android show the same combination of attached image, error banner, and toolbar options.",
+        "Port the 'Original image' checkbox and camera icon to React, or hide them on Android if out of scope.",
+        "Ensure the upload-size-check error banner renders identically (same copy, pink/peach fill, border) on both platforms.",
+        "Verify toolbar order and spacing tokens match across platforms; audit the send-button right padding.",
+        "Update Slock baselines to capture the image-attached state separately from the error state to avoid false mismatches."
+      ],
+      "intentional": [
+        "Android preview shows the image-attached state while React shows error state — could be intentional scenario coverage."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3001034822997136
     },
     {
@@ -1678,7 +1830,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:23.062Z",
+      "generatedAt": "2026-09-02T22:09:41.005Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1691,7 +1843,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:23.062Z",
+      "generatedAt": "2026-09-02T22:09:41.005Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1842,7 +1994,7 @@
       "id": "components.channel.members.add-panel",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:23.136Z",
+      "generatedAt": "2026-09-02T22:09:41.101Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2786,7 +2938,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:23.706Z",
+      "generatedAt": "2026-09-02T22:09:41.692Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2799,7 +2951,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:23.706Z",
+      "generatedAt": "2026-09-02T22:09:41.692Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2812,7 +2964,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:23.706Z",
+      "generatedAt": "2026-09-02T22:09:41.692Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2825,7 +2977,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:05:23.706Z",
+      "generatedAt": "2026-09-02T22:09:41.692Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

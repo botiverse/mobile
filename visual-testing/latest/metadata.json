@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T22:05:31.919Z",
+  "generatedAt": "2026-09-02T22:09:51.015Z",
   "runId": "91cbf42a-20260902220309",
   "commit": "91cbf42a-20260902220309",
   "commitSubject": "fix(thread): preserve multi-image editor group identity",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 92,
-        "ready": 78,
-        "pending": 14
+        "ready": 85,
+        "pending": 7
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 92,
-        "ready": 79,
-        "pending": 13
+        "ready": 80,
+        "pending": 12
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 92,
-        "ready": 75,
-        "pending": 17
+        "ready": 81,
+        "pending": 11
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 92,
-    "ready": 78,
-    "pending": 14
+    "ready": 85,
+    "pending": 7
   },
   "componentMatrixSummary": {
     "total": 120,

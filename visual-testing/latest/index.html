@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>91cbf42a-20260902220309</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-09-02T22:05:31.919Z" data-timestamp="2026-09-02T22:05:31.919Z" title="2026-09-02T22:05:31.919Z">2026-09-02 22:05:31 UTC</time></p>
+    <p class="runMeta"><code>91cbf42a-20260902220309</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-09-02T22:09:51.015Z" data-timestamp="2026-09-02T22:09:51.015Z" title="2026-09-02T22:09:51.015Z">2026-09-02 22:09:51 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 92</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 85</span>
       <span class="pill">Missing 7</span>
-      <span class="pill">AI 78/92 ready</span>
+      <span class="pill">AI 85/92 ready</span>
       <span class="pill">Matrix 101/120 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1933,7 +1933,12 @@
       <p><code>RGB 86.1%</code><br/><code>Pixel 79.38%</code><br/><code>Mismatch 20.62%</code><br/><code>Raw 1026×300 / 1026×300</code><br/><code>Canvas 1026×300</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×100 / component-bounds 342×100</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-chat</summary>
+    <ul><li>Android renders an extra icon button (camera) between the image and attachment icons, which is absent in React baseline</li><li>Android adds an 'Original image' checkbox/label that is missing from the React baseline</li><li>React shows only two left-side icons (image-add and paperclip); Android shows three (image-add, camera, paperclip)</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Confirm whether the camera icon and 'Original image' checkbox are intentional for Android; if not, remove them to match React baseline</li><li>Re-capture Android screenshot using element-bounds crop (x=0) instead of manual-rect to eliminate the 24px offset</li><li>Verify composer empty-state spec is shared and align React variant if Android extras are product-requirements</li><li>Check checkbox sizing/spacing — Android 'As Task' and 'Original image' labels appear closer together than React's single label</li><li>Align icon button dimensions and spacing between platforms for visual consistency</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.empty.png" data-current-src="android/components.thread.composer.empty.png" data-overlay-width="1026" data-overlay-height="300">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -1992,7 +1997,12 @@
       <p><code>RGB 83.1%</code><br/><code>Pixel 77.91%</code><br/><code>Mismatch 22.09%</code><br/><code>Raw 1026×300 / 1026×300</code><br/><code>Canvas 1026×300</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×100 / component-bounds 342×100</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-design</summary>
+    <ul><li>Android has an extra camera icon button between the gallery and paperclip icons that is absent in React</li><li>Android includes an additional 'Original image' checkbox/label that does not exist in the React baseline</li><li>Icon row spacing is tighter on Android; the three icons appear closer together than React's two icons</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Confirm with design whether the camera icon and 'Original image' toggle are intentional additions on Android</li><li>If unintentional, remove the extra camera button and 'Original image' control to match React baseline</li><li>Align checkbox glyph style and spacing between the 'As Task' controls across platforms</li><li>Re-capture the Android screenshot after fixes to verify pixel and RGB similarity recover above tolerance</li><li>Sync the thread composer state component contract between Android and React implementations</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.states.png" data-current-src="android/components.thread.composer.states.png" data-overlay-width="1026" data-overlay-height="300">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2051,7 +2061,12 @@
       <p><code>RGB 84.8%</code><br/><code>Pixel 72.12%</code><br/><code>Mismatch 27.88%</code><br/><code>Raw 1026×870 / 1026×870</code><br/><code>Canvas 1026×870</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×290 / component-bounds 342×290</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · mobile-composer</summary>
+    <ul><li>Mention card body text differs: React shows '@Android-Developer-4 was not notified because they are not in #design' on two lines; Android shows '@Android-Developer-4 isn't in #design. Add them to #design or send a one-time notification.' on three lines, occupying more vertical space.</li><li>Tertiary action label changed: React uses 'Ignore' (text-only, right-aligned); Android uses 'Dismiss' with a darker/bolder weight, shifting the button row layout and spacing.</li><li>Avatar/icon spacing on mention card differs: React has tighter gap between person-add icon and avatar; Android has a noticeably larger gap, pushing avatar further right.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Unify the mention-not-notified message across platforms or, if intentional, update the React copy to match.</li><li>Align the tertiary action label (use 'Dismiss' or 'Ignore' consistently) and share the design token.</li><li>Decide whether the camera action and 'Original image' toggle belong in the empty composer state on both platforms; align toolbar composition.</li><li>Share avatar-to-icon spacing tokens between React and Android implementations.</li><li>Re-run the comparison with matching crop contracts (both 'element' / 'component-bounds') to avoid the 24px x-offset.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.pending-mention-actions.png" data-current-src="android/components.thread.composer.pending-mention-actions.png" data-overlay-width="1026" data-overlay-height="870">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2110,7 +2125,12 @@
       <p><code>RGB 82.7%</code><br/><code>Pixel 77.52%</code><br/><code>Mismatch 22.48%</code><br/><code>Raw 1026×300 / 1026×300</code><br/><code>Canvas 1026×300</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×100 / component-bounds 342×100</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-eng</summary>
+    <ul><li>Android composer shows three icon buttons (plus, camera, paperclip) while React shows two (plus, paperclip); camera button is missing on React</li><li>Android has an unchecked 'Original image' checkbox to the right of 'As Task' that is absent on the React baseline</li><li>'As Task' label appears with reduced spacing on Android due to inserted checkbox and extra button group</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Audit React vs Android attachment tool set parity and align which buttons render in As-Task composer mode</li><li>Verify the 'Original image' checkbox is conditionally rendered on Android based on the same feature flag/state used in React</li><li>Ensure selected-state visual treatment (filled checkbox background, accent color) is applied consistently on Android</li><li>Re-capture Android screenshot using element crop mode (matching React's 342x100 bounds) instead of manual rect to avoid x-offset misregistration</li><li>Review composer action row flex layout so extra controls don't compress 'As Task' label spacing</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.as-task-selected.png" data-current-src="android/components.thread.composer.as-task-selected.png" data-overlay-width="1026" data-overlay-height="300">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2169,7 +2189,12 @@
       <p><code>RGB 81.4%</code><br/><code>Pixel 67.59%</code><br/><code>Mismatch 32.41%</code><br/><code>Raw 1026×960 / 1026×960</code><br/><code>Canvas 1026×960</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×320 / component-bounds 342×320</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-eng</summary>
+    <ul><li>Android renders the 'IN THIS CHANNEL' highlighted/selected row as 'Cindy' with description and @Cindy handle, while React shows 'artin / HUMAN / Owner / @artin' in the highlighted row — different selected user and missing HUMAN/Owner badges on Android.</li><li>Android shows only one user in 'IN THIS CHANNEL' section (Cindy + Product UX …) whereas React shows two entries (artin highlighted + Cindy unhighlighted) — section content/count differs.</li><li>Android 'NOT IN THIS CHANNEL' lists 'Android Dev…' instead of React's 'artin / HUMAN' and 'Product UX De… / AGENT' — different member list rendered.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align Android member-suggestion source data with the web spec so the first 'IN THIS CHANNEL' row matches (artin / HUMAN / Owner) and subsequent rows match React's order.</li><li>Render HUMAN/AGENT role badges on each Android suggestion row to match React.</li><li>Match Android row typography (name, description, handle) size and weight to React, then re-tune TextView maxLines/ellipsize so truncation ('Tur…', '@Product-UX-Desi…') matches.</li><li>Remove or gate the Android-only 'Original image' checkbox and camera icon, or add equivalent UI to React if the feature is intentional.</li><li>Verify the highlighted row selection state — Android appears to highlight 'Cindy' while React highlights 'artin'; confirm which user should be the focused suggestion.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.member-suggestions.png" data-current-src="android/components.thread.composer.member-suggestions.png" data-overlay-width="1026" data-overlay-height="960">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2228,7 +2253,12 @@
       <p><code>RGB 85.4%</code><br/><code>Pixel 73.08%</code><br/><code>Mismatch 26.92%</code><br/><code>Raw 1026×960 / 1026×960</code><br/><code>Canvas 1026×960</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×320 / component-bounds 342×320</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-thread-composer</summary>
+    <ul><li>Android toolbar shows three icon buttons (image-add, camera, attach) vs React's two (image-add, attach); Android adds a camera icon not present on React</li><li>Android toolbar includes an additional 'Original image' checkbox option that React does not render</li><li>Android suggestions container is horizontally narrower with less internal padding, causing tighter spacing between # icon, channel name, and description</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Hide camera icon and 'Original image' checkbox on Android to match React toolbar, or intentionally document them as Android-only features</li><li>Align suggestion container width and internal padding to React's spacing tokens</li><li>Match selected-row height and highlight bar height to React baseline</li><li>Increase vertical spacing between suggestions list and toolbar to match React</li><li>Audit shared design tokens for list-item and toolbar dimensions across platforms</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.channel-suggestions.png" data-current-src="android/components.thread.composer.channel-suggestions.png" data-overlay-width="1026" data-overlay-height="960">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2287,7 +2317,12 @@
       <p><code>RGB 84.2%</code><br/><code>Pixel 69.99%</code><br/><code>Mismatch 30.01%</code><br/><code>Raw 1026×630 / 1026×810</code><br/><code>Canvas 1026×810</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×210 / component-bounds 342×270</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · mobile-eng</summary>
+    <ul><li>Android version includes an attached image preview thumbnail (yellow with pink circle and black mountains) with a remove (X) button at top; React version shows no attached image.</li><li>React version displays a pink/peach error banner reading 'The upload size limit could not be checked. Try again in a moment.'; Android version does not render this error state.</li><li>Android toolbar row contains an extra camera icon between the image and paperclip icons that React does not have.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align composer state machine so React and Android show the same combination of attached image, error banner, and toolbar options.</li><li>Port the 'Original image' checkbox and camera icon to React, or hide them on Android if out of scope.</li><li>Ensure the upload-size-check error banner renders identically (same copy, pink/peach fill, border) on both platforms.</li><li>Verify toolbar order and spacing tokens match across platforms; audit the send-button right padding.</li><li>Update Slock baselines to capture the image-attached state separately from the error state to avoid false mismatches.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.image-preview.png" data-current-src="android/components.thread.composer.image-preview.png" data-overlay-width="1026" data-overlay-height="810">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
