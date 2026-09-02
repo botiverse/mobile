@@ -147,7 +147,7 @@ class ThreadForwardFlowTest {
     @Test
     fun directMessageForwardSuccessUsesDirectMessageIdentity() {
         val target = target("dm-target", ForwardMessageTargetKind.RecentDirectMessage, ChannelId("dm-target"))
-            .copy(channelKind = ConversationKind.DirectMessage, channelType = "dm")
+            .copy(channelKind = ConversationKind.DirectMessage, channelType = "dm", memberId = MemberId("member-target"))
 
         assertEquals("dm-target", target.forwardSuccessDisplayTitle())
         assertEquals(
