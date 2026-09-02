@@ -2980,11 +2980,16 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun snapshotMemberStatusAppliesTheSamePolicyAsMemberStatusFlow() {
+    fun snapshotMemberStatusAppliesTheSamePolicyForRosterAndSeedProfiles() {
         // memberStatus() has no production callers today, but it falls back to the same seed
         // profile cache and sits under a comment that offers it as the sibling of
         // memberStatusFlow. Left unpolicied it would hand the forced-Offline artefact back to
         // whoever takes that invitation, silently restoring task #253 (@LiBai, review #254).
+        //
+        // Scope is in the name on purpose: roster and seed are where the two edges agree.
+        // A channel-slice-only member is authoritative to memberStatusFlow and seed-only
+        // here, and this signature cannot reach channel slices at all (see the comment on
+        // memberStatus), so that divergence is NOT covered by this test.
         val serverId = ServerId("server-1")
         val seedOnlyStore = SharedServerMembersStore(FakeMemberRepository())
         seedOnlyStore.seedThreadAuthorProfiles(
