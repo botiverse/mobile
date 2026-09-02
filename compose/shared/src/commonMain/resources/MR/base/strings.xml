@@ -355,6 +355,8 @@
     <string name="thread_feedback_links_copied">Links copied</string>
     <string name="thread_forward_needs_api">%1$s forwarding to %2$s needs API support</string>
     <string name="thread_forward_completed">%1$s forwarded to %2$s</string>
+    <string name="thread_forward_view_in_chat">View in chat</string>
+    <string name="thread_forward_success_banner">Forwarded to %1$s.</string>
     <string name="thread_forward_join_first">Join %1$s before forwarding</string>
     <string name="thread_forward_group_unavailable">Create group forwarding needs API support</string>
     <string name="thread_forward_multi_select_unavailable">Multi-select forwarding needs API support</string>

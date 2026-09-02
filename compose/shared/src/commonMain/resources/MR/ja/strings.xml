@@ -355,6 +355,8 @@
     <string name="thread_feedback_links_copied">リンクをコピーしました</string>
     <string name="thread_forward_needs_api">%1$s から %2$s への転送には API サポートが必要です</string>
     <string name="thread_forward_completed">%1$s を %2$s に転送しました</string>
+    <string name="thread_forward_view_in_chat">チャットで表示</string>
+    <string name="thread_forward_success_banner">%1$s に転送しました。</string>
     <string name="thread_forward_join_first">転送する前に %1$s に参加してください</string>
     <string name="thread_forward_group_unavailable">グループ作成による転送には API サポートが必要です</string>
     <string name="thread_forward_multi_select_unavailable">複数選択の転送には API サポートが必要です</string>
