@@ -178,11 +178,13 @@ data class SharedServerMembersState(
         val cleanMemberId = memberId.normalizedServerMembersId() ?: return null
         val cleanServerId = serverId?.value.normalizedServerMembersId() ?: return null
         val entries = listOfNotNull(entriesByServerId[cleanServerId])
-        val member =
+        val rosterMember =
             entries
                 .asSequence()
                 .flatMap { it.members.asSequence() }
                 .firstOrNull { it.kind == MemberKind.Agent && it.id.value.trim() == cleanMemberId }
+        val member =
+            rosterMember
                 ?: profileCacheByServerId
                     .asSequence()
                     .filter { it.key == cleanServerId }
@@ -191,7 +193,14 @@ data class SharedServerMembersState(
         // task #136: presence facts live ONLY in the process registry — the
         // state carries rosters; status reads go through the store's
         // registry-backed APIs (memberStatusFlow / memberStatus).
-        return member.toSharedServerMemberStatus(null)
+        // task #253: this edge falls back to the seed profile cache exactly like
+        // memberStatusFlow, so it applies the same policy. Skipping it here would
+        // leave the forced-Offline artefact reachable through the sibling API the
+        // comment above points readers at.
+        return applySeedOnlyOfflinePolicy(
+            resolved = member.toSharedServerMemberStatus(null),
+            seedOnly = rosterMember == null
+        )
     }
 
     fun memberProfile(
@@ -306,10 +315,19 @@ internal enum class SeedOnlyOfflinePolicy {
 }
 
 /**
+ * The shipped policy: [SeedOnlyOfflinePolicy.PublishNothing].
+ *
  * task #253 — @artin chose "cold start shows no status dot" over a neutral placeholder, so an
  * agent whose only backing profile is a stripped message-author seed publishes nothing until
  * an authoritative status or presence fact arrives. The indicator already documents null as
  * Unknown/not-ready (`SlockAgentStatusIndicator.resolveHomeAgentStatusIndicatorState`).
+ *
+ * The other two arms are kept because [applySeedOnlyOfflinePolicy] is a decision this codebase
+ * has already changed once and may change again, and its per-arm test is the cheapest way to
+ * state what each candidate would publish. They are not a live configuration surface: nothing
+ * constructs this store with a different policy, and under the shipped value a seed and an
+ * authoritative Offline publish different results (null vs Offline), so the read edges' wiring
+ * is red-able directly — no injection needed to catch a wrong provenance.
  */
 internal val ActiveSeedOnlyOfflinePolicy: SeedOnlyOfflinePolicy = SeedOnlyOfflinePolicy.PublishNothing
 
@@ -417,11 +435,6 @@ class SharedServerMembersStore internal constructor(
     private val presenceOwnerFlow: (ServerId) -> Flow<ProcessServerMembersOwner?> = { serverId ->
         flowOf(presenceOwner(serverId))
     },
-    // task #253: injectable so the provenance wiring stays red-able while the
-    // shipped policy is PublishAsOffline. Without this seam no test could tell
-    // an authoritative Offline from a forced seed artefact, because that policy
-    // makes the two publish identical values.
-    private val seedOnlyOfflinePolicy: SeedOnlyOfflinePolicy = ActiveSeedOnlyOfflinePolicy,
     // Write binding: owner + registry write generation frozen from ONE
     // immutable auth-context snapshot (post-merge audit on PR #1054 — owner
     // and generation must never be torn apart by a concurrent auth clear;
@@ -781,8 +794,7 @@ class SharedServerMembersStore internal constructor(
             } else {
                 applySeedOnlyOfflinePolicy(
                     resolved = member.toSharedServerMemberStatus(presenceFact),
-                    seedOnly = !resolution.authoritative && presenceFact == null,
-                    policy = seedOnlyOfflinePolicy
+                    seedOnly = !resolution.authoritative && presenceFact == null
                 )
             }
         }.distinctUntilChanged()
