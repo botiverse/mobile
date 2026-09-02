@@ -134,6 +134,48 @@ final class QaAcceptanceLoopTests: XCTestCase {
                 throw HarnessError.bad("launch: app did not reach foreground (state=\(app.state.rawValue))")
             }
             return ["state": "runningForeground"]
+        case "system_alert_allow_photos_full_access":
+            // Deterministic permission bootstrap (task #26, iOS 26 consent
+            // extension): the SpringBoard Photos alert is outside the app's
+            // accessibility tree, so it is resolved through XCUITest against
+            // com.apple.springboard — native element taps only, never
+            // coordinates. Fail-closed on every contract violation: no alert,
+            // multiple alerts, no exact "Allow Full Access" button, duplicate
+            // buttons, or the alert surviving the tap.
+            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+            let alerts = springboard.alerts
+            let alertCount = alerts.count
+            guard alertCount == 1 else {
+                throw HarnessError.bad("system_alert: expected exactly one SpringBoard alert, found \(alertCount)")
+            }
+            let alert = alerts.element(boundBy: 0)
+            let title = alert.label
+            guard title.localizedCaseInsensitiveContains("Photo Library") else {
+                throw HarnessError.bad("system_alert: the only alert is not a Photos permission alert (title: \(title))")
+            }
+            let allow = alert.buttons["Allow Full Access"]
+            let allButtons = alert.buttons.allElementsBoundByIndex.map { $0.label }
+            guard allow.exists else {
+                throw HarnessError.bad("system_alert: no exact 'Allow Full Access' button (buttons: \(allButtons))")
+            }
+            let allowCount = alert.buttons.allElementsBoundByIndex.filter { $0.label == "Allow Full Access" }.count
+            guard allowCount == 1 else {
+                throw HarnessError.bad("system_alert: duplicate 'Allow Full Access' buttons (\(allowCount))")
+            }
+            let bounds = allow.frame
+            allow.tap()
+            Thread.sleep(forTimeInterval: 2.0)
+            guard !alert.exists else {
+                throw HarnessError.bad("system_alert: Photos alert still present after tapping Allow Full Access")
+            }
+            return [
+                "alertCount": alertCount,
+                "alertTitle": title,
+                "button": "Allow Full Access",
+                "buttonBounds": "[\(Int(bounds.minX)),\(Int(bounds.minY))][\(Int(bounds.maxX)),\(Int(bounds.maxY))]",
+                "allButtons": allButtons,
+                "dismissed": true,
+            ]
         case "wait":
             Thread.sleep(forTimeInterval: min(max(action.seconds ?? 1.0, 0.0), 10.0))
         case "tap":
@@ -310,6 +352,12 @@ final class QaAcceptanceLoopTests: XCTestCase {
     // The host-side dump_ui twin: one snapshot IPC, then a plain walk emitting
     // labelled/interactive nodes with frames in points. The node runner applies
     // the same semantic compression as the Android uiautomator dump.
+    // The host-side dump_ui twin: one snapshot IPC, then a plain walk emitting
+    // labelled/interactive nodes with frames in points. The node runner applies
+    // the same semantic compression as the Android uiautomator dump. Task #26
+    // static review: also carry the verbatim identifier, elementType (raw +
+    // readable), isEnabled and isSelected, and keep selected-but-unlabelled
+    // nodes — the cell-selection contract is defined on exactly those fields.
     private func describeTree(_ app: XCUIApplication) throws -> [[String: Any]] {
         let snapshot = try app.snapshot()
         var nodes: [[String: Any]] = []
@@ -320,11 +368,15 @@ final class QaAcceptanceLoopTests: XCTestCase {
             let editable = type == .textField || type == .secureTextField || type == .textView || type == .searchField
             let clickable = type == .button || type == .cell || type == .link || type == .segmentedControl
                 || type == .switch || type == .checkBox || type == .menuItem || type == .tabBar
-            if editable || clickable || !label.isEmpty || !value.isEmpty || s.hasFocus {
+            if editable || clickable || !label.isEmpty || !value.isEmpty || s.hasFocus || s.isSelected {
                 nodes.append([
                     "label": label,
                     "value": value,
                     "id": s.identifier,
+                    "type": readableType(type),
+                    "typeRaw": Int(type.rawValue),
+                    "enabled": s.isEnabled,
+                    "selected": s.isSelected,
                     "editable": editable,
                     "clickable": clickable,
                     "focused": s.hasFocus,
@@ -335,6 +387,29 @@ final class QaAcceptanceLoopTests: XCTestCase {
         }
         walk(snapshot)
         return nodes
+    }
+
+    private func readableType(_ type: XCUIElement.ElementType) -> String {
+        switch type {
+        case .button: return "button"
+        case .cell: return "cell"
+        case .image: return "image"
+        case .staticText: return "staticText"
+        case .textField: return "textField"
+        case .secureTextField: return "secureTextField"
+        case .textView: return "textView"
+        case .searchField: return "searchField"
+        case .link: return "link"
+        case .segmentedControl: return "segmentedControl"
+        case .switch: return "switch"
+        case .checkBox: return "checkBox"
+        case .menuItem: return "menuItem"
+        case .tabBar: return "tabBar"
+        case .window: return "window"
+        case .scrollBar: return "scrollBar"
+        case .toolbar: return "toolbar"
+        default: return "other"
+        }
     }
 
     private func writeReady(_ ioDir: String) {
